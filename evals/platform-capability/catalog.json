@@ -255,6 +255,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"
@@ -8597,6 +8598,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"
@@ -14831,6 +14833,29 @@
     "output_shape": "unknown",
     "path": "/v1/sessions/facets",
     "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "session_sandbox",
+    "cli": "sessions repositories get",
+    "description": "List the repositories checked out in a session's sandbox and what the session changed in each.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_repositories",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/repositories",
+    "positional_arg": "session_id",
     "read_only": true
   },
   {
@@ -29820,6 +29845,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"

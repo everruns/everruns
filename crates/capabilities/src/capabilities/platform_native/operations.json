@@ -235,6 +235,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"
@@ -8223,6 +8224,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"
@@ -13457,6 +13459,23 @@
       "description": "Facet-rail counts and masthead metrics over the sessions list predicate."
     },
     "name": "get_session_facets",
+    "read_only": true
+  },
+  {
+    "description": "List the repositories checked out in a session's sandbox and what the session changed in each.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "get_session_repositories",
     "read_only": true
   },
   {
@@ -26922,6 +26941,7 @@
           "enum": [
             "mentions",
             "everything",
+            "relevant",
             "never"
           ],
           "type": "string"

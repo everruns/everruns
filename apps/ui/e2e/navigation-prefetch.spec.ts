@@ -18,7 +18,9 @@ const SETTINGS_CHILD_ROUTES = [
   "/settings/personal-access-tokens",
 ];
 
-async function mockAppApi(page: Page) {
+type Layout = "chat_first" | "classic";
+
+async function mockAppApi(page: Page, layout: Layout) {
   await page.route("**/api/v1/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
@@ -48,6 +50,8 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/switch-org")) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
+    } else if (pathname === "/api/v1/user/preferences/ui.layout") {
+      json = { key: "ui.layout", value: layout, updated_at: "2026-11-11T00:00:00Z" };
     } else if (pathname.endsWith("/config")) {
       json = { policies: {} };
     } else if (pathname === "/api/v1/sessions/facets") {
@@ -102,6 +106,8 @@ const STARTUP_API_ALLOWLIST = new Set([
   "/api/v1/feature-flags",
   "/api/v1/users/me/switch-org",
   "/api/v1/user/preferences/ui.early_access_banner.dismissed",
+  // The personal layout preference (Chat first or Classic) shapes the shell.
+  "/api/v1/user/preferences/ui.layout",
   "/api/v1/durable/config",
   // The sidebar's Overview entry counts the items waiting on Overview, so it
   // reads the same sources as that page on every route.
@@ -119,91 +125,98 @@ function isStartupApi(pathname: string) {
   );
 }
 
-test.describe("Sidebar navigation prefetch", () => {
-  test.setTimeout(60_000);
-  test.use({ viewport: { width: 1440, height: 2000 } });
+for (const layout of ["chat_first", "classic"] as const)
+  test.describe(`Navigation prefetch (${layout})`, () => {
+    test.setTimeout(60_000);
+    test.use({ viewport: { width: 1440, height: 2000 } });
 
-  test.beforeEach(async ({ context, page, baseURL }) => {
-    const origin = new URL(baseURL ?? "http://localhost:9100");
-    await context.addCookies([
-      {
-        name: "access_token",
-        value: "e2e-only",
-        domain: origin.hostname,
-        path: "/",
-      },
-    ]);
-    await mockAppApi(page);
-  });
-
-  test("Landing-surface startup does not prefetch unrelated sidebar routes or APIs", async ({
-    page,
-  }) => {
-    const requests: Request[] = [];
-    page.on("request", (request) => requests.push(request));
-
-    await page.goto("/chats");
-    await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
-    await page.waitForLoadState("networkidle");
-
-    const unrelatedRscRequests = requests.filter((request) => {
-      const pathname = new URL(request.url()).pathname;
-      return isRscRequest(request) && pathname !== "/chats";
-    });
-    expect(unrelatedRscRequests).toHaveLength(0);
-
-    const unrelatedApiRequests = requests.filter((request) => {
-      const pathname = new URL(request.url()).pathname;
-      return pathname.startsWith("/api/v1/") && !isStartupApi(pathname);
-    });
-    expect(unrelatedApiRequests.map((request) => new URL(request.url()).pathname)).toEqual([]);
-  });
-
-  // EVE-785's dashboard-specific cases are gone with the Dashboard (EVE-855).
-  // They asserted that the empty Dashboard's three "Create your first agent"
-  // links did not eagerly prefetch /agents/new. Chats, the landing surface now,
-  // offers a new-chat form instead and has no such link; the surviving surface
-  // is /agents, covered below.
-  //
-  // EVE-793: the Agents-page /agents/new prefetch regression is covered
-  // deterministically by the jest test
-  // `src/__tests__/agents-page-new-agent-prefetch.test.tsx` (both the masthead
-  // and empty-state links assert prefetch is disabled and fires only on
-  // hover/focus intent). It is intentionally not duplicated here: /agents
-  // renders its header from a server-side fetch that this suite's browser-level
-  // `page.route` mocks cannot intercept, so the page never reaches a stable
-  // rendered state under these mocks (unlike the client-fetched landing surface
-  // widget), which made an /agents e2e case non-deterministic.
-
-  test("sidebar click navigation works without broad route prefetch", async ({ page }) => {
-    await page.goto("/chats");
-    await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
-    await page.getByRole("link", { name: "Sessions" }).click();
-    await expect(page).toHaveURL(/\/sessions$/, { timeout: NAVIGATION_TIMEOUT });
-    await expect(
-      page.getByText("Every run across your agents: chats, schedules, channels and API calls."),
-    ).toBeVisible();
-  });
-
-  test("Settings navigation avoids child route fan-out", async ({ page }) => {
-    const settingsRequests: Request[] = [];
-    page.on("request", (request) => {
-      if (isSettingsRscRequest(request)) settingsRequests.push(request);
+    test.beforeEach(async ({ context, page, baseURL }) => {
+      const origin = new URL(baseURL ?? "http://localhost:9100");
+      await context.addCookies([
+        {
+          name: "access_token",
+          value: "e2e-only",
+          domain: origin.hostname,
+          path: "/",
+        },
+      ]);
+      await mockAppApi(page, layout);
     });
 
-    await page.goto("/chats");
-    await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
-    await page.waitForLoadState("networkidle");
+    test("Landing-surface startup does not prefetch unrelated sidebar routes or APIs", async ({
+      page,
+    }) => {
+      const requests: Request[] = [];
+      page.on("request", (request) => requests.push(request));
 
-    settingsRequests.length = 0;
-    await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await expect(page).toHaveURL(/\/settings\/organization$/, { timeout: NAVIGATION_TIMEOUT });
-    await page.waitForLoadState("networkidle");
+      await page.goto("/chats");
+      await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
+      await page.waitForLoadState("networkidle");
 
-    const eagerChildRequests = settingsRequests.filter((request) => {
-      const pathname = new URL(request.url()).pathname;
-      return pathname !== "/settings/organization" && SETTINGS_CHILD_ROUTES.includes(pathname);
+      const unrelatedRscRequests = requests.filter((request) => {
+        const pathname = new URL(request.url()).pathname;
+        return isRscRequest(request) && pathname !== "/chats";
+      });
+      expect(unrelatedRscRequests).toHaveLength(0);
+
+      const unrelatedApiRequests = requests.filter((request) => {
+        const pathname = new URL(request.url()).pathname;
+        return pathname.startsWith("/api/v1/") && !isStartupApi(pathname);
+      });
+      expect(unrelatedApiRequests.map((request) => new URL(request.url()).pathname)).toEqual([]);
     });
-    expect(eagerChildRequests).toHaveLength(0);
+
+    // EVE-785's dashboard-specific cases are gone with the Dashboard (EVE-855).
+    // They asserted that the empty Dashboard's three "Create your first agent"
+    // links did not eagerly prefetch /agents/new. Chats, the landing surface now,
+    // offers a new-chat form instead and has no such link; the surviving surface
+    // is /agents, covered below.
+    //
+    // EVE-793: the Agents-page /agents/new prefetch regression is covered
+    // deterministically by the jest test
+    // `src/__tests__/agents-page-new-agent-prefetch.test.tsx` (both the masthead
+    // and empty-state links assert prefetch is disabled and fires only on
+    // hover/focus intent). It is intentionally not duplicated here: /agents
+    // renders its header from a server-side fetch that this suite's browser-level
+    // `page.route` mocks cannot intercept, so the page never reaches a stable
+    // rendered state under these mocks (unlike the client-fetched landing surface
+    // widget), which made an /agents e2e case non-deterministic.
+
+    test("sidebar click navigation works without broad route prefetch", async ({ page }) => {
+      await page.goto("/chats");
+      await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
+      await page.getByRole("link", { name: "Sessions" }).click();
+      await expect(page).toHaveURL(/\/sessions$/, { timeout: NAVIGATION_TIMEOUT });
+      await expect(
+        page.getByText("Every run across your agents: chats, schedules, channels and API calls."),
+      ).toBeVisible();
+    });
+
+    test("Settings navigation avoids child route fan-out", async ({ page }) => {
+      const settingsRequests: Request[] = [];
+      page.on("request", (request) => {
+        if (isSettingsRscRequest(request)) settingsRequests.push(request);
+      });
+
+      await page.goto("/chats");
+      await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
+      await page.waitForLoadState("networkidle");
+
+      settingsRequests.length = 0;
+      if (layout === "chat_first") {
+        // The rail folds Settings into its System and settings menu.
+        await page.getByRole("button", { name: "System and settings" }).click();
+        await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+      } else {
+        await page.getByRole("link", { name: "Settings", exact: true }).click();
+      }
+      await expect(page).toHaveURL(/\/settings\/organization$/, { timeout: NAVIGATION_TIMEOUT });
+      await page.waitForLoadState("networkidle");
+
+      const eagerChildRequests = settingsRequests.filter((request) => {
+        const pathname = new URL(request.url()).pathname;
+        return pathname !== "/settings/organization" && SETTINGS_CHILD_ROUTES.includes(pathname);
+      });
+      expect(eagerChildRequests).toHaveLength(0);
+    });
   });
-});

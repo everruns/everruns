@@ -68,6 +68,122 @@ async fn key(db: &StorageBackend, revisions: usize) -> String {
     key
 }
 
+async fn two_contenders_are_waiting(pg: &super::Database) {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_stat_activity
+                 WHERE datname = current_database() AND wait_event_type = 'Lock'",
+            )
+            .fetch_one(pg.pool())
+            .await
+            .unwrap();
+            if waiting >= 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("both contenders wait on the held key");
+}
+
+#[tokio::test]
+async fn concurrent_first_use_sees_the_committed_key_after_a_conflicting_insert() {
+    let db = StorageBackend::test_database();
+    let pg = db.database();
+    let harness = Uuid::new_v4();
+    let key = format!("ak_{}", Uuid::new_v4().simple());
+    let mut blocker = pg.tx_pool().begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO engine_agent_keys (agent_key, org_id, harness_id, agent_id)
+         VALUES ($1, $2, $3, NULL)",
+    )
+    .bind(&key)
+    .bind(ORG)
+    .bind(harness)
+    .execute(&mut *blocker)
+    .await
+    .unwrap();
+    let callers = (0..2)
+        .map(|_| {
+            let pg = pg.clone();
+            tokio::spawn(async move { pg.engine_agent_key(ORG, harness, None).await })
+        })
+        .collect::<Vec<_>>();
+    two_contenders_are_waiting(pg).await;
+    blocker.commit().await.unwrap();
+    for caller in callers {
+        assert_eq!(caller.await.unwrap().expect("concurrent key lookup"), key);
+    }
+}
+
+async fn concurrent_publications_keep_revisions(same_digest: bool) {
+    let db = StorageBackend::test_database();
+    let pg = db.database();
+    let key = key(&db, 0).await;
+    let mut blocker = pg.tx_pool().begin().await.unwrap();
+    sqlx::query("SELECT agent_key FROM engine_agent_keys WHERE agent_key = $1 FOR UPDATE")
+        .bind(&key)
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let publishers = (0..2)
+        .map(|n| {
+            let pg = pg.clone();
+            let key = key.clone();
+            tokio::spawn(async move {
+                let digest = if same_digest { 0 } else { n };
+                pg.publish_engine_agent(
+                    &key,
+                    &json!({"format": 1, "agent": {"n": digest}}),
+                    &digest.to_string(),
+                )
+                .await
+            })
+        })
+        .collect::<Vec<_>>();
+
+    // Both publishers must already be waiting on the key before it is released:
+    // a joined current-revision read would otherwise hide the stale snapshot.
+    two_contenders_are_waiting(pg).await;
+    blocker.commit().await.unwrap();
+
+    let mut revisions = Vec::new();
+    for publisher in publishers {
+        revisions.push(publisher.await.unwrap().expect("concurrent publication"));
+    }
+    revisions.sort();
+    let expected = if same_digest {
+        ["r1", "r1"]
+    } else {
+        ["r1", "r2"]
+    };
+    assert_eq!(revisions, expected);
+    for revision in expected {
+        assert!(
+            pg.engine_agent_definition(&key, revision)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+    assert_eq!(
+        pg.engine_agent_current(&key).await.unwrap().unwrap().0,
+        if same_digest { "r1" } else { "r2" },
+    );
+}
+
+#[tokio::test]
+async fn concurrent_first_publications_with_one_digest_share_a_revision() {
+    concurrent_publications_keep_revisions(true).await;
+}
+
+#[tokio::test]
+async fn concurrent_first_publications_with_different_digests_keep_both_revisions() {
+    concurrent_publications_keep_revisions(false).await;
+}
+
 async fn release(db: &StorageBackend, id: SessionId, fence: i64) {
     db.release_session_actor(id, HOLDER, fence, 1)
         .await

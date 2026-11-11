@@ -403,6 +403,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "sessions platform-chat",
         "Your permanent Platform Chat conversation.",
     ),
+    (
+        "sessions repositories",
+        "Repositories a session works on and what it changed in them.",
+    ),
     ("sessions resources", "Resources registered in a session."),
     (
         "sessions run",

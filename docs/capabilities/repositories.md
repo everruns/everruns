@@ -8,7 +8,7 @@ appliesTo: [platform, cloud]
 |---|---|
 | **ID** | `repositories` |
 | **Category** | Integrations |
-| **Features** | None |
+| **Features** | `repositories` (enables the Changes tab) |
 | **Dependencies** | None |
 
 The Repositories capability gives a session a set of GitHub repositories to
@@ -70,6 +70,27 @@ session:
 ```
 
 A session's config replaces the agent's for that session.
+
+## In the console
+
+An agent's **Repositories** settings list its usual repositories with read or
+write access each, choose what the agent may add on its own, and set the work
+branch prefix. The repositories offered are the ones the agent's GitHub App
+installation can reach.
+
+Starting a chat with such an agent shows the same list. Remove a repository,
+turn write access down to read, or add another one for that chat alone. The
+form offers no more than the agent's settings allow: a repository the agent
+only reads stays read-only, and nothing can be added when `add_repositories` is
+`off`.
+
+A session's **Changes** tab shows each repository as the sandbox has it right
+now: its branch, commits ahead of the base branch, files not committed, whether
+the work is pushed, the changed files and the diff against the base branch, and
+a link to the pull request once the agent opened one. It reads from the running
+sandbox and never starts one; when the sandbox is stopped, pushed work is still
+on GitHub. The same data is at `GET /v1/sessions/{session_id}/repositories`.
+The tab has no merge, push or discard buttons: the agent acts, you review.
 
 ## Layout and branches
 

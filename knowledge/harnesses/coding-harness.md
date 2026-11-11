@@ -94,6 +94,25 @@ local remotes. The first deployment with a GitHub App connected to an agent
 must run that leg (two writable repositories, one read-only, a push and a
 refused push) before the harness loses its beta tag.
 
+## In the console
+
+Three surfaces, all reading the same `repositories` config:
+
+- Agent settings: the usual set, what the agent may add, the branch prefix.
+- New chat: the set for one session, starting from the agent's. It is sent as
+  the session's own capability config only when it differs, because a
+  session's config replaces the agent's whole. The form offers no more than the
+  agent's settings allow, but that is guidance, not a boundary: anyone who may
+  create a session may already pass any capability config. What bounds a
+  session is the GitHub App installation and the per-operation tokens.
+- Session Changes tab: per repository, branch, commits ahead, uncommitted
+  files, pushed or not, changed files and a capped diff against the base
+  branch. Read from the running sandbox on demand
+  (`GET /v1/sessions/{id}/repositories`), never stored, and reading never
+  starts a sandbox: a stopped sandbox reports its state instead. No merge, push
+  or discard actions; the agent acts and the person reviews. The pull request
+  link is found in the session's tool results, so nothing new is persisted.
+
 ## Not built yet
 
 - Secrets other than GitHub (package registries, API keys) for full sandboxes.
@@ -101,8 +120,6 @@ refused push) before the harness loses its beta tag.
   the egress proxy.
 - Installing language servers into sandbox images. `lsp` names the missing
   server and the agent can install it with the shell.
-- UI: a repository picker when starting a session and a Changes view per
-  repository.
 - Moving Yolop's patch-style edit tool and tool argument validation into
   Everruns.
 

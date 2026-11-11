@@ -9,7 +9,7 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 ## Prerequisites
 
 - An active Agent.
-- A public HTTPS Everruns origin configured through `PUBLIC_APP_URL`.
+- A way for Slack to reach Everruns. Socket Mode needs no public address; a Request URL needs a public HTTPS origin in `PUBLIC_APP_URL`. See [Socket Mode or Request URL](/capabilities/slack/#socket-mode-or-request-url).
 - Permission to install an app in a Slack workspace.
 
 ## Add the Channel
@@ -38,7 +38,7 @@ The Slack endpoint editor shows a **Response policy** selector:
 - **Relevant messages** also responds to clear requests within the agent's purpose,
   including contextual thread follow-ups. Unrelated and uncertain messages stay silent.
 
-Relevant messages requires a decision model. By default that is the deployment's Decisions
+Relevant messages works best with a decision model. By default that is the deployment's Decisions
 service: for Jev, set `UTILITY_TYPESAFE_API_KEY` and select `UTILITY_DECISION_DRIVER=typesafe`.
 An organization can use its own model instead: pick a **Default decision model** on the Models
 page and set **System decisions** to **This organization's model**. The check then runs on your
@@ -46,10 +46,12 @@ provider account. In a thread that already has a session it counts against that 
 budget and usage. A message that would start a new session is checked before any session
 exists, so it is not budget-checked.
 
-Mentions and direct messages work without a classifier. A missing classifier or a failed
-decision leaves unmentioned messages silent, without posting an acknowledgement or running the
-agent. An organization that chose its own model stays silent when that model is missing or
-failing; it never falls back to the deployment's model.
+Without a decision model, the agent's own chat model answers the check, with a shorter purpose
+and fewer earlier messages, and **Settings → Health** shows an issue until a decision model is
+set up. That also applies to an organization that chose its own model but has none selected:
+it never falls back to the deployment's model. Mentions and direct messages need no check. A
+failed or slow check (2 seconds for a decision model, 8 for the agent's model) leaves the
+message silent, without posting an acknowledgement or running the agent.
 
 The Agent's **Communication** setting controls what an accepted turn posts to
 Slack: a Direct Agent posts its replies, and an Explicit Agent posts only what it
@@ -73,7 +75,7 @@ connection from **Settings** > **Slack workspaces**.
 4. Approve Slack's consent screen. The workspace is already selected.
 5. If one-click setup is unavailable, return to **Channels and triggers**, expand the channel, and select **Create Slack app**. Copy the resulting signing secret and bot token back through **Configure**.
 
-Publish first because Slack verifies the manifest's channel Request URL when it creates the Slack app. New installs use `/v1/channels/{channel_id}/slack/events`.
+Publish first because, for a Request URL channel, Slack verifies the manifest's channel Request URL when it creates the Slack app. A Socket Mode channel also needs its app-level token pasted under **Configure**; see [Socket Mode or Request URL](/capabilities/slack/#socket-mode-or-request-url). New installs use `/v1/channels/{channel_id}/slack/events`.
 
 The Slack app uses the agent's avatar as its icon. With one-click setup, Everruns sets the icon when it creates the app, again once the app is installed, and whenever you change the avatar in **Branding**. When this deployment's API is reachable on the public internet, Slack fetches that image; otherwise Everruns uploads the 512 px PNG. A Slack app created from the manifest by hand keeps Slack's default icon: upload the avatar's 512 px PNG (`/v1/avatars/{avatar_id}/square-512.png`) under **Basic Information** in Slack.
 

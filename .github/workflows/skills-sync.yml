@@ -1,0 +1,54 @@
+name: Sync public skills
+
+# skills/ is the single source of truth for the public Everruns skills
+# (knowledge/project/public-skills.md). Every change on main is copied to the
+# repositories that ship them: straight to plugins main, through an
+# auto-merging PR in landing (its ruleset requires one).
+on:
+  push:
+    branches: [main]
+    paths: ["skills/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skills-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync to everruns/${{ matrix.target }}
+    # Only main may hold the sync token.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [plugins, landing]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - name: Install Doppler CLI
+        id: doppler_install
+        # Absorbs one transient installer failure; see
+        # scripts/test-doppler-install-retry.sh for why.
+        continue-on-error: true
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+      - name: Pause before Doppler CLI retry
+        if: steps.doppler_install.outcome == 'failure'
+        run: sleep 15
+      - name: Install Doppler CLI (retry)
+        if: steps.doppler_install.outcome == 'failure'
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
+      - name: Open sync PR
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        # The token stays inside this one command; it never reaches GITHUB_ENV.
+        run: |
+          GH_TOKEN="$(doppler secrets get SKILLS_SYNC_GITHUB_TOKEN --plain)"
+          echo "::add-mask::$GH_TOKEN"
+          GH_TOKEN="$GH_TOKEN" scripts/sync-public-skills.sh "${{ matrix.target }}"

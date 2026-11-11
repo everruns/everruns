@@ -151,6 +151,8 @@ pub(crate) async fn post_from_session(
                 db,
                 sessions,
                 messages,
+                // An agent's post is never checked for relevance.
+                relevance: None,
             },
             &view,
             &row,

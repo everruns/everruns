@@ -24,12 +24,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
 import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capability-localization";
+import { REPOSITORIES_CAPABILITY_ID } from "@/lib/repositories-config";
 import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
 
 import { GuardrailsConfigEditor } from "./guardrails-config-editor";
 import { KnowledgeConfigEditor } from "./knowledge-config-editor";
 import { KnowledgeIndexConfigEditor } from "./knowledge-index-config-editor";
 import { MemoryConfigEditor } from "./memory-config-editor";
+import { RepositoriesConfigEditor } from "./repositories-config-editor";
 import { WebSearchConfigEditor } from "./web-search-config-editor";
 
 // Capability IDs with purpose-built editors. Mirrors the constants exported
@@ -69,6 +71,9 @@ export function CapabilitySettingsEditor({
   }
   if (capability.id === WEB_SEARCH_CAPABILITY_ID) {
     return <WebSearchConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+  }
+  if (capability.id === REPOSITORIES_CAPABILITY_ID) {
+    return <RepositoriesConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }
   return (
     <SchemaCapabilityEditor

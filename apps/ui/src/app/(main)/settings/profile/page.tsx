@@ -13,6 +13,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useUpdateProfile } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { LanguageSettings } from "@/components/settings/language-settings";
+import { LayoutSettings } from "@/components/settings/layout-settings";
 import { Save, User } from "lucide-react";
 
 function getInitials(name: string): string {
@@ -70,6 +71,7 @@ export default function ProfilePage() {
   return (
     <div className="space-y-8">
       <LanguageSettings />
+      <LayoutSettings />
       <section>
         <div className="mb-6">
           <h2 className="text-xl font-semibold">{ui("Account")}</h2>

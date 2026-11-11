@@ -28,6 +28,22 @@ describe("buildSessionNavigation", () => {
     }
   });
 
+  it("offers Changes to a session that works on repositories", () => {
+    const items = buildSessionNavigation({
+      basePath: "/sessions/session_123",
+      features: new Set(["repositories"]),
+    });
+    expect(items.find((item) => item.key === "changes")).toMatchObject({
+      label: "Changes",
+      href: "/sessions/session_123/changes",
+    });
+    expect(
+      buildSessionNavigation({ basePath: "/sessions/session_123", features: new Set() }).map(
+        (item) => item.key,
+      ),
+    ).not.toContain("changes");
+  });
+
   it("shows Work when the session still has tasks or an active schedule", () => {
     const withTasks = buildSessionNavigation({
       basePath: "/sessions/session_123",

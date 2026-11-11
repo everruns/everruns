@@ -3,6 +3,7 @@ import {
   countMembers,
   draftWakes,
   isPlaygroundRoom,
+  listensByMessage,
   mentionedHandles,
   roomTotals,
   sameUserId,
@@ -111,6 +112,45 @@ describe("rooms in the console", () => {
     ]);
   });
 
+  it("shows the reason the server stored, with a relevant wake's confidence", () => {
+    const listener = member("rmem_sre", "agent", "srebot", { wake: "relevant" });
+    const all = [...members, listener];
+    const top = message("rmsg_1", { mentions: [{ id: "rmem_plan", handle: "planning" }] });
+    const events = [
+      event(1, "agent.considered", {
+        message_id: "rmsg_1",
+        member_id: "rmem_sre",
+        data: { decision: "woke", probability: 0.94, judge: "deployment" },
+      }),
+      event(2, "agent.woken", {
+        message_id: "rmsg_1",
+        member_id: "rmem_sre",
+        data: { session_id: "session_s", reason: "relevant" },
+      }),
+      event(3, "agent.considered", {
+        message_id: "rmsg_1",
+        member_id: "rmem_ops",
+        data: { decision: "quiet", probability: 0.31 },
+      }),
+      event(4, "agent.considered", {
+        message_id: "rmsg_1",
+        member_id: "rmem_plan",
+        data: { decision: "quiet", error: "unavailable" },
+      }),
+    ];
+    const wakes = wakesByMessage(events, [top], all).get("rmsg_1");
+    expect(wakes?.map((wake) => [wake.handle, wake.reason, wake.probability])).toEqual([
+      ["srebot", "relevant", 0.94],
+    ]);
+    const listens = listensByMessage(events, all).get("rmsg_1");
+    expect(
+      listens?.map((listen) => [listen.handle, listen.probability, listen.unavailable]),
+    ).toEqual([
+      ["ops", 0.31, false],
+      ["planning", undefined, true],
+    ]);
+  });
+
   it("lists each agent's sessions once, in the order they started", () => {
     const sessions = sessionsByMember([
       event(1, "agent.woken", { member_id: "rmem_plan", data: { session_id: "session_a" } }),
@@ -146,6 +186,11 @@ describe("rooms in the console", () => {
     expect(draft.mentioned.map((agent) => agent.handle)).toEqual(["planning"]);
     expect(draft.everything.map((agent) => agent.handle)).toEqual(["ops"]);
     expect(draft.thread).toBe(false);
+    const listener = member("rmem_sre", "agent", "srebot", { wake: "relevant" });
+    expect(
+      draftWakes("checkout is down", [...members, listener], false).listening.map((a) => a.handle),
+    ).toEqual(["srebot"]);
+    expect(draftWakes("@srebot look", [...members, listener], false).listening).toEqual([]);
   });
 
   it("compares prefixed and raw user ids", () => {

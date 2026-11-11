@@ -12,10 +12,11 @@ import {
 import { navigateTo } from "@/lib/browser-navigation";
 import { queryKeys } from "@/lib/query-keys";
 
-export function useAgentGitHub(agentId: string) {
+export function useAgentGitHub(agentId: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.agentGithub.status(agentId),
     queryFn: () => getAgentGitHub(agentId),
+    enabled,
   });
 }
 

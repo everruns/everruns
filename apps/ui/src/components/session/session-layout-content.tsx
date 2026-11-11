@@ -27,6 +27,7 @@ const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   agents: "Agents",
   work: "Work",
   events: "Events",
+  changes: "Changes",
   files: "Files",
   cost: "Cost",
 };
@@ -53,6 +54,7 @@ export function SessionLayoutContent({
   // Determine active tab from pathname
   const getActiveTab = (): SessionNavKey => {
     if (pathname.endsWith("/trace")) return "trace";
+    if (pathname.endsWith("/changes")) return "changes";
     if (pathname.endsWith("/files")) return "files";
     if (pathname.endsWith("/events")) return "events";
     if (pathname.endsWith("/work")) return "work";

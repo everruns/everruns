@@ -178,7 +178,7 @@ export default function VerifyEmailPage() {
         <Button
           className="mt-7"
           onClick={() => {
-            const target = consumeReturnTo() || "/chats";
+            const target = consumeReturnTo() || "/";
             if (isBackendNavigationPath(target)) {
               window.location.assign(target);
               return;

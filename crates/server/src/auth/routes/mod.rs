@@ -376,7 +376,7 @@ async fn rate_limit_register(
 }
 
 /// Rate limit middleware for refresh endpoint
-async fn rate_limit_refresh(
+pub(crate) async fn rate_limit_refresh(
     State(state): State<BuiltinAuthBackend>,
     req: Request<Body>,
     next: Next,

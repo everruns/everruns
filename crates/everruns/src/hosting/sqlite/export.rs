@@ -11,6 +11,48 @@ use std::io::Write;
 const EXPORT_PAGE: usize = 512;
 
 impl SqliteHosting {
+    /// Visit the retained journal in a read-only SQLite snapshot. Returns
+    /// whether the database contains this session, including an empty session.
+    /// Includes abandoned branches for offline search and audit consumers.
+    pub fn visit_session_events(
+        path: impl AsRef<Path>,
+        session: SessionId,
+        mut visit: impl FnMut(everruns_core::events::Event) -> Result<()>,
+    ) -> Result<bool> {
+        let mut database =
+            rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(error)?;
+        database
+            .busy_timeout(Duration::from_secs(5))
+            .map_err(error)?;
+        let snapshot = database.transaction().map_err(error)?;
+        let control: Option<String> = snapshot
+            .query_row(
+                "SELECT control FROM framework_authority WHERE session=?",
+                [session.to_string()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(error)?;
+        let Some(control) = control else {
+            return Ok(false);
+        };
+        let state: Control = decode(control)?;
+        state.binding(session)?;
+        let mut query = snapshot
+            .prepare("SELECT value FROM framework_events WHERE session=? AND seq<=? ORDER BY seq")
+            .map_err(error)?;
+        let rows = query
+            .query_map(params![session.to_string(), state.head], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(error)?;
+        for row in rows {
+            visit(decode(row.map_err(error)?)?)?;
+        }
+        Ok(true)
+    }
+
     /// Write `session`'s canonical journal as JSONL, one complete event
     /// envelope per line in sequence order, and return the number of events.
     ///

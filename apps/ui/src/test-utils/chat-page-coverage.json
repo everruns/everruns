@@ -85,6 +85,7 @@
     "sandboxes/(tabs)/templates/page.tsx",
     "sessions/[sessionId]/agents/page.tsx",
     "sessions/[sessionId]/approvals/page.tsx",
+    "sessions/[sessionId]/changes/page.tsx",
     "sessions/[sessionId]/cost/page.tsx",
     "sessions/[sessionId]/events/page.tsx",
     "sessions/[sessionId]/files/page.tsx",
@@ -100,7 +101,8 @@
     "chats/[threadId]/page.tsx",
     "chats/history/page.tsx",
     "chats/new/page.tsx",
-    "chats/page.tsx"
+    "chats/page.tsx",
+    "threads/[threadId]/page.tsx"
   ],
   "manual": [
     "agents/[agentId]/setup/page.tsx",

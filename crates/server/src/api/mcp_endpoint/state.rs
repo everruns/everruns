@@ -32,6 +32,8 @@ pub struct AppState {
     /// System utility LLM and decisions for sanctioned internal commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
     pub decisions: Arc<dyn everruns_core::DecisionsService>,
+    /// Checks room agents set to wake on relevant messages.
+    pub relevance: Option<Arc<crate::services::relevance::RelevanceChecker>>,
     /// Agent health check service, so health-check commands work over MCP too.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Whole-install health checks, so `system doctor` works over MCP too.
@@ -122,6 +124,7 @@ impl AppState {
             sqldb_store,
             utility_llm_service: host_composition.utility_llm_service(),
             decisions: host_composition.decisions(),
+            relevance: None,
             slack_provisioner: None,
             channels: None,
             mcp_oauth_checker: None,
@@ -172,6 +175,14 @@ impl AppState {
 
     pub fn with_session_sandbox_service(mut self, service: Arc<SessionSandboxService>) -> Self {
         self.session_sandbox_service = Some(service);
+        self
+    }
+
+    pub fn with_relevance(
+        mut self,
+        checker: Arc<crate::services::relevance::RelevanceChecker>,
+    ) -> Self {
+        self.relevance = Some(checker);
         self
     }
 

@@ -62,6 +62,7 @@ Running and archived sessions, their state and participants.
 | [`sessions participants leave`](#sessions-participants-leave) | Mark a session member participant as having left. |
 | [`sessions participants list`](#sessions-participants-list) | List the participant history for a session. |
 | [`sessions platform-chat ensure`](#sessions-platform-chat-ensure) | Open the current user's permanent platform conversation. |
+| [`sessions repositories get`](#sessions-repositories-get) | List the repositories checked out in a session's sandbox and what the session changed in each. |
 | [`sessions resources list`](#sessions-resources-list) | List all resources registered in a session. |
 | [`sessions run get`](#sessions-run-get) | Show the run a session belongs to: the first session and every agent session started under it, with status, turns and spend. |
 | [`sessions sandbox get`](#sessions-sandbox-get) | Inspect a Session's primary Sandbox and what it may touch. |
@@ -1137,6 +1138,25 @@ Example:
 ```bash
 # Open your permanent platform conversation, creating it on first use
 everruns sessions platform-chat ensure --reason 'Open the platform chat'
+```
+
+## sessions repositories get
+
+List the repositories checked out in a session's sandbox and what the session changed in each.
+
+```bash
+everruns sessions repositories get [OPTIONS] [SESSION_ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# See what a coding session changed in each repository
+everruns sessions repositories get session_01h9
 ```
 
 ## sessions resources list

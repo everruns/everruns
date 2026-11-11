@@ -154,11 +154,11 @@ export function ChatMcpServersButton({
         variant="outline"
         size="sm"
         aria-label={ui("MCP servers in this chat ({value0})", { value0: servers.length })}
-        className="max-sm:w-7 max-sm:px-0"
+        className="max-sm:w-7 max-sm:px-0 @max-xl/chathead:w-7 @max-xl/chathead:px-0"
         onClick={() => setOpen(true)}
       >
         <McpIcon className="size-4" />
-        <span className="max-sm:hidden">
+        <span className="max-sm:hidden @max-xl/chathead:hidden">
           {ui("MCP")} {servers.length}
         </span>
       </Button>

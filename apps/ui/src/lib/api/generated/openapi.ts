@@ -8235,6 +8235,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/repositories": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get session repositories
+     * @description List the repositories checked out in the session's sandbox and what the session changed in each. Reads a running sandbox only; it never starts or resumes one.
+     */
+    get: operations["get_session_repositories"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/resolved-model": {
     parameters: {
       query?: never;
@@ -30825,6 +30845,71 @@ export interface components {
      * @enum {string}
      */
     SessionParticipantRole: "host" | "member";
+    /** @description What a session changed in the repositories checked out in its sandbox. */
+    SessionRepositoriesResponse: {
+      repositories: components["schemas"]["SessionRepository"][];
+      /**
+       * @description `running` when the checkouts were read. Any other value (`paused`,
+       *     `not_started`, `none`, ...) means the sandbox was left alone and
+       *     `repositories` is empty.
+       * @example running
+       */
+      sandbox_state: string;
+      /**
+       * @description The branch the agent works on in every writable repository.
+       * @example everruns/bdaf0ce2
+       */
+      work_branch?: string | null;
+    };
+    /** @description One checkout under `/workspace`. */
+    SessionRepository: {
+      /**
+       * @description `read`, `write`, or `none` when the session's settings do not list it.
+       * @example write
+       */
+      access: string;
+      /** @example main */
+      base_branch: string;
+      /** @example everruns/bdaf0ce2 */
+      branch: string;
+      /**
+       * Format: int64
+       * @description Absent when the base branch is not known locally.
+       */
+      commits_ahead_of_base?: number | null;
+      /**
+       * Format: int64
+       * @description Absent when the branch was never pushed.
+       */
+      commits_not_pushed?: number | null;
+      /** @description Unified diff against the base branch, cut at a fixed size. */
+      diff?: string;
+      diff_truncated?: boolean;
+      /** @description Files that differ from the base branch, committed or not. */
+      files?: components["schemas"]["SessionRepositoryFile"][];
+      on_work_branch: boolean;
+      /** @example /workspace/app */
+      path: string;
+      /**
+       * @description `owner/name`, when the checkout's remote is a GitHub repository.
+       * @example acme/app
+       */
+      repo?: string | null;
+      /** Format: int64 */
+      uncommitted_files: number;
+    };
+    SessionRepositoryFile: {
+      /**
+       * Format: int64
+       * @description Absent for binary and new untracked files.
+       */
+      additions?: number | null;
+      committed: boolean;
+      /** Format: int64 */
+      deletions?: number | null;
+      /** @example src/config.rs */
+      path: string;
+    };
     /** @description The model the runtime will use when a turn has no per-message override. */
     SessionResolvedModelResponse: {
       model_id?: string | null;
@@ -35542,7 +35627,7 @@ export interface components {
      * @description When an agent member is woken.
      * @enum {string}
      */
-    WakeMode: "mentions" | "everything" | "never";
+    WakeMode: "mentions" | "everything" | "relevant" | "never";
     /** @description An organization's web search defaults. */
     WebSearchDefaults: {
       /**
@@ -58108,6 +58193,36 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MessageReactions"][];
+        };
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_session_repositories: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Repositories and their changes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionRepositoriesResponse"];
         };
       };
       /** @description Session not found */

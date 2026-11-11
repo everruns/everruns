@@ -24,11 +24,10 @@ so it can never disagree with the page. Source: [`components/home/`](../../apps/
 
 ## Decisions
 
-- **Chat stays the landing route** ([Navigation](information-architecture.md)). Overview is one
-  click away. Arrival opens Main chat beside Overview ([Chat](chat-mode.md)) instead of full
-  width, so the first page Chat can read is the attention list. `/` redirects to
-  `/chats?landing`; the client redirects once the organization has loaded. `?chat=open` on any app page opens the
-  page-side Chat and is then dropped from the URL. `/dashboard` redirects to Overview.
+- **Arrival lands on Overview beside Main chat** ([Chat](chat-mode.md)) in the default Chat
+  first layout, so the first page Chat can read is the attention list. Classic lands on
+  full-screen Main chat. `/` redirects to `/chats?landing`; the client redirects once the
+  organization and the layout preference have loaded. `/dashboard` redirects to Overview.
 - **Overview merges, it does not detect.** Every signal comes from the page that owns it, through the
   endpoint that page already uses: agent setup problems from the Agents page model
   ([Agents Home](agents-home.md)), open health issues (channel, organization limit and

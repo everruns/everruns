@@ -31,18 +31,25 @@ started them.
 
 ## Chat beside your pages
 
-On any app page, click **Main chat** (or a side chat) in the sidebar, or press
-**Command-J** (**Ctrl-J** on Windows and Linux). The conversation opens beside the
-page and can see it. Links in Chat's replies open in the page pane, so the
-conversation stays put. **Main chat ▾** in the conversation header switches
-between Main chat, side chats and the open chat's threads; opening a thread
-beside a page shows it in place of the page, with a button back to the page.
+The app has two layouts, and you pick one under **Layout** in the profile menu or on
+**Profile**. The choice follows you to every device and organization.
 
-Both sides can go full screen. **Full screen** in the conversation header (or
-**Command-Shift-J**) hides the page; **Show beside page** brings back the last
-page you were on. **Full page** hides the conversation, which keeps running.
-Nothing reloads when you switch, so streams and drafts survive. On Chat pages,
-Command/Ctrl-J focuses the existing composer.
+- **Chat first** (the default) keeps the conversation on the left of every page,
+  with navigation in a rail on the right edge. The rail's » opens the full
+  sidebar, and system pages and Settings sit under one menu.
+- **Classic** keeps the left sidebar. Main chat and side chats open full screen,
+  and **Command-J** (**Ctrl-J** on Windows and Linux) toggles full-screen chat.
+
+In Chat first, the conversation can see the page next to it. Drag the divider
+between them to resize, or double-click it to reset. Links in Chat's replies open
+in the page pane, so the conversation stays put. **Main chat ▾** in the
+conversation header switches between Main chat and side chats; opening a thread
+shows it in the page pane, and the browser's Back button returns to the page.
+
+**Full screen** in the conversation header (or **Command-Shift-J**) hides the
+page; **Show beside page** brings back the last page you were on. Nothing reloads
+when you switch, so streams and drafts survive. Command/Ctrl-J focuses the
+composer.
 
 Each message shares the current page's identity with Chat. On an Agent page,
 Chat can read the live form, including unsaved instructions and configuration,

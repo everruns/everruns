@@ -10,18 +10,22 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
+  Suspense,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Columns2, Eye, Maximize2, Search, X } from "lucide-react";
+import { Columns2, Maximize2 } from "lucide-react";
 import { Sidebar, MobileSidebar } from "@/components/layout/sidebar";
 import { useFeatureFlags, useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import { ChatSwitcher } from "@/components/chat/chat-switcher";
-import { OPEN_CHAT_PARAM, useLandingRedirect, withoutOpenChat } from "./landing";
+import { useLandingRedirect } from "./landing";
+import { useLayoutPreference, type AppLayout } from "@/hooks/use-layout-preference";
+import { AppNavigationRail } from "@/components/layout/app-navigation-rail";
 import { useOrg } from "@/providers/org-provider";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
-import { useCommandPalette } from "@/hooks/use-command-palette";
 import {
   defaultNavigationSections,
   isDurableNavigationSection,
@@ -30,17 +34,11 @@ import {
 } from "@/lib/navigation";
 import { usePolicies } from "@/hooks/use-policies";
 import { useNavigationPolicy } from "@/hooks/use-navigation-policy";
-import { Button, LinkButton } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { chatPageRoute } from "@/lib/chat-page-context";
-import {
-  ChatModeContext,
-  useChatMode,
-  type ChatPageContext,
-  type PageAction,
-} from "./chat-mode-context";
+import { ChatModeContext, type ChatPageContext, type PageAction } from "./chat-mode-context";
 import "./chat-mode.css";
 import type { PageDraftAdapter } from "./page-draft";
-import { PageNavigationHint, PageNavigationRail } from "./page-navigation-rail";
 import { pageLocation } from "@/lib/chat-page-view";
 import { usePageViewAdapter } from "./use-page-view-adapter";
 import {
@@ -53,12 +51,12 @@ import { PageViewRegistryContext, usePageViewRegistry } from "./page-view-state"
 const ChatWorkspace = dynamic(() =>
   import("@/components/chat/chat-workspace").then((module) => module.ChatWorkspace),
 );
-const ChatThreadView = dynamic(() =>
-  import("@/components/chat/chat-thread-view").then((module) => module.ChatThreadView),
-);
 
-// Chat beside app pages is core, not an org opt-in (knowledge/ui/chat-mode.md):
-// clicking Main chat on a page opens it beside that page, /chats is full screen.
+// Chat-first is the default layout (knowledge/ui/chat-mode.md): Main chat on the
+// left, the page on the right, navigation in a rail on the right edge. Classic
+// keeps the left sidebar and opens Chat full screen. The layout is a personal
+// preference; the URL alone says which page is shown, so browser back and
+// forward step through pages and threads.
 export function ChatModeShell({
   children,
   navigation,
@@ -69,46 +67,95 @@ export function ChatModeShell({
 }) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const { isLoading: flagsLoading } = useFeatureFlagsState();
-  useLandingRedirect(!orgLoading && !flagsLoading && !!currentOrg);
+  const { layout, ready: layoutReady } = useLayoutPreference();
+  useLandingRedirect(!orgLoading && !flagsLoading && !!currentOrg && layoutReady, layout);
   // No UI state, transcript, or page metadata crosses an organization switch.
   return (
-    <EnabledShell key={currentOrg?.public_id} navigation={navigation}>
+    <EnabledShell key={currentOrg?.public_id} navigation={navigation} layout={layout}>
       {children}
     </EnabledShell>
   );
 }
 
+const DESKTOP_QUERY = "(min-width: 768px)";
+const subscribeDesktop = (notify: () => void) => {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const query = window.matchMedia(DESKTOP_QUERY);
+  query.addEventListener?.("change", notify);
+  return () => query.removeEventListener?.("change", notify);
+};
+const readDesktop = () =>
+  typeof window.matchMedia === "function" ? window.matchMedia(DESKTOP_QUERY).matches : true;
+
+const NAV_EXPANDED_KEY = "everruns.nav-expanded";
+const ACTIVE_CHAT_KEY = "everruns.active-chat";
+
+function readStorage(key: string) {
+  try {
+    return window.sessionStorage.getItem(key) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function EnabledShell({
   children,
   navigation,
+  layout,
 }: {
   children: ReactNode;
   navigation?: NavigationSection[];
+  layout: AppLayout;
 }) {
   const ui = useUiTranslations();
+  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const desktop = useSyncExternalStore(subscribeDesktop, readDesktop, () => true);
   const chatRoute = pathname === "/chats" || pathname.startsWith("/chats/") || pathname === "/chat";
   const fullChat = chatRoute && pathname !== "/chats/history";
-  const [open, setOpen] = useState(false);
-  const splitOpen = open && !chatRoute;
-  const conversationVisible = fullChat || splitOpen;
-  const [activeChatId, setActiveChatId] = useState<string>();
+  // On small screens both layouts show one pane at a time, like classic.
+  const chatFirst = layout === "chat_first" && desktop;
+  const beside = chatFirst && !chatRoute;
+  const conversationVisible = fullChat || beside;
+  const [activeChatId, setActiveChatIdState] = useState<string | undefined>(() =>
+    readStorage(ACTIVE_CHAT_KEY),
+  );
+  const setActiveChatId = useCallback((id: string | undefined) => {
+    setActiveChatIdState(id);
+    try {
+      if (id) window.sessionStorage.setItem(ACTIVE_CHAT_KEY, id);
+      else window.sessionStorage.removeItem(ACTIVE_CHAT_KEY);
+    } catch {
+      // Storage disabled: the choice lasts until reload.
+    }
+  }, []);
   const [visited, setVisited] = useState(false);
-  const [hint, setHint] = useState(true);
-  // A thread opened beside the page replaces the page view (the page stays
-  // mounted underneath so its drafts survive) until the person goes back.
-  const [pageThreadId, setPageThreadId] = useState<string>();
-  // Where "Show beside page" returns to from full-screen Chat.
+  const [navExpanded, setNavExpandedState] = useState(() => {
+    try {
+      return window.localStorage.getItem(NAV_EXPANDED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setNavExpanded = useCallback((value: boolean) => {
+    setNavExpandedState(value);
+    try {
+      window.localStorage.setItem(NAV_EXPANDED_KEY, value ? "1" : "0");
+    } catch {
+      // Storage disabled: the choice lasts until reload.
+    }
+  }, []);
+  const { width: chatWidth, setWidth: setChatWidth, reset: resetChatWidth } = useChatWidth();
+  // Where "Show beside page" and ⌘⇧J return to from full-screen Chat.
   const lastPage = useRef<string>("/home");
   useEffect(() => {
-    if (fullChat) setVisited(true);
-  }, [fullChat]);
+    if (conversationVisible) setVisited(true);
+  }, [conversationVisible]);
   useEffect(() => {
     if (chatRoute) return;
     const query = searchParams.toString();
     lastPage.current = query ? `${pathname}?${query}` : pathname;
-    setPageThreadId(undefined);
   }, [chatRoute, pathname, searchParams]);
   const [registrations, setRegistrations] = useState<
     Array<{
@@ -125,8 +172,9 @@ function EnabledShell({
     pageRef.current = element;
     setPageElement(element);
   }, []);
-  const { thread, isLoading, error } = usePlatformChatThread({ ensure: visited || fullChat });
-  const { setOpen: setSearchOpen } = useCommandPalette();
+  const { thread, isLoading, error } = usePlatformChatThread({
+    ensure: visited || conversationVisible,
+  });
   const route = chatPageRoute(pathname, searchParams);
   const { currentOrg } = useOrg();
   const registered = useMemo(
@@ -190,11 +238,6 @@ function EnabledShell({
         : createFormCollectionAdapter({ entries: getForms, identity: formsKey })),
     [singleAdapter, formsKey, viewAdapter, getForms],
   );
-  const changeOpen = useCallback((value: boolean) => {
-    setOpen(value);
-    if (value) setVisited(true);
-    else requestAnimationFrame(() => pageRef.current?.focus());
-  }, []);
   const registerPage = useCallback(
     (value: ChatPageContext, draftAdapter?: PageDraftAdapter, priority = draftAdapter ? 10 : 0) => {
       const token = crypto.randomUUID();
@@ -213,168 +256,172 @@ function EnabledShell({
     [page],
   );
 
-  const router = useRouter();
-  const openOnArrival = searchParams.get(OPEN_CHAT_PARAM) === "open" && !chatRoute;
-  useEffect(() => {
-    if (!openOnArrival) return;
-    changeOpen(true);
-    router.replace(withoutOpenChat(pathname, searchParams), { scroll: false });
-  }, [openOnArrival, changeOpen, router, pathname, searchParams]);
-
   const mainChatId = thread?.id;
+  // A remembered side chat from another organization or a deleted one falls
+  // back to Main chat inside the workspace.
   const selectedChatId = activeChatId ?? mainChatId;
-  const openBeside = useCallback(
-    (chatId?: string) => {
-      setActiveChatId(chatId ?? mainChatId);
-      changeOpen(true);
-    },
-    [changeOpen, mainChatId],
+  const chatHref = useCallback(
+    (chatId?: string) => (chatId && chatId !== mainChatId ? `/chats/${chatId}` : "/chats"),
+    [mainChatId],
   );
   const showFullScreen = useCallback(() => {
-    router.push(
-      selectedChatId && selectedChatId !== mainChatId ? `/chats/${selectedChatId}` : "/chats",
-    );
-  }, [router, selectedChatId, mainChatId]);
+    router.push(chatHref(selectedChatId));
+  }, [router, chatHref, selectedChatId]);
   const showBesidePage = useCallback(() => {
-    changeOpen(true);
     router.push(lastPage.current);
-  }, [changeOpen, router]);
-  const openThreadBeside = useCallback(
-    (threadId: string) => {
-      setPageThreadId(threadId);
-      changeOpen(true);
+  }, [router]);
+  const openBeside = useCallback(
+    (chatId?: string) => {
+      setActiveChatId(chatId === mainChatId ? undefined : chatId);
+      if (chatRoute) router.push(lastPage.current);
     },
-    [changeOpen],
+    [setActiveChatId, mainChatId, chatRoute, router],
+  );
+  const openThreadBeside = useCallback(
+    (threadId: string) => router.push(`/threads/${threadId}`),
+    [router],
+  );
+  const setOpen = useCallback(
+    (value: boolean) => {
+      if (value && chatFirst) {
+        if (chatRoute) showBesidePage();
+      } else if (value) router.push(chatHref(selectedChatId));
+      else if (chatRoute) showBesidePage();
+      else requestAnimationFrame(() => pageRef.current?.focus());
+    },
+    [chatFirst, chatRoute, showBesidePage, router, chatHref, selectedChatId],
   );
 
   useEffect(() => {
-    // Cmd/Ctrl-J opens or closes Chat beside the page (on a Chat route it
-    // focuses the composer). Cmd/Ctrl-Shift-J switches between full screen
-    // and beside the page.
+    // Cmd/Ctrl-J: chat-first focuses the composer; classic opens or closes
+    // full-screen Chat. Cmd/Ctrl-Shift-J switches full-screen Chat and the page.
     const shortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j") return;
       event.preventDefault();
-      if (event.shiftKey) {
-        if (chatRoute) showBesidePage();
-        else showFullScreen();
-      } else if (chatRoute) {
+      const focusComposer = () =>
         document
           .querySelector<HTMLElement>(
             '.chat-mode-conversation textarea, .chat-mode-conversation [contenteditable="true"]',
           )
           ?.focus();
-      } else changeOpen(!open);
+      if (event.shiftKey || !chatFirst) {
+        if (chatRoute) showBesidePage();
+        else showFullScreen();
+      } else focusComposer();
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [changeOpen, open, chatRoute, showBesidePage, showFullScreen]);
+  }, [chatFirst, chatRoute, showBesidePage, showFullScreen]);
 
+  const flags = useFeatureFlags();
+  const { hasRole } = useOrg();
+  const durable = usePolicies("durable");
+  const canNavigate = useNavigationPolicy();
+  const railSections = useMemo(
+    () =>
+      visibleNavigationSections(
+        (navigation ?? defaultNavigationSections).filter(
+          (section) =>
+            section.id !== "chats" &&
+            (!isDurableNavigationSection(section) || durable.can("durable.view")),
+        ),
+        flags,
+        hasRole,
+        process.env.NODE_ENV === "development",
+        canNavigate,
+      ),
+    [navigation, durable, flags, hasRole, canNavigate],
+  );
+
+  const mode = chatFirst ? (fullChat ? "chat" : "beside") : fullChat ? "classic-chat" : "classic";
   return (
     <ChatModeContext.Provider
       value={{
         pageContainer: pageRef,
         pageContainerElement: pageElement,
-        open: splitOpen,
-        setOpen: changeOpen,
+        open: beside,
+        setOpen,
         page,
         registerPage,
         pageAdapter,
         pageViewAdapter: viewAdapter,
-        threadId: activeChatId ?? thread?.id,
-        openBeside,
+        threadId: selectedChatId,
+        openBeside: chatFirst ? openBeside : undefined,
         showFullScreen,
-        showBesidePage,
-        openThreadBeside,
+        showBesidePage: chatFirst ? showBesidePage : undefined,
+        openThreadBeside: chatFirst ? openThreadBeside : undefined,
         actions,
         recordAction,
       }}
     >
       <div
         className="chat-mode-shell min-h-0 flex-1"
-        data-chat-mode={fullChat ? "chat" : splitOpen ? "open" : "closed"}
+        data-layout={mode}
+        data-nav={navExpanded ? "expanded" : "rail"}
+        style={{ "--chat-width": `${chatWidth}px` } as CSSProperties}
       >
-        <div
-          className="chat-mode-sidebar min-h-0 overflow-hidden"
-          inert={splitOpen}
-          aria-hidden={splitOpen}
-        >
-          <Sidebar className="hidden md:flex" />
-          <MobileSidebar />
-        </div>
+        {!chatFirst && (
+          <div className="chat-mode-sidebar min-h-0 overflow-hidden">
+            <Sidebar className="hidden md:flex" />
+            <MobileSidebar />
+          </div>
+        )}
         <section
-          className="chat-mode-conversation min-h-0 overflow-hidden border-r bg-background"
+          className="chat-mode-conversation min-h-0 overflow-hidden bg-background"
           aria-label={ui("Platform Chat")}
-          hidden={!visited && !fullChat}
+          hidden={!visited && !conversationVisible}
           inert={!conversationVisible}
           aria-hidden={!conversationVisible}
         >
-          {(visited || fullChat) && thread ? (
-            <ChatWorkspace
-              activeChatId={activeChatId}
-              onActiveChatChange={setActiveChatId}
-              visible={conversationVisible}
-              pageAware={splitOpen}
-              onPageMessage={() => setHint(false)}
-              extraActions={
-                splitOpen ? (
-                  <>
-                    <ChatSwitcher
-                      mainChatId={thread.id}
-                      activeChatId={activeChatId ?? thread.id}
-                      onSelectChat={setActiveChatId}
-                      onSelectThread={openThreadBeside}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={ui("Full screen")}
-                      title={ui("Full screen (⌘⇧J)")}
-                      onClick={showFullScreen}
-                    >
-                      <Maximize2 className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={ui("Close chat")}
-                      title={ui("Close chat (⌘J)")}
-                      onClick={() => changeOpen(false)}
-                    >
-                      <X className="size-3.5" />
-                    </Button>
-                  </>
-                ) : fullChat ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    title={ui("Show beside page (⌘⇧J)")}
-                    onClick={showBesidePage}
-                  >
-                    <Columns2 className="size-3.5" /> {ui("Show beside page")}
-                  </Button>
-                ) : undefined
+          {(visited || conversationVisible) && thread ? (
+            // Its own boundary: Chat loads beside the page on arrival, and a
+            // suspended conversation must not hold back the page's navigations
+            // (a server redirect or router.replace would otherwise never commit).
+            <Suspense
+              fallback={
+                <p role="status" className="p-6 text-sm text-muted-foreground">
+                  {ui("Opening Chat…")}
+                </p>
               }
-              notice={
-                hint && splitOpen ? (
-                  <div className="flex shrink-0 gap-3 border-b bg-card px-4 py-3 text-xs">
-                    <Eye className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                    <p>
-                      {ui(
-                        "I can see the page beside this chat. Ask about it, or tell me what to change.",
-                      )}
-                    </p>
-                    <button
-                      type="button"
-                      aria-label={ui("Dismiss chat hint")}
-                      className="ml-auto self-start"
-                      onClick={() => setHint(false)}
+            >
+              <ChatWorkspace
+                activeChatId={activeChatId}
+                onActiveChatChange={setActiveChatId}
+                visible={conversationVisible}
+                pageAware={beside}
+                extraActions={
+                  beside ? (
+                    <>
+                      <ChatSwitcher
+                        mainChatId={thread.id}
+                        activeChatId={selectedChatId ?? thread.id}
+                        onSelectChat={(id) => setActiveChatId(id === thread.id ? undefined : id)}
+                        onSelectThread={openThreadBeside}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={ui("Full screen")}
+                        title={ui("Full screen (⌘⇧J)")}
+                        onClick={showFullScreen}
+                      >
+                        <Maximize2 className="size-3.5" />
+                      </Button>
+                    </>
+                  ) : fullChat ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title={ui("Back to page (⌘⇧J)")}
+                      onClick={showBesidePage}
                     >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-                ) : undefined
-              }
-            />
+                      <Columns2 className="size-3.5" />{" "}
+                      {chatFirst ? ui("Show beside page") : ui("Back to page")}
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </Suspense>
           ) : (
             <p role={error ? "alert" : "status"} className="p-6 text-sm text-muted-foreground">
               {error
@@ -385,6 +432,14 @@ function EnabledShell({
             </p>
           )}
         </section>
+        {beside && (
+          <ChatSplitter
+            width={chatWidth}
+            onWidthChange={setChatWidth}
+            onReset={resetChatWidth}
+            onCollapsePage={showFullScreen}
+          />
+        )}
         <PageViewRegistryContext.Provider value={viewRegistry}>
           <PageChangeReviewProvider>
             <section
@@ -395,50 +450,7 @@ function EnabledShell({
               inert={fullChat}
               aria-hidden={fullChat}
             >
-              {splitOpen && (
-                <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-background px-3 text-xs text-muted-foreground">
-                  <Eye className="size-3.5 shrink-0" />
-                  <span className="truncate">{ui("Showing this page to the chat")}</span>
-                  <PageNavigationHint
-                    label={ui("Search pages")}
-                    description={ui("Find a page or resource.")}
-                  >
-                    <button
-                      type="button"
-                      aria-label={ui("Search pages")}
-                      className="ml-auto p-1 hover:bg-muted"
-                      onClick={() => setSearchOpen(true)}
-                    >
-                      <Search className="size-3.5" />
-                    </button>
-                  </PageNavigationHint>
-                  <PageNavigationHint
-                    label={ui("Full page")}
-                    description={ui("Hide Chat and expand the current page.")}
-                  >
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={ui("Full page")}
-                      onClick={() => changeOpen(false)}
-                    >
-                      <Maximize2 className="size-3.5" />
-                    </Button>
-                  </PageNavigationHint>
-                </div>
-              )}
-              {splitOpen && pageThreadId && (
-                <PageThread
-                  threadId={pageThreadId}
-                  coordinatorId={activeChatId ?? thread?.id}
-                  backLabel={page.label}
-                  onBack={() => setPageThreadId(undefined)}
-                />
-              )}
-              <main
-                hidden={splitOpen && !!pageThreadId}
-                className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots"
-              >
+              <main className="chat-mode-page-content min-h-0 min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">
                 {fullChat ? null : (
                   <ConfirmationProvider
                     scope={`${currentOrg?.public_id}:${pathname}?${searchParams}`}
@@ -451,82 +463,116 @@ function EnabledShell({
             </section>
           </PageChangeReviewProvider>
         </PageViewRegistryContext.Provider>
-        <IconRail open={splitOpen} navigation={navigation} />
+        {chatFirst && (
+          <AppNavigationRail
+            sections={railSections}
+            expanded={navExpanded}
+            onExpandedChange={setNavExpanded}
+          />
+        )}
       </div>
     </ChatModeContext.Provider>
   );
 }
 
-/** A thread opened from Chat while it sits beside a page: shown in the page pane. */
-function PageThread({
-  threadId,
-  coordinatorId,
-  backLabel,
-  onBack,
-}: {
-  threadId: string;
-  coordinatorId?: string;
-  backLabel: string;
-  onBack: () => void;
-}) {
-  const ui = useUiTranslations();
-  return (
-    <section
-      aria-label={ui("Thread")}
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
-    >
-      <ChatThreadView
-        threadId={threadId}
-        coordinatorId={coordinatorId}
-        threadMode
-        extraActions={
-          <>
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <ArrowLeft className="size-3.5" /> {backLabel}
-            </Button>
-            <LinkButton
-              variant="ghost"
-              size="icon-sm"
-              href={`/chats/${threadId}`}
-              aria-label={ui("Open thread full screen")}
-            >
-              <Maximize2 className="size-3.5" />
-            </LinkButton>
-          </>
-        }
-      />
-    </section>
-  );
+const CHAT_WIDTH_KEY = "everruns.chat-width";
+const CHAT_MIN = 360;
+const PAGE_MIN = 480;
+const defaultChatWidth = () =>
+  typeof window === "undefined" ? 560 : Math.round(Math.min(600, window.innerWidth * 0.4));
+
+/** Chat pane width, remembered on this device and kept within both panes' minimums. */
+function useChatWidth() {
+  const [stored, setStored] = useState<number | undefined>(() => {
+    try {
+      const value = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
+      return Number.isFinite(value) && value > 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const width = clampChatWidth(stored ?? defaultChatWidth());
+  const setWidth = useCallback((value: number) => {
+    const next = clampChatWidth(value);
+    setStored(next);
+    try {
+      window.localStorage.setItem(CHAT_WIDTH_KEY, String(next));
+    } catch {
+      // Storage disabled: the width lasts until reload.
+    }
+  }, []);
+  const reset = useCallback(() => {
+    setStored(undefined);
+    try {
+      window.localStorage.removeItem(CHAT_WIDTH_KEY);
+    } catch {
+      // Storage disabled.
+    }
+  }, []);
+  return { width, setWidth, reset };
 }
 
-function IconRail({
-  open,
-  navigation = defaultNavigationSections,
+export function clampChatWidth(
+  value: number,
+  viewport = typeof window === "undefined" ? 1440 : window.innerWidth,
+) {
+  return Math.round(Math.max(CHAT_MIN, Math.min(value, viewport - PAGE_MIN - 56)));
+}
+
+/**
+ * Invisible divider between Chat and the page: a line appears on hover or
+ * focus. Drag or use the arrow keys to resize; double-click resets. Dragging
+ * the page narrower than half its minimum switches to full-screen Chat.
+ */
+function ChatSplitter({
+  width,
+  onWidthChange,
+  onReset,
+  onCollapsePage,
 }: {
-  open: boolean;
-  navigation?: NavigationSection[];
+  width: number;
+  onWidthChange: (width: number) => void;
+  onReset: () => void;
+  onCollapsePage: () => void;
 }) {
-  const mode = useChatMode();
-  const pathname = usePathname();
-  const flags = useFeatureFlags();
-  const { hasRole } = useOrg();
-  const durable = usePolicies("durable");
-  const canNavigate = useNavigationPolicy();
-  const sections = visibleNavigationSections(
-    navigation.filter(
-      (section) => !isDurableNavigationSection(section) || durable.can("durable.view"),
-    ),
-    flags,
-    hasRole,
-    process.env.NODE_ENV === "development",
-    canNavigate,
-  );
+  const ui = useUiTranslations();
+  const [dragging, setDragging] = useState(false);
   return (
-    <PageNavigationRail
-      open={open}
-      pathname={pathname}
-      sections={sections}
-      onClose={() => mode?.setOpen(false)}
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={ui("Resize chat")}
+      aria-valuenow={width}
+      aria-valuemin={CHAT_MIN}
+      tabIndex={0}
+      data-dragging={dragging || undefined}
+      className="chat-mode-splitter"
+      onDoubleClick={onReset}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          event.preventDefault();
+          onWidthChange(width + (event.key === "ArrowRight" ? 32 : -32));
+        }
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        const target = event.currentTarget;
+        target.setPointerCapture?.(event.pointerId);
+        const left = target.parentElement?.getBoundingClientRect().left ?? 0;
+        setDragging(true);
+        const move = (moveEvent: PointerEvent) => onWidthChange(moveEvent.clientX - left);
+        const up = (upEvent: PointerEvent) => {
+          setDragging(false);
+          target.removeEventListener("pointermove", move);
+          target.removeEventListener("pointerup", up);
+          target.removeEventListener("pointercancel", up);
+          if (window.innerWidth - upEvent.clientX < PAGE_MIN / 2) onCollapsePage();
+        };
+        target.addEventListener("pointermove", move);
+        target.addEventListener("pointerup", up);
+        target.addEventListener("pointercancel", up);
+      }}
     />
   );
 }

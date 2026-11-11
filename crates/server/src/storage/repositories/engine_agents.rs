@@ -37,22 +37,23 @@ impl Database {
         agent_id: Option<Uuid>,
     ) -> Result<String> {
         let minted = format!("ak_{}", Uuid::new_v4().simple());
-        // One statement either way: a concurrent first use keeps one key.
-        let (key,): (String,) = sqlx::query_as(
-            "WITH inserted AS (
-                INSERT INTO engine_agent_keys (agent_key, org_id, harness_id, agent_id)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT DO NOTHING
-                RETURNING agent_key
-             )
-             SELECT agent_key FROM inserted
-             UNION ALL
-             SELECT agent_key FROM engine_agent_keys
-              WHERE org_id = $2 AND harness_id = $3
-                AND agent_id IS NOT DISTINCT FROM $4
-             LIMIT 1",
+        // A conflicting insert may wait for a key outside its snapshot.
+        // Read in a fresh statement so concurrent first use sees that key.
+        sqlx::query(
+            "INSERT INTO engine_agent_keys (agent_key, org_id, harness_id, agent_id)
+             VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
         )
         .bind(&minted)
+        .bind(org_id)
+        .bind(harness_id)
+        .bind(agent_id)
+        .execute(&self.pool)
+        .await?;
+        let (key,): (String,) = sqlx::query_as(
+            "SELECT agent_key FROM engine_agent_keys
+             WHERE org_id = $1 AND harness_id = $2
+               AND agent_id IS NOT DISTINCT FROM $3",
+        )
         .bind(org_id)
         .bind(harness_id)
         .bind(agent_id)
@@ -118,16 +119,19 @@ impl Database {
         digest: &str,
     ) -> Result<String> {
         let mut tx = self.pool.begin().await?;
-        // Serializes publishers of one key; revisions stay dense.
+        // Lock before reading current in a separate statement. A joined read
+        // retains its pre-wait snapshot and can miss a revision committed by
+        // the publisher it waited for, causing two publishers to choose r1.
+        sqlx::query("SELECT agent_key FROM engine_agent_keys WHERE agent_key = $1 FOR UPDATE")
+            .bind(agent_key)
+            .fetch_one(&mut *tx)
+            .await?;
         let current: Option<(String, String)> = sqlx::query_as(
-            "SELECT c.revision, c.digest FROM engine_agent_keys k
-               LEFT JOIN engine_agent_current c USING (agent_key)
-              WHERE k.agent_key = $1 FOR UPDATE OF k",
+            "SELECT revision, digest FROM engine_agent_current WHERE agent_key = $1",
         )
         .bind(agent_key)
         .fetch_optional(&mut *tx)
-        .await?
-        .and_then(|(revision, digest): (Option<String>, Option<String>)| revision.zip(digest));
+        .await?;
         if let Some((revision, kept)) = &current
             && kept == digest
         {

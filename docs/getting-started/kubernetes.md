@@ -10,6 +10,16 @@ The `everruns` Helm chart installs the self-hosted Platform: the API server,
 workers, the UI, a proxy in front of them, and NATS. Each release publishes the
 chart as an OCI chart that runs that release's images.
 
+:::tip[Set it up with your agent]
+
+```text
+Install Everruns on my Kubernetes cluster.
+Instructions: https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+```
+
+Prefer to do it yourself? The steps follow.
+:::
+
 ## Prerequisites
 
 - Kubernetes 1.27+ and Helm 3.8+

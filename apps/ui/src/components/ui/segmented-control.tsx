@@ -10,16 +10,19 @@ export function SegmentedControl({
   onValueChange,
   options,
   className,
+  disabled,
 }: {
   label: string;
   value: string;
   onValueChange: (value: string) => void;
   options: { value: string; label: string; icon?: ReactNode }[];
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <ToggleGroup
       aria-label={label}
+      disabled={disabled}
       value={[value]}
       onValueChange={(values) => {
         if (values[0]) onValueChange(values[0]);

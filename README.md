@@ -98,6 +98,28 @@ loop explicit and embeddable:
 | --- | --- |
 | Start here. Embed Everruns in the Rust application you are building; you own the process, deployment, integrations, and data path.<br><br>[Framework quickstart →](https://everruns.com/docs/framework/quickstart/) | Run the shared runtime in infrastructure you manage when you need a control plane, server, workers, UI, remote API, and durable execution.<br><br>[On your machine →](https://everruns.com/docs/getting-started/run-locally/) · [Docker Compose →](https://everruns.com/docs/getting-started/docker-compose/) · [Kubernetes →](https://everruns.com/docs/getting-started/kubernetes/) · [Architecture →](https://everruns.com/docs/explanation/architecture/) |
 
+### Set it up with your agent
+
+Example prompts a person gives their coding agent:
+
+```text
+Install Everruns on this machine with Docker and sign me in. Instructions:
+https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+```
+
+```text
+Install Everruns on my Kubernetes cluster. Instructions:
+https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+```
+
+```text
+Add an Everruns agent with a typed tool to this Rust project and run it once.
+Instructions: https://everruns.com/.well-known/agent-skills/everruns-framework/SKILL.md
+```
+
+The [Everruns plugin](https://github.com/everruns/plugins) includes these
+skills, so with it installed the links are optional.
+
 No server to spare? Look around the [demo instance](https://app.everruns.com)
 ([quickstart](https://everruns.com/docs/getting-started/cloud/)). It runs the
 same open-source code and is a demo, not a hosted service.

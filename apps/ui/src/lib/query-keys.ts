@@ -270,6 +270,11 @@ export const queryKeys = {
     list: (sessionId: string) => ["chat-mcp-servers", sessionId] as const,
   },
 
+  sessionRepositories: {
+    all: ["session-repositories"] as const,
+    detail: (sessionId: string) => ["session-repositories", sessionId] as const,
+  },
+
   sessionResources: {
     all: ["session-resources"] as const,
     list: (sessionId: string) => ["session-resources", sessionId] as const,

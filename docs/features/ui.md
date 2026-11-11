@@ -49,14 +49,17 @@ input requests, and failures. When a thread reports back, the conversation shows
 folded line, such as "Releases is done". Open the line to read the report. The
 coordinator still receives the full text and answers in the conversation.
 
-On any other page, clicking **Main chat** or pressing Command/Ctrl-J opens the
-conversation beside that page. Command/Ctrl-Shift-J switches between that and full
-screen. See [Platform Chat](/built-ins/harnesses/platform-chat/).
+By default the conversation sits on the left of every page, with navigation in a
+rail on the right edge. Drag the divider between them to resize. If you prefer the
+left sidebar, choose **Classic** under **Layout** in the profile menu or on
+**Profile**; the choice follows you to every device and organization. See
+[Platform Chat](/built-ins/harnesses/platform-chat/).
 
 ## Overview page
 
 **Overview** (formerly Home) is the first entry under Building. A number next to it
-shows how many items need attention. Chat stays the page you land on.
+shows how many items need attention. It is the page you land on, with Main chat beside
+it. In the Classic layout you land on Main chat.
 
 **Needs attention** comes first: one list, most urgent first, built from every place
 that already tracks a problem. It includes agent setup problems (a disabled model, a

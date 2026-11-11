@@ -178,4 +178,64 @@ export const messages: Readonly<Record<string, string>> = {
   "Your subchats for managing Everruns.": "Deine Subchats zum Verwalten von Everruns.",
   "Retry window expired. Review this conversation before sending again.":
     "Das Wiederholungsfenster ist abgelaufen. Prüfe diese Unterhaltung, bevor du erneut sendest.",
+  "no changes": "keine Änderungen",
+  "1 commit ahead of {base}": "1 Commit vor {base}",
+  "{count} commits ahead of {base}": "{count} Commits vor {base}",
+  "1 file not committed": "1 Datei nicht committet",
+  "{count} files not committed": "{count} Dateien nicht committet",
+  pushed: "gepusht",
+  "not pushed": "nicht gepusht",
+  "read only, the agent cannot push here": "schreibgeschützt, der Agent kann hier nicht pushen",
+  "not committed": "nicht committet",
+  "Show diff": "Diff anzeigen",
+  "The diff is cut here. The file list above is complete.":
+    "Der Diff ist hier abgeschnitten. Die Dateiliste oben ist vollständig.",
+  "View pull request #{number}": "Pull Request #{number} ansehen",
+  "The agent pushes; you review": "Der Agent pusht, du prüfst",
+  "This session has no repositories.": "Diese Sitzung hat keine Repositories.",
+  "The sandbox is not running, so there is nothing to read. Changes show here while it runs; pushed work stays on GitHub.":
+    "Die Sandbox läuft nicht, daher gibt es nichts zu lesen. Änderungen erscheinen hier, solange sie läuft; gepushte Arbeit bleibt auf GitHub.",
+  "No repository is checked out yet. The agent checks them out when it starts work.":
+    "Noch ist kein Repository ausgecheckt. Der Agent checkt sie aus, sobald er mit der Arbeit beginnt.",
+  "Read from the sandbox. The agent commits and pushes; you review.":
+    "Aus der Sandbox gelesen. Der Agent committet und pusht, du prüfst.",
+  "Could not read the repositories from the sandbox.":
+    "Die Repositories konnten nicht aus der Sandbox gelesen werden.",
+  Read: "Lesen",
+  "Enter a repository as owner/name.": "Gib ein Repository als owner/name ein.",
+  "This repository is already in the list.": "Dieses Repository ist bereits in der Liste.",
+  "This agent does not allow adding repositories.":
+    "Dieser Agent erlaubt kein Hinzufügen von Repositories.",
+  "Branch for {repo}": "Branch für {repo}",
+  "default branch": "Standard-Branch",
+  "Access for {repo}": "Zugriff für {repo}",
+  "read only for this agent": "für diesen Agenten nur lesbar",
+  "Remove {repo}": "{repo} entfernen",
+  private: "privat",
+  "Add repository": "Repository hinzufügen",
+  "Search repositories": "Repositories durchsuchen",
+  "No repositories yet. Add the ones this chat should work on.":
+    "Noch keine Repositories. Füge die hinzu, an denen dieser Chat arbeiten soll.",
+  "This agent has no repositories set.": "Für diesen Agenten sind keine Repositories festgelegt.",
+  "Starts from the agent's repositories. With write access the agent pushes its own branch and can open a pull request.":
+    "Geht von den Repositories des Agenten aus. Mit Schreibzugriff pusht der Agent seinen eigenen Branch und kann einen Pull Request öffnen.",
+  "This agent has no GitHub identity yet, so it cannot clone private repositories or push.":
+    "Dieser Agent hat noch keine GitHub-Identität und kann daher weder private Repositories klonen noch pushen.",
+  "GitHub identity:": "GitHub-Identität:",
+  " · installed on {account}": " · installiert bei {account}",
+  "Missing permissions: {list}": "Fehlende Berechtigungen: {list}",
+  "Default repositories": "Standard-Repositories",
+  "Checked out side by side in every new session.":
+    "Werden in jeder neuen Sitzung nebeneinander ausgecheckt.",
+  "Agent may add repositories": "Agent darf Repositories hinzufügen",
+  "During a session, when the work needs another one.":
+    "Während einer Sitzung, wenn die Arbeit ein weiteres braucht.",
+  "Read and write": "Lesen und schreiben",
+  "Work branch prefix": "Präfix des Arbeits-Branches",
+  "The agent pushes only to its own branch, never by force.":
+    "Der Agent pusht nur auf seinen eigenen Branch, nie mit Force.",
+  "Commit author and history": "Commit-Autor und Verlauf",
+  "Commit author name": "Name des Commit-Autors",
+  "Commit author email": "E-Mail des Commit-Autors",
+  "History depth, in commits": "Verlaufstiefe in Commits",
 };

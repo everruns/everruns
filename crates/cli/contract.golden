@@ -410,6 +410,7 @@ sessions participants leave	--context-revision --participant-id! --reason --sess
 sessions participants list	--context-revision --reason --session!
 sessions pin	--context-revision --reason --session <session_id>
 sessions platform-chat ensure	--context-revision --reason
+sessions repositories get	--context-revision --reason --session-id <session_id>
 sessions resources list	--context-revision --reason --session-id <session_id>
 sessions resume	--context-revision --reason --session-id <session_id>
 sessions run get	--context-revision --reason --session-id <session_id>

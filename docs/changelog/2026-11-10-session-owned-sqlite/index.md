@@ -10,15 +10,17 @@ links:
   docs: [/framework/hosting/#sqlite-per-session]
 ---
 
-Yolop now stores each local session in a separate SQLite execution database,
-including child sessions. Coordinators retain child registrations while each
-child owns its history, tasks and schedules. A busy session no longer takes
-the SQLite writer lock for unrelated sessions.
+Yolop stores each session, including children, at
+`sessions/<session-id>/engine.sqlite`. History search and resume read SQLite
+without a duplicate `events.jsonl`. Background artifacts use the visible
+`background/` folder. Coordinators retain child registrations; each child owns
+its history, tasks and schedules. A busy session no longer locks unrelated sessions.
 
-Existing shared authorities transfer from canonical SQLite state, preserving
-pending inputs, task messages, schedules and sealed secrets. Transfer acquires
-exclusive ownership of the complete source family before the first snapshot,
-so late child reports survive handoff, and refuses live execution leases. The original database stays available for backup.
+Earlier shared authorities and session-directory layouts transfer canonical
+SQLite state, preserving pending inputs, task messages, schedules and sealed
+secrets. Exclusive ownership of the complete source family precedes snapshots,
+so late child reports survive handoff. Live execution leases refuse transfer;
+original databases remain available for backup.
 
 With the Rust Framework's `local` feature:
 

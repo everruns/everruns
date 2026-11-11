@@ -23,7 +23,9 @@ export interface PageAction {
 export interface ChatModeState {
   pageContainer: RefObject<HTMLElement | null>;
   pageContainerElement?: HTMLElement | null;
+  /** Chat sits beside the page (chat-first layout, on a page route). */
   open: boolean;
+  /** true shows Chat beside the page; false shows the page alone (classic layout). */
   setOpen: (open: boolean) => void;
   page: ChatPageContext;
   registerPage: (
@@ -40,7 +42,7 @@ export interface ChatModeState {
   showFullScreen?: () => void;
   /** Return from full-screen Chat to the last page, with Chat beside it. */
   showBesidePage?: () => void;
-  /** Show a thread in the page pane, beside the conversation. */
+  /** Open a thread in the page pane (`/threads/<id>`), beside the conversation. */
   openThreadBeside?: (threadId: string) => void;
   actions: PageAction[];
   recordAction: (label: string) => void;

@@ -21,6 +21,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_mcp_oauth_checker(state.mcp_oauth_checker.clone())
     .with_utility_llm_service(state.utility_llm_service.clone())
     .with_decisions(state.decisions.clone())
+    .with_relevance(state.relevance.clone())
     .with_github_apps(github_apps(state))
     .with_connection_resolver(state.connection_resolver.clone())
     .with_system_doctor(state.system_doctor.clone());

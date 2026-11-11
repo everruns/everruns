@@ -80,6 +80,10 @@ pub struct SlackState {
     pub decisions: Arc<dyn everruns_core::DecisionsService>,
     /// What an org with `system_decisions: organization` decides with instead.
     pub org_decisions: Option<SlackOrgDecisions>,
+    /// The agent's own model, when no decision model is set up.
+    pub relevance_fallback: Option<Arc<dyn crate::services::relevance::FallbackModels>>,
+    /// Fallbacks this process reported to org health, shared with rooms.
+    pub relevance_reports: Arc<crate::domains::health_issues::relevance_fallback::FallbackReports>,
 }
 
 impl SlackState {
@@ -106,7 +110,23 @@ impl SlackState {
             budget_service: budget_service.clone(),
             egress: host.egress_service(),
         });
+        self.relevance_fallback = Some(Arc::new(crate::services::relevance::AgentModelFallback {
+            provider_resolver: provider_resolver.clone(),
+            drivers: Arc::new(host.driver_registry().clone()),
+        }));
         self
+    }
+
+    /// The relevance check Slack and rooms share, on this state's services.
+    pub fn relevance_checker(&self) -> crate::services::relevance::RelevanceChecker {
+        crate::services::relevance::RelevanceChecker {
+            db: self.db.clone(),
+            deployment: self.decisions.clone(),
+            org: self.org_decisions.clone(),
+            events: Some(self.event_service.clone()),
+            fallback: self.relevance_fallback.clone(),
+            reports: self.relevance_reports.clone(),
+        }
     }
 
     /// Link turns' end notices to sessions under this UI base.
@@ -160,6 +180,8 @@ impl SlackState {
             api_base_url,
             decisions: Arc::new(everruns_core::DisabledDecisionsService),
             org_decisions: None,
+            relevance_fallback: None,
+            relevance_reports: Default::default(),
         }
     }
 }

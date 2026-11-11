@@ -39,6 +39,7 @@ mod fix_pull_requests;
 mod issues;
 mod pull_requests;
 mod repositories;
+mod repository_changes;
 mod reviews;
 mod tools;
 
@@ -61,6 +62,7 @@ pub use repositories::{
     AddRepositories, REPOSITORIES_CAPABILITY_ID, RepositoriesCapability, RepositoriesConfig,
     RepositoryAccess, RepositoryEntry,
 };
+pub use repository_changes::read_repository_changes;
 use reviews::SubmitGitHubReviewTool;
 use tools::{ReadGitHubFileTool, SearchGitHubCodeTool, SearchGitHubIssuesTool};
 

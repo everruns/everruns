@@ -208,9 +208,8 @@ export function ChatPanel({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (pageAware && chatMode?.open) textareaRef.current?.focus();
-  }, [pageAware, chatMode?.open]);
+  // No focus on mount: in the chat-first layout Chat is always beside the page,
+  // so grabbing focus would steal it from the page. Cmd/Ctrl-J focuses it.
 
   const {
     selectedModelId,

@@ -5,7 +5,7 @@ license: MIT
 compatibility: An MCP client and an Everruns server, using OAuth or a personal access token. Skills discovery requires MCP 2026-07-28.
 metadata:
   category: platform
-  version: "1.3"
+  version: "1.4"
   docs: https://everruns.com/docs/features/mcp/
 ---
 
@@ -23,8 +23,11 @@ identity and transport rules below still apply.
 ## Connect and load guidance
 
 Reuse an existing host connection when it targets the requested deployment.
-Otherwise, add `https://app.everruns.com/mcp` for Everruns Cloud, or `/mcp` on
-the user's self-hosted origin. Preserve the deployment the user selected.
+Otherwise connect to `/mcp` on the user's own Everruns origin, such as
+`http://localhost:9300/mcp` for `everruns docker up`. Use
+`https://app.everruns.com/mcp`, the demo instance, only when the user asks for
+the demo; it is a demo, not a hosted service. Never fall back to the demo when
+the user's own server is unreachable. Preserve the deployment the user selected.
 
 Use the host's OAuth connection flow. Discover the authorization server from
 `/.well-known/oauth-protected-resource/mcp` on that deployment, then read its
@@ -32,9 +35,10 @@ authorization-server metadata for current endpoints. Where supported, register
 through the advertised `registration_endpoint`, request the `mcp` scope, and
 use authorization code with PKCE `S256`. A human approves access in a browser.
 Refresh expired access tokens through the host; keep credentials out of chat.
-For detailed Cloud authentication guidance, see
-[auth.md](https://everruns.com/auth.md). A self-hosted deployment's own discovery
-and authentication guidance take precedence for that deployment.
+Each deployment serves its own authentication guidance at `/auth.md`
+([the demo instance's](https://everruns.com/auth.md)); the target deployment's
+discovery and guidance take precedence. A local install started with
+`--auth none` needs no credentials.
 
 The MCP server exposes these four shared skills through `skills/list` and
 `skills/get` under protocol `2026-07-28`:

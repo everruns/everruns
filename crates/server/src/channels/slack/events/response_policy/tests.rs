@@ -1,5 +1,9 @@
 use super::*;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use crate::services::relevance::DECISION_TIMEOUT;
+use everruns_core::{DecisionRequest, DecisionsService};
 
 use crate::channels::slack::events::tests_support::{
     NoopRunner, test_app, test_config, test_event,
@@ -343,6 +347,7 @@ async fn live_jev_relevance_matches_intent_examples() {
     let service = everruns_integrations::typesafe::SystemDecisionsConfig::from_env()
         .into_driver()
         .expect("UTILITY_TYPESAFE_API_KEY must be configured");
+    let service: Arc<dyn DecisionsService> = Arc::new(service);
     let (state, app, _, mut event) = fixture(None).await;
     for (message, history, expected) in [
         ("Any more dad jokes?", vec![], true),
@@ -360,10 +365,27 @@ async fn live_jev_relevance_matches_intent_examples() {
         event.text = Some(message.into());
         let mut context = decision_state(&state, &app, &event, None).await.unwrap();
         context["recent_thread_messages"] = json!(history);
-        let started = std::time::Instant::now();
-        let actual = evaluate_relevance(&service, context, "live-test")
+        let agent = state
+            .db
+            .get_agent(app.org_id, app.agent_id.unwrap())
             .await
+            .unwrap()
             .unwrap();
+        let mut checker = state.relevance_checker();
+        checker.deployment = service.clone();
+        let started = std::time::Instant::now();
+        let actual = checker
+            .decide(crate::services::relevance::RelevanceQuestion {
+                org_id: app.org_id,
+                agent: &agent,
+                state: context,
+                session: None,
+                source: "slack_response_policy",
+                subject: ("endpoint_id", "live-test"),
+            })
+            .await
+            .unwrap()
+            .respond;
         println!(
             "{message:?}: respond={actual}, latency={:?}",
             started.elapsed()

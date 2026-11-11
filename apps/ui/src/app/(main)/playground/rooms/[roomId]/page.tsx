@@ -185,11 +185,13 @@ export default function PlaygroundRoomPage({ params }: { params: Promise<{ roomI
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {(["mentions", "everything", "never"] as const).map((wake) => (
-                                  <SelectItem key={wake} value={wake}>
-                                    {wakeLabel(wake)}
-                                  </SelectItem>
-                                ))}
+                                {(["mentions", "relevant", "everything", "never"] as const).map(
+                                  (wake) => (
+                                    <SelectItem key={wake} value={wake}>
+                                      {wakeLabel(wake)}
+                                    </SelectItem>
+                                  ),
+                                )}
                               </SelectContent>
                             </Select>
                             <span className="flex items-center gap-2">
