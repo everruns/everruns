@@ -22,8 +22,8 @@ pub struct DpOrgRow {
     pub delivered_epoch: i64,
     pub delivered_version: i64,
     pub data_key_id: String,
-    pub data_key: Vec<u8>,
-    pub data_key_encrypted: bool,
+    /// Encrypted with the server's secrets key.
+    pub data_key_encrypted: Vec<u8>,
     pub enabled: bool,
     pub state: String,
     pub attempts: i32,
@@ -32,7 +32,7 @@ pub struct DpOrgRow {
 macro_rules! org_columns {
     () => {
         "org_id, data_plane_id, version, delivered_epoch, delivered_version, \
-         data_key_id, data_key, data_key_encrypted, enabled, state, attempts"
+         data_key_id, data_key_encrypted, enabled, state, attempts"
     };
 }
 
@@ -57,8 +57,8 @@ pub struct DpGrantRow {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct DpSigningKeyRow {
     pub kid: String,
-    pub private_key: Vec<u8>,
-    pub encrypted: bool,
+    /// PKCS#8, encrypted with the server's secrets key.
+    pub private_key_encrypted: Vec<u8>,
     pub public_jwk: Value,
     pub retired_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -169,18 +169,16 @@ impl Database {
         org_id: i64,
         data_plane_id: &str,
         data_key_id: &str,
-        data_key: &[u8],
-        encrypted: bool,
+        data_key_encrypted: &[u8],
     ) -> Result<DpOrgRow> {
         sqlx::query(
-            "INSERT INTO dp_orgs (org_id, data_plane_id, data_key_id, data_key, data_key_encrypted)
-             VALUES ($1, $2, $3, $4, $5) ON CONFLICT (org_id) DO NOTHING",
+            "INSERT INTO dp_orgs (org_id, data_plane_id, data_key_id, data_key_encrypted)
+             VALUES ($1, $2, $3, $4) ON CONFLICT (org_id) DO NOTHING",
         )
         .bind(org_id)
         .bind(data_plane_id)
         .bind(data_key_id)
-        .bind(data_key)
-        .bind(encrypted)
+        .bind(data_key_encrypted)
         .execute(&self.pool)
         .await?;
         self.dp_org(org_id)
@@ -580,7 +578,7 @@ impl Database {
 
     pub async fn dp_signing_keys(&self) -> Result<Vec<DpSigningKeyRow>> {
         Ok(sqlx::query_as(
-            "SELECT kid, private_key, encrypted, public_jwk, retired_at FROM dp_signing_keys
+            "SELECT kid, private_key_encrypted, public_jwk, retired_at FROM dp_signing_keys
               ORDER BY created_at DESC",
         )
         .fetch_all(&self.pool)
@@ -590,13 +588,12 @@ impl Database {
     /// Store a new signing key; a concurrent first key wins and is returned.
     pub async fn dp_insert_signing_key(&self, row: &DpSigningKeyRow) -> Result<()> {
         sqlx::query(
-            "INSERT INTO dp_signing_keys (kid, private_key, encrypted, public_jwk)
-             SELECT $1, $2, $3, $4
+            "INSERT INTO dp_signing_keys (kid, private_key_encrypted, public_jwk)
+             SELECT $1, $2, $3
               WHERE NOT EXISTS (SELECT 1 FROM dp_signing_keys WHERE retired_at IS NULL)",
         )
         .bind(&row.kid)
-        .bind(&row.private_key)
-        .bind(row.encrypted)
+        .bind(&row.private_key_encrypted)
         .bind(&row.public_jwk)
         .execute(&self.pool)
         .await?;

@@ -27,17 +27,18 @@ INSERT INTO dp_control_epoch (singleton, epoch) VALUES (true, 1);
 -- An org on a data plane, its config position and its data key.
 CREATE TABLE dp_orgs (
     org_id BIGINT PRIMARY KEY REFERENCES organizations(org_id) ON DELETE CASCADE,
+    -- Row id for secrets key rotation, which walks rows by a UUID.
+    id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
     data_plane_id TEXT NOT NULL REFERENCES data_planes(data_plane_id),
     -- The latest config version assigned; items carry the version that
     -- last changed them.
     version BIGINT NOT NULL DEFAULT 0,
     delivered_epoch BIGINT NOT NULL DEFAULT 0,
     delivered_version BIGINT NOT NULL DEFAULT 0,
-    -- The org's data key, sealed with the server's secrets key when one is
-    -- configured. Sent to the data plane wrapped with its key only.
+    -- The org's data key, encrypted with the server's secrets key (a v2
+    -- org needs one). Sent to the data plane wrapped with its key only.
     data_key_id TEXT NOT NULL,
-    data_key BYTEA NOT NULL,
-    data_key_encrypted BOOLEAN NOT NULL,
+    data_key_encrypted BYTEA NOT NULL,
     -- OrgEnable acknowledged by the data plane.
     enabled BOOLEAN NOT NULL DEFAULT false,
     state TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'suspended')),
@@ -132,8 +133,10 @@ CREATE INDEX dp_org_events_org ON dp_org_events (org_id, at DESC);
 -- a retired key stays published until the tokens it signed have expired.
 CREATE TABLE dp_signing_keys (
     kid TEXT PRIMARY KEY,
-    private_key BYTEA NOT NULL,
-    encrypted BOOLEAN NOT NULL,
+    -- Row id for secrets key rotation, which walks rows by a UUID.
+    id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    -- PKCS#8, encrypted with the server's secrets key.
+    private_key_encrypted BYTEA NOT NULL,
     public_jwk JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     retired_at TIMESTAMPTZ

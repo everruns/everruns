@@ -1316,7 +1316,9 @@ grants or feed, and nothing changes for it. What it covers:
   (step 3's format), so the data plane never reads the platform's tables.
 - **Sealed secrets and connections** (`everruns_contracts::dataplane_seal`).
   Each org has a data key, kept under the server's secrets key and sent
-  wrapped with the data plane's key when the org is enabled. Secrets and
+  wrapped with the data plane's key when the org is enabled. The token
+  signing key is kept the same way, so secrets key rotation covers both,
+  and a server without a secrets key can't put an org on a data plane. Secrets and
   connection tokens are sealed under the data key with AES-256-GCM. The
   associated data names org, item and revision, so a value can't be moved
   to another org or replayed as another revision. Only executors unseal;

@@ -14,8 +14,6 @@
 //!   sessions. A data plane's `admin` scope is for operators and is never
 //!   minted here.
 
-use std::sync::Arc;
-
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{Ed25519KeyPair, KeyPair};
 use base64::Engine as _;
@@ -33,24 +31,19 @@ pub const SESSIONS_SCOPE: &str = "sessions:write";
 /// How long a retired key stays published.
 const RETIRED_KEPT: chrono::Duration = chrono::Duration::hours(24);
 
-fn generate(encryption: Option<&Arc<EncryptionService>>) -> anyhow::Result<DpSigningKeyRow> {
+fn generate(encryption: &EncryptionService) -> anyhow::Result<DpSigningKeyRow> {
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
         .map_err(|_| anyhow::anyhow!("could not generate an Ed25519 key"))?;
     let pair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref())
         .map_err(|_| anyhow::anyhow!("could not read the generated Ed25519 key"))?;
     let x = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(pair.public_key().as_ref());
     let kid = format!("dpk_{}", uuid::Uuid::new_v4().simple());
-    let (private_key, encrypted) = match encryption {
-        Some(encryption) => (encryption.encrypt(pkcs8.as_ref())?, true),
-        None => (pkcs8.as_ref().to_vec(), false),
-    };
     Ok(DpSigningKeyRow {
         public_jwk: json!({
             "kty": "OKP", "crv": "Ed25519", "alg": "EdDSA", "use": "sig", "kid": kid, "x": x,
         }),
         kid,
-        private_key,
-        encrypted,
+        private_key_encrypted: encryption.encrypt(pkcs8.as_ref())?,
         retired_at: None,
     })
 }
@@ -67,7 +60,7 @@ async fn current(cp: &ControlPlane) -> anyhow::Result<DpSigningKeyRow> {
         return Ok(row);
     }
     cp.db
-        .dp_insert_signing_key(&generate(cp.encryption.as_ref())?)
+        .dp_insert_signing_key(&generate(cp.encryption()?)?)
         .await?;
     cp.db
         .dp_signing_keys()
@@ -77,8 +70,12 @@ async fn current(cp: &ControlPlane) -> anyhow::Result<DpSigningKeyRow> {
         .ok_or_else(|| anyhow::anyhow!("no org token signing key"))
 }
 
-/// `GET /.well-known/jwks.json`.
+/// `GET /.well-known/jwks.json`. A server with no secrets key has no data
+/// planes and publishes no keys.
 pub async fn jwks(cp: &ControlPlane) -> anyhow::Result<Value> {
+    if cp.encryption.is_none() {
+        return Ok(json!({ "keys": [] }));
+    }
     current(cp).await?;
     let now = chrono::Utc::now();
     let keys: Vec<Value> = cp
@@ -100,11 +97,7 @@ pub async fn issue(cp: &ControlPlane, org_id: i64, sub: &str) -> anyhow::Result<
         .await?
         .ok_or_else(|| anyhow::anyhow!("the org is not on a data plane"))?;
     let key = current(cp).await?;
-    let pkcs8 = match (key.encrypted, &cp.encryption) {
-        (false, _) => key.private_key.clone(),
-        (true, Some(encryption)) => encryption.decrypt(&key.private_key)?,
-        (true, None) => anyhow::bail!("the signing key is encrypted but encryption is off"),
-    };
+    let pkcs8 = cp.encryption()?.decrypt(&key.private_key_encrypted)?;
     let now = chrono::Utc::now().timestamp();
     let claims = OrgTokenClaims {
         sub: sub.to_owned(),

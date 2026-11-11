@@ -77,6 +77,16 @@ async fn stub() -> (String, Stub) {
     (url, seen)
 }
 
+fn test_encryption() -> Arc<crate::storage::EncryptionService> {
+    Arc::new(
+        crate::storage::EncryptionService::new(
+            "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            &[],
+        )
+        .unwrap(),
+    )
+}
+
 async fn control_plane() -> (ControlPlane, Stub, seal::Key) {
     let db = Arc::new(StorageBackend::test_database());
     let dp_key = seal::random_key();
@@ -84,7 +94,7 @@ async fn control_plane() -> (ControlPlane, Stub, seal::Key) {
         token: None,
         dp_key: Some(dp_key),
     };
-    let cp = ControlPlane::new(db, None, link);
+    let cp = ControlPlane::new(db, Some(test_encryption()), link);
     let (url, seen) = stub().await;
     cp.db
         .dp_upsert_data_plane("dp-1", &url, &url)
@@ -105,7 +115,7 @@ fn kinds(update: &ConfigUpdate) -> Vec<String> {
 #[tokio::test]
 async fn a_v1_org_has_no_data_plane() {
     let db = Arc::new(StorageBackend::test_database());
-    let cp = ControlPlane::new(db, None, Link::default());
+    let cp = ControlPlane::new(db, Some(test_encryption()), Link::default());
     assert!(for_org(&cp, 3).await.unwrap().id().is_none());
     // A v1 org's agents never reach the outbox.
     agent_published(&cp.db, "ak_x", 3, "r1").await.unwrap();

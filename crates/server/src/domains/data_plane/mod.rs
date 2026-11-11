@@ -90,14 +90,19 @@ impl ControlPlane {
         }
     }
 
+    /// The server's secrets key: a v2 org's data key and the org token
+    /// signing key are stored under it, so key rotation covers them.
+    pub fn encryption(&self) -> anyhow::Result<&EncryptionService> {
+        self.encryption.as_deref().ok_or_else(|| {
+            anyhow::anyhow!("SECRETS_ENCRYPTION_KEY is not set: data planes need it")
+        })
+    }
+
     /// The org's data key, opened.
     pub fn data_key(&self, org: &DpOrgRow) -> anyhow::Result<seal::Key> {
-        let raw = match (org.data_key_encrypted, &self.encryption) {
-            (false, _) => org.data_key.clone(),
-            (true, Some(encryption)) => encryption.decrypt(&org.data_key)?,
-            (true, None) => anyhow::bail!("the org's data key is encrypted but encryption is off"),
-        };
-        raw.try_into()
+        self.encryption()?
+            .decrypt(&org.data_key_encrypted)?
+            .try_into()
             .map_err(|_| anyhow::anyhow!("the org's data key is not 32 bytes"))
     }
 }
@@ -260,14 +265,11 @@ pub async fn enable_org(
         "EVERRUNS_DP_KEY is not set: the org's data key could not be wrapped"
     );
     let key = seal::random_key();
-    let (stored, encrypted) = match &cp.encryption {
-        Some(encryption) => (encryption.encrypt(&key)?, true),
-        None => (key.to_vec(), false),
-    };
+    let stored = cp.encryption()?.encrypt(&key)?;
     let data_key_id = format!("dk_{}", uuid::Uuid::new_v4().simple());
     let org = cp
         .db
-        .dp_insert_org(org_id, data_plane_id, &data_key_id, &stored, encrypted)
+        .dp_insert_org(org_id, data_plane_id, &data_key_id, &stored)
         .await?;
     put_policy(cp, org_id, &TenantPolicy::default()).await?;
     for key in cp.db.engine_agent_keys_for_edit(org_id, None).await? {
