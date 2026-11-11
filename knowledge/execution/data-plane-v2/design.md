@@ -1168,6 +1168,39 @@ the storage decision below requires. What it checks and what it found:
   Writing it found one more: a gateway try could outlast the whole call,
   so a member that accepts connections but never answers blocked every
   request. Each try now gets at most 10 s of a 45 s call.
+- **75 000 sessions** (`scripts/cell/many_sessions.py --concurrency
+  1000`; 2 cells of 3 nodes, all six on one machine with 14 GB for
+  everything, a simulated model with 50 ms per step): 75 000 sessions of
+  the tool-calling `worker` agent, 2 turns each, 150 000 turns in 16
+  minutes at 240 turns/s, 0 errors. Turn p50 4.0 s and p99 11.2 s with
+  1 000 turns in flight; admission p50 179 ms. The check reads every
+  session back: every message completed exactly once, sequences dense,
+  and no tool ran without its durable `tool.started` (150 135 of each:
+  135 steps ran again, each under its own durable start). Node memory:
+  median 1.1 GB, p90 1.5 GB, one sample at 3.1 GB during a snapshot;
+  1.2 to 1.6 GB at the end. The run before this one put two nodes out of
+  memory, and measuring one cell at 37 000 sessions showed two causes,
+  both fixed: the snapshot trigger counted the log tail kept for lagging
+  followers, which alone passed it, so a node copied the whole cell
+  (about 110 MB) every few seconds even when idle; and that tail (2 048
+  entries, kept parsed in memory at about four times their encoded size)
+  held about 500 MB per node. The trigger now counts only the log since
+  the last snapshot and the tail defaults to 256 entries (`node.rs`
+  says why): idle memory went from about 1.8 to 1.2 GB per node and peaks
+  from 2.6 to 1.6 GB, at the same throughput. A stored snapshot is now a
+  metadata line and the state as it is, not the state escaped inside a
+  JSON document, which also dropped three more copies of it from every
+  build. Serving the kept tail from the segment files instead of memory
+  is a follow-up.
+- **Long sessions** (`scripts/cell/scale.py --cells 1 --sessions 40
+  --turns 5000 --agent chat --concurrency 40`, one cell of 3 nodes on the
+  same machine): 200 000 turns at 204 turns/s, 0 errors. Median turn by
+  tenth of each session's turns: 151 ms in the first tenth (empty
+  history), then 180, 196, 179, 176, 176, 176, 171, 176 and 173 ms, so
+  after the first tenth it holds within 9% of the second. Admission p50
+  14 ms, p99 36 ms. At the end the leader held 2.1 GB and the followers
+  1.1 GB; what the leader's extra gigabyte is with only 40 sessions is
+  not broken down yet.
 
 Still open in step 5: running the whole node (openraft, the log, the
 object store) under a simulated runtime with crash points, so the Raft
