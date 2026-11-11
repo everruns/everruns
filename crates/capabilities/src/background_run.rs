@@ -649,7 +649,7 @@ impl Tool for SpawnBackgroundTool {
         };
 
         let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
-        let artifact_dir = format!("/.background/{run_id}");
+        let artifact_dir = format!("/background/{run_id}");
         let log_path = format!("{artifact_dir}/output.log");
         let result_path = format!("{artifact_dir}/result.json");
 
@@ -1032,8 +1032,8 @@ impl SessionBackgroundSink {
             )
         })?;
 
-        ensure_directory(file_store.as_ref(), self.context.session_id, "/.background").await?;
-        let run_dir = format!("/.background/{}", self.run_id);
+        ensure_directory(file_store.as_ref(), self.context.session_id, "/background").await?;
+        let run_dir = format!("/background/{}", self.run_id);
         ensure_directory(file_store.as_ref(), self.context.session_id, &run_dir).await?;
         file_store
             .write_file(self.context.session_id, path, content, "text")
@@ -1338,7 +1338,7 @@ async fn reattach_background_run_with_registry(
         .unwrap_or(true);
 
     let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
-    let artifact_dir = format!("/.background/{run_id}");
+    let artifact_dir = format!("/background/{run_id}");
     let log_path = format!("{artifact_dir}/output.log");
     let result_path = format!("{artifact_dir}/result.json");
 

@@ -35,11 +35,11 @@ sessions. The shared-file profile remains available for hosts that explicitly
 choose one transaction domain. Session-directory mode does not publish shared
 agent definitions, that requires a separate control plane.
 
-Moving an existing shared authority is a canonical-state transfer, never a
+Moving an existing shared authority or session-directory layout is a canonical-state transfer, never a
 JSONL replay. Host-supplied exclusive leases quiesce the entire source family
 before the first snapshot, including ancestors and siblings when a child opens
 first. This preserves late cross-session reports. Live epochs and shared maintenance
-state refuse transfer. The original source remains unchanged; a completed
+state refuse transfer. Ordered source selection prefers the first matching database. Owned directory transfers use SQLite backup to include committed WAL frames and child registrations. Read-only journal inspection does not run command recovery or acquire a writer transaction. The original source remains unchanged; a completed
 session database is published atomically and reopened independently.
 
 Framework lifecycle receipts conservatively record uncertain effects. Approval

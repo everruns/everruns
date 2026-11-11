@@ -250,6 +250,12 @@ This applies to built-in `bash` and provider-backed exec tools such as `daytona_
 
 ### Background Tool Execution
 
+Background artifact paths use the visible `background/` root. Workspace policy
+keeps these records model-readable and runtime-writable only. Retained task
+records may still name the previous hidden root, which remains a policy alias;
+physical relocation is the host's responsibility under exclusive ownership.
+
+
 `spawn_background` is a built-in meta-tool that schedules another built-in tool to run asynchronously and returns immediately with a run handle. It is generic: the caller passes `tool` plus `args`; the target tool determines whether background execution is supported.
 
 `spawn_background` is contributed by the `background_execution` capability, which auto-activates whenever the collected tool set contains a background-capable tool. See `knowledge/execution/background-execution.md` for the cross-cutting capability contract.
@@ -268,7 +274,7 @@ Target-tool policy (EVE-1186):
 
 Contract:
 - Input: `{ "tool": "...", "args": { ... }, "title"?: "...", "signal_on_completion"?: true, "schedule"?: { "cron_expression"?: "...", "scheduled_at"?: "...", "timezone"?: "..." } }`
-- Immediate result without `schedule`: `run_id`, `resource_id`, target `tool`, and artifact paths under `/.background/{run_id}/`
+- Immediate result without `schedule`: `run_id`, `resource_id`, target `tool`, and artifact paths under `/background/{run_id}/`
 - Immediate result with `schedule`: `schedule_id`, schedule cadence fields (`cron_expression` or `scheduled_at`, `timezone`, `next_trigger_at`), `enabled`, and `status = "scheduled"`
 - Execution happens in a detached worker task
 - Progress flows through `BackgroundEventSink`, which supports:
@@ -280,8 +286,8 @@ Artifacts and visibility:
 - Each run is registered in the session resource registry as `kind = "background_run"`.
 - Live metadata includes status text, output tail, and optional progress.
 - Final artifacts are persisted to session VFS:
-  - `/.background/{run_id}/output.log`
-  - `/.background/{run_id}/result.json`
+  - `/background/{run_id}/output.log`
+  - `/background/{run_id}/result.json`
 - On completion or failure, the worker may send a synthetic session message summarizing the result and artifact paths.
 - That message is delivered through `PlatformStore::send_message`. **Without a platform store there is nowhere to deliver it**, and the run finishes invisibly, the agent that spawned it never learns it ended. The tool logs a warning rather than failing, since the run itself succeeded, but a host that wires `spawn_background` and no store has a hole.
 - Embedded hosts wire delivery with `everruns::local::LocalPlatformStore`. A session with a live host loop (a terminal UI, an editor session) must not have a turn run underneath it, so `HostRoutedRunner` + `WakeRoutes` route the completion to the host's channel when one is registered and fall through to the inner runner's synchronous turn when nobody is watching, which is the child/subagent case. What the host does with a delivered wake (coalescing, enrichment, when to run it) stays with the host.

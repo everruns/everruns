@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-10, Local session layout transfer and direct journal inspection
+
+- [Durable sessions](framework/engine-durable-sessions.md): migrate earlier per-session directories using canonical SQLite backup under family leases, preserving WAL state and registrations.
+- Expose read-only journal inspection for hosts that do not maintain JSONL exports.
+- [Tool execution](execution/tool-execution.md): use visible `background/` artifacts while retaining old hidden-root policy aliases for saved task paths.
+
 ## 2026-11-10
 
 - [Public skills](project/public-skills.md): `skills/` is the single source of truth for public agent skills; plugins and landing carry generated copies, a workflow opens auto-merging sync PRs, and both consumers fail CI on drift. Getting-started pages lead with an example prompt that links the skill.

@@ -11,11 +11,14 @@ links:
 ---
 
 Yolop now stores each local session in a separate SQLite execution database,
-including child sessions. Coordinators retain child registrations while each
+including child sessions, directly at `sessions/<session-id>/engine.sqlite`.
+History search and resume read SQLite directly without maintaining a duplicate
+`events.jsonl`. Background artifacts use the visible `background/` folder
+inside the session. Coordinators retain child registrations while each
 child owns its history, tasks and schedules. A busy session no longer takes
 the SQLite writer lock for unrelated sessions.
 
-Existing shared authorities transfer from canonical SQLite state, preserving
+Existing shared authorities and earlier per-session directory layouts transfer from canonical SQLite state, preserving
 pending inputs, task messages, schedules and sealed secrets. Transfer acquires
 exclusive ownership of the complete source family before the first snapshot,
 so late child reports survive handoff, and refuses live execution leases. The original database stays available for backup.

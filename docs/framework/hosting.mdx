@@ -62,7 +62,8 @@ registered descendants. Unrelated sessions have independent SQLite writer locks.
 The host still supplies registered builds, Environments and stable secret keys.
 Keep the directory, its WAL files and encryption keys together when backing up.
 
-To transfer an older shared authority, use `open_session_from` with the host's
+To transfer an older shared authority or session-directory layout, use
+`open_session_from` with the host's
 exclusive source-session lease callback. It acquires leases for the complete
 source family before copying any database, including ancestors and siblings
 when a child opens first, so late task reports survive handoff. Each transfer
@@ -70,6 +71,16 @@ copies canonical SQLite state and publishes a complete private database
 atomically. Live epochs and shared maintenance state refuse
 transfer; completed session databases reopen without consulting the old source.
 The source is retained, and transferred sessions must use the updated host.
+Use `open_session_from_sources` for multiple earlier layouts in priority order;
+existing destination databases win. Directory transfers use SQLite backup so
+committed WAL frames and child registrations survive without a file-copy race.
+
+For offline history inspection, `SqliteHosting::visit_session_events` streams
+the full raw journal, including abandoned branches, from a read-only SQLite
+snapshot. It does not claim execution or recover pending commands and can read
+while a different connection holds a writer lock. Hosts can search this journal
+directly without continuously rebuilding a JSONL export.
+
 
 The directory profile does not publish shared agent definitions. Use a host
 control plane for shared definitions and organization-wide policy. The original

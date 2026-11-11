@@ -297,7 +297,7 @@ async fn test_spawn_background_executes_and_signals_session() {
     assert!(messages[0].contains("Background run completed"));
 
     let log_file = file_store
-        .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+        .read_file(session_id, &format!("/background/{run_id}/output.log"))
         .await
         .unwrap()
         .expect("log file");
@@ -375,14 +375,14 @@ async fn test_spawn_background_writes_artifacts_under_read_only_policy() {
     .expect("background run should complete");
 
     let messages = platform_store.sent_messages.lock().unwrap().clone();
-    let result_path = format!("/.background/{run_id}/result.json");
+    let result_path = format!("/background/{run_id}/result.json");
     assert!(
         messages
             .iter()
             .any(|message| message.contains(&result_path)),
         "wake message names the result path: {messages:?}"
     );
-    for path in [result_path, format!("/.background/{run_id}/output.log")] {
+    for path in [result_path, format!("/background/{run_id}/output.log")] {
         assert!(
             model_store
                 .read_file(session_id, &path)
@@ -448,7 +448,7 @@ async fn test_spawn_background_persists_failure_artifacts() {
     let _ = run_id;
 
     let log_file = file_store
-        .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+        .read_file(session_id, &format!("/background/{run_id}/output.log"))
         .await
         .unwrap()
         .expect("log file");
@@ -461,7 +461,7 @@ async fn test_spawn_background_persists_failure_artifacts() {
     );
 
     let result_file = file_store
-        .read_file(session_id, &format!("/.background/{run_id}/result.json"))
+        .read_file(session_id, &format!("/background/{run_id}/result.json"))
         .await
         .unwrap()
         .expect("result file");
@@ -691,7 +691,7 @@ async fn test_spawn_background_caps_output_log_size() {
     let _ = run_id;
 
     let log_content = file_store
-        .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+        .read_file(session_id, &format!("/background/{run_id}/output.log"))
         .await
         .unwrap()
         .expect("log file")
@@ -891,7 +891,7 @@ async fn test_cancel_background_run_via_task_registry() {
 
     // Verify result.json and output.log were written.
     let result_file = file_store
-        .read_file(session_id, &format!("/.background/{run_id}/result.json"))
+        .read_file(session_id, &format!("/background/{run_id}/result.json"))
         .await
         .unwrap()
         .expect("result.json should exist");
@@ -901,7 +901,7 @@ async fn test_cancel_background_run_via_task_registry() {
     assert_eq!(result_json["status"], "canceled");
 
     let log_file = file_store
-        .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+        .read_file(session_id, &format!("/background/{run_id}/output.log"))
         .await
         .unwrap()
         .expect("output.log should exist");
