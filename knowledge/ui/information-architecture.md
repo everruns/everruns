@@ -126,9 +126,11 @@ organization. Each side chat is a new instance of the managed Agent, with
 separate history, workspace files and threads. Selecting one replaces the
 conversation; it never opens beside another chat. Every chat is a coordinator:
 its **Threads** panel on the right lists the threads it started, and a thread
-opens in that panel (or in the page pane when Chat sits beside a page). A
-thread uses its validated chat parent. On app pages the conversation opens
-beside the page; `/chats` routes show it full screen. See
+opens in that panel (or in the page pane, at `/threads/{id}`, when Chat sits
+beside a page). A thread uses its validated chat parent. In the default Chat
+first layout the conversation stays beside every app page, with navigation in a
+rail on the right; Classic keeps the left sidebar. `/chats` routes show the
+conversation full screen. See
 [Chat, side chats, threads](chat-mode.md).
 
 An idle conversation remains open. Explicit Resolve/Reopen reuse the durable archive

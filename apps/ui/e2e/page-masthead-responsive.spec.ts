@@ -1,5 +1,11 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
 
+async function useClassicLayout(page: Page) {
+  await page.route("**/api/v1/user/preferences/ui.layout", (route) =>
+    route.fulfill({ json: { key: "ui.layout", value: "classic" } }),
+  );
+}
+
 const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
 const HARNESS_ID = "harness_019fd9b43fa37512b8f25226b21c2c8b";
@@ -200,6 +206,8 @@ for (const scenario of [
       else await route.fulfill({ json: [] });
     });
     await page.route(`**/api/v1/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
+    // The page alone is the Classic layout; Chat first keeps Chat beside it.
+    if (!scenario.open) await useClassicLayout(page);
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(`/agents/${AGENT_ID}?tab=integrations`);
@@ -209,8 +217,7 @@ for (const scenario of [
     });
     await expect(row).toBeVisible();
     if (scenario.open) {
-      await page.keyboard.press("Control+j");
-      await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-chat-mode", "open");
+      await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-layout", "beside");
     }
     await row.click();
     await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_ID}/triggers/${triggerId}$`), {
@@ -416,6 +423,8 @@ test.describe("Page masthead responsive layout", () => {
   }
 
   test("keeps actions aligned beside identity content at wide desktop width", async ({ page }) => {
+    // The full-width page is the Classic layout; Chat first narrows the page pane.
+    await useClassicLayout(page);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`/agents/${AGENT_ID}`);
 
@@ -597,6 +606,11 @@ test.describe("Agent settings drawer animation", () => {
   test("animates the mobile navigation and supports Done, Escape, and backdrop dismissal", async ({
     page,
   }) => {
+    // Beside Chat, drawers deliberately ignore outside clicks so Chat stays usable;
+    // backdrop dismissal is the Classic (page alone) behavior.
+    await useClassicLayout(page);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Jokes Agent" })).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     const drawer = page.locator('[data-slot="drawer-content"]');
     const opening = await sampleDrawerFrames(page.getByRole("button", { name: "Open navigation" }));

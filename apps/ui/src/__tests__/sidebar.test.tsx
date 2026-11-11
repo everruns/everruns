@@ -104,6 +104,12 @@ jest.mock("@/components/layout/sidebar-chat-threads", () => ({
 
 let mockAttentionItems: unknown[] = [];
 let mockAttentionError: Error | null = null;
+const setLayout = jest.fn();
+jest.mock("@/hooks/use-layout-preference", () => ({
+  ...jest.requireActual("@/hooks/use-layout-preference"),
+  useLayoutPreference: () => ({ layout: "chat_first", ready: true, setLayout, saving: false }),
+}));
+
 jest.mock("@/components/home/use-home-attention", () => ({
   useHomeAttention: () => {
     if (mockAttentionError) throw mockAttentionError;

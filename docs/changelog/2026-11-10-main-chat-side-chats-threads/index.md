@@ -17,9 +17,10 @@ itself when a new thread starts. Click a thread to read it next to the chat.
 
 ![Threads panel beside Main chat with one thread needing an answer, two working with step counts, and one ready for review](./threads-panel@2x.png)
 
-**Side chats** replace subchats and can start their own threads. On any page,
-click Main chat in the sidebar or press Cmd/Ctrl-J and the conversation opens
-beside that page; Cmd/Ctrl-Shift-J switches to full screen and back. This is
+**Side chats** replace subchats and can start their own threads. The
+conversation sits beside the page you are on (since 2026-11-11 the default
+[Chat first layout](/changelog/2026-11-11-chat-first-layout/) keeps it there);
+Cmd/Ctrl-Shift-J switches to full screen and back. This is
 now on for every organization: the Chat workspace and Chat background work
 opt-ins are gone. Home is now **Overview**, under Building, with a count of the
 items waiting there. See [Platform Chat](/built-ins/harnesses/platform-chat/).

@@ -48,17 +48,29 @@ class QuietBoundary extends Component<{ children: ReactNode }, { failed: boolean
 }
 
 /** How many items wait on Overview's "Needs attention" list; hidden at zero. */
-function OverviewCount() {
+function OverviewCount({ className }: { className?: string }) {
   const ui = useUiTranslations();
   const { items } = useHomeAttention();
   if (items.length === 0) return null;
   return (
     <span
-      className="ml-auto min-w-5 bg-primary/10 px-1.5 text-center text-[11px] font-semibold tabular-nums text-primary"
+      className={cn(
+        "min-w-5 bg-primary/10 px-1.5 text-center text-[11px] font-semibold tabular-nums text-primary",
+        className ?? "ml-auto",
+      )}
       aria-label={ui("{value0} need attention", { value0: items.length })}
     >
       {items.length}
     </span>
+  );
+}
+
+/** Overview's attention count, isolated so a failing query only hides it. */
+export function OverviewCountBadge({ className }: { className?: string }) {
+  return (
+    <QuietBoundary>
+      <OverviewCount className={className} />
+    </QuietBoundary>
   );
 }
 
