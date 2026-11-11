@@ -39,6 +39,12 @@ fn unavailable(error: impl std::fmt::Display) -> ApiError {
     (StatusCode::SERVICE_UNAVAILABLE, error.to_string())
 }
 
+/// How long a gateway call may take, over every member it tries.
+const CALL_DEADLINE: Duration = Duration::from_secs(45);
+
+/// How long one try at one member may take.
+const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
+
 pub struct Gateway {
     topology: TopologySource,
     /// The directory cell's cell registry, refreshed every second.
@@ -263,12 +269,31 @@ impl Gateway {
         path: &str,
         body: Option<&Value>,
     ) -> Result<T, ApiError> {
+        self.call_within(cell, path, body, ATTEMPT_TIMEOUT).await
+    }
+
+    /// [`call`](Self::call) for a request that may take up to `attempt` at
+    /// one member (a long poll).
+    pub(crate) async fn call_within<T: DeserializeOwned>(
+        &self,
+        cell: CellId,
+        path: &str,
+        body: Option<&Value>,
+        attempt_timeout: Duration,
+    ) -> Result<T, ApiError> {
         let nodes = self.nodes(cell)?;
         let start = self.next.fetch_add(1, Ordering::Relaxed);
-        let deadline = Instant::now() + Duration::from_secs(20);
+        // Decision: each try gets at most `ATTEMPT_TIMEOUT`, so a member
+        // that accepts connections but never answers (a hung or stopped
+        // process; the kernel still completes the handshake) costs one try,
+        // not the whole call. Before, one try could outlast the deadline
+        // and the gateway never reached the healthy members (found by
+        // `prove_follower_catchup.py`). A retried proposal is safe: every
+        // command a gateway proposes is idempotent by its id or seed.
+        let deadline = Instant::now() + CALL_DEADLINE.max(attempt_timeout * 2);
         let mut last_error = String::new();
         let mut attempt = 0usize;
-        while Instant::now() < deadline {
+        while let Some(left) = deadline.checked_duration_since(Instant::now()) {
             let addr = &nodes[(start + attempt) % nodes.len()];
             attempt += 1;
             let url = format!("http://{addr}{path}");
@@ -276,7 +301,7 @@ impl Gateway {
                 Some(body) => self.http.post(url).json(body),
                 None => self.http.get(url),
             };
-            match request.timeout(Duration::from_secs(45)).send().await {
+            match request.timeout(left.min(attempt_timeout)).send().await {
                 Ok(response) if response.status().is_success() => {
                     return response.json().await.map_err(unavailable);
                 }
@@ -1140,10 +1165,11 @@ async fn wait(
         .with_cell(id, |cell| {
             let gw = gw.clone();
             async move {
-                gw.call(
+                gw.call_within(
                     cell,
                     &format!("/cell/sessions/{id}/wait?turns={turns}&timeout_ms={timeout}"),
                     None,
+                    Duration::from_millis(timeout) + Duration::from_secs(5),
                 )
                 .await
             }

@@ -135,6 +135,8 @@ def cleanup():
 
 
 if __name__ == "__main__":
+    # Run the cleanup on `timeout` and Ctrl-C too.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(124))
     try:
         main()
     finally:
