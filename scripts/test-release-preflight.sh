@@ -169,6 +169,12 @@ pending = preflight.pending_first_release(
     "0.5.0", CRATES, preflight.Registry(), {"crate/crate-a/v0.5.0": SHA_A}
 )
 require(pending == [], f"a crate already on crates.io is never pending: {pending}")
+# A name reserved with the bootstrap placeholder has never really been released.
+registry({"crate-a": {"versions": ["0.5.0"]}, "crate-b": {"versions": [preflight.BOOTSTRAP_VERSION]}})
+pending = preflight.pending_first_release(
+    "0.5.0", CRATES, preflight.Registry(), {"crate/crate-a/v0.5.0": SHA_A}
+)
+require(pending == ["crate-b"], f"a bootstrap-only crate must wait like a new one: {pending}")
 
 tags_path = tmp / "tags.json"
 tags_path.write_text(json.dumps({"tags": both}))

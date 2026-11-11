@@ -347,7 +347,11 @@ newer than the release source; it is not the package provenance anchor.
 
 A new crate needs its first version published by an owner with a suitably scoped
 API token before crates.io permits a trusted publisher. Complete that bootstrap
-and configure trust before adding a new name to automated publication. Trusted
+and configure trust before adding a new name to automated publication. Bootstrap
+with a `0.0.0` placeholder package that only reserves the name, not the real
+crate: the real source pins sibling versions that may not match crates.io yet.
+The published-version audit treats a name holding only `0.0.0` as not yet
+released, so it waits for the next version instead of reddening main. Trusted
 publishing cannot yank versions. Preserve any token needed for separate yank or
 bootstrap operations; remove obsolete publishing credentials only after a real
 OIDC publication succeeds and their other consumers have been checked.

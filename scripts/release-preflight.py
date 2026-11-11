@@ -254,21 +254,30 @@ def check_version_is_new(
         )
 
 
+# An owner reserves a new crate name by hand-publishing this placeholder version
+# before crates.io lets the crate trust the publishing workflow
+# (knowledge/project/release-process.md, "crates.io trusted publishing").
+# everruns-coding was bootstrapped this way on 2026-11-11.
+BOOTSTRAP_VERSION = "0.0.0"
+
+
 def pending_first_release(
     version: str, crates: dict[str, str], registry: Registry, tags: dict[str, str]
 ) -> list[str]:
-    """Never-published crates that joined the publish set after `version` was cut.
+    """Never-released crates that joined the publish set after `version` was cut.
 
     Crate Release holds a new crate back once siblings are on crates.io from
     another commit, so it first ships with the next version. Without a
     crate/<name>/v<version> tag no cascade ever tried it at this version; that
     is the expected wait, not a halted cascade. A tagged one did fail to publish
-    and stays in the audit.
+    and stays in the audit. A name holding only the bootstrap placeholder has
+    never had a real release, so it waits the same way.
     """
     return sorted(
         name
         for name in crates
-        if not registry.versions(name) and f"crate/{name}/v{version}" not in tags
+        if not [v for v in registry.versions(name) if v != BOOTSTRAP_VERSION]
+        and f"crate/{name}/v{version}" not in tags
     )
 
 
