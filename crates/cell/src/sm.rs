@@ -54,6 +54,9 @@ pub struct Shared {
     pub cell: CellId,
     /// When each session last changed, for unloading the coldest first.
     touched: parking_lot::Mutex<HashMap<SessionId, Instant>>,
+    /// The entry index of each session's latest change (at least: the
+    /// index being applied when it changed), for executors' watches.
+    changed: parking_lot::Mutex<HashMap<SessionId, u64>>,
     /// Running estimate of an event's size in memory, in bytes.
     event_bytes: AtomicU64,
     /// How long the last snapshot took to build and write, in ms.
@@ -76,6 +79,7 @@ impl Shared {
             store,
             cell,
             touched: Default::default(),
+            changed: Default::default(),
             event_bytes: AtomicU64::new(4096),
             snapshot_ms: AtomicU64::new(0),
             on_change: std::sync::OnceLock::new(),
@@ -405,6 +409,8 @@ impl Shared {
     pub fn publish(&self, change: Change) {
         let session = change.session();
         self.touched.lock().insert(session, Instant::now());
+        let at = *self.applied.borrow() + 1;
+        self.changed.lock().insert(session, at);
         let mut watchers = self.watchers.lock();
         if let Some(tx) = watchers.get(&session)
             && tx.send(change.clone()).is_err()
@@ -416,6 +422,12 @@ impl Shared {
             hook(&change);
         }
         let _ = self.changes.send(change);
+    }
+
+    /// The index `session` last changed at (0: not since this node
+    /// started).
+    pub fn changed_at(&self, session: SessionId) -> u64 {
+        self.changed.lock().get(&session).copied().unwrap_or(0)
     }
 
     /// Wait until this replica has applied `index`.
@@ -507,6 +519,7 @@ fn stub(s: &SessionState) -> SessionState {
         moving_to: s.moving_to,
         turn_start: s.turn_start,
         checkpoints: s.checkpoints.clone(),
+        files: s.files.clone(),
     }
 }
 
@@ -610,6 +623,8 @@ impl StateMachine {
             parts: state.parts.clone(),
             definitions: Default::default(),
             allowances: state.allowances.clone(),
+            orgs: state.orgs.clone(),
+            feed: state.feed.clone(),
         }
     }
 }

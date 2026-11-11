@@ -8,7 +8,7 @@ use everruns_cell::Host;
 #[test]
 fn every_test_definition_builds() {
     let host = everruns_cell_testkit::host();
-    for name in ["echo", "worker", "worker3", "slow", "sim", "lead"] {
+    for name in ["echo", "worker", "worker3", "slow", "sim", "lead", "files"] {
         let definition = everruns_cell_testkit::definition(name).expect(name);
         host.agent(&definition)
             .unwrap_or_else(|error| panic!("{name}: {error}"));

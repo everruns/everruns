@@ -8,6 +8,8 @@
 //! models here exist only so failure and scale tests are deterministic and
 //! free.
 
+pub mod fake_cp;
+
 use std::io::Write;
 use std::time::Duration;
 
@@ -120,6 +122,60 @@ fn chat_model() -> Model {
             ))),
         ),
     )
+}
+
+/// A model over the session's own workspace: `write <path> <text>` writes a
+/// file, `read <path>` reads one, and the answer after the tool quotes the
+/// tool's result. What it plays depends only on the conversation, so any
+/// executor, before or after a move, plays the same step.
+struct FilesSim;
+
+#[async_trait::async_trait]
+impl everruns::ChatDriver for FilesSim {
+    async fn chat_completion_stream(
+        &self,
+        endpoint: &everruns::ProviderEndpoint,
+        messages: Vec<everruns_contracts::Message>,
+        config: &everruns::LlmCallConfig,
+    ) -> everruns_contracts::Result<everruns::LlmResponseStream> {
+        use everruns_contracts::MessageRole;
+        let turn = match messages.last() {
+            Some(last) if last.role == MessageRole::Tool => {
+                SimTurn::Assistant(format!("Result: {}", last.content.to_text()))
+            }
+            _ => {
+                let text = messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == MessageRole::User)
+                    .map(|m| m.content.to_text())
+                    .unwrap_or_default();
+                let mut words = text.trim().splitn(3, ' ');
+                let call = |name: &str, arguments: Value| {
+                    SimTurn::ToolCalls(vec![SimToolCall {
+                        name: name.into(),
+                        arguments,
+                        id: None,
+                    }])
+                };
+                match (words.next(), words.next(), words.next()) {
+                    (Some("write"), Some(path), content) => call(
+                        "write_file",
+                        json!({ "path": path, "content": content.unwrap_or_default() }),
+                    ),
+                    (Some("read"), Some(path), _) => call("read_file", json!({ "path": path })),
+                    _ => SimTurn::Assistant("Say write or read.".into()),
+                }
+            }
+        };
+        everruns_llmsim::LlmSimDriver::new(LlmSimConfig::scripted(vec![turn]))
+            .chat_completion_stream(endpoint, messages, config)
+            .await
+    }
+}
+
+fn files_model() -> Model {
+    Model::new("files", everruns::Provider::new("llmsim", FilesSim))
 }
 
 /// A simulated model that hands the message to the member named `worker3`
@@ -389,6 +445,7 @@ static BLOB_SIM: std::sync::LazyLock<LlmSimConfig> = std::sync::LazyLock::new(||
 /// - `slow`: `work-1` behind a slow model call (`CELL_MODEL_DELAY_MS`);
 /// - `lead`: delegate to the member `worker3`, then report;
 /// - `chat`: a long answer, with no tools, and native compaction;
+/// - `files`: writes or reads a workspace file the message names;
 /// - anything else: plays the Everruns llmsim scenario named by a
 ///   `[[llmsim:<scenario>]]` marker in the message, and otherwise answers
 ///   "done.".
@@ -404,6 +461,7 @@ pub fn host() -> StandardHost {
                 "lead" => lead_model(),
                 "chat" => chat_model(),
                 "blob" => blob_model(),
+                "files" => files_model(),
                 _ => Model::simulated("done."),
             })
         })
@@ -453,6 +511,8 @@ fn agent(name: &str, instructions: &str, model: &str, tool_names: &[&str]) -> Va
 /// - `sim`: plays the llmsim scenario named in each message, with file and
 ///   shell tools;
 /// - `chat`: answers, with context compaction (for long sessions);
+/// - `files`: writes and reads its workspace (`write <path> <text>`,
+///   `read <path>`);
 /// - `lead`: hands each message to its bundled member `worker3`.
 pub fn definition(name: &str) -> Option<Value> {
     Some(match name {
@@ -484,6 +544,13 @@ pub fn definition(name: &str) -> Option<Value> {
                 "config": { "strategy": "native", "budget_percent": 0.1 }
             }]);
             blob
+        }
+        "files" => {
+            // The session's durable workspace, through the Framework's own
+            // file tools.
+            let mut files = agent("files", "Use the files.", "files", &[]);
+            files["capabilities"] = json!([{ "ref": "session_file_system" }]);
+            files
         }
         "lead" => {
             let mut lead = agent("lead", "Delegate, then report.", "lead", &["delegate"]);

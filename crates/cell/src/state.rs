@@ -58,6 +58,27 @@ pub enum Command {
         grant_id: String,
         grant: crate::allowance::Grant,
     },
+    /// The control plane answered allowance request `request` of `tenant`
+    /// (see `node_control.rs`): its grant, if any, and the grants that
+    /// request settled as closed.
+    Allowance {
+        tenant: String,
+        request: u64,
+        #[serde(default)]
+        grant: Option<(String, crate::allowance::Grant)>,
+        #[serde(default)]
+        refused: Option<String>,
+        #[serde(default)]
+        closed: Vec<String>,
+    },
+    /// A control plane config update for `org` (directory cell).
+    Config {
+        org: String,
+        update: crate::dp::ConfigUpdate,
+        now_ms: i64,
+    },
+    /// The control plane stored the feed through `(index, ordinal)`.
+    FeedAcked { through: (u64, u32) },
     /// Reserve `session`'s next provider call; the reply is the Engine's
     /// budget reading.
     Reserve { session: SessionId, now_ms: i64 },
@@ -70,13 +91,17 @@ pub enum Command {
         ttl_ms: i64,
         now_ms: i64,
     },
-    /// Extend an epoch and record the input it consumed.
+    /// Extend an epoch and record the input it consumed. `receipts` ride
+    /// on it (Engine's `commit_with_lease`): committed if absent, only if
+    /// the renewal is.
     Renew {
         session: SessionId,
         holder: String,
         fence: u64,
         ttl_ms: i64,
         consumed: i64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        receipts: Vec<(String, serde_json::Value)>,
         now_ms: i64,
     },
     /// A resumed epoch's turn made progress: the poison guard counts from
@@ -87,7 +112,8 @@ pub enum Command {
         fence: u64,
         now_ms: i64,
     },
-    /// Give an epoch back (`hand_off`: mid-turn, still runnable).
+    /// Give an epoch back (`hand_off`: mid-turn, still runnable), with the
+    /// receipts riding on it, as on `Renew`.
     Release {
         session: SessionId,
         holder: String,
@@ -95,6 +121,8 @@ pub enum Command {
         consumed: i64,
         #[serde(default)]
         hand_off: bool,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        receipts: Vec<(String, serde_json::Value)>,
         now_ms: i64,
     },
     /// Append one canonical event under epoch `fence`. `expected` is the
@@ -112,6 +140,17 @@ pub enum Command {
         session: SessionId,
         fence: u64,
         change: crate::authority::WriteOp,
+        now_ms: i64,
+    },
+    /// A workspace commit (see `files`): under epoch `fence`, or, without
+    /// one, from the gateway or control plane. `op_id` makes a retry return
+    /// the first reply.
+    Files {
+        session: SessionId,
+        #[serde(default)]
+        fence: Option<u64>,
+        op_id: String,
+        changes: Vec<crate::files::Change>,
         now_ms: i64,
     },
     /// Directory: `session` lives in `cell` at placement `generation`. Only
@@ -388,6 +427,9 @@ pub struct SessionState {
     /// The latest compaction checkpoint per provider, model and format.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub checkpoints: Vec<Checkpoint>,
+    /// The session's workspace (see `files`).
+    #[serde(default, skip_serializing_if = "crate::files::Files::is_empty")]
+    pub files: crate::files::Files,
 }
 
 impl SessionState {
@@ -557,6 +599,12 @@ pub struct CellState {
     /// Spend allowances, per tenant.
     #[serde(default)]
     pub allowances: crate::allowance::Allowances,
+    /// Each org's control plane config (directory cell only).
+    #[serde(default)]
+    pub orgs: crate::control::Orgs,
+    /// Feed records the control plane has not acknowledged yet.
+    #[serde(default)]
+    pub feed: crate::control::Feed,
     /// Commands arriving in pieces, by id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub parts: std::collections::BTreeMap<uuid::Uuid, Assembly>,
@@ -901,6 +949,45 @@ impl CellState {
                     Response::Duplicate
                 }
             }
+            Command::Allowance {
+                tenant,
+                request,
+                grant,
+                refused,
+                closed,
+            } => {
+                let allowance = self.allowances.tenants.entry(tenant).or_default();
+                if allowance.answered(request, grant, refused, &closed) {
+                    Response::Ok
+                } else {
+                    Response::Duplicate
+                }
+            }
+            Command::Config {
+                org,
+                update,
+                now_ms,
+            } => {
+                let ack = self.orgs.apply(&org, &update);
+                if let crate::dp::ConfigAck::Ok { applied_version } = ack {
+                    let index = self.last_applied.map_or(0, |l| l.index);
+                    self.feed.push(
+                        index,
+                        &org,
+                        now_ms,
+                        crate::dp::Record::ConfigApplied {
+                            version: applied_version,
+                        },
+                    );
+                }
+                Response::Value {
+                    value: serde_json::to_value(ack).unwrap_or_default(),
+                }
+            }
+            Command::FeedAcked { through } => {
+                self.feed.ack(through);
+                Response::Ok
+            }
             Command::Reserve { session, now_ms } => {
                 let Some(state) = self.sessions.get(&session) else {
                     return self.missing(session);
@@ -922,12 +1009,23 @@ impl CellState {
                 fence,
                 ttl_ms,
                 consumed,
+                receipts,
                 now_ms,
             } => {
-                let Some(state) = self.session_mut(session) else {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                let riding = !receipts.is_empty();
+                let Some(state) = self.sessions.get_mut(&session) else {
                     return self.missing(session);
                 };
-                match state.renew(&holder, fence, ttl_ms, consumed, now_ms) {
+                let before = state.turns_completed();
+                let renewed = state.renew(&holder, fence, ttl_ms, consumed, receipts, now_ms);
+                if state.turns_completed() > before {
+                    self.feed.turn_finished(index, &session.to_string(), state);
+                }
+                if riding && renewed.is_some() {
+                    changes.push(Change::Session(session));
+                }
+                match renewed {
                     Some(value) => Response::Value { value },
                     None => Response::Fenced,
                 }
@@ -953,12 +1051,18 @@ impl CellState {
                 fence,
                 consumed,
                 hand_off,
+                receipts,
                 now_ms,
             } => {
-                let Some(state) = self.session_mut(session) else {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                let Some(state) = self.sessions.get_mut(&session) else {
                     return self.missing(session);
                 };
-                let released = state.release(&holder, fence, consumed, hand_off, now_ms);
+                let before = state.turns_completed();
+                let released = state.release(&holder, fence, consumed, hand_off, receipts, now_ms);
+                if state.turns_completed() > before {
+                    self.feed.turn_finished(index, &session.to_string(), state);
+                }
                 changes.push(Change::Session(session));
                 match released {
                     Some(runnable) => Response::Value {
@@ -987,12 +1091,41 @@ impl CellState {
                 change,
                 now_ms,
             } => {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                let Some(state) = self.sessions.get_mut(&session) else {
+                    return self.missing(session);
+                };
+                let before = state.turns_completed();
+                let applied = state.write(fence, change, now_ms);
+                if state.turns_completed() > before {
+                    self.feed.turn_finished(index, &session.to_string(), state);
+                }
+                changes.push(Change::Session(session));
+                self.applied(session, applied, changes)
+            }
+            Command::Files {
+                session,
+                fence,
+                op_id: op,
+                changes: commit,
+                now_ms,
+            } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);
                 };
-                let applied = state.write(fence, change, now_ms);
+                if let Some(reply) = state.files.replay(&op) {
+                    return Response::Value { value: reply };
+                }
+                match fence {
+                    Some(fence) if !state.authority.current(fence, now_ms) => {
+                        return Response::Fenced;
+                    }
+                    None if state.placement != Placement::Live => return Response::Frozen,
+                    _ => {}
+                }
+                let value = state.files.commit(op, commit, now_ms);
                 changes.push(Change::Session(session));
-                self.applied(session, applied, changes)
+                Response::Value { value }
             }
             Command::Locate { session } => {
                 if let Some(to) = self.sealed.get(&shard_of(session)) {
@@ -1269,10 +1402,14 @@ impl CellState {
         use crate::authority::Applied;
         match applied {
             Applied::Done(value, events) => {
+                let index = self.last_applied.map_or(0, |l| l.index);
                 for event in &events {
                     if let Some(micros) = generation_cost_micros(event) {
                         let tenant = self.sessions.get(&session).and_then(|s| s.tenant.clone());
                         self.allowances.settle(tenant.as_deref(), session, micros);
+                    }
+                    if let Some(s) = self.sessions.get(&session) {
+                        self.feed.observe(index, &session.to_string(), s, event);
                     }
                 }
                 for event in events {
@@ -1310,177 +1447,8 @@ fn generation_cost_micros(event: &Event) -> Option<i64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_command_in_pieces_applies_once_whole() {
-        let create = Command::RegisterCell {
-            cell: 9,
-            members: vec![(1, "x".repeat(5000))],
-        };
-        let json = serde_json::to_string(&create).unwrap();
-        let id = uuid::Uuid::new_v4();
-        let pieces: Vec<String> = json
-            .as_bytes()
-            .chunks(1000)
-            .map(|c| String::from_utf8(c.to_vec()).unwrap())
-            .collect();
-        let total = pieces.len() as u32;
-        let mut state = CellState::default();
-        let mut changes = Vec::new();
-        for (seq, data) in pieces.iter().enumerate() {
-            let response = state.apply(
-                Command::Part {
-                    id,
-                    seq: seq as u32,
-                    total,
-                    at_ms: 1,
-                    data: data.clone(),
-                },
-                &mut changes,
-            );
-            if seq + 1 < total as usize {
-                assert!(matches!(response, Response::Ok));
-                assert!(!state.cells.contains_key(&9));
-            } else {
-                assert!(matches!(response, Response::Ok), "{response:?}");
-            }
-        }
-        assert!(state.cells.contains_key(&9));
-        assert!(state.parts.is_empty());
-
-        // A piece out of order drops the assembly; a stale one is collected.
-        let stale = uuid::Uuid::new_v4();
-        let part = |id, seq, at_ms| Command::Part {
-            id,
-            seq,
-            total: 3,
-            at_ms,
-            data: String::new(),
-        };
-        state.apply(part(stale, 0, 1), &mut changes);
-        assert!(matches!(
-            state.apply(part(id, 1, 1), &mut changes),
-            Response::Rejected { .. }
-        ));
-        state.apply(part(id, 0, 1 + PART_TTL_MS), &mut changes);
-        assert_eq!(state.parts.keys().collect::<Vec<_>>(), vec![&id]);
-    }
-
-    /// Commands travel as internally tagged JSON (Raft entries, proposals);
-    /// every shape must survive the round trip.
-    #[test]
-    fn compaction_keeps_tiers_whatever_the_flush_sizes() {
-        use crate::store::SegRef;
-        let mut s = SessionState::default();
-        // Flushes of 11 to 77 events (a turn or a busy tail); compact
-        // whenever 16 segments pile up.
-        let mut writes: i64 = 0;
-        let mut rng: u64 = 7;
-        for flush in 0..6000 {
-            rng = rng
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            let n = 11 * (1 + (rng >> 33) % 7) as i32;
-            let from = s.flushed() + 1;
-            s.record(SegRef {
-                from,
-                to: from + n - 1,
-            });
-            writes += i64::from(n);
-            if s.segments.len() >= 16
-                && let Some((from, to)) = s.compaction_range()
-            {
-                writes += i64::from(to - from + 1);
-                s.record(SegRef { from, to });
-            }
-            assert!(s.segments.len() <= 20, "flush {flush}: {:?}", s.segments);
-            // Contiguous from 1; the first segment is the first flush.
-            assert_eq!(s.segments[0].from, 1);
-            assert!(s.segments[0].to <= 77);
-            assert!(s.segments.windows(2).all(|w| w[1].from == w[0].to + 1));
-        }
-        // Each event rewritten a handful of times, not once per compaction.
-        let events = i64::from(s.flushed());
-        assert!(writes < events * 10, "wrote {writes} for {events} events");
-        // A segment that matches no run, or starts nowhere recorded, is ignored.
-        let before = s.segments.clone();
-        s.record(SegRef {
-            from: 7,
-            to: s.flushed(),
-        });
-        s.record(SegRef { from: 1, to: 5 });
-        assert_eq!(s.segments, before);
-    }
-
-    #[test]
-    fn register_cell_round_trips() {
-        let command = Command::RegisterCell {
-            cell: 3,
-            members: vec![(1, "127.0.0.1:7301".into()), (4, "127.0.0.1:7304".into())],
-        };
-        let json = serde_json::to_string(&command).unwrap();
-        let back: Command = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back, Command::RegisterCell { cell: 3, members } if members.len() == 2));
-    }
-
-    /// A session keeps its newest checkpoint per model, written only under
-    /// the current epoch.
-    #[test]
-    fn checkpoints_keep_the_newest_per_model() {
-        let session = SessionId::new();
-        let mut cell = CellState::default();
-        let mut state = SessionState::default();
-        state.authority.fence = 7;
-        state.authority.holder = Some(crate::authority::Holder {
-            name: "h".into(),
-            node: 1,
-            fence: 7,
-            expires_ms: 1,
-        });
-        cell.sessions.insert(session, state);
-        let checkpoint = |model: &str, at: i64| Checkpoint {
-            id: uuid::Uuid::new_v4(),
-            source_sequence: at,
-            provider_type: "llmsim".into(),
-            model: model.into(),
-            format_version: 1,
-            payload: everruns_core::CompactionCheckpointPayload::Summary {
-                text: format!("up to {at}"),
-            },
-        };
-        let mut apply = |fence, c| {
-            let command = Command::Write {
-                session,
-                fence,
-                change: crate::authority::WriteOp::Checkpoint { checkpoint: c },
-                now_ms: 0,
-            };
-            let command: Command =
-                serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
-            match cell.apply(command, &mut Vec::new()) {
-                Response::Value { value } => Some(value.as_bool().unwrap()),
-                Response::Fenced => None,
-                other => panic!("{other:?}"),
-            }
-        };
-        assert_eq!(apply(7, checkpoint("a", 10)), Some(true));
-        assert_eq!(apply(7, checkpoint("a", 5)), Some(false));
-        assert_eq!(apply(7, checkpoint("b", 3)), Some(true));
-        assert_eq!(apply(7, checkpoint("a", 20)), Some(true));
-        assert_eq!(apply(6, checkpoint("a", 30)), None);
-        let kept = &cell.sessions[&session].checkpoints;
-        assert_eq!(kept.len(), 2);
-        assert_eq!(
-            kept.iter()
-                .find(|c| c.model == "a")
-                .unwrap()
-                .source_sequence,
-            20
-        );
-    }
-}
+#[path = "state_tests.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "state_moves_tests.rs"]

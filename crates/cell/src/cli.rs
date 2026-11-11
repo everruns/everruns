@@ -72,6 +72,37 @@ enum Mode {
         /// file does not list this node.
         #[arg(long)]
         listen: Option<String>,
+        /// Leave turns to executors outside the cell, which pull them with
+        /// credits; at most this many run in the cell at once (0: nodes run
+        /// turns themselves).
+        #[arg(long, env = "CELL_EXECUTOR_CAP", default_value = "0")]
+        executor_cap: usize,
+        /// The control plane's `/dp/v1` base URL: the leader delivers the
+        /// feed there and asks it for spend allowances.
+        #[arg(long, env = "CELL_CONTROL_PLANE")]
+        control_plane: Option<String>,
+    },
+    /// Run an executor: pull turns from every cell and run them.
+    Executor {
+        #[arg(long, env = "CELL_TOPOLOGY")]
+        topology: PathBuf,
+        /// This executor's id (unique in the fleet; at least 2^32).
+        #[arg(long)]
+        id: u64,
+        #[arg(long, env = "CELL_STORE")]
+        store: String,
+        /// Turns this executor runs at once.
+        #[arg(long, env = "CELL_EXECUTOR_SLOTS", default_value = "64")]
+        slots: usize,
+        /// Sessions kept mirrored after their turn ended.
+        #[arg(long, default_value = "4096")]
+        mirror_sessions: usize,
+        /// Segment and blob cache, in MiB.
+        #[arg(long, default_value = "256")]
+        cache_mb: usize,
+        /// Address for `/health` and `/metrics`.
+        #[arg(long)]
+        listen: Option<SocketAddr>,
     },
     /// Run a stateless gateway.
     Gateway {
@@ -110,6 +141,8 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             keep_log,
             join,
             listen,
+            executor_cap,
+            control_plane,
         } => {
             let source = TopologySource { path: topology };
             let seeded = source.read()?.cells.get(&cell).cloned();
@@ -133,8 +166,35 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 max_turns_per_node,
                 snapshot_every,
                 keep_log,
+                executors: if executor_cap == 0 {
+                    crate::node::ExecutorMode::InNode
+                } else {
+                    crate::node::ExecutorMode::Pull {
+                        max_running: executor_cap,
+                    }
+                },
+                control_plane: control_plane.map(crate::node_control::ControlPlane::new),
             };
             serve_node(cfg, host, source, addr.parse()?, join).await
+        }
+        Mode::Executor {
+            topology,
+            id,
+            store,
+            slots,
+            mirror_sessions,
+            cache_mb,
+            listen,
+        } => {
+            let cfg = crate::executor::ExecutorConfig {
+                id,
+                topology: TopologySource { path: topology },
+                store: crate::store::Store::open(&store)?.with_cache(cache_mb << 20),
+                slots,
+                mirror_sessions,
+                pull_wait: Duration::from_secs(1),
+            };
+            serve_executor(cfg, host, listen).await
         }
         Mode::Gateway { topology, listen } => {
             let gateway = Gateway::new(TopologySource { path: topology });
@@ -159,7 +219,10 @@ pub async fn serve_node(
     let node = Node::start(cfg, host).await?;
     let gateway = Gateway::new(topology);
     let _ = node.gateway.set(gateway.clone());
-    let app = crate::api::router(node.clone()).merge(crate::gateway::router(gateway));
+    let app = crate::api::router(node.clone())
+        .merge(crate::exec_api::router(node.clone()))
+        .merge(crate::gateway_dp::cell_router(node.clone()))
+        .merge(crate::gateway::router(gateway));
     let listener = tokio::net::TcpListener::bind(listen).await?;
     tracing::info!(cell, node = id, %listen, "node listening");
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
@@ -168,6 +231,33 @@ pub async fn serve_node(
     }
     node.spawn_loops();
     server.await??;
+    Ok(())
+}
+
+/// Run an executor until stopped (SIGTERM drains it first).
+pub async fn serve_executor(
+    cfg: crate::executor::ExecutorConfig,
+    host: Arc<dyn Host>,
+    listen: Option<SocketAddr>,
+) -> anyhow::Result<()> {
+    let executor = crate::executor::Executor::start(cfg, host)?;
+    executor.spawn();
+    if let Some(listen) = listen {
+        let app = crate::executor::router(executor.clone());
+        let listener = tokio::net::TcpListener::bind(listen).await?;
+        tracing::info!(%listen, "executor listening");
+        tokio::spawn(async move { axum::serve(listener, app).await });
+    }
+    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    tokio::select! {
+        _ = term.recv() => {}
+        _ = tokio::signal::ctrl_c() => {}
+    }
+    tracing::info!(running = executor.running(), "draining");
+    executor.drain();
+    while executor.running() > 0 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     Ok(())
 }
 

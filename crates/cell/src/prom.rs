@@ -38,6 +38,11 @@ impl Counters {
     pub fn add(&self, labels: &[(&str, &str)], n: u64) {
         *self.0.lock().entry(render(labels)).or_insert(0) += n;
     }
+
+    /// The count for exactly `labels`.
+    pub fn get(&self, labels: &[(&str, &str)]) -> u64 {
+        self.0.lock().get(&render(labels)).copied().unwrap_or(0)
+    }
 }
 
 /// A gauge family that moves up and down (running turns per agent).

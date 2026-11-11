@@ -36,7 +36,7 @@ impl Topology {
 }
 
 /// A topology file that is re-read on demand.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TopologySource {
     pub path: PathBuf,
 }

@@ -3,12 +3,17 @@
 
   chaos.py --cells 1 --sessions 300 --turns 3 --kills 15
   chaos.py --cells 2 --sessions 300 --turns 3 --kills 15 --moves 100
+  chaos.py --cells 2 --executors 3 --executor-kills 10   # turns on executors
 
 One node per cell is down at a time (a 3-node cell keeps its quorum). With
 --moves, sessions are also moved live between cells while they run. After
 the load finishes, every session's log is checked: all accepted messages
 completed with no client resend, sequences are dense, and the work tool never
 ran more times than it has durable `tool.started` events.
+
+With --executors, turns run on executors outside the cells, and
+--executor-kills kills -9 a random executor that many times (it restarts
+after a pause): its turns resume on another executor from the journal.
 """
 import argparse, json, os, random, subprocess, sys, threading, time, urllib.request
 
@@ -16,7 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
 import fleet  # noqa: E402
 
-DRIVE = os.path.join(ROOT, "target", "release", "cell-drive")
+DRIVE = os.environ.get("CELL_DRIVE_BIN", os.path.join(ROOT, "target", "release", "cell-drive"))
 
 
 def main():
@@ -28,6 +33,8 @@ def main():
     p.add_argument("--agent", default="worker3")
     p.add_argument("--work-ms", default="200")
     p.add_argument("--moves", type=int, default=0)
+    p.add_argument("--executors", type=int, default=0)
+    p.add_argument("--executor-kills", type=int, default=0)
     a = p.parse_args()
 
     subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
@@ -37,7 +44,7 @@ def main():
     os.makedirs(fleet.STATE, exist_ok=True)
     os.environ["CELL_LEDGER"] = ledger
     os.environ["CELL_WORK_MS"] = a.work_ms
-    fleet.up(a.cells, 3, 7100)
+    fleet.up(a.cells, 3, 7100, a.executors)
     time.sleep(1)
 
     gateways = ",".join(f"http://{fleet.addr(c, n)}" for c in range(a.cells) for n in (1, 2, 3))
@@ -64,6 +71,21 @@ def main():
             time.sleep(random.uniform(0.5, 2.0))
             fleet.start(cell, node)
             time.sleep(random.uniform(1.0, 2.5))
+
+    executor_kills = []
+
+    def executor_chaos():
+        time.sleep(1.0)
+        for _ in range(a.executor_kills):
+            if load.poll() is not None:
+                return
+            n = random.randint(1, a.executors)
+            fleet.kill_executor(n)
+            executor_kills.append({"executor": n, "t": time.time()})
+            print(f"kill -9 executor {n}", file=sys.stderr, flush=True)
+            time.sleep(random.uniform(0.5, 2.0))
+            fleet.start_executor(n)
+            time.sleep(random.uniform(0.5, 1.5))
 
     moves = []
 
@@ -97,6 +119,8 @@ def main():
                 moves.append(result)
 
     threads = [threading.Thread(target=chaos)]
+    if a.executors and a.executor_kills:
+        threads.append(threading.Thread(target=executor_chaos))
     if a.moves and a.cells > 1:
         threads += [threading.Thread(target=mover) for _ in range(4)]
     for t in threads:
@@ -127,6 +151,7 @@ def main():
     summary = {
         "kills": len(kills),
         "leader_kills": sum(1 for k in kills if k["leader"]),
+        "executor_kills": len(executor_kills),
         "moves": len(moves),
         "move_p50_ms": sorted(m["elapsed_ms"] for m in moves)[len(moves) // 2] if moves else None,
         "sessions": a.sessions,

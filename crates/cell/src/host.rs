@@ -121,10 +121,14 @@ impl Host for StandardHost {
                     model.model, model.provider
                 )
             })?;
+        // Decision: a session's workspace is its own durable one in the
+        // cell, so its file tools may write it, as the platform's workers
+        // allow (hidden and sensitive paths stay denied by the policy).
         builder
             .model(model)
             .package(&package)
             .map_err(|e| e.to_string())?
+            .workspace_policy(everruns::WorkspacePolicy::read_write())
             .build()
             .map_err(|e| e.to_string())
     }

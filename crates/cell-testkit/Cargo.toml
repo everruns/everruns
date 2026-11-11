@@ -29,6 +29,9 @@ futures.workspace = true
 rand.workspace = true
 uuid.workspace = true
 mimalloc.workspace = true
+axum.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

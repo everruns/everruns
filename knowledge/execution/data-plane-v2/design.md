@@ -1207,6 +1207,97 @@ object store) under a simulated runtime with crash points, so the Raft
 simulation replays bit for bit too; the protocol simulation covers the
 layer above it.
 
+### Step 6 progress (2026-11-11)
+
+One cell now runs as the plan's thin deployment: three state nodes, and
+executors as their own processes that pull turns on credits
+(`cell-testnode executor`, `crates/cell/src/remote.rs`). An executor keeps
+a mirror of the sessions it runs, catches it up with deltas from the cell,
+and sends every write as a fenced proposal; the nodes run no Engine when
+executors serve them (`CELL_EXECUTOR_CAP`). What it covers and what it
+found:
+
+- **Hosting conformance through an executor's link**
+  (`crates/cell/tests/hosting_conformance.rs`, `remote_*`): authority,
+  lease expiry, waits and retained builds pass over HTTP as they do in
+  process. A view that carried no definition looked like a partial view and
+  was ignored, so the mirror never caught up; a delta now says when it is
+  whole.
+- **Durable workspace.** Each session is its own workspace in the cell's
+  file store (`hosting_files.rs`), because Engine keys files by workspace
+  id: one shared workspace made every session's files look foreign. The
+  host grants the workspace read and write; the default policy is read only.
+- **Fleet and chaos with executors** (`scripts/cell/fleet.py up
+  --executors N`, `chaos.py --executors 2 --executor-kills 10`): 2 cells,
+  200 sessions of 3 tool turns, 8 node kills (one of a leader), 10
+  executor kills and 17 live moves; every session's log checks out, and
+  each of 2 080 tool runs has its durable `tool.started` (2 093: a killed
+  executor started 13 it never ran).
+- **The control plane protocol, early** (`dp.rs`, `control.rs`,
+  `node_control.rs`, `gateway_dp.rs`; a fake control plane in
+  `crates/cell-testkit/src/fake_cp.rs` with a ledger, feed dedup and
+  fault knobs). Agents arrive as config in the directory cell's Raft, by
+  the protocol's ordering rules; a session copies its revision when it is
+  created, so a new revision or a removal never changes a running one.
+  Each cell's leader asks for allowances with request ids that a new
+  leader repeats, commits the answer, and settles expired grants; a turn
+  with no answer yet waits, a refused one ends exhausted. Feed records are
+  made at apply from committed events, numbered by Raft index and position,
+  and leave state only when acknowledged.
+- **Failure qualification** (`crates/cell-testkit/tests/control_plane.rs`
+  and `qualification.rs`, against a live fleet): lost acknowledgements
+  grant and bill once; with the control plane down turns wait for money
+  and then run; a control plane restored to an older epoch starts only
+  from a full snapshot and its old updates are refused; an exhausted
+  budget ends the turn before a model call; expired grants are reported
+  closed and replaced; a feed backed up across a leader change arrives
+  once; a stale executor's writes and live deltas are fenced out after
+  another took the turn; the messages of earlier moves, delivered late,
+  change nothing; and a whole cell killed after a tool's external effect
+  finishes the turn with no tool run twice. The moves case found a bug: an
+  executor kept a session's applied index from the cell it moved away
+  from, so after moving back its views looked late and the turn stalled.
+  A session that changes cells now drops its mirror.
+
+- **Bench** (`scripts/cell/bench.py`, one cell of 3 nodes and 2
+  executors, all on one 4-core machine, simulated model with no think
+  time, 200 sessions x 10 turns): the chat agent runs 380 turns/s, p50
+  433 ms and p99 986 ms with 200 turns in flight. The leader spends
+  **2.75 ms of CPU per turn** against a budget of 8.7 (one core at the
+  115 turns/s a cell must hold), so about 0.2 of a core at the "fits 75k"
+  line of 78 turns/s per cell over 16 cells; each follower 0.8 ms and the
+  executors 5.4 ms. The same turns on Engine alone (`cell-baseline`, its
+  in-memory authority in one process) cost 1.5 ms, so the cell's overhead
+  is about 8 ms of CPU per turn across five processes. Raft takes 0.35
+  entries and fsyncs per turn: group commit carries about three turns per
+  entry. A turn waits for **5.0 round trips** to the cell (claim, renew,
+  the turn's opening batch, its closing batch, release), the budget, and
+  Engine's own count on its in-memory authority; a new session adds 2 once.
+  The tool-calling `worker` agent (four model steps a turn) runs 210
+  turns/s at 4.6 ms of leader CPU and 9.0 waited round trips per turn.
+
+  The first run waited 11.3 round trips per chat turn at 290 turns/s with
+  p99 4 s: the cell had none of Engine's step 1 shortcuts, which are
+  optional in the hosting interface. Now, as the in-memory authority does,
+  input and cancels are pushed to the running epoch (it no longer renews
+  to read its inbox; a poke fires only when the inbox, a cancel or a
+  resume moved, not on the epoch's own writes), the claim's wake time is
+  not stored again, and receipts the next holder can recompute ride on the
+  next renew or release (`receipts` on those commands). An unmetered
+  session answers its budget check from the replica or mirror instead of a
+  reservation round trip. A metered session still reserves before each
+  provider call, one more round trip per model step; reserving for several
+  calls at once belongs with the per-model maximum in step 7.
+
+  Still open: an executor's long-poll for changes also returns on its own
+  writes, about 9 reads per chat turn; waiting for other writers' changes
+  only would cut most of them, and with them part of the leader's CPU.
+
+The step 6 gate holds: Level 2 (cells with real executors, llmsim, the
+fake control plane and test definitions, hosting conformance through an
+executor's link) and the failure suite are green, and per-turn overhead
+and leader CPU are within budget. Stage-1 features can start.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
