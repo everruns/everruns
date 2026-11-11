@@ -840,12 +840,7 @@ jobs:
 
       - name: Install durable guard scanner
         timeout-minutes: 5
-        run: |
-          if ! command -v rg >/dev/null 2>&1; then
-            sudo apt-get update || true
-            sudo apt-get install -y ripgrep
-          fi
-          rg --version
+        run: bash scripts/ci-install-ripgrep.sh
 
       - name: Check durable isolation
         run: |
@@ -942,7 +937,7 @@ jobs:
       uses: dtolnay/rust-toolchain@1.96.0
     - name: Install source scanner
       timeout-minutes: 5
-      run: sudo apt-get update && sudo apt-get install -y ripgrep
+      run: bash scripts/ci-install-ripgrep.sh
     - name: Check capability contract ownership
       run: bash scripts/lib/check-capability-contract.sh
     - name: Check every crate test file is run by a workflow or allowlisted
@@ -1331,8 +1326,16 @@ jobs:
           # (packages.microsoft.com has 403'd and reddened main). Tolerate a
           # partial refresh; `apt-get install` still fails loudly if a package is
           # genuinely unavailable.
-          sudo apt-get update || true
-          sudo apt-get install -y lsof netcat-openbsd ripgrep
+          # The runner image normally ships lsof and nc, so apt runs only for a
+          # real gap; ripgrep comes from a pinned release binary instead.
+          missing=()
+          command -v lsof >/dev/null 2>&1 || missing+=(lsof)
+          command -v nc >/dev/null 2>&1 || missing+=(netcat-openbsd)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update || true
+            sudo apt-get install -y "${missing[@]}"
+          fi
+          bash scripts/ci-install-ripgrep.sh
 
           CADDY_VERSION="2.11.4"
           CADDY_TARBALL=""
@@ -2862,7 +2865,7 @@ jobs:
           pnpm test
           pnpm typecheck
           pnpm build
-          pnpm exec playwright install --with-deps chromium
+          bash "$GITHUB_WORKSPACE/scripts/ci-install-playwright-chromium.sh"
           pnpm e2e
           sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
           TEST_CHAT_DATABASE_URL=postgres://chat_test:chat_test@127.0.0.1:5432/chat_test pnpm test:broker
@@ -2934,14 +2937,14 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        # `--with-deps` shells out to apt for the Chromium system libraries, so
-        # this step has the same stall mode as the shell-test install (EVE-921).
+        # The helper reaches apt only when Chromium is missing a system library,
+        # which then has the same stall mode as the shell-test install (EVE-921).
         # Sized off the cold-cache path, not the 0.27m median. A run of this branch
         # missed the browser cache entirely and this step took 14.0m and still
         # succeeded — more than double the 6.6m max seen across 400 mostly-warm
         # runs. 25m keeps roughly 1.8x over that cold path.
         timeout-minutes: 25
-        run: pnpm exec playwright install --with-deps chromium
+        run: bash "$GITHUB_WORKSPACE/scripts/ci-install-playwright-chromium.sh"
 
       - name: Run Playwright smoke tests
         run: pnpm run e2e
@@ -3021,7 +3024,7 @@ jobs:
 
       - name: Install Playwright browsers
         timeout-minutes: 25
-        run: pnpm exec playwright install --with-deps chromium
+        run: bash "$GITHUB_WORKSPACE/scripts/ci-install-playwright-chromium.sh"
       - name: Ensure PostgreSQL client is available
         timeout-minutes: 5
         working-directory: .
