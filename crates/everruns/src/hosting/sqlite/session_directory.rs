@@ -515,7 +515,10 @@ fn migrate_shared(source: &Path, destination: &Path, session: SessionId) -> Resu
             .map_err(error)?;
         drop(db);
         drop(target);
-        std::fs::File::open(&temporary)
+        // Windows requires write access when flushing the completed snapshot.
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&temporary)
             .map_err(error)?
             .sync_all()
             .map_err(error)?;

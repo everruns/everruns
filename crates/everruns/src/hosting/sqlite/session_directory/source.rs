@@ -101,7 +101,10 @@ impl MigrationSource {
                 .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
                 .map_err(error)?;
             target.close().map_err(|(_, failure)| error(failure))?;
-            std::fs::File::open(&temporary)
+            // Windows requires write access when flushing the completed snapshot.
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&temporary)
                 .map_err(error)?
                 .sync_all()
                 .map_err(error)?;
