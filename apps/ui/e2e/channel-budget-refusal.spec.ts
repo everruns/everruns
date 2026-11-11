@@ -60,6 +60,12 @@ test.describe("channel budget refusal", () => {
     "Requires PLAYWRIGHT_REAL_API_URL and DATABASE_URL for the real PostgreSQL-backed server.",
   );
 
+  // The agent page keeps a session event stream open through the proxy route,
+  // so its `route.fetch` never finishes; drop it instead of failing the test.
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  });
+
   test("shows the cap whose stable ID appears in a real refusal", async ({
     page,
     request,
