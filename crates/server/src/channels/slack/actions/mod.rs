@@ -35,6 +35,7 @@ use serde_json::{Value, json};
 use tracing::{debug, warn};
 
 use crate::storage::{EncryptionService, StorageBackend};
+use everruns_integrations::slack_channel::markdown::{markdown_block, neutralize_broadcasts};
 use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
 use everruns_integrations::slack_channel::web_api::{SlackApiError, parse_retry_after};
 
@@ -377,8 +378,8 @@ async fn update_message(
     let payload = json!({
         "channel": channel,
         "ts": timestamp,
-        "text": text,
-        "blocks": [{ "type": "markdown", "text": text }],
+        "text": neutralize_broadcasts(text),
+        "blocks": [markdown_block(text)],
     });
     slack_api_call(api_base, bot_token, "chat.update", payload)
         .await
@@ -513,13 +514,12 @@ async fn upload_file(
 
     let mut file_entry = json!({ "id": file_id });
     if let Some(comment) = initial_comment {
-        // Slack takes the comment per file on `completeUploadExternal`, not on
-        // the request as a whole.
         file_entry["title"] = json!(filename);
+        // A `markdown` block: `initial_comment` would be read as `mrkdwn`.
         let mut payload = json!({
             "files": [file_entry],
             "channel_id": channel,
-            "initial_comment": comment,
+            "blocks": [markdown_block(comment)],
         });
         if let Some(thread_ts) = thread_ts {
             payload["thread_ts"] = json!(thread_ts);
@@ -642,7 +642,7 @@ mod tests {
     use everruns_contracts::slack_action::SlackActionInvoker;
     use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use uuid::Uuid;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     const ORG: i64 = 1;
@@ -1384,6 +1384,9 @@ mod tests {
             .await;
         Mock::given(method("POST"))
             .and(path("/files.completeUploadExternal"))
+            .and(body_partial_json(
+                json!({ "blocks": [{ "type": "markdown" }] }),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "ok": true,
                 "files": [{ "id": "F1", "permalink": "https://slack.example/F1" }],
@@ -1407,7 +1410,7 @@ mod tests {
                 thread_ts: Some("1.2".to_string()),
                 filename: "report.md".to_string(),
                 content: b"hello".to_vec(),
-                initial_comment: Some("here it is".to_string()),
+                initial_comment: Some("**here** it is".to_string()),
             })
             .await
             .expect("the upload flow must complete");

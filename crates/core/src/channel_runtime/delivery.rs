@@ -354,7 +354,7 @@ impl TurnDelivery {
             .map(|(id, _)| id.clone())
             .collect();
         for id in ids {
-            self.flush_stream(&id).await;
+            self.flush_stream(&id, false).await;
         }
         if self.progress.is_dirty() {
             self.push_progress(false).await;
@@ -443,7 +443,7 @@ impl TurnDelivery {
         }
         if stream.text.len() - stream.sent >= STREAM_FLUSH_CHARS {
             let id = message_id.to_string();
-            self.flush_stream(&id).await;
+            self.flush_stream(&id, false).await;
         }
     }
 
@@ -542,7 +542,9 @@ impl TurnDelivery {
         }
     }
 
-    async fn flush_stream(&mut self, message_id: &str) {
+    /// Send what a stream has produced but not sent. Until `closing`, a
+    /// trailing angle-bracket token that has not closed yet is held back.
+    async fn flush_stream(&mut self, message_id: &str, closing: bool) {
         let Some(streaming) = self.adapter.streaming() else {
             return;
         };
@@ -552,13 +554,22 @@ impl TurnDelivery {
         if stream.sent >= stream.text.len() {
             return;
         }
-        let pending = stream.text[stream.sent..].to_string();
+        let pending = &stream.text[stream.sent..];
+        let end = if closing {
+            pending.len()
+        } else {
+            open_token_start(pending)
+        };
+        if end == 0 {
+            return;
+        }
+        let pending = pending[..end].to_string();
         match streaming
             .append(&stream.handle, &pending, &self.context)
             .await
         {
             DeliveryResult::Ok => {
-                stream.sent = stream.text.len();
+                stream.sent += end;
                 self.delivered = true;
             }
             DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
@@ -568,7 +579,7 @@ impl TurnDelivery {
     }
 
     async fn close_stream(&mut self, message_id: &str) {
-        self.flush_stream(message_id).await;
+        self.flush_stream(message_id, true).await;
         let Some(stream) = self.streams.remove(message_id) else {
             return;
         };
@@ -826,6 +837,27 @@ fn is_working_note(data: &Value) -> bool {
 fn chose_silence(data: &Value) -> bool {
     data.get("tool_name").and_then(Value::as_str) == Some(NO_REPLY_TOOL_NAME)
         && data.get("success").and_then(Value::as_bool) == Some(true)
+}
+
+/// Longest unclosed `<...` tail a stream flush holds back.
+const MAX_HELD_TOKEN_CHARS: usize = 64;
+
+/// Where an unclosed trailing `<...` token starts in `pending`, or its length
+/// when there is none.
+///
+/// Platforms parse `<...>` tokens (Slack's `<!here>`, `<@U123>`) from the
+/// whole streamed message, and a delivery adapter can only check or rewrite a
+/// token it sees whole. Holding a short unclosed tail until the next flush
+/// keeps a token inside one append; a long one is not a token and goes out.
+fn open_token_start(pending: &str) -> usize {
+    match pending.rfind('<') {
+        Some(start)
+            if !pending[start..].contains('>') && pending.len() - start <= MAX_HELD_TOKEN_CHARS =>
+        {
+            start
+        }
+        _ => pending.len(),
+    }
 }
 
 #[cfg(test)]

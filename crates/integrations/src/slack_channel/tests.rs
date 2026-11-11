@@ -168,9 +168,13 @@ async fn replies_post_in_the_thread_with_the_bot_token() {
     Mock::given(method("POST"))
         .and(path("/chat.postMessage"))
         .and(header("authorization", "Bearer xoxb-test"))
-        .and(body_partial_json(
-            json!({"channel": "C1", "thread_ts": "1.2", "text": "hello"}),
-        ))
+        // Markdown goes in a `markdown` block; `text` is only the fallback.
+        .and(body_partial_json(json!({
+            "channel": "C1",
+            "thread_ts": "1.2",
+            "text": "## hello",
+            "blocks": [{"type": "markdown", "text": "## hello"}],
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .expect(1)
         .mount(&server)
@@ -179,7 +183,7 @@ async fn replies_post_in_the_thread_with_the_bot_token() {
     let context = slack.delivery_context(&DeliveryTarget::new("C1", "1.2"));
     let message = OutboundChannelMessage {
         session_id: SessionId::new(),
-        text: "hello".into(),
+        text: "## hello".into(),
         thread_ref: "1.2".into(),
         correlation_id: None,
     };
@@ -187,6 +191,49 @@ async fn replies_post_in_the_thread_with_the_bot_token() {
         slack.deliver(&message, &context).await,
         DeliveryResult::Ok
     ));
+}
+
+#[tokio::test]
+async fn rejected_blocks_are_resent_as_plain_text() {
+    let server = MockServer::start().await;
+    // Slack fails the whole block over one bad token.
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .and(body_partial_json(json!({"blocks": [{"type": "markdown"}]})))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"ok": false, "error": "invalid_blocks"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .and(body_partial_json(
+            json!({"channel": "C1", "text": "ping <!subteam^S404> @here"}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true, "ts": "9.9"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let slack = Slack::new("xoxb-test", SECRET).api_base(server.uri());
+    let context = slack.delivery_context(&DeliveryTarget::new("C1", ""));
+    let message = OutboundChannelMessage {
+        session_id: SessionId::new(),
+        text: "ping <!subteam^S404> <!here>".into(),
+        thread_ref: String::new(),
+        correlation_id: None,
+    };
+    assert!(matches!(
+        slack.deliver(&message, &context).await,
+        DeliveryResult::Ok
+    ));
+    let requests = server.received_requests().await.unwrap();
+    let retry: Value = serde_json::from_slice(&requests[1].body).unwrap();
+    assert!(
+        retry.get("blocks").is_none(),
+        "the retry must not resend blocks"
+    );
 }
 
 #[tokio::test]

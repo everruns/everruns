@@ -18,9 +18,9 @@ pub(crate) mod turn_adapter;
 use crate::domains::agent_channels::record::exposure;
 use everruns_core::channel_runtime::DeliveryOptions;
 use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
-use everruns_integrations::slack_channel::web_api::{SlackApiError, parse_retry_after, retry_wait};
+use everruns_integrations::slack_channel::web_api::{SlackApiError, retry_wait};
 use exposure::{PublicToolVisibility, public_tool_activity_text};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Which Slack surface a turn belongs to.
 ///
@@ -339,18 +339,14 @@ async fn post_to_slack_with_retry_base(
     unreachable!()
 }
 
-mod markdown_split;
-use markdown_split::{
+#[cfg(test)]
+use everruns_integrations::slack_channel::markdown::{
     SLACK_MARKDOWN_BLOCK_LIMIT, SLACK_MAX_BLOCKS_PER_MESSAGE, SLACK_MAX_OUTBOUND_REPLY_CHARS,
-    split_markdown_for_blocks, truncate_chars,
+    SLACK_TEXT_FALLBACK_LIMIT, split_markdown_for_blocks,
 };
-
-/// Cap on the `text` notification fallback.
-///
-/// `text` is not rendered when `blocks` are present — it is what Slack shows in
-/// push notifications and the channel list — so it only needs enough to be
-/// recognisable, and Slack rejects the whole post if it runs long.
-const SLACK_TEXT_FALLBACK_LIMIT: usize = 3_000;
+use everruns_integrations::slack_channel::markdown::{
+    markdown_block, neutralize_broadcasts, reply_payloads, truncate_chars,
+};
 
 /// Correlation stamped onto a posted message via `chat.postMessage`'s
 /// `metadata`, giving a durable key from a Slack message back to the run that
@@ -375,43 +371,21 @@ impl SlackCorrelation {
 
 /// Build the `chat.postMessage` payloads for one reply.
 ///
-/// Normally one payload. Replies are bounded to one full Slack message's worth
-/// of source text before splitting, which keeps synchronous payload allocation
-/// finite while still allowing fence continuations to spill into another API
-/// call when their added markers cross the 50-block boundary.
+/// Normally one payload; the shared builder owns rendering (Markdown blocks,
+/// splitting, broadcast neutralization). This adds the correlation metadata.
 pub(crate) fn build_post_payloads(
     channel: &str,
     thread_ts: &str,
     text: &str,
     correlation: Option<&SlackCorrelation>,
 ) -> Vec<serde_json::Value> {
-    let text = truncate_chars(text, SLACK_MAX_OUTBOUND_REPLY_CHARS);
-    let chunks = split_markdown_for_blocks(text, SLACK_MARKDOWN_BLOCK_LIMIT);
-
-    chunks
-        .chunks(SLACK_MAX_BLOCKS_PER_MESSAGE)
-        .map(|group| {
-            let blocks: Vec<serde_json::Value> = group
-                .iter()
-                .map(|chunk| serde_json::json!({ "type": "markdown", "text": chunk }))
-                .collect();
-
-            let mut payload = serde_json::json!({
-                "channel": channel,
-                // Notification fallback only; `blocks` is what renders.
-                "text": truncate_chars(text, SLACK_TEXT_FALLBACK_LIMIT),
-                "blocks": blocks,
-            });
-
-            if !thread_ts.is_empty() {
-                payload["thread_ts"] = serde_json::Value::String(thread_ts.to_string());
-            }
-            if let Some(correlation) = correlation {
-                payload["metadata"] = correlation.to_metadata();
-            }
-            payload
-        })
-        .collect()
+    let mut payloads = reply_payloads(channel, thread_ts, text);
+    if let Some(correlation) = correlation {
+        for payload in &mut payloads {
+            payload["metadata"] = correlation.to_metadata();
+        }
+    }
+    payloads
 }
 
 /// Post a message to Slack using the Bot API.
@@ -452,61 +426,23 @@ pub(crate) async fn post_slack_message(
     text: &str,
     correlation: Option<&SlackCorrelation>,
 ) -> Result<Option<String>, SlackApiError> {
-    let client = reqwest::Client::new();
     let payloads = build_post_payloads(channel, thread_ts, text, correlation);
     let total = payloads.len();
     let mut first_ts = None;
 
     for (index, payload) in payloads.into_iter().enumerate() {
-        let response = client
-            .post(format!("{}/chat.postMessage", base_url))
-            .header("Authorization", format!("Bearer {}", bot_token))
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .send()
+        // The shared call classifies and logs failures, and resends a post
+        // Slack rejects as `invalid_blocks` as plain text.
+        let body = slack_api_call(base_url, bot_token, "chat.postMessage", payload)
             .await
-            .map_err(|e| SlackApiError::Transient(e.to_string()))?;
-
-        let status = response.status();
-        // Read the header before the body is consumed: a 429 carries its advice
-        // here, not in the JSON.
-        let retry_after = parse_retry_after(response.headers());
-
-        let body: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| SlackApiError::Transient(e.to_string()))?;
-
-        if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
-            let error = body
-                .get("error")
-                .and_then(|e| e.as_str())
-                .unwrap_or("unknown");
-
-            let failure = SlackApiError::from_code(error, retry_after);
-
-            // A rate limit is routine backpressure, not a fault to shout about.
-            if matches!(failure, SlackApiError::RateLimited { .. }) {
+            .inspect_err(|_| {
                 debug!(
                     channel = channel,
-                    retry_after_secs = ?retry_after.map(|d| d.as_secs()),
-                    status = %status,
                     part = index + 1,
                     parts = total,
-                    "Slack rate limited the post"
+                    "Slack post failed"
                 );
-            } else {
-                error!(
-                    channel = channel,
-                    error = error,
-                    status = %status,
-                    part = index + 1,
-                    parts = total,
-                    "Failed to post message to Slack"
-                );
-            }
-            return Err(failure);
-        }
+            })?;
         if first_ts.is_none() {
             first_ts = body
                 .get("ts")

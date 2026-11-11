@@ -210,6 +210,25 @@ cancelled, Everruns posts one short status line with a link to the session. An
 explicit Agent that calls `no_reply` chose silence, so its thread gets no
 status line.
 
+### Formatting
+
+Agents write standard Markdown, and Everruns posts it as Slack `markdown`
+blocks, so headings, lists, tables, quotes, links and fenced code render as
+written. Slack differs from GitHub Markdown in a few places:
+
+| Markdown | In Slack |
+|---|---|
+| `<@U0123ABCD>` | Mentions that person. A plain `@name` is text and notifies no one. |
+| `![alt](url)` | A link, not an image. Share images with `slack_upload_file`. |
+| HTML, footnotes, math | Shown as raw text. |
+| `#####` and deeper | Rendered as a level 4 heading. |
+| `<!here>`, `<!channel>`, `<!everyone>` | Posted as plain `@here` text: an Agent never notifies a whole channel. |
+
+If Slack rejects a reply's blocks, for example over a mention of a user group
+that does not exist, Everruns posts the same reply once more as plain text so
+it still arrives. Agents with the [Slack actions](#slack-actions) capability
+get these rules in their instructions.
+
 ## Session Strategies
 
 | Strategy | Behavior | Tag Pattern |

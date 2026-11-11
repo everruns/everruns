@@ -50,7 +50,9 @@ impl ChannelStreamDelivery for SlackDeliveryAdapter {
         let payload = serde_json::json!({
             "channel": context.channel_id,
             "ts": handle,
-            "markdown_text": truncate_chars(text, SLACK_APPEND_MAX_CHARS),
+            // The core holds back an unclosed `<...` tail, so a broadcast
+            // token arrives whole and is caught here (TM-SLACK-015).
+            "markdown_text": neutralize_broadcasts(truncate_chars(text, SLACK_APPEND_MAX_CHARS)),
         });
 
         match slack_api_call(
@@ -81,8 +83,8 @@ impl ChannelStreamDelivery for SlackDeliveryAdapter {
         let payload = serde_json::json!({
             "channel": context.channel_id,
             "ts": handle,
-            "text": text,
-            "blocks": [{ "type": "markdown", "text": text }],
+            "text": neutralize_broadcasts(text),
+            "blocks": [markdown_block(text)],
         });
         match slack_api_call(&self.api_base, &context.auth_token, "chat.update", payload).await {
             Ok(_) => ChannelDeliveryResult::Ok,
