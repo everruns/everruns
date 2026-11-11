@@ -409,6 +409,43 @@ async fn streaming_appends_deltas_and_closes_on_the_completed_text() {
 }
 
 #[tokio::test]
+async fn a_stream_flush_keeps_an_unclosed_token_for_the_next_append() {
+    let recorder = Arc::new(Recorder {
+        stream: true,
+        ..Recorder::default()
+    });
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.observe(&delta("m1", "Hi <!he")).await;
+    delivery.flush().await;
+    delivery.observe(&delta("m1", "re> and a < b")).await;
+    delivery.flush().await;
+    // Closing sends whatever is left, token or not.
+    delivery
+        .observe(&completed("m1", "Hi <!here> and a < b"))
+        .await;
+    delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
+
+    assert_eq!(
+        recorder.calls(),
+        vec![
+            Call::Start,
+            Call::Append("Hi ".into()),
+            Call::Append("<!here> and a ".into()),
+            Call::Append("< b".into()),
+            Call::Stop,
+        ]
+    );
+}
+
+#[test]
+fn a_long_unclosed_tail_is_not_held_back() {
+    let long = format!("a <{}", "x".repeat(super::MAX_HELD_TOKEN_CHARS));
+    assert_eq!(super::open_token_start(&long), long.len());
+    assert_eq!(super::open_token_start("a <@U1"), 2);
+    assert_eq!(super::open_token_start("a <@U1> b"), 9);
+}
+
+#[tokio::test]
 async fn a_large_burst_flushes_without_waiting_for_the_timer() {
     let recorder = Arc::new(Recorder {
         stream: true,

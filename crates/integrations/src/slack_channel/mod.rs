@@ -32,6 +32,7 @@ use tracing::{info, warn};
 
 use web_api::{SLACK_API_BASE, SlackApiError, slack_api_call};
 
+pub mod markdown;
 pub mod web_api;
 
 const BOT_TOKEN_ENV: &str = "SLACK_BOT_TOKEN";
@@ -151,22 +152,24 @@ impl ChannelDeliveryAdapter for Slack {
             info!(%channel, thread = %message.thread_ref, text = %message.text, "slack reply (no {BOT_TOKEN_ENV}, not posted)");
             return DeliveryResult::Ok;
         }
-        let mut body = json!({ "channel": channel, "text": message.text });
-        if !message.thread_ref.is_empty() {
-            body["thread_ts"] = json!(message.thread_ref);
+        // Agent output is Markdown: post it as `markdown` blocks, not as
+        // `text`, which Slack reads as the much smaller `mrkdwn` dialect.
+        for payload in markdown::reply_payloads(channel, &message.thread_ref, &message.text) {
+            if let Err(error) = slack_api_call(
+                &self.api_base,
+                &context.auth_token,
+                "chat.postMessage",
+                payload,
+            )
+            .await
+            {
+                return match error {
+                    SlackApiError::Permanent(error) => DeliveryResult::PermanentError(error),
+                    error => DeliveryResult::TransientError(error.to_string()),
+                };
+            }
         }
-        match slack_api_call(
-            &self.api_base,
-            &context.auth_token,
-            "chat.postMessage",
-            body,
-        )
-        .await
-        {
-            Ok(_) => DeliveryResult::Ok,
-            Err(SlackApiError::Permanent(error)) => DeliveryResult::PermanentError(error),
-            Err(error) => DeliveryResult::TransientError(error.to_string()),
-        }
+        DeliveryResult::Ok
     }
 
     async fn send_ack(&self, _: &str, _: &str, _: &DeliveryContext) -> DeliveryResult {

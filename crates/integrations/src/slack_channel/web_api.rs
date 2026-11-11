@@ -43,6 +43,9 @@ pub const PERMANENT_SLACK_ERRORS: &[&str] = &[
     // succeed, and the caller reads it as the already-satisfied outcome it is
     // rather than a failure (EVE-1024).
     "already_reacted",
+    // Slack refused the blocks themselves; the same payload fails again.
+    // `slack_api_call` retries a Markdown post once as plain text instead.
+    "invalid_blocks",
 ];
 
 /// Slack error codes that describe the workspace's own install, not a fault
@@ -196,10 +199,11 @@ pub async fn post_slack_message_returning_ts(
     thread_ts: &str,
     text: &str,
 ) -> Result<String, SlackApiError> {
+    let text = super::markdown::neutralize_broadcasts(text);
     let mut payload = serde_json::json!({
         "channel": channel,
         "text": text,
-        "blocks": [{ "type": "markdown", "text": text }],
+        "blocks": [super::markdown::markdown_block(&text)],
     });
     if !thread_ts.is_empty() {
         payload["thread_ts"] = serde_json::json!(thread_ts);
@@ -218,6 +222,7 @@ pub async fn update_slack_message_text(
     ts: &str,
     text: &str,
 ) -> Result<(), SlackApiError> {
+    let text = super::markdown::neutralize_broadcasts(text);
     slack_api_call(
         SLACK_API_BASE,
         bot_token,
@@ -226,7 +231,7 @@ pub async fn update_slack_message_text(
             "channel": channel,
             "ts": ts,
             "text": text,
-            "blocks": [{ "type": "markdown", "text": text }],
+            "blocks": [super::markdown::markdown_block(&text)],
         }),
     )
     .await?;
@@ -236,20 +241,44 @@ pub async fn update_slack_message_text(
 /// Call one Slack Web API method and return its body when `ok` is true.
 ///
 /// A failure comes back classified: a rate limit with Slack's `Retry-After`
-/// advice, a permanent code, or transport trouble. The server's reply post
-/// loop keeps its own copy because it splits one reply across several calls
-/// and logs each part.
+/// advice, a permanent code, or transport trouble.
+///
+/// A Markdown post Slack rejects as `invalid_blocks` (one bad token, such as
+/// an unknown user-group mention, fails the whole block) is sent once more as
+/// plain `text`, so the person still gets the reply. Hand-built Block Kit is
+/// never retried this way; see [`super::markdown::plain_text_retry`].
 pub async fn slack_api_call(
     base_url: &str,
     bot_token: &str,
     method: &str,
     payload: serde_json::Value,
 ) -> Result<serde_json::Value, SlackApiError> {
+    match slack_api_call_once(base_url, bot_token, method, &payload).await {
+        Err(error) if error.code() == Some("invalid_blocks") => {
+            let Some(retry) = super::markdown::plain_text_retry(method, &payload) else {
+                return Err(error);
+            };
+            warn!(
+                method = method,
+                "Slack rejected the Markdown blocks; resending as plain text"
+            );
+            slack_api_call_once(base_url, bot_token, method, &retry).await
+        }
+        result => result,
+    }
+}
+
+async fn slack_api_call_once(
+    base_url: &str,
+    bot_token: &str,
+    method: &str,
+    payload: &serde_json::Value,
+) -> Result<serde_json::Value, SlackApiError> {
     let response = client()
         .post(format!("{}/{}", base_url, method))
         .header("Authorization", format!("Bearer {}", bot_token))
         .header("Content-Type", "application/json")
-        .json(&payload)
+        .json(payload)
         .send()
         .await
         .map_err(|e| SlackApiError::Transient(e.to_string()))?;

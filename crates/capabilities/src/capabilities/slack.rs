@@ -78,13 +78,18 @@ impl Capability for SlackCapability {
         // States the one precondition the model cannot discover by itself, and
         // the channel/timestamp convention, so a first call does not have to
         // fail to teach it. Deliberately does not list the tools: their own
-        // descriptions do that.
+        // descriptions do that. The formatting notes are the Markdown Slack's
+        // `markdown` block drops or changes, checked against Slack 2026-11.
         Some(
             "These tools act as this workspace's Slack bot and only work in a session a Slack \
              message created. `channel` and `timestamp` come from the Slack message you are \
              replying to: copy them exactly from its `[slack channel=... timestamp=...]` annotation, \
              including every fractional digit. Never infer the timestamp from a date. Prefer a reaction over a \
-             message when you only need to acknowledge something.",
+             message when you only need to acknowledge something. Slack renders your Markdown, with these \
+             differences: mention a person as `<@USERID>` with their Slack user ID (a plain `@name` notifies \
+             no one); images show only as links, so share an image or diagram as a file; HTML, footnotes and \
+             math are shown as raw text; headings stop at level 4. `@here`, `@channel` and `@everyone` are \
+             never sent as notifications.",
         )
     }
 
