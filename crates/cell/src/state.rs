@@ -77,6 +77,12 @@ pub enum Command {
         update: crate::dp::ConfigUpdate,
         now_ms: i64,
     },
+    /// A control plane admin command for `org` (directory cell).
+    Admin {
+        org: String,
+        command: crate::control::AdminCommand,
+        now_ms: i64,
+    },
     /// The control plane stored the feed through `(index, ordinal)`.
     FeedAcked { through: (u64, u32) },
     /// Reserve `session`'s next provider call; the reply is the Engine's
@@ -977,6 +983,38 @@ impl CellState {
                         now_ms,
                         crate::dp::Record::ConfigApplied {
                             version: applied_version,
+                        },
+                    );
+                }
+                Response::Value {
+                    value: serde_json::to_value(ack).unwrap_or_default(),
+                }
+            }
+            Command::Admin {
+                org,
+                command,
+                now_ms,
+            } => {
+                let suspends = matches!(
+                    &command,
+                    crate::control::AdminCommand::State(c)
+                        if c.state == crate::dp::OrgState::Suspended
+                );
+                let fresh = self
+                    .orgs
+                    .orgs
+                    .get(&org)
+                    .is_none_or(|c| c.command(command.command_id()).is_none());
+                let ack = self.orgs.admin(&org, command);
+                if suspends && fresh && ack.accepted {
+                    let index = self.last_applied.map_or(0, |l| l.index);
+                    self.feed.push(
+                        index,
+                        &org,
+                        now_ms,
+                        crate::dp::Record::OrgEvent {
+                            kind: "suspended".into(),
+                            detail: String::new(),
                         },
                     );
                 }

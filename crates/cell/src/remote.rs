@@ -95,6 +95,10 @@ pub struct PullReply {
     /// Set when the node asked is not the leader: ask this one.
     #[serde(default)]
     pub leader: Option<String>,
+    /// Each session's tenant, in the order of `sessions` (the executor's
+    /// own suspension check, see `tenants.rs`).
+    #[serde(default)]
+    pub tenants: Vec<Option<String>>,
 }
 
 /// `POST /cell/exec/live`: an epoch's live deltas, for the cell's streams.
@@ -330,7 +334,7 @@ impl Remote {
     }
 
     /// POST `body` to `path` on `cell`, trying its members in turn.
-    async fn post<B: Serialize, T: serde::de::DeserializeOwned>(
+    pub async fn post<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
         cell: CellId,
         path: &str,
@@ -475,7 +479,7 @@ impl Remote {
         cell: CellId,
         credits: usize,
         wait: Duration,
-    ) -> anyhow::Result<Vec<SessionId>> {
+    ) -> anyhow::Result<Vec<(SessionId, Option<String>)>> {
         let body = PullRequest {
             executor: self.id,
             credits,
@@ -489,7 +493,14 @@ impl Remote {
                 Some(leader) if reply.sessions.is_empty() => {
                     self.leaders.lock().insert(cell, leader);
                 }
-                _ => return Ok(reply.sessions),
+                _ => {
+                    let mut tenants = reply.tenants.into_iter();
+                    return Ok(reply
+                        .sessions
+                        .into_iter()
+                        .map(|s| (s, tenants.next().flatten()))
+                        .collect());
+                }
             }
         }
         Ok(Vec::new())

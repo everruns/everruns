@@ -53,6 +53,7 @@ struct Ledger {
     usage_repeats: usize,
     sessions: HashMap<String, SessionSummary>,
     config_applied: Vec<(String, u64)>,
+    org_events: Vec<(String, String)>,
     requests: usize,
 }
 
@@ -146,6 +147,10 @@ impl FakeCp {
 
     pub fn sessions(&self) -> HashMap<String, SessionSummary> {
         self.ledger.lock().sessions.clone()
+    }
+
+    pub fn org_events(&self) -> Vec<(String, String)> {
+        self.ledger.lock().org_events.clone()
     }
 
     pub fn config_applied(&self) -> Vec<(String, u64)> {
@@ -326,7 +331,10 @@ async fn feed(State(cp): State<FakeCp>, Json(batch): Json<FeedBatch>) -> Reply<F
                 Record::ConfigApplied { version } => {
                     ledger.config_applied.push((record.org_id.clone(), version));
                 }
-                Record::Unknown => {}
+                Record::OrgEvent { kind, .. } => {
+                    ledger.org_events.push((record.org_id.clone(), kind));
+                }
+                Record::SecretRefreshed { .. } | Record::Health { .. } | Record::Unknown => {}
             }
         }
     }

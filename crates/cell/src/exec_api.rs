@@ -94,8 +94,8 @@ async fn pull(
 ) -> Result<Json<PullReply>, ApiError> {
     if !node.is_leader() {
         return Ok(Json(PullReply {
-            sessions: Vec::new(),
             leader: node.leader_addr(),
+            ..PullReply::default()
         }));
     }
     if node.cfg.executors == crate::node::ExecutorMode::InNode || body.credits == 0 {
@@ -125,9 +125,18 @@ async fn pull(
         }
         lingering = true;
     }
+    let sessions = node.dispatch.take(&ticket);
+    let tenants = {
+        let state = node.shared.state.read();
+        sessions
+            .iter()
+            .map(|s| state.sessions.get(s).and_then(|s| s.tenant.clone()))
+            .collect()
+    };
     Ok(Json(PullReply {
-        sessions: node.dispatch.take(&ticket),
+        sessions,
         leader: None,
+        tenants,
     }))
 }
 

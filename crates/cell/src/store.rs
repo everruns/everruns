@@ -183,6 +183,16 @@ impl Store {
         Ok(sha256)
     }
 
+    /// Write `bytes` at `name` under the store's prefix (exports).
+    pub async fn put_object(&self, name: &str, bytes: Vec<u8>) -> anyhow::Result<()> {
+        self.put(self.key(name), bytes).await
+    }
+
+    /// The object at `name` (exports).
+    pub async fn get_object(&self, name: &str) -> anyhow::Result<bytes::Bytes> {
+        self.get(self.key(name)).await
+    }
+
     /// The blob named `sha256`.
     pub async fn get_blob(&self, sha256: &str) -> anyhow::Result<bytes::Bytes> {
         if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {

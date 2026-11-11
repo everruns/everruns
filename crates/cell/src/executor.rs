@@ -16,6 +16,9 @@
 //! - Draining (a rolling deploy): stop pulling, ask every running epoch to
 //!   hand off at its next step boundary, and exit once none runs. Another
 //!   executor resumes each turn from the journal.
+//! - Freshness (`tenants.rs`): an executor that hasn't heard from the
+//!   directory cell within the bound pulls nothing, and one offered a
+//!   session of a suspended or deleted tenant gives it back unrun.
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -57,6 +60,7 @@ pub struct Executor {
     /// Sessions mirrored but not running, least recently run first.
     recent: Mutex<VecDeque<SessionId>>,
     draining: AtomicBool,
+    pub tenants: crate::tenants::TenantView,
     pub stats: crate::prom::Counters,
 }
 
@@ -81,12 +85,15 @@ impl Executor {
             running: Mutex::default(),
             recent: Mutex::default(),
             draining: AtomicBool::new(false),
+            tenants: Default::default(),
             stats: Default::default(),
         }))
     }
 
-    /// Start pulling from every cell, and keep up with the topology.
+    /// Start pulling from every cell, and keep up with the topology and
+    /// the tenants.
     pub fn spawn(self: &Arc<Self>) {
+        tokio::spawn(self.clone().tenants_loop());
         let executor = self.clone();
         tokio::spawn(async move {
             let mut pulling: HashSet<CellId> = HashSet::new();
@@ -147,10 +154,44 @@ impl Executor {
         }
     }
 
+    async fn tenants_loop(self: Arc<Self>) {
+        let mut tick = tokio::time::interval(crate::tenants::POLL);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            if self.draining.load(Ordering::SeqCst) {
+                return;
+            }
+            let Ok(topology) = self.cfg.topology.read() else {
+                continue;
+            };
+            match self
+                .remote
+                .post::<_, crate::tenants::Tenants>(
+                    topology.directory_cell,
+                    "/cell/tenants",
+                    &serde_json::json!({}),
+                    Duration::from_secs(5),
+                )
+                .await
+            {
+                Ok(tenants) => {
+                    self.tenants.heard(tenants.stopped);
+                }
+                Err(error) => tracing::debug!(%error, "tenants not read"),
+            }
+        }
+    }
+
     async fn puller(self: Arc<Self>, cell: CellId) {
         loop {
             if self.draining.load(Ordering::SeqCst) {
                 return;
+            }
+            if !self.tenants.is_fresh() {
+                // No word from the directory: start nothing new.
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                continue;
             }
             let credits = self.take_credits();
             if credits == 0 {
@@ -160,8 +201,13 @@ impl Executor {
             }
             match self.remote.pull(cell, credits, self.cfg.pull_wait).await {
                 Ok(sessions) => {
-                    let used = sessions.len().min(credits);
-                    for session in sessions.into_iter().take(credits) {
+                    let mut used = 0;
+                    for (session, tenant) in sessions.into_iter().take(credits) {
+                        if self.tenants.admit(tenant.as_deref()) != crate::tenants::Admit::Yes {
+                            self.stats.inc(&[("event", "refused")]);
+                            continue;
+                        }
+                        used += 1;
                         self.stats.inc(&[("event", "pulled")]);
                         self.clone().run(cell, session);
                     }

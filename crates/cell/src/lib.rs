@@ -49,6 +49,7 @@ pub mod ship;
 pub mod sm;
 pub mod state;
 pub mod store;
+pub mod tenants;
 pub mod types;
 pub mod wal;
 
