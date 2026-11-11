@@ -82,7 +82,7 @@ impl TenantView {
     /// start now?
     pub fn admit(&self, tenant: Option<&str>) -> Admit {
         let inner = self.inner.lock();
-        if !inner.heard.is_some_and(|at| at.elapsed() < FRESH) {
+        if inner.heard.is_none_or(|at| at.elapsed() >= FRESH) {
             return Admit::Stale;
         }
         match tenant.and_then(|t| inner.stopped.get(t)) {
@@ -129,7 +129,9 @@ impl Node {
             .gateway
             .get()
             .ok_or_else(|| anyhow::anyhow!("no gateway yet"))?;
-        let directory = gateway.directory_cell().map_err(|(_, e)| anyhow::anyhow!(e))?;
+        let directory = gateway
+            .directory_cell()
+            .map_err(|(_, e)| anyhow::anyhow!(e))?;
         if directory == self.cfg.cell {
             let state = self.shared.state.read();
             return Ok(Tenants {

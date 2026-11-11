@@ -115,7 +115,10 @@ async fn the_link_and_the_gateway_take_only_tokens_they_trust() {
         .unwrap()
         .token(ORG, "dp-local", "admin", 600)
         .unwrap();
-    let elsewhere = cp.signer.token(ORG, "dp-other", "sessions:write", 600).unwrap();
+    let elsewhere = cp
+        .signer
+        .token(ORG, "dp-other", "sessions:write", 600)
+        .unwrap();
     for (token, expected) in [
         (None, StatusCode::UNAUTHORIZED),
         (Some(forged.as_str()), StatusCode::UNAUTHORIZED),
@@ -167,7 +170,8 @@ async fn secrets_open_only_on_executors_and_suspension_stops_new_turns() {
     // Enable the org with its data key, wrapped under the data plane's key.
     let dp_key = seal::random_key();
     let data_key = seal::random_key();
-    let wrapped = seal::wrap_data_key(&dp_key, ORG, "dk-1", &data_key, seal::random_nonce()).unwrap();
+    let wrapped =
+        seal::wrap_data_key(&dp_key, ORG, "dk-1", &data_key, seal::random_nonce()).unwrap();
     let (status, ack) = cp
         .call(
             &base,
@@ -179,7 +183,16 @@ async fn secrets_open_only_on_executors_and_suspension_stops_new_turns() {
         .unwrap();
     assert_eq!(status, StatusCode::OK, "{ack}");
     assert_eq!(ack["accepted"], true);
-    let sealed = seal::seal(&data_key, "dk-1", ORG, "github", 1, b"ghp_token", seal::random_nonce()).unwrap();
+    let sealed = seal::seal(
+        &data_key,
+        "dk-1",
+        ORG,
+        "github",
+        1,
+        b"ghp_token",
+        seal::random_nonce(),
+    )
+    .unwrap();
     let ack = cp
         .push_config(
             &base,
@@ -211,7 +224,12 @@ async fn secrets_open_only_on_executors_and_suspension_stops_new_turns() {
     fleet.turns(&session, 1).await;
     let suspend = json!({ "command_id": "s-1", "state": "suspended", "reason": "billing" });
     let (_, ack) = cp
-        .call(&base, Method::POST, &format!("/dp/v1/orgs/{ORG}/state"), &suspend)
+        .call(
+            &base,
+            Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/state"),
+            &suspend,
+        )
         .await
         .unwrap();
     assert_eq!(ack["accepted"], true, "{ack}");
@@ -220,16 +238,25 @@ async fn secrets_open_only_on_executors_and_suspension_stops_new_turns() {
     fleet.say(&session, "two").await;
     tokio::time::sleep(Duration::from_secs(4)).await;
     let view = fleet.get(&format!("/v1/sessions/{session}")).await;
-    assert_eq!(view["turns_completed"], 1, "a suspended org started a turn: {view}");
+    assert_eq!(
+        view["turns_completed"], 1,
+        "a suspended org started a turn: {view}"
+    );
     fleet
         .until("the suspension reaches the feed", || async {
-            cp.org_events().contains(&(ORG.to_owned(), "suspended".to_owned()))
+            cp.org_events()
+                .contains(&(ORG.to_owned(), "suspended".to_owned()))
         })
         .await;
     let resume = json!({ "command_id": "s-2", "state": "active" });
-    cp.call(&base, Method::POST, &format!("/dp/v1/orgs/{ORG}/state"), &resume)
-        .await
-        .unwrap();
+    cp.call(
+        &base,
+        Method::POST,
+        &format!("/dp/v1/orgs/{ORG}/state"),
+        &resume,
+    )
+    .await
+    .unwrap();
     fleet.turns(&session, 2).await;
 }
 
@@ -259,7 +286,12 @@ async fn an_export_lands_in_the_store_and_a_replay_is_stored_once() {
     fleet
         .until("the export is done", || async {
             let (_, status) = cp
-                .call(&base, Method::GET, &format!("/dp/v1/orgs/{ORG}/commands/x-1"), &Value::Null)
+                .call(
+                    &base,
+                    Method::GET,
+                    &format!("/dp/v1/orgs/{ORG}/commands/x-1"),
+                    &Value::Null,
+                )
                 .await
                 .unwrap();
             assert_ne!(status["state"], "failed", "{status}");
@@ -274,14 +306,19 @@ async fn an_export_lands_in_the_store_and_a_replay_is_stored_once() {
     let tar = zstd_decode(&compressed);
     let names = tar_names(&tar);
     assert!(names.contains(&"config.json".to_owned()), "{names:?}");
-    assert!(names.contains(&format!("sessions/{session}.json")), "{names:?}");
+    assert!(
+        names.contains(&format!("sessions/{session}.json")),
+        "{names:?}"
+    );
 
     // Replay the whole archived feed: the control plane stores nothing twice.
     fleet
         .until("the feed is delivered and archived", || async {
             let mut pending = 0;
             for cell in [0, 1] {
-                pending += fleet.stats(cell).await["feed_pending"].as_u64().unwrap_or(0);
+                pending += fleet.stats(cell).await["feed_pending"]
+                    .as_u64()
+                    .unwrap_or(0);
             }
             pending == 0 && !cp.usage().is_empty()
         })
@@ -302,7 +339,11 @@ async fn an_export_lands_in_the_store_and_a_replay_is_stored_once() {
         resent += reply["resent"].as_u64().unwrap();
     }
     assert!(resent > 0, "nothing was archived");
-    assert_eq!(cp.duplicates() as u64, resent, "every replayed record was a repeat");
+    assert_eq!(
+        cp.duplicates() as u64,
+        resent,
+        "every replayed record was a repeat"
+    );
     assert_eq!(cp.usage(), usage, "usage is stored once");
 }
 

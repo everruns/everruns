@@ -1298,6 +1298,85 @@ fake control plane and test definitions, hosting conformance through an
 executor's link) and the failure suite are green, and per-turn overhead
 and leader CPU are within budget. Stage-1 features can start.
 
+### Step 7 progress (2026-11-11)
+
+The server is now the control plane for orgs on a v2 data plane, and the
+cells serve the rest of [cp-dp-protocol.md](cp-dp-protocol.md). v1 is the
+trivial implementation: an org with no data plane row gets no config,
+grants or feed, and nothing changes for it. What it covers:
+
+- **Config outbox** (server `domains/data_plane/outbox.rs`, tables in the
+  `data_plane_control` migration). The outbox stores state, not a log of
+  events: each agent, secret, connection or policy item carries the org
+  version that last changed it. An update sends the items changed since
+  the version the data plane acknowledged. A full snapshot sends every live
+  item, so edits made while a data plane was away coalesce into one
+  update. Every write sends a `NOTIFY`, a dispatcher listens, and a 1 s
+  poll backs it up. A published agent revision goes out as its definition
+  (step 3's format), so the data plane never reads the platform's tables.
+- **Sealed secrets and connections** (`everruns_contracts::dataplane_seal`).
+  Each org has a data key, kept under the server's secrets key and sent
+  wrapped with the data plane's key when the org is enabled. Secrets and
+  connection tokens are sealed under the data key with AES-256-GCM. The
+  associated data names org, item and revision, so a value can't be moved
+  to another org or replayed as another revision. Only executors unseal;
+  the cell stores and moves ciphertext.
+- **Control plane epoch and restore.** `everruns-dataplane diff <org>` asks
+  the data plane what it holds that the restored database doesn't know.
+  `bump-epoch` then makes every data plane take a full snapshot; updates
+  from the old epoch are refused.
+- **Feed** (`feed.rs`). Usage is journaled once per `attempt_id` through
+  the budget service (`source_type` `data_plane`), which posts the cost
+  and debits the org's usage policies. Session summaries are kept by
+  version, and org events are stored. Each source's stored position makes
+  a retried batch cost nothing. Cells archive the feed to the object store
+  before they drop acknowledged records, so `POST /dp/v1/feed/replay` can
+  resend it.
+- **Grant ledger** (`allowances.rs`). A grant is reserved when issued.
+  Money comes back only through a closed settlement, and settlements are
+  cumulative, so a repeated one changes nothing. The cap is what the org's
+  usage policies still allow before their first stop (or ask) step, and
+  usage already charged through the feed counts once, not twice. Answers
+  are idempotent by request id, and a suspended org is granted nothing.
+- **Org tokens** (`tokens.rs`, cell `org_token.rs`). EdDSA JWTs that live
+  10 minutes, issued at `POST /v1/auth/token` to members of an org on a data
+  plane; the signing key is generated on first use and published at
+  `/.well-known/jwks.json`. With `CELL_JWKS_URL` set, a gateway requires
+  them: `sessions:write` creates and drives the org's own sessions, another
+  org's session answers as missing, and everything else needs `admin`.
+- **Org admin and the link.** Enable, suspend and resume, export, delete
+  and command status are served behind the link's bearer token. A
+  suspended org starts no new turns. The operator CLI `everruns-dataplane`
+  registers a data plane and moves an org to it (the admin-only switch).
+
+Gate:
+
+- **Config propagation:** p50 4.7 ms, p99 9.4 ms from an edit in the
+  control plane's database to the data plane, against the 1 s budget
+  (`config_reaches_the_data_plane_in_under_a_second`, 40 edits through
+  `NOTIFY`).
+- **Feed lag:** p50 117 ms, p99 199 ms from a record's commit in a cell
+  to the control plane, against the 2 s budget. This is a small sample:
+  one fleet of 2 cells and a few turns, with the leader shipping the feed
+  every 200 ms (`agents_come_from_config_and_turns_bill_the_org`).
+- **Allowances never overspend:** 8 cells ask at once, 12 requests each,
+  against a $1 policy. Every request is sent twice, as if its reply were
+  lost, and each one settles the cell's earlier grants, closing half of
+  them. What could be spent (closed grants' use plus open grants whole)
+  stays under the cap, and still does after the feed charges the spend
+  (`allowances_never_overspend_under_concurrency_and_retries`).
+- **Conformance and the failure suite:** green on the cell side against
+  the fake control plane, which now also checks link and org tokens,
+  secrets, suspension, export and replay (`crates/cell-testkit/tests/org_admin.rs`).
+  The server side is tested on a real database against a stub data plane
+  (`domains/data_plane/tests.rs`). Both sides use the same wire types. A
+  cell fleet driven by the real server, not the fake, comes with step 8's
+  local full v2 stack.
+
+Decisions for now: the link uses a bearer token per data plane, and the
+wrapping key is a local key; mTLS and KMS replace both in step 10.
+v2 sessions show in the console from step 8.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

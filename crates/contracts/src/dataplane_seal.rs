@@ -54,8 +54,7 @@ pub fn key_from_base64(encoded: &str) -> Result<Key, SealError> {
     let raw = B64
         .decode(encoded.trim())
         .map_err(|e| err(format!("the key is not base64: {e}")))?;
-    raw.try_into()
-        .map_err(|_| err("the key is not 32 bytes"))
+    raw.try_into().map_err(|_| err("the key is not 32 bytes"))
 }
 
 /// A fresh random key (an org's data key).
@@ -145,7 +144,12 @@ pub fn seal(
     plain: &[u8],
     nonce: [u8; 12],
 ) -> Result<SealedSecret, SealError> {
-    let sealed = encrypt(data_key, &nonce, &secret_aad(org, secret_id, revision), plain)?;
+    let sealed = encrypt(
+        data_key,
+        &nonce,
+        &secret_aad(org, secret_id, revision),
+        plain,
+    )?;
     Ok(SealedSecret {
         secret_id: secret_id.to_owned(),
         revision,
@@ -202,11 +206,20 @@ mod tests {
         assert!(unseal(&DATA_KEY, "org-2", &sealed).is_err(), "another org");
         let mut older = sealed.clone();
         older.revision = 2;
-        assert!(unseal(&DATA_KEY, "org-1", &older).is_err(), "another revision");
+        assert!(
+            unseal(&DATA_KEY, "org-1", &older).is_err(),
+            "another revision"
+        );
         let mut moved = sealed.clone();
         moved.secret_id = "s-2".into();
-        assert!(unseal(&DATA_KEY, "org-1", &moved).is_err(), "another secret");
-        assert!(unseal(&random_key(), "org-1", &sealed).is_err(), "another key");
+        assert!(
+            unseal(&DATA_KEY, "org-1", &moved).is_err(),
+            "another secret"
+        );
+        assert!(
+            unseal(&random_key(), "org-1", &sealed).is_err(),
+            "another key"
+        );
         let wrapped = wrap_data_key(&DP_KEY, "org-1", "dk-1", &DATA_KEY, random_nonce()).unwrap();
         assert!(unwrap_data_key(&DP_KEY, "org-2", "dk-1", &wrapped).is_err());
         assert!(unwrap_data_key(&DP_KEY, "org-1", "dk-2", &wrapped).is_err());

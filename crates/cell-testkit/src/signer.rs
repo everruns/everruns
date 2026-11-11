@@ -19,7 +19,8 @@ impl Signer {
     pub fn new(kid: &str) -> anyhow::Result<Self> {
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
             .map_err(|e| anyhow::anyhow!("{e}"))?;
-        let pair = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).map_err(|e| anyhow::anyhow!("{e}"))?;
+        let pair =
+            Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(Self {
             public: pair.public_key().as_ref().to_vec(),
             pkcs8: pkcs8.as_ref().to_vec(),

@@ -208,7 +208,8 @@ impl Store {
             "feed/{source}/{incarnation}/{:020}-{:010}-{:020}-{:010}.json",
             first.index, first.ordinal, last.index, last.ordinal
         );
-        self.put(self.key(&name), serde_json::to_vec(records)?).await
+        self.put(self.key(&name), serde_json::to_vec(records)?)
+            .await
     }
 
     /// The archived feed records of `source` from `from_index` on, in order.

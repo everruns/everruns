@@ -104,21 +104,35 @@ impl OrgConfig {
     /// What this org holds that `known` (a restored control plane's view)
     /// does not: newer revisions count as unknown too.
     pub fn diff(&self, known: &ConfigKnown) -> ConfigDiff {
-        let agents: BTreeMap<&str, u64> =
-            known.agents.iter().map(|(id, r)| (id.as_str(), *r)).collect();
-        let secrets: BTreeMap<&str, u64> =
-            known.secrets.iter().map(|(id, r)| (id.as_str(), *r)).collect();
+        let agents: BTreeMap<&str, u64> = known
+            .agents
+            .iter()
+            .map(|(id, r)| (id.as_str(), *r))
+            .collect();
+        let secrets: BTreeMap<&str, u64> = known
+            .secrets
+            .iter()
+            .map(|(id, r)| (id.as_str(), *r))
+            .collect();
         ConfigDiff {
             agents: self
                 .agents
                 .values()
-                .filter(|a| agents.get(a.agent_id.as_str()).is_none_or(|r| a.revision > *r))
+                .filter(|a| {
+                    agents
+                        .get(a.agent_id.as_str())
+                        .is_none_or(|r| a.revision > *r)
+                })
                 .map(|a| (a.agent_id.clone(), a.revision))
                 .collect(),
             secrets: self
                 .secrets
                 .values()
-                .filter(|s| secrets.get(s.secret_id.as_str()).is_none_or(|r| s.revision > *r))
+                .filter(|s| {
+                    secrets
+                        .get(s.secret_id.as_str())
+                        .is_none_or(|r| s.revision > *r)
+                })
                 .map(|s| (s.secret_id.clone(), s.revision))
                 .collect(),
             connections: self
@@ -339,7 +353,9 @@ impl Orgs {
                 let why = if c.deleted {
                     "deleted".to_owned()
                 } else {
-                    c.suspended_reason.clone().unwrap_or_else(|| "suspended".into())
+                    c.suspended_reason
+                        .clone()
+                        .unwrap_or_else(|| "suspended".into())
                 };
                 (org.clone(), why)
             })
@@ -573,7 +589,12 @@ mod tests {
 
         orgs.apply(
             "o",
-            &update(1, 4, 3, vec![json!({ "kind": "Removal", "of": "secret", "id": "t" })]),
+            &update(
+                1,
+                4,
+                3,
+                vec![json!({ "kind": "Removal", "of": "secret", "id": "t" })],
+            ),
         );
         assert!(orgs.orgs["o"].secrets.is_empty());
     }
@@ -607,8 +628,13 @@ mod tests {
         assert!(orgs.stopped().is_empty());
 
         assert!(
-            orgs.admin("o", AdminCommand::Delete(OrgDelete { command_id: "c4".into() }))
-                .accepted
+            orgs.admin(
+                "o",
+                AdminCommand::Delete(OrgDelete {
+                    command_id: "c4".into()
+                })
+            )
+            .accepted
         );
         assert_eq!(orgs.stopped()["o"], "deleted");
         assert!(orgs.orgs["o"].data_key.is_none());

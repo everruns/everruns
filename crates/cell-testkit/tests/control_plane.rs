@@ -117,6 +117,14 @@ async fn agents_come_from_config_and_turns_bill_the_org() {
     fleet
         .until("the feed is delivered", || feed_drained(&fleet))
         .await;
+    // The step 7 gate's feed lag: from a record's commit to the control
+    // plane, within the 2 s budget.
+    let p99 = cp.feed_lag(99).expect("feed records arrived");
+    println!(
+        "feed lag p50 {:?} p99 {p99:?}",
+        cp.feed_lag(50).unwrap_or_default()
+    );
+    assert!(p99 < Duration::from_secs(2), "feed lag p99 {p99:?}");
     let usage = cp.usage();
     assert_eq!(usage.len(), calls, "one usage record per provider call");
     assert!(usage.values().all(|(org, _)| org == ORG));

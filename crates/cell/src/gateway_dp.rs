@@ -30,9 +30,8 @@ use axum::{Json, Router};
 
 use crate::control::AdminCommand;
 use crate::dp::{
-    AgentDefinition, CommandAck, CommandStatus, ConfigAck, ConfigDiff, ConfigKnown,
-    ConfigPosition, ConfigUpdate, OrgDelete, OrgEnable, OrgExport, OrgStateCommand,
-    SealedSecret,
+    AgentDefinition, CommandAck, CommandStatus, ConfigAck, ConfigDiff, ConfigKnown, ConfigPosition,
+    ConfigUpdate, OrgDelete, OrgEnable, OrgExport, OrgStateCommand, SealedSecret,
 };
 use crate::gateway::Gateway;
 use crate::node::{Node, now_ms};
@@ -233,7 +232,9 @@ async fn enable(
     Path(org): Path<String>,
     Json(body): Json<OrgEnable>,
 ) -> Result<Json<CommandAck>, ApiError> {
-    admin(&node, org, AdminCommand::Enable(body)).await.map(Json)
+    admin(&node, org, AdminCommand::Enable(body))
+        .await
+        .map(Json)
 }
 
 async fn set_state(
@@ -249,7 +250,9 @@ async fn delete(
     Path(org): Path<String>,
     Json(body): Json<OrgDelete>,
 ) -> Result<Json<CommandAck>, ApiError> {
-    admin(&node, org, AdminCommand::Delete(body)).await.map(Json)
+    admin(&node, org, AdminCommand::Delete(body))
+        .await
+        .map(Json)
 }
 
 async fn export(
@@ -343,7 +346,10 @@ async fn write_export(
     let tar = tar.into_inner()?;
     let compressed = zstd::encode_all(tar.as_slice(), 3)?;
     store
-        .put_object(&format!("orgs/{org}/exports/{export_id}.tar.zst"), compressed)
+        .put_object(
+            &format!("orgs/{org}/exports/{export_id}.tar.zst"),
+            compressed,
+        )
         .await
 }
 
@@ -354,7 +360,11 @@ async fn command_status(
     let gateway = gateway_of(&node)?;
     let directory = gateway.directory_cell()?;
     let status: Option<CommandStatus> = gateway
-        .call(directory, &format!("/cell/orgs/{org}/commands/{command}"), None)
+        .call(
+            directory,
+            &format!("/cell/orgs/{org}/commands/{command}"),
+            None,
+        )
         .await?;
     status
         .map(Json)
@@ -368,8 +378,8 @@ async fn unknown(
 ) -> Result<Json<ConfigDiff>, ApiError> {
     let gateway = gateway_of(&node)?;
     let directory = gateway.directory_cell()?;
-    let body = serde_json::to_value(&known)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let body =
+        serde_json::to_value(&known).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(
         gateway
             .call(directory, &format!("/cell/orgs/{org}/diff"), Some(&body))
@@ -445,7 +455,12 @@ impl SecretForExecutor {
                 self.secret.data_key_id, self.data_key.data_key_id
             )));
         }
-        let key = unwrap_data_key(dp_key, org, &self.data_key.data_key_id, &self.data_key.wrapped)?;
+        let key = unwrap_data_key(
+            dp_key,
+            org,
+            &self.data_key.data_key_id,
+            &self.data_key.wrapped,
+        )?;
         unseal(&key, org, &self.secret)
     }
 }

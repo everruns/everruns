@@ -1,5 +1,4 @@
-//! The control plane ↔ data plane protocol, `/dp/v1`
-//! (knowledge/execution/data-plane-v2/cp-dp-protocol.md).
+//! The control plane ↔ data plane protocol, `/dp/v1`.
 //!
 //! Both planes speak these types: the server as the control plane, and the
 //! cells of a v2 data plane. They live here, in a crate both already depend
@@ -155,12 +154,20 @@ pub enum PlacementPolicy {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "result")]
 pub enum ConfigAck {
-    Ok { applied_version: u64 },
-    AlreadyApplied { applied_version: u64 },
+    Ok {
+        applied_version: u64,
+    },
+    AlreadyApplied {
+        applied_version: u64,
+    },
     /// A gap or a mismatched base: send a full snapshot.
-    NeedFullSnapshot { applied_version: u64 },
+    NeedFullSnapshot {
+        applied_version: u64,
+    },
     /// From an older control plane epoch: refused.
-    StaleEpoch { epoch: u64 },
+    StaleEpoch {
+        epoch: u64,
+    },
 }
 
 /// `GET /dp/v1/orgs/{org}/config`.

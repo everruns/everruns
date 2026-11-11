@@ -53,8 +53,12 @@ struct Keys {
 impl OrgTokens {
     /// From `CELL_JWKS_URL` and `CELL_DATA_PLANE`; none when unset.
     pub fn from_env() -> Option<Arc<Self>> {
-        let url = std::env::var("CELL_JWKS_URL").ok().filter(|u| !u.is_empty())?;
-        let data_plane = std::env::var("CELL_DATA_PLANE").ok().filter(|d| !d.is_empty());
+        let url = std::env::var("CELL_JWKS_URL")
+            .ok()
+            .filter(|u| !u.is_empty())?;
+        let data_plane = std::env::var("CELL_DATA_PLANE")
+            .ok()
+            .filter(|d| !d.is_empty());
         Some(Arc::new(Self::new(Some(url), data_plane)))
     }
 
@@ -110,7 +114,9 @@ impl OrgTokens {
         if header.alg != Algorithm::EdDSA {
             return Err(unauthorized("org tokens are EdDSA"));
         }
-        let kid = header.kid.ok_or_else(|| unauthorized("the token names no key"))?;
+        let kid = header
+            .kid
+            .ok_or_else(|| unauthorized("the token names no key"))?;
         let (stale, may_refetch) = {
             let keys = self.keys.lock();
             let age = keys.fetched.map(|at| at.elapsed());
@@ -119,10 +125,10 @@ impl OrgTokens {
                 age.is_none_or(|a| a >= REFETCH),
             )
         };
-        if stale || (self.key(&kid).is_none() && may_refetch) {
-            if let Err(error) = self.fetch().await {
-                tracing::warn!(%error, "the control plane's keys were not fetched");
-            }
+        if (stale || (self.key(&kid).is_none() && may_refetch))
+            && let Err(error) = self.fetch().await
+        {
+            tracing::warn!(%error, "the control plane's keys were not fetched");
         }
         let key = self
             .key(&kid)

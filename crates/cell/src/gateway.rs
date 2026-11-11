@@ -771,9 +771,18 @@ async fn check_org_token(
         .split('/')
         .map(str::to_owned)
         .collect();
-    let refused = match path.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-        ["v1", "sessions"] => (!claims.has(SESSIONS) && !claims.has(ADMIN))
-            .then(|| (StatusCode::FORBIDDEN, "org token: no sessions:write scope".to_owned())),
+    let refused = match path
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["v1", "sessions"] => (!claims.has(SESSIONS) && !claims.has(ADMIN)).then(|| {
+            (
+                StatusCode::FORBIDDEN,
+                "org token: no sessions:write scope".to_owned(),
+            )
+        }),
         ["v1", "sessions", session, ..] => match parse(session) {
             Err(error) => Some(error),
             Ok(id) => match gateway.session_tenant(id).await {

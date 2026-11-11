@@ -261,12 +261,16 @@ pub async fn publish(
     .await?;
     let declaration = compile(&layers)?;
     let digest = digest(&declaration)?;
-    db.publish_engine_agent(
-        &key.agent_key,
-        &serde_json::to_value(&declaration)?,
-        &digest,
-    )
-    .await
+    let revision = db
+        .publish_engine_agent(
+            &key.agent_key,
+            &serde_json::to_value(&declaration)?,
+            &digest,
+        )
+        .await?;
+    // An org on a data plane gets the revision as config (step 7).
+    crate::domains::data_plane::agent_published(db, &key.agent_key, key.org_id, &revision).await?;
+    Ok(revision)
 }
 
 /// The key and current revision for sessions on `harness_id` answered by

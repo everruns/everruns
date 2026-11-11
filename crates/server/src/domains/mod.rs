@@ -17,6 +17,7 @@ pub mod capabilities;
 pub mod change_history;
 pub mod connected_clients;
 pub mod credentials;
+pub mod data_plane;
 pub mod dreaming;
 pub mod evals;
 pub mod events;

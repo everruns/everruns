@@ -16,6 +16,10 @@ name = "reencrypt-secrets"
 path = "src/bin/reencrypt_secrets.rs"
 
 [[bin]]
+name = "everruns-dataplane"
+path = "src/bin/dataplane.rs"
+
+[[bin]]
 name = "everruns-migrate"
 path = "src/bin/migrate.rs"
 
@@ -130,7 +134,7 @@ aws-lc-rs = "1"
 bashkit = { version = "0.21.0", default-features = false, features = ["jq", "tzdata", "aws-lc-rs"] }
 bashkit-scripted-tool = { version = "0.21.0", default-features = false, features = ["jq"] }
 
-everruns-contracts = { workspace = true, default-features = false, features = ["http", "sqlx"] }
+everruns-contracts = { workspace = true, default-features = false, features = ["http", "sqlx", "dataplane-seal"] }
 # sqlx Postgres encode/decode for TypedId lives on everruns-contracts (EVE-888).
 # The kernel never used sqlx, so the server asks the crate that owns the impls.
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.

@@ -57,6 +57,9 @@ struct Ledger {
     requests: usize,
     /// Feed records that arrived again under an id already stored.
     duplicates: usize,
+    /// Per stored feed record: arrival time minus the record's own time,
+    /// in ms (the protocol's feed lag).
+    feed_lags: Vec<i64>,
 }
 
 struct Knobs {
@@ -216,6 +219,18 @@ impl FakeCp {
         self.ledger.lock().sessions.clone()
     }
 
+    /// The feed lag at `percentile` (0-100) over every stored record: from
+    /// the record's own time to its arrival here. `None` before any record.
+    pub fn feed_lag(&self, percentile: usize) -> Option<std::time::Duration> {
+        let mut lags = self.ledger.lock().feed_lags.clone();
+        if lags.is_empty() {
+            return None;
+        }
+        lags.sort_unstable();
+        let at = (lags.len() * percentile.min(100)).div_ceil(100).max(1) - 1;
+        Some(std::time::Duration::from_millis(lags[at].max(0) as u64))
+    }
+
     pub fn org_events(&self) -> Vec<(String, String)> {
         self.ledger.lock().org_events.clone()
     }
@@ -372,6 +387,9 @@ async fn feed(
         return Err(unavailable());
     }
     let mut through = (0, 0);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
     {
         let mut ledger = cp.ledger.lock();
         for record in batch.records {
@@ -385,6 +403,9 @@ async fn feed(
             if !ledger.seen.insert(id) {
                 ledger.duplicates += 1;
                 continue;
+            }
+            if record.at_unix_ms > 0 {
+                ledger.feed_lags.push(now_ms - record.at_unix_ms);
             }
             match record.record {
                 Record::Usage {

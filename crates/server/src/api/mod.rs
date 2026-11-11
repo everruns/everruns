@@ -35,6 +35,7 @@ pub mod commands;
 pub mod common;
 pub mod connected_clients;
 pub mod credentials;
+pub mod data_plane;
 pub mod dispatch;
 pub mod durable;
 pub mod evals;

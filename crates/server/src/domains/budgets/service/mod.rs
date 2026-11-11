@@ -29,7 +29,7 @@ use super::costs::{CostBasis, RatedCost};
 
 mod postings;
 use postings::PostingContext;
-pub use postings::{HostCharge, USAGE_POLICY_NOTICE_KIND};
+pub use postings::{DATA_PLANE_USAGE_SOURCE, DataPlaneUsage, HostCharge, USAGE_POLICY_NOTICE_KIND};
 
 // ============================================================================
 // BudgetService

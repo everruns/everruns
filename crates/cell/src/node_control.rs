@@ -65,7 +65,9 @@ impl ControlPlane {
             want_micros: 1_000_000,
             per_call_micros: 10_000,
             token: link_token(),
-            jwks_url: std::env::var("CELL_JWKS_URL").ok().filter(|u| !u.is_empty()),
+            jwks_url: std::env::var("CELL_JWKS_URL")
+                .ok()
+                .filter(|u| !u.is_empty()),
         }
     }
 
@@ -81,7 +83,9 @@ impl ControlPlane {
 
 /// The link's shared secret, from `CELL_DP_TOKEN` (empty: none).
 pub fn link_token() -> Option<String> {
-    std::env::var("CELL_DP_TOKEN").ok().filter(|t| !t.is_empty())
+    std::env::var("CELL_DP_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty())
 }
 
 /// The link's token as the routes that check it hold it (none: open).
@@ -97,7 +101,10 @@ pub async fn require_link_token(
     if let Some(token) = token {
         let sent = crate::org_token::bearer(request.headers());
         if !sent.is_some_and(|sent| same_secret(sent.as_bytes(), token.as_bytes())) {
-            return (axum::http::StatusCode::UNAUTHORIZED, "the data plane token is missing or wrong")
+            return (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "the data plane token is missing or wrong",
+            )
                 .into_response();
         }
     }
@@ -214,13 +221,22 @@ impl Node {
     }
 
     /// Resend `source`'s archived feed from `from_index` (feed replay).
-    pub async fn replay_feed(&self, source: &str, incarnation: u64, from_index: u64) -> anyhow::Result<usize> {
+    pub async fn replay_feed(
+        &self,
+        source: &str,
+        incarnation: u64,
+        from_index: u64,
+    ) -> anyhow::Result<usize> {
         let cp = self
             .cfg
             .control_plane
             .clone()
             .ok_or_else(|| anyhow::anyhow!("no control plane configured"))?;
-        let records = self.cfg.store.feed_since(source, incarnation, from_index).await?;
+        let records = self
+            .cfg
+            .store
+            .feed_since(source, incarnation, from_index)
+            .await?;
         let total = records.len();
         for chunk in records.chunks(FEED_BATCH) {
             let batch = FeedBatch {
