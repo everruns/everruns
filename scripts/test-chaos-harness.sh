@@ -124,6 +124,22 @@ class ActorOverlapTests(unittest.TestCase):
             with self.subTest(release=release):
                 self.assertEqual(len(self.report(release, True).failures["session_on_two_workers"]), 1)
 
+    def test_failed_engine_activation_does_not_span_the_next_lease(self):
+        sid = "session_" + "a" * 32
+        def line(second, message):
+            return f"2026-10-14T00:00:{second:06.3f}Z {message} session_id={sid}\n"
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory)/"worker-0.log").write_text(
+                line(16, "Engine activation failed")
+                + line(35, "InputAtom: turn started")
+                + line(40, "Actor turn execution finished"))
+            (Path(directory)/"worker-1.log").write_text(
+                line(27, "InputAtom: turn started")
+                + line(29, "Actor turn execution finished"))
+            report = Report()
+            actor_worker_overlap(directory, 2, report)
+            self.assertFalse(report.failures)
+
 
 class ActorLeaseTakeoverTests(unittest.TestCase):
     # Main batch 39222530399: worker-0 finished, sent its release, and was

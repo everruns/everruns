@@ -96,6 +96,8 @@ This needs solving regardless of cells. Once it's done, v1 workers and v2 cells 
 
 Workers run a session on the Engine when the control plane binds it: its organization has the `engine_hosting` flag and its agent compiles to a `RuntimeAgent` declaration. Every other lease runs on `WorkerRuntimeHost` as before. Code: `crates/worker/src/engine_host/`.
 
+First-use key creation reads the winning key in a fresh statement after a conflicting insert finishes. Definition publishers serialize on that opaque key before reading its current revision in a separate statement. Under PostgreSQL READ COMMITTED, that second statement sees the previous publisher's commit even after waiting for its lock; joining the revision into the locking statement can retain a stale snapshot and assign the same revision twice. Equal digests reuse one revision; different digests retain dense, immutable revisions.
+
 - **Where it runs.** The worker's batch loop leases the session actor as before. The lease store notes which leases the control plane marked for the Engine, and the Engine lane takes those (`EngineLane` in `actor_runtime`). The claim binds the session at a published revision between turns. A session the Engine cannot serve goes back to the worker host: the claim answers `Legacy`, the claim fails, or this worker cannot build the revision (the verdict is cached per revision).
 - **The Engine never sees a platform id.** The declaration names its model by provider name and model, and its capabilities by id. The worker serves them:
   - the model through the organization's providers (the provider resolver accepts a unique provider name);
