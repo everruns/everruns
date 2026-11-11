@@ -26,7 +26,6 @@ use openraft::{
     EntryPayload, OptionalSend, RaftSnapshotBuilder, SnapshotMeta, StorageIOError, StoredMembership,
 };
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, watch};
 
 use crate::state::{CellId, CellState, Change, Response, SessionState};
@@ -429,31 +428,36 @@ impl Shared {
 /// An archived snapshot copy (`Store::put_snapshot`) as the cell state it
 /// holds.
 pub fn decode_archived(bytes: &[u8]) -> anyhow::Result<CellState> {
-    let stored: StoredSnapshot = serde_json::from_slice(bytes)?;
-    let mut state: CellState = serde_json::from_slice(&stored.data)?;
+    let (_, at) = split_snapshot(bytes)?;
+    let mut state: CellState = serde_json::from_slice(&bytes[at..])?;
     state.resolve_definitions();
     Ok(state)
 }
 
-#[derive(Serialize, Deserialize)]
-struct StoredSnapshot {
-    meta: SnapshotMeta<NodeId, openraft::BasicNode>,
-    /// The cell state as JSON, kept as text (a byte array would be written
-    /// as a list of numbers, three times the size).
-    #[serde(with = "as_text")]
-    data: Vec<u8>,
+type Meta = SnapshotMeta<NodeId, openraft::BasicNode>;
+
+/// The header of a stored snapshot (the node's file and the archived copy):
+/// the metadata as one JSON line. The cell state's JSON follows as it is.
+///
+/// Decision: no envelope around the state. Wrapping it in a JSON document
+/// escaped every quote (a 45% larger file) and serializing the envelope
+/// copied the state twice more. With 40 000 sessions a cell state is about
+/// 120 MB, and those copies, made every few seconds, are what pushed nodes
+/// out of memory in the 75 000-session run.
+fn snapshot_header(meta: &Meta) -> io::Result<Vec<u8>> {
+    let mut header = serde_json::to_vec(meta)?;
+    header.push(b'\n');
+    Ok(header)
 }
 
-mod as_text {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(data: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(std::str::from_utf8(data).map_err(serde::ser::Error::custom)?)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        Ok(String::deserialize(d)?.into_bytes())
-    }
+/// A stored snapshot's metadata and where its state starts. Compact JSON
+/// has no raw newline, so the first one ends the header.
+fn split_snapshot(bytes: &[u8]) -> io::Result<(Meta, usize)> {
+    let end = bytes
+        .iter()
+        .position(|b| *b == b'\n')
+        .ok_or_else(|| io::Error::other("snapshot without a header"))?;
+    Ok((serde_json::from_slice(&bytes[..end])?, end + 1))
 }
 
 /// The Raft-facing state machine.
@@ -520,9 +524,8 @@ impl StateMachine {
             dir,
             snapshot_seq: Default::default(),
         };
-        if let Some(stored) = machine.read_current()? {
-            let mut state: CellState =
-                serde_json::from_slice(&stored.data).map_err(io::Error::other)?;
+        if let Some((_, data)) = machine.read_current()? {
+            let mut state: CellState = serde_json::from_slice(&data).map_err(io::Error::other)?;
             state.resolve_definitions();
             let applied = state.last_applied.map(|id| id.index).unwrap_or(0);
             *machine.shared.state.write() = state;
@@ -532,39 +535,45 @@ impl StateMachine {
     }
 
     fn current_path(&self) -> PathBuf {
-        self.dir.join("current.json")
+        self.dir.join("current.snap")
     }
 
-    fn read_current(&self) -> io::Result<Option<StoredSnapshot>> {
+    /// The current snapshot's metadata and state. The state is the file's
+    /// own buffer with the header cut off, not a copy.
+    fn read_current(&self) -> io::Result<Option<(Meta, Vec<u8>)>> {
         match fs::read(self.current_path()) {
-            Ok(bytes) => Ok(Some(
-                serde_json::from_slice(&bytes).map_err(io::Error::other)?,
-            )),
+            Ok(mut bytes) => {
+                let (meta, at) = split_snapshot(&bytes)?;
+                bytes.drain(..at);
+                Ok(Some((meta, bytes)))
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(error),
         }
     }
 
-    fn write_current(&self, stored: &StoredSnapshot) -> io::Result<()> {
-        let bytes = serde_json::to_vec(stored)?;
-        let tmp = self.dir.join("current.json.tmp");
+    fn write_current(&self, meta: &Meta, data: &[u8]) -> io::Result<()> {
+        let tmp = self.dir.join("current.snap.tmp");
         let mut file = fs::File::create(&tmp)?;
-        file.write_all(&bytes)?;
+        file.write_all(&snapshot_header(meta)?)?;
+        file.write_all(data)?;
         file.sync_all()?;
         fs::rename(&tmp, self.current_path())?;
         fs::File::open(&self.dir)?.sync_all()?;
         Ok(())
     }
 
-    /// Keep a copy of the snapshot in the object store; best effort.
-    fn archive(&self, stored: &StoredSnapshot) {
-        let Ok(bytes) = serde_json::to_vec(stored) else {
+    /// Keep a copy of the snapshot in the object store; best effort. It
+    /// shares `data` with the caller instead of copying it.
+    fn archive(&self, meta: &Meta, data: bytes::Bytes) {
+        let Ok(header) = snapshot_header(meta) else {
             return;
         };
         let store = self.shared.store.clone();
-        let (cell, id) = (self.shared.cell, stored.meta.snapshot_id.clone());
+        let (cell, id) = (self.shared.cell, meta.snapshot_id.clone());
         tokio::spawn(async move {
-            if let Err(error) = store.put_snapshot(cell, &id, bytes).await {
+            let parts = [bytes::Bytes::from(header), data];
+            if let Err(error) = store.put_snapshot(cell, &id, parts).await {
                 tracing::warn!(%error, "snapshot copy to the object store failed");
             }
         });
@@ -610,7 +619,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
         let started = Instant::now();
         let mut state = self.snapshot_state();
         state.share_definitions();
-        let data = serde_json::to_vec(&state).map_err(sm_err)?;
+        let data = bytes::Bytes::from(serde_json::to_vec(&state).map_err(sm_err)?);
         let (last_applied, membership) = (state.last_applied, state.membership.clone());
         drop(state);
         let seq = self
@@ -625,23 +634,21 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
             last_membership: membership,
             snapshot_id,
         };
-        let stored = StoredSnapshot {
-            meta: meta.clone(),
-            data: data.clone(),
-        };
-        let dir = self.clone();
-        let stored =
-            tokio::task::spawn_blocking(move || dir.write_current(&stored).map(|()| stored))
-                .await
-                .map_err(sm_err)?
-                .map_err(sm_err)?;
-        self.archive(&stored);
+        let (dir, written, file_data) = (self.clone(), meta.clone(), data.clone());
+        tokio::task::spawn_blocking(move || dir.write_current(&written, &file_data))
+            .await
+            .map_err(sm_err)?
+            .map_err(sm_err)?;
+        self.archive(&meta, data);
         self.shared
             .snapshot_ms
             .store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
+        // openraft keeps only the metadata of a snapshot it built; a peer
+        // gets the state through `get_current_snapshot`, which reads the
+        // file. Handing the state back here would be one more copy held.
         Ok(Snapshot {
             meta,
-            snapshot: Box::new(Cursor::new(data)),
+            snapshot: Box::new(Cursor::new(Vec::new())),
         })
     }
 }
@@ -719,12 +726,8 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
         for session in sessions {
             self.shared.publish(Change::Session(session));
         }
-        let stored = StoredSnapshot {
-            meta: meta.clone(),
-            data,
-        };
-        let dir = self.clone();
-        tokio::task::spawn_blocking(move || dir.write_current(&stored))
+        let (dir, meta) = (self.clone(), meta.clone());
+        tokio::task::spawn_blocking(move || dir.write_current(&meta, &data))
             .await
             .map_err(sm_err)?
             .map_err(sm_err)?;
@@ -733,9 +736,9 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
 
     async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<TypeConfig>>, StorageError> {
         let stored = self.read_current().map_err(sm_err)?;
-        Ok(stored.map(|stored| Snapshot {
-            meta: stored.meta,
-            snapshot: Box::new(Cursor::new(stored.data)),
+        Ok(stored.map(|(meta, data)| Snapshot {
+            meta,
+            snapshot: Box::new(Cursor::new(data)),
         }))
     }
 }

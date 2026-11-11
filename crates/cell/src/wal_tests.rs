@@ -346,3 +346,24 @@ fn the_log_and_state_machine_pass_openraft_storage_suite() {
 
     openraft::testing::Suite::test_all(Builder).expect("openraft's storage suite");
 }
+
+/// The node snapshots on the log written since the last snapshot, not on
+/// the tail kept behind it for lagging followers.
+#[tokio::test]
+async fn held_after_counts_only_the_entries_past_an_index() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let wal = open(dir.path(), 1 << 20);
+    append_durable(&wal, (1..=40).map(|index| entry(1, index)).collect()).await;
+    let all = wal.held_bytes();
+    assert_eq!(wal.held_after(0), all);
+    assert_eq!(wal.held_after(40), 0);
+    let tail = wal.held_after(30);
+    assert!(tail > 0 && tail < wal.held_after(20) && wal.held_after(20) < all);
+    let mut store = wal.clone();
+    store
+        .purge(openraft::LogId::new(CommittedLeaderId::new(1, 1), 20))
+        .await
+        .expect("purge");
+    assert_eq!(wal.held_bytes(), wal.held_after(20));
+    assert_eq!(wal.held_after(30), tail);
+}

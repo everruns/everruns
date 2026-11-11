@@ -273,13 +273,16 @@ impl Store {
 
     /// Keep a copy of a cell snapshot (for disaster recovery and audits),
     /// and the newest [`SNAPSHOT_COPIES`] of that cell only.
-    pub async fn put_snapshot(&self, cell: u32, id: &str, bytes: Vec<u8>) -> anyhow::Result<()> {
+    pub async fn put_snapshot(
+        &self,
+        cell: u32,
+        id: &str,
+        parts: impl IntoIterator<Item = bytes::Bytes>,
+    ) -> anyhow::Result<()> {
         let dir = self.key(&format!("cells/{cell}/snapshots"));
-        self.put(
-            self.key(&format!("cells/{cell}/snapshots/{id}.json")),
-            bytes,
-        )
-        .await?;
+        let key = self.key(&format!("cells/{cell}/snapshots/{id}.snap"));
+        let payload: PutPayload = parts.into_iter().collect();
+        retry(|| async { self.inner.put(&key, payload.clone()).await.map(|_| ()) }).await?;
         let mut copies: Vec<_> = self.inner.list(Some(&dir)).try_collect().await?;
         copies.sort_by_key(|meta| std::cmp::Reverse(meta.last_modified));
         for old in copies.iter().skip(SNAPSHOT_COPIES) {

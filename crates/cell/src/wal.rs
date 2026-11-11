@@ -350,6 +350,16 @@ impl Wal {
         self.inner.lock().held
     }
 
+    /// Bytes of the entries held in memory that come after `index`.
+    pub fn held_after(&self, index: u64) -> u64 {
+        let inner = self.inner.lock();
+        inner
+            .sizes
+            .range(index.saturating_add(1)..)
+            .map(|(_, size)| size)
+            .sum()
+    }
+
     /// The group-commit loop: fsync once for everything written so far, then
     /// acknowledge it all.
     fn spawn_flusher(&self) {

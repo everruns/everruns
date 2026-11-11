@@ -46,7 +46,7 @@ impl Cell {
             claim_ttl: Duration::from_secs(10),
             max_turns_per_node: 64,
             snapshot_every: 100_000,
-            keep_log: 2048,
+            keep_log: 256,
         };
         let host = Arc::new(everruns_cell_testkit::host());
         let listen = addr.parse().unwrap();

@@ -147,9 +147,19 @@ impl Node {
             snapshot_max_chunk_size: 16 << 20,
             max_payload_entries: 256,
             snapshot_policy: SnapshotPolicy::LogsSinceLast(cfg.snapshot_every),
-            // A follower further behind than this gets a snapshot. That
-            // costs a copy of the whole cell, so keep enough log for a
-            // follower that fell a few seconds behind under load.
+            // A follower further behind than this gets a snapshot.
+            //
+            // Decision: keep 256 entries by default, not 2048. The kept
+            // entries stay parsed in memory, about four times their encoded
+            // size, and at full load entries average about 60 KB: 2048 of
+            // them held about 500 MB per node. At 37 000 sessions per cell
+            // that tail took nodes from about 1.2 GB to 1.8 GB idle and
+            // from 1.6 GB to 2.6 GB at peak, for the same throughput, and
+            // it is what pushed six nodes past one machine's memory in the
+            // 75 000-session run. A follower that falls further behind
+            // catches up by snapshot instead, about 10 s at 42 000 sessions
+            // (`prove_follower_catchup.py`). Serving the tail from the
+            // segment files instead of memory is the follow-up.
             max_in_snapshot_log_to_keep: cfg.keep_log,
             // Shipping a snapshot of tens of thousands of sessions takes
             // longer than openraft's default.
@@ -557,6 +567,14 @@ impl Node {
             // the log counts against the memory budget too: past a quarter
             // of it, take a snapshot and purge.
             //
+            // Only the entries after the last snapshot count. The purge
+            // keeps `keep_log` entries behind it for lagging followers, and
+            // with large entries those alone passed the quarter: the node
+            // then snapshotted the whole cell every few seconds while idle
+            // (13 times in 3 minutes at 37 000 sessions, two at the same
+            // index), which is what filled memory and disk in the
+            // 75 000-session run.
+            //
             // A snapshot copies the whole cell state, so with many sessions
             // it is not cheap: wait at least ten times as long as the last
             // one took, or snapshots alone would eat the node.
@@ -566,7 +584,13 @@ impl Node {
                     .load(std::sync::atomic::Ordering::Relaxed)
                     * 10,
             );
-            if self.wal.held_bytes() > self.cfg.memory_budget / 4
+            let snapshot = self
+                .raft
+                .metrics()
+                .borrow()
+                .snapshot
+                .map_or(0, |id| id.index);
+            if self.wal.held_after(snapshot) > self.cfg.memory_budget / 4
                 && last_snapshot.elapsed() > cost.max(Duration::from_secs(5))
             {
                 last_snapshot = Instant::now();
