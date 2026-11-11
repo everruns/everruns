@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@astrojs/check": "^0.9.12",
-    "@astrojs/markdown-satteri": "^0.4.5",
+    "@astrojs/markdown-satteri": "^0.4.6",
     "@astrojs/starlight": "^0.42.7",
     "@everruns/generative-ui": "file:../ui/generative-ui",
     "@fontsource-variable/geist": "^5.3.0",
