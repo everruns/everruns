@@ -258,6 +258,8 @@ test.describe("Page masthead responsive layout", () => {
   test("aligns the agent title, avatar, copy action, and badges on one center line", async ({
     page,
   }) => {
+    // One line needs the full-width page (Classic); beside Chat the badges may wrap.
+    await useClassicLayout(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`/agents/${AGENT_ID}`);
     const masthead = page.locator('[data-slot="page-masthead"]');
