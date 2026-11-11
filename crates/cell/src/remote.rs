@@ -134,7 +134,12 @@ pub fn view(s: &SessionState, since: Option<i32>) -> SessionState {
 }
 
 /// The delta of `session` at `applied` from `state`.
-pub fn delta(state: &CellState, applied: u64, session: SessionId, since: Option<i32>) -> SessionDelta {
+pub fn delta(
+    state: &CellState,
+    applied: u64,
+    session: SessionId,
+    since: Option<i32>,
+) -> SessionDelta {
     SessionDelta {
         applied,
         session: state
@@ -260,7 +265,9 @@ impl Remote {
             return Some(cell);
         }
         let cells = self.cells.read();
-        (cells.len() == 1).then(|| cells.keys().next().copied()).flatten()
+        (cells.len() == 1)
+            .then(|| cells.keys().next().copied())
+            .flatten()
     }
 
     /// Drop `session` from the mirror.
@@ -442,6 +449,7 @@ impl Remote {
         if present && have.is_some_and(|have| have >= index) {
             return Ok(());
         }
+        self.calls.inc(&[("waited", "view")]);
         self.refresh(session, index).await
     }
 
@@ -541,7 +549,11 @@ mod tests {
         event
     }
 
-    fn session(id: SessionId, events: std::ops::RangeInclusive<i32>, offloaded: i32) -> SessionState {
+    fn session(
+        id: SessionId,
+        events: std::ops::RangeInclusive<i32>,
+        offloaded: i32,
+    ) -> SessionState {
         SessionState {
             definition: Arc::new(serde_json::json!({ "name": "a" })),
             offloaded,
@@ -605,7 +617,13 @@ mod tests {
         cell.sessions.insert(id, session(id, 1..=2, 0));
         assert!(merge(&mut mirror, id, delta(&cell, 1, id, None)));
         cell.sessions.remove(&id);
-        cell.forwarded.insert(id, Left { cell: 3, generation: 2 });
+        cell.forwarded.insert(
+            id,
+            Left {
+                cell: 3,
+                generation: 2,
+            },
+        );
         assert!(merge(&mut mirror, id, delta(&cell, 2, id, Some(2))));
         assert!(!mirror.sessions.contains_key(&id));
         assert_eq!(mirror.forwarded[&id].cell, 3);

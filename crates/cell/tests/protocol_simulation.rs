@@ -510,6 +510,7 @@ impl World {
                         fence,
                         ttl_ms: TTL_MS,
                         consumed: 0,
+                        receipts: Vec::new(),
                         now_ms,
                     },
                 ),
@@ -523,6 +524,7 @@ impl World {
                             fence,
                             consumed: 0,
                             hand_off,
+                            receipts: Vec::new(),
                             now_ms,
                         },
                     )

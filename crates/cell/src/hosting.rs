@@ -70,6 +70,8 @@ struct Inner {
     /// Per session, the fence of the epoch running here, for workspace
     /// commits.
     epochs: parking_lot::Mutex<HashMap<SessionId, u64>>,
+    /// Per session, the renew poke of the epoch running here.
+    pokes: parking_lot::Mutex<HashMap<SessionId, Weak<actors::Poke>>>,
 }
 
 /// Where hosting reaches its cell.
@@ -111,6 +113,7 @@ impl RaftHosting {
                 hints: Default::default(),
                 hand_offs: Default::default(),
                 epochs: Default::default(),
+                pokes: Default::default(),
             }),
         }
     }
@@ -128,6 +131,7 @@ impl RaftHosting {
         if let Some(hint) = hint {
             hint.notify_waiters();
         }
+        self.inner.poke(session);
         if frozen
             && let Some(flag) = self
                 .inner
@@ -155,6 +159,7 @@ impl RaftHosting {
     /// Forget hints and flags nobody holds any more.
     pub fn sweep(&self) {
         self.inner.hints.lock().retain(|_, h| h.strong_count() > 0);
+        self.inner.pokes.lock().retain(|_, p| p.strong_count() > 0);
         self.inner
             .hand_offs
             .lock()
@@ -193,10 +198,27 @@ impl Inner {
     }
 
     async fn propose(&self, session: SessionId, command: Command) -> Result<Response> {
+        self.propose_as(session, command, true).await
+    }
+
+    /// Propose `command`; `waited` when a caller waits for its reply (an
+    /// executor counts those per turn for the bench's round-trip budget;
+    /// background appends are not waited).
+    async fn propose_as(
+        &self,
+        session: SessionId,
+        command: Command,
+        waited: bool,
+    ) -> Result<Response> {
         let t = std::time::Instant::now();
         let (response, index) = match &self.source {
             Source::Node(_) => self.node()?.propose(command).await.map_err(store_err)?,
-            Source::Remote(remote) => remote.propose(session, command).await.map_err(store_err)?,
+            Source::Remote(remote) => {
+                if waited {
+                    remote.calls.inc(&[("waited", "propose")]);
+                }
+                remote.propose(session, command).await.map_err(store_err)?
+            }
         };
         crate::prof::add("propose", t, 1);
         let mut fences = self.fences.lock();
@@ -222,10 +244,7 @@ impl Inner {
                 Ok(node.shared.clone())
             }
             Source::Remote(remote) => {
-                remote
-                    .caught_up(session, index)
-                    .await
-                    .map_err(store_err)?;
+                remote.caught_up(session, index).await.map_err(store_err)?;
                 Ok(remote.shared.clone())
             }
         }
@@ -472,12 +491,14 @@ impl SessionHosting for RaftHosting {
             next_input_seq: value["next_input_seq"].as_i64().unwrap_or(0),
             attempts: value["attempts"].as_u64().unwrap_or(1) as u32,
         };
-        let (binding, frozen) = self
+        let (binding, frozen, seen, wake_at) = self
             .inner
             .read(session, |s| {
                 (
                     s.authority.binding.clone(),
                     s.placement == crate::state::Placement::Frozen,
+                    actors::Seen::of(s),
+                    s.authority.wake_at,
                 )
             })
             .await?;
@@ -488,7 +509,15 @@ impl SessionHosting for RaftHosting {
             .lock()
             .insert(session, Arc::downgrade(&hand_off));
         self.inner.epochs.lock().insert(session, fence);
+        let poke = Arc::new(actors::Poke::new(seen));
+        self.inner
+            .pokes
+            .lock()
+            .insert(session, Arc::downgrade(&poke));
         let epoch = Epoch {
+            poke,
+            claimed_wake_at: wake_at,
+            riding: parking_lot::Mutex::new(Vec::new()),
             deltas: deltas::sink(self.inner.clone(), session, fence),
             fence,
             actor_fence: RwLock::new(ActorFence::new(session, holder, fence)),
@@ -517,6 +546,12 @@ struct Epoch {
     stored: parking_lot::Mutex<Option<StoredView>>,
     /// This epoch's writes, in order (see [`Pipe`]).
     pipe: Pipe,
+    /// Wakes the renewer on new input or a cancel (Engine's pushed inbox).
+    poke: Arc<actors::Poke>,
+    /// The wake time the session held when this epoch claimed it.
+    claimed_wake_at: Option<i64>,
+    /// Receipts riding on the next renew or release.
+    riding: parking_lot::Mutex<Vec<(String, Value)>>,
 }
 
 /// One epoch's writes to the cell, in order, a batch per round trip.
@@ -585,7 +620,10 @@ impl Pipe {
                 }
                 let (commands, replies): (Vec<_>, Vec<_>) =
                     ops.into_iter().map(|op| (op.command, op.reply)).unzip();
-                let result = inner.propose(session, Command::Chain { commands }).await;
+                let waited = replies.iter().any(Option::is_some);
+                let result = inner
+                    .propose_as(session, Command::Chain { commands }, waited)
+                    .await;
                 let responses = match result {
                     Ok(Response::Batch { responses }) if responses.len() == replies.len() => {
                         responses
@@ -1114,6 +1152,30 @@ impl SessionEpoch for Ports {
     }
     fn live_deltas(&self) -> Option<Arc<dyn everruns::hosting::LiveDeltaSink>> {
         self.epoch.as_ref().map(|e| e.deltas.clone())
+    }
+    // Decision: the cell implements Engine's step 1 shortcuts as the
+    // in-memory authority does, because each one is a round trip to the
+    // cell an executor would otherwise wait for: input and cancels are
+    // pushed (the turn does not renew to read its inbox), the claim's wake
+    // time is not stored again, and receipts the next holder can recompute
+    // ride on the next lease write.
+    fn renew_poke(&self) -> Option<Arc<tokio::sync::Notify>> {
+        self.epoch.as_ref().map(|e| e.poke.notify.clone())
+    }
+    fn pushes_admissions(&self) -> bool {
+        self.epoch.is_some()
+    }
+    fn claimed_wake_at(&self) -> Option<Option<i64>> {
+        self.epoch.as_ref().map(|e| e.claimed_wake_at)
+    }
+    async fn commit_with_lease(&self, key: &str, value: Value) -> Result<()> {
+        match &self.epoch {
+            Some(epoch) => {
+                epoch.riding.lock().push((key.to_owned(), value));
+                Ok(())
+            }
+            None => self.commit(key, value, true).await.map(|_| ()),
+        }
     }
     async fn schedule(&self, wake_at: Option<i64>) -> Result<()> {
         // Nothing waits on a timer's answer, and the release (or any later

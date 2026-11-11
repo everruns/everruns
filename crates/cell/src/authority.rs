@@ -518,19 +518,35 @@ impl crate::state::SessionState {
         }))
     }
 
-    /// Extend `name`'s epoch `fence`. `None`: the epoch was superseded.
+    /// Commit receipts that ride on a lease write (Engine's
+    /// `commit_with_lease`), each only if absent, under the lease write's
+    /// own ownership check: they commit exactly when it does.
+    fn ride(&mut self, receipts: Vec<(String, Value)>) {
+        let a = &mut self.authority;
+        for (key, value) in receipts {
+            if !a.records.contains_key(&key) {
+                a.note_commit(&key, &value);
+                a.records.insert(key, value);
+            }
+        }
+    }
+
+    /// Extend `name`'s epoch `fence`, committing `receipts` with it. `None`:
+    /// the epoch was superseded.
     pub fn renew(
         &mut self,
         name: &str,
         fence: u64,
         ttl_ms: i64,
         consumed: i64,
+        receipts: Vec<(String, Value)>,
         now_ms: i64,
     ) -> Option<Value> {
-        let a = &mut self.authority;
-        if !a.owns(name, fence, now_ms) {
+        if !self.authority.owns(name, fence, now_ms) {
             return None;
         }
+        self.ride(receipts);
+        let a = &mut self.authority;
         a.consumed = a.consumed.max(consumed);
         if let Some(holder) = a.holder.as_mut() {
             holder.expires_ms = holder.expires_ms.max(now_ms + ttl_ms);
@@ -558,12 +574,14 @@ impl crate::state::SessionState {
         fence: u64,
         consumed: i64,
         hand_off: bool,
+        receipts: Vec<(String, Value)>,
         now_ms: i64,
     ) -> Option<bool> {
-        let a = &mut self.authority;
-        if !a.owns(name, fence, now_ms) {
+        if !self.authority.owns(name, fence, now_ms) {
             return None;
         }
+        self.ride(receipts);
+        let a = &mut self.authority;
         a.consumed = a.consumed.max(consumed);
         a.holder = None;
         a.attempts = 0;

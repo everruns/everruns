@@ -91,13 +91,17 @@ pub enum Command {
         ttl_ms: i64,
         now_ms: i64,
     },
-    /// Extend an epoch and record the input it consumed.
+    /// Extend an epoch and record the input it consumed. `receipts` ride
+    /// on it (Engine's `commit_with_lease`): committed if absent, only if
+    /// the renewal is.
     Renew {
         session: SessionId,
         holder: String,
         fence: u64,
         ttl_ms: i64,
         consumed: i64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        receipts: Vec<(String, serde_json::Value)>,
         now_ms: i64,
     },
     /// A resumed epoch's turn made progress: the poison guard counts from
@@ -108,7 +112,8 @@ pub enum Command {
         fence: u64,
         now_ms: i64,
     },
-    /// Give an epoch back (`hand_off`: mid-turn, still runnable).
+    /// Give an epoch back (`hand_off`: mid-turn, still runnable), with the
+    /// receipts riding on it, as on `Renew`.
     Release {
         session: SessionId,
         holder: String,
@@ -116,6 +121,8 @@ pub enum Command {
         consumed: i64,
         #[serde(default)]
         hand_off: bool,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        receipts: Vec<(String, serde_json::Value)>,
         now_ms: i64,
     },
     /// Append one canonical event under epoch `fence`. `expected` is the
@@ -1002,12 +1009,23 @@ impl CellState {
                 fence,
                 ttl_ms,
                 consumed,
+                receipts,
                 now_ms,
             } => {
-                let Some(state) = self.session_mut(session) else {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                let riding = !receipts.is_empty();
+                let Some(state) = self.sessions.get_mut(&session) else {
                     return self.missing(session);
                 };
-                match state.renew(&holder, fence, ttl_ms, consumed, now_ms) {
+                let before = state.turns_completed();
+                let renewed = state.renew(&holder, fence, ttl_ms, consumed, receipts, now_ms);
+                if state.turns_completed() > before {
+                    self.feed.turn_finished(index, &session.to_string(), state);
+                }
+                if riding && renewed.is_some() {
+                    changes.push(Change::Session(session));
+                }
+                match renewed {
                     Some(value) => Response::Value { value },
                     None => Response::Fenced,
                 }
@@ -1033,12 +1051,18 @@ impl CellState {
                 fence,
                 consumed,
                 hand_off,
+                receipts,
                 now_ms,
             } => {
-                let Some(state) = self.session_mut(session) else {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                let Some(state) = self.sessions.get_mut(&session) else {
                     return self.missing(session);
                 };
-                let released = state.release(&holder, fence, consumed, hand_off, now_ms);
+                let before = state.turns_completed();
+                let released = state.release(&holder, fence, consumed, hand_off, receipts, now_ms);
+                if state.turns_completed() > before {
+                    self.feed.turn_finished(index, &session.to_string(), state);
+                }
                 changes.push(Change::Session(session));
                 match released {
                     Some(runnable) => Response::Value {
@@ -1425,7 +1449,6 @@ fn generation_cost_micros(event: &Event) -> Option<i64> {
 #[cfg(test)]
 #[path = "state_tests.rs"]
 mod tests;
-
 
 #[cfg(test)]
 #[path = "state_moves_tests.rs"]
