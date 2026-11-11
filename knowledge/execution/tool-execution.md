@@ -255,7 +255,6 @@ keeps these records model-readable and runtime-writable only. Retained task
 records may still name the previous hidden root, which remains a policy alias;
 physical relocation is the host's responsibility under exclusive ownership.
 
-
 `spawn_background` is a built-in meta-tool that schedules another built-in tool to run asynchronously and returns immediately with a run handle. It is generic: the caller passes `tool` plus `args`; the target tool determines whether background execution is supported.
 
 `spawn_background` is contributed by the `background_execution` capability, which auto-activates whenever the collected tool set contains a background-capable tool. See `knowledge/execution/background-execution.md` for the cross-cutting capability contract.
