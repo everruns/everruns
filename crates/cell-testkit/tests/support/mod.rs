@@ -66,6 +66,13 @@ impl Fleet {
 
     /// [`start`](Self::start), the cells reporting to `control_plane`.
     pub async fn start_with(control_plane: Option<String>) -> Self {
+        Self::start_with_cp(control_plane.map(everruns_cell::node_control::ControlPlane::new)).await
+    }
+
+    /// [`start`](Self::start), the cells linked to `control_plane` as given.
+    pub async fn start_with_cp(
+        control_plane: Option<everruns_cell::node_control::ControlPlane>,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut topology = Topology {
             directory_cell: 0,
@@ -103,9 +110,7 @@ impl Fleet {
                     snapshot_every: 100_000,
                     keep_log: 256,
                     executors: ExecutorMode::Pull { max_running: 64 },
-                    control_plane: control_plane
-                        .clone()
-                        .map(everruns_cell::node_control::ControlPlane::new),
+                    control_plane: control_plane.clone(),
                 };
                 fleet.configs.insert((*cell, *node), cfg);
                 fleet.nodes.insert((*cell, *node), (addr.clone(), None));

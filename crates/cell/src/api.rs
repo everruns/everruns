@@ -699,6 +699,9 @@ pub struct SessionView {
     pub active: Option<crate::authority::Holder>,
     pub turns_completed: u64,
     pub placement: Placement,
+    /// The org the session is billed to.
+    #[serde(default)]
+    pub tenant: Option<String>,
 }
 
 impl SessionView {
@@ -711,6 +714,7 @@ impl SessionView {
             active: s.authority.holder.clone(),
             turns_completed: s.turns_completed(),
             placement: s.placement,
+            tenant: s.tenant.clone(),
         }
     }
 }

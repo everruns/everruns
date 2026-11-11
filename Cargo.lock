@@ -3905,7 +3905,6 @@ dependencies = [
 name = "everruns-cell"
 version = "0.51.0"
 dependencies = [
- "aes-gcm",
  "anyhow",
  "async-trait",
  "axum",
@@ -3919,6 +3918,7 @@ dependencies = [
  "everruns-core",
  "futures",
  "hex",
+ "jsonwebtoken",
  "libc",
  "object_store 0.14.2",
  "openraft",
@@ -3957,7 +3957,9 @@ version = "0.51.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "aws-lc-rs",
  "axum",
+ "base64 0.23.1",
  "chrono",
  "clap",
  "everruns",
@@ -3966,15 +3968,18 @@ dependencies = [
  "everruns-core",
  "everruns-llmsim",
  "futures",
+ "jsonwebtoken",
  "mimalloc",
  "parking_lot",
  "rand 0.10.3",
  "reqwest",
  "serde",
  "serde_json",
+ "tar",
  "tempfile",
  "tokio",
  "uuid",
+ "zstd 0.13.4",
 ]
 
 [[package]]
@@ -4092,6 +4097,7 @@ dependencies = [
 name = "everruns-contracts"
 version = "0.51.0"
 dependencies = [
+ "aes-gcm",
  "aho-corasick",
  "anyhow",
  "async-trait",

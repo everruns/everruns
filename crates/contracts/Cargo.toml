@@ -39,6 +39,7 @@ bytes = { version = "1", optional = true }
 
 # Encoding / hashing / rng
 base64.workspace = true
+aes-gcm = { workspace = true, optional = true }
 sha2.workspace = true
 hex.workspace = true
 rand.workspace = true
@@ -110,6 +111,8 @@ tree-sitter-outlines = ["runtime", "dep:tree-sitter", "dep:tree-sitter-rust", "d
 openapi = ["dep:utoipa"]
 # sqlx Postgres encode/decode for TypedId.
 sqlx = ["dep:sqlx"]
+# Sealing of tenant secrets between control plane and data plane (`dataplane_seal`).
+dataplane-seal = ["dep:aes-gcm"]
 
 [[test]]
 name = "tls_startup"

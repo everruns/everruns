@@ -55,6 +55,8 @@ struct Ledger {
     config_applied: Vec<(String, u64)>,
     org_events: Vec<(String, String)>,
     requests: usize,
+    /// Feed records that arrived again under an id already stored.
+    duplicates: usize,
 }
 
 struct Knobs {
@@ -67,6 +69,8 @@ struct Knobs {
     lose_feed_replies: AtomicUsize,
     grant_ttl_ms: Mutex<i64>,
     per_call_micros: Mutex<Option<i64>>,
+    /// The link's token: required on calls in, sent on calls out.
+    link_token: Mutex<Option<String>>,
 }
 
 /// A running fake control plane.
@@ -75,6 +79,8 @@ pub struct FakeCp {
     pub url: String,
     ledger: Arc<Mutex<Ledger>>,
     knobs: Arc<Knobs>,
+    /// Signs org tokens; its key is served as the JWKS.
+    pub signer: Arc<crate::signer::Signer>,
 }
 
 impl FakeCp {
@@ -90,14 +96,75 @@ impl FakeCp {
                 lose_feed_replies: AtomicUsize::new(0),
                 grant_ttl_ms: Mutex::new(60_000),
                 per_call_micros: Mutex::new(Some(100)),
+                link_token: Mutex::new(None),
             }),
+            signer: Arc::new(crate::signer::Signer::new("cp-key-1")?),
         };
         let app = Router::new()
             .route("/dp/v1/tenants/{org}/allowances", post(allowance))
             .route("/dp/v1/feed", post(feed))
+            .route("/.well-known/jwks.json", axum::routing::get(jwks))
             .with_state(cp.clone());
         tokio::spawn(async move { axum::serve(listener, app).await });
         Ok(cp)
+    }
+
+    /// Require and send `token` on the link from now on.
+    pub fn set_link_token(&self, token: &str) {
+        *self.knobs.link_token.lock() = Some(token.to_owned());
+    }
+
+    /// Where the cells find the keys of org tokens.
+    pub fn jwks_url(&self) -> String {
+        format!("{}/.well-known/jwks.json", self.url)
+    }
+
+    /// A token for `org` on data plane `dp-local`, valid ten minutes.
+    pub fn org_token(&self, org: &str, scope: &str) -> anyhow::Result<String> {
+        self.signer.token(org, "dp-local", scope, 600)
+    }
+
+    /// Feed records that arrived again (a replay shows here).
+    pub fn duplicates(&self) -> usize {
+        self.ledger.lock().duplicates
+    }
+
+    /// `method` `path` on a data plane gateway or node with the link's
+    /// token, as the control plane calls it; the reply's status and body.
+    pub async fn call(
+        &self,
+        base: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> anyhow::Result<(StatusCode, serde_json::Value)> {
+        let http = reqwest::Client::builder().no_proxy().build()?;
+        let mut request = http
+            .request(method, format!("{base}{path}"))
+            .json(body)
+            .timeout(std::time::Duration::from_secs(30));
+        if let Some(token) = self.knobs.link_token.lock().clone() {
+            request = request.bearer_auth(token);
+        }
+        let reply = request.send().await?;
+        let status = StatusCode::from_u16(reply.status().as_u16())?;
+        let text = reply.text().await?;
+        Ok((
+            status,
+            serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text)),
+        ))
+    }
+
+    fn admit(&self, headers: &axum::http::HeaderMap) -> Result<(), (StatusCode, String)> {
+        let Some(token) = self.knobs.link_token.lock().clone() else {
+            return Ok(());
+        };
+        let sent = everruns_cell::org_token::bearer(headers);
+        if sent == Some(token.as_str()) {
+            Ok(())
+        } else {
+            Err((StatusCode::UNAUTHORIZED, "no link token".into()))
+        }
     }
 
     pub fn set_balance(&self, org: &str, micros: i64) {
@@ -189,8 +256,13 @@ impl FakeCp {
             update.epoch, update.version
         );
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        let token = self.knobs.link_token.lock().clone();
         loop {
-            let sent = http.put(&url).json(update).send().await;
+            let mut request = http.put(&url).json(update);
+            if let Some(token) = &token {
+                request = request.bearer_auth(token);
+            }
+            let sent = request.send().await;
             let error = match sent {
                 Ok(reply) if reply.status().is_success() => return Ok(reply.json().await?),
                 Ok(reply) if reply.status().is_client_error() => {
@@ -213,11 +285,20 @@ fn unavailable() -> (StatusCode, String) {
     (StatusCode::SERVICE_UNAVAILABLE, "control plane down".into())
 }
 
+async fn jwks(State(cp): State<FakeCp>) -> Reply<jsonwebtoken::jwk::JwkSet> {
+    cp.signer
+        .jwks()
+        .map(Json)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
 async fn allowance(
     State(cp): State<FakeCp>,
     Path(org): Path<String>,
+    headers: axum::http::HeaderMap,
     Json(request): Json<AllowanceRequest>,
 ) -> Reply<AllowanceGrant> {
+    cp.admit(&headers)?;
     if cp.knobs.down.load(Ordering::SeqCst) {
         return Err(unavailable());
     }
@@ -281,7 +362,12 @@ async fn allowance(
     Ok(Json(answer))
 }
 
-async fn feed(State(cp): State<FakeCp>, Json(batch): Json<FeedBatch>) -> Reply<FeedAck> {
+async fn feed(
+    State(cp): State<FakeCp>,
+    headers: axum::http::HeaderMap,
+    Json(batch): Json<FeedBatch>,
+) -> Reply<FeedAck> {
+    cp.admit(&headers)?;
     if cp.knobs.down.load(Ordering::SeqCst) {
         return Err(unavailable());
     }
@@ -297,6 +383,7 @@ async fn feed(State(cp): State<FakeCp>, Json(batch): Json<FeedBatch>) -> Reply<F
                 record.ordinal,
             );
             if !ledger.seen.insert(id) {
+                ledger.duplicates += 1;
                 continue;
             }
             match record.record {

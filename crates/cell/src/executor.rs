@@ -62,6 +62,8 @@ pub struct Executor {
     draining: AtomicBool,
     pub tenants: crate::tenants::TenantView,
     pub stats: crate::prom::Counters,
+    /// The data plane's key (`CELL_DP_KEY`), which opens org data keys.
+    dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
 }
 
 impl Executor {
@@ -87,6 +89,7 @@ impl Executor {
             draining: AtomicBool::new(false),
             tenants: Default::default(),
             stats: Default::default(),
+            dp_key: Mutex::new(data_plane_key()?),
         }))
     }
 
@@ -112,6 +115,31 @@ impl Executor {
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         });
+    }
+
+    /// Use `key` as the data plane's key (instead of `CELL_DP_KEY`).
+    pub fn set_dp_key(&self, key: everruns_contracts::dataplane_seal::Key) {
+        *self.dp_key.lock() = Some(key);
+    }
+
+    /// `org`'s secret `secret_id`, opened in memory. Never stored or logged.
+    pub async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>> {
+        let dp_key = self
+            .dp_key
+            .lock()
+            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let found: Option<crate::gateway_dp::SecretForExecutor> = self
+            .remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/secrets/{secret_id}"),
+                &serde_json::json!({}),
+                Duration::from_secs(5),
+            )
+            .await?;
+        let found = found.ok_or_else(|| anyhow::anyhow!("org {org} has no secret {secret_id}"))?;
+        Ok(found.open(org, &dp_key)?)
     }
 
     pub fn running(&self) -> usize {
@@ -320,6 +348,18 @@ impl Executor {
             self.remote.evict(session);
             self.hosting.forget(session);
         }
+    }
+}
+
+/// The data plane's key from `CELL_DP_KEY` (base64, 32 bytes); none when
+/// unset. A key that is set but malformed stops the executor at start.
+pub fn data_plane_key() -> anyhow::Result<Option<everruns_contracts::dataplane_seal::Key>> {
+    match std::env::var("CELL_DP_KEY") {
+        Ok(key) if !key.is_empty() => Ok(Some(
+            everruns_contracts::dataplane_seal::key_from_base64(&key)
+                .map_err(|e| anyhow::anyhow!("CELL_DP_KEY: {e}"))?,
+        )),
+        _ => Ok(None),
     }
 }
 

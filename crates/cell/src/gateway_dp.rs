@@ -45,6 +45,10 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
         .route("/dp/v1/orgs/{org}/config", get(position))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
+        .layer(axum::middleware::from_fn_with_state(
+            gateway.link_token(),
+            crate::node_control::require_link_token,
+        ))
         .with_state(gateway)
 }
 
@@ -56,18 +60,49 @@ pub fn cell_router(node: Arc<Node>) -> Router {
         .route("/cell/orgs/{org}/full", get(cell_full))
         .route("/cell/orgs/{org}/commands/{command}", get(cell_command))
         .route("/cell/orgs/{org}/diff", post(cell_diff))
-        .route("/cell/orgs/{org}/secrets/{secret}", get(cell_secret))
+        .route(
+            "/cell/orgs/{org}/secrets/{secret}",
+            get(cell_secret).post(cell_secret),
+        )
         .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
         .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
-        .route(
-            "/dp/v1/orgs/{org}",
-            put(enable).delete(delete),
-        )
+        .with_state(node.clone())
+        .merge(admin_router(node))
+}
+
+/// `/dp/v1` org admin and feed replay on a node, behind the link's token.
+fn admin_router(node: Arc<Node>) -> Router {
+    Router::new()
+        .route("/dp/v1/orgs/{org}", put(enable).delete(delete))
         .route("/dp/v1/orgs/{org}/state", post(set_state))
         .route("/dp/v1/orgs/{org}/exports", post(export))
         .route("/dp/v1/orgs/{org}/commands/{command}", get(command_status))
         .route("/dp/v1/orgs/{org}/config/unknown", post(unknown))
+        .route("/dp/v1/feed/replay", post(replay))
+        .layer(axum::middleware::from_fn_with_state(
+            node.cfg
+                .control_plane
+                .as_ref()
+                .map_or_else(crate::node_control::link_token, |cp| cp.token.clone())
+                .map(Arc::from),
+            crate::node_control::require_link_token,
+        ))
         .with_state(node)
+}
+
+/// `POST /dp/v1/feed/replay`: resend archived feed records.
+async fn replay(
+    State(node): State<Arc<Node>>,
+    Json(replay): Json<crate::dp::FeedReplay>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let resent = node
+        .replay_feed(&replay.source, replay.incarnation, replay.from_index)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    Ok(Json(serde_json::json!({
+        "command_id": replay.command_id,
+        "resent": resent,
+    })))
 }
 
 async fn config(
@@ -394,6 +429,25 @@ async fn cell_diff(
 pub struct SecretForExecutor {
     pub secret: SealedSecret,
     pub data_key: crate::control::WrappedKey,
+}
+
+impl SecretForExecutor {
+    /// Open the secret in memory with the data plane's key.
+    pub fn open(
+        &self,
+        org: &str,
+        dp_key: &everruns_contracts::dataplane_seal::Key,
+    ) -> Result<Vec<u8>, everruns_contracts::dataplane_seal::SealError> {
+        use everruns_contracts::dataplane_seal::{SealError, unseal, unwrap_data_key};
+        if self.secret.data_key_id != self.data_key.data_key_id {
+            return Err(SealError(format!(
+                "the secret is sealed under {}, the org's key is {}",
+                self.secret.data_key_id, self.data_key.data_key_id
+            )));
+        }
+        let key = unwrap_data_key(dp_key, org, &self.data_key.data_key_id, &self.data_key.wrapped)?;
+        unseal(&key, org, &self.secret)
+    }
 }
 
 async fn cell_secret(
