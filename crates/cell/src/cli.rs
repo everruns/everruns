@@ -59,6 +59,10 @@ enum Mode {
         max_turns_per_node: usize,
         #[arg(long, default_value = "20000")]
         snapshot_every: u64,
+        /// Log entries kept behind each snapshot, for followers that fell
+        /// behind; further back they catch up by snapshot.
+        #[arg(long, default_value = "2048")]
+        keep_log: u64,
         /// Join a running cell instead of forming it: the node waits until
         /// the cell's leader adds it (`POST /v1/cells/{cell}/nodes`).
         #[arg(long)]
@@ -102,6 +106,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             claim_ttl_ms,
             max_turns_per_node,
             snapshot_every,
+            keep_log,
             join,
             listen,
         } => {
@@ -126,6 +131,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 claim_ttl: Duration::from_millis(claim_ttl_ms),
                 max_turns_per_node,
                 snapshot_every,
+                keep_log,
             };
             serve_node(cfg, host, source, addr.parse()?, join).await
         }

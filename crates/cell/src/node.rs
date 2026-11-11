@@ -49,6 +49,9 @@ pub struct NodeConfig {
     pub max_turns_per_node: usize,
     /// Entries between snapshots.
     pub snapshot_every: u64,
+    /// Entries kept behind each snapshot. A follower further behind than
+    /// this catches up by snapshot (a copy of the whole cell).
+    pub keep_log: u64,
 }
 
 /// What a proposal returned, as sent between nodes.
@@ -131,15 +134,23 @@ impl Node {
         let sm = StateMachine::open(cfg.data_dir.join("snapshots"), shared.clone())?;
         let config = Config {
             cluster_name: format!("cell-{}", cfg.cell),
-            heartbeat_interval: 100,
-            election_timeout_min: 400,
-            election_timeout_max: 800,
+            // Decision: elections wait 1 to 2 s. At 0.4 to 0.8 s a follower
+            // on a loaded host, catching up by snapshot, timed out between
+            // chunks, called an election and cancelled its own catch-up,
+            // over and over (75k-session run). Failover takes about a
+            // second longer; a cell that can't heal costs far more.
+            heartbeat_interval: 150,
+            election_timeout_min: 1_000,
+            election_timeout_max: 2_000,
+            // Raw bytes now (see `network::SnapshotChunk`): fewer, larger
+            // chunks.
+            snapshot_max_chunk_size: 16 << 20,
             max_payload_entries: 256,
             snapshot_policy: SnapshotPolicy::LogsSinceLast(cfg.snapshot_every),
             // A follower further behind than this gets a snapshot. That
             // costs a copy of the whole cell, so keep enough log for a
             // follower that fell a few seconds behind under load.
-            max_in_snapshot_log_to_keep: 2048,
+            max_in_snapshot_log_to_keep: cfg.keep_log,
             // Shipping a snapshot of tens of thousands of sessions takes
             // longer than openraft's default.
             install_snapshot_timeout: 30_000,

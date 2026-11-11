@@ -49,6 +49,8 @@ def run(cells, a):
         "admit_p99_ms": report["admit"]["p99_ms"],
         "turn_p50_ms": report["turn"]["p50_ms"],
         "turn_p99_ms": report["turn"]["p99_ms"],
+        # Flat across the tenths of each session's turns: no slowdown with length.
+        "turn_p50_ms_by_tenth": report.get("turn_p50_ms_by_tenth"),
         "rss_mb": {f"c{c}n{n}": rss_mb(c, n) for c in range(cells) for n in (1, 2, 3)},
     }
     print(json.dumps(result), flush=True)

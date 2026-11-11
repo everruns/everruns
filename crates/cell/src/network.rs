@@ -1,4 +1,5 @@
-//! Raft RPC between the nodes of a cell, over HTTP with JSON bodies.
+//! Raft RPC between the nodes of a cell, over HTTP: JSON bodies, except a
+//! snapshot chunk's bytes, which travel raw (see [`SnapshotChunk`]).
 
 use std::time::Duration;
 
@@ -18,6 +19,26 @@ use crate::types::{NodeId, TypeConfig};
 
 /// Most bytes of log entries one append carries.
 const APPEND_BUDGET_BYTES: usize = 256 * 1024;
+
+/// Header carrying a snapshot chunk's metadata; the body is its raw bytes.
+pub const SNAPSHOT_HEADER: &str = "x-raft-snapshot";
+
+/// A snapshot chunk without its bytes (`InstallSnapshotRequest` minus
+/// `data`), sent as JSON in [`SNAPSHOT_HEADER`].
+///
+/// Decision: snapshot bytes travel raw, not inside JSON, where a byte array
+/// is a list of numbers about four times its size to write and parse. A
+/// follower that fell behind the leader's purged log can only catch up by
+/// snapshot, and while one chunk is slower than the election timeout it
+/// calls an election, cancels the transfer and starts over: a 75 000
+/// session cell (a 150 MB snapshot) never recovered from losing a node.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SnapshotChunk {
+    pub vote: openraft::Vote<NodeId>,
+    pub meta: openraft::SnapshotMeta<NodeId, BasicNode>,
+    pub offset: u64,
+    pub done: bool,
+}
 
 /// Creates one HTTP client per peer.
 #[derive(Clone)]
@@ -145,12 +166,37 @@ impl RaftNetwork<TypeConfig> for Peer {
         InstallSnapshotResponse<NodeId>,
         RPCError<NodeId, BasicNode, RaftError<NodeId, InstallSnapshotError>>,
     > {
-        self.call(
-            "snapshot",
-            &rpc,
-            option.hard_ttl().max(Duration::from_secs(30)),
-        )
-        .await
+        let chunk = SnapshotChunk {
+            vote: rpc.vote,
+            meta: rpc.meta,
+            offset: rpc.offset,
+            done: rpc.done,
+        };
+        let header = serde_json::to_string(&chunk)
+            .map_err(|error| RPCError::Network(NetworkError::new(&error)))?;
+        let response = self
+            .http
+            .post(format!("http://{}/raft/snapshot", self.addr))
+            .header(SNAPSHOT_HEADER, header)
+            .body(rpc.data)
+            .timeout(option.hard_ttl().max(Duration::from_secs(30)))
+            .send()
+            .await
+            .map_err(|error| {
+                if error.is_connect() {
+                    RPCError::Unreachable(Unreachable::new(&error))
+                } else {
+                    RPCError::Network(NetworkError::new(&error))
+                }
+            })?;
+        let result: Result<
+            InstallSnapshotResponse<NodeId>,
+            RaftError<NodeId, InstallSnapshotError>,
+        > = response
+            .json()
+            .await
+            .map_err(|error| RPCError::Network(NetworkError::new(&error)))?;
+        result.map_err(|error| RPCError::RemoteError(RemoteError::new(self.target, error)))
     }
 
     async fn vote(

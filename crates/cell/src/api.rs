@@ -77,9 +77,27 @@ async fn raft_vote(
 
 async fn raft_snapshot(
     State(node): State<Arc<Node>>,
-    Json(rpc): Json<InstallSnapshotRequest<TypeConfig>>,
-) -> impl IntoResponse {
-    Json(node.raft.install_snapshot(rpc).await)
+    headers: axum::http::HeaderMap,
+    data: axum::body::Bytes,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let chunk: crate::network::SnapshotChunk = headers
+        .get(crate::network::SNAPSHOT_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| serde_json::from_str(value).ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "missing snapshot chunk header".into(),
+            )
+        })?;
+    let rpc = InstallSnapshotRequest::<TypeConfig> {
+        vote: chunk.vote,
+        meta: chunk.meta,
+        offset: chunk.offset,
+        data: data.to_vec(),
+        done: chunk.done,
+    };
+    Ok(Json(node.raft.install_snapshot(rpc).await))
 }
 
 async fn propose(
