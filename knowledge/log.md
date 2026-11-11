@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-11
+
+- Raise the Bashkit dependency floor to 0.21.0 (Monty 1.4 forks, bounded tree walks, HTTP Host/encoded-slash hardening). Bashkit's Monty `python3` now fails closed unless `bashkit::MeteredAllocator` is the global allocator; Everruns' shells use CPython and no shipped surface runs Monty, so nothing changes today. See [Dependency Surface](project/dependency-surface.md).
+
 ## 2026-11-10
 
 - [Public skills](project/public-skills.md): `skills/` is the single source of truth for public agent skills; plugins and landing carry generated copies, a workflow opens auto-merging sync PRs, and both consumers fail CI on drift. Getting-started pages lead with an example prompt that links the skill.
