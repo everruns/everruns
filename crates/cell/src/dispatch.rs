@@ -14,6 +14,10 @@
 //! - Owed sessions no credit was free for wait in a queue, oldest first,
 //!   and are handed out as credits arrive; the scheduler's periodic sweep
 //!   covers anything the queue missed.
+//! - A pull whose executor went away (its connection dropped, so the
+//!   handler never finished) is withdrawn at once: its credits would
+//!   otherwise stay on offer, and soft affinity would keep handing that
+//!   executor's sessions to nobody until they ran out.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -102,6 +106,24 @@ impl Dispatch {
                 .map(|p| p.offered)
                 .unwrap_or_default(),
             _ => Vec::new(),
+        }
+    }
+
+    /// Withdraw `ticket`'s pull, abandoned before [`take`](Self::take):
+    /// its credits go, and what it was offered waits again, first in line.
+    pub fn abandon(&self, ticket: &Ticket) {
+        let offered = {
+            let mut pulls = self.pulls.lock();
+            match pulls.get(&ticket.executor) {
+                Some(pull) if pull.token == ticket.token => pulls
+                    .remove(&ticket.executor)
+                    .map(|p| p.offered)
+                    .unwrap_or_default(),
+                _ => return,
+            }
+        };
+        for session in offered.into_iter().rev() {
+            self.queue_front(session);
         }
     }
 
@@ -209,6 +231,33 @@ mod tests {
         let _new = dispatch.register(1, 2);
         assert!(dispatch.take(&old).is_empty());
         assert_eq!(dispatch.waiting(10), vec![s]);
+    }
+
+    #[test]
+    fn an_abandoned_pull_frees_its_credits_and_gives_its_offers_back() {
+        let dispatch = Dispatch::default();
+        let (a, b) = (SessionId::new(), SessionId::new());
+        let gone = dispatch.register(1, 4);
+        assert_eq!(dispatch.offer(a), Some(1));
+        dispatch.abandon(&gone);
+        assert_eq!(dispatch.free_credits(), 0, "the gone executor's credits");
+        assert_eq!(dispatch.waiting(10), vec![a], "its offer waits again");
+        let _other = dispatch.register(2, 4);
+        assert_eq!(
+            dispatch.offer(a),
+            Some(2),
+            "affinity no longer points at the executor that went away"
+        );
+        assert_eq!(dispatch.offer(b), Some(2));
+    }
+
+    #[test]
+    fn abandoning_a_replaced_pull_leaves_the_newer_one() {
+        let dispatch = Dispatch::default();
+        let old = dispatch.register(1, 2);
+        let _new = dispatch.register(1, 3);
+        dispatch.abandon(&old);
+        assert_eq!(dispatch.free_credits(), 3);
     }
 
     #[test]

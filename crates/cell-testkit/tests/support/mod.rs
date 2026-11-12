@@ -5,7 +5,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, dead_code)]
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use everruns_cell::cluster::{Topology, TopologySource};
@@ -14,14 +15,53 @@ use everruns_cell::node::{ExecutorMode, NodeConfig};
 use everruns_cell::remote::EXECUTOR_IDS;
 use everruns_cell::store::Store;
 use serde_json::{Value, json};
+use tokio::net::{TcpListener, TcpSocket};
 use tokio::runtime::Runtime;
 
-pub fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+/// A socket that may share its port with one other bound the same way:
+/// a node's listener beside the fleet's reservation of that port.
+fn shareable() -> TcpSocket {
+    let socket = TcpSocket::new_v4().unwrap();
+    socket.set_reuseaddr(true).unwrap();
+    // Linux lets two SO_REUSEADDR sockets bind one port while at most one
+    // listens; BSDs (macOS) need SO_REUSEPORT for that.
+    #[cfg(all(unix, not(target_os = "linux")))]
+    socket.set_reuseport(true).unwrap();
+    socket
+}
+
+/// Hold a fresh local port for a node for as long as the fleet lives.
+///
+/// Decision: the port is reserved by a bound socket that never listens,
+/// so connecting while its node is down is refused, as with a dead
+/// process, and nobody else can take the port meanwhile. Picking a port
+/// by binding `:0` and dropping it (what this harness did before) raced:
+/// two nodes of a fleet could draw the same port, or a killed node's port
+/// could go elsewhere before its restart, and the node that lost sat out
+/// the whole test while the fleet waited on it ("cell 1 elected no
+/// leader").
+fn reserve() -> TcpSocket {
+    let socket = shareable();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    socket
+}
+
+/// Listen on `listen`, a reserved port. A killed predecessor's listener
+/// closes as its runtime winds down, so wait for it briefly; nobody else
+/// can hold the port.
+fn listen_on(listen: SocketAddr) -> TcpListener {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let socket = shareable();
+        match socket.bind(listen) {
+            Ok(()) => return socket.listen(1024).unwrap(),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                assert!(Instant::now() < deadline, "{listen} stayed in use");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(error) => panic!("bind {listen}: {error}"),
+        }
+    }
 }
 
 pub fn runtime() -> Runtime {
@@ -40,6 +80,10 @@ pub struct Fleet {
     executors: BTreeMap<u64, (Arc<Executor>, Option<Runtime>)>,
     pub http: reqwest::Client,
     configs: BTreeMap<(u32, u64), NodeConfig>,
+    /// Each node's port, held for the fleet's life (see [`reserve`]).
+    ports: BTreeMap<(u32, u64), TcpSocket>,
+    /// Why nodes stopped serving on their own; any entry fails the test.
+    failed: Arc<Mutex<Vec<String>>>,
 }
 
 impl Drop for Fleet {
@@ -78,10 +122,14 @@ impl Fleet {
             directory_cell: 0,
             cells: BTreeMap::new(),
         };
+        let mut ports = BTreeMap::new();
         for (cell, size) in [(0u32, 3u64), (1, 1)] {
-            let members = (1..=size)
-                .map(|node| (node, format!("127.0.0.1:{}", free_port())))
-                .collect();
+            let mut members = BTreeMap::new();
+            for node in 1..=size {
+                let port = reserve();
+                members.insert(node, port.local_addr().unwrap().to_string());
+                ports.insert((cell, node), port);
+            }
             topology.cells.insert(cell, members);
         }
         let path = dir.path().join("topology.json");
@@ -93,6 +141,8 @@ impl Fleet {
             executors: BTreeMap::new(),
             http: reqwest::Client::builder().no_proxy().build().unwrap(),
             configs: BTreeMap::new(),
+            ports,
+            failed: Arc::default(),
             dir,
         };
         for (cell, members) in &topology.cells {
@@ -123,31 +173,44 @@ impl Fleet {
         fleet
     }
 
-    /// (Re)start a node from its data directory.
+    /// (Re)start a node from its data directory, on its reserved port.
     pub fn start_node(&mut self, cell: u32, node: u64) {
         let cfg = self.configs[&(cell, node)].clone();
         let (addr, slot) = self.nodes.get_mut(&(cell, node)).unwrap();
+        let listen: SocketAddr = addr.parse().unwrap();
         let rt = runtime();
+        let listener = {
+            let _runtime = rt.enter();
+            listen_on(listen)
+        };
         let host = Arc::new(everruns_cell_testkit::host());
-        let listen: std::net::SocketAddr = addr.parse().unwrap();
         let topology = self.topology.clone();
+        let failed = self.failed.clone();
         rt.spawn(async move {
-            // A killed predecessor's socket may linger a moment.
-            for _ in 0..50 {
-                if std::net::TcpListener::bind(listen).is_ok() {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+            let served =
+                everruns_cell::cli::serve_node_on(cfg, host, topology, listener, false).await;
+            if let Err(error) = served {
+                failed
+                    .lock()
+                    .unwrap()
+                    .push(format!("node {cell}/{node} on {listen}: {error:#}"));
             }
-            everruns_cell::cli::serve_node(cfg, host, topology, listen, false).await
         });
         *slot = Some(rt);
+    }
+
+    /// Fail now, with the reason, if a node stopped serving on its own,
+    /// rather than at whatever timeout its absence runs into later.
+    pub fn check(&self) {
+        let failed = self.failed.lock().unwrap();
+        assert!(failed.is_empty(), "the fleet lost nodes: {failed:?}");
     }
 
     /// `POST /cell/propose` on `cell`, any member; the cell's response.
     pub async fn propose(&self, cell: u32, command: Value) -> Value {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
+            self.check();
             for ((c, _), (addr, rt)) in &self.nodes {
                 if *c != cell || rt.is_none() {
                     continue;
@@ -194,6 +257,7 @@ impl Fleet {
     {
         let deadline = Instant::now() + Duration::from_secs(30);
         while !check().await {
+            self.check();
             assert!(Instant::now() < deadline, "timed out: {what}");
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
@@ -278,6 +342,7 @@ impl Fleet {
     pub async fn leader(&self, cell: u32) -> u64 {
         let deadline = Instant::now() + Duration::from_secs(20);
         while Instant::now() < deadline {
+            self.check();
             for ((c, node), (addr, rt)) in &self.nodes {
                 if *c != cell || rt.is_none() {
                     continue;
@@ -301,6 +366,7 @@ impl Fleet {
     pub async fn post(&self, path: &str, body: Value) -> Value {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
+            self.check();
             let url = format!("{}{path}", self.base());
             match self.http.post(&url).json(&body).send().await {
                 Ok(response) if response.status().is_success() => {
@@ -318,6 +384,7 @@ impl Fleet {
     pub async fn get(&self, path: &str) -> Value {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
+            self.check();
             let url = format!("{}{path}", self.base());
             match self.http.get(&url).send().await {
                 Ok(response) if response.status().is_success() => {

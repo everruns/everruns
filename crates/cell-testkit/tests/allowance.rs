@@ -22,12 +22,10 @@ struct Cell {
 impl Cell {
     async fn start() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let addr = format!("127.0.0.1:{port}");
+        // Bound before the topology names it, and kept: a port picked and
+        // released first could be someone else's by the time the node binds.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
         let members = BTreeMap::from([(1, addr.clone())]);
         let topology = Topology {
             directory_cell: 0,
@@ -51,9 +49,9 @@ impl Cell {
             control_plane: None,
         };
         let host = Arc::new(everruns_cell_testkit::host());
-        let listen = addr.parse().unwrap();
-        tokio::spawn(async move {
-            everruns_cell::cli::serve_node(cfg, host, TopologySource { path }, listen, false).await
+        let served = tokio::spawn(async move {
+            everruns_cell::cli::serve_node_on(cfg, host, TopologySource { path }, listener, false)
+                .await
         });
         let cell = Self {
             base: format!("http://{addr}"),
@@ -61,6 +59,9 @@ impl Cell {
             _dir: dir,
         };
         for _ in 0..200 {
+            if served.is_finished() {
+                panic!("the cell stopped: {:?}", served.await);
+            }
             if cell
                 .http
                 .get(cell.url("/v1/cells"))

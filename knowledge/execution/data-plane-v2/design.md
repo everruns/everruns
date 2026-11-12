@@ -259,7 +259,8 @@ of any org are spread over every cell, so per-cell pools would fragment
 capacity. Executors pull work with **credits**: an executor splits its free slots
 among the cells it talks to and never offers the same slot twice (a cell
 holding an unused credit returns it after a short timeout, and the
-executor re-offers it elsewhere). A cell's leader hands out an activation
+executor re-offers it elsewhere; a credit whose executor hung up is
+dropped at once, so affinity never waits on an executor that is gone). A cell's leader hands out an activation
 only against a credit, so an executor can't be oversubscribed, and each
 cell has a **per-cell cap** on running turns so one hot cell can't take
 the whole pool. Dispatch has **soft affinity**: a cell offers a
