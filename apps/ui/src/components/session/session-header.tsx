@@ -239,8 +239,8 @@ export function buildSessionNavigation({
   const hasWork =
     !dataPlane &&
     (hasFeature("leased_resources") ||
-    hasFeature("schedules") ||
-    (taskCount ?? 0) > 0 ||
+      hasFeature("schedules") ||
+      (taskCount ?? 0) > 0 ||
       (activeScheduleCount ?? 0) > 0);
   const hasFiles = !dataPlane && sessionShowsFiles(features, fileCount);
   // Agents shows the whole run: on a session that can hand work to other

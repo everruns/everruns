@@ -1,4 +1,7 @@
-jest.mock("@/providers/feature-flags-provider", () => ({ useFeatureFlag: () => true }));
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlag: () => true,
+  useOptionalFeatureFlags: () => null,
+}));
 import { render, screen, act, waitFor, fireEvent, within } from "@testing-library/react";
 import { Suspense } from "react";
 
