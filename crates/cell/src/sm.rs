@@ -311,12 +311,12 @@ impl Shared {
         Ok(seg)
     }
 
-    /// Estimated bytes of resident events, and their count.
     /// How long since this replica last built a snapshot (or started).
     pub fn last_snapshot_age(&self) -> std::time::Duration {
         self.last_snapshot.lock().elapsed()
     }
 
+    /// Estimated bytes of resident events, and their count.
     pub fn resident(&self) -> (u64, usize) {
         let events: usize = self
             .state

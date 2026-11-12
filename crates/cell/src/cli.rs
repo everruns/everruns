@@ -171,6 +171,17 @@ enum Mode {
         #[arg(long, value_parser = parse_at)]
         at: i64,
     },
+    /// Where a session is and what it is doing, and how each cell keeps
+    /// up (`inspect.rs`). Read only.
+    Inspect {
+        #[arg(long, env = "CELL_TOPOLOGY")]
+        topology: PathBuf,
+        /// Print JSON instead of text.
+        #[arg(long)]
+        json: bool,
+        #[command(subcommand)]
+        what: Inspect,
+    },
     /// Run a stateless gateway.
     Gateway {
         #[arg(long, env = "CELL_TOPOLOGY")]
@@ -178,6 +189,17 @@ enum Mode {
         #[arg(long)]
         listen: SocketAddr,
     },
+}
+
+#[derive(Subcommand)]
+enum Inspect {
+    /// Every cell: leader, shipping, snapshot age, load, and each node's lag.
+    Cells,
+    /// One session: its directory entry, its cell, its claim and its last
+    /// events.
+    Session { id: String },
+    /// Sessions part way through a move, with the directory's view of each.
+    Moves,
 }
 
 pub fn init_tracing() {
@@ -322,6 +344,11 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
+        Mode::Inspect {
+            topology,
+            json,
+            what,
+        } => inspect(Topology::load(&topology)?, json, what).await,
         Mode::Gateway { topology, listen } => {
             let gateway = Gateway::new(TopologySource { path: topology });
             let listener = tokio::net::TcpListener::bind(listen).await?;
@@ -494,4 +521,54 @@ pub fn local_topology(cells: u32, nodes: u64, base: u16) -> Topology {
         topology.cells.insert(cell, members);
     }
     topology
+}
+
+async fn inspect(topology: Topology, json: bool, what: Inspect) -> anyhow::Result<()> {
+    use crate::inspect::{Inspector, render_cells, render_moves, render_session};
+    let inspector = Inspector::new(topology)?;
+    let out = match what {
+        Inspect::Cells => {
+            let reports = inspector.reports().await;
+            if json {
+                serde_json::to_string_pretty(&reports)?
+            } else {
+                render_cells(&reports)
+            }
+        }
+        Inspect::Session { id } => {
+            let session = everruns::SessionId::parse(&id)?;
+            let placed = inspector.placed(session).await;
+            let report = match placed {
+                Some(p) => inspector.session(p.cell, session).await,
+                None => None,
+            };
+            if json {
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"placed": placed, "session": report}),
+                )?
+            } else {
+                render_session(session, placed, report.as_ref())
+            }
+        }
+        Inspect::Moves => {
+            let reports = inspector.reports().await;
+            let mut placed = std::collections::HashMap::new();
+            for nodes in reports.values() {
+                for (_, report) in nodes {
+                    for m in report.iter().flat_map(|r| &r.moves) {
+                        if !placed.contains_key(&m.session) {
+                            placed.insert(m.session, inspector.placed(m.session).await);
+                        }
+                    }
+                }
+            }
+            if json {
+                serde_json::to_string_pretty(&reports)?
+            } else {
+                render_moves(&reports, &placed)
+            }
+        }
+    };
+    println!("{out}");
+    Ok(())
 }

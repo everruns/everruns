@@ -33,6 +33,11 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/propose", post(propose))
         .route("/cell/activate/{session}", post(activate))
         .route("/cell/stats", get(stats))
+        .route("/cell/inspect", get(crate::inspect::cell))
+        .route(
+            "/cell/sessions/{session}/inspect",
+            get(crate::inspect::session),
+        )
         .route("/metrics", get(metrics))
         .route("/cell/metrics/reset", post(reset_metrics))
         .route("/cell/snapshot", post(trigger_snapshot))
@@ -142,7 +147,7 @@ pub struct Stats {
 }
 
 /// This process's resident set size, from `/proc` (0 elsewhere).
-fn rss_mb() -> u64 {
+pub(crate) fn rss_mb() -> u64 {
     std::fs::read_to_string("/proc/self/statm")
         .ok()
         .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())

@@ -42,6 +42,7 @@ pub mod gateway_sse;
 pub mod gateway_v1;
 pub mod host;
 pub mod hosting;
+pub mod inspect;
 pub mod metrics;
 pub mod moves;
 pub mod network;
