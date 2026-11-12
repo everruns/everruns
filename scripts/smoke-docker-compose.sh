@@ -4,9 +4,11 @@
 #
 # Steps mirror the guide: generate secrets, write .env, pull, up, sign in,
 # create a personal access token, create an agent, start a session, send a
-# message, and wait for the turn to complete. The agent uses the seeded LlmSim
-# model so no LLM API key is needed. LlmSim is seeded disabled, so the smoke
-# enables it through the API first.
+# message, and wait for the turn to complete. The agent runs on LlmSim so no
+# LLM API key is needed. Startup no longer creates provider rows for built-in
+# drivers (only connected providers are listed), so the smoke connects LlmSim
+# through the API and enables an `llmsim-default` model under it; images that
+# still seed the provider and its disabled model are handled the same way.
 #
 # Decision: this runs published images (EVERRUNS_TAG, default `latest`), not
 # PR-built binaries. CI binaries are linked against the runner's newer glibc
@@ -24,8 +26,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_SRC="${1:-$ROOT/infra/docker-compose/docker-compose.yaml}"
 PORT="${EXAMPLE_PROXY_PORT:-9300}"
 BASE="http://localhost:$PORT"
-# Seeded LlmSim model id (crates/server/src/setup/seed/models.rs, LLMSIM_DEFAULT).
-LLMSIM_MODEL="model_01933b5a000070008000000000000401"
+# LlmSim's default model name (crates/server/src/setup/seed/models.rs).
+LLMSIM_MODEL_NAME="llmsim-default"
 
 WORKDIR="$(mktemp -d)"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-everruns-smoke}"
@@ -123,7 +125,26 @@ EVERRUNS_TOKEN="$(curl -fsS -X POST "$BASE/api/v1/auth/personal-access-tokens" \
 case "$EVERRUNS_TOKEN" in evr_pat_*) ;; *) fail "PAT does not start with evr_pat_" ;; esac
 auth=(-H "Authorization: Bearer $EVERRUNS_TOKEN" -H "Content-Type: application/json")
 
-step "Create an agent on the LlmSim model"
+step "Connect LlmSim and create an agent on it"
+provider_id="$(curl -fsS "$BASE/api/v1/providers" "${auth[@]}" \
+  | jq -r '[.data[] | select(.provider_type == "llmsim")][0].id // empty')" \
+  || fail "could not list providers"
+if [ -z "$provider_id" ]; then
+  provider_id="$(curl -fsS -X POST "$BASE/api/v1/providers" "${auth[@]}" \
+    -d '{"name":"LlmSim","provider_type":"llmsim"}' | jq -r .id)" \
+    || fail "could not connect the LlmSim provider"
+fi
+case "$provider_id" in provider_*) ;; *) fail "LlmSim provider id is '$provider_id'" ;; esac
+LLMSIM_MODEL="$(curl -fsS "$BASE/api/v1/models?limit=500" "${auth[@]}" \
+  | jq -r --arg p "$provider_id" --arg m "$LLMSIM_MODEL_NAME" \
+    '[.data[] | select(.provider_id == $p and .model_id == $m)][0].id // empty')" \
+  || fail "could not list models"
+if [ -z "$LLMSIM_MODEL" ]; then
+  LLMSIM_MODEL="$(curl -fsS -X POST "$BASE/api/v1/providers/$provider_id/models" "${auth[@]}" \
+    -d "{\"model_id\":\"$LLMSIM_MODEL_NAME\",\"display_name\":\"LlmSim Default\",\"capabilities\":[\"chat\",\"tools\"],\"enabled\":true}" \
+    | jq -r .id)" || fail "could not create the LlmSim model"
+fi
+case "$LLMSIM_MODEL" in model_*) ;; *) fail "LlmSim model id is '$LLMSIM_MODEL'" ;; esac
 curl -fsS -X PATCH "$BASE/api/v1/models/$LLMSIM_MODEL" "${auth[@]}" -d '{"enabled":true}' >/dev/null \
   || fail "could not enable the LlmSim model"
 agent_id="$(curl -fsS -X POST "$BASE/api/v1/agents" "${auth[@]}" \
