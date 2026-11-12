@@ -116,6 +116,26 @@ Cancellation is cooperative. Cancelling drops the in-flight turn future and
 tears down tool work through the same runtime path; it does not kill the host
 process or provide an independent transaction boundary.
 
+## Cancel one tool call
+
+To stop one running tool call and let the turn go on, for example when a user
+stops a long shell command, cancel it by its tool call id:
+
+```rust
+# fn stop(session: &everruns::Session) {
+if session.tool_call_running("call_42") {
+    session.cancel_tool_call("call_42");
+}
+# }
+```
+
+The call's future is dropped, its tool context cancellation fires, and it
+completes with status `cancelled` and an error the model reads, so the agent
+can react and continue. Other calls in the same batch finish as usual. Calls
+register in a process-wide registry; a host that wants its own puts a
+`ToolCallCancels` (`everruns_core::engine::tool_cancel`) in the tool context
+extensions.
+
 ## Observability
 
 To send every session's events to OpenTelemetry or Braintrust, or to your own

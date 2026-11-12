@@ -607,6 +607,63 @@ async fn cancellation_drops_an_in_flight_tool_hook() {
     assert!(!completion_ran.load(Ordering::SeqCst));
 }
 
+/// Cancelling one tool call stops that call and lets the turn go on: the
+/// model's next step sees the call as cancelled and answers.
+#[tokio::test]
+async fn cancelling_one_tool_call_lets_the_turn_finish() {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let started_inside = started.clone();
+    let tool = crate::FunctionTool::new(
+        "wait_forever",
+        "Waits until stopped.",
+        json!({ "type": "object", "properties": {} }),
+        move |_args: serde_json::Value| {
+            let started_inside = started_inside.clone();
+            async move {
+                started_inside.notify_one();
+                std::future::pending::<()>().await;
+                Ok::<_, String>(json!({ "ok": true }))
+            }
+        },
+    );
+    let agent = Agent::builder()
+        .instructions("Call wait_forever when asked.")
+        .model(Model::simulated_scripted(
+            "stopped",
+            vec![
+                vec![ToolCall {
+                    id: "call_slow".into(),
+                    name: "wait_forever".into(),
+                    arguments: json!({}),
+                }],
+                vec![],
+            ],
+        ))
+        .tool(tool)
+        .build()
+        .expect("valid agent");
+    let session = InMemoryEngine::new().create(agent);
+    assert!(!session.cancel_tool_call("call_slow"), "nothing runs yet");
+
+    let canceller = session.clone();
+    let cancel = tokio::spawn(async move {
+        started.notified().await;
+        (
+            canceller.tool_call_running("call_slow"),
+            canceller.cancel_tool_call("call_slow"),
+        )
+    });
+    let turn = tokio::time::timeout(Duration::from_secs(5), session.run("wait")).await;
+    assert_eq!(cancel.await.expect("canceller"), (true, true));
+    let turn = turn
+        .expect("the turn goes on after the cancel")
+        .expect("run resolves");
+
+    assert_eq!(turn.stop_reason, TurnStopReason::EndTurn, "{turn:?}");
+    assert_eq!(turn.response, "stopped");
+    assert!(!session.tool_call_running("call_slow"));
+}
+
 #[tokio::test]
 async fn completion_finishes_after_the_runtime_commits_even_if_token_is_cancelled() {
     use std::sync::atomic::{AtomicUsize, Ordering};

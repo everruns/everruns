@@ -52,6 +52,9 @@ pub(super) struct CallTail {
     pub(super) capability_name: Option<String>,
     /// Cancels the call's tool work when the call ends, however it ends.
     pub(super) _cancel_on_call_end: tokio_util::sync::DropGuard,
+    /// The host cancelled this call (`tool_cancel`): it completes as
+    /// `cancelled`, not `error`.
+    pub(super) cancelled: bool,
 }
 
 impl CallTail {
@@ -126,7 +129,13 @@ impl CallTail {
 
                 let tool_duration_ms = self.tool_start.elapsed().as_millis() as u64;
                 let success = tool_result.error.is_none();
-                let status = if success { "success" } else { "error" };
+                let status = if success {
+                    "success"
+                } else if self.cancelled {
+                    super::tool_cancel::CANCELLED_STATUS
+                } else {
+                    "error"
+                };
 
                 // A delivered send_message is something the agent said. Record
                 // it before the tool completes so every surface sees the

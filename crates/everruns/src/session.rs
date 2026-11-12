@@ -422,6 +422,23 @@ impl Session {
         self.inner.session_id
     }
 
+    /// Cancel one running tool call and let its turn go on.
+    ///
+    /// The call stops (its future is dropped and its cancellation token fires)
+    /// and completes with status `cancelled` and an error the model reads; the
+    /// turn continues with the rest of its batch and its next step. Returns
+    /// `false` when no such call is running in this process: it is unknown,
+    /// already finished, or ran on another worker.
+    pub fn cancel_tool_call(&self, tool_call_id: &str) -> bool {
+        everruns_core::engine::tool_cancel::shared().cancel(self.inner.session_id, tool_call_id)
+    }
+
+    /// Whether a tool call of this session is running in this process and
+    /// can still be cancelled with [`cancel_tool_call`](Self::cancel_tool_call).
+    pub fn tool_call_running(&self, tool_call_id: &str) -> bool {
+        everruns_core::engine::tool_cancel::shared().is_running(self.inner.session_id, tool_call_id)
+    }
+
     /// Select and persist this Agent's default head without starting a turn.
     ///
     /// Calling this is optional: [`send`](Self::send) and [`inspect`](Self::inspect)

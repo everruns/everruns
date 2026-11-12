@@ -11,7 +11,7 @@ use web_time::Instant;
 
 use super::ExecutionContext;
 use super::act_hooks::{self, PostActHook};
-use super::{tool_detach, tool_scheduler};
+use super::{tool_cancel, tool_detach, tool_scheduler};
 use crate::engine::error::Result;
 use crate::engine::events::{
     ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCompletedData,
@@ -1526,6 +1526,7 @@ where
             capability_id,
             capability_name,
             _cancel_on_call_end: call_cancellation.drop_guard(),
+            cancelled: false,
         };
         if let Some(pre_hook_result) = pre_hook_result {
             return Box::pin(tail.finish(Ok(pre_hook_result), None)).await;
@@ -1545,14 +1546,41 @@ where
                 .await
             }
             None => {
+                // A host may cancel this call alone (`tool_cancel`): the
+                // registration lasts until the call settles.
+                let registration = tail
+                    .tool_context
+                    .extension::<tool_cancel::ToolCallCancels>()
+                    .unwrap_or_else(tool_cancel::shared)
+                    .register(context.session_id, &tail.tool_call.id);
                 // A tool that runs a child turn inline must not detach its
                 // calls into this turn's park.
-                let (result, cpu_ns) = Box::pin(tool_detach::without(self.invoke_observed(
+                let invoke = Box::pin(tool_detach::without(self.invoke_observed(
                     &tail.execution_tool_call,
                     &tail.tool_def,
                     &tail.tool_context,
-                )))
-                .await;
+                )));
+                let cancelled = Box::pin(registration.token().cancelled());
+                let (result, cpu_ns, cancelled) = match futures::future::select(invoke, cancelled)
+                    .await
+                {
+                    futures::future::Either::Left(((result, cpu_ns), _)) => (result, cpu_ns, false),
+                    futures::future::Either::Right(_) => (
+                        Ok(tool_cancel::cancelled_result(&tail.tool_call.id)),
+                        None,
+                        true,
+                    ),
+                };
+                drop(registration);
+                let mut tail = tail;
+                if cancelled {
+                    // Work the tool left running dies now, not after the
+                    // post-tool hooks.
+                    if let Some(token) = &tail.tool_context.cancellation {
+                        token.cancel();
+                    }
+                    tail.cancelled = true;
+                }
                 Box::pin(tail.finish(result, cpu_ns)).await
             }
         }
