@@ -17,6 +17,7 @@ export interface SlackChannelConfig {
   team_id?: string;
   session_strategy: SessionStrategy;
   response_policy?: SlackResponsePolicy;
+  private_approvals?: boolean;
   webhook_verified_at?: string | null;
   first_message_received_at?: string | null;
 }

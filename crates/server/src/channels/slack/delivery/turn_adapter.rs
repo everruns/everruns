@@ -24,13 +24,15 @@ use tracing::error;
 use crate::channels::slack::approvals::{ApprovalBinding, build_approval_blocks};
 use everruns_integrations::slack_channel::web_api::SlackApiError;
 use everruns_integrations::slack_channel::web_api::{
-    post_slack_blocks, post_slack_message_returning_ts, update_slack_message_text,
+    post_slack_blocks, post_slack_ephemeral_blocks, post_slack_message_returning_ts,
+    update_slack_message_text,
 };
 
 pub(crate) struct SlackTurnAdapter {
     pub inner: Arc<dyn ChannelDeliveryAdapter>,
     /// The session declared the approval hint.
     pub approval_cards: bool,
+    pub private_approvals: bool,
     /// The Slack user the turn answers, who alone may click its cards.
     pub requester: Option<String>,
 }
@@ -95,23 +97,35 @@ impl ChannelApprovalPrompt for SlackTurnAdapter {
         prompt: &ApprovalPrompt,
         context: &DeliveryContext,
     ) -> DeliveryResult {
-        let blocks = self
-            .requester
-            .as_deref()
-            .filter(|_| self.approval_cards)
-            .and_then(|requester| {
-                build_approval_blocks(
-                    prompt,
-                    &ApprovalBinding::for_new_card(
-                        session_id.uuid(),
-                        requester,
-                        prompt.turn_id.clone(),
-                        prompt.action.clone(),
-                    ),
-                )
-            });
+        // Private mode must never degrade to a public question, including when
+        // the requester is missing or a card exceeds Slack's size limit.
+        let blocks = approval_blocks(
+            session_id,
+            prompt,
+            self.requester.as_deref(),
+            self.approval_cards,
+            self.private_approvals,
+            (&context.channel_id, &context.thread_ref),
+        );
+        let blocks = match blocks {
+            Ok(blocks) => blocks,
+            Err(error) => return DeliveryResult::PermanentError(error.into()),
+        };
         let text = prompt.text();
         let posted = match blocks {
+            Some(blocks) if self.private_approvals => {
+                post_slack_ephemeral_blocks(
+                    &context.auth_token,
+                    &context.channel_id,
+                    &context.thread_ref,
+                    self.requester
+                        .as_deref()
+                        .expect("private card requires requester"),
+                    &text,
+                    &blocks,
+                )
+                .await
+            }
             Some(blocks) => {
                 post_slack_blocks(
                     &context.auth_token,
@@ -155,5 +169,86 @@ impl ChannelProgressSurface for SlackTurnAdapter {
         result(
             update_slack_message_text(&context.auth_token, &context.channel_id, handle, text).await,
         )
+    }
+}
+
+fn approval_blocks(
+    session_id: SessionId,
+    prompt: &ApprovalPrompt,
+    requester: Option<&str>,
+    enabled: bool,
+    private: bool,
+    destination: (&str, &str),
+) -> Result<Option<serde_json::Value>, &'static str> {
+    let blocks = requester
+        .filter(|user| enabled && !user.is_empty())
+        .and_then(|requester| {
+            let mut binding = ApprovalBinding::for_new_card(
+                session_id.uuid(),
+                requester,
+                prompt.turn_id.clone(),
+                prompt.action.clone(),
+            );
+            binding.private = private;
+            if private {
+                binding.private_destination = Some((destination.0.into(), destination.1.into()));
+            }
+            build_approval_blocks(prompt, &binding)
+        });
+    if private && (blocks.is_none() || destination.0.is_empty() || destination.1.is_empty()) {
+        return Err("Private approval card unavailable; answer the pending request in Everruns.");
+    }
+    Ok(blocks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn private_approval_never_falls_back_to_public_prose() {
+        let session = SessionId::from_uuid(uuid::Uuid::now_v7());
+        let prompt = ApprovalPrompt {
+            action: "private action".into(),
+            question: None,
+            turn_id: Some("turn".into()),
+        };
+        for requester in [None, Some("")] {
+            assert!(
+                approval_blocks(session, &prompt, requester, true, true, ("C1", "1.0")).is_err()
+            );
+        }
+        assert!(approval_blocks(session, &prompt, Some("U1"), false, true, ("C1", "1.0")).is_err());
+        let oversized = ApprovalPrompt {
+            action: "x".repeat(3000),
+            ..prompt.clone()
+        };
+        assert!(
+            approval_blocks(session, &oversized, Some("U1"), true, true, ("C1", "1.0")).is_err()
+        );
+        assert!(
+            approval_blocks(session, &prompt, None, true, false, ("C1", "1.0"))
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn private_card_retains_requester_and_turn_binding() {
+        let session = SessionId::from_uuid(uuid::Uuid::now_v7());
+        let prompt = ApprovalPrompt {
+            action: "private action".into(),
+            question: None,
+            turn_id: Some("turn".into()),
+        };
+        let blocks = approval_blocks(session, &prompt, Some("U1"), true, true, ("C1", "1.0"))
+            .unwrap()
+            .unwrap();
+        let binding: ApprovalBinding =
+            serde_json::from_str(blocks[1]["elements"][0]["value"].as_str().unwrap()).unwrap();
+        assert!(binding.private);
+        assert_eq!(binding.requester, "U1");
+        assert_eq!(binding.turn_id.as_deref(), Some("turn"));
+        assert_eq!(binding.session_id, session.to_string());
     }
 }

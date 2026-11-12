@@ -25,6 +25,7 @@ import {
 import {
   SlackConversationSettings,
   SlackAgentPaneSettings,
+  SlackPrivateApprovalSettings,
 } from "@/components/apps/slack-conversation-settings";
 import { CronInput, isSupportedCronExpression } from "@/components/apps/cron-label";
 import {
@@ -123,6 +124,7 @@ export type ChannelFormState = {
   /** Public id of the Slack app Everruns created for this channel, once there is one. */
   slackAppId: string;
   slackAgentSurfaceEnabled: boolean;
+  slackPrivateApprovals: boolean;
   slackSessionStrategy: SessionStrategy;
   slackResponsePolicy: SlackResponsePolicy;
   scheduleCronExpression: string;
@@ -189,6 +191,7 @@ export function getDefaultChannelFormState(
     slackInstallTeamId: "",
     slackAppId: "",
     slackAgentSurfaceEnabled: false,
+    slackPrivateApprovals: false,
     slackSessionStrategy: "per_thread",
     slackResponsePolicy: "all_messages",
     scheduleCronExpression: "0 0 * * * * *",
@@ -382,6 +385,7 @@ export function getDefaultChannelFormState(
       slackCredentialsConfigured: Boolean(config.signing_secret_configured || config.bot_token_configured || config.app_token_configured), // prettier-ignore
       slackAppId: config.slack_app_id || "",
       slackAgentSurfaceEnabled: config.agent_surface_enabled ?? false,
+      slackPrivateApprovals: config.private_approvals ?? false,
       slackSessionStrategy: config.session_strategy || "per_thread",
       slackResponsePolicy: config.response_policy || "all_messages",
     };
@@ -1357,6 +1361,11 @@ export function ChannelForm({
               onSessionStrategyChange={(value) => update("slackSessionStrategy", value)}
             />
 
+            <SlackPrivateApprovalSettings
+              idPrefix={slackFormId}
+              enabled={state.slackPrivateApprovals}
+              onChange={(checked) => update("slackPrivateApprovals", checked)}
+            />
             <SlackAgentPaneSettings
               idPrefix={slackFormId}
               enabled={state.slackAgentSurfaceEnabled}

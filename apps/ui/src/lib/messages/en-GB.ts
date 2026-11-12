@@ -1,5 +1,9 @@
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  "Private approval cards": "Private approval cards",
+  "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.":
+    "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.",
+
   "Discovery state at the last turn": "Discovery state at the last turn",
   "Discovery pending": "Discovery pending",
   "Tools need sign-in": "Tools need sign-in",

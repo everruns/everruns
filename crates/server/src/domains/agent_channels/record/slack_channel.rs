@@ -101,6 +101,9 @@ pub struct SlackChannelConfig {
     /// from config (EVE-973).
     #[serde(default)]
     pub agent_surface_enabled: bool,
+    /// Show approval cards only to the requester using Slack ephemeral messages.
+    #[serde(default)]
+    pub private_approvals: bool,
     /// Tool activity visibility for the agent pane's live status line.
     ///
     /// The pane is a user-facing surface like a published AG-UI endpoint, so it
@@ -140,6 +143,19 @@ pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str>
 mod tests {
     use super::super::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     use super::*;
+    #[test]
+    fn private_approvals_are_opt_in() {
+        let old: SlackChannelConfig = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(!old.private_approvals);
+        let private: SlackChannelConfig =
+            serde_json::from_value(serde_json::json!({"private_approvals": true})).unwrap();
+        assert!(private.private_approvals);
+        assert_eq!(
+            serde_json::to_value(private).unwrap()["private_approvals"],
+            true
+        );
+    }
+
     #[test]
     fn test_slack_channel_config_full() {
         let json = r#"{
@@ -190,6 +206,7 @@ mod tests {
             webhook_verified_at: None,
             first_message_received_at: None,
             agent_surface_enabled: false,
+            private_approvals: false,
             tool_visibility: PublicToolVisibility::default(),
             generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
         };

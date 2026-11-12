@@ -352,6 +352,48 @@ pub async fn post_slack_blocks(
     Ok(())
 }
 
+/// Deliver an approval only to its requester. Never fall back to chat.postMessage.
+pub async fn post_slack_ephemeral_blocks(
+    bot_token: &str,
+    channel: &str,
+    thread_ts: &str,
+    user: &str,
+    text: &str,
+    blocks: &serde_json::Value,
+) -> Result<(), SlackApiError> {
+    let payload = ephemeral_blocks_payload(channel, thread_ts, user, text, blocks)?;
+    post_ephemeral_payload(SLACK_API_BASE, bot_token, payload).await
+}
+
+async fn post_ephemeral_payload(
+    base: &str,
+    token: &str,
+    payload: serde_json::Value,
+) -> Result<(), SlackApiError> {
+    slack_api_call(base, token, "chat.postEphemeral", payload).await?;
+    Ok(())
+}
+
+fn ephemeral_blocks_payload(
+    channel: &str,
+    thread_ts: &str,
+    user: &str,
+    text: &str,
+    blocks: &serde_json::Value,
+) -> Result<serde_json::Value, SlackApiError> {
+    if user.is_empty() {
+        return Err(SlackApiError::Permanent(
+            "Private message requires a recipient".into(),
+        ));
+    }
+    let mut payload =
+        serde_json::json!({"channel": channel, "user": user, "text": text, "blocks": blocks});
+    if !thread_ts.is_empty() {
+        payload["thread_ts"] = serde_json::json!(thread_ts);
+    }
+    Ok(payload)
+}
+
 /// Rewrite a message's blocks, e.g. to retire an answered approval card.
 ///
 /// `text` is the notification/fallback string; `blocks` is what the thread
@@ -383,6 +425,55 @@ pub async fn update_slack_message_blocks(
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn private_delivery_does_not_fall_back_on_slack_failure() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postEphemeral"))
+            .and(body_partial_json(
+                serde_json::json!({"user": "U1", "channel": "C1", "thread_ts": "1.0"}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    serde_json::json!({"ok": false, "error": "user_not_in_channel"}),
+                ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(path("/chat.postMessage"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let payload =
+            ephemeral_blocks_payload("C1", "1.0", "U1", "private", &serde_json::json!([])).unwrap();
+        assert!(
+            post_ephemeral_payload(&server.uri(), "test-token", payload)
+                .await
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn private_message_payload_is_recipient_and_thread_bound() {
+        let blocks = serde_json::json!([]);
+        let payload = ephemeral_blocks_payload("C1", "1.0", "U1", "private", &blocks).unwrap();
+        assert_eq!(payload["user"], "U1");
+        assert_eq!(payload["channel"], "C1");
+        assert_eq!(payload["thread_ts"], "1.0");
+        assert_eq!(payload["text"], "private");
+        assert!(ephemeral_blocks_payload("C1", "", "", "private", &blocks).is_err());
+        assert!(
+            ephemeral_blocks_payload("C1", "", "U1", "private", &blocks)
+                .unwrap()
+                .get("thread_ts")
+                .is_none()
+        );
+    }
 
     #[test]
     fn actionable_slack_failures_are_not_internal_errors() {

@@ -98,6 +98,17 @@ pub(crate) struct ApprovalBinding {
     /// session could answer a *different* pause than the one clicked.
     #[serde(rename = "a")]
     pub action: String,
+    /// Visibility is stamped into the signed card, not read from mutable config.
+    #[serde(default, rename = "p", skip_serializing_if = "is_false")]
+    pub private: bool,
+    /// Ephemeral message timestamps are not public thread roots. Carry the
+    /// original destination so a click can resume even without a message body.
+    #[serde(default, rename = "d", skip_serializing_if = "Option::is_none")]
+    pub private_destination: Option<(String, String)>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 impl ApprovalBinding {
@@ -120,6 +131,8 @@ impl ApprovalBinding {
             requester: requester.to_string(),
             turn_id,
             action,
+            private: false,
+            private_destination: None,
         }
     }
 }
@@ -230,7 +243,7 @@ pub(crate) fn build_approval_blocks(
         text.push_str(question);
     }
 
-    Some(json!([
+    let mut blocks = json!([
         {
             "type": "section",
             "text": { "type": "mrkdwn", "text": text }
@@ -254,7 +267,14 @@ pub(crate) fn build_approval_blocks(
                 }
             ]
         }
-    ]))
+    ]);
+    if binding.private {
+        blocks.as_array_mut()?.push(json!({
+            "type": "context",
+            "elements": [{"type": "plain_text", "text": "Only you can see this approval. If it disappears, open the session in Everruns to answer the pending request."}],
+        }));
+    }
+    Some(blocks)
 }
 
 /// Replacement blocks for a card that has been answered.
@@ -290,6 +310,8 @@ mod tests {
             requester: "U_REQUESTER".to_string(),
             turn_id: Some("turn_1".to_string()),
             action: "delete the staging database".to_string(),
+            private: false,
+            private_destination: None,
         }
     }
 

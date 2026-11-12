@@ -49,6 +49,13 @@ struct InteractionPayload {
     message: Option<SlackMessageRef>,
     #[serde(default)]
     response_url: Option<String>,
+    #[serde(default)]
+    container: Option<SlackContainerRef>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SlackContainerRef {
+    message_ts: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +76,45 @@ struct SlackMessageRef {
 }
 
 impl InteractionPayload {
+    fn approval_event(
+        &self,
+        clicker: &str,
+        binding: &ApprovalBinding,
+    ) -> Option<super::SlackEvent> {
+        if !binding.private {
+            return self.decision_event(clicker);
+        }
+        let (channel, thread) = binding.private_destination.as_ref()?;
+        if channel.is_empty() || thread.is_empty() || self.channel.as_ref()?.id != *channel {
+            return None;
+        }
+        let ts = self
+            .message
+            .as_ref()
+            .map(|m| &m.ts)
+            .or_else(|| self.container.as_ref().map(|c| &c.message_ts))?;
+        if ts.is_empty() {
+            return None;
+        }
+        // Reuse the standard envelope construction with the signed original
+        // destination, never the ephemeral message's synthetic timestamp.
+        let routed = InteractionPayload {
+            interaction_type: self.interaction_type.clone(),
+            user: None,
+            actions: vec![],
+            response_url: None,
+            container: None,
+            channel: Some(SlackChannelRef {
+                id: channel.clone(),
+            }),
+            message: Some(SlackMessageRef {
+                ts: ts.clone(),
+                thread_ts: Some(thread.clone()),
+            }),
+        };
+        routed.decision_event(clicker)
+    }
+
     /// The verified click carries the card's conversation, including its root
     /// thread. Never use the session's last conversation for a resumed turn.
     fn decision_event(&self, clicker: &str) -> Option<super::SlackEvent> {
@@ -326,7 +372,7 @@ async fn handle_block_action(
         return Ok(ack());
     };
 
-    let Some(event) = payload.decision_event(clicker) else {
+    let Some(event) = payload.approval_event(clicker, &binding) else {
         tracing::warn!(app_id = %app_id, %session_id, "Slack approval click had no reply destination");
         return Ok(ack());
     };
@@ -380,7 +426,13 @@ async fn handle_block_action(
 
     // Rewrite the card for clarity. Single-use enforcement is server-side, so
     // a failed update cannot make the already-consumed card actionable again.
-    if let (Some(channel), Some(message)) = (payload.channel.as_ref(), payload.message.as_ref()) {
+    if binding.private {
+        // Ephemeral cards cannot be updated with chat.update. Even if the
+        // response URL expired, never copy their contents into the channel.
+        respond_private_resolution(&payload, &decision.as_resolution(clicker)).await;
+    } else if let (Some(channel), Some(message)) =
+        (payload.channel.as_ref(), payload.message.as_ref())
+    {
         let request = ApprovalPrompt {
             action: action_text.clone(),
             question: None,
@@ -418,17 +470,58 @@ async fn handle_block_action(
 /// token, but a refusal that fails to render is still a refusal — nothing was
 /// recorded either way.
 async fn respond_ephemeral(payload: &InteractionPayload, text: &str) {
-    let Some(url) = payload.response_url.as_deref() else {
+    send_private_response(payload, text, false).await;
+}
+
+/// Retire a private card using Slack's short-lived callback. Its URL is never
+/// persisted; durable single-use enforcement does not depend on this update.
+async fn respond_private_resolution(payload: &InteractionPayload, text: &str) {
+    send_private_response(payload, text, true).await;
+}
+
+async fn send_private_response(payload: &InteractionPayload, text: &str, replace: bool) {
+    let Some(url) = payload.response_url.as_deref().and_then(slack_response_url) else {
         return;
     };
-    let body = serde_json::json!({
+    let body = private_response_body(text, replace);
+    // Do not follow redirects or log a callback URL (it is a bearer secret).
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(5))
+        .build();
+    let Ok(client) = client else {
+        return;
+    };
+    match client.post(url).json(&body).send().await {
+        Ok(response) if response.status().is_success() => {}
+        _ => tracing::warn!("Failed to post a private Slack approval response"),
+    }
+}
+
+fn private_response_body(text: &str, replace: bool) -> serde_json::Value {
+    let mut body = serde_json::json!({
         "response_type": "ephemeral",
-        "replace_original": false,
+        "replace_original": replace,
         "text": text,
     });
-    if let Err(error) = reqwest::Client::new().post(url).json(&body).send().await {
-        tracing::warn!(%error, "Failed to post an ephemeral Slack refusal");
+    if replace {
+        body["blocks"] = serde_json::json!([]);
     }
+    body
+}
+
+fn slack_response_url(raw: &str) -> Option<url::Url> {
+    let url = url::Url::parse(raw).ok()?;
+    (url.scheme() == "https"
+        && matches!(
+            url.host_str(),
+            Some("hooks.slack.com" | "hooks.slack-gov.com")
+        )
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port().is_none()
+        && url.path().starts_with("/actions/"))
+    .then_some(url)
 }
 
 /// Post a decision into the session as the clicking Slack user.
@@ -514,6 +607,157 @@ mod tests {
     /// Slack posts interactivity as `payload=<url-encoded json>`, not as JSON.
     /// Getting this wrong makes every click a 400, so it is pinned against the
     /// wire shape rather than against our own serializer.
+    #[tokio::test]
+    async fn private_approval_checks_requester_endpoint_and_durable_single_use() {
+        use crate::channels::slack::host_tests::{Slack, message, session_of, slack_config};
+        use crate::domains::agent_channels::record::SessionBinding;
+        use everruns_contracts::typed_id::SessionId;
+        let mut config = slack_config(SessionBinding::Thread);
+        config.private_approvals = true;
+        let slack = Slack::new(config.clone()).await;
+        let response = slack.send(message("C1", "1.0", None)).await.unwrap();
+        let session_id: SessionId = session_of(&response).parse().unwrap();
+        sqlx::query("INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags) VALUES ($1, allocate_event_sequence($1), 'tool.completed', NOW(), $2, $3, NULL, '{}')")
+            .bind(session_id.uuid())
+            .bind(serde_json::json!({"turn_id": "private-turn"}))
+            .bind(serde_json::json!({"tool_name": "request_approval"}))
+            .execute(slack.db.database().pool()).await.unwrap();
+        let mut binding = ApprovalBinding::for_new_card(
+            session_id.uuid(),
+            "U1",
+            Some("private-turn".into()),
+            "private action".into(),
+        );
+        binding.private = true;
+        binding.private_destination = Some(("C1".into(), "1.0".into()));
+        let mut body = click(APPROVE_ACTION_ID, "U2", "U1");
+        body.as_object_mut().unwrap().remove("response_url");
+        body.as_object_mut().unwrap().remove("message");
+        body["container"] = serde_json::json!({"message_ts": "private-message"});
+        body["actions"][0]["value"] = serde_json::json!(serde_json::to_string(&binding).unwrap());
+        let handle =
+            |body: serde_json::Value| serde_json::from_value::<InteractionPayload>(body).unwrap();
+        // Unauthorized click must not consume the pending request.
+        let _ = handle_block_action(
+            &slack.state,
+            &slack.context,
+            &slack.channel,
+            &config,
+            handle(body.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+        let consumed = || {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM events WHERE session_id = $1 AND event_type = 'slack.approval.consumed'").bind(session_id.uuid())
+        };
+        assert_eq!(
+            consumed()
+                .fetch_one(slack.db.database().pool())
+                .await
+                .unwrap(),
+            0
+        );
+        // A different endpoint in the same organization cannot consume it.
+        body["user"]["id"] = serde_json::json!("U1");
+        let other = Slack::new(config.clone()).await;
+        let _ = handle_block_action(
+            &slack.state,
+            &slack.context,
+            &other.channel,
+            &config,
+            handle(body.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            consumed()
+                .fetch_one(slack.db.database().pool())
+                .await
+                .unwrap(),
+            0
+        );
+        // Changing delivery settings does not change the signed card's visibility.
+        config.private_approvals = false;
+        let _ = handle_block_action(
+            &slack.state,
+            &slack.context,
+            &slack.channel,
+            &config,
+            handle(body.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            consumed()
+                .fetch_one(slack.db.database().pool())
+                .await
+                .unwrap(),
+            1
+        );
+        // The single-use decision is in storage, not in the ephemeral message.
+        let _ = handle_block_action(
+            &slack.state,
+            &slack.context,
+            &slack.channel,
+            &config,
+            handle(body),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            consumed()
+                .fetch_one(slack.db.database().pool())
+                .await
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn ephemeral_click_resumes_original_thread_without_message_body() {
+        let mut body = click(APPROVE_ACTION_ID, "U_R", "U_R");
+        body.as_object_mut().unwrap().remove("message");
+        body["container"] = serde_json::json!({"message_ts": "ephemeral-ts"});
+        let mut binding: ApprovalBinding = serde_json::from_str(&binding_value("U_R")).unwrap();
+        binding.private = true;
+        binding.private_destination = Some(("C1".into(), "1.0".into()));
+        let payload = parse_interaction(&form_body(&body)).unwrap();
+        let event = payload.approval_event("U_R", &binding).unwrap();
+        assert_eq!(event.thread_ts.as_deref(), Some("1.0"));
+        assert_eq!(event.channel.as_deref(), Some("C1"));
+        binding.private_destination = Some(("C_OTHER".into(), "1.0".into()));
+        assert!(payload.approval_event("U_R", &binding).is_none());
+        binding.private_destination = None;
+        assert!(payload.approval_event("U_R", &binding).is_none());
+    }
+
+    #[test]
+    fn private_resolution_keeps_visibility_and_removes_controls() {
+        let body = private_response_body("Approved", true);
+        assert_eq!(body["response_type"], "ephemeral");
+        assert_eq!(body["replace_original"], true);
+        assert_eq!(body["blocks"], serde_json::json!([]));
+        assert_eq!(body["text"], "Approved");
+    }
+
+    #[test]
+    fn private_callback_accepts_only_slack_action_urls() {
+        assert!(slack_response_url("https://hooks.slack.com/actions/T1/secret").is_some());
+        for url in [
+            "http://hooks.slack.com/actions/secret",
+            "https://hooks.slack.com.evil.test/actions/secret",
+            "https://user@hooks.slack.com/actions/secret",
+            "https://hooks.slack.com:444/actions/secret",
+            "https://example.com/actions/secret",
+        ] {
+            assert!(slack_response_url(url).is_none());
+        }
+    }
+
     fn form_body(payload: &serde_json::Value) -> Vec<u8> {
         let encoded = url::form_urlencoded::Serializer::new(String::new())
             .append_pair("payload", &payload.to_string())

@@ -1,5 +1,9 @@
 // zh-CN product copy for Slack Socket Mode: how Slack reaches a channel.
 export const messages: Readonly<Record<string, string>> = {
+  "Private approval cards": "私密审批卡片",
+  "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.":
+    "仅向请求者显示审批卡片。如果卡片消失，请在 Everruns 中回复待处理的请求。智能体的回复仍会在对话中显示。",
+
   "Socket Mode": "Socket Mode",
   "How Slack reaches Everruns": "Slack 如何连接 Everruns",
   "Everruns connects out to Slack. Works without a public address, such as on your own computer.":

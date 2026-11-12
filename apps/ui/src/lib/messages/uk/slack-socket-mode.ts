@@ -1,5 +1,9 @@
 // uk product copy for Slack Socket Mode: how Slack reaches a channel.
 export const messages: Readonly<Record<string, string>> = {
+  "Private approval cards": "Приватні картки підтвердження",
+  "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.":
+    "Показувати картки підтвердження лише автору запиту. Якщо картка зникне, дайте відповідь на запит в Everruns. Відповіді агента залишаються видимими в розмові.",
+
   "Socket Mode": "Socket Mode",
   "How Slack reaches Everruns": "Як Slack досягає Everruns",
   "Everruns connects out to Slack. Works without a public address, such as on your own computer.":

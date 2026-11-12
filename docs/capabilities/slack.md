@@ -289,6 +289,31 @@ Use `per_thread` for most Slack bots.
 
 When an Agent pauses for approval, Slack renders **Approve** and **Decline** buttons in the thread. Only the person whose message the Agent is answering can use them.
 
+Enable **Private approval cards** in the channel’s conversation settings to show
+approval details only to the requester. This is opt-in; existing channels keep
+thread-visible cards. Through the channel API, set `private_approvals` in the
+Slack `channel_config`:
+
+```json
+{
+  "private_approvals": true
+}
+```
+
+Private cards use Slack ephemeral messages, which may disappear when the person
+reconnects and are not guaranteed to be delivered while they are inactive.
+If a card disappears or cannot be delivered, open the session in Everruns and
+answer the pending request there. The pending request and single-use checks
+remain in durable session storage across server restarts; disappearing cards
+never grant approval. A stale or already-answered card cannot approve a new
+request. Failed private delivery never falls back to posting the question in
+the public thread.
+
+This setting protects the approval card, not the entire conversation. Agent
+replies, including the result after approval, still follow the channel’s normal
+visibility. It does not change who can approve or grant access to the session in
+Everruns.
+
 The generated manifest already points Slack interactivity at this channel. A Slack app created before interactive approvals existed must save a fresh manifest once.
 
 ## Task Progress
