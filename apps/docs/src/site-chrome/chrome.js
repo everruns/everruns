@@ -118,12 +118,6 @@
         status.classList.add(result.ok ? 'is-success' : 'is-error');
         if (result.ok) {
           form.reset();
-          // Conversion event; see src/components/GoogleTag.astro.
-          window.gtag?.('event', 'subscribe', {
-            list: String(data.get('list') ?? ''),
-            source: window.location.pathname,
-            page_path: window.location.pathname,
-          });
         }
       } catch {
         status.textContent = 'Subscription failed. Please try again later.';
