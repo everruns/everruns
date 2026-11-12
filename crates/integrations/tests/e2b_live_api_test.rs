@@ -411,7 +411,7 @@ async fn smoke_live_egress_proxy_fails_closed() {
         )
         .await
         .expect("E2B accepts the egress proxy configuration");
-    let _guard = SandboxGuard {
+    let guard = SandboxGuard {
         api_key,
         sandbox_id: created.sandbox_id.clone(),
     };
@@ -452,13 +452,47 @@ async fn smoke_live_egress_proxy_fails_closed() {
         .update_network(&created.sandbox_id, json!({}))
         .await
         .expect("clear the proxy");
+    // Clearing usually applies within one probe. Nightly 2026-11-11 saw six
+    // probes (about 60 s) all time out after E2B accepted the clear, so wait
+    // up to about two minutes and, on failure, report what E2B says it holds.
     let mut restored = false;
-    for _ in 0..5 {
+    for _ in 0..10 {
         if reaches_github().await {
             restored = true;
             break;
         }
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
-    assert!(restored, "clearing the proxy did not restore egress");
+    if !restored {
+        let still_proxied = sandbox_network(&guard.api_key, &created.sandbox_id)
+            .await
+            .map(|network| network.get("egressProxy").is_some());
+        panic!(
+            "clearing the proxy did not restore egress; E2B still reports egressProxy: {still_proxied:?}"
+        );
+    }
+}
+
+/// The sandbox's `network` as `GET /sandboxes/{id}` reports it, so a failed
+/// egress check can say whether E2B kept a setting it acknowledged changing.
+/// Only the caller inspects it: `egressProxy` carries a credential.
+async fn sandbox_network(api_key: &str, sandbox_id: &str) -> Result<serde_json::Value, String> {
+    let response = reqwest::Client::new()
+        .get(format!(
+            "{}/sandboxes/{sandbox_id}",
+            everruns_integrations::e2b::E2B_API_BASE
+        ))
+        .header("X-API-Key", api_key)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(format!("GET sandbox returned {status}"));
+    }
+    Ok(body
+        .get("network")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null))
 }
