@@ -10,7 +10,7 @@ these steps for you. On a cluster, use the [Helm chart](/getting-started/kuberne
 
 :::tip[Set it up with your agent]
 
-```text
+```text wrap
 Install Everruns on my server with Docker Compose.
 Instructions: https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
 ```

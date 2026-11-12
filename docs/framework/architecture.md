@@ -11,15 +11,15 @@ planning, tool policy or recovery.
 
 ```mermaid
 flowchart TD
-  App[Framework application or serve] --> Engine[Engine and Session]
-  Engine --> Memory[Memory hosting]
-  Engine --> SQLite[Native SQLite hosting]
-  Engine --> External[External session hosting]
+  App[Framework app or serve] --> Engine[Engine and Session]
+  Engine --> Memory[Memory]
+  Engine --> SQLite[Native SQLite]
+  Engine --> External[External host]
   Memory --> Driver[Shared SessionActorDriver]
   SQLite --> Driver
   External --> Driver
-  Platform[Platform API and workers] --> Driver
-  Driver --> Runtime[Shared Input / Reason / Act runtime]
+  Platform[Platform workers] --> Driver
+  Driver --> Runtime[Input / Reason / Act runtime]
 ```
 
 ## Public Framework objects

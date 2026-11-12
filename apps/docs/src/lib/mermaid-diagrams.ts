@@ -60,10 +60,12 @@ async function renderDiagrams() {
         const rendered = document.importNode(parsed.documentElement, true);
         const viewBoxWidth = Number(rendered.getAttribute("viewBox")?.split(/\s+/)[2]);
         if (Number.isFinite(viewBoxWidth)) {
-          // Preserve Mermaid's label size on wide diagrams, and keep narrow
-          // diagrams readable without stretching them across the article.
+          // Fit the article width: wide diagrams shrink to at most 60% of
+          // Mermaid's size, past which the figure scrolls so labels stay
+          // readable on phones. Narrow diagrams are not stretched.
           rendered.style.width = `${Math.max(viewBoxWidth, 420)}px`;
-          if (viewBoxWidth < 420) rendered.style.maxWidth = "100%";
+          rendered.style.maxWidth = "100%";
+          if (viewBoxWidth > 420) rendered.style.minWidth = `${Math.round(viewBoxWidth * 0.6)}px`;
         }
         figure.replaceChildren(rendered);
         figure.dataset.mermaidRendered = "";

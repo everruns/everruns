@@ -12,7 +12,7 @@ chart as an OCI chart that runs that release's images.
 
 :::tip[Set it up with your agent]
 
-```text
+```text wrap
 Install Everruns on my Kubernetes cluster.
 Instructions: https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
 ```
