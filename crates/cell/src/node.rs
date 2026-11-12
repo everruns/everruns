@@ -324,8 +324,9 @@ impl Node {
                 continue;
             }
             let applied = *self.shared.applied.borrow();
+            let inc = self.shared.state.read().incarnation;
             self.shipper.observe(applied);
-            if let Err(error) = self.shipper.ship(applied).await {
+            if let Err(error) = self.shipper.ship(applied, inc).await {
                 tracing::warn!(cell = self.cfg.cell, %error, "log shipping failed; retrying");
             }
         }
@@ -866,7 +867,12 @@ impl Node {
                     // retry a frozen session) so the loss window holds.
                     return Ok((Response::Frozen, 0));
                 }
-                self.batcher.submit(command.clone()).await
+                match self.batcher.submit(command.clone()).await {
+                    Ok((response, index)) if index > 0 && crate::ship::ships_first(&command) => {
+                        self.ship_first(index, deadline).await.map(|()| (response, index))
+                    }
+                    other => other,
+                }
             } else {
                 match self.leader().and_then(|id| self.member_addr(id)) {
                     Some(addr) => {
@@ -889,6 +895,31 @@ impl Node {
             }
             tokio::time::sleep(backoff).await;
             backoff = (backoff * 2).min(Duration::from_millis(200));
+        }
+    }
+
+    /// Ship the log through `index` before answering (`ship::ships_first`),
+    /// retrying until `deadline`. On failure the caller gets an error: the
+    /// write committed, but nothing that depends on it may happen yet (a
+    /// tool does not start, a move does not go on), and a retry of the
+    /// write is a duplicate that ships again.
+    async fn ship_first(&self, index: u64, deadline: Instant) -> anyhow::Result<()> {
+        let started = Instant::now();
+        let mut backoff = Duration::from_millis(20);
+        loop {
+            let inc = self.shared.state.read().incarnation;
+            match self.shipper.flush(index, inc).await {
+                Ok(()) => {
+                    self.prom.ship_first_seconds.observe(&[], started.elapsed());
+                    return Ok(());
+                }
+                Err(error) if Instant::now() >= deadline => {
+                    return Err(error.context("ship before answering"));
+                }
+                Err(error) => tracing::debug!(%error, "ship-first retry"),
+            }
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(Duration::from_millis(500));
         }
     }
 

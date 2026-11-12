@@ -52,6 +52,8 @@ pub mod prof;
 pub mod prom;
 pub mod providers;
 pub mod remote;
+pub mod restore;
+pub mod restore_points;
 pub mod ship;
 pub mod sm;
 pub mod state;

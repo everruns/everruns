@@ -440,7 +440,13 @@ impl Feed {
     /// `session` recorded a turn's outcome: its summary for the tenant.
     /// Decision: the summary follows the outcome record, not the terminal
     /// event, because the turn count moves with the outcome.
-    pub fn turn_finished(&mut self, index: u64, session: &str, s: &SessionState) {
+    ///
+    /// Decision: the summary's version is the session's last event
+    /// sequence under the cell incarnation (`incarnation << 32 | seq`). A
+    /// rebuilt cell writes sequences a lost incarnation already reported,
+    /// and the control plane keeps the newest version, so without the
+    /// incarnation it would keep showing turns the rebuild lost.
+    pub fn turn_finished(&mut self, index: u64, incarnation: u64, session: &str, s: &SessionState) {
         let Some(org) = s.tenant.as_deref() else {
             return;
         };
@@ -461,7 +467,7 @@ impl Feed {
         let at = last.map_or(s.created_ms, |e| e.ts.timestamp_millis());
         let record = Record::Session {
             session_id: session.to_owned(),
-            session_version: s.last_sequence().unwrap_or(0).max(0) as u64,
+            session_version: (incarnation << 32) | s.last_sequence().unwrap_or(0).max(0) as u64,
             agent_id: s.agent.clone(),
             status: status.into(),
             created_unix_ms: s.created_ms,

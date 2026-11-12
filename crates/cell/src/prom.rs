@@ -99,6 +99,9 @@ pub struct Prom {
     pub append_seconds: Histograms,
     /// Any proposal from this node, end to end.
     pub propose_seconds: Histograms,
+    /// Writes shipped before they were answered (`ship::ships_first`):
+    /// the wait for the object store.
+    pub ship_first_seconds: Histograms,
     /// Messages admitted through this node's gateway.
     pub messages_admitted: Counters,
     /// Model calls by model and result, with duration and time to first

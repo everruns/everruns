@@ -76,13 +76,14 @@ fn compaction_keeps_tiers_whatever_the_flush_sizes() {
         s.record(SegRef {
             from,
             to: from + n - 1,
+            inc: 0,
         });
         writes += i64::from(n);
         if s.segments.len() >= 16
             && let Some((from, to)) = s.compaction_range()
         {
             writes += i64::from(to - from + 1);
-            s.record(SegRef { from, to });
+            s.record(SegRef { from, to, inc: 0 });
         }
         assert!(s.segments.len() <= 20, "flush {flush}: {:?}", s.segments);
         // Contiguous from 1; the first segment is the first flush.
@@ -98,8 +99,13 @@ fn compaction_keeps_tiers_whatever_the_flush_sizes() {
     s.record(SegRef {
         from: 7,
         to: s.flushed(),
+        inc: 0,
     });
-    s.record(SegRef { from: 1, to: 5 });
+    s.record(SegRef {
+        from: 1,
+        to: 5,
+        inc: 0,
+    });
     assert_eq!(s.segments, before);
 }
 

@@ -280,6 +280,31 @@ pub enum Command {
     },
 }
 
+impl Command {
+    /// When the command was proposed, if it says: the newest time among
+    /// the commands it holds.
+    pub fn time(&self) -> Option<i64> {
+        match self {
+            Command::Batch { commands } | Command::Chain { commands } => {
+                commands.iter().filter_map(Command::time).max()
+            }
+            Command::Host { now_ms, .. }
+            | Command::Config { now_ms, .. }
+            | Command::Admin { now_ms, .. }
+            | Command::Reserve { now_ms, .. }
+            | Command::Claim { now_ms, .. }
+            | Command::Renew { now_ms, .. }
+            | Command::Progress { now_ms, .. }
+            | Command::Release { now_ms, .. }
+            | Command::Append { now_ms, .. }
+            | Command::Write { now_ms, .. }
+            | Command::Files { now_ms, .. }
+            | Command::Revoke { now_ms, .. } => Some(*now_ms),
+            _ => None,
+        }
+    }
+}
+
 /// A command whose pieces are still arriving (see `Command::Part`).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Assembly {
@@ -572,6 +597,16 @@ impl SessionState {
 pub struct CellState {
     pub last_applied: Option<LogId<NodeId>>,
     pub membership: StoredMembership<NodeId, BasicNode>,
+    /// Which life of the cell this is: 0 until its first restore, then the
+    /// number the restore claimed (`restore.rs`). Feed records, segment
+    /// names and the shipped log carry it, so nothing a lost incarnation
+    /// wrote is mistaken for this one's.
+    #[serde(default)]
+    pub incarnation: u64,
+    /// The newest command time applied: the cell's clock, which a
+    /// point-in-time restore stops at. Replicated, so every replica agrees.
+    #[serde(default)]
+    pub clock_ms: i64,
     pub sessions: HashMap<SessionId, SessionState>,
     /// Sessions this cell handed to another cell, or dropped a stale copy
     /// of. A copy that comes back removes its entry: that copy's
@@ -751,6 +786,11 @@ impl CellState {
     /// Apply one committed command. Deterministic: same state and command,
     /// same result, on every replica.
     pub fn apply(&mut self, command: Command, changes: &mut Vec<Change>) -> Response {
+        if let Some(at) = command.time()
+            && at > self.clock_ms
+        {
+            self.clock_ms = at;
+        }
         match command {
             Command::AssignShard { shard, to } => {
                 if self.shards.insert(shard, to) == Some(to) {
@@ -1058,7 +1098,8 @@ impl CellState {
                 let before = state.turns_completed();
                 let renewed = state.renew(&holder, fence, ttl_ms, consumed, receipts, now_ms);
                 if state.turns_completed() > before {
-                    self.feed.turn_finished(index, &session.to_string(), state);
+                    self.feed
+                        .turn_finished(index, self.incarnation, &session.to_string(), state);
                 }
                 if riding && renewed.is_some() {
                     changes.push(Change::Session(session));
@@ -1099,7 +1140,8 @@ impl CellState {
                 let before = state.turns_completed();
                 let released = state.release(&holder, fence, consumed, hand_off, receipts, now_ms);
                 if state.turns_completed() > before {
-                    self.feed.turn_finished(index, &session.to_string(), state);
+                    self.feed
+                        .turn_finished(index, self.incarnation, &session.to_string(), state);
                 }
                 changes.push(Change::Session(session));
                 match released {
@@ -1136,7 +1178,8 @@ impl CellState {
                 let before = state.turns_completed();
                 let applied = state.write(fence, change, now_ms);
                 if state.turns_completed() > before {
-                    self.feed.turn_finished(index, &session.to_string(), state);
+                    self.feed
+                        .turn_finished(index, self.incarnation, &session.to_string(), state);
                 }
                 changes.push(Change::Session(session));
                 self.applied(session, applied, changes)

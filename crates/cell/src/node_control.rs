@@ -39,8 +39,6 @@ pub struct ControlPlane {
     pub url: String,
     /// This data plane's id in the control plane.
     pub data_plane: String,
-    /// Bumped when the cell is rebuilt from a restore.
-    pub incarnation: u64,
     /// What one allowance request asks for.
     pub want_micros: i64,
     /// The most one provider call may cost, when a grant does not say.
@@ -61,7 +59,6 @@ impl ControlPlane {
                 .ok()
                 .filter(|d| !d.is_empty())
                 .unwrap_or_else(|| "dp-local".into()),
-            incarnation: 1,
             want_micros: 1_000_000,
             per_call_micros: 10_000,
             token: link_token(),
@@ -187,7 +184,7 @@ impl Node {
         let batch = FeedBatch {
             data_plane: cp.data_plane.clone(),
             source: self.source(),
-            incarnation: cp.incarnation,
+            incarnation: self.incarnation(),
             records,
         };
         let ack: FeedAck = cp
@@ -214,6 +211,12 @@ impl Node {
         })
         .await?;
         Ok(())
+    }
+
+    /// The cell's incarnation as a feed and grant number: 1 for a cell
+    /// never rebuilt, then the number its rebuild claimed (`restore.rs`).
+    pub(crate) fn incarnation(&self) -> u64 {
+        self.shared.state.read().incarnation.max(1)
     }
 
     pub(crate) fn source(&self) -> String {
@@ -319,9 +322,9 @@ impl Node {
             )
         };
         let body = AllowanceRequest {
-            request_id: format!("{}/{}/{tenant}/{request}", self.source(), cp.incarnation),
+            request_id: format!("{}/{}/{tenant}/{request}", self.source(), self.incarnation()),
             cell: self.source(),
-            incarnation: cp.incarnation,
+            incarnation: self.incarnation(),
             want_micros: if busy { cp.want_micros } else { 0 },
             settlements: settlements.clone(),
         };
