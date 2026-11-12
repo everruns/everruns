@@ -1,7 +1,6 @@
 // Capability commands — user-facing read-only operations.
 //
-// Capabilities are a bounded registry (~30-50 items). No policy checks
-// needed — these are public read endpoints.
+// The catalog combines built-ins with organization-owned capabilities.
 // inventory::submit! auto-registers for MCP catalog.
 
 use super::queries as q;
@@ -20,7 +19,6 @@ use crate::kernel_imports::{
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-// Capabilities are a bounded set (~30-50 items), so default to showing all.
 const DEFAULT_LIMIT: u32 = 100;
 const MAX_LIMIT: u32 = 200;
 

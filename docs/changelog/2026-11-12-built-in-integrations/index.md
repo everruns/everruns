@@ -14,6 +14,9 @@ links:
 computer use are available without feature toggles. Add the capability to an agent and
 connect your own provider account. Credentials and tool authorization remain required.
 
+Capability pickers load the complete catalog, keeping installed plugins visible as
+the built-in catalog grows.
+
 ![Modal and Browserless are available to connect without feature flags](./connections@2x.png)
 
 MCP Events subscriptions are also built in:

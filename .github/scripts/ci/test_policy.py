@@ -273,7 +273,7 @@ class Policy(unittest.TestCase):
             self.assertIn('work_chat_test::', focused.risk_filters([path]))
 
     def test_database_backend_changes_run_real_router_fixtures(self):
-        targets=['background_sweep_wiring_test','pat_scope_sweep_test']
+        targets=['background_sweep_wiring_test','pat_scope_sweep_test','plugins_integration_test']
         for path in ['crates/server/src/storage/test_database.rs',
                      'crates/server/src/storage/embedded_postgres/mod.rs',
                      'crates/server/tests/test_harness/database.rs']:
@@ -295,10 +295,21 @@ class Policy(unittest.TestCase):
                      'crates/server/src/domains/models/service.rs',
                      'crates/server/src/domains/virtual_users/self_profile.rs',
                      'crates/server/src/app_builder/mod.rs',
-                     'crates/server-macros/src/lib.rs',
-                     '.github/scripts/ci/focused.py']:
+                    'crates/server-macros/src/lib.rs']:
             with self.subTest(path=path):
                 self.assertEqual(focused.real_server_targets([path]), ['pat_scope_sweep_test'])
+
+    def test_plugin_catalog_changes_run_the_complete_catalog_contract(self):
+        for path in ['crates/capabilities/src/integrations_catalog.rs',
+                     'crates/server/src/domains/plugins/install.rs',
+                     'crates/server/src/services/capability.rs',
+                     'crates/server/src/api/plugins.rs',
+                     'crates/server/tests/plugins_integration_test.rs',
+                     '.github/scripts/ci/focused.py']:
+            with self.subTest(path=path):
+                self.assertIn('plugins_integration_test', focused.real_server_targets([path]))
+        selection={'packages':['everruns-server'], 'risk_targets':['plugins_integration_test']}
+        self.assertIn('plugins_integration_test', next(focused.commands(selection)))
 
     def test_mcp_credential_changes_run_the_grpc_identity_contract(self):
         for path in [
