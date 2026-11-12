@@ -209,12 +209,17 @@ impl Fleet {
 
     /// Start executor `n` (ids from `EXECUTOR_IDS`).
     pub fn executor(&mut self, n: u64) -> Arc<Executor> {
+        self.executor_with(n, 8)
+    }
+
+    /// Executor `n`, running up to `slots` turns at once.
+    pub fn executor_with(&mut self, n: u64, slots: usize) -> Arc<Executor> {
         let rt = runtime();
         let cfg = ExecutorConfig {
             id: EXECUTOR_IDS + n,
             topology: self.topology.clone(),
             store: self.store().with_cache(16 << 20),
-            slots: 8,
+            slots,
             mirror_sessions: 64,
             pull_wait: Duration::from_secs(2),
         };
@@ -243,6 +248,20 @@ impl Fleet {
         {
             rt.shutdown_background();
         }
+    }
+
+    /// The fleet's topology file.
+    pub fn topology(&self) -> TopologySource {
+        self.topology.clone()
+    }
+
+    /// `cell`'s live nodes: (node id, address).
+    pub fn addrs(&self, cell: u32) -> Vec<(u64, String)> {
+        self.nodes
+            .iter()
+            .filter(|((c, _), (_, rt))| *c == cell && rt.is_some())
+            .map(|((_, node), (addr, _))| (*node, addr.clone()))
+            .collect()
     }
 
     /// A live node's base URL; its gateway reaches every cell.

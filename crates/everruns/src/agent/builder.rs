@@ -796,7 +796,10 @@ impl AgentBuilder {
                     });
                 };
                 let id = everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID.to_string();
+                // A host's own `tool_approval` would serve this id in place
+                // of the gate and let the marked tools run unasked: refuse.
                 if capability_registry.get(&id).is_some()
+                    || host_capability(&id).is_some()
                     || activated_capabilities.activate(id.clone()).is_err()
                 {
                     return Err(BuildError::DuplicateCapability { id });

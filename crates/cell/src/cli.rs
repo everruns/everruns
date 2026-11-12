@@ -4,6 +4,8 @@
 //! ```text
 //! app node    --topology cluster.json --cell 0 --node 1 --data .cell/c0n1
 //! app gateway --topology cluster.json --listen 127.0.0.1:7000
+//! app edge    --topology cluster.json --listen 127.0.0.1:7100 \
+//!             --control-plane http://127.0.0.1:9000
 //! ```
 //! A node also serves the gateway API, so a single node is a complete local
 //! runtime.
@@ -104,6 +106,28 @@ enum Mode {
         #[arg(long)]
         listen: Option<SocketAddr>,
     },
+    /// Run the edge router: one public URL for the control plane and the
+    /// data plane (`edge.rs`).
+    Edge {
+        #[arg(long, env = "CELL_TOPOLOGY")]
+        topology: PathBuf,
+        #[arg(long, env = "CELL_EDGE_LISTEN")]
+        listen: SocketAddr,
+        /// The control plane's base URL (its `/v1` API).
+        #[arg(long, env = "CELL_EDGE_CONTROL_PLANE")]
+        control_plane: String,
+        /// The control plane's org token keys; its
+        /// `/.well-known/jwks.json` when unset.
+        #[arg(long, env = "CELL_JWKS_URL")]
+        jwks_url: Option<String>,
+        /// The data plane org tokens must name.
+        #[arg(long, env = "CELL_DATA_PLANE")]
+        data_plane: Option<String>,
+        /// The path the API is served under (`/api` behind the local
+        /// proxy); empty when it is served at the root.
+        #[arg(long, env = "CELL_EDGE_API_PREFIX", default_value = "")]
+        api_prefix: String,
+    },
     /// Run a stateless gateway.
     Gateway {
         #[arg(long, env = "CELL_TOPOLOGY")]
@@ -196,6 +220,29 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             };
             serve_executor(cfg, host, listen).await
         }
+        Mode::Edge {
+            topology,
+            listen,
+            control_plane,
+            jwks_url,
+            data_plane,
+            api_prefix,
+        } => {
+            let jwks = jwks_url.unwrap_or_else(|| {
+                format!(
+                    "{}{}/.well-known/jwks.json",
+                    control_plane.trim_end_matches('/'),
+                    api_prefix.trim_end_matches('/'),
+                )
+            });
+            let tokens = Arc::new(crate::org_token::OrgTokens::new(Some(jwks), data_plane));
+            let gateway = Gateway::new(TopologySource { path: topology });
+            let edge = crate::edge::Edge::with_prefix(gateway, &control_plane, tokens, &api_prefix);
+            let listener = tokio::net::TcpListener::bind(listen).await?;
+            tracing::info!(%listen, control_plane, "edge listening");
+            axum::serve(listener, edge.router()).await?;
+            Ok(())
+        }
         Mode::Gateway { topology, listen } => {
             let gateway = Gateway::new(TopologySource { path: topology });
             let listener = tokio::net::TcpListener::bind(listen).await?;
@@ -230,6 +277,8 @@ pub async fn serve_node(
     let _ = node.gateway.set(gateway.clone());
     let app = crate::api::router(node.clone())
         .merge(crate::exec_api::router(node.clone()))
+        .merge(crate::stream::router(node.clone()))
+        .merge(crate::api_session::router(node.clone()))
         .merge(crate::gateway_dp::cell_router(node.clone()))
         .merge(crate::gateway::router(gateway));
     let listener = tokio::net::TcpListener::bind(listen).await?;

@@ -49,6 +49,23 @@ zstd.workspace = true
 base64.workspace = true
 jsonwebtoken.workspace = true
 regex.workspace = true
+tower.workspace = true
+# The same drivers as the worker, so an org's provider runs the same way on
+# an executor (and the workspace builds them once).
+everruns-drivers = { workspace = true, features = [
+    "chatgpt",
+    "anthropic",
+    "bedrock",
+    "cloudflare",
+    "fireworks",
+    "gemini",
+    "mai",
+    "meta",
+    "mistral",
+    "openai",
+    "openrouter",
+    "vercel",
+] }
 
 [dev-dependencies]
 tempfile.workspace = true

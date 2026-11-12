@@ -118,7 +118,28 @@ pub async fn get_org_feature_flags(
     )
     .await
     .log_internal_error_json("resolve org feature flags")?;
-    Ok(Json(flags.to_map()))
+    with_data_plane(&state, org_id, flags.to_map()).await
+}
+
+/// The effective flags plus `data_plane`: whether the org's sessions run on
+/// a data plane (v2). Decision: derived from the org's data plane row, not
+/// stored as a flag, so the UI can hide what a data plane does not serve
+/// yet (session files, MCP, sandboxes) and no one can set it by hand.
+async fn with_data_plane(
+    state: &AppState,
+    org_id: i64,
+    mut map: FeatureFlagMap,
+) -> ApiResult<FeatureFlagMap> {
+    let v2 = state
+        .db
+        .dp_org(org_id)
+        .await
+        .log_internal_error_json("read the org's data plane")?
+        .is_some();
+    if v2 {
+        map.0.insert("data_plane".to_owned(), true);
+    }
+    Ok(Json(map))
 }
 
 /// GET /v1/orgs/{org}/feature-flags/settings — catalog with system/org/effective state.
@@ -190,7 +211,7 @@ pub async fn update_org_feature_flags(
     )
     .await
     .log_internal_error_json("resolve org feature flags")?;
-    Ok(Json(flags.to_map()))
+    with_data_plane(&state, org.org_id, flags.to_map()).await
 }
 
 /// List every feature flag for the operator console

@@ -34,6 +34,8 @@ pub const ADMIN: &str = "admin";
 const REFETCH: Duration = Duration::from_secs(10);
 /// How long fetched keys are trusted before they are refetched anyway.
 const KEYS_FOR: Duration = Duration::from_secs(300);
+/// Clock skew allowed on an org token's expiry, in seconds.
+const LEEWAY_SECS: u64 = 5;
 
 type ApiError = (StatusCode, String);
 
@@ -135,7 +137,10 @@ impl OrgTokens {
             .ok_or_else(|| unauthorized("the token's key is not known"))?;
         let mut validation = Validation::new(Algorithm::EdDSA);
         validation.validate_aud = false;
-        validation.leeway = 30;
+        // Decision: 5 s of clock skew, not jsonwebtoken's 60 s or a
+        // generous 30: an org token lives minutes (30 s in the expiry
+        // drill), and leeway is extra life for a token nobody refreshed.
+        validation.leeway = LEEWAY_SECS;
         let claims = jsonwebtoken::decode::<OrgTokenClaims>(token, &key, &validation)
             .map_err(unauthorized)?
             .claims;
@@ -172,11 +177,57 @@ fn unauthorized(why: impl std::fmt::Display) -> ApiError {
     (StatusCode::UNAUTHORIZED, format!("org token: {why}"))
 }
 
-/// The bearer token of a request, if any.
+/// The header a client that also sends its own `Authorization` (a browser
+/// with a console session) puts its org token in.
+pub const HEADER: &str = "x-everruns-org-token";
+/// The cookie a browser keeps its org token in (an `EventSource` sets no
+/// headers).
+pub const COOKIE: &str = "everruns_org_token";
+
+/// The org token of a request, if any: the `X-Everruns-Org-Token` header,
+/// the `everruns_org_token` cookie, or the bearer token, in that order.
 pub fn bearer(headers: &axum::http::HeaderMap) -> Option<&str> {
+    if let Some(token) = headers.get(HEADER).and_then(|v| v.to_str().ok()) {
+        return Some(token.trim());
+    }
+    if let Some(token) = cookie(headers, COOKIE) {
+        return Some(token);
+    }
     headers
         .get(axum::http::header::AUTHORIZATION)?
         .to_str()
         .ok()?
         .strip_prefix("Bearer ")
+}
+
+/// The value of cookie `name`, if the request carries it.
+pub fn cookie<'a>(headers: &'a axum::http::HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get_all(axum::http::header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(key, _)| *key == name)
+        .map(|(_, value)| value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderMap, HeaderValue, header};
+
+    #[test]
+    fn the_org_token_header_wins_then_the_cookie_then_the_bearer() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer b"));
+        assert_eq!(bearer(&headers), Some("b"));
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("a=1; everruns_org_token=c; z=2"),
+        );
+        assert_eq!(bearer(&headers), Some("c"));
+        headers.insert(HEADER, HeaderValue::from_static("h"));
+        assert_eq!(bearer(&headers), Some("h"));
+    }
 }

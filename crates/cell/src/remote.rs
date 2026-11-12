@@ -101,13 +101,7 @@ pub struct PullReply {
     pub tenants: Vec<Option<String>>,
 }
 
-/// `POST /cell/exec/live`: an epoch's live deltas, for the cell's streams.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LiveBatch {
-    pub session: SessionId,
-    pub fence: u64,
-    pub events: Vec<Event>,
-}
+pub use crate::stream::LiveBatch;
 
 /// `session` as an executor needs it: whole but for the events at or below
 /// `since` (and without its definition when `since` is set: the executor
@@ -211,6 +205,8 @@ pub struct Remote {
     applied: Mutex<HashMap<SessionId, u64>>,
     /// Round trips and payload, for the bench.
     pub calls: crate::prom::Counters,
+    /// Where live deltas go (each session's stream node).
+    deliver: crate::stream::Deliver,
 }
 
 /// How long one call to one member may take.
@@ -234,6 +230,7 @@ impl Remote {
             homes: Default::default(),
             applied: Default::default(),
             calls: Default::default(),
+            deliver: Default::default(),
         }))
     }
 
@@ -506,39 +503,16 @@ impl Remote {
         Ok(Vec::new())
     }
 
-    /// Send an epoch's live deltas to `session`'s cell. Best effort.
-    pub async fn live(&self, batch: &LiveBatch) {
+    /// Send an epoch's live deltas to the session's stream node. Best
+    /// effort.
+    pub async fn live(&self, batch: LiveBatch) {
         let Ok(cell) = self.cell_of(batch.session) else {
             return;
         };
-        let _ = self
-            .post::<_, serde_json::Value>(cell, "/cell/exec/live", batch, Duration::from_secs(2))
-            .await;
-    }
-}
-
-/// `POST /cell/exec/view`: the session, once the node applied `min_index`;
-/// with `wait_ms`, once it changed after `changed_after` (or the wait ran
-/// out).
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ViewRequest {
-    pub session: SessionId,
-    pub since: Option<i32>,
-    #[serde(default)]
-    pub min_index: u64,
-    #[serde(default)]
-    pub changed_after: u64,
-    #[serde(default)]
-    pub wait_ms: u64,
-}
-
-fn path_kind(path: &str) -> &'static str {
-    match path {
-        "/cell/exec/propose" => "propose",
-        "/cell/exec/view" => "view",
-        "/cell/exec/pull" => "pull",
-        "/cell/exec/live" => "live",
-        _ => "other",
+        let seeds = self.targets(cell);
+        if self.deliver.send(&self.http, cell, &seeds, batch).await {
+            self.calls.inc(&[("call", "live")]);
+        }
     }
 }
 
@@ -638,5 +612,29 @@ mod tests {
         assert!(merge(&mut mirror, id, delta(&cell, 2, id, Some(2))));
         assert!(!mirror.sessions.contains_key(&id));
         assert_eq!(mirror.forwarded[&id].cell, 3);
+    }
+}
+
+/// `POST /cell/exec/view`: the session, once the node applied `min_index`;
+/// with `wait_ms`, once it changed after `changed_after` (or the wait ran
+/// out).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ViewRequest {
+    pub session: SessionId,
+    pub since: Option<i32>,
+    #[serde(default)]
+    pub min_index: u64,
+    #[serde(default)]
+    pub changed_after: u64,
+    #[serde(default)]
+    pub wait_ms: u64,
+}
+
+fn path_kind(path: &str) -> &'static str {
+    match path {
+        "/cell/exec/propose" => "propose",
+        "/cell/exec/view" => "view",
+        "/cell/exec/pull" => "pull",
+        _ => "other",
     }
 }

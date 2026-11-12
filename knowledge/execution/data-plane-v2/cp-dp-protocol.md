@@ -35,6 +35,7 @@ Served by the data plane, called by the control plane:
 | --- | --- | --- |
 | `PUT /dp/v1/orgs/{org}/config/{epoch}/{version}` | `ConfigUpdate` → `ConfigAck` | One call per tenant change set, in order; idempotent by `(org, epoch, version)` |
 | `GET /dp/v1/orgs/{org}/config` | → `{ "epoch": u64, "applied_version": u64 }` | Resume the outbox after a restart, detect gaps |
+| `POST /dp/v1/orgs/{org}/sessions` | `{ id, agent_ref }` → the session | The control plane's `POST /v1/sessions` for a v2 org: it writes the session's record, delivers the agent, then creates the running session under the record's id at the agent's current revision. Idempotent by `id`; an agent the org does not have answers 404 |
 | `POST /dp/v1/orgs/{org}/config/unknown` | `ConfigKnown` → `ConfigDiff` | After a control plane restore: the control plane sends the revisions it knows, and the data plane answers with the agent revisions, secrets and connections it holds beyond them. A POST because the known set can be larger than a query string |
 | `POST /dp/v1/feed/replay` | `FeedReplay` → `{ command_id, resent }` | Ask a cell to resend feed records from the shipped log (30 days) |
 | `PUT /dp/v1/orgs/{org}` | `OrgEnable` → `CommandAck` | Enable the org on this data plane: data key, placement policy |
@@ -196,7 +197,7 @@ The edge router and gateways check a JWT signed by the control plane (EdDSA). Th
 
 A gateway requires org tokens when `CELL_JWKS_URL` is set. `sessions:write` lets a caller create sessions in its own org and drive them, and a session of another org answers as missing. `admin` is for operators and is never minted by the control plane. The gateway fetches the JWKS again on an unknown `kid`, at most every 10 s.
 
-The browser and CLI get tokens from the control plane at sign-in and refresh them in the background. **API keys** are long-lived, so the edge exchanges a key for a short token once (`POST /v1/auth/token` on the control plane) and caches the result until it expires. Revoking a user or key therefore takes effect within the token lifetime. A suspended org is pushed through the org state endpoint, so suspension is immediate while the data plane is connected and takes at most 30 s through a partition (see Rules, freshness). A control plane outage longer than the token lifetime stops new sign-ins and token refreshes; running sessions continue.
+The browser and CLI need no token code: the edge exchanges the caller's own credential (console cookie, API key, or bearer token, with `X-Org-Id`) for an org token at the control plane's `POST /v1/auth/token`, caches it by a hash of the credential, and fetches a fresh one halfway through a short life or a minute before expiry. "Not on a data plane" (409) is cached for a minute. A caller may also send an org token itself (`X-Everruns-Org-Token`, the `everruns_org_token` cookie, or a bearer EdDSA JWT); the edge checks it and refuses an expired or forged one rather than falling back to another credential. **API keys** are long-lived, so exchanging them for a short token means revoking a user or key takes effect within the token lifetime. A suspended org is pushed through the org state endpoint, so suspension is immediate while the data plane is connected and takes at most 30 s through a partition (see Rules, freshness). A control plane outage longer than the token lifetime stops new sign-ins and token refreshes; running sessions continue.
 
 ## Rules
 
@@ -227,3 +228,7 @@ The browser and CLI get tokens from the control plane at sign-in and refresh the
 ## Data plane v1
 
 v1 implements the same contract trivially. It shares RDS, so `ApplyConfig` is a no-op ack and the feed is empty. Its gateway is today's server, and the edge sends v1 orgs' session traffic there. Moving an org from v1 to v2 is: enable the org, send a full snapshot, import its sessions, then the edge starts routing the org to v2.
+
+## Model providers
+
+An org's model provider travels as a connection of kind `llm_provider` with id `llm:<provider key>` (the provider's normalized name, the key an agent's `model.provider` names). Its settings carry what a driver needs besides the key (provider type, base URL, chat API, request options); its token secret is the API key, sealed like any secret. The control plane syncs the whole set whenever the org's providers change and when the org is enabled, seals a key again only when it changed, and removes connections for providers the org no longer has. A provider with a personal sign-in (`chatgpt`) is not the org's to share and is never sent. Only the executor running a turn opens the key, for its session's own org, and keeps it in memory for 30 s. Types: `everruns_contracts::dataplane::LlmProviderSettings`; control plane `domains/data_plane/providers.rs`; cell `providers.rs`.

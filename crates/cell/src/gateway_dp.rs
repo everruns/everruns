@@ -44,6 +44,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
         .route("/dp/v1/orgs/{org}/config", get(position))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
+        .route("/dp/v1/orgs/{org}/sessions", post(org_session))
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
             crate::node_control::require_link_token,
@@ -62,6 +63,10 @@ pub fn cell_router(node: Arc<Node>) -> Router {
         .route(
             "/cell/orgs/{org}/secrets/{secret}",
             get(cell_secret).post(cell_secret),
+        )
+        .route(
+            "/cell/orgs/{org}/connections/{connection}",
+            get(cell_connection).post(cell_connection),
         )
         .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
         .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
@@ -127,6 +132,30 @@ async fn config(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
         other => Err((StatusCode::CONFLICT, format!("{other:?}"))),
     }
+}
+
+/// A session the control plane creates for an org on the data plane.
+#[derive(serde::Deserialize)]
+struct OrgSession {
+    /// The control plane's id for it, so its record and the data plane's
+    /// session are one session; creating again is a no-op.
+    id: everruns_contracts::typed_id::SessionId,
+    /// The org's agent, at its current revision.
+    agent_ref: String,
+}
+
+/// `POST /dp/v1/orgs/{org}/sessions`: the control plane creating an org's
+/// session (its `POST /v1/sessions` for an org on a data plane).
+async fn org_session(
+    State(gateway): State<Arc<Gateway>>,
+    Path(org): Path<String>,
+    Json(body): Json<OrgSession>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let revision = gateway.agent_revision(&org, &body.agent_ref).await?;
+    let created = gateway
+        .create(revision.package, None, Some(body.id), Some(org))
+        .await?;
+    Ok((StatusCode::CREATED, Json(created)))
 }
 
 async fn position(
@@ -477,6 +506,23 @@ async fn cell_secret(
             data_key: c.data_key.clone()?,
         })
     })))
+}
+
+/// `org`'s connection, for the executor that runs a turn needing it (its
+/// token stays sealed: the executor opens it with `secrets`).
+async fn cell_connection(
+    State(node): State<Arc<Node>>,
+    Path((org, connection)): Path<(String, String)>,
+) -> Result<Json<Option<everruns_contracts::dataplane::Connection>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(
+        state
+            .orgs
+            .orgs
+            .get(&org)
+            .and_then(|c| c.connections.get(&connection).cloned()),
+    ))
 }
 
 /// Every session of `org` in this cell, with its full log (an export).

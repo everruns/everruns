@@ -72,6 +72,11 @@ struct Knobs {
     lose_feed_replies: AtomicUsize,
     grant_ttl_ms: Mutex<i64>,
     per_call_micros: Mutex<Option<i64>>,
+    /// How long exchanged org tokens live.
+    token_ttl_secs: Mutex<i64>,
+    /// Org tokens exchanged, and calls the stand-in `/v1` API answered.
+    exchanges: AtomicUsize,
+    api_calls: AtomicUsize,
     /// The link's token: required on calls in, sent on calls out.
     link_token: Mutex<Option<String>>,
 }
@@ -100,6 +105,9 @@ impl FakeCp {
                 grant_ttl_ms: Mutex::new(60_000),
                 per_call_micros: Mutex::new(Some(100)),
                 link_token: Mutex::new(None),
+                token_ttl_secs: Mutex::new(600),
+                exchanges: AtomicUsize::new(0),
+                api_calls: AtomicUsize::new(0),
             }),
             signer: Arc::new(crate::signer::Signer::new("cp-key-1")?),
         };
@@ -107,9 +115,26 @@ impl FakeCp {
             .route("/dp/v1/tenants/{org}/allowances", post(allowance))
             .route("/dp/v1/feed", post(feed))
             .route("/.well-known/jwks.json", axum::routing::get(jwks))
+            .route("/v1/auth/token", post(exchange))
+            .fallback(api)
             .with_state(cp.clone());
         tokio::spawn(async move { axum::serve(listener, app).await });
         Ok(cp)
+    }
+
+    /// Exchanged org tokens live `secs` from now on.
+    pub fn set_token_ttl_secs(&self, secs: i64) {
+        *self.knobs.token_ttl_secs.lock() = secs;
+    }
+
+    /// Org tokens exchanged so far.
+    pub fn exchanges(&self) -> usize {
+        self.knobs.exchanges.load(Ordering::SeqCst)
+    }
+
+    /// Calls the stand-in `/v1` API answered.
+    pub fn api_calls(&self) -> usize {
+        self.knobs.api_calls.load(Ordering::SeqCst)
     }
 
     /// Require and send `token` on the link from now on.
@@ -298,6 +323,63 @@ type Reply<T> = Result<Json<T>, (StatusCode, String)>;
 
 fn unavailable() -> (StatusCode, String) {
     (StatusCode::SERVICE_UNAVAILABLE, "control plane down".into())
+}
+
+/// `POST /v1/auth/token`, with credentials of the form `Bearer user-<org>`
+/// (a member of `<org>`, on this data plane) or `Bearer v1-user` (an org
+/// that is not on a data plane).
+async fn exchange(
+    State(cp): State<FakeCp>,
+    headers: axum::http::HeaderMap,
+) -> Reply<serde_json::Value> {
+    if cp.knobs.down.load(Ordering::SeqCst) {
+        return Err(unavailable());
+    }
+    let credential = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or_default();
+    if credential == "v1-user" {
+        return Err((StatusCode::CONFLICT, "not on a data plane".into()));
+    }
+    let Some(org) = credential.strip_prefix("user-") else {
+        return Err((StatusCode::UNAUTHORIZED, "sign in".into()));
+    };
+    let ttl = *cp.knobs.token_ttl_secs.lock();
+    let token = cp
+        .signer
+        .token(org, "dp-local", "sessions:write", ttl)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    cp.knobs.exchanges.fetch_add(1, Ordering::SeqCst);
+    Ok(Json(serde_json::json!({
+        "token": token,
+        "token_type": "Bearer",
+        "expires_at_unix": chrono::Utc::now().timestamp() + ttl,
+        "org": org,
+    })))
+}
+
+/// The control plane's own `/v1` API, standing in: it names itself and
+/// the call, so a test sees what the edge passed on.
+async fn api(
+    State(cp): State<FakeCp>,
+    method: axum::http::Method,
+    uri: axum::http::Uri,
+    headers: axum::http::HeaderMap,
+) -> Reply<serde_json::Value> {
+    if cp.knobs.down.load(Ordering::SeqCst) {
+        return Err(unavailable());
+    }
+    cp.knobs.api_calls.fetch_add(1, Ordering::SeqCst);
+    Ok(Json(serde_json::json!({
+        "served_by": "control-plane",
+        "method": method.as_str(),
+        "path": uri.to_string(),
+        "authorization": headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok()),
+    })))
 }
 
 async fn jwks(State(cp): State<FakeCp>) -> Reply<jsonwebtoken::jwk::JwkSet> {

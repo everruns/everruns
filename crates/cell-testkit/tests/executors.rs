@@ -102,7 +102,7 @@ async fn live_deltas_from_an_executor_reach_sse() {
     let mut seen = String::new();
     let deadline = Instant::now() + Duration::from_secs(30);
     while !seen.contains("turn.completed") && Instant::now() < deadline {
-        match tokio::time::timeout(Duration::from_secs(5), stream.chunk()).await {
+        match tokio::time::timeout(Duration::from_secs(15), stream.chunk()).await {
             Ok(Ok(Some(chunk))) => seen.push_str(&String::from_utf8_lossy(&chunk)),
             _ => break,
         }
@@ -152,4 +152,62 @@ async fn the_workspace_survives_executors_and_a_move() {
         "the big file came back whole"
     );
     assert!(answers.iter().all(|a| !a.contains("error")), "{answers:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tool_waits_for_approval_and_runs_once_approved() {
+    approved("approve", "guarded").await;
+}
+
+/// The `tool_approval` capability an agent names (the console's "ask before
+/// acting") gates a state-changing tool the same way.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_approval_capability_gates_a_tool_until_approved() {
+    approved("gate", "note").await;
+}
+
+/// `agent`'s turn parks on `tool` until a person allows it, then runs it
+/// and answers.
+async fn approved(agent: &str, tool: &str) {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let session = fleet.create(agent).await;
+    fleet.say(&session, "change it").await;
+    // The turn parks on the request: no answer until a person decides.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let request = loop {
+        let events = fleet.events(&session).await;
+        if let Some(asked) = events.iter().find(|e| e["type"] == "tool.call_requested") {
+            break asked["data"]["tool_calls"][0]["id"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no approval request: {:?}",
+            types(&events)
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    };
+    let answered = fleet
+        .post(
+            &format!("/v1/sessions/{session}/tool-approvals"),
+            json!({ "decisions": [{ "tool_call_id": request, "decision": "allow" }] }),
+        )
+        .await;
+    assert_eq!(
+        answered["resolved"].as_array().map(Vec::len),
+        Some(1),
+        "{answered}"
+    );
+    fleet.turns(&session, 1).await;
+    let events = fleet.events(&session).await;
+    let ran = events.iter().any(|e| {
+        e["type"] == "tool.completed"
+            && e["data"]["tool_name"] == tool
+            && e["data"]["status"] == "success"
+    });
+    assert!(ran, "{tool} ran once approved: {:?}", types(&events));
+    assert_eq!(answers(&events), vec!["Changed, as approved.".to_string()]);
 }

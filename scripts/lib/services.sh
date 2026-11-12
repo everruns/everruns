@@ -3,6 +3,7 @@
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/local-development-secrets.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/data-plane-local.sh"
 
 cmd="${1:-}"
 shift || true
@@ -195,6 +196,9 @@ run_ui_start() {
 }
 
 case "$cmd" in
+  dp-enable)
+    data_plane_local_enable "${1:-}"
+    ;;
   server)
     echo "🌐 Starting server..."
     export HTTP_ADDR=${HTTP_ADDR:-${ADDR:-$HTTP_ADDR_DEFAULT}}
@@ -566,6 +570,11 @@ case "$cmd" in
     fi
     export WORKER_GRPC_AUTH_TOKEN
     export RUST_LOG=${RUST_LOG:-info}
+    # DATA_PLANE=v2: the API server is the control plane of a local data
+    # plane (scripts/lib/data-plane-local.sh).
+    if [ "${DATA_PLANE:-}" = "v2" ]; then
+      data_plane_local_env
+    fi
     if [ "$NO_WATCH" = true ]; then
       echo "3️⃣  Starting API server (auto-migrates on startup)..."
       cargo run -p everruns-server &
@@ -590,6 +599,11 @@ case "$cmd" in
     done
     if [ -n "$API_HEALTH" ] && ! verify_api_auth_mode "$API_HEALTH"; then
       cleanup 1
+    fi
+
+    if [ "${DATA_PLANE:-}" = "v2" ]; then
+      echo "5️⃣  Starting the local data plane (DATA_PLANE=v2)..."
+      data_plane_local_start || cleanup 1
     fi
 
     # Start Worker with restart-on-crash logic

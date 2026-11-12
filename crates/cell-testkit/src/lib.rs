@@ -54,6 +54,47 @@ fn work_tool() -> FunctionTool {
     )
 }
 
+/// A tool a person must approve before it runs (the approval gate).
+fn guarded_tool() -> FunctionTool {
+    FunctionTool::new(
+        "guarded",
+        "Change something that needs a person's approval.",
+        json!({ "type": "object", "properties": {} }),
+        |_args: Value| async move { Ok::<_, String>(json!({ "changed": true })) },
+    )
+    .always_needs_approval()
+}
+
+/// A tool that changes something and says nothing about its risk: the
+/// `tool_approval` capability in its protective mode gates it.
+fn note_tool() -> FunctionTool {
+    FunctionTool::new(
+        "note",
+        "Write a note.",
+        json!({ "type": "object", "properties": {} }),
+        |_args: Value| async move { Ok::<_, String>(json!({ "noted": true })) },
+    )
+}
+
+/// A simulated model that calls `tool`, calls it again once told it was
+/// approved (as the Engine asks), then answers.
+fn approve_model(tool: &str) -> Model {
+    let call = || {
+        SimTurn::ToolCalls(vec![SimToolCall {
+            name: tool.into(),
+            arguments: json!({}),
+            id: None,
+        }])
+    };
+    let sim = LlmSimConfig::scripted(vec![
+        call(),
+        call(),
+        SimTurn::Assistant("Changed, as approved.".into()),
+    ])
+    .with_on_exhausted(OnExhausted::Loop);
+    Model::simulated_with_config(sim)
+}
+
 fn work_call() -> SimTurn {
     SimTurn::ToolCalls(vec![SimToolCall {
         name: "work".into(),
@@ -173,6 +214,48 @@ impl everruns::ChatDriver for FilesSim {
             .chat_completion_stream(endpoint, messages, config)
             .await
     }
+}
+
+/// Deltas a `stamp` turn streams.
+pub const STAMPS: usize = 20;
+/// Time between a `stamp` turn's deltas.
+pub const STAMP_EVERY: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// A model whose deltas carry the time they were produced.
+struct StampSim;
+
+#[async_trait::async_trait]
+impl everruns::ChatDriver for StampSim {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &everruns::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::Message>,
+        _config: &everruns::LlmCallConfig,
+    ) -> everruns_contracts::Result<everruns::LlmResponseStream> {
+        use everruns_contracts::driver_registry::{LlmCompletionMetadata, LlmStreamEvent};
+        let stream = futures::stream::unfold(0usize, |n| async move {
+            if n > STAMPS {
+                return None;
+            }
+            if n == STAMPS {
+                let mut done = LlmCompletionMetadata::default();
+                done.prompt_tokens = Some(1);
+                done.completion_tokens = Some(STAMPS as u32);
+                done.total_tokens = Some(STAMPS as u32 + 1);
+                return Some((Ok(LlmStreamEvent::Done(Box::new(done))), n + 1));
+            }
+            if n > 0 {
+                tokio::time::sleep(STAMP_EVERY).await;
+            }
+            let micros = chrono::Utc::now().timestamp_micros();
+            Some((Ok(LlmStreamEvent::TextDelta(format!("@{micros};"))), n + 1))
+        });
+        Ok(Box::pin(stream))
+    }
+}
+
+fn stamp_model() -> Model {
+    Model::new("stamp", everruns::Provider::new("llmsim", StampSim))
 }
 
 fn files_model() -> Model {
@@ -447,6 +530,14 @@ static BLOB_SIM: std::sync::LazyLock<LlmSimConfig> = std::sync::LazyLock::new(||
 /// - `lead`: delegate to the member `worker3`, then report;
 /// - `chat`: a long answer, with no tools, and native compaction;
 /// - `files`: writes or reads a workspace file the message names;
+/// - `slow-chat`: a plain answer after `CELL_MODEL_DELAY_MS` (3 s);
+/// - `approve`: calls `guarded`, which waits for a person's approval,
+///   then answers;
+/// - `gate`: the same with `note`, which the agent's `tool_approval`
+///   capability gates;
+/// - `stamp`: streams [`STAMPS`] text deltas, each the Unix time in
+///   microseconds it was produced (`@<micros>;`), [`STAMP_EVERY`] apart:
+///   the streaming latency bench reads them off the wire;
 /// - anything else: plays the Everruns llmsim scenario named by a
 ///   `[[llmsim:<scenario>]]` marker in the message, and otherwise answers
 ///   "done.".
@@ -463,10 +554,21 @@ pub fn host() -> StandardHost {
                 "chat" => chat_model(),
                 "blob" => blob_model(),
                 "files" => files_model(),
+                "stamp" => stamp_model(),
+                "approve" => approve_model("guarded"),
+                "gate" => approve_model("note"),
+                // A plain answer that takes `CELL_MODEL_DELAY_MS`: a turn
+                // to cancel, for an agent the control plane defines.
+                "slow-chat" => Model::simulated_with_config(
+                    LlmSimConfig::fixed("Thought about it for a while.")
+                        .with_response_delay(env_ms("CELL_MODEL_DELAY_MS", 3000)),
+                ),
                 _ => Model::simulated("done."),
             })
         })
         .tool(work_tool)
+        .tool(guarded_tool)
+        .tool(note_tool)
         .tool(delegate_tool)
         .tool(|| file_tool("list_directory", "List a directory."))
         .tool(|| file_tool("read_file", "Read a file."))
@@ -518,6 +620,19 @@ fn agent(name: &str, instructions: &str, model: &str, tool_names: &[&str]) -> Va
 pub fn definition(name: &str) -> Option<Value> {
     Some(match name {
         "echo" => agent("echo", "Answer.", "echo", &[]),
+        // Deltas stamped with the time they were made (the latency bench).
+        "stamp" => agent("stamp", "Answer.", "stamp", &[]),
+        // Calls a tool that waits for a person's approval.
+        "approve" => agent("approve", "Ask, then change.", "approve", &["guarded"]),
+        // Its `tool_approval` capability gates a state-changing tool.
+        "gate" => {
+            let mut gate = agent("gate", "Ask, then change.", "gate", &["note"]);
+            gate["capabilities"] = json!([{
+                "ref": "tool_approval",
+                "config": { "mode": "protective" }
+            }]);
+            gate
+        }
         "worker" => agent("worker", "Do the work, then report.", "work-1", &["work"]),
         "worker3" => agent("worker3", "Do the work, then report.", "work-3", &["work"]),
         "slow" => agent("slow", "Do the work, then report.", "slow", &["work"]),

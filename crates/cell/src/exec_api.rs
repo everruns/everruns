@@ -11,7 +11,7 @@ use axum::{Json, Router};
 
 use crate::node::Node;
 use crate::remote::{
-    ExecPropose, ExecProposed, LiveBatch, PullReply, PullRequest, SessionDelta, ViewRequest, delta,
+    ExecPropose, ExecProposed, PullReply, PullRequest, SessionDelta, ViewRequest, delta,
 };
 
 type ApiError = (StatusCode, String);
@@ -26,7 +26,6 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/exec/propose", post(propose))
         .route("/cell/exec/view", post(view))
         .route("/cell/exec/pull", post(pull))
-        .route("/cell/exec/live", post(live))
         .with_state(node)
 }
 
@@ -138,12 +137,4 @@ async fn pull(
         leader: None,
         tenants,
     }))
-}
-
-async fn live(
-    State(node): State<Arc<Node>>,
-    Json(batch): Json<LiveBatch>,
-) -> Json<serde_json::Value> {
-    let taken = node.publish_live(batch.session, batch.fence, batch.events);
-    Json(serde_json::json!({ "taken": taken }))
 }

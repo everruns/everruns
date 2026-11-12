@@ -31,6 +31,8 @@ struct Seen {
     epoch: u64,
     /// Answer the next incremental update with NEED_FULL_SNAPSHOT.
     want_full: bool,
+    /// Sessions created: (org, body), with the config version applied then.
+    sessions: Vec<(String, Value, u64)>,
 }
 
 type Stub = Arc<Mutex<Seen>>;
@@ -67,9 +69,23 @@ async fn stub() -> (String, Stub) {
             applied_version: update.version,
         })
     }
+    async fn session(
+        State(seen): State<Stub>,
+        Path(org): Path<String>,
+        Json(body): Json<Value>,
+    ) -> (axum::http::StatusCode, Json<Value>) {
+        let mut seen = seen.lock();
+        let applied = seen.applied;
+        seen.sessions.push((org, body.clone(), applied));
+        (
+            axum::http::StatusCode::CREATED,
+            Json(json!({ "id": body["id"] })),
+        )
+    }
     let app = Router::new()
         .route("/dp/v1/orgs/{org}", put(enable))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
+        .route("/dp/v1/orgs/{org}/sessions", axum::routing::post(session))
         .with_state(seen.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
@@ -271,6 +287,7 @@ fn summary(version: u64, turns: u64) -> Record {
         last_activity_unix_ms: chrono::Utc::now().timestamp_millis(),
         turns,
         cost_micros: 0,
+        last_turn: "completed".into(),
     }
 }
 
@@ -502,4 +519,224 @@ fn org_ids_round_trip_and_strangers_do_not_parse() {
     assert_eq!(org_internal(&org_public(ORG)), Some(ORG));
     assert_eq!(org_internal("org_nonsense"), None);
     assert_eq!(org_internal(""), None);
+}
+
+/// A harness of `org`, for sessions.
+async fn harness(db: &StorageBackend, org: i64) -> everruns_contracts::typed_id::HarnessId {
+    db.create_harness(
+        org,
+        crate::storage::CreateHarnessRow {
+            localizations: Default::default(),
+            name: format!("Test harness {}", uuid::Uuid::new_v4().simple()),
+            display_name: None,
+            icon: None,
+            description: None,
+            intro_markdown: None,
+            short_description: None,
+            starters: json!([]),
+            system_prompt: Some("You are helpful.".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            initial_files: json!([]),
+            mcp_servers: json!({}),
+            is_built_in: false,
+            network_access: None,
+            embedder_metadata: json!({}),
+        },
+    )
+    .await
+    .expect("create harness")
+    .id
+}
+
+/// A v2 org's session: the data plane gets the agent first, then creates the
+/// session under the record's own id; the session is marked as the data
+/// plane's, so its messages never reach the platform's workers.
+#[tokio::test]
+async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
+    let (cp, seen, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.harness_id = Some(harness);
+    assert_eq!(sessions::unsupported(&row, false), None);
+    assert_eq!(sessions::unsupported(&row, true), Some("capabilities"));
+    let id = cp.db.create_session(row).await.unwrap().id;
+    assert!(!sessions::runs_on_data_plane(&cp, ORG, id).await.unwrap());
+
+    sessions::created(&cp, ORG, id, harness, None)
+        .await
+        .unwrap();
+    let (key, _) = crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, None)
+        .await
+        .unwrap();
+    {
+        let seen = seen.lock();
+        let (org, body, applied) = seen.sessions.last().expect("created on the data plane");
+        assert_eq!(org, &org_public(ORG));
+        assert_eq!(body["id"], json!(id.to_string()));
+        assert_eq!(body["agent_ref"], json!(key));
+        // The agent was delivered before the create.
+        let agents: Vec<&ConfigUpdate> = seen
+            .updates
+            .iter()
+            .map(|(_, u)| u)
+            .filter(|u| u.version <= *applied && kinds(u).iter().any(|k| k == "Agent"))
+            .collect();
+        assert!(!agents.is_empty(), "the agent reached the data plane first");
+    }
+    assert!(sessions::runs_on_data_plane(&cp, ORG, id).await.unwrap());
+
+    // A turn's summary from the feed shows on the record.
+    let at = chrono::Utc::now();
+    cp.db
+        .dp_apply_session_summary(ORG, id.uuid(), "completed", at)
+        .await
+        .unwrap();
+    let record = cp.db.get_session(ORG, id).await.unwrap().unwrap();
+    assert_eq!(record.status, "idle");
+    assert_eq!(record.last_turn_status.as_deref(), Some("completed"));
+
+    // A v1 org's session is left to the platform's workers.
+    let v1 = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(3))
+        .await;
+    if let Ok(v1) = v1 {
+        let before = seen.lock().sessions.len();
+        sessions::created(&cp, 3, v1.id, harness, None)
+            .await
+            .unwrap();
+        assert_eq!(seen.lock().sessions.len(), before);
+        assert!(!sessions::runs_on_data_plane(&cp, 3, v1.id).await.unwrap());
+    }
+}
+
+/// An org's model provider reaches the data plane as a connection and a
+/// sealed key, sealed again only when the key changes, and leaves when the
+/// provider does.
+#[tokio::test]
+async fn a_providers_key_travels_sealed_and_only_when_it_changed() {
+    let (cp, _seen, _) = control_plane().await;
+    let encryption = test_encryption();
+    let provider = cp
+        .db
+        .create_provider(
+            ORG,
+            crate::storage::CreateProviderRow {
+                name: "Acme Router".into(),
+                provider_type: "openrouter".into(),
+                base_url: Some("https://acme.example/v1".into()),
+                api_key_encrypted: Some(encryption.encrypt_string("sk-acme-1").unwrap()),
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    providers::sync(&cp, ORG).await.unwrap();
+    let id = dp::llm_provider_connection(
+        everruns_contracts::runtime_provider::ProviderKey::new("Acme Router").as_str(),
+    );
+    let connection = cp
+        .db
+        .dp_item(ORG, "connection", &id)
+        .await
+        .unwrap()
+        .unwrap();
+    let Some(ConfigChange::Connection(c)) = ConfigChange::parse(&connection.body.unwrap()) else {
+        panic!("a connection");
+    };
+    let settings: dp::LlmProviderSettings = serde_json::from_value(c.settings).unwrap();
+    assert_eq!(settings.provider_type, "openrouter");
+    assert_eq!(
+        settings.base_url.as_deref(),
+        Some("https://acme.example/v1")
+    );
+    assert_eq!(c.token_secret_id, id);
+    let org = cp.db.dp_org(ORG).await.unwrap().unwrap();
+    let opened = |cp: &ControlPlane| {
+        let cp = cp.clone();
+        let id = id.clone();
+        let org = org.clone();
+        async move {
+            let item = cp.db.dp_item(ORG, "secret", &id).await.unwrap().unwrap();
+            let Some(ConfigChange::Secret(sealed)) = ConfigChange::parse(&item.body.unwrap())
+            else {
+                panic!("a secret");
+            };
+            (
+                item.version,
+                seal::unseal(&cp.data_key(&org).unwrap(), &org_public(ORG), &sealed).unwrap(),
+            )
+        }
+    };
+    let (version, key) = opened(&cp).await;
+    assert_eq!(key, b"sk-acme-1");
+
+    // Unchanged: nothing written.
+    let before = cp.db.dp_org(ORG).await.unwrap().unwrap().version;
+    providers::sync(&cp, ORG).await.unwrap();
+    assert_eq!(cp.db.dp_org(ORG).await.unwrap().unwrap().version, before);
+
+    // A new key is sealed again.
+    cp.db
+        .update_provider(
+            ORG,
+            provider.id.uuid(),
+            crate::storage::UpdateProvider {
+                api_key_encrypted: Some(encryption.encrypt_string("sk-acme-2").unwrap()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    providers::sync(&cp, ORG).await.unwrap();
+    let (newer, key) = opened(&cp).await;
+    assert!(newer > version);
+    assert_eq!(key, b"sk-acme-2");
+
+    // Gone from the org: gone from the data plane.
+    cp.db
+        .delete_provider(ORG, provider.id.uuid())
+        .await
+        .unwrap();
+    providers::sync(&cp, ORG).await.unwrap();
+    let live = cp.db.dp_items_live(ORG).await.unwrap();
+    assert!(live.iter().all(|item| item.item_id != id), "{live:?}");
+}
+
+/// The console's own Chat stays on the control plane in a v2 org: its page
+/// tools are the console's, and the data plane holds only the org's
+/// published agents. Any other agent's session goes to the data plane.
+#[tokio::test]
+async fn the_consoles_chat_stays_on_the_control_plane() {
+    let (cp, _, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    // The test database is shared: the org may have its Chat already.
+    let name = crate::platform_chat_agent::NAME;
+    let chat = match cp.db.get_agent_by_name(ORG, name).await.unwrap() {
+        Some(chat) => chat,
+        None => cp
+            .db
+            .create_agent(
+                ORG,
+                crate::platform_chat_agent::definition(
+                    harness,
+                    everruns_contracts::typed_id::AgentId::new(),
+                ),
+            )
+            .await
+            .unwrap(),
+    };
+    assert!(sessions::stays_on_control_plane(Some(&chat)));
+
+    let mut other = crate::platform_chat_agent::definition(
+        harness,
+        everruns_contracts::typed_id::AgentId::new(),
+    );
+    other.name = format!("helper-{}", uuid::Uuid::new_v4().simple());
+    other.is_built_in = false;
+    let other = cp.db.create_agent(ORG, other).await.unwrap();
+    assert!(!sessions::stays_on_control_plane(Some(&other)));
+    assert!(!sessions::stays_on_control_plane(None));
 }

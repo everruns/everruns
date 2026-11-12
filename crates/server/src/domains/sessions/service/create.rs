@@ -593,7 +593,44 @@ impl SessionService {
             // Always a fresh default workspace (see `WORKSPACE_ATTACH_RETIRED`).
             workspace_id: None,
         };
+        // Data plane v2: the record is written here and the session runs on
+        // the org's data plane (see `data_plane::sessions`).
+        let data_plane = crate::domains::data_plane::ControlPlane::from_env(self.db.clone());
+        let on_data_plane =
+            !crate::domains::data_plane::sessions::stays_on_control_plane(agent.as_ref())
+                && crate::domains::data_plane::sessions::on_data_plane(&data_plane, org_id).await?;
+        if on_data_plane
+            && let Some(setting) = crate::domains::data_plane::sessions::unsupported(
+                &input,
+                has_caller_supplied_session_capabilities,
+            )
+        {
+            return Err(BadRequestError::new(format!(
+                "this organization runs sessions on a data plane, which does not take a \
+                 session's own `{setting}` yet; set it on the agent instead"
+            ))
+            .into());
+        }
         let row = self.db.create_session(input).await?;
+        if on_data_plane
+            && let Err(error) = crate::domains::data_plane::sessions::created(
+                &data_plane,
+                org_id,
+                row.id,
+                harness_id,
+                agent_id,
+            )
+            .await
+        {
+            tracing::warn!(session_id = %row.id, error = %format!("{error:#}"), "the data plane did not create the session");
+            // A record nothing runs would take messages nobody answers.
+            self.db.delete_session(org_id, row.id).await?;
+            return Err(crate::errors::ConflictError::new(
+                "the organization's data plane did not take the session; try again",
+            )
+            .with_code("data_plane_unavailable")
+            .into());
+        }
         if let Some(sandbox) = &resolved_sandbox {
             self.db
                 .pin_primary_sandbox(row.id, &sandbox.name, &sandbox.spec)

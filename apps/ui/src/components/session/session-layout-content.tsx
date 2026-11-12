@@ -17,6 +17,7 @@ import {
   buildSessionNavigation,
 } from "@/components/session/session-header";
 import { usePageTitle } from "@/hooks";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { useProviders } from "@/hooks/use-providers";
 import { buildTraceConfigByDriver, resolveSessionTraceUrl } from "@/lib/chat-trace";
 import { getDisplayName } from "@/lib/entity-lifecycle";
@@ -70,6 +71,7 @@ export function SessionLayoutContent({
 
   const basePath = `/sessions/${sessionId}`;
   const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);
+  const flags = useOptionalFeatureFlags()?.flags;
   const navigationItems = buildSessionNavigation({
     basePath,
     features,
@@ -78,6 +80,7 @@ export function SessionLayoutContent({
     fileCount: session?.file_count,
     activeScheduleCount: session?.active_schedule_count,
     inRun: !!session?.parent_session_id,
+    dataPlane: !!flags?.data_plane,
   });
 
   // Resolve the session-level provider trace link here, where org/provider

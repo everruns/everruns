@@ -11,12 +11,25 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use everruns::hosting::services::{HostProviders, HostServices};
 use everruns::{Agent, AgentPackage, FunctionTool, Model};
 use serde_json::Value;
 
 pub trait Host: Send + Sync + 'static {
     /// Build the agent `definition` describes, or say why this node cannot.
     fn agent(&self, definition: &Value) -> Result<Agent, String>;
+
+    /// [`agent`](Self::agent), where `orgs` serves the model providers of
+    /// orgs on the data plane (`providers.rs`) that this host does not
+    /// serve itself.
+    fn agent_with(
+        &self,
+        definition: &Value,
+        orgs: Option<&HostProviders>,
+    ) -> Result<Agent, String> {
+        let _ = orgs;
+        self.agent(definition)
+    }
 
     /// The tools this node offers, as a definition's `tools` entries.
     fn tools(&self) -> Vec<Value> {
@@ -58,7 +71,15 @@ impl StandardHost {
         key: &str,
         factory: impl Fn(&str) -> Option<Model> + Send + Sync + 'static,
     ) -> Self {
-        self.providers.insert(key.into(), Arc::new(factory));
+        // Provider names match as the Engine matches them (`ProviderKey`:
+        // trimmed, any case): the control plane names a provider by its
+        // display name, such as "LlmSim".
+        self.providers.insert(
+            everruns_contracts::runtime_provider::ProviderKey::new(key)
+                .as_str()
+                .to_owned(),
+            Arc::new(factory),
+        );
         self
     }
 
@@ -97,6 +118,14 @@ pub fn package(definition: &Value) -> Result<AgentPackage, String> {
 
 impl Host for StandardHost {
     fn agent(&self, definition: &Value) -> Result<Agent, String> {
+        self.agent_with(definition, None)
+    }
+
+    fn agent_with(
+        &self,
+        definition: &Value,
+        orgs: Option<&HostProviders>,
+    ) -> Result<Agent, String> {
         let package = package(definition)?;
         let manifest = package.manifest();
         let mut builder = Agent::builder();
@@ -111,24 +140,58 @@ impl Host for StandardHost {
             .model
             .as_ref()
             .ok_or("the definition names no model")?;
-        let model = self
+        // A provider this host serves itself wins; otherwise the org's own
+        // provider, by its key, when the org runs on the data plane.
+        let local = self
             .providers
-            .get(model.provider.as_str())
-            .and_then(|factory| factory(&model.model))
-            .ok_or_else(|| {
-                format!(
+            .get(
+                everruns_contracts::runtime_provider::ProviderKey::new(model.provider.as_str())
+                    .as_str(),
+            )
+            .and_then(|factory| factory(&model.model));
+        // Decision: the `tool_approval` capability an agent names is served
+        // here, its decisions kept in the session's storage
+        // (`DurableToolApprover`), so a risky call parks the turn as a
+        // tool marked for approval does. Registered, not activated, and only
+        // for an agent that names it: a registered one would stand in for
+        // the gate of tools marked for approval (`durable_approvals`) and
+        // let them run unasked.
+        let mut services = HostServices::new();
+        if manifest
+            .capabilities
+            .iter()
+            .any(|c| c.id() == everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID)
+        {
+            services = services.register(everruns_core::builtins::ToolApprovalCapability::new(
+                Arc::new(everruns_core::builtins::DurableToolApprover),
+            ));
+        }
+        let model = match (local, orgs) {
+            (Some(model), _) => model,
+            (None, Some(orgs)) => {
+                services = services.providers(orgs.clone());
+                Model::on(model.provider.as_str(), model.model.as_str())
+            }
+            (None, None) => {
+                return Err(format!(
                     "this node does not serve {} on {}",
                     model.model, model.provider
-                )
-            })?;
+                ));
+            }
+        };
         // Decision: a session's workspace is its own durable one in the
         // cell, so its file tools may write it, as the platform's workers
         // allow (hidden and sensitive paths stay denied by the policy).
         builder
+            .host_services(services)
             .model(model)
             .package(&package)
             .map_err(|e| e.to_string())?
             .workspace_policy(everruns::WorkspacePolicy::read_write())
+            // A tool that needs approval parks the turn until a person
+            // answers through `POST /v1/sessions/{id}/tool-approvals`: a
+            // cell never holds a turn open on a callback.
+            .durable_approvals()
             .build()
             .map_err(|e| e.to_string())
     }
