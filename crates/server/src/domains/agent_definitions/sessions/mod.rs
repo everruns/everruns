@@ -77,16 +77,10 @@ pub async fn claim(
             if !enrolled(db, actor.org_id).await? || overrides(&session).is_some() {
                 return Ok(EngineClaim::Legacy);
             }
-            // Decision: a session whose agent does not compile to a
-            // declaration (an empty prompt, a capability the Engine cannot
-            // name) keeps running where it runs today.
             let (key, revision) =
                 match super::key_for(db, actor.org_id, harness_id, session.agent_id).await {
                     Ok(published) => published,
-                    Err(error) => {
-                        tracing::warn!(%error, %session_id, "session stays on the worker host");
-                        return Ok(EngineClaim::Legacy);
-                    }
+                    Err(error) => return unresolved_agent(session_id, error),
                 };
             match db
                 .bind_engine_session(
@@ -114,6 +108,40 @@ pub async fn claim(
         files_workspace_id: session.workspace_id,
         binding,
     })))
+}
+
+/// The claim's answer when the session's agent key could not be resolved.
+///
+/// Decision: a session whose agent does not compile to a declaration (an
+/// empty prompt, a capability the Engine cannot name) keeps running where it
+/// runs today. A database that is momentarily unavailable (a full pool, a
+/// dropped connection) is not such an answer: it fails the claim, which the
+/// worker's Engine lane retries and otherwise leaves the lease to expire, so
+/// the session is leased again and still lands on the Engine. Answering
+/// Legacy there silently moved enrolled sessions to the worker host under
+/// load (EVE-1346).
+fn unresolved_agent(session_id: SessionId, error: anyhow::Error) -> anyhow::Result<EngineClaim> {
+    if database_unavailable(&error) {
+        return Err(error.context("resolve the session's Engine agent"));
+    }
+    tracing::warn!(%error, %session_id, "session stays on the worker host");
+    Ok(EngineClaim::Legacy)
+}
+
+/// Whether `error` is the database being unavailable for a moment rather than
+/// an answer about the records it was asked for.
+fn database_unavailable(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        matches!(
+            source.downcast_ref::<sqlx::Error>(),
+            Some(
+                sqlx::Error::PoolTimedOut
+                    | sqlx::Error::PoolClosed
+                    | sqlx::Error::Io(_)
+                    | sqlx::Error::WorkerCrashed
+            )
+        ) || everruns_core::DatabaseFailureKind::classify(&source.to_string()).is_shared_incident()
+    })
 }
 
 /// The organization enrolled in Engine hosting.
