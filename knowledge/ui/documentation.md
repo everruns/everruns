@@ -477,10 +477,9 @@ Generated descriptions are held to the same house style as hand-authored ones ab
 #### Analytics
 
 Every docs page loads the same Google tag as everruns.com (`apps/docs/src/google-tag.js`,
-inlined into the head) and fires the landing site's event names
-(`cloud_signup_click`, `github_click`, `subscribe`), so conversions from docs readers are
-counted with the landing site's. Keep the tag id and event names in step with
-everruns/landing `src/components/GoogleTag.astro`.
+inlined into the head) and records page views only: no click, form or conversion events
+(owner decision, 2026-11-12). Keep the tag id in step with everruns/landing
+`src/components/GoogleTag.astro`.
 
 #### Build Verification
 

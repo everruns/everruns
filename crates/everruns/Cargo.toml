@@ -17,9 +17,9 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns"
-description = "Build and run durable AI agents in Rust — the application-facing entrypoint to the Everruns agentic framework"
+description = "Build and run durable AI agents in Rust: the application-facing crate of the Everruns agent framework"
 readme = "README.md"
-keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
+keywords = ["agent", "ai-agent", "agent-framework", "llm", "ai"]
 categories = ["development-tools", "asynchronous"]
 # The out-of-workspace downstream-consumer fixtures are a CI harness, and the
 # bench baseline is maintainer history; neither is part of the library, so keep
