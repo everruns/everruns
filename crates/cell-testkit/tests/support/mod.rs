@@ -314,6 +314,43 @@ impl Fleet {
         }
     }
 
+    /// Lose every node of `cell`, disks and all, then rebuild it from the
+    /// object store as of `at_ms` (its newest without one) on new nodes at
+    /// the same addresses, and wait for a leader.
+    pub async fn rebuild(
+        &mut self,
+        cell: u32,
+        at_ms: Option<i64>,
+    ) -> everruns_cell::restore::Rebuilt {
+        let nodes: Vec<u64> = self
+            .configs
+            .keys()
+            .filter(|(c, _)| *c == cell)
+            .map(|(_, n)| *n)
+            .collect();
+        for node in &nodes {
+            self.kill_node(cell, *node);
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let mut members = BTreeMap::new();
+        for node in &nodes {
+            let dir = self.configs[&(cell, *node)].data_dir.clone();
+            if dir.exists() {
+                let lost = dir.with_extension(format!("lost-{}", now_ms()));
+                std::fs::rename(&dir, lost).unwrap();
+            }
+            members.insert(*node, (self.nodes[&(cell, *node)].0.clone(), dir));
+        }
+        let rebuilt = everruns_cell::restore::rebuild(&self.store(), cell, &members, at_ms)
+            .await
+            .unwrap();
+        for node in &nodes {
+            self.start_node(cell, *node);
+        }
+        self.leader(cell).await;
+        rebuilt
+    }
+
     /// The fleet's topology file.
     pub fn topology(&self) -> TopologySource {
         self.topology.clone()
@@ -492,4 +529,11 @@ pub fn answers(events: &[Value]) -> Vec<String> {
 
 pub fn pulled(executor: &Executor) -> u64 {
     executor.stats.get(&[("event", "pulled")])
+}
+
+/// Wall-clock milliseconds since the Unix epoch.
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }
