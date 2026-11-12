@@ -50,6 +50,10 @@ async fn pool() -> PgPool {
 
 #[tokio::test]
 async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("error")
+        .with_test_writer()
+        .try_init();
     let pool = pool().await;
     let fixture = seed(&pool, "endpoint-no-app-reads", "published").await;
     let ag_ui_token = "migration-ag-ui-token";
@@ -145,7 +149,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
     let grants = format!(
         "GRANT USAGE ON SCHEMA public TO {role};
          GRANT SELECT ON
-             organizations, agents, agent_channels, agent_triggers, durable_workers, dp_orgs,
+             organizations, agents, agent_channels, agent_triggers, durable_workers, dp_orgs, dp_session_summaries,
              harnesses, harness_capabilities, agent_capabilities,
              principals, users, sessions, workspaces, session_participants,
              events, event_sequences, images, memories, models,
