@@ -10,7 +10,7 @@ links:
   prs: [everruns/yolop#941]
 ---
 
-`yolop --acp` now answers clients that ask for the draft Agent Client Protocol v2 and keeps serving v1 to everyone else. The client's `initialize` request picks the version, so v2-only editors such as Zed's Delta can host Yolop, while Paseo, Zed and Buzz see no change.
+`yolop --acp` now serves the draft Agent Client Protocol v2 to clients that ask for it and v1 to everyone else, so v2-only editors such as Zed's Delta can host Yolop.
 
 ```json
 {
@@ -28,4 +28,4 @@ links:
 }
 ```
 
-Under v2 a prompt is acknowledged with a message id once accepted, and the session reports `running`, `requires_action` while an approval waits, and `idle` with the stop reason, including for background completions that wake the agent between prompts. Sessions can be listed, resumed with or without history, and closed. The approval level is also a `mode` config option in both versions. ACP v2 is a draft, so its wire format may still change.
+Under v2 a prompt is acknowledged once accepted, and the session reports `running`, `requires_action` and `idle` with its stop reason and token usage, including for background work that wakes the agent. Shell commands appear as live terminals, edits as structured diffs, and running background tasks are listed on every state change. Sessions can be listed, resumed, closed and deleted, and a client can append to or replace the system prompt. ACP v2 is a draft, so its wire format may still change.
