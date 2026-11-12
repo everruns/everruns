@@ -330,6 +330,7 @@ export default defineConfig({
                     { label: "Overview", slug: "framework" },
                     { label: "Quickstart", slug: "framework/quickstart" },
                     { label: "Architecture", slug: "framework/architecture" },
+                    { label: "Integrations", slug: "framework/integrations" },
                     { label: "Upgrade Notes", slug: "framework/upgrade-notes" },
                   ],
                 },
@@ -357,7 +358,6 @@ export default defineConfig({
                   label: "Extend",
                   collapsed: true,
                   items: [
-                    { label: "Integrations", slug: "framework/integrations" },
                     { label: "Advanced Capabilities", slug: "framework/advanced-capabilities" },
                     { label: "Capability Integrations", slug: "framework/capability-integrations" },
                     { label: "Portable vs Hosted", slug: "framework/capability-boundaries" },
