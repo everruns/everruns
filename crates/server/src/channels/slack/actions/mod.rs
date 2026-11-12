@@ -17,15 +17,13 @@
 //! two different bots, and `App::slack_channel()` would return whichever comes
 //! first.
 //!
-//! Org scoping is structural rather than a check bolted on: the session read is
-//! `get_session(org_id, session_id)` and the app read is
-//! `get_by_internal_id(.., org_id, ..)`, so a session id from another tenant
-//! resolves to nothing rather than to another tenant's bot.
+//! Sessions are read within their organization. Channel resolution rechecks that
+//! organization, the owning Agent, and historical attribution without loading
+//! the frozen App. A session cannot borrow another tenant's or App's bot.
 
 use std::sync::Arc;
 
 use crate::domains::agent_channels::record::{AgentChannel, ChannelType};
-use crate::domains::apps::record::App;
 use async_trait::async_trait;
 use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
@@ -194,28 +192,6 @@ impl SlackActionContext {
         }
         Ok(())
     }
-}
-
-/// Which channel on the app a session belongs to.
-enum ChannelSelector {
-    /// From `sessions.channel_id`, the authoritative FK (EVE-1004).
-    Internal(uuid::Uuid),
-    /// From the `slack:channel:{id}` routing tag, for pre-backfill sessions.
-    Public(String),
-}
-
-/// Pick the Slack channel `selector` names, or `None` when it names none.
-///
-/// Requires `ChannelType::Slack` even when the id matches: an id that resolves
-/// to a non-Slack channel means the session came through another channel, and
-/// falling through to a sibling Slack channel would be exactly the
-/// wrong-bot bug that resolving by channel exists to prevent.
-fn select_slack_channel<'a>(app: &'a App, selector: &ChannelSelector) -> Option<&'a AgentChannel> {
-    let channel = app.channels.iter().find(|channel| match selector {
-        ChannelSelector::Internal(internal_id) => channel.internal_id == *internal_id,
-        ChannelSelector::Public(public_id) => &channel.public_id.to_string() == public_id,
-    })?;
-    (channel.channel_type == ChannelType::Slack).then_some(channel)
 }
 
 /// A Slack API failure as the action tool reports it.
@@ -877,6 +853,117 @@ mod tests {
             channel: "C1".to_string(),
             timestamp: "1.2".to_string(),
             name: "eyes".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn migrated_channel_actions_do_not_depend_on_the_frozen_app() {
+        let fixture = Fixture::new();
+        let (app_id, channel_id, public_id) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
+            .await;
+        // Only the archival record changes. Agent/channel liveness remains authoritative.
+        fixture.db.delete_app(ORG, app_id).await.unwrap();
+        fixture.db.destroy_app(ORG, app_id).await.unwrap();
+        for (channel_fk, tags) in [
+            (Some(channel_id), vec![]),
+            (None, vec![format!("slack:channel:{public_id}")]),
+        ] {
+            let session_id = fixture
+                .seed_session(ORG, Some(app_id), channel_fk, tags)
+                .await;
+            let session = fixture
+                .db
+                .get_session(ORG, session_id)
+                .await
+                .unwrap()
+                .unwrap();
+            let (_, channel) = fixture
+                .invoker(ORG, session_id)
+                .resolve_action_channel(&session)
+                .await
+                .unwrap();
+            assert_eq!(channel.internal_id, channel_id);
+            assert_eq!(channel.slack_config().unwrap().bot_token, "xoxb-secret");
+        }
+    }
+
+    #[tokio::test]
+    async fn migrated_channel_actions_obey_the_agents_current_liveness() {
+        let fixture = Fixture::new();
+        let (app_id, channel_id, public_id) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-secret")
+            .await;
+        let channel = fixture
+            .db
+            .get_ingress_channel_by_public_id(&public_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let agent_id = AgentId::from_uuid(channel.agent_id);
+        let session_id = fixture
+            .seed_session(ORG, Some(app_id), Some(channel_id), vec![])
+            .await;
+        let session = fixture
+            .db
+            .get_session(ORG, session_id)
+            .await
+            .unwrap()
+            .unwrap();
+        for (status, suspended) in [("archived", false), ("active", true)] {
+            fixture
+                .db
+                .update_agent(
+                    ORG,
+                    agent_id,
+                    crate::storage::UpdateAgent {
+                        status: Some(status.into()),
+                        exposures_suspended: Some(suspended),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                fixture
+                    .invoker(ORG, session_id)
+                    .resolve_action_channel(&session)
+                    .await,
+                Err(SlackActionError::ChannelUnavailable)
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_migrated_session_cannot_borrow_another_apps_channel() {
+        let fixture = Fixture::new();
+        let (app_id, _, _) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-own")
+            .await;
+        let (_, other_channel_id, other_public_id) = fixture
+            .seed_app_with_channel(ORG, "slack", "xoxb-other")
+            .await;
+        for (channel_fk, tags) in [
+            (Some(other_channel_id), vec![]),
+            (None, vec![format!("slack:channel:{other_public_id}")]),
+        ] {
+            let session_id = fixture
+                .seed_session(ORG, Some(app_id), channel_fk, tags)
+                .await;
+            let session = fixture
+                .db
+                .get_session(ORG, session_id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                fixture
+                    .invoker(ORG, session_id)
+                    .resolve_action_channel(&session)
+                    .await,
+                Err(SlackActionError::NoSlackSession)
+            ));
         }
     }
 
