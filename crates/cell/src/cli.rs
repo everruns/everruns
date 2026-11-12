@@ -261,8 +261,22 @@ pub async fn serve_node(
     listen: SocketAddr,
     join: bool,
 ) -> anyhow::Result<()> {
+    let listener = tokio::net::TcpListener::bind(listen).await?;
+    serve_node_on(cfg, host, topology, listener, join).await
+}
+
+/// [`serve_node`] on a listener the caller already bound, so a caller that
+/// must know the address first (a test fleet) never gives the port up.
+pub async fn serve_node_on(
+    cfg: NodeConfig,
+    host: Arc<dyn Host>,
+    topology: TopologySource,
+    listener: tokio::net::TcpListener,
+    join: bool,
+) -> anyhow::Result<()> {
     let cell = cfg.cell;
     let id = cfg.node_id;
+    let listen = listener.local_addr()?;
     let node = Node::start(cfg, host).await?;
     let gateway = Gateway::new(topology);
     if let Some(cp) = &node.cfg.control_plane {
@@ -281,11 +295,13 @@ pub async fn serve_node(
         .merge(crate::api_session::router(node.clone()))
         .merge(crate::gateway_dp::cell_router(node.clone()))
         .merge(crate::gateway::router(gateway));
-    let listener = tokio::net::TcpListener::bind(listen).await?;
     tracing::info!(cell, node = id, %listen, "node listening");
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
-    if !join {
-        node.bootstrap().await?;
+    if !join && let Err(error) = node.bootstrap().await {
+        // Decision: a node that can't form its cell stops serving too, so
+        // it reads as down rather than as a member that never elects.
+        server.abort();
+        return Err(error);
     }
     node.spawn_loops();
     server.await??;

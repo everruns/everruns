@@ -100,11 +100,15 @@ async fn pull(
     if node.cfg.executors == crate::node::ExecutorMode::InNode || body.credits == 0 {
         return Ok(Json(PullReply::default()));
     }
-    let ticket = node.dispatch.register(body.executor, body.credits);
+    let pull = Pull {
+        ticket: node.dispatch.register(body.executor, body.credits),
+        node: node.clone(),
+    };
+    let ticket = &pull.ticket;
     node.offer_waiting();
     let deadline = tokio::time::Instant::now() + Duration::from_millis(body.wait_ms).min(MAX_WAIT);
     let mut lingering = false;
-    while !node.dispatch.full(&ticket) {
+    while !node.dispatch.full(ticket) {
         let wait = if lingering {
             tokio::time::Instant::now() + LINGER
         } else {
@@ -124,7 +128,7 @@ async fn pull(
         }
         lingering = true;
     }
-    let sessions = node.dispatch.take(&ticket);
+    let sessions = node.dispatch.take(ticket);
     let tenants = {
         let state = node.shared.state.read();
         sessions
@@ -137,4 +141,18 @@ async fn pull(
         leader: None,
         tenants,
     }))
+}
+
+/// A registered pull. Dropped before its reply was taken (axum drops the
+/// handler when the executor's connection goes away, e.g. the executor
+/// died), it withdraws the pull; once taken, withdrawing is a no-op.
+struct Pull {
+    node: Arc<Node>,
+    ticket: crate::dispatch::Ticket,
+}
+
+impl Drop for Pull {
+    fn drop(&mut self) {
+        self.node.dispatch.abandon(&self.ticket);
+    }
 }
