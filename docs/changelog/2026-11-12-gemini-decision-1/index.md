@@ -20,18 +20,34 @@ million input tokens with free output.
 Pick it as the organization's decision default or in the **Jev Decisions** capability. The saved
 Gemini key serves chat and decisions alike; see [TypeSafe](/integrations/typesafe/).
 
-**In code:** the Gemini provider is a decisions service (feature `gemini`):
+**In code:** the Gemini provider is a decisions service (feature `gemini`). This program
+asks two questions about one support message:
 
 ```rust
 use everruns::{Decisions, Provider, providers::gemini::Gemini};
 
-let gemini: Provider = Gemini::from_env()?.into();
-let answers = Decisions::new("gemini-decision-1", gemini)
-    .about("My card was charged twice and I need this fixed today.")
-    .noul("urgent", "Does this convey urgency?")
-    .choice("team", "Which team should handle this?", ["billing", "technical"])
-    .send()
-    .await?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let gemini: Provider = Gemini::from_env()?.into();
+
+    let answers = Decisions::new("gemini-decision-1", gemini)
+        .about("My card was charged twice and I need this fixed today.")
+        .noul("urgent", "Does this convey urgency?")
+        .choice("team", "Which team should handle this?", ["billing", "technical"])
+        .send()
+        .await?;
+
+    println!("urgent: {:.3}", answers.probability("urgent")?);
+    println!("team:   {}", answers.selected("team")?);
+    Ok(())
+}
+```
+
+Run with `GEMINI_API_KEY` set, it prints:
+
+```text
+urgent: 0.958
+team:   billing
 ```
 
 The driver table in [Models and providers](/framework/models-and-providers/) lists every

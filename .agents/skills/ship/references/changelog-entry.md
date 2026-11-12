@@ -78,6 +78,11 @@ for the gotchas behind blurry images, follow the landing repo's
 [sharp-screenshots skill](https://github.com/everruns/landing/blob/main/.claude/skills/sharp-screenshots/SKILL.md). Its `check` command
 (`scripts/sharp-screenshot.mjs`) confirms an image is 2x for the width it is shown at.
 
+A code example is text first: a fenced block of a program that compiles as shown, followed by
+the verbatim output of a real run (a real model, never `llmsim`). When it also needs an image
+(social posts, slides), render that same code and output with the skill's code template
+(`templates/code.html`) instead of screenshotting an editor or terminal.
+
 ## Integration announcements
 
 An entry that adds a new integration (a vendor, protocol host or platform Everruns or Yolop now
