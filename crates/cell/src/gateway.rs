@@ -58,8 +58,8 @@ pub struct Gateway {
     pub rebalanced: crate::prom::Counters,
     /// Org tokens, when required (`org_token`).
     org_tokens: std::sync::OnceLock<Arc<crate::org_token::OrgTokens>>,
-    /// Each session's tenant, as its cell reported it; it never changes.
-    tenants: Mutex<HashMap<SessionId, Option<String>>>,
+    /// Assigned tenants never change; an unassigned session is not cached.
+    tenants: Mutex<HashMap<SessionId, String>>,
     /// The link's token, required on `/dp/v1` (`CELL_DP_TOKEN`).
     link_token: Mutex<crate::node_control::LinkToken>,
     /// Each cell's stream view, for finding a session's stream node.
@@ -121,23 +121,36 @@ impl Gateway {
         let _ = self.org_tokens.set(tokens);
     }
 
-    /// `session`'s tenant, from its cell once, then from the cache.
+    /// `session`'s tenant, read through the log, then cached once assigned.
     async fn session_tenant(&self, session: SessionId) -> Result<Option<String>, ApiError> {
         if let Some(tenant) = self.tenants.lock().get(&session) {
-            return Ok(tenant.clone());
+            return Ok(Some(tenant.clone()));
         }
-        let view: SessionView = self
+        // Create and Assign are separate commits. A follower's local view
+        // may still be unassigned after create returned, so authorization
+        // must read through the leader rather than cache that stale view.
+        let tenant: Option<String> = self
             .with_cell(session, |cell| async move {
-                self.call(cell, &format!("/cell/sessions/{session}"), None)
-                    .await
+                match self.propose(cell, &Command::Tenant { session }).await? {
+                    Response::Value { value } => serde_json::from_value(value)
+                        .map(Lookup::Here)
+                        .map_err(unavailable),
+                    Response::NotFound => Ok(Lookup::Missing),
+                    Response::Moved { cell } => Ok(Lookup::Moved { cell }),
+                    other => Err(unavailable(format!("tenant: {other:?}"))),
+                }
             })
             .await?;
-        let mut tenants = self.tenants.lock();
-        if tenants.len() > 100_000 {
-            tenants.clear();
+        // A request concurrent with creation may precede Assign even in
+        // log order. Only an assigned tenant is immutable and cacheable.
+        if let Some(tenant) = &tenant {
+            let mut tenants = self.tenants.lock();
+            if tenants.len() > 100_000 {
+                tenants.clear();
+            }
+            tenants.insert(session, tenant.clone());
         }
-        tenants.insert(session, view.tenant.clone());
-        Ok(view.tenant)
+        Ok(tenant)
     }
 
     /// The fleet's topology: the file (seed nodes and the directory cell)
@@ -1124,3 +1137,7 @@ async fn wait(
         .await?;
     Ok(Json(view))
 }
+
+#[cfg(test)]
+#[path = "gateway_tests.rs"]
+mod tests;
