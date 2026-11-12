@@ -63,6 +63,10 @@ pub struct OrgConfig {
     /// [`COMMANDS_KEPT`].
     #[serde(default)]
     pub commands: VecDeque<CommandStatus>,
+    /// What a restored control plane's first snapshot lacked, set aside
+    /// for an operator to keep or drop (`everruns-dataplane reconcile`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leftovers: Option<crate::dp::ConfigLeftovers>,
 }
 
 /// An org's data key as `OrgEnable` delivered it.
@@ -156,6 +160,8 @@ pub enum AdminCommand {
     Export(OrgExport),
     /// A long command's progress, from whoever runs it.
     Progress(CommandStatus),
+    /// Forget the leftovers of a control plane restore.
+    ClearLeftovers(crate::dp::ClearLeftovers),
 }
 
 impl AdminCommand {
@@ -165,8 +171,53 @@ impl AdminCommand {
             | AdminCommand::State(OrgStateCommand { command_id, .. })
             | AdminCommand::Delete(OrgDelete { command_id })
             | AdminCommand::Export(OrgExport { command_id, .. })
-            | AdminCommand::Progress(CommandStatus { command_id, .. }) => command_id,
+            | AdminCommand::Progress(CommandStatus { command_id, .. })
+            | AdminCommand::ClearLeftovers(crate::dp::ClearLeftovers { command_id }) => command_id,
         }
+    }
+}
+
+/// What `config` holds that `update` (a new epoch's full snapshot) lacks
+/// or holds at an older revision. A secret the data plane refreshed itself
+/// is not among them: the snapshot keeps it anyway.
+fn leftovers(config: &OrgConfig, update: &ConfigUpdate) -> crate::dp::ConfigLeftovers {
+    let mut agents = BTreeMap::new();
+    let mut secrets = BTreeMap::new();
+    let mut connections = std::collections::BTreeSet::new();
+    for change in update.changes.iter().filter_map(ConfigChange::parse) {
+        match change {
+            ConfigChange::Agent(a) => {
+                agents.insert(a.agent_id, a.revision);
+            }
+            ConfigChange::Secret(s) => {
+                secrets.insert(s.secret_id, s.revision);
+            }
+            ConfigChange::Connection(c) => {
+                connections.insert(c.connection_id);
+            }
+            _ => {}
+        }
+    }
+    crate::dp::ConfigLeftovers {
+        epoch: update.epoch,
+        agents: config
+            .agents
+            .values()
+            .filter(|a| agents.get(&a.agent_id).is_none_or(|r| a.revision > *r))
+            .cloned()
+            .collect(),
+        secrets: config
+            .secrets
+            .values()
+            .filter(|s| !secrets.contains_key(&s.secret_id))
+            .cloned()
+            .collect(),
+        connections: config
+            .connections
+            .values()
+            .filter(|c| !connections.contains(&c.connection_id))
+            .cloned()
+            .collect(),
     }
 }
 
@@ -197,6 +248,14 @@ impl Orgs {
             return ConfigAck::AlreadyApplied { applied_version };
         } else if !full && update.base_version != applied_version {
             return ConfigAck::NeedFullSnapshot { applied_version };
+        }
+        if full && update.epoch > config.epoch {
+            // A restored control plane's first snapshot: what it lacks is
+            // set aside, not lost (decision 6 of step 9).
+            let leftovers = leftovers(config, update);
+            if !leftovers.is_empty() {
+                config.leftovers = Some(leftovers);
+            }
         }
         if full {
             // A full snapshot replaces the org's config. A secret the data
@@ -323,6 +382,10 @@ impl Orgs {
                     OrgState::Suspended => state.reason,
                     OrgState::Active => None,
                 };
+                config.record(done(&id));
+            }
+            AdminCommand::ClearLeftovers(_) => {
+                config.leftovers = None;
                 config.record(done(&id));
             }
             AdminCommand::Delete(_) => {
@@ -563,6 +626,30 @@ mod tests {
             "the old control plane is refused"
         );
         assert!(!orgs.orgs["o"].agents.contains_key("b"));
+        // What the restored control plane lacked is set aside, not served.
+        let left = orgs.orgs["o"].leftovers.clone().unwrap();
+        assert_eq!(left.epoch, 2);
+        assert_eq!(
+            left.agents
+                .iter()
+                .map(|a| (a.agent_id.as_str(), a.revision))
+                .collect::<Vec<_>>(),
+            [("b", 1)]
+        );
+        // An operator drops (or keeps, by sending them again) the rest.
+        let clear = AdminCommand::ClearLeftovers(crate::dp::ClearLeftovers {
+            command_id: "c1".into(),
+        });
+        assert!(orgs.admin("o", clear).accepted);
+        assert!(orgs.orgs["o"].leftovers.is_none());
+    }
+
+    #[test]
+    fn a_snapshot_in_the_same_epoch_leaves_nothing_aside() {
+        let mut orgs = Orgs::default();
+        orgs.apply("o", &update(1, 1, 0, vec![agent("a", 1), agent("b", 1)]));
+        orgs.apply("o", &update(1, 2, 0, vec![agent("a", 1)]));
+        assert!(orgs.orgs["o"].leftovers.is_none(), "a removal, not a loss");
     }
 
     fn secret(id: &str, revision: u64) -> serde_json::Value {

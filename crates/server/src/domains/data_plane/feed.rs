@@ -9,6 +9,12 @@
 //!   source index), and a session summary never replaces a newer version.
 //! - The acknowledgement names the last record stored. A record that fails
 //!   to store ends the batch there, so the data plane sends it again.
+//! - A batch from an older incarnation of a cell than one already heard
+//!   (a node of a cell that was rebuilt, still running somewhere) is
+//!   stored, and flagged: its usage was really spent and is journaled once
+//!   per attempt, and its session summaries carry versions below the
+//!   rebuilt sessions' (`control::turn_finished`), so they change nothing.
+//!   Refusing it would lose that spend.
 //! - Feed lag (record time to stored) is logged per batch at debug level.
 //!   The gate measures it in the cell suite (`FakeCp::feed_lag`); a metric
 //!   comes with step 10's per-cell dashboards.
@@ -27,6 +33,16 @@ pub async fn ingest(
     batch: FeedBatch,
 ) -> anyhow::Result<FeedAck> {
     let incarnation = batch.incarnation as i64;
+    if let Some(newest) = cp.db.dp_feed_newest_incarnation(&batch.source).await?
+        && newest > incarnation
+    {
+        tracing::warn!(
+            source = %batch.source,
+            incarnation,
+            newest,
+            "feed from a cell incarnation that was rebuilt; storing its usage only once"
+        );
+    }
     let mut through = cp
         .db
         .dp_feed_position(&batch.source, incarnation)

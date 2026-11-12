@@ -21,9 +21,10 @@ use std::time::Duration;
 use parking_lot::Mutex;
 
 /// Upper bounds in seconds; spans a commit (ms) to a long turn (minutes).
+/// 1.5 and 2 are there for the shipping lag, whose bar is 2 s.
 const BUCKETS: &[f64] = &[
-    0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0,
-    120.0, 300.0,
+    0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 2.5, 5.0, 10.0, 30.0,
+    60.0, 120.0, 300.0,
 ];
 
 /// A counter family keyed by rendered labels (`agent="x",type="y"`).
@@ -102,6 +103,10 @@ pub struct Prom {
     /// Writes shipped before they were answered (`ship::ships_first`):
     /// the wait for the object store.
     pub ship_first_seconds: Histograms,
+    /// How long the oldest entry waited to be shipped, per shipping round
+    /// (an upper bound, to the tick): the most a lost cell could lose of
+    /// the log.
+    pub ship_lag_seconds: Histograms,
     /// Messages admitted through this node's gateway.
     pub messages_admitted: Counters,
     /// Model calls by model and result, with duration and time to first

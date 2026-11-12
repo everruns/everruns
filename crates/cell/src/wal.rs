@@ -585,4 +585,4 @@ impl RaftLogStorage<TypeConfig> for Wal {
 
 #[cfg(test)]
 #[path = "wal_tests.rs"]
-mod tests;
+pub(crate) mod tests;

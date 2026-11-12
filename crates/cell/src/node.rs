@@ -327,7 +327,15 @@ impl Node {
             let applied = *self.shared.applied.borrow();
             let inc = self.shared.state.read().incarnation;
             self.shipper.observe(applied);
-            if let Err(error) = self.shipper.ship(applied, inc).await {
+            let waiting = self.shipper.waiting_since();
+            let shipped = self.shipper.ship(applied, inc).await;
+            if let (Ok(_), Some(since)) = (&shipped, waiting) {
+                // The wait is noticed at a tick, so the oldest entry may
+                // have been applied up to one tick earlier: count it.
+                let lag = since.elapsed() + crate::ship::SHIP_EVERY;
+                self.prom.ship_lag_seconds.observe(&[], lag);
+            }
+            if let Err(error) = shipped {
                 tracing::warn!(cell = self.cfg.cell, %error, "log shipping failed; retrying");
             }
         }

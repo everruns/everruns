@@ -257,6 +257,11 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         "Writes shipped to the object store before they were answered.",
         &p.ship_first_seconds,
     );
+    w.histograms(
+        "cell_ship_lag_seconds",
+        "How long the oldest unshipped entry waited, per shipping round (upper bound).",
+        &p.ship_lag_seconds,
+    );
     if let Some(gateway) = node.gateway.get() {
         w.counters(
             "cell_messages_admitted_total",

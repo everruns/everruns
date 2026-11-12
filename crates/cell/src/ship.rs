@@ -97,6 +97,11 @@ impl Shipper {
             .is_some_and(|since| since.elapsed() > BEHIND_LIMIT)
     }
 
+    /// Since when the oldest unshipped entry has waited, if any does.
+    pub fn waiting_since(&self) -> Option<Instant> {
+        self.state.lock().pending_since
+    }
+
     /// Note that entries up to `applied` exist; call on every tick.
     pub fn observe(&self, applied: u64) {
         let mut state = self.state.lock();
@@ -109,6 +114,11 @@ impl Shipper {
     /// shipped yet. Returns the highest shipped index.
     pub async fn ship(&self, applied: u64, inc: u64) -> anyhow::Result<u64> {
         let _one = self.busy.lock().await;
+        self.ship_locked(applied, inc).await
+    }
+
+    /// [`Self::ship`] with `busy` held.
+    async fn ship_locked(&self, applied: u64, inc: u64) -> anyhow::Result<u64> {
         let resume = {
             let mut state = self.state.lock();
             if state.inc != inc {
@@ -165,15 +175,33 @@ impl Shipper {
         Ok(shipped)
     }
 
-    /// Ship through `index` now, unless it already is.
-    pub async fn flush(&self, index: u64, inc: u64) -> anyhow::Result<()> {
-        {
-            let state = self.state.lock();
-            if state.inc == inc && state.shipped.is_some_and(|shipped| shipped >= index) {
-                return Ok(());
-            }
+    /// Ship through `index` now, unless it already is. `latest` reads the
+    /// node's applied index once this writer's turn comes.
+    ///
+    /// Decision: writers that ship first queue on one lock, so each ships
+    /// everything applied when its turn comes, not only its own entry. The
+    /// writers queued behind it then find their entries shipped and return
+    /// without a write: one object per turn of the lock however many
+    /// writers wait, which keeps the cost flat under load.
+    pub async fn flush(
+        &self,
+        index: u64,
+        inc: u64,
+        latest: impl Fn() -> u64,
+    ) -> anyhow::Result<()> {
+        if self.covers(index, inc) {
+            return Ok(());
         }
-        self.ship(index, inc).await.map(|_| ())
+        let _one = self.busy.lock().await;
+        if self.covers(index, inc) {
+            return Ok(());
+        }
+        self.ship_locked(latest().max(index), inc).await.map(|_| ())
+    }
+
+    fn covers(&self, index: u64, inc: u64) -> bool {
+        let state = self.state.lock();
+        state.inc == inc && state.shipped.is_some_and(|shipped| shipped >= index)
     }
 }
 
@@ -206,5 +234,38 @@ pub fn ships_first(command: &Command) -> bool {
         | Command::Thaw { .. }
         | Command::Revert { .. } => true,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::wal::tests::{append_durable, entry};
+
+    /// Writers that ship first and queue together cost one object, not one
+    /// each: the first through the lock ships what every one of them needs.
+    #[tokio::test]
+    async fn queued_writers_share_one_object() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let wal = Wal::open(dir.path()).expect("wal");
+        append_durable(&wal, (1..=20).map(|index| entry(1, index)).collect()).await;
+        let store = Store::open("memory:///").expect("store");
+        let shipper = Arc::new(Shipper::new(store.clone(), 0, wal));
+        let held = shipper.busy.lock().await;
+        let writers: Vec<_> = (1..=20)
+            .map(|index| {
+                let shipper = shipper.clone();
+                tokio::spawn(async move { shipper.flush(index, 1, || 20).await })
+            })
+            .collect();
+        tokio::task::yield_now().await;
+        drop(held);
+        for writer in writers {
+            writer.await.expect("join").expect("flush");
+        }
+        assert_eq!(store.shipped(0, 1).await.expect("list"), vec![(1, 20)]);
+        assert_eq!(shipper.shipped(), Some(20));
     }
 }

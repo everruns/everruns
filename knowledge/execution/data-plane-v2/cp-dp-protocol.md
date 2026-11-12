@@ -37,6 +37,8 @@ Served by the data plane, called by the control plane:
 | `GET /dp/v1/orgs/{org}/config` | → `{ "epoch": u64, "applied_version": u64 }` | Resume the outbox after a restart, detect gaps |
 | `POST /dp/v1/orgs/{org}/sessions` | `{ id, agent_ref }` → the session | The control plane's `POST /v1/sessions` for a v2 org: it writes the session's record, delivers the agent, then creates the running session under the record's id at the agent's current revision. Idempotent by `id`; an agent the org does not have answers 404 |
 | `POST /dp/v1/orgs/{org}/config/unknown` | `ConfigKnown` → `ConfigDiff` | After a control plane restore: the control plane sends the revisions it knows, and the data plane answers with the agent revisions, secrets and connections it holds beyond them. A POST because the known set can be larger than a query string |
+| `GET /dp/v1/orgs/{org}/config/leftovers` | → `ConfigLeftovers` or null | What a new epoch's first full snapshot lacked, set aside (not served). `everruns-dataplane reconcile <org>` lists it |
+| `POST /dp/v1/orgs/{org}/config/leftovers` | `ClearLeftovers` → `CommandAck` | Forget the leftovers, once the control plane wrote them back into its outbox (`--keep`) or chose to drop them (`--drop`) |
 | `POST /dp/v1/feed/replay` | `FeedReplay` → `{ command_id, resent }` | Ask a cell to resend feed records from the shipped log (30 days) |
 | `PUT /dp/v1/orgs/{org}` | `OrgEnable` → `CommandAck` | Enable the org on this data plane: data key, placement policy |
 | `POST /dp/v1/orgs/{org}/state` | `{ command_id, state: "active" \| "suspended", reason }` → `CommandAck` | Suspension takes effect immediately |
@@ -203,7 +205,7 @@ The browser and CLI need no token code: the edge exchanges the caller's own cred
 
 - **Ordering.**
   - Config versions apply strictly in order per org. A gap or mismatched base gets `NEED_FULL_SNAPSHOT`, and the outbox then sends a full snapshot.
-  - A new control plane epoch (after an RDS restore) is accepted only as a full snapshot, after the operator has resolved the `ConfigDiff`. Updates from an older epoch get `STALE_EPOCH`.
+  - A new control plane epoch (after an RDS restore) is accepted only as a full snapshot, after the operator has resolved the `ConfigDiff`. Updates from an older epoch get `STALE_EPOCH`. What that snapshot lacks (an agent at a newer revision, a secret or connection it does not name) is set aside as the org's leftovers rather than dropped, until `everruns-dataplane reconcile <org> --keep|--drop` resolves it.
   - Different orgs are independent.
 - **Idempotency.**
   - Config by `(org, version)`.

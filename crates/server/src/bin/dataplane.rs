@@ -24,10 +24,13 @@ USAGE:
     everruns-dataplane status <org_public_id>
     everruns-dataplane diff <org_public_id>
     everruns-dataplane bump-epoch
+    everruns-dataplane reconcile <org_public_id> [--keep | --drop]
 
 `enable` switches an org to a data plane: its new sessions run there. After a
 database restore, run `diff` for every v2 org, resolve what it lists, then
-`bump-epoch`: every data plane then takes a full snapshot.
+`bump-epoch`: every data plane then takes a full snapshot. What a snapshot
+lacked the data plane sets aside: `reconcile` lists it, `--keep` sends it
+again as config, `--drop` forgets it. Running turns finish either way.
 
 ENVIRONMENT:
     DATABASE_URL              PostgreSQL connection string (required)
@@ -121,6 +124,23 @@ async fn main() -> Result<()> {
             let org_id = org(args.get(1))?;
             let diff = data_plane::config_diff(&cp, org_id).await?;
             println!("{}", serde_json::to_string_pretty(&diff)?);
+        }
+        "reconcile" => {
+            let org_id = org(args.get(1))?;
+            let keep = match args.get(2).map(String::as_str) {
+                None => None,
+                Some("--keep") => Some(true),
+                Some("--drop") => Some(false),
+                Some(other) => anyhow::bail!("unknown option {other}: --keep or --drop"),
+            };
+            let found = data_plane::reconcile(&cp, org_id, keep).await?;
+            println!("{}", serde_json::to_string_pretty(&found)?);
+            match (found.is_some(), keep) {
+                (false, _) => eprintln!("nothing set aside"),
+                (true, None) => eprintln!("set aside; resolve with --keep or --drop"),
+                (true, Some(true)) => eprintln!("kept: the next delivery sends it again"),
+                (true, Some(false)) => eprintln!("dropped"),
+            }
         }
         "bump-epoch" => {
             let epoch = db.dp_bump_epoch().await?;

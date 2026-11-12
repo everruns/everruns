@@ -1,0 +1,107 @@
+# Weekly disaster recovery drill for the v2 data plane (design.md, "Disaster
+# recovery"; decision 4 of step 9): a local fleet of two cells loses every
+# node of one cell under load, rebuilds it from the object store with
+# `cell-testnode restore`, and must finish every session with no tool run
+# twice. One runner, the local file object store, a simulated model.
+#
+# Why its own workflow, weekly: it needs release builds of the cell test
+# node and driver, which would reshape the ci.yml shards and their cache
+# keys (knowledge/project/ci-build-time.md). The release build uses the
+# chaos harness's low-memory settings under its own rust-cache key. No
+# secrets: only the simulated model answers.
+#
+# Rebuild time and shipping lag on shared runners are noisy; the job fails
+# only past the drill's generous bounds and reports the numbers in its
+# summary. The full-size gate (75 000 sessions) is run by hand with the same
+# script (`scripts/cell/drill.py`).
+name: Cell Disaster Recovery Drill
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      sessions:
+        description: 'Sessions to drive'
+        required: false
+        default: '2000'
+        type: string
+      inflight:
+        description: 'Sessions with a turn running when the cell is lost'
+        required: false
+        default: '300'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  drill:
+    name: Lose a cell, rebuild it from the store
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      SESSIONS: ${{ inputs.sessions || '2000' }}
+      INFLIGHT: ${{ inputs.inflight || '300' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install fast linker
+        timeout-minutes: 5
+        run: |
+          command -v ld.lld >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq lld; }
+          ld.lld --version
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "cell-drill-release"
+
+      - name: Build release test node and driver
+        run: cargo build --release -p everruns-cell-testkit --bin cell-testnode --bin cell-drive
+
+      - name: Run the drill
+        run: python3 scripts/cell/drill.py --sessions "$SESSIONS" --inflight "$INFLIGHT" --concurrency 500
+
+      - name: Summarize
+        if: always()
+        run: |
+          result=".cell/drill.json"
+          [ -f "$result" ] || exit 0
+          {
+            echo "### Cell disaster recovery drill"
+            echo
+            echo '```json'
+            jq '{sessions, inflight, rebuild_s, kill_to_leader_s, second_messages_lost, ship_lag_s, ship_first_s, rebuilt, check: (.check | map_values({ok, failed_sessions}))}' "$result"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload fleet logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cell-drill
+          path: |
+            .cell/drill.json
+            .cell/logs
+          if-no-files-found: warn
+          retention-days: 14

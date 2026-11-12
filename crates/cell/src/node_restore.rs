@@ -86,7 +86,8 @@ impl Node {
         let mut backoff = Duration::from_millis(20);
         loop {
             let inc = self.shared.state.read().incarnation;
-            match self.shipper.flush(index, inc).await {
+            let applied = &self.shared.applied;
+            match self.shipper.flush(index, inc, || *applied.borrow()).await {
                 Ok(()) => {
                     self.prom.ship_first_seconds.observe(&[], started.elapsed());
                     return Ok(());
