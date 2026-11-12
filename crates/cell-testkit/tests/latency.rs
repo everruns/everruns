@@ -26,6 +26,11 @@ use support::Fleet;
 
 const SESSIONS: usize = 200;
 
+// Each gate measures its own loaded fleet, not contention with the other
+// benchmark's fleet. Keep the same budgets under both default libtest
+// parallelism (main CI) and --test-threads=1 (affected-crate PR CI).
+static LATENCY_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return f64::NAN;
@@ -98,6 +103,7 @@ async fn watch(http: reqwest::Client, url: String, ready: tokio::sync::mpsc::Sen
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn deltas_reach_200_streaming_clients_within_100ms_p99() {
+    let _gate = LATENCY_GATE.lock().await;
     let mut fleet = Fleet::start().await;
     fleet.executor_with(1, SESSIONS / 2);
     fleet.executor_with(2, SESSIONS / 2);
@@ -173,6 +179,7 @@ async fn deltas_reach_200_streaming_clients_within_100ms_p99() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_edge_adds_under_5ms_p99() {
+    let _gate = LATENCY_GATE.lock().await;
     const ORG: &str = "org-a";
     const LINK: &str = "link-secret";
     const CALLS: usize = 400;

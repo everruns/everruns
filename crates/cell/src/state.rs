@@ -52,6 +52,8 @@ pub enum Command {
     /// Bill `session`'s spend to `tenant`. Set once, right after create,
     /// before the session takes input; a different tenant is refused.
     Assign { session: SessionId, tenant: String },
+    /// Read the authorization tenant through the log, after committed Assign.
+    Tenant { session: SessionId },
     /// Take a spend allowance grant for `tenant` (see `allowance`).
     Grant {
         tenant: String,
@@ -869,6 +871,12 @@ impl CellState {
                     value: value.unwrap_or_default(),
                 }
             }
+            Command::Tenant { session } => match self.sessions.get(&session) {
+                Some(state) => Response::Value {
+                    value: serde_json::json!(state.tenant),
+                },
+                None => self.missing(session),
+            },
             Command::Assign { session, tenant } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);

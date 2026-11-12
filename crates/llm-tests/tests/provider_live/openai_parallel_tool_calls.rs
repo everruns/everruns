@@ -13,6 +13,8 @@ use everruns_contracts::tool_types::{
 };
 use everruns_drivers::openai::provider;
 
+use crate::{TRANSPORT_ATTEMPTS, is_transient_transport};
+
 const LIVE_MODEL: &str = "gpt-6-luna";
 
 fn api_key() -> String {
@@ -61,8 +63,8 @@ async fn tool_call_count(parallel: Option<bool>) -> usize {
             "Get both the current weather and the current local time in Paris.",
         ),
     ];
-    let response = provider
-        .chat_completion(messages, &config_with(parallel))
+    let config = config_with(parallel);
+    let response = with_transport_retries(|| provider.chat_completion(messages.clone(), &config))
         .await
         .expect("OpenAI should accept the request");
     response.tool_calls.map(|calls| calls.len()).unwrap_or(0)
@@ -86,4 +88,68 @@ async fn openai_prefer_is_accepted_and_calls_tools() {
         count >= 1,
         "prefer should be accepted and produce at least one tool call, got {count}"
     );
+}
+
+/// A dropped stream says nothing about parallel-tool semantics. Use the same
+/// bounded transport budget as the other live tests, never retry assertions or
+/// provider/contract errors, and fail if every attempt loses its transport.
+async fn with_transport_retries<T, E, F, Fut>(mut call: F) -> Result<T, E>
+where
+    E: std::fmt::Display,
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+{
+    for attempt in 1..=TRANSPORT_ATTEMPTS {
+        match call().await {
+            Err(error)
+                if attempt < TRANSPORT_ATTEMPTS && is_transient_transport(&error.to_string()) =>
+            {
+                eprintln!(
+                    "parallel tools attempt {attempt}/{TRANSPORT_ATTEMPTS} lost to transport; retrying"
+                );
+            }
+            result => return result,
+        }
+    }
+    unreachable!("the final attempt returns its result")
+}
+
+#[tokio::test]
+async fn parallel_transport_retry_recovers_a_dropped_stream() {
+    let mut attempts = 0;
+    let result = with_transport_retries(|| {
+        attempts += 1;
+        std::future::ready(if attempts == 1 {
+            Err("error decoding response body")
+        } else {
+            Ok(2)
+        })
+    })
+    .await;
+    assert_eq!(result, Ok(2));
+    assert_eq!(attempts, 2);
+}
+
+#[tokio::test]
+async fn parallel_transport_retry_still_fails_at_the_budget() {
+    let mut attempts = 0;
+    let result = with_transport_retries(|| {
+        attempts += 1;
+        std::future::ready(Err::<(), _>("error decoding response body"))
+    })
+    .await;
+    assert!(result.is_err());
+    assert_eq!(attempts, TRANSPORT_ATTEMPTS);
+}
+
+#[tokio::test]
+async fn parallel_transport_retry_does_not_hide_provider_errors() {
+    let mut attempts = 0;
+    let result = with_transport_retries(|| {
+        attempts += 1;
+        std::future::ready(Err::<(), _>("400 invalid parallel_tool_calls"))
+    })
+    .await;
+    assert!(result.is_err());
+    assert_eq!(attempts, 1);
 }

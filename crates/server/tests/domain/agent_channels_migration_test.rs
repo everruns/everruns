@@ -140,10 +140,12 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         .execute(&pool)
         .await
         .expect("create restricted ingress role");
+    // Ingress checks v2 routing even for v1 orgs. This fixture denies the
+    // retired App domain, not the current data-plane routing registry.
     let grants = format!(
         "GRANT USAGE ON SCHEMA public TO {role};
          GRANT SELECT ON
-             organizations, agents, agent_channels, agent_triggers, durable_workers,
+             organizations, agents, agent_channels, agent_triggers, durable_workers, dp_orgs,
              harnesses, harness_capabilities, agent_capabilities,
              principals, users, sessions, workspaces, session_participants,
              events, event_sequences, images, memories, models,
