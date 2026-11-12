@@ -214,6 +214,11 @@ durable 9.1m to 2-3m.
   Test selection, cache keys, compile memory limits, profiles and execution
   concurrency are unchanged. This margin is not evidence
   of a warm-cache latency improvement or a guarantee that a cache remains resident.
+  The S3 blob backend job (a `save-if: false` consumer of `integration-v2`) found
+  neither its Rust nor its sqlx-cli cache, and thirty minutes cancelled it seconds
+  after both suites passed
+  ([nightly](https://github.com/everruns/everruns/actions/runs/42979283876/job/130385796334));
+  it now has forty-five.
 - **Docs notebooks share the site job's budget.** In the same full run, notebook
   execution took 15m40s and the site finished building and checking links just
   as the twenty-minute job expired. Release-card checks never ran. The docs job
