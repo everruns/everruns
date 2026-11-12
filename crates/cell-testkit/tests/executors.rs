@@ -102,7 +102,7 @@ async fn live_deltas_from_an_executor_reach_sse() {
     let mut seen = String::new();
     let deadline = Instant::now() + Duration::from_secs(30);
     while !seen.contains("turn.completed") && Instant::now() < deadline {
-        match tokio::time::timeout(Duration::from_secs(5), stream.chunk()).await {
+        match tokio::time::timeout(Duration::from_secs(15), stream.chunk()).await {
             Ok(Ok(Some(chunk))) => seen.push_str(&String::from_utf8_lossy(&chunk)),
             _ => break,
         }

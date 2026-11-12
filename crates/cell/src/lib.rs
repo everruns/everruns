@@ -23,6 +23,7 @@
 
 pub mod allowance;
 pub mod api;
+pub mod api_session;
 pub mod authority;
 pub mod batch;
 pub mod cli;
@@ -35,6 +36,9 @@ pub mod executor;
 pub mod files;
 pub mod gateway;
 pub mod gateway_dp;
+pub mod edge;
+pub mod gateway_sse;
+pub mod gateway_v1;
 pub mod host;
 pub mod hosting;
 pub mod metrics;
@@ -50,6 +54,7 @@ pub mod ship;
 pub mod sm;
 pub mod state;
 pub mod store;
+pub mod stream;
 pub mod tenants;
 pub mod types;
 pub mod wal;

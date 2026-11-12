@@ -245,6 +245,20 @@ impl Fleet {
         }
     }
 
+    /// The fleet's topology file.
+    pub fn topology(&self) -> TopologySource {
+        self.topology.clone()
+    }
+
+    /// `cell`'s live nodes: (node id, address).
+    pub fn addrs(&self, cell: u32) -> Vec<(u64, String)> {
+        self.nodes
+            .iter()
+            .filter(|((c, _), (_, rt))| *c == cell && rt.is_some())
+            .map(|((_, node), (addr, _))| (*node, addr.clone()))
+            .collect()
+    }
+
     /// A live node's base URL; its gateway reaches every cell.
     pub fn base(&self) -> String {
         let (addr, _) = self

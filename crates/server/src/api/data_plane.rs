@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::api::state::ApiState;
-use crate::auth::middleware::AuthUser;
+use crate::auth::middleware::{AuthUser, ResolvedOrg};
 use crate::domains::data_plane::{self as dp_domain, ControlPlane, Link, org_internal};
 
 type Reply<T> = Result<Json<T>, (StatusCode, String)>;
@@ -110,10 +110,13 @@ async fn jwks(State(state): State<ApiState>) -> Reply<Value> {
         .map_err(internal)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct TokenRequest {
-    /// The org's public id.
-    org: String,
+    /// The org's public id; the request's org (`X-Org-Id` or the org
+    /// cookie) when absent, which is how the edge exchanges a console
+    /// session or an API key without knowing the org.
+    #[serde(default)]
+    org: Option<String>,
 }
 
 /// `POST /v1/auth/token`: exchange the caller's credential for an org token
@@ -121,10 +124,24 @@ struct TokenRequest {
 async fn token(
     State(state): State<ApiState>,
     user: AuthUser,
+    resolved: Result<ResolvedOrg, crate::auth::middleware::AuthError>,
     Json(body): Json<TokenRequest>,
 ) -> Reply<Value> {
+    let org = match body.org {
+        Some(org) => org,
+        None => {
+            resolved
+                .map_err(|_| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        "name the organization (org, or the X-Org-Id header)".to_string(),
+                    )
+                })?
+                .public_id
+        }
+    };
     let membership = user
-        .get_org(&body.org)
+        .get_org(&org)
         .ok_or((StatusCode::NOT_FOUND, "Organization not found".to_string()))?;
     let cp = control_plane(&state)?;
     if cp
@@ -146,6 +163,6 @@ async fn token(
         "token": token,
         "token_type": "Bearer",
         "expires_at_unix": exp,
-        "org": body.org,
+        "org": org,
     })))
 }

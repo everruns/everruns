@@ -719,7 +719,7 @@ impl SessionView {
     }
 }
 
-fn lookup<T>(node: &Node, session: SessionId, f: impl FnOnce(&SessionState) -> T) -> Lookup<T> {
+pub(crate) fn lookup<T>(node: &Node, session: SessionId, f: impl FnOnce(&SessionState) -> T) -> Lookup<T> {
     let state = node.shared.state.read();
     match state.sessions.get(&session) {
         Some(s) => Lookup::Here(f(s)),
@@ -814,14 +814,13 @@ async fn stream(
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(10))))
 }
 
-/// Durable events after `after` (replayed, then live from this replica's
-/// apply) interleaved with this node's ephemeral events for the session.
+/// Durable events after `after`, replayed, then live from this replica's
+/// apply. Deltas are on the session's stream node (`stream.rs`).
 pub fn subscribe(node: Arc<Node>, session: SessionId, after: i32) -> mpsc::Receiver<Arc<Event>> {
     let (tx, rx) = mpsc::channel(1024);
     tokio::spawn(async move {
         // Subscribe before replaying, so nothing falls between the two.
         let mut changes = node.shared.watch(session);
-        let mut live = node.live.subscribe();
         let mut last = after;
         let replay = async |last: &mut i32| -> Vec<Arc<Event>> {
             let events: Vec<Arc<Event>> = match node.shared.read_events(session, *last).await {
@@ -858,13 +857,6 @@ pub fn subscribe(node: Arc<Node>, session: SessionId, after: i32) -> mpsc::Recei
                             if tx.send(event).await.is_err() { return; }
                         }
                     }
-                    Err(broadcast::error::RecvError::Closed) => return,
-                },
-                item = live.recv() => match item {
-                    Ok((s, event)) if s == session => {
-                        if tx.send(event).await.is_err() { return; }
-                    }
-                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(broadcast::error::RecvError::Closed) => return,
                 },
                 _ = tx.closed() => return,
@@ -950,7 +942,7 @@ pub enum CellReply {
     },
 }
 
-fn reply_of(error: impl std::fmt::Display) -> CellReply {
+pub(crate) fn reply_of(error: impl std::fmt::Display) -> CellReply {
     let text = error.to_string();
     if let Some(at) = text.find(crate::hosting::MOVED) {
         let rest = &text[at + crate::hosting::MOVED.len()..];

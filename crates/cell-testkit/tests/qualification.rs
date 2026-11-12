@@ -55,7 +55,7 @@ async fn a_stale_executor_is_fenced_out() {
     let live = fleet
         .post(
             "/cell/exec/live",
-            json!({ "session": session, "fence": stale, "events": [] }),
+            json!({ "session": session, "fence": stale, "deltas": [] }),
         )
         .await;
     assert_eq!(live["taken"], false, "its live deltas are dropped too");

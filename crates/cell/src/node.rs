@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::events::Event;
 use openraft::error::RaftError;
 use openraft::{BasicNode, Config, SnapshotPolicy};
 use parking_lot::Mutex;
@@ -134,8 +133,11 @@ pub struct Node {
     pub shared: Arc<Shared>,
     pub wal: Wal,
     pub http: reqwest::Client,
-    /// Ephemeral events from turns this node executes.
-    pub live: broadcast::Sender<(SessionId, Arc<Event>)>,
+    /// Deltas of the sessions this node is the stream node of.
+    pub live: crate::stream::LiveHub,
+    /// Where deltas of epochs this node runs go, when another node is the
+    /// session's stream node.
+    pub deliver: crate::stream::Deliver,
     pub host: Arc<dyn Host>,
     pub metrics: Metrics,
     /// Counters and histograms for `/metrics`.
@@ -235,7 +237,8 @@ impl Node {
                 shared,
                 wal,
                 http,
-                live: broadcast::channel(65_536).0,
+                live: Default::default(),
+                deliver: Default::default(),
                 host,
                 metrics: Metrics::default(),
                 prom: Default::default(),
@@ -1367,25 +1370,7 @@ impl Node {
         }
     }
 
-    /// Take an epoch's live deltas for the cell's streams, if the epoch is
-    /// still the session's current one.
-    pub fn publish_live(&self, session: SessionId, fence: u64, events: Vec<Event>) -> bool {
-        let current = self
-            .shared
-            .state
-            .read()
-            .sessions
-            .get(&session)
-            .is_some_and(|s| s.authority.current(fence, now_ms()));
-        if current {
-            for event in events {
-                let _ = self.live.send((session, Arc::new(event)));
-            }
-        }
-        current
-    }
-
-    fn alive_members(&self) -> BTreeSet<NodeId> {
+    pub(crate) fn alive_members(&self) -> BTreeSet<NodeId> {
         let fresh = Duration::from_millis(1500);
         let alive = self.alive.lock();
         let mut set: BTreeSet<NodeId> = alive

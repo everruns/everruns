@@ -24,8 +24,17 @@ use serde_json::{Value, json};
 use super::ControlPlane;
 use crate::storage::{DpSigningKeyRow, EncryptionService};
 
-/// How long an org token lives.
+/// How long an org token lives, unless `DATA_PLANE_TOKEN_TTL_SECS` says
+/// otherwise (the expiry checks run with a short one).
 pub const TOKEN_TTL_SECS: i64 = 600;
+
+fn token_ttl_secs() -> i64 {
+    std::env::var("DATA_PLANE_TOKEN_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|ttl| *ttl > 0)
+        .unwrap_or(TOKEN_TTL_SECS)
+}
 /// The scope members get.
 pub const SESSIONS_SCOPE: &str = "sessions:write";
 /// How long a retired key stays published.
@@ -105,7 +114,7 @@ pub async fn issue(cp: &ControlPlane, org_id: i64, sub: &str) -> anyhow::Result<
         dp: org.data_plane_id,
         scope: SESSIONS_SCOPE.to_owned(),
         iat: now,
-        exp: now + TOKEN_TTL_SECS,
+        exp: now + token_ttl_secs(),
         jti: uuid::Uuid::new_v4().to_string(),
     };
     let mut header = Header::new(Algorithm::EdDSA);
