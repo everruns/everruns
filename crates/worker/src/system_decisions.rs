@@ -20,6 +20,10 @@
 //!   when `UTILITY_DECISION_DRIVER=mai` picks it. Its model is the Foundry
 //!   deployment name, `Microsoft-Decision-1` unless `UTILITY_DECISION_MODEL`
 //!   names another.
+//! - `UTILITY_GEMINI_API_KEY` registers the `gemini` driver: Gemini
+//!   Decision 1 on Google's Decisions API. Like `openai`, it answers only when
+//!   `UTILITY_DECISION_DRIVER=gemini` picks it; its model is
+//!   `gemini-decision-1` unless `UTILITY_DECISION_MODEL` names another.
 //! - `UTILITY_DECISION_DRIVER` picks the default driver. Unset keeps today's
 //!   behavior: `typesafe` when its key is present, otherwise disabled. The
 //!   `llm` fallback is opt-in, because it spends utility-model tokens on every
@@ -65,6 +69,10 @@ const UTILITY_OPENAI_API_KEY_ENV: &str = "UTILITY_OPENAI_API_KEY";
 const UTILITY_AZURE_AI_API_KEY_ENV: &str = "UTILITY_AZURE_AI_API_KEY";
 const UTILITY_AZURE_AI_ENDPOINT_ENV: &str = "UTILITY_AZURE_AI_ENDPOINT";
 
+/// The deployment's Gemini API key, the utility counterpart of the Gemini
+/// driver's `GEMINI_API_KEY`.
+const UTILITY_GEMINI_API_KEY_ENV: &str = "UTILITY_GEMINI_API_KEY";
+
 /// The Foundry deployment asked when `UTILITY_DECISION_MODEL` is unset.
 const DEFAULT_FOUNDRY_DECISION_MODEL: &str = "Microsoft-Decision-1";
 
@@ -76,6 +84,7 @@ pub struct SystemDecisions {
     openrouter_key: Option<String>,
     foundry_key: Option<String>,
     foundry_endpoint: Option<String>,
+    gemini_key: Option<String>,
     driver: Option<String>,
     model: Option<String>,
     /// A renamed variable that is still set, with its new name.
@@ -90,6 +99,7 @@ impl std::fmt::Debug for SystemDecisions {
             .field("openai", &self.openai_key.as_ref().map(|_| "<redacted>"))
             .field("foundry", &self.foundry_key.as_ref().map(|_| "<redacted>"))
             .field("foundry_endpoint", &self.foundry_endpoint)
+            .field("gemini", &self.gemini_key.as_ref().map(|_| "<redacted>"))
             .field("driver", &self.driver)
             .field("model", &self.model)
             .finish()
@@ -105,6 +115,7 @@ impl SystemDecisions {
             openai_key: env_value(UTILITY_OPENAI_API_KEY_ENV),
             foundry_key: env_value(UTILITY_AZURE_AI_API_KEY_ENV),
             foundry_endpoint: env_value(UTILITY_AZURE_AI_ENDPOINT_ENV),
+            gemini_key: env_value(UTILITY_GEMINI_API_KEY_ENV),
             driver: env_value(UTILITY_DECISION_DRIVER_ENV),
             model: env_value(UTILITY_DECISION_MODEL_ENV),
             renamed: RENAMED_ENV
@@ -130,6 +141,13 @@ impl SystemDecisions {
     pub fn foundry(mut self, api_key: impl Into<String>, endpoint: impl Into<String>) -> Self {
         self.foundry_key = Some(api_key.into());
         self.foundry_endpoint = Some(endpoint.into());
+        self
+    }
+
+    /// Enable the `gemini` driver (Gemini Decision 1) with a
+    /// deployment-owned key.
+    pub fn gemini(mut self, api_key: impl Into<String>) -> Self {
+        self.gemini_key = Some(api_key.into());
         self
     }
 
@@ -187,6 +205,11 @@ impl SystemDecisions {
                 ));
             }
         }
+        if let Some(api_key) = self.gemini_key {
+            registry
+                .register(everruns_drivers::gemini::provider("gemini", api_key))
+                .map_err(|e| e.to_string())?;
+        }
         if self.driver.as_deref() == Some(LLM_DECISION_DRIVER_ID) {
             if self.model.is_some() {
                 return Err(format!(
@@ -215,15 +238,13 @@ impl SystemDecisions {
                 }),
             )));
         }
-        let model = self.model.unwrap_or_else(|| {
-            if default == "mai" {
-                DEFAULT_FOUNDRY_DECISION_MODEL.into()
-            } else {
-                "jev-latest".into()
-            }
+        let model = self.model.unwrap_or_else(|| match default.as_str() {
+            "mai" => DEFAULT_FOUNDRY_DECISION_MODEL.into(),
+            "gemini" => everruns_drivers::gemini::decisions::DEFAULT_MODEL.into(),
+            _ => "jev-latest".into(),
         });
         let router = DecisionRouter::new(registry, ModelSpec::on(default.as_str(), model))
-            .map_err(|error| format!("{UTILITY_DECISION_DRIVER_ENV}={default}: {error}; typesafe needs UTILITY_TYPESAFE_API_KEY; openrouter needs UTILITY_OPENROUTER_API_KEY; mai needs {UTILITY_AZURE_AI_API_KEY_ENV} and {UTILITY_AZURE_AI_ENDPOINT_ENV}"))?;
+            .map_err(|error| format!("{UTILITY_DECISION_DRIVER_ENV}={default}: {error}; typesafe needs UTILITY_TYPESAFE_API_KEY; openrouter needs UTILITY_OPENROUTER_API_KEY; mai needs {UTILITY_AZURE_AI_API_KEY_ENV} and {UTILITY_AZURE_AI_ENDPOINT_ENV}; gemini needs {UTILITY_GEMINI_API_KEY_ENV}"))?;
         tracing::info!(
             decisions.default_driver = router.default_driver(),
             decisions.drivers = ?router.registry().ids(),
@@ -399,6 +420,37 @@ mod tests {
             .into_service(no_utility())
             .unwrap();
         assert_eq!(service.name(), "ProviderDecisions");
+    }
+
+    #[test]
+    fn the_gemini_driver_needs_only_its_utility_key() {
+        let error = SystemDecisions::default()
+            .driver("gemini")
+            .into_service(no_utility())
+            .err()
+            .expect("a configuration error");
+        assert!(error.contains("UTILITY_GEMINI_API_KEY"), "{error}");
+
+        let service = SystemDecisions::default()
+            .gemini("gemini-key")
+            .driver("gemini")
+            .into_service(no_utility())
+            .unwrap();
+        assert!(service.is_configured());
+        assert_eq!(service.name(), "ProviderDecisions");
+
+        // A Gemini key alone does not take over from TypeSafe.
+        let service = SystemDecisions::default()
+            .typesafe(typesafe_key())
+            .gemini("gemini-key")
+            .into_service(no_utility())
+            .unwrap();
+        assert_eq!(service.name(), "ProviderDecisions");
+        let service = SystemDecisions::default()
+            .gemini("gemini-key")
+            .into_service(no_utility())
+            .unwrap();
+        assert!(!service.is_configured());
     }
 
     #[test]

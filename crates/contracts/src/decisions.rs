@@ -80,6 +80,67 @@ impl DecisionQuestion {
     }
 }
 
+/// Where a [`DecisionMedia`] item's bytes come from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionMediaSource {
+    /// The bytes, base64-encoded.
+    Data(String),
+    /// A URL the vendor fetches itself.
+    Uri(String),
+}
+
+/// An image, audio clip, video or PDF the model reads alongside the state.
+///
+/// Only drivers that declare [`media`](crate::decision_driver::DecisionDriverCapabilities::media)
+/// accept it (Gemini Decision 1 today); every other driver rejects a request
+/// that carries media rather than answering without it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionMedia {
+    /// IANA media type, such as `image/png` or `application/pdf`.
+    pub mime_type: String,
+    /// The content.
+    pub source: DecisionMediaSource,
+}
+
+impl DecisionMedia {
+    /// Media from raw bytes, sent inline.
+    ///
+    /// ```
+    /// use everruns_contracts::decisions::{DecisionMedia, DecisionRequest, DecisionQuestion};
+    ///
+    /// let photo = DecisionMedia::bytes("image/png", [0x89, b'P', b'N', b'G']);
+    /// let request = DecisionRequest::new("A parcel left at a front door.")
+    ///     .attach(photo)
+    ///     .ask("damaged", DecisionQuestion::noul("Is the parcel damaged?"));
+    /// assert_eq!(request.media.len(), 1);
+    /// ```
+    pub fn bytes(mime_type: impl Into<String>, bytes: impl AsRef<[u8]>) -> Self {
+        use base64::Engine as _;
+        Self {
+            mime_type: mime_type.into(),
+            source: DecisionMediaSource::Data(
+                base64::engine::general_purpose::STANDARD.encode(bytes),
+            ),
+        }
+    }
+
+    /// Media the vendor fetches from `uri`.
+    pub fn uri(mime_type: impl Into<String>, uri: impl Into<String>) -> Self {
+        Self {
+            mime_type: mime_type.into(),
+            source: DecisionMediaSource::Uri(uri.into()),
+        }
+    }
+
+    /// Bytes this item adds to a request body.
+    pub fn wire_len(&self) -> usize {
+        match &self.source {
+            DecisionMediaSource::Data(data) | DecisionMediaSource::Uri(data) => data.len(),
+        }
+    }
+}
+
 /// One evaluation: state plus the questions to ask about it.
 ///
 /// `#[non_exhaustive]` because this is an option struct on an alpha surface
@@ -105,6 +166,8 @@ pub struct DecisionRequest {
     pub provider: Option<crate::ProviderKey>,
     /// Free-form request metadata for host-side attribution.
     pub metadata: HashMap<String, String>,
+    /// Images, audio, video or PDFs read alongside `state`, in order.
+    pub media: Vec<DecisionMedia>,
 }
 
 impl DecisionRequest {
@@ -116,7 +179,14 @@ impl DecisionRequest {
             provider: None,
             questions: Vec::new(),
             metadata: HashMap::new(),
+            media: Vec::new(),
         }
+    }
+
+    /// Add an image, audio clip, video or PDF for the model to read.
+    pub fn attach(mut self, media: DecisionMedia) -> Self {
+        self.media.push(media);
+        self
     }
 
     /// Add a question under `id`.

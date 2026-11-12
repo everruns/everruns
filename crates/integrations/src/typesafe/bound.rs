@@ -34,10 +34,18 @@ impl Wire {
 
 pub async fn evaluate(
     binding: DecisionModelBinding,
-    input: EvaluateInput,
+    mut input: EvaluateInput,
     context: &ToolContext,
 ) -> Result<Value, String> {
+    let files = std::mem::take(&mut input.files);
+    if !files.is_empty() && binding.provider_type != "gemini" {
+        return Err(
+            "This decision model reads text only; attach files with a model that reads media, such as Gemini Decision 1"
+                .into(),
+        );
+    }
     let request = decision_request(input, &binding.model)?;
+    let request = crate::typesafe::media::attach_files(request, &files, context).await?;
     let outcome = evaluate_request(&binding, request.clone(), context).await?;
     render_outcome(outcome, &request)
 }

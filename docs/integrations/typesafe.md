@@ -69,8 +69,31 @@ calibrated questions on Gemini Decision 1. In **Models**, add a **Decisions** mo
 Google Gemini provider with model ID `gemini-decision-1`; it picks the **Gemini Decision 1**
 profile. The provider's saved Gemini API key serves both chat and decisions. On OpenRouter the
 same model is `google/gemini-decision-1`. Google bills input tokens only, at $0.10 per million,
-and a request (content plus questions) fits in 262,144 tokens. Everruns sends text content; the
-model's image, audio, video and PDF inputs are not used yet.
+and a request (content plus questions) fits in 262,144 tokens.
+
+Gemini Decision 1 also reads images, audio, video and PDFs. Pass session file paths in the
+tool's `files` argument (up to 8 files, 15 MiB in total) and every question is answered over the
+text and the files together:
+
+```json
+{
+  "state": "Delivery photo for order 1042.",
+  "files": [
+    "/workspace/delivery.jpg"
+  ],
+  "questions": [
+    {
+      "id": "damaged",
+      "type": "noul",
+      "instructions": "Is the parcel visibly damaged?"
+    }
+  ]
+}
+```
+
+Other decision models read text only and refuse a call that attaches files. A deployment can
+make Gemini Decision 1 its own default for guardrail checks with `UTILITY_DECISION_DRIVER=gemini`
+and `UTILITY_GEMINI_API_KEY` (see [environment variables](/sre/environment-variables/)).
 
 Set the organization decision default in Models, or select an exact model in the **Jev Decisions**
 capability settings. The tool uses that model's account. A disabled model or missing credential

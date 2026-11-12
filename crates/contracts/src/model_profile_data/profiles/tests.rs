@@ -788,6 +788,7 @@ fn gemini_decision_1_is_a_decision_profile_on_gemini_and_openrouter() {
         );
         let profile = get_model_profile(provider, model).unwrap();
         assert_eq!(profile.name, "Gemini Decision 1");
+        assert!(profile.attachment);
         let cost = profile.cost.unwrap();
         assert_eq!((cost.input, cost.output), (0.10, 0.0));
         let decisions = profile.decisions.unwrap();

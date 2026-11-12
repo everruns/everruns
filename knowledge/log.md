@@ -3,6 +3,7 @@
 ## 2026-11-12
 
 - [Decisions service](operations/decisions-service.md): Gemini providers answer decisions on Gemini Decision 1 through Google's Decisions API (translated envelope, positional question keys, System One validation); OpenRouter serves it as `google/gemini-decision-1`.
+- [Decisions service](operations/decisions-service.md): decision requests can attach media; only drivers that declare it (Gemini) accept it, and `jev_decision` attaches session files by path. `UTILITY_DECISION_DRIVER=gemini` makes Gemini Decision 1 a deployment default.
 
 ## 2026-11-11
 

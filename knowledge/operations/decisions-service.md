@@ -55,11 +55,16 @@ unless `UTILITY_DECISION_MODEL` says otherwise.
 `{base}/decisions` on the same provider, key and base URL as Gemini chat. The primitives and answer
 fields are System One's, but the envelope is Google's (`input`, `true_description`/`false_description`,
 `total_input_tokens`), so the driver translates and then validates with the System One decoder.
-Questions go out under positional keys because Google restricts key characters. The API takes up to
+Questions go out under positional keys because Google restricts key characters. It is the only
+driver that declares media: a request's attached images, audio, video and PDFs follow the text as
+typed Content parts, and every other driver's capability check rejects a request that carries them
+rather than answering without them. The `jev_decision` tool attaches session files by path only, read
+from the session file store and sent inline, so the vendor never fetches an agent-supplied URL. The API takes up to
 255 score levels; the shared ten-level cap still applies. OpenRouter serves the same model as
 `google/gemini-decision-1` over System One. Its
-[live smoke](../../crates/integrations/tests/gemini_decisions_live.rs) runs the same way. There is
-no deployment-level (`UTILITY_DECISION_DRIVER`) Gemini option yet.
+[live smoke](../../crates/integrations/tests/gemini_decisions_live.rs) runs the same way. A deployment
+can make it its default with `UTILITY_DECISION_DRIVER=gemini` and `UTILITY_GEMINI_API_KEY`
+(model `gemini-decision-1` unless `UTILITY_DECISION_MODEL` says otherwise).
 
 ## Deployment authority
 

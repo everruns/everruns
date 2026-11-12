@@ -1157,11 +1157,25 @@ fn microsoft_decision_profile() -> ModelProfile {
 /// billed at $0.10 per 1M tokens, output free. One 262,144-token window holds
 /// the input and every question. The API takes 2-255 choice options and score
 /// levels; profiles keep System One's ten-level cap, which the driver enforces.
-/// Everruns sends text state only, though the model also reads media.
+/// It also reads images, audio, video and PDFs attached to a request.
 fn gemini_decision_profile() -> ModelProfile {
+    use crate::model_profile_data::types::{Modality, ModelModalities};
     let mut profile = jev_profile("Gemini Decision 1");
     profile.family = "gemini-decision".into();
-    profile.description = Some("Google's calibrated typed decisions over text.".into());
+    profile.description = Some(
+        "Google's calibrated typed decisions over text, images, audio, video and PDFs.".into(),
+    );
+    profile.attachment = true;
+    profile.modalities = Some(ModelModalities {
+        input: vec![
+            Modality::Text,
+            Modality::Image,
+            Modality::Audio,
+            Modality::Video,
+            Modality::Pdf,
+        ],
+        output: Vec::new(),
+    });
     profile.release_date = Some("2026-11-11".into());
     profile.cost = Some(crate::model_profile_data::ModelCost::new(0.10, 0.0));
     if let Some(decisions) = profile.decisions.as_mut() {

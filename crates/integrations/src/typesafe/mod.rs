@@ -56,6 +56,7 @@ mod connection;
 mod decisions;
 mod evaluate;
 mod framework;
+mod media;
 
 pub use capability::JevCapability;
 #[cfg(feature = "typesafe-hosted")]
