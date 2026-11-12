@@ -114,10 +114,10 @@ pub struct ActResult {
     /// human to open a link. Kept apart from the generic flag because only a
     /// client that renders the consent card can answer it — see
     /// `plan_after_act`, which will not hold a turn for a card nobody can draw.
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub waiting_for_url_elicitation: bool,
     /// True when execution stopped before tool execution because a dependency was archived or deleted.
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub blocked: bool,
     /// Client-side tool calls that were NOT executed by ActAtom but need to be
     /// sent to the client. Populated by ActAtom's partitioning logic, consumed
@@ -127,10 +127,6 @@ pub struct ActResult {
     /// Tool definitions for the client-side tool calls (for narration/display).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub client_tool_definitions: Vec<ToolDefinition>,
-}
-
-fn is_false(value: &bool) -> bool {
-    !*value
 }
 
 // ============================================================================
@@ -1526,7 +1522,6 @@ where
             capability_id,
             capability_name,
             _cancel_on_call_end: call_cancellation.drop_guard(),
-            cancelled: false,
         };
         if let Some(pre_hook_result) = pre_hook_result {
             return Box::pin(tail.finish(Ok(pre_hook_result), None)).await;
@@ -1546,42 +1541,16 @@ where
                 .await
             }
             None => {
-                // A host may cancel this call alone (`tool_cancel`): the
-                // registration lasts until the call settles.
-                let registration = tail
-                    .tool_context
-                    .extension::<tool_cancel::ToolCallCancels>()
-                    .unwrap_or_else(tool_cancel::shared)
-                    .register(context.session_id, &tail.tool_call.id);
                 // A tool that runs a child turn inline must not detach its
-                // calls into this turn's park.
-                let invoke = Box::pin(tool_detach::without(self.invoke_observed(
+                // calls into this turn's park; a host may cancel it alone.
+                let invoke = tool_detach::without(self.invoke_observed(
                     &tail.execution_tool_call,
                     &tail.tool_def,
                     &tail.tool_context,
-                )));
-                let cancelled = Box::pin(registration.token().cancelled());
-                let (result, cpu_ns, cancelled) = match futures::future::select(invoke, cancelled)
-                    .await
-                {
-                    futures::future::Either::Left(((result, cpu_ns), _)) => (result, cpu_ns, false),
-                    futures::future::Either::Right(_) => (
-                        Ok(tool_cancel::cancelled_result(&tail.tool_call.id)),
-                        None,
-                        true,
-                    ),
-                };
-                drop(registration);
-                let mut tail = tail;
-                if cancelled {
-                    // Work the tool left running dies now, not after the
-                    // post-tool hooks.
-                    if let Some(token) = &tail.tool_context.cancellation {
-                        token.cancel();
-                    }
-                    tail.cancelled = true;
-                }
-                Box::pin(tail.finish(result, cpu_ns)).await
+                ));
+                let (result, cpu_ns, cancelled) =
+                    tool_cancel::race(&tail.tool_context, context.session_id, invoke).await;
+                Box::pin(tail.finish_as(result, cpu_ns, cancelled)).await
             }
         }
     }

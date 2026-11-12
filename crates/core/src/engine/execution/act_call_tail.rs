@@ -52,9 +52,6 @@ pub(super) struct CallTail {
     pub(super) capability_name: Option<String>,
     /// Cancels the call's tool work when the call ends, however it ends.
     pub(super) _cancel_on_call_end: tokio_util::sync::DropGuard,
-    /// The host cancelled this call (`tool_cancel`): it completes as
-    /// `cancelled`, not `error`.
-    pub(super) cancelled: bool,
 }
 
 impl CallTail {
@@ -112,6 +109,17 @@ impl CallTail {
         result: Result<ToolResult>,
         worker_thread_cpu_ns: Option<u64>,
     ) -> ToolCallResult {
+        self.finish_as(result, worker_thread_cpu_ns, false).await
+    }
+
+    /// Settle the call; `cancelled` when a host cancelled it
+    /// ([`tool_cancel`](super::tool_cancel)).
+    pub(super) async fn finish_as(
+        self,
+        result: Result<ToolResult>,
+        worker_thread_cpu_ns: Option<u64>,
+        cancelled: bool,
+    ) -> ToolCallResult {
         let tool_call = &self.tool_call;
         let execution_tool_call = &self.execution_tool_call;
         match result {
@@ -131,7 +139,7 @@ impl CallTail {
                 let success = tool_result.error.is_none();
                 let status = if success {
                     "success"
-                } else if self.cancelled {
+                } else if cancelled {
                     super::tool_cancel::CANCELLED_STATUS
                 } else {
                     "error"

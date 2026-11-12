@@ -422,13 +422,9 @@ impl Session {
         self.inner.session_id
     }
 
-    /// Cancel one running tool call and let its turn go on.
-    ///
-    /// The call stops (its future is dropped and its cancellation token fires)
-    /// and completes with status `cancelled` and an error the model reads; the
-    /// turn continues with the rest of its batch and its next step. Returns
-    /// `false` when no such call is running in this process: it is unknown,
-    /// already finished, or ran on another worker.
+    /// Cancel one running tool call and let its turn go on: the call completes
+    /// with status `cancelled` and an error the model reads. `false` when no
+    /// such call is running in this process.
     pub fn cancel_tool_call(&self, tool_call_id: &str) -> bool {
         everruns_core::engine::tool_cancel::shared().cancel(self.inner.session_id, tool_call_id)
     }

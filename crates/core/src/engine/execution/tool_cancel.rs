@@ -129,6 +129,37 @@ impl Drop for Registration {
     }
 }
 
+/// Run an inline call until it settles or a host cancels it. Registers the
+/// call in the context's [`ToolCallCancels`], else in [`shared`], for as long
+/// as it runs. On cancel the call's future is dropped and its own
+/// cancellation token fires, so work it left running stops now rather than
+/// after the post-tool hooks. The `bool` is whether it was cancelled.
+pub(super) async fn race(
+    context: &crate::ToolContext,
+    session_id: SessionId,
+    invoke: impl std::future::Future<Output = (crate::engine::error::Result<ToolResult>, Option<u64>)>,
+) -> (crate::engine::error::Result<ToolResult>, Option<u64>, bool) {
+    let Some(tool_call_id) = context.tool_call_id.as_deref() else {
+        let (result, cpu_ns) = invoke.await;
+        return (result, cpu_ns, false);
+    };
+    let registration = context
+        .extension::<ToolCallCancels>()
+        .unwrap_or_else(shared)
+        .register(session_id, tool_call_id);
+    let invoke = std::pin::pin!(invoke);
+    let cancelled = std::pin::pin!(registration.token().cancelled());
+    match futures::future::select(invoke, cancelled).await {
+        futures::future::Either::Left(((result, cpu_ns), _)) => (result, cpu_ns, false),
+        futures::future::Either::Right(_) => {
+            if let Some(token) = &context.cancellation {
+                token.cancel();
+            }
+            (Ok(cancelled_result(tool_call_id)), None, true)
+        }
+    }
+}
+
 /// The result a cancelled call completes with.
 pub fn cancelled_result(tool_call_id: &str) -> ToolResult {
     ToolResult {
