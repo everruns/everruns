@@ -770,3 +770,38 @@ fn jev_1_14_is_a_text_decision_profile_on_supported_accounts() {
         Some("typesafe/jev-latest")
     );
 }
+
+#[test]
+fn gemini_decision_1_is_a_decision_profile_on_gemini_and_openrouter() {
+    for (provider, model) in [
+        ("gemini", "gemini-decision-1"),
+        ("openrouter", "google/gemini-decision-1"),
+        ("openrouter", "google/gemini-decision-1-20261111"),
+    ] {
+        assert_eq!(
+            get_model_service_kind(provider, model),
+            ServiceKind::Decisions
+        );
+        assert_eq!(
+            get_model_profile_key(provider, model).as_deref(),
+            Some("google/gemini-decision-1")
+        );
+        let profile = get_model_profile(provider, model).unwrap();
+        assert_eq!(profile.name, "Gemini Decision 1");
+        let cost = profile.cost.unwrap();
+        assert_eq!((cost.input, cost.output), (0.10, 0.0));
+        let decisions = profile.decisions.unwrap();
+        assert!(decisions.calibrated);
+        assert_eq!(decisions.max_score_levels, Some(10));
+        assert_eq!(decisions.request_tokens, Some(262_144));
+    }
+    assert_eq!(
+        provider_model_id("openrouter", "google/gemini-decision-1"),
+        Some("google/gemini-decision-1")
+    );
+    assert_eq!(
+        provider_model_id("gemini", "google/gemini-decision-1"),
+        Some("gemini-decision-1")
+    );
+    assert!(get_model_profile("openai", "gemini-decision-1").is_none());
+}

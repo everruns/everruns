@@ -75,8 +75,21 @@ pub fn provider(
     id: impl Into<everruns_contracts::ProviderKey>,
     api_key: impl Into<String>,
 ) -> everruns_contracts::Provider {
-    everruns_contracts::Provider::new(id, GeminiChatDriver::new())
-        .base_url(DEFAULT_BASE_URL)
+    configured_provider(id.into(), DEFAULT_BASE_URL, &api_key.into())
+}
+
+/// One authenticated Gemini provider: chat, and on native targets the
+/// Decisions API (Gemini Decision 1) on the same key and base URL.
+fn configured_provider(
+    id: everruns_contracts::ProviderKey,
+    base_url: &str,
+    api_key: &str,
+) -> everruns_contracts::Provider {
+    let provider = everruns_contracts::Provider::new(id, GeminiChatDriver::new());
+    #[cfg(not(target_arch = "wasm32"))]
+    let provider = provider.with_decisions(super::decisions::GeminiDecisionDriver::new());
+    provider
+        .base_url(base_url)
         .auth(everruns_contracts::StaticHeaderAuth::new(
             "x-goog-api-key",
             api_key,
@@ -777,17 +790,31 @@ pub fn descriptor() -> DriverDescriptor {
         // drivers; declaring it keeps existing dev setups working.
         base_url_env: Some("GEMINI_BASE_URL".into()),
         recommended_models: Some(GEMINI_RECOMMENDED),
+        // The same key serves Gemini Decision 1 at `{base}/decisions`; see
+        // `gemini::decisions`.
+        #[cfg(not(target_arch = "wasm32"))]
+        services: vec![
+            everruns_contracts::driver_registry::ServiceKind::Chat,
+            everruns_contracts::driver_registry::ServiceKind::Decisions,
+        ],
+        #[cfg(not(target_arch = "wasm32"))]
+        provider: Some(std::sync::Arc::new(|config| {
+            descriptor_provider(config).with_driver_id(DriverId::Gemini)
+        })),
         ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
-            let provider =
-                everruns_contracts::Provider::new(config.provider.clone(), GeminiChatDriver::new())
-                    .base_url(config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL))
-                    .auth(everruns_contracts::StaticHeaderAuth::new(
-                        "x-goog-api-key",
-                        config.api_key.as_deref().unwrap_or(""),
-                    ));
-            provider.into_boxed_driver()
+            descriptor_provider(config).into_boxed_driver()
         })
     }
+}
+
+fn descriptor_provider(
+    config: &everruns_contracts::driver_registry::DriverConfig,
+) -> everruns_contracts::Provider {
+    configured_provider(
+        config.provider.clone(),
+        config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL),
+        config.api_key.as_deref().unwrap_or(""),
+    )
 }
 
 /// Register the driver with a [`DriverRegistry`].

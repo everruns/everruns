@@ -117,7 +117,12 @@ pub fn register_drivers(registry: &mut DriverRegistry) {
 
 #[cfg(all(
     not(target_arch = "wasm32"),
-    any(feature = "typesafe", feature = "openrouter", feature = "mai")
+    any(
+        feature = "typesafe",
+        feature = "openrouter",
+        feature = "mai",
+        feature = "gemini"
+    )
 ))]
 pub mod systemone;
 #[cfg(feature = "typesafe")]

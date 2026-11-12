@@ -51,6 +51,16 @@ binding carries one key, so Entra-only providers fail closed. Its
 `UTILITY_AZURE_AI_*` key and endpoint; the model is then a deployment name, `Microsoft-Decision-1`
 unless `UTILITY_DECISION_MODEL` says otherwise.
 
+[Gemini](../../crates/drivers/drivers/src/gemini/decisions.rs) serves Gemini Decision 1 at
+`{base}/decisions` on the same provider, key and base URL as Gemini chat. The primitives and answer
+fields are System One's, but the envelope is Google's (`input`, `true_description`/`false_description`,
+`total_input_tokens`), so the driver translates and then validates with the System One decoder.
+Questions go out under positional keys because Google restricts key characters. The API takes up to
+255 score levels; the shared ten-level cap still applies. OpenRouter serves the same model as
+`google/gemini-decision-1` over System One. Its
+[live smoke](../../crates/integrations/tests/gemini_decisions_live.rs) runs the same way. There is
+no deployment-level (`UTILITY_DECISION_DRIVER`) Gemini option yet.
+
 ## Deployment authority
 
 [System configuration](../../crates/worker/src/system_decisions.rs) composes server and worker guardrails
@@ -87,8 +97,8 @@ Legacy TypeSafe connections/session secrets remain available when no catalog sel
 account per call, identically through direct and worker adapters. [Bound execution](../../crates/integrations/src/typesafe/bound.rs)
 uses session egress policy and DNS pinning, checks budgets before transport, validates outcomes, and
 emits usage through the existing generation ledger. Provider-reported cost wins over profile estimates.
-No retries duplicate a billable call. TypeSafe, OpenRouter and Foundry rows speak System One, OpenAI rows the
-Decisions API; both share that one egress, budget and usage path. State and secrets are absent from usage metadata.
+No retries duplicate a billable call. TypeSafe, OpenRouter and Foundry rows speak System One, OpenAI and
+Gemini rows their own Decisions APIs; all share that one egress, budget and usage path. State and secrets are absent from usage metadata.
 
 ## Catalog and UI
 

@@ -18,6 +18,8 @@ enum Wire {
     /// System One at Microsoft Foundry's resource-root route.
     Foundry,
     OpenAi,
+    /// Gemini's Decisions API: System One primitives in its own envelope.
+    Gemini,
 }
 
 impl Wire {
@@ -25,7 +27,7 @@ impl Wire {
         match self {
             Self::SystemOne => endpoint.url("systemone"),
             Self::Foundry => everruns_drivers::mai::decisions_url(endpoint),
-            Self::OpenAi => endpoint.url("decisions"),
+            Self::OpenAi | Self::Gemini => endpoint.url("decisions"),
         }
     }
 }
@@ -162,8 +164,8 @@ async fn attempt(
     egress: &dyn EgressService,
     network_access: Option<everruns_contracts::runtime::network_access::NetworkAccessList>,
 ) -> Result<Attempt, String> {
-    // TypeSafe, OpenRouter and Microsoft Foundry speak System One; OpenAI has
-    // its own Decisions API. All go through the same egress, budget, and usage
+    // TypeSafe, OpenRouter and Microsoft Foundry speak System One; OpenAI and
+    // Gemini have their own Decisions APIs. All go through the same egress, budget, and usage
     // path. Foundry rows authenticate with the resource API key; Entra OAuth
     // providers have no key here and fail closed in the resolver.
     let (provider, wire) = match binding.provider_type.as_str() {
@@ -196,6 +198,13 @@ async fn attempt(
             ),
             Wire::OpenAi,
         ),
+        "gemini" => (
+            everruns_drivers::gemini::provider(
+                binding.provider_id.clone(),
+                binding.api_key.clone(),
+            ),
+            Wire::Gemini,
+        ),
         _ => return Err("Unsupported decision provider".into()),
     };
     // Foundry's base URL was normalized by its provider constructor above.
@@ -214,6 +223,7 @@ async fn attempt(
     let body = match wire {
         Wire::SystemOne | Wire::Foundry => everruns_drivers::systemone::encode(&request),
         Wire::OpenAi => everruns_drivers::openai::decisions::encode(&request),
+        Wire::Gemini => everruns_drivers::gemini::decisions::encode(&request),
     }
     .map_err(|e| e.to_string())?;
     let bytes = serde_json::to_vec(&body).map_err(|_| "Invalid decision input")?;
@@ -281,14 +291,24 @@ async fn attempt(
             ));
         }
     };
-    let Ok(value) = serde_json::from_slice::<Value>(&body) else {
+    let Ok(mut value) = serde_json::from_slice::<Value>(&body) else {
         return Ok(Attempt::failed(requested_model, "Invalid decision JSON"));
     };
+    if wire == Wire::Gemini {
+        // Gemini reports `total_input_tokens`; the usage ledger reads System
+        // One's names.
+        let usage = &mut value["usage"];
+        if usage.is_object() {
+            usage["input_tokens"] = usage["total_input_tokens"].clone();
+            usage["output_tokens"] = usage["total_output_tokens"].clone();
+        }
+    }
     let outcome = match wire {
         Wire::SystemOne | Wire::Foundry => {
             everruns_drivers::systemone::decode(&request, value.clone())
         }
         Wire::OpenAi => everruns_drivers::openai::decisions::decode(&request, &value),
+        Wire::Gemini => everruns_drivers::gemini::decisions::decode(&request, &value),
     };
     // Provider-reported usage is recorded even if answer validation rejects
     // the outcome.

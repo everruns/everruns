@@ -235,6 +235,60 @@ async fn a_foundry_decision_model_runs_on_system_one_and_is_priced() {
     assert!((cost - 0.000042).abs() < 1e-12, "{cost}");
 }
 
+/// Answers like the Gemini Decisions API and checks the request.
+struct GeminiNetwork;
+#[async_trait]
+impl EgressService for GeminiNetwork {
+    async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+        panic!("must stream")
+    }
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        assert_eq!(
+            request.url,
+            "https://generativelanguage.googleapis.com/v1beta/decisions"
+        );
+        assert_eq!(request.headers["x-goog-api-key"], "saved-account-key");
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        assert_eq!(body["model"], "gemini-decision-1");
+        assert_eq!(body["input"], "private content");
+        // Caller ids stay local: questions go out under positional keys.
+        assert_eq!(body["questions"]["q0"]["type"], "noul");
+        let response = json!({"answers":{"q0":{"type":"noul","noul":0.97,"confidence":0.97}},"usage":{"total_input_tokens":1000,"total_output_tokens":0,"total_tokens":1000}});
+        Ok(EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter(vec![Ok(serde_json::to_vec(
+                &response,
+            )
+            .unwrap())])),
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_gemini_decision_model_runs_on_the_decisions_api_and_is_priced() {
+    let (mut context, events) = context(vec![], "active");
+    context.egress_service = Some(Arc::new(GeminiNetwork));
+    let binding = DecisionModelBinding {
+        provider_type: "gemini".into(),
+        model: "gemini-decision-1".into(),
+        profile_key: "google/gemini-decision-1".into(),
+        headers: Default::default(),
+        ..binding()
+    };
+    let result = evaluate(binding, input(), &context).await.unwrap();
+    assert_eq!(result["model"], "gemini-decision-1");
+    assert_eq!(result["answers"]["q"]["probability_yes"], 0.97);
+    let events = events.0.lock().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["data"]["metadata"]["success"], true);
+    // $0.10 per 1M input tokens, output free.
+    let cost = events[0]["data"]["metadata"]["usage"]["estimated_cost_usd"]
+        .as_f64()
+        .unwrap();
+    assert!((cost - 0.0001).abs() < 1e-12, "{cost}");
+}
+
 /// A deployment-owned check asked of the org's model: the binding's model
 /// wins over whatever the caller named, and the call is budgeted and metered
 /// like the Jev tool.
