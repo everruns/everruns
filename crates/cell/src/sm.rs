@@ -61,6 +61,8 @@ pub struct Shared {
     event_bytes: AtomicU64,
     /// How long the last snapshot took to build and write, in ms.
     pub snapshot_ms: AtomicU64,
+    /// When this replica last built a snapshot (or started).
+    last_snapshot: parking_lot::Mutex<Instant>,
     /// Called with every applied change (the node's Engine hosting hears
     /// commits through it).
     pub on_change: std::sync::OnceLock<ChangeHook>,
@@ -82,6 +84,7 @@ impl Shared {
             changed: Default::default(),
             event_bytes: AtomicU64::new(4096),
             snapshot_ms: AtomicU64::new(0),
+            last_snapshot: parking_lot::Mutex::new(Instant::now()),
             on_change: std::sync::OnceLock::new(),
         })
     }
@@ -292,7 +295,13 @@ impl Shared {
     }
 
     async fn put_segment(&self, session: SessionId, events: &[Event]) -> anyhow::Result<SegRef> {
-        let seg = self.store.put_segment(session, events).await?;
+        let branch = self
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .map_or(0, |s| s.branch);
+        let seg = self.store.put_segment(session, events, branch).await?;
         // Weigh the in-memory size estimate by what was just written.
         let bytes = serde_json::to_vec(events).map(|b| b.len()).unwrap_or(0) as u64;
         let per = bytes * HEAP_PER_JSON_BYTE / events.len().max(1) as u64;
@@ -303,6 +312,11 @@ impl Shared {
     }
 
     /// Estimated bytes of resident events, and their count.
+    /// How long since this replica last built a snapshot (or started).
+    pub fn last_snapshot_age(&self) -> std::time::Duration {
+        self.last_snapshot.lock().elapsed()
+    }
+
     pub fn resident(&self) -> (u64, usize) {
         let events: usize = self
             .state
@@ -446,7 +460,7 @@ pub fn decode_archived(bytes: &[u8]) -> anyhow::Result<CellState> {
     Ok(state)
 }
 
-type Meta = SnapshotMeta<NodeId, openraft::BasicNode>;
+pub(crate) type Meta = SnapshotMeta<NodeId, openraft::BasicNode>;
 
 /// The header of a stored snapshot (the node's file and the archived copy):
 /// the metadata as one JSON line. The cell state's JSON follows as it is.
@@ -464,12 +478,36 @@ fn snapshot_header(meta: &Meta) -> io::Result<Vec<u8>> {
 
 /// A stored snapshot's metadata and where its state starts. Compact JSON
 /// has no raw newline, so the first one ends the header.
-fn split_snapshot(bytes: &[u8]) -> io::Result<(Meta, usize)> {
+pub(crate) fn split_snapshot(bytes: &[u8]) -> io::Result<(Meta, usize)> {
     let end = bytes
         .iter()
         .position(|b| *b == b'\n')
         .ok_or_else(|| io::Error::other("snapshot without a header"))?;
     Ok((serde_json::from_slice(&bytes[..end])?, end + 1))
+}
+
+/// Write `data` (a cell state's JSON) as the current snapshot in `dir`, a
+/// node's snapshot directory: what a node opens on start.
+pub(crate) fn write_snapshot_file(
+    dir: &std::path::Path,
+    meta: &Meta,
+    data: &[u8],
+) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    let tmp = dir.join("current.snap.tmp");
+    let mut file = fs::File::create(&tmp)?;
+    file.write_all(&snapshot_header(meta)?)?;
+    file.write_all(data)?;
+    file.sync_all()?;
+    fs::rename(&tmp, dir.join("current.snap"))?;
+    fs::File::open(dir)?.sync_all()?;
+    Ok(())
+}
+
+/// The header and body of an archived snapshot of `state`, as
+/// `put_snapshot` stores it.
+pub(crate) fn archived_parts(meta: &Meta, data: bytes::Bytes) -> io::Result<[bytes::Bytes; 2]> {
+    Ok([bytes::Bytes::from(snapshot_header(meta)?), data])
 }
 
 /// The Raft-facing state machine.
@@ -520,6 +558,7 @@ fn stub(s: &SessionState) -> SessionState {
         turn_start: s.turn_start,
         checkpoints: s.checkpoints.clone(),
         files: s.files.clone(),
+        branch: s.branch,
     }
 }
 
@@ -566,27 +605,24 @@ impl StateMachine {
     }
 
     fn write_current(&self, meta: &Meta, data: &[u8]) -> io::Result<()> {
-        let tmp = self.dir.join("current.snap.tmp");
-        let mut file = fs::File::create(&tmp)?;
-        file.write_all(&snapshot_header(meta)?)?;
-        file.write_all(data)?;
-        file.sync_all()?;
-        fs::rename(&tmp, self.current_path())?;
-        fs::File::open(&self.dir)?.sync_all()?;
-        Ok(())
+        write_snapshot_file(&self.dir, meta, data)
     }
 
     /// Keep a copy of the snapshot in the object store; best effort. It
     /// shares `data` with the caller instead of copying it.
-    fn archive(&self, meta: &Meta, data: bytes::Bytes) {
+    fn archive(&self, meta: &Meta, data: bytes::Bytes, inc: u64, clock_ms: i64) {
         let Ok(header) = snapshot_header(meta) else {
             return;
         };
         let store = self.shared.store.clone();
         let (cell, id) = (self.shared.cell, meta.snapshot_id.clone());
+        let index = meta.last_log_id.map_or(0, |id| id.index);
         tokio::spawn(async move {
             let parts = [bytes::Bytes::from(header), data];
-            if let Err(error) = store.put_snapshot(cell, &id, parts).await {
+            if let Err(error) = store
+                .put_snapshot(cell, &id, inc, index, clock_ms, parts)
+                .await
+            {
                 tracing::warn!(%error, "snapshot copy to the object store failed");
             }
         });
@@ -604,6 +640,8 @@ impl StateMachine {
         CellState {
             last_applied: state.last_applied,
             membership: state.membership.clone(),
+            incarnation: state.incarnation,
+            clock_ms: state.clock_ms,
             sessions: state
                 .sessions
                 .iter()
@@ -636,6 +674,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
         state.share_definitions();
         let data = bytes::Bytes::from(serde_json::to_vec(&state).map_err(sm_err)?);
         let (last_applied, membership) = (state.last_applied, state.membership.clone());
+        let (inc, clock_ms) = (state.incarnation, state.clock_ms);
         drop(state);
         let seq = self
             .snapshot_seq
@@ -654,10 +693,11 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
             .await
             .map_err(sm_err)?
             .map_err(sm_err)?;
-        self.archive(&meta, data);
+        self.archive(&meta, data, inc, clock_ms);
         self.shared
             .snapshot_ms
             .store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
+        *self.shared.last_snapshot.lock() = Instant::now();
         // openraft keeps only the metadata of a snapshot it built; a peer
         // gets the state through `get_current_snapshot`, which reads the
         // file. Handing the state back here would be one more copy held.

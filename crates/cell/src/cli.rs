@@ -4,6 +4,10 @@
 //! ```text
 //! app node    --topology cluster.json --cell 0 --node 1 --data .cell/c0n1
 //! app gateway --topology cluster.json --listen 127.0.0.1:7000
+//! app restore --topology cluster.json --cell 0 --store s3://... \
+//!             --node 1=/var/cell/c0n1 [--at 2026-11-12T09:00:00Z]
+//! app restore-org --topology cluster.json --store s3://... --org <org> \
+//!             --at 2026-11-12T09:00:00Z
 //! app edge    --topology cluster.json --listen 127.0.0.1:7100 \
 //!             --control-plane http://127.0.0.1:9000
 //! ```
@@ -128,6 +132,45 @@ enum Mode {
         #[arg(long, env = "CELL_EDGE_API_PREFIX", default_value = "")]
         api_prefix: String,
     },
+    /// Rebuild a cell from its restore points in the object store, as a
+    /// new incarnation (`restore.rs`): after it lost quorum, or to take it
+    /// back to a moment before a bad release. Stop its nodes first; the
+    /// voters are the cell's members in the topology file.
+    Restore {
+        #[arg(long, env = "CELL_TOPOLOGY")]
+        topology: PathBuf,
+        #[arg(long)]
+        cell: CellId,
+        #[arg(long, env = "CELL_STORE")]
+        store: String,
+        /// `<node>=<empty data directory>` for each node on this machine.
+        #[arg(long = "node", value_parser = parse_node_dir)]
+        nodes: Vec<(NodeId, PathBuf)>,
+        /// The moment to restore to, Unix milliseconds or RFC 3339; the
+        /// newest state without one.
+        #[arg(long, value_parser = parse_at)]
+        at: Option<i64>,
+        /// Seed these nodes from an incarnation already rebuilt on another
+        /// machine instead of rebuilding.
+        #[arg(long, conflicts_with = "at")]
+        incarnation: Option<u64>,
+        /// Report what a restore would find, and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Take one org's sessions back to a moment, where they live now, on a
+    /// running fleet (`restore::restore_org`). No other org changes.
+    RestoreOrg {
+        #[arg(long, env = "CELL_TOPOLOGY")]
+        topology: PathBuf,
+        #[arg(long, env = "CELL_STORE")]
+        store: String,
+        #[arg(long)]
+        org: String,
+        /// The moment to restore to, Unix milliseconds or RFC 3339.
+        #[arg(long, value_parser = parse_at)]
+        at: i64,
+    },
     /// Run a stateless gateway.
     Gateway {
         #[arg(long, env = "CELL_TOPOLOGY")]
@@ -243,6 +286,42 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             axum::serve(listener, edge.router()).await?;
             Ok(())
         }
+        Mode::Restore {
+            topology,
+            cell,
+            store,
+            nodes,
+            at,
+            incarnation,
+            dry_run,
+        } => {
+            let store = crate::store::Store::open(&store)?;
+            let report = restore(
+                &store,
+                &TopologySource { path: topology },
+                cell,
+                &nodes.into_iter().collect(),
+                at,
+                incarnation,
+                dry_run,
+            )
+            .await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
+        Mode::RestoreOrg {
+            topology,
+            store,
+            org,
+            at,
+        } => {
+            let store = crate::store::Store::open(&store)?;
+            let gateway = Gateway::new(TopologySource { path: topology });
+            gateway.refresh_registry().await;
+            let report = crate::restore::restore_org(&store, &gateway, &org, at).await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            Ok(())
+        }
         Mode::Gateway { topology, listen } => {
             let gateway = Gateway::new(TopologySource { path: topology });
             let listener = tokio::net::TcpListener::bind(listen).await?;
@@ -251,6 +330,67 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+/// The `restore` command: a dry run, a rebuild, or seeding nodes of a
+/// rebuilt incarnation.
+async fn restore(
+    store: &crate::store::Store,
+    topology: &TopologySource,
+    cell: CellId,
+    local: &std::collections::BTreeMap<NodeId, PathBuf>,
+    at: Option<i64>,
+    incarnation: Option<u64>,
+    dry_run: bool,
+) -> anyhow::Result<serde_json::Value> {
+    if dry_run {
+        let found = crate::restore::state_at(store, cell, at).await?;
+        return Ok(serde_json::json!({
+            "cell": cell,
+            "from": found.from.map(|c| serde_json::json!({ "incarnation": c.inc, "index": c.index })),
+            "last_index": found.last,
+            "clock_ms": found.state.clock_ms,
+            "sessions": found.state.sessions.len(),
+            "replayed": found.replayed,
+        }));
+    }
+    if local.is_empty() {
+        anyhow::bail!("name the nodes on this machine with --node <id>=<dir>");
+    }
+    if let Some(incarnation) = incarnation {
+        let mut seeded = serde_json::Map::new();
+        for (node, dir) in local {
+            let index = crate::restore::seed(store, cell, incarnation, *node, dir).await?;
+            seeded.insert(node.to_string(), index.into());
+        }
+        return Ok(
+            serde_json::json!({ "cell": cell, "incarnation": incarnation, "seeded": seeded }),
+        );
+    }
+    let members = topology
+        .read()?
+        .cells
+        .get(&cell)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("cell {cell} not in topology"))?;
+    let rebuilt = crate::restore::rebuild(store, cell, &members, local, at).await?;
+    Ok(serde_json::to_value(rebuilt)?)
+}
+
+fn parse_node_dir(value: &str) -> Result<(NodeId, PathBuf), String> {
+    let (node, dir) = value
+        .split_once('=')
+        .ok_or_else(|| format!("expected <node>=<dir>, got {value}"))?;
+    let node = node.parse().map_err(|e| format!("node id {node}: {e}"))?;
+    Ok((node, PathBuf::from(dir)))
+}
+
+fn parse_at(value: &str) -> Result<i64, String> {
+    value.parse::<i64>().or_else(|_| {
+        chrono::DateTime::parse_from_rfc3339(value)
+            .map(|t| t.timestamp_millis())
+            .map_err(|e| format!("{value}: neither Unix milliseconds nor RFC 3339 ({e})"))
+    })
 }
 
 /// Start a node and serve its API and the gateway API on `listen`.

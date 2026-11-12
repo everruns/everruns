@@ -43,7 +43,7 @@ impl Rng {
     }
 }
 
-fn entry(term: u64, index: u64) -> Entry {
+pub(crate) fn entry(term: u64, index: u64) -> Entry {
     openraft::testing::blank_ent::<TypeConfig>(term, 1, index)
 }
 
@@ -55,7 +55,7 @@ fn open(dir: &Path, segment_bytes: u64) -> Wal {
 
 /// Append and wait for the group fsync, as Raft does before it counts the
 /// entries.
-async fn append_durable(wal: &Wal, entries: Vec<Entry>) {
+pub(crate) async fn append_durable(wal: &Wal, entries: Vec<Entry>) {
     let (tx, rx) = tokio::sync::oneshot::channel();
     wal.write_entries(entries, Ack::Test(tx)).expect("append");
     rx.await.expect("the flusher answers").expect("fsync");

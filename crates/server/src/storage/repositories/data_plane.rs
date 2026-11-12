@@ -371,6 +371,16 @@ impl Database {
         .await?)
     }
 
+    /// The newest incarnation `source` (a cell) has reported from.
+    pub async fn dp_feed_newest_incarnation(&self, source: &str) -> Result<Option<i64>> {
+        Ok(
+            sqlx::query_scalar("SELECT max(incarnation) FROM dp_feed_sources WHERE source = $1")
+                .bind(source)
+                .fetch_one(&self.pool)
+                .await?,
+        )
+    }
+
     pub async fn dp_set_feed_position(
         &self,
         source: &str,

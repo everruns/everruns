@@ -334,7 +334,7 @@ impl Cell {
                 .borrow()
                 .last_applied
                 .map_or(0, |id| id.index);
-            return shipper.ship(applied).await.ok();
+            return shipper.ship(applied, 0).await.ok();
         }
         None
     }
@@ -443,7 +443,9 @@ async fn run(seed: u64) {
     for node in &up {
         cell.kill(*node).await;
     }
-    let restored = everruns_cell::ship::restore(&cell.store, 0).await.unwrap();
+    let restored = everruns_cell::restore::state_at(&cell.store, 0, None)
+        .await
+        .unwrap();
     assert!(
         restored.last >= shipped,
         "seed {seed}: restore reached {} of {shipped} shipped",
@@ -469,7 +471,8 @@ async fn run(seed: u64) {
     }
     eprintln!(
         "seed {seed}: restored through {} from a snapshot at {}, {covered} acknowledged writes shipped",
-        restored.last, restored.snapshot
+        restored.last,
+        restored.from.as_ref().map_or(0, |c| c.index)
     );
 
     // Heal: everything up, nothing lost or cut, then let the cell settle.

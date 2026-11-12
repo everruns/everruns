@@ -707,7 +707,7 @@ small stated loss window from anything worse, and a point-in-time restore.
 | --- | --- | --- |
 | One node or one zone | Raft elects a new leader on the surviving quorum; the replaced node catches up from a snapshot and the log | None |
 | A cell loses quorum (two zones, correlated disks) | The cell is rebuilt from its last snapshot plus the shipped log in S3, on new nodes, as a new incarnation | Entries not yet shipped: target under 2 s, enforced by backpressure; never a started side effect |
-| Registry shard loses quorum | Same rebuild; directory entries for sessions created in the window are re-derived from the cells' own state | Same window, then repaired |
+| Registry shard loses quorum | Same rebuild. Session creates and every move step ship before they are answered, so no directory entry falls in the window | Same window; no directory entry |
 | S3 bucket damage or a bad delete | Object versioning; deletes are tombstones first (data rule: nothing is purged by accident) | None |
 | Region loss | Restore in a second region from the replicated bucket and multi-region KMS keys | Replication lag: S3 Replication Time Control commits to 99.99% of objects within 15 minutes, so the regional target is 15 minutes, not seconds |
 | Bad release corrupts state | Point-in-time restore of the affected cell, or of one org's sessions, to before the release | Turns after the chosen point |
@@ -737,8 +737,9 @@ How:
 - **Snapshots.** Cells and registry shards snapshot to S3 on a schedule
   (and before every blue/green drain). Restore = latest snapshot before the
   target time + shipped log up to it.
-- **Point-in-time restore**, for a whole cell or scoped to one org (replay
-  only that org's units into a fresh cell, then repoint the directory).
+- **Point-in-time restore**, for a whole cell or scoped to one org (each
+  of the org's sessions taken back in place, on a new history branch; see
+  "Step 9 progress").
 - **Retention follows restore points.** A restore point (snapshot plus
   shipped log) is only useful if everything it refers to still exists:
   segments, workspace roots, tree nodes, blobs, agent revisions. Nothing
@@ -748,7 +749,9 @@ How:
   "Storage in S3").
 - **Bucket:** versioning, cross-region replication, object lock on
   snapshots and shipped log for the retention window. KMS multi-region keys
-  so data keys can be unwrapped in the second region.
+  so data keys can be unwrapped in the second region. Set up with the
+  production deployment in step 10 (step 9 decision 5): the restore code
+  does not depend on any of it.
 - **Control plane rollback.** RDS PITR as today, but restoring the control
   plane can leave the data plane ahead of it (data plane applied config
   version 120, RDS restored to 100). Config versions therefore carry a
@@ -1489,6 +1492,116 @@ Left as found: opening the Playground from an agent's "Test in
 Playground" keeps Start disabled until the page is reloaded without the
 agent in its address (the form's draft baseline changes when the virtual
 user loads); it is the console's, not the data plane's.
+
+### Step 9 progress (2026-11-12)
+
+A cell can be rebuilt from the object store alone, as of its newest state
+or a moment before it, and one org can be taken back to a moment without
+touching any other. Decisions (approved 2026-11-12, all as recommended):
+
+1. **Both restores.** `restore` rebuilds a whole cell, latest or point in
+   time (`crates/cell/src/restore.rs`); `restore-org` takes one org's
+   sessions back to a moment where they live now. Both are modes of the
+   cell binary (`cli.rs`).
+2. **Ship first only what must not be lost** (`ship::ships_first`): a
+   `tool.started` of a tool not safe to repeat (AtMostOnce or
+   unclassified), a session create, and every move and placement step.
+   Such a write is answered only once the log through it is in the store.
+   Everything else waits for the next shipping round (1 s).
+3. **The restore window is 7 days** (`CELL_RESTORE_WINDOW_HOURS`).
+   Snapshot copies are thinned to the newest three, the first of each hour
+   inside the window and the newest before it; shipped log and replaced
+   segments stay as long as a kept snapshot may need them
+   (`restore_points.rs`). Cell leaders take a snapshot at least every 15
+   minutes and as a drain starts, and collect hourly.
+4. **The drill is a weekly CI job** (`.github/workflows/cell-drill.yml`,
+   `scripts/cell/drill.py`): two cells on one runner, the local file
+   object store, every node of one cell killed under load.
+5. **Bucket protection** (versioning, object lock, replication,
+   multi-region keys) comes with the production deployment in step 10.
+6. **Control plane rollback leftovers are reported, then kept or dropped
+   per org.** A restored control plane's first full snapshot no longer
+   discards what it lacks: the data plane sets it aside
+   (`control::OrgConfig::leftovers`), `everruns-dataplane reconcile <org>`
+   lists it, `--keep` writes it back into the control plane's config
+   outbox (so the next delivery sends it again) and `--drop` forgets it.
+   Running turns finish either way: a session carries its definition.
+
+How a rebuild works, and what it found:
+
+- **Incarnations.** A rebuilt cell claims a new incarnation number in the
+  store (claimed once, so two rebuilds never share one); its shipped log
+  and feed carry it, and the control plane keys its feed cursor by it. A
+  late batch from a lost incarnation (a node still running somewhere) is
+  stored and flagged: its usage was really spent and is journaled once,
+  and its summaries change nothing.
+- **Fencing.** Every session's epoch counter jumps by 2^32 and every claim
+  is dropped, so an executor still running a turn of the lost incarnation
+  is refused on its next write, and the turn resumes from the log.
+- **History branches.** A restored session writes on from a point its
+  earlier history went past, so the sequences it writes next were already
+  used. Each session carries a branch (`SessionState::branch`): 0 until
+  its first restore, then the restore's time in the high half and random
+  bits below. Segment names carry it, so a name always holds the same
+  events (the executors' segment cache relies on that), a restore point
+  of the earlier branch still reads what it saw, and the control plane's
+  session summary version (branch time over sequence) never goes back.
+  An executor's copy of a session whose branch changed is fetched whole
+  again. The first design keyed segments by the cell's incarnation, which
+  breaks as soon as a restored session moves to a cell of another
+  incarnation number.
+- **Placing steps without a time.** A point-in-time restore stops at the
+  first command proposed after the point, by the proposer's clock. Move
+  steps, segment records and grants carry no time, so the first version
+  took in an import that happened after the point, and with it the
+  session's later history; the one-org test caught it. A command without
+  a time now goes where the next timed command goes (it committed before
+  that one), and steps at the very end that nothing places stay out.
+- **Starting nodes.** The rebuilt state is archived as the new
+  incarnation's first snapshot, then written as each node's starting
+  snapshot with an empty log and a vote at the restored term. Nodes on
+  other machines are seeded from that archived snapshot (`restore --node
+  N=dir --incarnation I`), never started empty: two empty nodes could
+  elect each other over an empty log.
+- **One org.** `Command::Revert` replaces a live session with its state at
+  the point (history, inbox, workspace), keeps its placement and
+  generation, moves its epoch counter past everything handed out and ends
+  any claim, on a new branch. Sessions created after the point stay, and a
+  session deleted since is reported, not brought back. Grants are not
+  restored: they come from the control plane.
+
+Tests, all against real fleets (`crates/cell-testkit/tests/recovery.rs`):
+every node of a cell killed while a tool not safe to repeat is running,
+rebuilt from the store: the tool ran once, the turn finished, the
+incarnation is 2, the session's next epoch is past the gap; a whole cell
+taken back to a moment between two turns: only the first remains and the
+session carries on; and one org of two taken back: the other org's
+session is untouched, and the restored one carries on with one dense
+history, its executor dropping what it remembered past the point.
+
+Gate numbers, from `scripts/cell/drill.py` at full size on one 16 GB
+machine (2 cells of 3 nodes, local file object store, simulated model;
+75 000 sessions, 37 534 in the lost cell, 3 000 of them sent a second
+message just before every node of that cell was killed):
+
+| Bar | Result |
+| --- | --- |
+| Shipping lag p99 under 2 s at 75k | at most 1.5 s (p50 the same bucket) |
+| Rebuild of a full cell under 10 min | 3.7 s (snapshot plus 1 650 log entries) |
+| Ship-first cost under 100 ms per tool call | p50 at most 10 ms, p99 at most 100 ms (258 647 writes) |
+| No tool runs twice | 6 187 started, 6 182 ran: 5 outcomes lost are reported unknown, none ran again |
+| Nothing acknowledged and shipped is lost | every session finished; dense sequences, every message completed once |
+| One-org restore touches no other org | `a_one_org_restore_takes_back_only_that_org` |
+
+Kill to leader again: 7.4 s. 18 of the 3 000 second messages fell inside
+the loss window (admitted, not yet shipped) and were sent again; that is
+the window the design states, and why a message is not a ship-first
+write. The first full run measured ship-first p99 between 100 and 250 ms:
+writers that ship first queued on one lock and each wrote its own object.
+Now the writer whose turn comes ships everything applied so far, and the
+writers behind it find theirs shipped (`Shipper::flush`). The shipping lag
+histogram gained 1.5 s and 2 s buckets, because the 2.5 s bound could not
+show a 2 s bar was met.
 
 ### Corrections after the architecture review (2026-11-09)
 

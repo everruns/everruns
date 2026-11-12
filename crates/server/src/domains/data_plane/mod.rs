@@ -527,3 +527,90 @@ pub async fn config_diff(cp: &ControlPlane, org_id: i64) -> anyhow::Result<dp::C
         .await?;
     Ok(serde_json::from_value(diff)?)
 }
+
+/// What a restored control plane's first snapshot set aside on `org_id`'s
+/// data plane (`dp::ConfigLeftovers`); with `keep`, resolve it: `true`
+/// writes it back into this database's config, so the next delivery sends
+/// it again, `false` drops it. Either way the data plane then forgets it.
+///
+/// Decision: kept items go through the outbox like any change, so the
+/// control plane stays the one source of config. A kept agent is not in
+/// the platform's agent list (the restored database lost it); publishing
+/// that agent again starts from the platform's own revisions.
+pub async fn reconcile(
+    cp: &ControlPlane,
+    org_id: i64,
+    keep: Option<bool>,
+) -> anyhow::Result<Option<dp::ConfigLeftovers>> {
+    let plane = for_org(cp, org_id).await?;
+    let path = format!(
+        "{}/orgs/{}/config/leftovers",
+        dp::PREFIX,
+        org_public(org_id)
+    );
+    let found: Option<dp::ConfigLeftovers> = serde_json::from_value(
+        plane
+            .admin(reqwest::Method::GET, &path, &Value::Null)
+            .await?,
+    )?;
+    let (Some(left), Some(keep)) = (&found, keep) else {
+        return Ok(found);
+    };
+    if keep {
+        // Only what is still newer than this database's own revision.
+        let newer = |current: Option<crate::storage::DpConfigItemRow>, revision: u64| {
+            current.is_none_or(|item| (item.revision as u64) < revision)
+        };
+        for agent in &left.agents {
+            let current = cp.db.dp_item(org_id, "agent", &agent.agent_id).await?;
+            if newer(current, agent.revision) {
+                let change = ConfigChange::Agent(agent.clone()).to_value();
+                cp.db
+                    .dp_put_item(
+                        org_id,
+                        "agent",
+                        &agent.agent_id,
+                        agent.revision as i64,
+                        Some(&change),
+                    )
+                    .await?;
+            }
+        }
+        for secret in &left.secrets {
+            let current = cp.db.dp_item(org_id, "secret", &secret.secret_id).await?;
+            if newer(current, secret.revision) {
+                let change = ConfigChange::Secret(secret.clone()).to_value();
+                cp.db
+                    .dp_put_item(
+                        org_id,
+                        "secret",
+                        &secret.secret_id,
+                        secret.revision as i64,
+                        Some(&change),
+                    )
+                    .await?;
+            }
+        }
+        for connection in &left.connections {
+            if cp
+                .db
+                .dp_item(org_id, "connection", &connection.connection_id)
+                .await?
+                .is_none()
+            {
+                put_connection(&cp.db, org_id, connection.clone()).await?;
+            }
+        }
+    }
+    let clear = dp::ClearLeftovers {
+        command_id: format!(
+            "leftovers-{}-{}",
+            left.epoch,
+            if keep { "kept" } else { "dropped" }
+        ),
+    };
+    plane
+        .admin(reqwest::Method::POST, &path, &serde_json::to_value(&clear)?)
+        .await?;
+    Ok(found)
+}

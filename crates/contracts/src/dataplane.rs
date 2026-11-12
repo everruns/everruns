@@ -226,6 +226,31 @@ pub struct ConfigKnown {
     pub connections: Vec<String>,
 }
 
+/// `GET /dp/v1/orgs/{org}/config/leftovers`: what the data plane held
+/// that a restored control plane's first full snapshot (epoch `epoch`)
+/// lacked or held at an older revision. Set aside, not served, until an
+/// operator keeps it (the control plane sends it again as config) or
+/// drops it ([`ClearLeftovers`]). Running turns finish either way.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ConfigLeftovers {
+    pub epoch: u64,
+    pub agents: Vec<AgentDefinition>,
+    pub secrets: Vec<SealedSecret>,
+    pub connections: Vec<Connection>,
+}
+
+impl ConfigLeftovers {
+    pub fn is_empty(&self) -> bool {
+        self.agents.is_empty() && self.secrets.is_empty() && self.connections.is_empty()
+    }
+}
+
+/// `POST /dp/v1/orgs/{org}/config/leftovers`: forget the leftovers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ClearLeftovers {
+    pub command_id: String,
+}
+
 // ------------------------------------------------------------- org admin
 
 /// `PUT /dp/v1/orgs/{org}`: enable the org on this data plane.

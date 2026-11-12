@@ -165,7 +165,7 @@ pub struct Node {
     /// Sessions whose move this leader is finishing.
     moving: Mutex<HashSet<SessionId>>,
     /// Ships the committed log to the object store while this node leads.
-    shipper: crate::ship::Shipper,
+    pub(crate) shipper: crate::ship::Shipper,
     /// The cell's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
@@ -310,25 +310,7 @@ impl Node {
         tokio::spawn(self.clone().rebalance_loop());
         tokio::spawn(self.clone().control_loop());
         tokio::spawn(self.clone().tenants_loop());
-    }
-
-    /// While this node leads: ship the committed log to the object store
-    /// (see `ship`).
-    async fn ship_loop(self: Arc<Self>) {
-        let mut tick = tokio::time::interval(crate::ship::SHIP_EVERY);
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            tick.tick().await;
-            if !self.is_leader() {
-                self.shipper.reset();
-                continue;
-            }
-            let applied = *self.shared.applied.borrow();
-            self.shipper.observe(applied);
-            if let Err(error) = self.shipper.ship(applied).await {
-                tracing::warn!(cell = self.cfg.cell, %error, "log shipping failed; retrying");
-            }
-        }
+        tokio::spawn(self.clone().restore_points_loop());
     }
 
     /// On the directory cell's leader: move work from the busiest cell to
@@ -866,7 +848,14 @@ impl Node {
                     // retry a frozen session) so the loss window holds.
                     return Ok((Response::Frozen, 0));
                 }
-                self.batcher.submit(command.clone()).await
+                match self.batcher.submit(command.clone()).await {
+                    Ok((response, index)) if index > 0 && crate::ship::ships_first(&command) => {
+                        self.ship_first(index, deadline)
+                            .await
+                            .map(|()| (response, index))
+                    }
+                    other => other,
+                }
             } else {
                 match self.leader().and_then(|id| self.member_addr(id)) {
                     Some(addr) => {

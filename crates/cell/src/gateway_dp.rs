@@ -30,8 +30,9 @@ use axum::{Json, Router};
 
 use crate::control::AdminCommand;
 use crate::dp::{
-    AgentDefinition, CommandAck, CommandStatus, ConfigAck, ConfigDiff, ConfigKnown, ConfigPosition,
-    ConfigUpdate, OrgDelete, OrgEnable, OrgExport, OrgStateCommand, SealedSecret,
+    AgentDefinition, ClearLeftovers, CommandAck, CommandStatus, ConfigAck, ConfigDiff, ConfigKnown,
+    ConfigLeftovers, ConfigPosition, ConfigUpdate, OrgDelete, OrgEnable, OrgExport,
+    OrgStateCommand, SealedSecret,
 };
 use crate::gateway::Gateway;
 use crate::node::{Node, now_ms};
@@ -60,6 +61,7 @@ pub fn cell_router(node: Arc<Node>) -> Router {
         .route("/cell/orgs/{org}/full", get(cell_full))
         .route("/cell/orgs/{org}/commands/{command}", get(cell_command))
         .route("/cell/orgs/{org}/diff", post(cell_diff))
+        .route("/cell/orgs/{org}/leftovers", get(cell_leftovers))
         .route(
             "/cell/orgs/{org}/secrets/{secret}",
             get(cell_secret).post(cell_secret),
@@ -82,6 +84,10 @@ fn admin_router(node: Arc<Node>) -> Router {
         .route("/dp/v1/orgs/{org}/exports", post(export))
         .route("/dp/v1/orgs/{org}/commands/{command}", get(command_status))
         .route("/dp/v1/orgs/{org}/config/unknown", post(unknown))
+        .route(
+            "/dp/v1/orgs/{org}/config/leftovers",
+            get(leftovers).post(clear_leftovers),
+        )
         .route("/dp/v1/feed/replay", post(replay))
         .layer(axum::middleware::from_fn_with_state(
             node.cfg
@@ -413,6 +419,44 @@ async fn unknown(
         gateway
             .call(directory, &format!("/cell/orgs/{org}/diff"), Some(&body))
             .await?,
+    ))
+}
+
+/// `GET /dp/v1/orgs/{org}/config/leftovers`: what a restored control
+/// plane's first snapshot lacked (`control::OrgConfig::leftovers`).
+async fn leftovers(
+    State(node): State<Arc<Node>>,
+    Path(org): Path<String>,
+) -> Result<Json<Option<ConfigLeftovers>>, ApiError> {
+    let gateway = gateway_of(&node)?;
+    let directory = gateway.directory_cell()?;
+    Ok(Json(
+        gateway
+            .call(directory, &format!("/cell/orgs/{org}/leftovers"), None)
+            .await?,
+    ))
+}
+
+/// `POST /dp/v1/orgs/{org}/config/leftovers`: forget them (the control
+/// plane either sent them again as config or dropped them).
+async fn clear_leftovers(
+    State(node): State<Arc<Node>>,
+    Path(org): Path<String>,
+    Json(body): Json<ClearLeftovers>,
+) -> Result<Json<CommandAck>, ApiError> {
+    admin(&node, org, AdminCommand::ClearLeftovers(body))
+        .await
+        .map(Json)
+}
+
+async fn cell_leftovers(
+    State(node): State<Arc<Node>>,
+    Path(org): Path<String>,
+) -> Result<Json<Option<ConfigLeftovers>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(
+        state.orgs.orgs.get(&org).and_then(|c| c.leftovers.clone()),
     ))
 }
 
