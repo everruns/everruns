@@ -61,11 +61,11 @@ const commonProps = [...common]
   .join(", ");
 const output = `# A2UI 1.0 standard catalog
 
-Use this catalog in regular chat and Work Chat. Emit A2UI 1.0 operations in a fenced a2ui block, never HTML or JavaScript. Supported surface operations are createSurface, updateComponents, updateDataModel and deleteSurface. Every operation includes version: "v1.0". Use catalogId: "${standardUI.id}".
+Use this catalog in regular chat and Work Chat. Emit A2UI 1.0 operations in a fenced a2ui block, never HTML or JavaScript. Supported surface operations are createSurface, updateComponents, updateDataModel and deleteSurface. Every operation includes version: "1.0". Use catalogId: "${standardUI.id}".
 
-${GENERATIVE_UI_MARKDOWN_GUIDELINES}
+${GENERATIVE_UI_MARKDOWN_GUIDELINES.replaceAll('"v1.0"', '"1.0"')}
 
-## Components (69)
+## Components (${Object.keys(catalog.components).length})
 
 A component is {id, component, ...props}; props are flat, not inside a props object. All props may be literals, {"@path":"/path"}, or {"@call":"function", "args":{...}}. Child references are component ids. The root id is "root". Optional shared presentation props on components that support them: ${commonProps}.
 

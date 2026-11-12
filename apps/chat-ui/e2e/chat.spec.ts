@@ -781,7 +781,7 @@ test("A2UI 1.0 renders bound forms, charts, tabs and updates in both themes", as
   await request.get("http://127.0.0.1:9141/mode/multi_chat");
   const operations = [
     {
-      version: "v1.0",
+      version: "1.0",
       createSurface: {
         surfaceId: "review",
         catalogId: "copilotkit/standard@1",
@@ -860,7 +860,7 @@ test("A2UI 1.0 renders bound forms, charts, tabs and updates in both themes", as
     operations.map((o) => JSON.stringify(o)).join("\n") +
     "\n```\n```a2ui\n" +
     JSON.stringify({
-      version: "v1.0",
+      version: "1.0",
       updateDataModel: { surfaceId: "review", path: "/total", value: 25 },
     }) +
     "\n```";
@@ -924,7 +924,7 @@ test("all 69 standard components render from the catalog fixtures", async ({ pag
       (sample, index) =>
         "```a2ui\n" +
         JSON.stringify({
-          version: "v1.0",
+          version: "1.0",
           createSurface: {
             surfaceId: `sample-${index}`,
             catalogId: "copilotkit/standard@1",
@@ -963,7 +963,7 @@ test("rejected A2UI surfaces show source and do not break later replies", async 
 }) => {
   await request.get("http://127.0.0.1:9141/mode/multi_chat");
   const text =
-    '```a2ui\n{"version":"v1.0","createSurface":{"surfaceId":"bad","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"UnregisteredWidget"}]}}\n```\nA readable explanation still follows.';
+    '```a2ui\n{"version":"1.0","createSurface":{"surfaceId":"bad","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"UnregisteredWidget"}]}}\n```\nA readable explanation still follows.';
   await page.route("**/api/sessions/*/sse**", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
@@ -987,7 +987,7 @@ test("public A2UI 1.0 shares render with execution controls disabled", async ({
 }) => {
   await request.get("http://127.0.0.1:9141/mode/multi_chat");
   const text =
-    '```a2ui\n{"version":"v1.0","createSurface":{"surfaceId":"shared","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"Button","label":"Send private action","onClick":{"event":{"name":"private","userMessage":"Run private action"}}}]}}\n```';
+    '```a2ui\n{"version":"1.0","createSurface":{"surfaceId":"shared","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"Button","label":"Send private action","onClick":{"event":{"name":"private","userMessage":"Run private action"}}}]}}\n```';
   await page.route("**/api/chat/shared/**", (route) =>
     route.fulfill({
       json: {

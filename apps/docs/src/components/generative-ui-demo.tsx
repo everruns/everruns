@@ -14,7 +14,7 @@ function Demo() {
   const text =
     "```a2ui\n" +
     JSON.stringify({
-      version: "v1.0",
+      version: "1.0",
       createSurface: {
         surfaceId: `example-${index}-${revision}`,
         catalogId: "copilotkit/standard@1",

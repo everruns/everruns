@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildSurfaces, chartWithBaseline, isLegacy, splitUIBlocks } from "../src/protocol.ts";
+import { validateOperation } from "@copilotkit/shared";
 import { parseA2UI } from "../src/partial.ts";
 
 const create = {
@@ -112,4 +113,65 @@ test("bar charts use zero for nonnegative data without overriding authored or ne
   assert.equal(chartWithBaseline(explicit), explicit);
   const line = { chartType: "line", data: [{ amount: 5 }] };
   assert.equal(chartWithBaseline(line), line);
+});
+
+test("canonical A2UI 1.0 versions adapt to the pinned renderer without touching user data", () => {
+  const result = buildSurfaces([
+    {
+      id: "a",
+      text: fence([
+        {
+          ...create,
+          version: "1.0",
+          createSurface: { ...create.createSurface, dataModel: { version: "1.0" } },
+        },
+      ]),
+    },
+  ]);
+  const operation = [...result.surfaces.values()][0].operations[0];
+  assert.equal(operation.version, "v1.0");
+  assert.ok("createSurface" in operation);
+  assert.deepEqual(operation.createSurface.dataModel, { version: "1.0" });
+  assert.equal(result.errors.size, 0);
+});
+
+test("canonical surface updates pass the pinned validator; unsupported versions do not", () => {
+  const options = {
+    manifest: { catalogId: "copilotkit/standard@1", components: {}, functions: {} },
+    knownSurfaces: new Set(["a:demo"]),
+  };
+  for (const version of ["1.0", "v1.0", "0.9", "2.0", undefined]) {
+    const plan = buildSurfaces([
+      {
+        id: "a",
+        text: fence([
+          { version, updateDataModel: { surfaceId: "demo", path: "/count", value: 2 } },
+        ]),
+      },
+    ]);
+    const operation = [...plan.surfaces.values()][0].operations[0];
+    assert.equal(validateOperation(operation, options).ok, version === "1.0" || version === "v1.0");
+  }
+});
+
+test("canonical RPC messages cannot execute through the chat adapter", () => {
+  for (const kind of ["callRendererFunction", "callAgentFunction", "agentFunctionResponse"]) {
+    const plan = buildSurfaces([
+      {
+        id: "a",
+        text: fence([
+          {
+            version: "1.0",
+            [kind]: {
+              surfaceId: "demo",
+              functionCallId: "call",
+              callFunction: { "@call": "openUrl", args: { url: "https://example.com" } },
+            },
+          },
+        ]),
+      },
+    ]);
+    assert.equal(plan.surfaces.size, 0);
+    assert.equal(plan.errors.size, 1);
+  }
 });

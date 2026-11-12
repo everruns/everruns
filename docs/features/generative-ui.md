@@ -24,9 +24,14 @@ surface looks like this:
 
 ````text
 ```a2ui
-{"version":"v1.0","createSurface":{"surfaceId":"review","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"Button","label":"Review release","onClick":{"event":{"name":"review","userMessage":"Review the release"}}}]}}
+{"version":"1.0","createSurface":{"surfaceId":"review","catalogId":"copilotkit/standard@1","components":[{"id":"root","component":"Button","label":"Review release","onClick":{"event":{"name":"review","userMessage":"Review the release"}}}]}}
 ```
 ````
+
+Use the official `"1.0"` version marker. Saved messages with the earlier
+`"v1.0"` spelling still render. Everruns adapts the canonical marker to the
+pinned renderer at the browser boundary without changing component props or the
+data model.
 
 The root component has ID `root`; component props are flat. Further
 `updateComponents` and `updateDataModel` operations in the same answer can

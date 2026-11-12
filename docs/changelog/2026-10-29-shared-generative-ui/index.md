@@ -36,3 +36,10 @@ for the event protocol and chat integration boundaries.
 **Update 2026-10-29:** Browse eight focused pages under **Reference → Generative UI**.
 Live controls show action results locally and include Reset; no account or agent
 run is needed.
+
+## Update 2026-11-12
+
+Chat and Work Chat now accept the official A2UI `"1.0"` wire-version marker.
+New prompts and examples use it, while saved `"v1.0"` operations remain readable.
+This compatibility fix does not enable agent/renderer function RPC or arbitrary
+catalogs; the existing message and approval boundary remains unchanged.

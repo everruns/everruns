@@ -15,7 +15,7 @@ export default function GenerativeUIDevPage() {
         const surfaceId = `catalog-${index}`;
         const operations = [
           {
-            version: "v1.0",
+            version: "1.0",
             createSurface: {
               surfaceId,
               catalogId: "copilotkit/standard@1",
