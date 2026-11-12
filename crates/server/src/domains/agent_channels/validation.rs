@@ -652,6 +652,7 @@ pub(crate) fn merge_preserved_secret_fields(
             for key in [
                 "team_id",
                 "agent_surface_enabled",
+                "private_approvals",
                 "tool_visibility",
                 "generic_tool_text",
             ] {
@@ -954,6 +955,17 @@ fn validate_pact_profile(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn private_approval_setting_survives_omission_but_can_be_disabled() {
+        let existing = json!({"private_approvals": true});
+        let mut edited = json!({"session_strategy": "per_channel"});
+        merge_preserved_secret_fields(ChannelType::Slack, &mut edited, &existing);
+        assert_eq!(edited["private_approvals"], true);
+        let mut explicit = json!({"private_approvals": false});
+        merge_preserved_secret_fields(ChannelType::Slack, &mut explicit, &existing);
+        assert_eq!(explicit["private_approvals"], false);
+    }
 
     #[test]
     fn agentid_preset_requires_a_client_id_audience() {

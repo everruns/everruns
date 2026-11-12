@@ -284,3 +284,22 @@ Naming is the useful part of a small fan-out and noise in a large one, so tasks
 are named up to five and reported as counts beyond that, with the exceptions
 (failed, canceled, awaiting input) ordered first because that is what a reader
 is scanning for.
+
+## Private approval delivery
+
+Channels may opt into requester-only ephemeral cards with `private_approvals`.
+Visibility is recorded in the signed card binding, so a later configuration
+change cannot cause the click handler to publish private contents. Private cards
+carry the original channel/thread destination because an ephemeral message
+identifier is not a public thread root. Missing recipients, oversized bindings,
+and delivery failures fail closed rather than posting the question publicly.
+The existing tenant, requester, turn and single-use checks remain authoritative.
+
+Slack does not persist ephemeral cards across reconnects and `chat.update` cannot
+edit them. Resolution uses the signed interaction’s short-lived Slack callback,
+without storing the callback URL or following redirects. Missing/expired callbacks
+leave a cosmetically stale card, not reusable consent. A user with session access
+can answer the durable pending request in Everruns if the card disappears; a
+restart does not promise to recreate an ephemeral card. This is card visibility,
+not end-to-end private conversation delivery: subsequent agent output follows the
+existing channel policy.

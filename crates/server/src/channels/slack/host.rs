@@ -659,6 +659,7 @@ impl TurnDeliveryPlanner for SlackTurnPlanner {
         let adapter = Arc::new(SlackTurnAdapter {
             inner: self.state.delivery_adapter.clone(),
             approval_cards: approvals_enabled(hints.as_ref()),
+            private_approvals: self.config.private_approvals,
             requester: target.extra.get(SLACK_RECIPIENT_USER_ID).cloned(),
         });
         let options = slack_turn_options(

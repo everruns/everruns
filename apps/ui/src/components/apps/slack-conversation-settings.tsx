@@ -147,3 +147,33 @@ export function SlackAgentPaneSettings({
     </div>
   );
 }
+
+export function SlackPrivateApprovalSettings({
+  enabled,
+  onChange,
+  idPrefix = "slack",
+}: {
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+  idPrefix?: string;
+}) {
+  const ui = useUiTranslations();
+  return (
+    <div className="space-y-2 border-t pt-4">
+      <div className="flex items-center justify-between gap-4">
+        <Label htmlFor={`${idPrefix}_private_approvals`}>{ui("Private approval cards")}</Label>
+        <Switch
+          id={`${idPrefix}_private_approvals`}
+          checked={enabled}
+          onCheckedChange={onChange}
+          aria-describedby={`${idPrefix}_private_approvals_help`}
+        />
+      </div>
+      <p id={`${idPrefix}_private_approvals_help`} className="text-xs text-muted-foreground">
+        {ui(
+          "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.",
+        )}
+      </p>
+    </div>
+  );
+}
