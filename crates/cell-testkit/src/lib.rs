@@ -197,12 +197,10 @@ impl everruns::ChatDriver for StampSim {
                 return None;
             }
             if n == STAMPS {
-                let done = LlmCompletionMetadata {
-                    prompt_tokens: Some(1),
-                    completion_tokens: Some(STAMPS as u32),
-                    total_tokens: Some(STAMPS as u32 + 1),
-                    ..Default::default()
-                };
+                let mut done = LlmCompletionMetadata::default();
+                done.prompt_tokens = Some(1);
+                done.completion_tokens = Some(STAMPS as u32);
+                done.total_tokens = Some(STAMPS as u32 + 1);
                 return Some((Ok(LlmStreamEvent::Done(Box::new(done))), n + 1));
             }
             if n > 0 {

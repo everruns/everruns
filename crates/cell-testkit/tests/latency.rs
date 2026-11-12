@@ -4,7 +4,9 @@
 //!
 //! The `stamp` model writes the time it made each delta into the delta, so
 //! the client measures make-to-arrival without any clock but its own. The
-//! numbers are printed for the step's record.
+//! numbers are printed for the step's record; the gate's are from a release
+//! build (`cargo test --profile release-ci -p everruns-cell-testkit --test
+//! latency -- --nocapture`).
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -160,8 +162,13 @@ async fn deltas_reach_200_streaming_clients_within_100ms_p99() {
         "few deltas: {}",
         deltas.len()
     );
-    assert!(first_p99 < 100.0, "first delta p99 {first_p99:.1} ms");
-    assert!(p99 < 100.0, "delta p99 {p99:.1} ms");
+    // The budget is a release number. Unoptimized, with three nodes, two
+    // executors and 200 clients sharing one process on a small runner, the
+    // check keeps a looser bound that still catches a stream that batches
+    // or stalls.
+    let budget = if cfg!(debug_assertions) { 500.0 } else { 100.0 };
+    assert!(first_p99 < budget, "first delta p99 {first_p99:.1} ms");
+    assert!(p99 < budget, "delta p99 {p99:.1} ms");
 }
 
 #[tokio::test(flavor = "multi_thread")]
