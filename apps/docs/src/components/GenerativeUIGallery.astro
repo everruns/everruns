@@ -22,7 +22,7 @@ const components = [...new Set(entries.flatMap(({ sample }) => sample.covers))].
   <div class="gallery-cards">
     {entries.map(({ sample, index }) => {
       const operation = {
-        version: "v1.0",
+        version: "1.0",
         createSurface: {
           surfaceId: `example-${index}`,
           catalogId: "copilotkit/standard@1",

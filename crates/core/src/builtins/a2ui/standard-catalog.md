@@ -1,6 +1,6 @@
 # A2UI 1.0 standard catalog
 
-Use this catalog in regular chat and Work Chat. Emit A2UI 1.0 operations in a fenced a2ui block, never HTML or JavaScript. Supported surface operations are createSurface, updateComponents, updateDataModel and deleteSurface. Every operation includes version: "v1.0". Use catalogId: "copilotkit/standard@1".
+Use this catalog in regular chat and Work Chat. Emit A2UI 1.0 operations in a fenced a2ui block, never HTML or JavaScript. Supported surface operations are createSurface, updateComponents, updateDataModel and deleteSurface. Every operation includes version: "1.0". Use catalogId: "copilotkit/standard@1".
 
 You can show interactive UI in your reply. Write A2UI operations inside a fenced code block tagged a2ui.
 
@@ -12,11 +12,11 @@ RULES
 - Open a fence with ```a2ui target=<id> to show the surface in a named target. Use only target ids from the schema. When a target has "components", its surfaces can use only those components.
 - Inside a fence, write one JSON object per line and nothing else. No comments, no trailing commas, no pretty-printing.
 - Keep each operation whole on its line.
-- Give every operation "version":"v1.0".
+- Give every operation "version":"1.0".
 - Start a surface with one createSurface. Put all the initial data in "dataModel" and the "root" component in "components". Then write the children in updateComponents lines, so that they show while you write:
   ```a2ui
-  {"version":"v1.0","createSurface":{"surfaceId":"plan-picker","dataModel":{ ...initial data... },"components":[{"id":"root","component":"<Name>","children":["seats","pick"]}]}}
-  {"version":"v1.0","updateComponents":{"surfaceId":"plan-picker","components":[ ...the children... ]}}
+  {"version":"1.0","createSurface":{"surfaceId":"plan-picker","dataModel":{ ...initial data... },"components":[{"id":"root","component":"<Name>","children":["seats","pick"]}]}}
+  {"version":"1.0","updateComponents":{"surfaceId":"plan-picker","components":[ ...the children... ]}}
   ```
 - Keep "dataModel" flat: top-level keys such as "seats" or "form", never one wrapper object around everything. Check that every { and [ you open in a line is closed.
 - Every surface renders from the component with id "root". Make every other component reachable from "root" through slots.
@@ -31,7 +31,7 @@ RULES
 - ${...} is evaluated only in the value of formatString and in the item of series; in other strings it stays literal text. Inside formatString, ${...} does not support operators. For arithmetic use calc, with the values as named args: {"@call":"calc","args":{"expression":"seats * 29 * (annual ? 0.8 : 1)","seats":{"@path":"/seats"},"annual":{"@path":"/annual"}}}. Inside formatString: ${formatCurrency(value: calc(expression: 'seats * 29', seats: /seats), currency: 'USD')}. The UI then follows the user's input with no round trip.
 - For a computed list (chart data, template items) use series. Its description under "functions" in the schema gives the rules and an example. Bind the "data" of a Chart or the "items" of a List to it; a template path stays a literal path.
 - Bind a writable prop to let the user edit it: "value":{"@path":"/form/email"}. The user's input goes to that path.
-- To change data, write updateDataModel with a "path" and a "value": {"version":"v1.0","updateDataModel":{"surfaceId":"plan-picker","path":"/seats","value":12}}. Always give "value".
+- To change data, write updateDataModel with a "path" and a "value": {"version":"1.0","updateDataModel":{"surfaceId":"plan-picker","path":"/seats","value":12}}. Always give "value".
 - Set "value":null to delete the key at "path".
 - Give an event prop an object: {"event":{"name":"<name>","userMessage":"<text>","context":{...}}} or {"functionCall":{"@call":"<function>","args":{...}}}. Never a flat {"event":"<name>"}.
 - Use {"functionCall": ...} to run a function in the browser when the user clicks: an app function from the schema, or openUrl: {"functionCall":{"@call":"openUrl","args":{"url":"https://example.com"}}}. You are not told about the call.

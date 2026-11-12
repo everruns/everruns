@@ -57,6 +57,15 @@ values through the same callback. No OpenUI Query/Mutation tool provider is
 registered. Neither `callRendererFunction` nor `callAgentFunction` operations
 are supported. Rendering is not authorization for an agent action.
 
+## Wire-version compatibility
+
+The official A2UI 1.0 schema uses `"1.0"`; the pinned renderer still expects
+`"v1.0"`. The [protocol adapter](../../apps/ui/generative-ui/src/protocol.ts)
+translates that envelope marker only. Agent prompts and new examples use the
+canonical spelling; saved prefixed operations remain readable. Other versions
+are not promoted, and payload strings are never rewritten. This adapter does not
+expand the supported operation or catalog set.
+
 ## Compatibility, streaming and containment
 
 Saved nested `{type, props, children}` trees still render through one shared

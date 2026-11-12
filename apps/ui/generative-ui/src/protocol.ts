@@ -114,7 +114,14 @@ export function buildSurfaces(messages: readonly UIMessage[], streaming = false)
           errors.set(key, "Invalid A2UI operation");
           continue;
         }
-        const operation = { ...raw, [kind]: { ...body, surfaceId } } as A2UIOperation;
+        // The official 1.0 wire marker is "1.0". CopilotKit 1.83 still
+        // validates its older "v1.0" spelling. Adapt only the envelope,
+        // leaving model data untouched and preserving saved legacy messages.
+        const operation = {
+          ...raw,
+          version: raw.version === "1.0" ? "v1.0" : raw.version,
+          [kind]: { ...body, surfaceId },
+        } as A2UIOperation;
         let surface = surfaces.get(surfaceId);
         if (!surface) {
           if (surfaces.size >= 100) {
