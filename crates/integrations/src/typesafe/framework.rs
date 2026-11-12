@@ -86,6 +86,13 @@ impl Handler for Jev {
         input: EvaluateInput,
         _context: definition::Context,
     ) -> Result<Value, Self::Error> {
+        if !input.files.is_empty() {
+            // A library host has no session file store to read them from.
+            return Err(definition::Error::user(
+                "jev_decision_failed",
+                "files need a hosted session; attach media with DecisionRequest::attach",
+            ));
+        }
         let mut request = crate::typesafe::bound::decision_request(input, &self.model.model)
             .map_err(|error| definition::Error::user("jev_decision_failed", error))?;
         request.provider = Some(self.model.provider.clone());

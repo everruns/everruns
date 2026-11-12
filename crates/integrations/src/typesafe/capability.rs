@@ -244,6 +244,11 @@ impl Tool for JevDecisionTool {
                 "Decision model resolution requires a configured host",
             );
         }
+        if !input.files.is_empty() {
+            return ToolExecutionResult::tool_error(
+                "TypeSafe reads text only; select a decision model that reads media, such as Gemini Decision 1, to attach files",
+            );
+        }
         let api_key = match get_api_key(context).await {
             Ok(key) => key,
             Err(error) => return error,

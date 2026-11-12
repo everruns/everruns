@@ -289,6 +289,98 @@ async fn a_gemini_decision_model_runs_on_the_decisions_api_and_is_priced() {
     assert!((cost - 0.0001).abs() < 1e-12, "{cost}");
 }
 
+/// Answers like Gemini when the request carries an attached image.
+struct GeminiMediaNetwork;
+#[async_trait]
+impl EgressService for GeminiMediaNetwork {
+    async fn send(&self, _: EgressRequest) -> EgressResult<EgressResponse> {
+        panic!("must stream")
+    }
+    async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        assert_eq!(
+            body["input"],
+            json!([
+                {"type": "text", "text": "private content"},
+                {"type": "image", "mime_type": "image/png", "data": "iVBORw=="},
+            ])
+        );
+        let response = json!({"answers":{"q0":{"type":"noul","noul":0.9,"confidence":0.9}},"usage":{"total_input_tokens":1200,"total_output_tokens":0}});
+        Ok(EgressStreamResponse {
+            status: 200,
+            headers: Default::default(),
+            body: Box::pin(futures::stream::iter(vec![Ok(serde_json::to_vec(
+                &response,
+            )
+            .unwrap())])),
+        })
+    }
+}
+
+fn gemini_binding() -> DecisionModelBinding {
+    DecisionModelBinding {
+        provider_type: "gemini".into(),
+        model: "gemini-decision-1".into(),
+        profile_key: "google/gemini-decision-1".into(),
+        headers: Default::default(),
+        ..binding()
+    }
+}
+
+fn input_with_files(files: &[&str]) -> EvaluateInput {
+    serde_json::from_value(json!({
+        "state": "private content",
+        "files": files,
+        "questions": [{"id": "q", "type": "noul", "instructions": "True?"}]
+    }))
+    .unwrap()
+}
+
+#[tokio::test]
+async fn session_files_reach_gemini_as_inline_media() {
+    use everruns_contracts::runtime::session_files::SessionFileSystem;
+    let (mut context, _) = context(vec![], "active");
+    context.egress_service = Some(Arc::new(GeminiMediaNetwork));
+    let store = Arc::new(everruns_core::host::InMemorySessionFileStore::default());
+    store
+        .write_file(context.session_id, "/photo.png", "iVBORw==", "base64")
+        .await
+        .unwrap();
+    context.file_store = Some(store);
+    let result = evaluate(
+        gemini_binding(),
+        input_with_files(&["/workspace/photo.png"]),
+        &context,
+    )
+    .await
+    .unwrap();
+    assert_eq!(result["answers"]["q"]["probability_yes"], 0.9);
+
+    let error = evaluate(
+        gemini_binding(),
+        input_with_files(&["/missing.png"]),
+        &context,
+    )
+    .await
+    .unwrap_err();
+    assert!(error.contains("no such session file"), "{error}");
+    let error = evaluate(gemini_binding(), input_with_files(&["/notes.md"]), &context)
+        .await
+        .unwrap_err();
+    assert!(error.contains("images, audio, video and PDFs"), "{error}");
+}
+
+#[tokio::test]
+async fn a_text_only_decision_model_refuses_files_before_any_call() {
+    // `Network` would panic on the wrong body; the call never gets there.
+    let (context, events) = context(vec![], "active");
+    let error = evaluate(binding(), input_with_files(&["/photo.png"]), &context)
+        .await
+        .unwrap_err();
+    assert!(error.contains("reads text only"), "{error}");
+    assert!(events.0.lock().unwrap().is_empty());
+}
+
 /// A deployment-owned check asked of the org's model: the binding's model
 /// wins over whatever the caller named, and the call is budgeted and metered
 /// like the Jev tool.

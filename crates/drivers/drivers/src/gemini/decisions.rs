@@ -18,6 +18,10 @@
 // Answers are then validated by the System One decoder, so a Gemini outcome
 // passes the same calibration checks as TypeSafe's.
 //
+// Media (images, audio, video, PDFs) goes in `input` as Content parts after
+// the text: `{"type": "image"|"audio"|"video"|"document", "data"|"uri",
+// "mime_type"}`; the API names those five types only (probed 2026-11-12).
+//
 // Verified live on 2026-11-12: null choice descriptions are accepted, and
 // score rubrics above ten levels are answered (the API allows 2-255). The
 // request cap stays at System One's (20 questions, 10 levels) so every
@@ -25,8 +29,12 @@
 
 use async_trait::async_trait;
 use everruns_contracts::ProviderEndpoint;
-use everruns_contracts::decision_driver::{DecisionDriver, DecisionDriverCapabilities};
-use everruns_contracts::decisions::{DecisionOutcome, DecisionQuestion, DecisionRequest};
+use everruns_contracts::decision_driver::{
+    DecisionDriver, DecisionDriverCapabilities, NativePrimitives,
+};
+use everruns_contracts::decisions::{
+    DecisionMediaSource, DecisionOutcome, DecisionQuestion, DecisionRequest,
+};
 use everruns_contracts::error::{AgentLoopError, Result};
 use serde_json::{Map, Value, json};
 
@@ -34,6 +42,10 @@ use crate::systemone::SystemOneDecisionDriver;
 
 /// The model the Decisions API serves, sent when a request names none.
 pub const DEFAULT_MODEL: &str = "gemini-decision-1";
+
+/// Encoded media per request. The API takes 100 MB inline; this keeps one
+/// call inside the transport's timeout and response budget.
+pub const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;
 
 /// Gemini Decisions API driver.
 #[derive(Clone, Debug, Default)]
@@ -53,7 +65,7 @@ impl DecisionDriver for GeminiDecisionDriver {
     }
 
     fn capabilities(&self) -> DecisionDriverCapabilities {
-        self.0.capabilities()
+        capabilities()
     }
 
     async fn evaluate(
@@ -72,6 +84,16 @@ impl DecisionDriver for GeminiDecisionDriver {
     }
 }
 
+/// System One's limits, plus media.
+fn capabilities() -> DecisionDriverCapabilities {
+    DecisionDriverCapabilities::new(NativePrimitives::ALL, true)
+        .with_max_questions(20)
+        .with_max_state_bytes(128 * 1024)
+        .with_max_choice_options(255)
+        .with_max_score_levels(10)
+        .with_media(MAX_MEDIA_BYTES)
+}
+
 fn with_model(mut request: DecisionRequest) -> DecisionRequest {
     if request.model.as_deref().is_none_or(|m| m.trim().is_empty()) {
         request.model = Some(DEFAULT_MODEL.into());
@@ -83,10 +105,29 @@ fn with_model(mut request: DecisionRequest) -> DecisionRequest {
 /// limits first; a request without a model asks [`DEFAULT_MODEL`].
 pub fn encode(request: &DecisionRequest) -> Result<Value> {
     let request = with_model(request.clone());
-    crate::systemone::evaluation(&request)?;
-    let input = match &request.state {
+    // The System One rules cover the questions; media is Gemini's own.
+    let mut questions_only = request.clone();
+    questions_only.media.clear();
+    crate::systemone::evaluation(&questions_only)?;
+    capabilities().check("gemini", &request)?;
+    let text = match &request.state {
         Value::String(text) => text.clone(),
         other => other.to_string(),
+    };
+    let input = if request.media.is_empty() {
+        Value::String(text)
+    } else {
+        let mut parts = vec![json!({"type": "text", "text": text})];
+        for media in &request.media {
+            let mut part =
+                json!({"type": media_kind(&media.mime_type)?, "mime_type": media.mime_type});
+            match &media.source {
+                DecisionMediaSource::Data(data) => part["data"] = data.clone().into(),
+                DecisionMediaSource::Uri(uri) => part["uri"] = uri.clone().into(),
+            }
+            parts.push(part);
+        }
+        Value::Array(parts)
     };
     let mut questions = Map::new();
     for (index, (_, question)) in request.questions.iter().enumerate() {
@@ -128,6 +169,22 @@ pub fn encode(request: &DecisionRequest) -> Result<Value> {
         questions.insert(format!("q{index}"), body);
     }
     Ok(json!({"model": request.model, "input": input, "questions": questions}))
+}
+
+/// The Content part type for a media type.
+fn media_kind(mime_type: &str) -> Result<&'static str> {
+    let mime = mime_type.to_ascii_lowercase();
+    Ok(match mime.split_once('/').map(|(kind, _)| kind) {
+        Some("image") => "image",
+        Some("audio") => "audio",
+        Some("video") => "video",
+        _ if mime == "application/pdf" => "document",
+        _ => {
+            return Err(AgentLoopError::llm(format!(
+                "Gemini decisions read images, audio, video and PDFs, not {mime_type}"
+            )));
+        }
+    })
 }
 
 /// Validate a Decisions API reply to `request` into a calibrated outcome.
@@ -236,6 +293,43 @@ mod tests {
         let body = encode(&structured).unwrap();
         assert_eq!(body["input"], r#"{"order":7}"#);
         assert!(body["questions"]["q0"].get("criteria").is_none());
+    }
+
+    #[test]
+    fn media_follows_the_text_as_typed_content_parts() {
+        use everruns_contracts::decisions::DecisionMedia;
+        let with_media = request()
+            .attach(DecisionMedia::bytes("image/png", b"png"))
+            .attach(DecisionMedia::uri(
+                "application/pdf",
+                "https://example.com/a.pdf",
+            ));
+        let body = encode(&with_media).unwrap();
+        assert_eq!(
+            body["input"],
+            json!([
+                {"type": "text", "text": "My payment failed twice today."},
+                {"type": "image", "mime_type": "image/png", "data": "cG5n"},
+                {"type": "document", "mime_type": "application/pdf", "uri": "https://example.com/a.pdf"},
+            ])
+        );
+        let zip = request().attach(DecisionMedia::bytes("application/zip", b"zip"));
+        assert!(
+            encode(&zip)
+                .unwrap_err()
+                .to_string()
+                .contains("not application/zip")
+        );
+        let huge = request().attach(DecisionMedia::bytes(
+            "video/mp4",
+            vec![0u8; MAX_MEDIA_BYTES],
+        ));
+        assert!(
+            encode(&huge)
+                .unwrap_err()
+                .to_string()
+                .contains("bytes of media")
+        );
     }
 
     #[test]

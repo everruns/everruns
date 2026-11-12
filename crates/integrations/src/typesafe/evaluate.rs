@@ -34,6 +34,10 @@ pub struct EvaluateInput {
     pub state: Value,
     /// The questions to ask about it.
     pub questions: Vec<InputQuestion>,
+    /// Session files (images, audio, video, PDFs) read alongside `state`.
+    /// Only decision models that read media accept them.
+    #[serde(default)]
+    pub files: Vec<String>,
 }
 
 /// One question in an [`EvaluateInput`].
@@ -122,6 +126,12 @@ pub(crate) fn schema() -> Value {
                         }
                     }
                 }
+            },
+            "files": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": crate::typesafe::media::MAX_FILES,
+                "description": "Optional session file paths (images, audio, video or PDFs, e.g. /workspace/photo.jpg) for the model to read together with `state`. Only decision models that read media accept them, such as Gemini Decision 1; others refuse the call."
             }
         },
         "required": ["state", "questions"],

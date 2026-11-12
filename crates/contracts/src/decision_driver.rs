@@ -70,8 +70,11 @@ pub struct DecisionDriverCapabilities {
     pub native: NativePrimitives,
     /// Whether answers are measured distributions rather than labels.
     pub calibrated: bool,
-    /// Whether the vendor accepts image content in the state.
-    pub image_state: bool,
+    /// Whether the vendor reads [`DecisionMedia`](crate::decisions::DecisionMedia)
+    /// (images, audio, video, PDFs) alongside the state.
+    pub media: bool,
+    /// Most media bytes (base64 or URL text) one request may carry.
+    pub max_media_bytes: Option<usize>,
     /// Most questions one request may carry, when the vendor caps it.
     pub max_questions: Option<usize>,
     /// Most options (or levels) one question may carry.
@@ -85,7 +88,7 @@ pub struct DecisionDriverCapabilities {
 
 impl DecisionDriverCapabilities {
     /// Capabilities with the given native primitives and calibration, no
-    /// image input, and no declared limits.
+    /// media input, and no declared limits.
     pub fn new(native: NativePrimitives, calibrated: bool) -> Self {
         Self {
             native,
@@ -94,9 +97,11 @@ impl DecisionDriverCapabilities {
         }
     }
 
-    /// Declare image support.
-    pub fn with_image_state(mut self, image_state: bool) -> Self {
-        self.image_state = image_state;
+    /// Declare media support, capped at `max_bytes` of encoded media per
+    /// request.
+    pub fn with_media(mut self, max_bytes: usize) -> Self {
+        self.media = true;
+        self.max_media_bytes = Some(max_bytes);
         self
     }
 
@@ -169,6 +174,21 @@ impl DecisionDriverCapabilities {
                 return Err(AgentLoopError::llm(
                     "Decision question exceeds primitive limit",
                 ));
+            }
+        }
+        if !request.media.is_empty() {
+            if !self.media {
+                return Err(AgentLoopError::llm(format!(
+                    "decision driver '{driver}' reads text only; this request attaches media"
+                )));
+            }
+            let bytes: usize = request.media.iter().map(|m| m.wire_len()).sum();
+            if let Some(max) = self.max_media_bytes
+                && bytes > max
+            {
+                return Err(AgentLoopError::llm(format!(
+                    "decision driver '{driver}' accepts at most {max} bytes of media, got {bytes}"
+                )));
             }
         }
         if let Some(max) = self.max_state_bytes {
@@ -290,6 +310,23 @@ mod tests {
 
         let error = caps.check("x", &DecisionRequest::new("s")).unwrap_err();
         assert!(error.to_string().contains("at least one question"));
+    }
+
+    #[test]
+    fn media_needs_a_driver_that_reads_it() {
+        let photo = DecisionRequest::new("s")
+            .attach(crate::decisions::DecisionMedia::bytes(
+                "image/png",
+                [1u8; 30],
+            ))
+            .ask("q", DecisionQuestion::noul("Yes?"));
+        let text_only = DecisionDriverCapabilities::new(NativePrimitives::ALL, true);
+        let error = text_only.check("typesafe", &photo).unwrap_err();
+        assert!(error.to_string().contains("reads text only"), "{error}");
+        let reads = text_only.clone().with_media(64);
+        assert!(reads.check("gemini", &photo).is_ok());
+        let error = text_only.with_media(8).check("gemini", &photo).unwrap_err();
+        assert!(error.to_string().contains("bytes of media"), "{error}");
     }
 
     #[test]
