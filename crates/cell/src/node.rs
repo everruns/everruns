@@ -313,34 +313,6 @@ impl Node {
         tokio::spawn(self.clone().restore_points_loop());
     }
 
-    /// While this node leads: ship the committed log to the object store
-    /// (see `ship`).
-    async fn ship_loop(self: Arc<Self>) {
-        let mut tick = tokio::time::interval(crate::ship::SHIP_EVERY);
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            tick.tick().await;
-            if !self.is_leader() {
-                self.shipper.reset();
-                continue;
-            }
-            let applied = *self.shared.applied.borrow();
-            let inc = self.shared.state.read().incarnation;
-            self.shipper.observe(applied);
-            let waiting = self.shipper.waiting_since();
-            let shipped = self.shipper.ship(applied, inc).await;
-            if let (Ok(_), Some(since)) = (&shipped, waiting) {
-                // The wait is noticed at a tick, so the oldest entry may
-                // have been applied up to one tick earlier: count it.
-                let lag = since.elapsed() + crate::ship::SHIP_EVERY;
-                self.prom.ship_lag_seconds.observe(&[], lag);
-            }
-            if let Err(error) = shipped {
-                tracing::warn!(cell = self.cfg.cell, %error, "log shipping failed; retrying");
-            }
-        }
-    }
-
     /// On the directory cell's leader: move work from the busiest cell to
     /// the least busy one, a few sessions at a time.
     ///

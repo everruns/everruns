@@ -1,6 +1,6 @@
 //! The leader's upkeep of its cell's restore points (`restore_points.rs`):
 //! a snapshot at least every [`RESTORE_POINT_EVERY`] and before a drain,
-//! answering ship-first writes, and collecting what the restore window no
+//! shipping the log each round, answering ship-first writes, and collecting what the restore window no
 //! longer needs.
 //!
 //! Decisions:
@@ -75,6 +75,34 @@ impl Node {
                         tracing::warn!(cell = self.cfg.cell, %error, "collecting restore points failed")
                     }
                 }
+            }
+        }
+    }
+
+    /// While this node leads: ship the committed log to the object store
+    /// (see `ship`).
+    pub(crate) async fn ship_loop(self: Arc<Self>) {
+        let mut tick = tokio::time::interval(crate::ship::SHIP_EVERY);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            if !self.is_leader() {
+                self.shipper.reset();
+                continue;
+            }
+            let applied = *self.shared.applied.borrow();
+            let inc = self.shared.state.read().incarnation;
+            self.shipper.observe(applied);
+            let waiting = self.shipper.waiting_since();
+            let shipped = self.shipper.ship(applied, inc).await;
+            if let (Ok(_), Some(since)) = (&shipped, waiting) {
+                // The wait is noticed at a tick, so the oldest entry may
+                // have been applied up to one tick earlier: count it.
+                let lag = since.elapsed() + crate::ship::SHIP_EVERY;
+                self.prom.ship_lag_seconds.observe(&[], lag);
+            }
+            if let Err(error) = shipped {
+                tracing::warn!(cell = self.cfg.cell, %error, "log shipping failed; retrying");
             }
         }
     }
