@@ -1018,9 +1018,9 @@ jobs:
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.mode == 'pr' && needs.changes.outputs.has_tests == 'true'
-    # A server cache miss measured 35m compiling plus six minutes of tests.
+    # A server cache miss measured 43m compiling plus >7m of unit tests.
     # Retain every selected test and bounded cold-build headroom.
-    timeout-minutes: ${{ matrix.group == 'server' && 50 || 40 }}
+    timeout-minutes: ${{ matrix.group == 'server' && 60 || 40 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.changes.outputs.matrix) }}

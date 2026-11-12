@@ -214,6 +214,12 @@ durable 9.1m to 2-3m.
   Test selection, cache keys, compile memory limits, profiles and execution
   concurrency are unchanged. This margin is not evidence
   of a warm-cache latency improvement or a guarantee that a cache remains resident.
+  The focused server leg also needs sixty minutes: a later cache miss spent
+  43m03s compiling, then timed out at fifty minutes while its 4,331 unit tests
+  were still running, before contracts and selected domain tests
+  ([run](https://github.com/everruns/everruns/actions/runs/43303479124/job/131480765761)).
+  That run exposed an obsolete Browserless opt-in fixture, removed separately;
+  additional headroom does not waive a failing test.
   The S3 blob backend job (a `save-if: false` consumer of `integration-v2`) found
   neither its Rust nor its sqlx-cli cache, and thirty minutes cancelled it seconds
   after both suites passed

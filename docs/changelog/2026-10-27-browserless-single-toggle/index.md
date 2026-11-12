@@ -11,6 +11,10 @@ links:
   docs: [/capabilities/browser-use/, /capabilities/computer-use/]
   prs: [everruns/everruns#4958]
 ---
+**Update:** The remaining Browserless toggle has since been removed. Browserless,
+browser use, and computer use are available by default; connecting a Browserless
+account is still required. See [Built-in integrations](/changelog/2026-11-12-built-in-integrations/).
+
 The Browserless section of adoption settings showed three separate toggles:
 Browserless, Browserless browser use, and Browserless computer use. They are
 now a single Browserless toggle. Turning it on connects your Browserless
