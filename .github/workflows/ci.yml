@@ -1192,8 +1192,8 @@ jobs:
           cargo test -p everruns-contracts --all-features
           cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,image-generation,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util,boxd,boxd-test-util -- --test-threads=1
           # Experimental integrations stay on their own support track; unit and
-          # mock-backed tests run here, while Sprites live tests remain manual.
-          cargo test -p everruns-integrations-experimental --features sprites -- --test-threads=1
+          # deterministic coverage runs here.
+          cargo test -p everruns-integrations-experimental --features agentid -- --test-threads=1
           # Code navigation. Its sandbox host is tested against a real shell,
           # and the tests need the `local` host for a workspace on disk.
           cargo test -p everruns-coding --features local
@@ -1261,7 +1261,7 @@ jobs:
             cargo test -p everruns-integrations --features cursor
             cargo test -p everruns-integrations --features e2b
             cargo test -p everruns-integrations --features github
-            cargo test -p everruns-integrations-experimental --features sprites
+            cargo test -p everruns-integrations-experimental --features agentid
             # The modal feature with its mock-gRPC tool tests; live tests run in
             # modal-integration.yml.
             cargo test -p everruns-integrations --features modal,modal-test-util

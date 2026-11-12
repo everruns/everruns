@@ -715,7 +715,6 @@ export default defineConfig({
                     { label: "DuckDuckGo", slug: "integrations/duckduckgo" },
                     { label: "Modal", slug: "integrations/modal" },
                     { label: "Parallel", slug: "integrations/parallel" },
-                    { label: "Sprites", slug: "integrations/sprites" },
                     { label: "TypeSafe", slug: "integrations/typesafe" },
                   ],
                 },

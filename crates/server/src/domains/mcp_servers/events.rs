@@ -12,7 +12,7 @@
 //!
 //! Decision: access is re-checked at every delivery, not only at subscribe
 //! time: the subscriber must still be a member of the org, still hold session
-//! view, and the org must still have the `mcp_events` flag. A subscriber who
+//! view. A subscriber who
 //! left the org has the subscription deleted. Platform Chat sessions are never
 //! announced, because they are private to their owner (TM-AGENT-017).
 
@@ -140,7 +140,6 @@ pub struct McpEventsService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     egress: Arc<dyn EgressService>,
-    system_flags: crate::records::FeatureFlagPolicy,
     ui_base: Option<String>,
     retry_delays: Vec<Duration>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -151,13 +150,11 @@ impl McpEventsService {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         egress: Arc<dyn EgressService>,
-        system_flags: crate::records::FeatureFlagPolicy,
     ) -> Self {
         Self {
             db,
             encryption,
             egress,
-            system_flags,
             ui_base: None,
             retry_delays: vec![
                 Duration::from_secs(1),
@@ -168,18 +165,17 @@ impl McpEventsService {
         }
     }
 
-    /// The service as the server wires it: deployment flags, payload links to
+    /// The service as the server wires it: payload links to
     /// the UI, and the permission resolver for delivery-time access checks, all
-    /// taken from the server's auth state. Inert until an org opts in.
+    /// taken from the server's auth state. Available to authenticated subscribers.
     pub fn shared(
         db: &Arc<StorageBackend>,
         encryption: &Option<Arc<EncryptionService>>,
         host: &everruns_core::host::HostComposition,
         auth: &crate::auth::AuthState,
     ) -> Arc<Self> {
-        let flags = auth.feature_flag_policy.clone();
         Arc::new(
-            Self::new(db.clone(), encryption.clone(), host.egress_service(), flags)
+            Self::new(db.clone(), encryption.clone(), host.egress_service())
                 .with_ui_base(&auth.config.frontend_url)
                 .with_permission_resolver(auth.permission_resolver.clone()),
         )
@@ -396,13 +392,7 @@ impl McpEventsService {
         let Some(session) = self.db.get_session_unscoped(event.session_id).await? else {
             return Ok(0);
         };
-        let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
-            &self.db,
-            session.org_id,
-            &self.system_flags,
-        )
-        .await?;
-        if !flags.mcp_events || self.is_platform_chat(&session).await? {
+        if self.is_platform_chat(&session).await? {
             return Ok(0);
         }
 

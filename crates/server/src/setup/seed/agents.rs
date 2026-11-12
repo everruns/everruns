@@ -378,48 +378,6 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
         dev_only: false,
     },
     SeedAgent {
-        id: seed_ids::SPRITES_CODER_AGENT,
-        name: "sprites-coder",
-        harness_name: "bashkit-worker",
-        display_name: "Sprites Coder",
-        description: "A coding agent that runs code in persistent Firecracker microVMs powered by Sprites",
-        system_prompt: r#"You are a Sprites Coder Agent. You run code in persistent, hardware-isolated Linux microVMs powered by Sprites.
-
-Just call tools directly — the API token is resolved automatically from Settings > Connections.
-
-Workflow:
-1. Create sprite: `sprites_create_sprite` (working directory: /home/user)
-2. Write code / install deps: `sprites_write_file`, `sprites_exec`
-3. Read results: `sprites_read_file`
-4. Checkpoint before risky operations: `sprites_checkpoint`
-5. Roll back if needed: `sprites_restore_checkpoint`
-6. Expose HTTP services: listen on port 8080, get URL with `sprites_service_url`
-7. Clean up: `sprites_manage_sprite` action="delete"
-
-Key features:
-- Persistent filesystem survives idle/hibernation
-- Checkpoints snapshot state in ~300ms for safe rollback
-- Each sprite has a public HTTP URL for serving web apps
-- Instant wake from hibernation (<1s)
-
-Always delete sprites when done to avoid storage charges."#,
-        tags: &[
-            "coding",
-            "cloud",
-            "sandbox",
-            "sprites",
-            "persistent",
-            "demo",
-            "seed",
-        ],
-        capabilities: &[
-            SeedCapability::new("sprites"),
-            SeedCapability::new("session_storage"),
-            SeedCapability::new("session_file_system"),
-        ],
-        dev_only: true, // Experimental: the sprites capability is dev-grade only
-    },
-    SeedAgent {
         id: MODAL_CODER_AGENT,
         name: "modal-coder",
         harness_name: "bashkit-worker",

@@ -628,7 +628,7 @@ async fn a_rejected_subscribe_leaves_no_trigger_behind() {
 }
 
 #[tokio::test]
-async fn create_validates_the_server_attachment_and_flag() {
+async fn create_validates_server_attachment_despite_retired_override() {
     let server = TestServer::in_memory().await;
     let fake = FakeEventsServer::install(&server);
     let agent_id = create_agent(&server).await;
@@ -653,7 +653,7 @@ async fn create_validates_the_server_attachment_and_flag() {
         .assert_status(StatusCode::BAD_REQUEST);
     assert!(fake.calls("events/subscribe").is_empty());
 
-    // With the org's `mcp_events` flag off, nothing subscribes.
+    // A retired org opt-out does not prevent a valid subscription.
     let flags: HashMap<String, bool> = [("mcp_events".to_string(), false)].into();
     server
         .db
@@ -663,12 +663,12 @@ async fn create_validates_the_server_attachment_and_flag() {
     server
         .post(&triggers, trigger_request("tracker"))
         .await
-        .assert_status(StatusCode::NOT_FOUND);
-    assert!(fake.calls("events/subscribe").is_empty());
+        .assert_status(StatusCode::CREATED);
+    assert_eq!(fake.calls("events/subscribe").len(), 1);
 }
 
 #[tokio::test]
-async fn deliveries_stop_when_the_flag_is_turned_off() {
+async fn deliveries_ignore_retired_flag_override() {
     let server = TestServer::in_memory().await;
     let fake = FakeEventsServer::install(&server);
     let agent_id = create_agent(&server).await;
@@ -684,5 +684,5 @@ async fn deliveries_stop_when_the_flag_is_turned_off() {
     subscription
         .post(&server, "msg_flag_off", &event("x", "c"))
         .await
-        .assert_status(StatusCode::GONE);
+        .assert_status(StatusCode::OK);
 }

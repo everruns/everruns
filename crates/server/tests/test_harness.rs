@@ -682,7 +682,6 @@ impl TestServer {
         feature_flags.memory = true;
         feature_flags.knowledge = true;
         feature_flags.plugins = true;
-        feature_flags.mcp_events = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
         // into the experimental flags integration tests exercise.
@@ -694,10 +693,6 @@ impl TestServer {
             "plugins",
             "observers",
             "voice",
-            "mcp_events",
-            // Prod-graded, so on for every org; the harness grades every flag
-            // Adoption and needs the opt-in to match production.
-            "agent_change_reasons_required",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))
@@ -727,7 +722,6 @@ impl TestServer {
                 db.clone(),
                 encryption.clone(),
                 webhooks.clone(),
-                feature_flag_policy.clone(),
             )
             .with_ui_base(auth_config.frontend_url.clone())
             .with_retry_delays(vec![std::time::Duration::ZERO; 2])
@@ -747,7 +741,6 @@ impl TestServer {
                 encryption.clone(),
                 mcp_servers.clone(),
                 auth_config.base_url.clone(),
-                feature_flag_policy.clone(),
             ),
         );
 

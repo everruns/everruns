@@ -48,9 +48,6 @@ jobs:
             command: cargo test -p everruns-integrations --features modal-live-tests --test modal_live -- --test-threads=1
           - name: boxd Live API Tests
             command: cargo test -p everruns-integrations --features boxd-live-tests --test boxd_live -- --test-threads=1
-          # Sprites Live API Tests are out of the sweep: Sprites is experimental
-          # and its live job runs only on manual dispatch of
-          # sprites-integration.yml.
           - name: Brave Search API Tests
             command: cargo test -p everruns-integrations --features brave-search-integration
           - name: TypeSafe System One API Tests

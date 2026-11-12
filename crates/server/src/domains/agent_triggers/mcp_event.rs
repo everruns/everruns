@@ -19,7 +19,7 @@
 //!   body is parsed; then the timestamp window and, through the shared event
 //!   pipeline, a replay check on `webhook-id`.
 //! - **410 means "stop".** A delivery for a trigger that is gone, disabled,
-//!   unsubscribed, flagged off, or for a superseded subscription id gets
+//!   unsubscribed, or for a superseded subscription id gets
 //!   `410 Gone`, which the spec defines as ending the subscription. That is the
 //!   safety net when an `events/unsubscribe` could not be delivered.
 //! - **Refresh is periodic, not durable-workflow driven.** A background loop
@@ -82,7 +82,6 @@ pub(super) async fn create_config(
     agent: &AgentRow,
     req: &CreateAgentTriggerRequest,
 ) -> Result<Value, CommandError> {
-    require_flag(ctx)?;
     let config = McpEventTriggerConfig {
         server: require_name("mcp_server", req.mcp_server.as_deref())?,
         event: require_name("mcp_event", req.mcp_event.as_deref())?,
@@ -134,18 +133,9 @@ pub(super) async fn update_config(
         || config.event != before.event
         || config.arguments != before.arguments;
     if resubscribe {
-        require_flag(ctx)?;
         find_attachment(&ctx.db, agent, &config.server).await?;
     }
     Ok((to_value(&config)?, resubscribe))
-}
-
-fn require_flag(ctx: &Ctx) -> Result<(), CommandError> {
-    if ctx.feature_flags.mcp_events {
-        Ok(())
-    } else {
-        Err(CommandError::feature_not_enabled("mcp_events"))
-    }
 }
 
 fn require_name(field: &str, value: Option<&str>) -> Result<String, CommandError> {
@@ -360,7 +350,6 @@ pub struct McpEventTriggers {
     encryption: Option<Arc<EncryptionService>>,
     egress: Arc<dyn EgressService>,
     api_base_url: String,
-    system_flags: crate::records::FeatureFlagPolicy,
 }
 
 impl McpEventTriggers {
@@ -369,14 +358,12 @@ impl McpEventTriggers {
         encryption: Option<Arc<EncryptionService>>,
         egress: Arc<dyn EgressService>,
         api_base_url: impl Into<String>,
-        system_flags: crate::records::FeatureFlagPolicy,
     ) -> Self {
         Self {
             db,
             encryption,
             egress,
             api_base_url: api_base_url.into().trim_end_matches('/').to_string(),
-            system_flags,
         }
     }
 
@@ -392,7 +379,6 @@ impl McpEventTriggers {
             encryption.clone(),
             host.egress_service(),
             auth.config.base_url.clone(),
-            auth.feature_flag_policy.clone(),
         ))
     }
 
@@ -424,16 +410,6 @@ impl McpEventTriggers {
         self.encryption.as_ref().ok_or_else(|| {
             CommandError::bad_request("MCP event triggers need secrets encryption configured")
         })
-    }
-
-    async fn org_enabled(&self, org_id: i64) -> bool {
-        crate::services::org_feature_flags::resolve_org_feature_flags(
-            &self.db,
-            org_id,
-            &self.system_flags,
-        )
-        .await
-        .is_ok_and(|flags| flags.mcp_events)
     }
 
     /// `events/subscribe` for one trigger and store the result. With
@@ -631,9 +607,6 @@ impl McpEventTriggers {
                     .await;
                 continue;
             };
-            if !self.org_enabled(trigger.org_id).await {
-                continue;
-            }
             match self.subscribe(&trigger, false).await {
                 Ok(_) => refreshed += 1,
                 Err(error) => {
@@ -781,9 +754,6 @@ impl McpEventTriggers {
             delivery.subscription_id,
         ) && expected != presented
         {
-            return Err(InboundRejection::Gone);
-        }
-        if !self.org_enabled(trigger.org_id).await {
             return Err(InboundRejection::Gone);
         }
         let config = parse_config(&trigger).map_err(|_| InboundRejection::Gone)?;

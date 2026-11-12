@@ -3,5 +3,3 @@
 
 #[cfg(feature = "agentid")]
 pub mod agentid;
-#[cfg(feature = "sprites")]
-pub mod sprites;

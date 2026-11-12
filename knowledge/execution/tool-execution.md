@@ -179,7 +179,7 @@ Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`out
 
 ### Exec Tool Output Sanitization
 
-Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) sanitize their output before returning results. Each tool calls `sanitize_exec_output()` from `crates/contracts/src/runtime/tool_output_sanitizer.rs`.
+Exec tools (bash, daytona_exec, e2b_exec, deno_exec, docker_exec) sanitize their output before returning results. Each tool calls `sanitize_exec_output()` from `crates/contracts/src/runtime/tool_output_sanitizer.rs`.
 
 The pipeline:
 1. **Strip ANSI**: remove SGR, CSI, OSC escape sequences

@@ -21,7 +21,7 @@ FEATURES = {
         'github', 'lua', 'openai-decisions', 'image-generation', 'openrouter', 'parallel',
         'typesafe', 'typesafe-hosted', 'web-fetch', 'modal', 'modal-test-util', 'boxd',
         'boxd-test-util'],
-    'everruns-integrations-experimental': ['sprites'],
+    'everruns-integrations-experimental': ['agentid'],
     'everruns-coding': ['local'],
 }
 

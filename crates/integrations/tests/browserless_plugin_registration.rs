@@ -2,29 +2,20 @@
 //! Integration tests for Browserless plugin registration and capability.
 
 use everruns_contracts::runtime::capabilities::CapabilityRegistry;
-use everruns_contracts::runtime::deployment::DeploymentGrade;
-
-use everruns_integrations::browserless::CAPABILITY_PLUGINS;
-
-fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let mut registry = CapabilityRegistry::new();
-    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        plugin.feature_flag.is_none_or(|flag| {
-            everruns_contracts::runtime::feature_flag_available(
-                flag,
-                everruns_integrations::browserless::FEATURE_FLAGS,
-                grade,
-            )
-        })
-    });
-    registry
-}
+use everruns_integrations::browserless::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 #[test]
-fn test_browserless_registered_in_prod_registry() {
-    let registry = registry_for_grade(DeploymentGrade::Prod);
+fn browserless_surfaces_register_without_rollout_flags() {
+    let mut registry = CapabilityRegistry::new();
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
+        plugin.feature_flag.is_none()
+    });
+    for id in ["browserless", "browser_use", "computer_use"] {
+        assert!(registry.has(id), "{id} is built in");
+    }
     assert!(
-        registry.has("browserless"),
-        "Browserless should be in prod registry"
+        CONNECTOR_PLUGINS
+            .iter()
+            .all(|plugin| plugin.feature_flag.is_none())
     );
 }

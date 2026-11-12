@@ -107,7 +107,7 @@ Send message and poll for response.
 
 ### `everruns connections`
 
-Manage per-provider API-key connections (e.g. `daytona`, `brave_search`, `browserless`, `deno`, `sprites`).
+Manage per-provider API-key connections (e.g. `daytona`, `brave_search`, `browserless`, `deno`).
 
 - `set <provider> [--stdin]`, set an API key for a provider (read the key from stdin with `--stdin`).
 - `list`, list connected providers.

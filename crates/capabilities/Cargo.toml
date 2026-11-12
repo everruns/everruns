@@ -64,7 +64,6 @@ hosted-integration-catalog = [
     "dep:everruns-coding",
     "dep:everruns-integrations-experimental",
     "everruns-integrations-experimental/agentid",
-    "everruns-integrations-experimental/sprites",
     "dep:everruns-ard",
 ]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.

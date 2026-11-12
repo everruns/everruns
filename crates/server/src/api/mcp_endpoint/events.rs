@@ -9,10 +9,9 @@ use crate::domains::mcp_servers::events::{
     EventsError, McpEventsService, Subscriber, SubscriptionTarget,
 };
 
-/// Whether `events/*` exist for this org: the deployment wired the service and
-/// the org opted into the experimental flag.
-pub(super) fn enabled(org: &ResolvedOrg, state: &AppState) -> bool {
-    state.mcp_events.is_some() && org.feature_flags.mcp_events
+/// Whether the host wired the built-in events service.
+pub(super) fn enabled(_org: &ResolvedOrg, state: &AppState) -> bool {
+    state.mcp_events.is_some()
 }
 
 pub(super) async fn handle_method(

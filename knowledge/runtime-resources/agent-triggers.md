@@ -158,8 +158,8 @@ attachment's own credential, and keep that subscription in step with the
 trigger: subscribed on create and enable, re-subscribed when server, event or
 arguments change and before it expires, unsubscribed on disable and delete.
 Each signed delivery is an event whose id is the delivery's `webhook-id`;
-`subject_template` can make one, for `per_thread`. Behind the `mcp_events`
-flag. See `knowledge/integrations/mcp-events.md`.
+`subject_template` can make one, for `per_thread`. MCP Events are built in.
+See `knowledge/integrations/mcp-events.md`.
 
 ## Manual fire
 

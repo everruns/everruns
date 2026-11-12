@@ -95,7 +95,7 @@ state.
 ### Skip (child starts fresh)
 
 - **Leased resources** (`leased_resources`, `session_resources`), sandboxes,
-  browser sessions, voice connections, sprites. These are provider-managed and
+  browser sessions, voice connections. These are provider-managed and
   often billed; duplicating the lease would double external state and cost. The
   child re-leases on first tool use.
 - **Session sandbox state** (encrypted `session_sandbox` secret), tied to a

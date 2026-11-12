@@ -6,9 +6,7 @@ export interface FeatureFlags {
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;
-  mcp_events?: boolean;
-  /** Refuse agent-made changes without a reason. Organization adoption opt-in. */
-  agent_change_reasons_required?: boolean;
+  /** Behavioral evals. Organization adoption opt-in. */
   evals: boolean;
   /** Skills registry management UI. Experimental. */
   skills: boolean;
@@ -19,7 +17,7 @@ export interface FeatureFlags {
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
   voice: boolean;
-  /** Observers: online scoring of production sessions. Experimental. */
+  /** Observers: online scoring of production sessions. Organization adoption opt-in. */
   observers: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
   public_chat: boolean;

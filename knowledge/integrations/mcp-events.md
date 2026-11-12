@@ -25,8 +25,8 @@ as an `mcp_event` [agent trigger](../runtime-resources/agent-triggers.md). See
 ## Spec revision (pinned 2026-09-30)
 
 Implemented against the MCP Events draft on protocol `2026-07-28`, as used by
-OpenAI's MCP Events guide for ChatGPT. The draft is not final, so the surface
-is behind the experimental `mcp_events` flag and org opt-in. Points we rely on:
+OpenAI's MCP Events guide for ChatGPT. The draft is not final; events are built in and subscriptions remain explicit.
+Points we rely on:
 
 - `capabilities.events: {}` in `server/discover` advertises support.
 - `events/list` returns each event's `name`, `description`, `delivery`
@@ -72,7 +72,7 @@ the client can also open the session in place.
   stays out; only its code is sent.
 - **Access is checked at delivery, not only at subscribe.** A subscription is
   bound to the MCP token's user. Anonymous MCP (no-auth local mode) cannot
-  subscribe. Each delivery re-checks that the org still has the flag, that the
+  subscribe. Each delivery re-checks that the
   user is still a member with session view, and that the session is not a
   private Platform Chat session. A former member's subscriptions are deleted.
 - **Callbacks are verified and egress-safe.** HTTPS only, resolved and pinned
@@ -108,7 +108,7 @@ event pipeline: filter, dedupe, session routing, delivery log.
   `name` must be the subscribed one; `data` is the template's `payload`, and
   `{{mcp.server}}`, `{{mcp.event}}`, `{{mcp.event_id}}` describe the delivery.
 - **410 ends it.** A delivery for a trigger that is unknown, disabled, deleted,
-  flagged off, or for a superseded subscription id answers `410 Gone`. That is
+  or for a superseded subscription id answers `410 Gone`. That is
   also the backstop when `events/unsubscribe` cannot reach the server.
 - **A create either subscribes or leaves nothing.** A subscribe the server
   rejects deletes the new trigger and returns the server's error; a failed
@@ -120,8 +120,8 @@ event pipeline: filter, dedupe, session routing, delivery log.
   and `events/subscribe` is idempotent, so replicas racing on a row do no harm.
   A failed refresh is retried after five minutes. A durable workflow was not
   needed: a missed tick only delays the refresh to the next one.
-- **Gated by `mcp_events`.** Creating or re-subscribing needs the org's
-  effective flag; with it off, deliveries answer `410` and refreshes skip.
+- **Built in.** Creating and re-subscribing use normal organization permissions;
+  retired feature overrides do not control delivery or refresh.
 
 ## Security
 
@@ -133,8 +133,7 @@ covers the inbound callback: forged, stale, replayed or oversized deliveries.
 
 `crates/server/src/domains/mcp_servers/events.rs` (catalog, subscribe, verification,
 delivery, listener), `crates/server/src/api/mcp_endpoint/events.rs`
-(JSON-RPC), `crates/server/migrations/legacy/147_mcp_event_subscriptions.sql`, and
-the `mcp_events` flag in `crates/server/src/records/feature_flags.rs`. Tests in
+(JSON-RPC), `crates/server/migrations/legacy/147_mcp_event_subscriptions.sql`, with tests in
 `crates/server/tests/domain/mcp_events_test.rs`.
 
 Inbound: `crates/server/src/domains/agent_triggers/mcp_event.rs` (config,

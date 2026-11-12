@@ -21,7 +21,6 @@ use tracing::{info, warn};
 use crate::worker_adapters::WorkerAdapters;
 
 const DAYTONA_SNAPSHOT_SECRET_PREFIX: &str = "daytona_sandbox:";
-const SPRITES_SECRET_PREFIX: &str = "sprites_sprite:";
 const E2B_SANDBOX_SECRET_PREFIX: &str = "e2b_sandbox:";
 const MODAL_SANDBOX_SECRET_PREFIX: &str = everruns_integrations::modal::MODAL_SANDBOX_SECRET_PREFIX;
 const BOXD_SANDBOX_SECRET_PREFIX: &str = everruns_integrations::boxd::BOXD_SANDBOX_SECRET_PREFIX;
@@ -204,7 +203,6 @@ async fn cleanup_resource(
     match (resource.provider.as_str(), resource.resource_type.as_str()) {
         ("daytona", "sandbox") => cleanup_daytona(resource, storage_store, &token).await,
         ("e2b", "sandbox") => cleanup_e2b(resource, storage_store, &token).await,
-        ("sprites", "sprite") => cleanup_sprites(resource, storage_store, &token).await,
         ("modal", "sandbox") => cleanup_modal(resource, storage_store, &token).await,
         ("boxd", "sandbox") => cleanup_boxd(resource, storage_store, &token).await,
         ("browserless", "browser_session") => {
@@ -323,38 +321,6 @@ async fn cleanup_e2b(
     }
 
     Ok(format!("Deleted E2B sandbox {}", resource.external_id))
-}
-
-async fn cleanup_sprites(
-    resource: &LeasedResource,
-    storage_store: &dyn SessionStorageStore,
-    token: &str,
-) -> Result<String> {
-    let client =
-        everruns_integrations_experimental::sprites::client::SpritesClient::new(token.to_string());
-
-    match client.delete_sprite(&resource.external_id).await {
-        Ok(()) => {}
-        Err(error) if error.contains("404") || error.contains("not found") => {
-            warn!(
-                sprite_name = %resource.external_id,
-                error = %error,
-                "Sprites sprite already gone during cleanup"
-            );
-        }
-        Err(error) => return Err(anyhow!("Sprites cleanup failed: {error}")),
-    }
-
-    if let Some(session_id) = resource.session_id {
-        let _ = storage_store
-            .delete_secret(
-                session_id,
-                &format!("{SPRITES_SECRET_PREFIX}{}", resource.external_id),
-            )
-            .await;
-    }
-
-    Ok(format!("Deleted Sprites sprite {}", resource.external_id))
 }
 
 async fn cleanup_modal(

@@ -71,16 +71,17 @@ mod tests {
     }
 
     /// The worker advertises the same feature flag gating the server does: a
-    /// tool the server offers must resolve in the worker that executes it. Jev's
-    /// `typesafe` flag defaults to the prod grade, and Sprites' flag to off.
+    /// tool the server offers must resolve in the worker that executes it.
+    /// Built-in integrations are available on every deployment.
     #[test]
     fn integration_capabilities_follow_their_feature_flag_grade() {
         for grade in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
             let composition = default_host_composition_for_grade(grade);
             let registry = composition.capability_registry();
             assert!(registry.has("jev"), "{grade:?} workers execute jev");
-            if std::env::var("FEATURE_SPRITES").is_err() {
-                assert!(!registry.has("sprites"), "sprites is off by default");
+            assert!(!registry.has("sprites"));
+            for id in ["browserless", "browser_use", "computer_use", "modal"] {
+                assert!(registry.has(id), "{grade:?}: {id}");
             }
         }
     }

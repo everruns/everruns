@@ -69,9 +69,6 @@ pub const COMMANDS_TOTAL: &str = "everruns_commands_total";
 /// command transaction, or stands without its entry outside one. Should
 /// stay at zero.
 pub const ENTITY_HISTORY_WRITE_FAILURES: &str = "everruns_entity_history_write_failures_total";
-/// Agent-made changes recorded without a reason, while the org does not
-/// require one. Label: entity_kind.
-pub const ENTITY_CHANGES_WITHOUT_REASON: &str = "everruns_entity_changes_without_reason_total";
 /// Queries that ran on their own connection while the task had a command
 /// transaction open, so they commit independently of it (see
 /// `storage::transaction`). Label: path (raw_pool | savepoint_open).

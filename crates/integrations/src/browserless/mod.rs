@@ -52,43 +52,25 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name, with their default rollout grades;
-/// the hosted platform lists them in its feature flag settings, and
-/// `FEATURE_<NAME>` overrides the grade per deployment.
-pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[
-    everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless",
-        label: "Browserless",
-        description: "Connect your own Browserless account for browser tools. Enables the computer use and browser use capabilities.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
-    },
-];
-
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
         feature_flag: None,
         factory: || Box::new(BrowserlessCapability),
     },
-    // Computer use and browser use ship behind the single `browserless` flag;
-    // agents pick the surface per capability (`computer_use` vs `browser_use`).
-    // The native OpenAI and Anthropic adapters are in with soft approval only,
-    // no hard gate (EVE-1133); promote the flag once the native OpenAI path is
-    // verified live.
     IntegrationPlugin {
-        feature_flag: Some("browserless"),
+        feature_flag: None,
         factory: || Box::new(computer::BrowserlessComputerUseCapability),
     },
-    // Browser use (the `browser` tool, EVE-1133) shares the `browserless` flag.
     IntegrationPlugin {
-        feature_flag: Some("browserless"),
+        feature_flag: None,
         factory: || Box::new(browser_use::BrowserUseCapability),
     },
 ];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("browserless"),
+    feature_flag: None,
     factory: || Box::new(BrowserlessConnector),
 }];
 // ============================================================================

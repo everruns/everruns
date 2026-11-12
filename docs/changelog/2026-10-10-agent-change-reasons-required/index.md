@@ -31,3 +31,8 @@ the `everruns_entity_changes_without_reason_total` metric counts. People in the
 UI and scripts calling the API may still leave the reason out.
 
 See [Reasons](/features/change-history/#reasons) and [#4271](https://github.com/everruns/everruns/pull/4271), [#4552](https://github.com/everruns/everruns/pull/4552).
+
+## Update 2026-11-12
+
+The organization opt-out and warning-only fallback are removed. Agent reasons are
+always required; people and ordinary API callers retain their existing rules.
