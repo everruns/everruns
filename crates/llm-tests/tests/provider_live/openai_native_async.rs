@@ -151,6 +151,10 @@ fn only_transport_failures_are_retried() {
     assert!(is_transient_transport(
         "Llm(LlmError { kind: Other, message: \"Stream error: Transport error: error decoding response body\" })"
     ));
+    // A request that never reached the provider (2026-11-12 nightly shape).
+    assert!(is_transient_transport(
+        "Failed to send request: error sending request for url (https://api.openai.com/v1/responses) (after 2 retries)"
+    ));
     // A provider rejection is the behavior under test, not transport.
     assert!(!is_transient_transport(
         "LLM error: 400 Bad Request: unknown parameter 'custom'"
