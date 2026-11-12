@@ -322,7 +322,11 @@ impl Node {
             )
         };
         let body = AllowanceRequest {
-            request_id: format!("{}/{}/{tenant}/{request}", self.source(), self.incarnation()),
+            request_id: format!(
+                "{}/{}/{tenant}/{request}",
+                self.source(),
+                self.incarnation()
+            ),
             cell: self.source(),
             incarnation: self.incarnation(),
             want_micros: if busy { cp.want_micros } else { 0 },
