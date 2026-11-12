@@ -147,3 +147,33 @@ async fn an_agent_that_does_not_compile_stays_on_the_worker_host() {
         EngineClaim::Legacy
     );
 }
+
+/// A database that is busy or unreachable for a moment says nothing about the
+/// agent: the claim fails, so the worker retries it (and otherwise lets the
+/// lease expire) instead of running the session on its own host. Only an
+/// agent that does not compile answers Legacy. The chaos harness caught a
+/// full pool moving a session to the worker host (EVE-1346).
+#[test]
+fn an_unreachable_database_fails_the_claim_instead_of_falling_back() {
+    let session = SessionId::new();
+    for transient in [
+        anyhow::Error::new(sqlx::Error::PoolTimedOut).context("resolve the engine agent key"),
+        anyhow::Error::new(sqlx::Error::PoolClosed),
+        anyhow::anyhow!(
+            "Service unavailable: error communicating with database: connection reset by peer"
+        ),
+    ] {
+        assert!(
+            unresolved_agent(session, transient).is_err(),
+            "a transient database failure must fail the claim"
+        );
+    }
+    assert_eq!(
+        unresolved_agent(
+            session,
+            anyhow::anyhow!("harness has an empty system prompt")
+        )
+        .unwrap(),
+        EngineClaim::Legacy
+    );
+}
