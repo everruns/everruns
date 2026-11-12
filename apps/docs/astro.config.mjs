@@ -335,6 +335,7 @@ export default defineConfig({
                 },
                 {
                   label: "Core APIs",
+                  collapsed: true,
                   items: [
                     { label: "Agents and Tools", slug: "framework/agents" },
                     { label: "File-based Agents", slug: "how-to/define-agents-as-files" },
@@ -354,6 +355,7 @@ export default defineConfig({
                 },
                 {
                   label: "Extend",
+                  collapsed: true,
                   items: [
                     { label: "Advanced Capabilities", slug: "framework/advanced-capabilities" },
                     { label: "Capability Integrations", slug: "framework/capability-integrations" },
@@ -371,6 +373,7 @@ export default defineConfig({
                   // serve, AgentCore, and celld are experimental; their pages
                   // say so.
                   label: "Expose and deploy",
+                  collapsed: true,
                   items: [
                     { label: "Deploy a Framework App", slug: "framework/deployment" },
                     { label: "Move to Platform or Cloud", slug: "framework/moving-to-platform" },
@@ -387,6 +390,7 @@ export default defineConfig({
                 },
                 {
                   label: "Examples",
+                  collapsed: true,
                   items: [
                     { label: "Overview", slug: "framework/examples" },
                     { label: "Support Agent", slug: "framework/examples/support-agent" },

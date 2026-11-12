@@ -5,7 +5,8 @@
  */
 
 /* Mermaid diagrams share the white, square-cornered documentation diagram style.
-   Scroll on narrow screens so labels retain a useful reading size. */
+   Wide diagrams shrink to fit the article; on narrow screens they scroll once
+   shrinking would make labels unreadable (sizes set in lib/mermaid-diagrams.ts). */
 .sl-markdown-content .er-mermaid {
   margin: 1.5rem 0;
   overflow-x: auto;
@@ -14,7 +15,6 @@
 
 .sl-markdown-content .er-mermaid > svg {
   display: block;
-  max-width: none;
   height: auto;
   margin-inline: auto;
 }

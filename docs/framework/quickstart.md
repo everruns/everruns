@@ -5,7 +5,7 @@ description: Install everruns and run a real agent against a live model provider
 
 :::tip[Set it up with your agent]
 
-```text
+```text wrap
 Add an Everruns agent with a typed tool to this Rust project and run it once.
 Instructions: https://everruns.com/.well-known/agent-skills/everruns-framework/SKILL.md
 ```

@@ -14,7 +14,7 @@ is missing and leaves everything else alone.
 
 :::tip[Set it up with your agent]
 
-```text
+```text wrap
 Install Everruns on this machine with Docker and sign me in.
 Instructions: https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
 ```

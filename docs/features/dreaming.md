@@ -8,7 +8,7 @@ Dreaming turns completed experience into notes that future sessions can read. It
 ## Logical flow
 
 ```mermaid
-flowchart LR
+flowchart TD
     accTitle: Dreaming memory consolidation
     accDescr: Completed experience is selected, reconciled with existing memory, validated against source references, and saved as a Memory artifact or a protected proposal.
     A[Completed experience] --> B[Select new evidence]
