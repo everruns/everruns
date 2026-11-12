@@ -7,7 +7,7 @@ significance: notable
 products: [yolop]
 surfaces: [cli, agent]
 links:
-  prs: [everruns/yolop#941]
+  prs: [everruns/yolop#941, everruns/yolop#942]
 ---
 
 `yolop --acp` now serves the draft Agent Client Protocol v2 to clients that ask for it and v1 to everyone else, so v2-only editors such as Zed's Delta can host Yolop.
@@ -28,4 +28,4 @@ links:
 }
 ```
 
-Under v2 a prompt is acknowledged once accepted, and the session reports `running`, `requires_action` and `idle` with its stop reason and token usage, including for background work that wakes the agent. Shell commands appear as live terminals, edits as structured diffs, and running background tasks are listed on every state change. Sessions can be listed, resumed, closed and deleted, and a client can append to or replace the system prompt. ACP v2 is a draft, so its wire format may still change.
+Under v2 a prompt is acknowledged once accepted, and the session reports `running`, `requires_action` and `idle` with its stop reason and token usage, including for background work that wakes the agent. Shell commands appear as live terminals the editor can stop without ending the turn, edits as structured diffs, and running background tasks are listed on every state change. Sessions can be listed, resumed, closed and deleted, can include extra workspace folders, and a client can append to or replace the system prompt. ACP v2 is a draft, so its wire format may still change.
