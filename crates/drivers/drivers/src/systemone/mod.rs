@@ -78,6 +78,18 @@ impl SystemOneDecisionDriver {
     ) -> Result<DecisionOutcome> {
         let body = encode(&request)?;
         let bytes = serde_json::to_vec(&body).map_err(|_| invalid("Invalid decision request"))?;
+        let value = self.post_json(endpoint, url, bytes).await?;
+        decode(&request, value)
+    }
+
+    /// POST a signed JSON body and read a bounded JSON reply. Shared by hosts
+    /// with their own body shape (Gemini's Decisions API).
+    pub(crate) async fn post_json(
+        &self,
+        endpoint: &ProviderEndpoint,
+        url: String,
+        bytes: Vec<u8>,
+    ) -> Result<serde_json::Value> {
         let resolved = endpoint.resolve("POST", url, &bytes).await?;
         let http = self
             .http
@@ -112,9 +124,7 @@ impl SystemOneDecisionDriver {
             }
             bytes.extend_from_slice(&chunk);
         }
-        let value = serde_json::from_slice(&bytes)
-            .map_err(|_| invalid("Invalid decision response JSON"))?;
-        decode(&request, value)
+        serde_json::from_slice(&bytes).map_err(|_| invalid("Invalid decision response JSON"))
     }
 }
 

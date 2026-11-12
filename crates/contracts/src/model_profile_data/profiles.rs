@@ -320,6 +320,18 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["mai"],
         ServiceKind::Decisions,
     ),
+    // Gemini Decision 1 on the Gemini API's Decisions endpoint, and through
+    // OpenRouter's System One route (which reports the dated snapshot).
+    md_service(
+        &[
+            "gemini-decision-1",
+            "google/gemini-decision-1",
+            "google/gemini-decision-1-20261111",
+        ],
+        ModelVendor::Google,
+        &["gemini", "openrouter"],
+        ServiceKind::Decisions,
+    ),
     // OpenAI
     md_service(
         &["text-embedding-3-small"],
@@ -1053,6 +1065,9 @@ fn jev_profile_data(canonical: &str) -> Option<ModelProfile> {
     if canonical == "microsoft-decision-1" {
         return Some(microsoft_decision_profile());
     }
+    if canonical == "gemini-decision-1" {
+        return Some(gemini_decision_profile());
+    }
     let mut profile = jev_profile(match canonical {
         "jev-1.14.0" => "Jev 1.14",
         "jev-1.13.0" => "Jev 1.13",
@@ -1134,6 +1149,24 @@ fn microsoft_decision_profile() -> ModelProfile {
     if let Some(decisions) = profile.decisions.as_mut() {
         decisions.state_tokens = None;
         decisions.request_tokens = Some(32_768);
+    }
+    profile
+}
+
+/// Gemini Decision 1 (https://aistudio.google.com/docs/decisions-api): input
+/// billed at $0.10 per 1M tokens, output free. One 262,144-token window holds
+/// the input and every question. The API takes 2-255 choice options and score
+/// levels; profiles keep System One's ten-level cap, which the driver enforces.
+/// Everruns sends text state only, though the model also reads media.
+fn gemini_decision_profile() -> ModelProfile {
+    let mut profile = jev_profile("Gemini Decision 1");
+    profile.family = "gemini-decision".into();
+    profile.description = Some("Google's calibrated typed decisions over text.".into());
+    profile.release_date = Some("2026-11-11".into());
+    profile.cost = Some(crate::model_profile_data::ModelCost::new(0.10, 0.0));
+    if let Some(decisions) = profile.decisions.as_mut() {
+        decisions.state_tokens = None;
+        decisions.request_tokens = Some(262_144);
     }
     profile
 }

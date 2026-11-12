@@ -57,6 +57,26 @@ impl std::error::Error for GeminiError {}
 /// separately.
 ///
 /// The API key is redacted from [`Debug`] output.
+///
+/// The same provider answers typed decisions on Gemini Decision 1:
+///
+/// ```no_run
+/// use everruns::{Decisions, Provider, providers::gemini::Gemini};
+///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let gemini: Provider = Gemini::from_env()?.into();
+/// let answers = Decisions::new("gemini-decision-1", gemini)
+///     .about("My card was charged twice and I need this fixed today.")
+///     .noul("urgent", "Does this convey urgency?")
+///     .choice("team", "Which team should handle this?", ["billing", "technical"])
+///     .send()
+///     .await?;
+/// let urgent: f64 = answers.probability("urgent")?;
+/// let team: &str = answers.selected("team")?;
+/// # let _ = (urgent, team);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct Gemini {
     api_key: String,

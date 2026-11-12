@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-12
+
+- [Decisions service](operations/decisions-service.md): Gemini providers answer decisions on Gemini Decision 1 through Google's Decisions API (translated envelope, positional question keys, System One validation); OpenRouter serves it as `google/gemini-decision-1`.
+
 ## 2026-11-11
 
 - Raise the Bashkit dependency floor to 0.21.0 (Monty 1.4 forks, bounded tree walks, HTTP Host/encoded-slash hardening). Bashkit's Monty `python3` now fails closed unless `bashkit::MeteredAllocator` is the global allocator; Everruns' shells use CPython, and the server's scripted command surface drops its unused `python` feature, so Monty is no longer compiled in. See [Dependency Surface](project/dependency-surface.md).

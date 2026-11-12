@@ -2,12 +2,14 @@
 
 /// Translate supported Jev aliases without interpreting arbitrary model names.
 /// Sources: https://openrouter.ai/docs/guides/community/jev and
-/// https://docs.typesafe.ai/models. Provider selection remains explicit.
+/// https://docs.typesafe.ai/models, and https://openrouter.ai/google/gemini-decision-1.
+/// Provider selection remains explicit.
 pub fn openrouter_decision_model_id(model: &str) -> &str {
     match model {
         "jev-1.14.0" => "typesafe/jev-1.14",
         "jev-1.13.0" => "typesafe/jev-1.13",
         "jev-latest" | "typesafe/jev-latest" => "~typesafe/jev-latest",
+        "gemini-decision-1" => "google/gemini-decision-1",
         other => other,
     }
 }
@@ -33,6 +35,7 @@ mod tests {
         assert!(wire_ids.contains(&"typesafe/jev-1.14"));
         assert!(wire_ids.contains(&"typesafe/jev-1.13"));
         assert!(wire_ids.contains(&"~typesafe/jev-latest"));
+        assert!(wire_ids.contains(&"google/gemini-decision-1"));
         for entry in decisions {
             let wire = openrouter_decision_model_id(&entry.model_id);
             assert_eq!(

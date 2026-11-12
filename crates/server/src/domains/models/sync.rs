@@ -924,7 +924,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             decision_ids(&loaded),
-            ["jev-latest", "typesafe/jev-1.13", "typesafe/jev-1.14"]
+            [
+                "google/gemini-decision-1",
+                "jev-latest",
+                "typesafe/jev-1.13",
+                "typesafe/jev-1.14"
+            ]
         );
 
         let mut d1 = everruns_contracts::model::ModelProfile::minimal("LiquidAI: d1.1");
@@ -967,6 +972,7 @@ mod tests {
         assert_eq!(
             decision_ids(&synced),
             [
+                "google/gemini-decision-1",
                 "jev-latest",
                 "liquid/d1.1",
                 "typesafe/jev-1.13",

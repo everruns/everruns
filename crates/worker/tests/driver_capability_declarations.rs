@@ -53,7 +53,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         (
             DriverId::Gemini,
             "Google Gemini",
-            &[ServiceKind::Chat],
+            &[ServiceKind::Chat, ServiceKind::Decisions],
             false,
         ),
         (

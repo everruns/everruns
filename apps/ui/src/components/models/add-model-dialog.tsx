@@ -59,7 +59,8 @@ export function AddModelDialog({
       : selectedProvider?.provider_type === "typesafe"
         ? ["decisions"]
         : selectedProvider?.provider_type === "openrouter" ||
-            selectedProvider?.provider_type === "mai"
+            selectedProvider?.provider_type === "mai" ||
+            selectedProvider?.provider_type === "gemini"
           ? ["chat", "decisions"]
           : ["chat"]);
 

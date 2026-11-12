@@ -1,6 +1,6 @@
 ---
 title: TypeSafe
-description: "Typed decisions from TypeSafe's System One: calibrated probabilities, routing and graded scores, via TypeSafe, OpenRouter, OpenAI or Microsoft Foundry."
+description: "Typed decisions from TypeSafe's System One: calibrated probabilities, routing and graded scores, via TypeSafe, OpenRouter, OpenAI, Microsoft Foundry or Google Gemini."
 appliesTo: [framework, platform]
 ---
 
@@ -61,6 +61,16 @@ The names `Microsoft-Decision-1` and `Decision-1` pick the **Microsoft Decision 
 their own; another name needs that profile chosen by hand. The provider's saved Foundry API key
 and resource endpoint serve both chat and decisions. Microsoft bills input tokens only, at
 $0.042 per million, and a request (content plus questions) fits in 32,768 tokens.
+
+## Use an existing Google Gemini account
+
+Google's [Decisions API](https://aistudio.google.com/docs/decisions-api) answers the same
+calibrated questions on Gemini Decision 1. In **Models**, add a **Decisions** model under your
+Google Gemini provider with model ID `gemini-decision-1`; it picks the **Gemini Decision 1**
+profile. The provider's saved Gemini API key serves both chat and decisions. On OpenRouter the
+same model is `google/gemini-decision-1`. Google bills input tokens only, at $0.10 per million,
+and a request (content plus questions) fits in 262,144 tokens. Everruns sends text content; the
+model's image, audio, video and PDF inputs are not used yet.
 
 Set the organization decision default in Models, or select an exact model in the **Jev Decisions**
 capability settings. The tool uses that model's account. A disabled model or missing credential

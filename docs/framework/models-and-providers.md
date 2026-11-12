@@ -183,7 +183,7 @@ The set below is what ships today. The boundary is open, so a
 | OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
 | Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Images | chat, images | yes |
 | Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
-| Google Gemini | `everruns-drivers` (`gemini`) | Gemini `generateContent` | chat | yes |
+| Google Gemini | `everruns-drivers` (`gemini`) | Gemini `generateContent`, Decisions API | chat, decisions | yes |
 | AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
 | OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One, OpenRouter Images | chat, decisions, images | yes, including decision models |
 | TypeSafe | `everruns-drivers` (`typesafe`) | System One | decisions | yes, plus curated Jev profiles |
