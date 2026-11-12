@@ -6,12 +6,12 @@
 
 ```toml
 [dependencies]
-everruns-integrations-experimental = { version = "0.43", default-features = false, features = ["sprites"] }
+everruns-integrations-experimental = { version = "0.43", default-features = false, features = ["agentid"] }
 ```
 
 ```rust
-#[cfg(feature = "sprites")]
-use everruns_integrations_experimental::sprites as _;
+#[cfg(feature = "agentid")]
+use everruns_integrations_experimental::agentid as _;
 ```
 
 ## Features
@@ -21,7 +21,6 @@ This crate contains opt-in integrations whose APIs or vendor coverage have a dif
 | Feature | Module | Integration |
 |---|---|---|
 | `agentid` | `agentid` | AgentID sign-in through the agent's AgentMail inbox |
-| `sprites` | `sprites` | Sprites cloud sandboxes |
 
 ## Documentation
 

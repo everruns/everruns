@@ -115,7 +115,7 @@ Production event routing therefore prefers:
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
-   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Sprites lives in `crates/integrations-experimental`.
+   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental AgentID lives in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://everruns.com/docs/

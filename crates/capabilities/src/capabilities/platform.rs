@@ -49,7 +49,7 @@ Key sections:
 - /workspace/docs/getting-started/ — Introduction, concepts, Docker setup, Everruns Cloud
 - /workspace/docs/features/ — SDK, CLI, UI, events, harnesses, capabilities, endpoints, skills
 - /workspace/docs/capabilities/ — Per-capability reference, including vendor integrations (Slack, Daytona, E2B, Browserless)
-- /workspace/docs/integrations/ — Vendor index and integrations without a capability page (Cursor, Sprites, TypeSafe, etc.)
+- /workspace/docs/integrations/ — Vendor index and integrations without a capability page (Cursor, TypeSafe, etc.)
 - /workspace/docs/explanation/ — Architecture, agentic loop, durable execution, events
 - /workspace/docs/advanced/ — Budgets, compaction, ID schema, network access, physical architecture, tool output pipeline
 - /workspace/docs/sre/ — Environment variables, admin container, request signing, runbooks

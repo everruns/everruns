@@ -73,38 +73,18 @@ impl ActorKind {
 /// Error code: an agent changed an entity without saying why.
 pub const REASON_REQUIRED: &str = "reason_required";
 
-/// Agents must say why they change something; people may. Decision: while the
-/// org has not turned on `agent_change_reasons_required`, the change goes
-/// through with a warning, so agents that predate the rule keep working while
-/// the warning teaches them; with it on, the change is refused before it runs
-/// and the error says how to retry.
-fn missing_agent_reason(
-    ctx: &Ctx,
-    intent: &ChangeIntent,
-    kind: EntityKind,
-) -> Result<(), CommandError> {
-    let message = format!(
+/// Agents must say why they change something; people may omit the reason.
+fn missing_agent_reason(kind: EntityKind) -> CommandError {
+    CommandError::bad_request(format!(
         "Changes made by agents need a reason. Retry with --reason saying what the user \
          asked for, so the {} history records why it changed.",
         kind.as_str()
-    );
-    if ctx
-        .feature_flags
-        .is_enabled("agent_change_reasons_required")
-    {
-        return Err(CommandError::bad_request(message)
-            .with_code(REASON_REQUIRED)
-            .with_action(crate::common_dto::AllowedAction::new("retry").with_hint(
-                "Retry the same command with --reason \"<what the user asked for>\".",
-            )));
-    }
-    metrics::counter!(
-        crate::metrics_names::ENTITY_CHANGES_WITHOUT_REASON,
-        "entity_kind" => kind.as_str(),
+    ))
+    .with_code(REASON_REQUIRED)
+    .with_action(
+        crate::common_dto::AllowedAction::new("retry")
+            .with_hint("Retry the same command with --reason \"<what the user asked for>\"."),
     )
-    .increment(1);
-    intent.notices.push(message);
-    Ok(())
 }
 
 /// The intent a command runs under: what its adapter set on `Ctx`, completed
@@ -372,7 +352,7 @@ impl PendingChange {
             .map(intent::validate_reason)
             .transpose()?;
         if reason.is_none() && ActorKind::of(ctx, &intent) == ActorKind::AgentSession {
-            missing_agent_reason(ctx, &intent, kind)?;
+            return Err(missing_agent_reason(kind));
         }
         Ok(Some(Self {
             baseline: None,

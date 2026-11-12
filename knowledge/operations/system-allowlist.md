@@ -367,7 +367,7 @@ listener (`EGRESS_PROXY_SOCKS_ADDR`). Decisions:
 Limits: UDP, including DNS, is not tunneled and leaves from E2B. Tool-created
 sandboxes (`e2b_create_sandbox`) get a two-day credential because `e2b_exec`
 keeps extending them; one busy for longer loses egress until resumed. Daytona,
-Modal and Sprites have no equivalent hook; routing them means locking their
+Modal has no equivalent hook; routing it means locking its
 egress to the proxy's address and setting proxy variables inside, not built
 yet. Threat model: TM-E2B-005, TM-E2B-008.
 

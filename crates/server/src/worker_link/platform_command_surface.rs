@@ -455,11 +455,9 @@ mod tests {
             voice: true,
             observers: true,
             public_chat: true,
-            mcp_events: true,
             reports: true,
             machine_payments: true,
             engine_hosting: false,
-            agent_change_reasons_required: false,
             integrations: Default::default(),
         }
     }
@@ -482,11 +480,9 @@ mod tests {
                 voice: true,
                 observers: true,
                 public_chat: true,
-                mcp_events: true,
                 reports: true,
                 machine_payments: true,
                 engine_hosting: false,
-                agent_change_reasons_required: false,
                 integrations: Default::default(),
             },
         )

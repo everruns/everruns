@@ -123,6 +123,5 @@ later ones are not run; each answers that an earlier action failed.
 
 ## Availability
 
-Browser use is experimental and ships behind the `browserless`
-feature flag (`FEATURE_BROWSERLESS` sets its rollout grade); agents pick it
-via the `browser_use` capability.
+Browser use is available on every deployment. Add the `browser_use` capability
+to an agent and connect your own Browserless account.

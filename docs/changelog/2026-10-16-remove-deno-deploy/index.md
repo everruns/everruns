@@ -18,7 +18,7 @@ for Deno sandboxes, and the `deno-coder` demo agent are gone, along with the
 Deno rows in the capability catalog and docs.
 
 Existing Deno connections and sessions that reference
-`deno_*` tools will no longer resolve; use Daytona, E2B, Sprites, Modal, or
+`deno_*` tools will no longer resolve; use Daytona, E2B, Modal, or
 the container sandbox instead.
 
 See the [capabilities overview](/capabilities/) for the supported sandbox
@@ -29,3 +29,7 @@ providers.
 everruns connections set daytona
 everruns connections list
 ```
+
+## Update 2026-11-12
+
+Sprites is also removed. Use Daytona, E2B, Modal or the container sandbox.

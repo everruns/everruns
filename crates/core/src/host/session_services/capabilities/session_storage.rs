@@ -78,6 +78,7 @@ const INTERNAL_SECRET_PREFIXES: &[&str] = &[
     "container_sandbox:",
     "daytona_sandbox:",
     "e2b_sandbox:",
+    // Retired provider: existing secrets must remain hidden from agent storage tools.
     "sprites_sprite:",
     "modal_sandbox:",
     "boxd_sandbox:",

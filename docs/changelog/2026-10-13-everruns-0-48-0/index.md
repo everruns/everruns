@@ -77,3 +77,8 @@ release: "0.48.0"
 - [Web search no longer fails on some result snippets](/changelog/2026-10-13-web-search-snippet-crash/)
 
 See the [GitHub release](https://github.com/everruns/everruns/releases/tag/v0.48.0) and the [full release notes](https://github.com/everruns/everruns/blob/main/CHANGELOG.md#0480---2026-10-13) for every pull request in this version.
+
+## Update 2026-11-12
+
+The agent change-reason opt-out is removed. Agents must give a reason for changes;
+people and ordinary API callers may still omit it.

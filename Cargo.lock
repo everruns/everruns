@@ -4469,16 +4469,11 @@ name = "everruns-integrations-experimental"
 version = "0.52.0"
 dependencies = [
  "async-trait",
- "chrono",
  "everruns-contracts",
- "everruns-core",
- "reqwest",
- "serde",
  "serde_json",
  "tokio",
  "tracing",
  "urlencoding",
- "wiremock",
 ]
 
 [[package]]
@@ -4888,7 +4883,6 @@ dependencies = [
  "everruns-drivers",
  "everruns-durable",
  "everruns-integrations",
- "everruns-integrations-experimental",
  "everruns-internal-protocol",
  "everruns-llmsim",
  "futures",

@@ -17,7 +17,7 @@ use std::io::Read;
 pub enum ConnectionsCommand {
     /// Set an API key connection for a provider
     Set {
-        /// Provider name (e.g. daytona, brave_search, browserless, sprites)
+        /// Provider name (e.g. daytona, brave_search, browserless)
         provider: String,
 
         /// Read provider API key from stdin

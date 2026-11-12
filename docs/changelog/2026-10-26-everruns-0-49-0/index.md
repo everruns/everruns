@@ -24,7 +24,7 @@ release: "0.49.0"
 
 - Session secrets are write-only to agents: `secret_store` sets, lists and deletes, but `get` no longer returns a value ([#4676](https://github.com/everruns/everruns/pull/4676)).
 - Development mode (`DEV_MODE=true`) refuses to run as root; run it as a regular user or use external PostgreSQL ([#4722](https://github.com/everruns/everruns/pull/4722)).
-- The experimental Deno Deploy sandbox provider and its `deno_*` tools are removed; use Daytona, E2B, Sprites, Modal or the container sandbox ([#4769](https://github.com/everruns/everruns/pull/4769)).
+- The experimental Deno Deploy sandbox provider and its `deno_*` tools are removed; use Daytona, E2B, Modal or the container sandbox ([#4769](https://github.com/everruns/everruns/pull/4769)).
 
 ## In the changelog
 
@@ -98,3 +98,7 @@ release: "0.49.0"
 - [Edit GitHub-synced Agents from either side](/changelog/2026-10-25-two-way-agent-github-sync/)
 
 See the [GitHub release](https://github.com/everruns/everruns/releases/tag/v0.49.0) and the [full release notes](https://github.com/everruns/everruns/blob/main/CHANGELOG.md#0490---2026-10-26) for every pull request in this version.
+
+## Update 2026-11-12
+
+Sprites is also removed. Use Daytona, E2B, Modal or the container sandbox.

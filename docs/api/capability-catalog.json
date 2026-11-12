@@ -276,7 +276,7 @@
         "session_storage"
       ],
       "docs_slug": "browser-use",
-      "feature_flag": "browserless",
+      "feature_flag": null,
       "features": [
         "leased_resources"
       ],
@@ -469,7 +469,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": "browserless",
+      "feature_flag": null,
       "features": [
         "leased_resources"
       ],
@@ -958,7 +958,7 @@
         "session_storage"
       ],
       "docs_slug": null,
-      "feature_flag": "modal",
+      "feature_flag": null,
       "features": [
         "leased_resources"
       ],
@@ -1649,35 +1649,6 @@
         "record_approval",
         "request_approval",
         "set_approval_mode"
-      ]
-    },
-    {
-      "category": "Execution",
-      "dependencies": [
-        "session_storage"
-      ],
-      "docs_slug": null,
-      "feature_flag": "sprites",
-      "features": [
-        "leased_resources"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "sprites",
-      "name": "Sprites",
-      "status": "available",
-      "tools": [
-        "sprites_checkpoint",
-        "sprites_create_sprite",
-        "sprites_exec",
-        "sprites_list_sprites",
-        "sprites_manage_sprite",
-        "sprites_read_file",
-        "sprites_restore_checkpoint",
-        "sprites_service_url",
-        "sprites_write_file"
       ]
     },
     {

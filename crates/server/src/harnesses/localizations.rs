@@ -58,7 +58,6 @@ pub(crate) fn for_builtin(name: &str) -> EntityLocalizations {
             "Керує агентами програмування Cursor.",
         ),
         "e2b-coder" => ("Програміст E2B", "Працює з кодом у пісочниці E2B."),
-        "sprites-coder" => ("Програміст Sprites", "Працює з кодом у середовищі Sprites."),
         _ => return EntityLocalizations::default(),
     };
     let mut entries = EntityLocalizations(std::collections::BTreeMap::from([(
@@ -121,10 +120,6 @@ pub(crate) fn for_builtin(name: &str) -> EntityLocalizations {
         "image-studio-agent" => ("Image Studio", "Create and edit images."),
         "cursor-agent-manager" => ("Cursor Agent Manager", "Manage Cursor coding agents."),
         "e2b-coder" => ("E2B Coder", "Work with code in an E2B sandbox."),
-        "sprites-coder" => (
-            "Sprites Coder",
-            "Work with code in the Sprites environment.",
-        ),
         _ => return entries,
     };
     for locale in crate::services::capability_localizations::ADDITIONAL_LOCALES {

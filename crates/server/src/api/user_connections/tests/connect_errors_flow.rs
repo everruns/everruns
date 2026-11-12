@@ -183,20 +183,18 @@ async fn provider_refusal_at_callback_returns_with_provider_refused() {
     );
 }
 
-/// Stands in for the Browserless connector, whose feature flag is off by
-/// default (adoption grade).
-struct FlaggedConnector;
+struct InvalidKeyConnector(&'static str);
 
 #[async_trait::async_trait]
-impl everruns_contracts::connector::Connector for FlaggedConnector {
+impl everruns_contracts::connector::Connector for InvalidKeyConnector {
     fn provider_id(&self) -> &str {
-        "browserless"
+        self.0
     }
     fn display_name(&self) -> &str {
-        "Browserless"
+        self.0
     }
     fn description(&self) -> &str {
-        "Remote browser"
+        "Test connector"
     }
     fn icon(&self) -> &str {
         "globe"
@@ -211,37 +209,46 @@ impl everruns_contracts::connector::Connector for FlaggedConnector {
         &self,
         _credential: &str,
     ) -> Result<everruns_contracts::connector::ConnectorValidation, String> {
-        panic!("a connector that is turned off must not validate credentials")
+        Err("invalid test credential".to_string())
     }
 }
 
 #[tokio::test]
-async fn connecting_a_turned_off_connector_says_it_is_off() {
-    let (mut state, org, _, _, _) = identity_oauth_fixture(false).await;
-    let mut connectors = ConnectorRegistry::new();
-    connectors.register(FlaggedConnector);
-    state.connectors = connectors;
-    let user = org.user_id.unwrap();
+async fn built_in_connectors_need_valid_credentials_without_feature_opt_in() {
+    for provider in ["browserless", "modal"] {
+        let (mut state, org, _, _, _) = identity_oauth_fixture(false).await;
+        let mut connectors = ConnectorRegistry::new();
+        connectors.register(InvalidKeyConnector(provider));
+        state.connectors = connectors;
+        let user = org.user_id.unwrap();
+        let db = state.db.clone();
 
-    let (status, message) = create_api_key_connection(
-        State(state),
-        ConnectionUser {
-            id: user,
-            management_user_id: user,
-            org_id: org.org_id,
-        },
-        Path("browserless".to_string()),
-        Json(CreateApiKeyConnectionRequest {
-            api_key: "key".to_string(),
-            extra_fields: Default::default(),
-        }),
-    )
-    .await
-    .expect_err("the browserless flag is off by default");
+        let (status, message) = create_api_key_connection(
+            State(state),
+            ConnectionUser {
+                id: user,
+                management_user_id: user,
+                org_id: org.org_id,
+            },
+            Path(provider.to_string()),
+            Json(CreateApiKeyConnectionRequest {
+                api_key: "key".to_string(),
+                extra_fields: Default::default(),
+            }),
+        )
+        .await
+        .expect_err("built-in availability must still validate credentials");
 
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(
-        message,
-        "Browserless is turned off for this organization. An organization admin can turn it on in Settings > Features."
-    );
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            message,
+            "API key validation failed: invalid test credential"
+        );
+        assert!(
+            db.get_user_connection(user, provider)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
 }

@@ -192,7 +192,7 @@ fn assert_signed(request: &everruns_core::EgressRequest) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn events_exist_only_for_orgs_that_opted_in() {
+async fn events_are_available_despite_retired_org_override() {
     let server = TestServer::in_memory().await;
     let discover = rpc(&server, "server/discover", json!({})).await;
     assert_eq!(discover["result"]["capabilities"]["events"], json!({}));
@@ -222,9 +222,9 @@ async fn events_exist_only_for_orgs_that_opted_in() {
         .await
         .unwrap();
     let discover = rpc(&server, "server/discover", json!({})).await;
-    assert!(discover["result"]["capabilities"].get("events").is_none());
+    assert_eq!(discover["result"]["capabilities"]["events"], json!({}));
     let list = rpc(&server, "events/list", json!({})).await;
-    assert_eq!(list["error"]["code"], -32601);
+    assert_eq!(list["result"]["events"].as_array().unwrap().len(), 3);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -459,7 +459,7 @@ async fn failed_deliveries_retry_and_gone_ends_the_subscription() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unsubscribe_leaving_the_org_and_opting_out_stop_delivery() {
+async fn unsubscribe_and_leaving_the_org_stop_delivery() {
     let server = TestServer::in_memory().await;
     let subscriber = member(&server).await;
     let (session_id, _) = session(&server).await;
@@ -482,7 +482,7 @@ async fn unsubscribe_leaving_the_org_and_opting_out_stop_delivery() {
         0
     );
 
-    // The org turning the flag off silences existing subscriptions.
+    // A stale opt-out cannot disable built-in events.
     subscribe(&server, &subscriber, params.clone())
         .await
         .unwrap();
@@ -497,7 +497,7 @@ async fn unsubscribe_leaving_the_org_and_opting_out_stop_delivery() {
             .mcp_events
             .dispatch(&turn_completed(&session_id))
             .await,
-        0
+        1
     );
     server
         .db

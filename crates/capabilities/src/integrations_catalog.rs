@@ -18,19 +18,17 @@
 //!
 //! ```
 //! use everruns_core::DeploymentGrade;
-//! use everruns_capabilities::integrations_catalog::{CATALOG, capability_is_enabled};
+//! use everruns_capabilities::integrations_catalog::{CATALOG, oss_capability_registry_for_grade};
 //!
 //! // Every integration is named exactly once and contributes something.
 //! assert!(CATALOG.iter().all(|entry| {
 //!     !entry.capabilities.is_empty() || !entry.connectors.is_empty()
 //! }));
 //!
-//! // Integrations behind an off-by-default feature flag stay out of a production registry.
-//! for plugin in everruns_capabilities::integrations_catalog::capability_plugins() {
-//!     if plugin.feature_flag == Some("sprites") {
-//!         assert!(!capability_is_enabled(plugin, DeploymentGrade::Prod));
-//!     }
-//! }
+//! // Built-in integrations register on production deployments.
+//! let registry = oss_capability_registry_for_grade(DeploymentGrade::Prod);
+//! assert!(registry.has("browser_use"));
+//! assert!(registry.has("modal"));
 //! ```
 
 // Registration used to happen through `inventory::submit!`, with `extern crate`
@@ -108,7 +106,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::browserless",
         capabilities: everruns_integrations::browserless::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::browserless::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::browserless::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::cursor",
@@ -150,7 +148,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations::modal",
         capabilities: everruns_integrations::modal::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::modal::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations::modal::FEATURE_FLAGS,
+        feature_flags: &[],
     },
     CatalogEntry {
         crate_name: "everruns-integrations::image_generation",
@@ -163,12 +161,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         capabilities: everruns_integrations::parallel::CAPABILITY_PLUGINS,
         connectors: everruns_integrations::parallel::CONNECTOR_PLUGINS,
         feature_flags: &[],
-    },
-    CatalogEntry {
-        crate_name: "everruns-integrations-experimental::sprites",
-        capabilities: everruns_integrations_experimental::sprites::CAPABILITY_PLUGINS,
-        connectors: everruns_integrations_experimental::sprites::CONNECTOR_PLUGINS,
-        feature_flags: everruns_integrations_experimental::sprites::FEATURE_FLAGS,
     },
     CatalogEntry {
         crate_name: "everruns-integrations::typesafe",
@@ -425,8 +417,9 @@ mod tests {
         register_connectors(&mut prod, DeploymentGrade::Prod);
         assert!(prod.has("e2b"));
         assert!(prod.has("daytona"));
-        if std::env::var("FEATURE_BROWSERLESS").is_err() {
-            assert!(prod.has("browserless"), "browserless is adoption grade");
+        for provider in ["browserless", "modal"] {
+            assert!(prod.has(provider), "{provider}");
+            assert!(dev.has(provider), "{provider}");
         }
     }
 }

@@ -70,7 +70,7 @@ everruns = { version = "0.52", features = ["openai", "web-search", "web-fetch"] 
 
 The integrations below run in a Platform deployment, where the server holds the
 connection and its credentials: cloud sandboxes (Daytona, E2B, Container
-Sandbox, Modal, boxd, Sprites), Browserless, Cursor, GitHub, Cloudflare Web
+Sandbox, Modal, boxd), Browserless, Cursor, GitHub, Cloudflare Web
 Search, the Parallel tool set, the hosted Slack app, AgentID and ARD. A Framework
 app reaches Parallel through [web search](/capabilities/web-search/#framework).
 To use any of the others, [move to the Platform](/framework/moving-to-platform/).

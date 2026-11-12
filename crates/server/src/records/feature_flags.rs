@@ -28,7 +28,7 @@ pub struct FeatureFlags {
     /// Background Worker memory consolidation. Organization adoption opt-in.
     #[serde(default)]
     pub dreaming: bool,
-    /// Evals (user-facing behavioral evals for agents). Experimental.
+    /// Evals (user-facing behavioral evals for agents). Organization adoption opt-in.
     pub evals: bool,
     /// Skills registry management UI. Experimental.
     pub skills: bool,
@@ -40,21 +40,12 @@ pub struct FeatureFlags {
     pub plugins: bool,
     /// Voice channels and the chat microphone (Adoption).
     pub voice: bool,
-    /// Observers (online scoring of production sessions). Experimental.
+    /// Observers (online scoring of production sessions). Organization adoption opt-in.
     pub observers: bool,
     /// Public Chat (isolated, public-facing chat web app + `public_chat`
     /// channel). Experimental. Gates the public endpoints, channel creation,
     /// the builder UI, and the public web route.
     pub public_chat: bool,
-    /// Outbound MCP Events: `/mcp` clients subscribe to session completion,
-    /// failure and input-required webhooks. Experimental and org-opt-in,
-    /// because the spec is a draft.
-    pub mcp_events: bool,
-    /// Refuse agent-made changes that give no reason (`reason_required`).
-    /// Off, they go through with a warning. Prod-graded: on by default, an org
-    /// may turn it off. Built-in tools such as `spawn_agent` state their own
-    /// reasons, so only agent-authored changes need one.
-    pub agent_change_reasons_required: bool,
     /// Reports: the usage and cost reporting page, its sidebar entry, and
     /// saved-report search results in the UI. Experimental and org-opt-in, so
     /// it is off for every organization until an admin turns it on. The
@@ -199,20 +190,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
-        name: "mcp_events",
-        label: "MCP Events",
-        description: "Lets MCP clients such as ChatGPT subscribe to webhooks when a session \
-             completes, fails, or needs your input.",
-        grade: FeatureFlagGrade::Dev,
-    },
-    FeatureFlagDefinition {
-        name: "agent_change_reasons_required",
-        label: "Require reasons from agents",
-        description: "Refuses changes that agents make without saying why. Off, the change goes \
-             through and the agent is warned to give a reason next time.",
-        grade: FeatureFlagGrade::Prod,
-    },
-    FeatureFlagDefinition {
         name: "reports",
         label: "Reports",
         description: "Shows the Reports page for exploring usage and cost across sessions, agents, \
@@ -339,11 +316,6 @@ impl FeatureFlags {
             ("voice".to_string(), self.voice),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
-            ("mcp_events".to_string(), self.mcp_events),
-            (
-                "agent_change_reasons_required".to_string(),
-                self.agent_change_reasons_required,
-            ),
             ("reports".to_string(), self.reports),
             ("machine_payments".to_string(), self.machine_payments),
             ("engine_hosting".to_string(), self.engine_hosting),
@@ -373,8 +345,6 @@ impl FeatureFlags {
             "voice" => self.voice,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
-            "mcp_events" => self.mcp_events,
-            "agent_change_reasons_required" => self.agent_change_reasons_required,
             "reports" => self.reports,
             "machine_payments" => self.machine_payments,
             "engine_hosting" => self.engine_hosting,
@@ -394,8 +364,6 @@ impl FeatureFlags {
             "voice" => self.voice = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
-            "mcp_events" => self.mcp_events = enabled,
-            "agent_change_reasons_required" => self.agent_change_reasons_required = enabled,
             "reports" => self.reports = enabled,
             "machine_payments" => self.machine_payments = enabled,
             "engine_hosting" => self.engine_hosting = enabled,
@@ -471,8 +439,6 @@ impl FeatureFlags {
             voice: true,
             observers: true,
             public_chat: true,
-            mcp_events: true,
-            agent_change_reasons_required: true,
             reports: true,
             machine_payments: true,
             engine_hosting: true,
@@ -576,6 +542,15 @@ mod tests {
                 .unwrap_or(FeatureFlagGrade::Adoption);
             let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod);
             assert_eq!(policy.grade("evals"), expected);
+            assert_eq!(policy.grade("observers"), expected);
+            assert_eq!(
+                policy.deployment_flags().observers,
+                expected.available(DeploymentGrade::Prod)
+            );
+            assert_eq!(
+                policy.for_org(&HashMap::new()).observers,
+                expected.effective(DeploymentGrade::Prod, None)
+            );
             assert_eq!(
                 policy.deployment_flags().evals,
                 expected.available(DeploymentGrade::Prod)
@@ -591,15 +566,27 @@ mod tests {
             command
                 .args([
                     "--exact",
-                    "feature_flags::tests::environment_override_replaces_catalog_grade",
+                    "records::feature_flags::tests::environment_override_replaces_catalog_grade",
                     "--nocapture",
                 ])
                 .env(CHILD, index.to_string())
-                .env_remove("FEATURE_EVALS");
+                .env_remove("FEATURE_EVALS")
+                .env_remove("FEATURE_OBSERVERS");
             if let Some(value) = value {
-                command.env("FEATURE_EVALS", value);
+                command
+                    .env("FEATURE_EVALS", value)
+                    .env("FEATURE_OBSERVERS", value);
             }
-            assert!(command.status().unwrap().success(), "{value:?}");
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{value:?}: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "child must exercise the policy"
+            );
         }
     }
 
@@ -622,32 +609,21 @@ mod tests {
             assert!(!policy.for_org(&HashMap::new()).is_enabled(name), "{name}");
             assert!(policy.for_org(&opted_in).is_enabled(name), "{name}");
         }
-        // On by default; an org may turn it off.
-        let reasons = "agent_change_reasons_required";
-        assert_eq!(policy.grade(reasons), FeatureFlagGrade::Prod);
-        assert!(policy.for_org(&HashMap::new()).is_enabled(reasons));
-        assert!(
-            !policy
-                .for_org(&HashMap::from([(reasons.to_string(), false)]))
-                .is_enabled(reasons)
-        );
         for removed in [
             "agent_delegation",
             "webmcp",
             "typesafe",
             "openai_agents_api",
+            "browserless",
+            "modal",
+            "sprites",
+            "mcp_events",
+            "agent_change_reasons_required",
         ] {
             assert!(!is_known_feature_flag(removed), "{removed}");
         }
         assert!(!FeatureFlagGrade::Internal.org_configurable(DeploymentGrade::Prod));
-        for name in [
-            "skills",
-            "memory",
-            "plugins",
-            "public_chat",
-            "mcp_events",
-            "reports",
-        ] {
+        for name in ["skills", "memory", "plugins", "public_chat", "reports"] {
             assert_eq!(policy.grade(name), FeatureFlagGrade::Dev, "{name}");
             assert!(!policy.deployment_flags().is_enabled(name), "{name}");
         }
@@ -746,11 +722,44 @@ mod tests {
     }
 
     #[test]
+    fn retired_integration_overrides_do_not_disable_built_in_connections() {
+        let policy = FeatureFlagPolicy {
+            deployment: DeploymentGrade::Prod,
+            grades: feature_flag_definitions()
+                .map(|def| (def.name.to_string(), def.grade))
+                .collect(),
+        };
+        let retired = [
+            "browserless",
+            "modal",
+            "sprites",
+            "mcp_events",
+            "agent_change_reasons_required",
+        ];
+        let overrides = retired
+            .iter()
+            .map(|name| (name.to_string(), false))
+            .collect();
+        let flags = policy.for_org(&overrides);
+        let map = flags.to_map();
+        for name in retired {
+            assert!(!map.0.contains_key(name), "{name}");
+            assert!(!is_known_feature_flag(name), "{name}");
+        }
+        for name in ["browserless", "modal"] {
+            assert!(flags.is_connector_enabled(name), "{name}");
+        }
+        for name in ["browserless", "computer_use", "browser_use", "modal"] {
+            assert!(flags.is_capability_enabled(name), "{name}");
+        }
+    }
+
+    #[test]
     fn integration_flags_gate_their_capabilities_and_connectors() {
         let disabled = FeatureFlags::default();
         let enabled = FeatureFlags::all_enabled();
-        for capability in ["modal", "sprites"] {
-            assert!(!disabled.is_capability_enabled(capability), "{capability}");
+        for capability in ["modal", "browserless", "computer_use", "browser_use"] {
+            assert!(disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");
         }
         // Integrations an agent only reaches after someone adds the capability
@@ -772,7 +781,7 @@ mod tests {
         assert!(disabled.is_connector_enabled("parallel"));
         assert!(disabled.is_connector_enabled("brave_search"));
         for connector in ["browserless", "modal"] {
-            assert!(!disabled.is_connector_enabled(connector), "{connector}");
+            assert!(disabled.is_connector_enabled(connector), "{connector}");
             assert!(enabled.is_connector_enabled(connector), "{connector}");
         }
         // Daytona and E2B capabilities and their credential connectors are

@@ -372,40 +372,9 @@ fn agent_session_ctx(reason: Option<&str>) -> Ctx {
     })
 }
 
-fn requiring_reasons(ctx: Ctx) -> Ctx {
-    reasons_required(ctx, true)
-}
-
-fn reasons_required(ctx: Ctx, required: bool) -> Ctx {
-    ctx.with_feature_flags(crate::records::FeatureFlags {
-        agent_change_reasons_required: required,
-        ..crate::records::FeatureFlags::default()
-    })
-}
-
 #[tokio::test]
-async fn an_agent_change_without_a_reason_goes_through_with_a_warning() {
-    let ctx = reasons_required(agent_session_ctx(None), false);
-    let id = workspace(&ctx, "seeded").await;
-    run(
-        "update_workspace",
-        json!({ "workspace_id": id, "name": "kids" }),
-        &ctx,
-    )
-    .await
-    .unwrap();
-    let notices = ctx.change_intent.as_ref().unwrap().notices.take();
-    assert!(
-        notices.iter().any(|n| n.contains("need a reason")),
-        "{notices:?}"
-    );
-    let entry = history(&ctx, &id).await.remove(0);
-    assert_eq!(entry["reason"], Value::Null);
-}
-
-#[tokio::test]
-async fn an_org_that_requires_reasons_refuses_an_agent_change_without_one() {
-    let ctx = requiring_reasons(agent_session_ctx(None));
+async fn an_agent_change_without_a_reason_is_always_refused() {
+    let ctx = agent_session_ctx(None);
     let id = workspace(&ctx, "seeded").await;
     let err = run(
         "update_workspace",
@@ -424,7 +393,7 @@ async fn an_org_that_requires_reasons_refuses_an_agent_change_without_one() {
         .unwrap();
     assert_eq!(fetched["name"], "seeded", "nothing changed: {fetched}");
 
-    let with_reason = requiring_reasons(agent_session_ctx(Some("the user asked")));
+    let with_reason = agent_session_ctx(Some("the user asked"));
     let id = workspace(&with_reason, "seeded").await;
     run(
         "update_workspace",
@@ -437,7 +406,7 @@ async fn an_org_that_requires_reasons_refuses_an_agent_change_without_one() {
 
 #[tokio::test]
 async fn people_may_change_things_without_a_reason_even_when_agents_may_not() {
-    let ctx = requiring_reasons(ctx_with(OrgRole::Owner));
+    let ctx = ctx_with(OrgRole::Owner);
     let id = workspace(&ctx, "seeded").await;
     run(
         "update_workspace",
