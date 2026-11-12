@@ -122,6 +122,15 @@ pub struct ReasonResult {
 }
 
 impl ReasonResult {
+    /// An empty result carrying what the turn's snapshot decides about it
+    /// after the reason step (today: whether tool-free answers are reviewed).
+    pub(crate) fn for_snapshot(snapshot: &crate::ResolvedExecutionSnapshot) -> Self {
+        Self {
+            review_tool_free_answers: snapshot.completion_check.reviews_tool_free_answers(),
+            ..Self::default()
+        }
+    }
+
     /// The text this step said to the conversation: empty when it is an
     /// explicit agent's working notes.
     pub fn said_text(&self) -> &str {

@@ -43,6 +43,12 @@ impl CompletionCheck {
         }
     }
 
+    /// Whether a final answer that ran no tools is reviewed too. Only
+    /// `always` does: elsewhere a plain answer is taken as final.
+    pub fn reviews_tool_free_answers(&self) -> bool {
+        matches!(self, Self::Always)
+    }
+
     /// Wire and storage spelling.
     pub fn as_str(&self) -> &'static str {
         match self {
