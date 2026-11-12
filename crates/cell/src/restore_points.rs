@@ -187,7 +187,9 @@ impl Store {
     }
 
     fn log_key(&self, cell: u32, inc: u64, first: u64, last: u64) -> Path {
-        self.key(&format!("cells/{cell}/log/i{inc}/{first:020}-{last:020}.json"))
+        self.key(&format!(
+            "cells/{cell}/log/i{inc}/{first:020}-{last:020}.json"
+        ))
     }
 
     /// The incarnations of `cell` taken so far, ascending.
@@ -379,10 +381,15 @@ mod tests {
         let now = 100 * HOUR_MS;
         let window = Duration::from_secs(10 * 3600);
         // Every 20 minutes for the last 30 hours.
-        let copies: Vec<_> = (0..90).map(|i| copy(now - 30 * HOUR_MS + i * HOUR_MS / 3)).collect();
+        let copies: Vec<_> = (0..90)
+            .map(|i| copy(now - 30 * HOUR_MS + i * HOUR_MS / 3))
+            .collect();
         let gone = thin(&copies, window, now);
         let kept: Vec<_> = copies.iter().filter(|c| !gone.contains(c)).collect();
-        let inside: Vec<_> = kept.iter().filter(|c| c.stored_ms >= now - 10 * HOUR_MS).collect();
+        let inside: Vec<_> = kept
+            .iter()
+            .filter(|c| c.stored_ms >= now - 10 * HOUR_MS)
+            .collect();
         // One an hour for 10 hours, plus the newest three (two of them in
         // the newest hour already), plus one base before the window.
         assert_eq!(inside.len(), 12, "{inside:?}");
@@ -415,7 +422,7 @@ mod tests {
         let seg = SegRef {
             from: 1,
             to: 5,
-            inc: 1,
+            branch: 1,
         };
         store
             .put(store.segment_key(session, seg), b"[]".to_vec())

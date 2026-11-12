@@ -332,16 +332,17 @@ impl Fleet {
             self.kill_node(cell, *node);
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
-        let mut members = BTreeMap::new();
+        let (mut members, mut local) = (BTreeMap::new(), BTreeMap::new());
         for node in &nodes {
             let dir = self.configs[&(cell, *node)].data_dir.clone();
             if dir.exists() {
                 let lost = dir.with_extension(format!("lost-{}", now_ms()));
                 std::fs::rename(&dir, lost).unwrap();
             }
-            members.insert(*node, (self.nodes[&(cell, *node)].0.clone(), dir));
+            members.insert(*node, self.nodes[&(cell, *node)].0.clone());
+            local.insert(*node, dir);
         }
-        let rebuilt = everruns_cell::restore::rebuild(&self.store(), cell, &members, at_ms)
+        let rebuilt = everruns_cell::restore::rebuild(&self.store(), cell, &members, &local, at_ms)
             .await
             .unwrap();
         for node in &nodes {

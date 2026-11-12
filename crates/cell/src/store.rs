@@ -39,20 +39,21 @@ pub fn is_context(event_type: &str) -> bool {
     )
 }
 
-/// One stored segment: the session's events `from..=to`, written by cell
-/// incarnation `inc` (0 for one written before incarnations).
+/// One stored segment: the session's events `from..=to`, of history
+/// branch `branch` (0 until the session is first restored).
 ///
-/// Decision: a rebuilt cell (`restore.rs`) writes events at sequences an
-/// earlier incarnation may have used for events the rebuild lost, so a
-/// segment's name carries the incarnation that wrote it. A range then
-/// always holds the same events, whoever reads it, and a restore point of
-/// an earlier incarnation still reads the history it saw.
+/// Decision: a restored session (a rebuilt cell, or a one-org restore;
+/// `restore.rs`) writes events at sequences its earlier history may have
+/// used for events the restore left out, so a segment's name carries the
+/// session's history branch (`SessionState::branch`). A name then always
+/// holds the same events, whoever reads it (caches included), and a
+/// restore point of the earlier branch still reads the history it saw.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SegRef {
     pub from: i32,
     pub to: i32,
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub inc: u64,
+    pub branch: u64,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -287,21 +288,24 @@ impl Store {
     }
 
     pub(crate) fn messages_key(&self, session: SessionId, seg: SegRef) -> Path {
-        self.key(&format!("sessions/{session}/{}.messages.json", seg_name(seg)))
+        self.key(&format!(
+            "sessions/{session}/{}.messages.json",
+            seg_name(seg)
+        ))
     }
 
-    /// Write `events` (dense, `from..=to`) as one segment of incarnation
-    /// `inc`, and its context events beside it. Idempotent.
+    /// Write `events` (dense, `from..=to`) as one segment of history
+    /// branch `branch`, and its context events beside it. Idempotent.
     pub async fn put_segment(
         &self,
         session: SessionId,
         events: &[Event],
-        inc: u64,
+        branch: u64,
     ) -> anyhow::Result<SegRef> {
         let seg = SegRef {
             from: events.first().and_then(|e| e.sequence).unwrap_or(0),
             to: events.last().and_then(|e| e.sequence).unwrap_or(0),
-            inc,
+            branch,
         };
         // The messages first: a segment that exists has its messages.
         let messages: Vec<&Event> = events
@@ -457,7 +461,7 @@ impl Store {
     /// Decision: compaction and re-flushes leave older segments behind.
     /// They are not deleted here: a restore point (an archived snapshot
     /// plus the shipped log after it) may still name them. Each is marked
-    /// retired (`retention.rs`), and the collector deletes it once no
+    /// retired (`restore_points.rs`), and the collector deletes it once no
     /// restore point inside the restore window can refer to it.
     pub async fn prune_segments(&self, session: SessionId, newer: SegRef) {
         let Ok(stored) = self.segments_of(session).await else {
@@ -465,10 +469,7 @@ impl Store {
         };
         let covered: Vec<SegRef> = stored
             .into_iter()
-            .filter(|seg| {
-                *seg != newer && seg.from >= newer.from
-                    && seg.to <= newer.to
-            })
+            .filter(|seg| *seg != newer && seg.from >= newer.from && seg.to <= newer.to)
             .collect();
         if let Err(error) = self.retire_segments(session, &covered).await {
             tracing::debug!(%session, %error, "retiring replaced segments failed");
@@ -499,24 +500,24 @@ pub(crate) fn is_not_found(error: &anyhow::Error) -> bool {
 /// A segment's file name, without its suffix: `<from>-<to>`, then
 /// `@<inc>` for a segment of an incarnation.
 fn seg_name(seg: SegRef) -> String {
-    if seg.inc == 0 {
+    if seg.branch == 0 {
         format!("{:010}-{:010}", seg.from, seg.to)
     } else {
-        format!("{:010}-{:010}@{}", seg.from, seg.to, seg.inc)
+        format!("{:010}-{:010}@{}", seg.from, seg.to, seg.branch)
     }
 }
 
 /// `0000000001-0000000022.json` (or `...@2.json`) as a segment.
 pub(crate) fn parse_segment(name: &str) -> Option<SegRef> {
     let (from, rest) = name.strip_suffix(".json")?.split_once('-')?;
-    let (to, inc) = match rest.split_once('@') {
-        Some((to, inc)) => (to, inc.parse().ok()?),
+    let (to, branch) = match rest.split_once('@') {
+        Some((to, branch)) => (to, branch.parse().ok()?),
         None => (rest, 0),
     };
     Some(SegRef {
         from: from.parse().ok()?,
         to: to.parse().ok()?,
-        inc,
+        branch,
     })
 }
 
@@ -530,13 +531,15 @@ fn cover(mut stored: Vec<SegRef>, chain: &[SegRef], from: i32, to: i32) -> Vec<S
     stored.sort_by_key(|s| s.from);
     let (mut out, mut next) = (Vec::new(), from);
     while next <= to {
-        let inc = chain
+        let branch = chain
             .iter()
             .find(|s| s.from <= next && s.to >= next)
-            .map(|s| s.inc);
+            .map(|s| s.branch);
         let Some(best) = stored
             .iter()
-            .filter(|s| s.from <= next && s.to >= next && inc.is_none_or(|inc| s.inc == inc))
+            .filter(|s| {
+                s.from <= next && s.to >= next && branch.is_none_or(|branch| s.branch == branch)
+            })
             .max_by_key(|s| s.to)
         else {
             break;
@@ -574,7 +577,11 @@ mod tests {
     use super::*;
 
     fn seg(from: i32, to: i32) -> SegRef {
-        SegRef { from, to, inc: 0 }
+        SegRef {
+            from,
+            to,
+            branch: 0,
+        }
     }
 
     #[test]
@@ -587,7 +594,10 @@ mod tests {
         assert_eq!(parse_segment("0000000001-0000000022.messages.json"), None);
         // A compacted 1..=30 and an overlapping re-flush of 25..=40.
         let stored = vec![seg(25, 40), seg(1, 30), seg(31, 35)];
-        assert_eq!(cover(stored.clone(), &[], 1, 40), vec![seg(1, 30), seg(25, 40)]);
+        assert_eq!(
+            cover(stored.clone(), &[], 1, 40),
+            vec![seg(1, 30), seg(25, 40)]
+        );
         assert_eq!(cover(stored.clone(), &[], 32, 33), vec![seg(25, 40)]);
         // A gap leaves the chain short; the length check reports it.
         assert_eq!(cover(vec![seg(1, 10)], &[], 1, 20), vec![seg(1, 10)]);
@@ -595,9 +605,20 @@ mod tests {
 
     #[test]
     fn a_rebuilt_cells_segments_never_stand_in_for_an_earlier_incarnations() {
-        let old = |from, to| SegRef { from, to, inc: 1 };
-        let new = |from, to| SegRef { from, to, inc: 2 };
-        assert_eq!(parse_segment("0000000001-0000000022@2.json"), Some(new(1, 22)));
+        let old = |from, to| SegRef {
+            from,
+            to,
+            branch: 1,
+        };
+        let new = |from, to| SegRef {
+            from,
+            to,
+            branch: 2,
+        };
+        assert_eq!(
+            parse_segment("0000000001-0000000022@2.json"),
+            Some(new(1, 22))
+        );
         assert_eq!(parse_segment("0000000001-0000000022@2.messages.json"), None);
         // The session reads 1..=80 from incarnation 1 and 81.. from 2; the
         // lost incarnation 1 also wrote 81..=200, which must not be read.

@@ -442,11 +442,13 @@ impl Feed {
     /// event, because the turn count moves with the outcome.
     ///
     /// Decision: the summary's version is the session's last event
-    /// sequence under the cell incarnation (`incarnation << 32 | seq`). A
-    /// rebuilt cell writes sequences a lost incarnation already reported,
-    /// and the control plane keeps the newest version, so without the
-    /// incarnation it would keep showing turns the rebuild lost.
-    pub fn turn_finished(&mut self, index: u64, incarnation: u64, session: &str, s: &SessionState) {
+    /// sequence under its history branch, whose high half is the time of
+    /// the restore that started it (`state::new_branch`). A restored
+    /// session writes sequences its earlier branch already reported, and
+    /// the control plane keeps the newest version, so without the branch
+    /// it would keep showing turns the restore took back. The branch
+    /// travels with the session, so a move never lowers the version.
+    pub fn turn_finished(&mut self, index: u64, session: &str, s: &SessionState) {
         let Some(org) = s.tenant.as_deref() else {
             return;
         };
@@ -467,7 +469,8 @@ impl Feed {
         let at = last.map_or(s.created_ms, |e| e.ts.timestamp_millis());
         let record = Record::Session {
             session_id: session.to_owned(),
-            session_version: (incarnation << 32) | s.last_sequence().unwrap_or(0).max(0) as u64,
+            session_version: (s.branch & !u64::from(u32::MAX))
+                | s.last_sequence().unwrap_or(0).max(0) as u64,
             agent_id: s.agent.clone(),
             status: status.into(),
             created_unix_ms: s.created_ms,

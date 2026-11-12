@@ -61,6 +61,8 @@ pub struct Shared {
     event_bytes: AtomicU64,
     /// How long the last snapshot took to build and write, in ms.
     pub snapshot_ms: AtomicU64,
+    /// When this replica last built a snapshot (or started).
+    last_snapshot: parking_lot::Mutex<Instant>,
     /// Called with every applied change (the node's Engine hosting hears
     /// commits through it).
     pub on_change: std::sync::OnceLock<ChangeHook>,
@@ -82,6 +84,7 @@ impl Shared {
             changed: Default::default(),
             event_bytes: AtomicU64::new(4096),
             snapshot_ms: AtomicU64::new(0),
+            last_snapshot: parking_lot::Mutex::new(Instant::now()),
             on_change: std::sync::OnceLock::new(),
         })
     }
@@ -292,8 +295,13 @@ impl Shared {
     }
 
     async fn put_segment(&self, session: SessionId, events: &[Event]) -> anyhow::Result<SegRef> {
-        let inc = self.state.read().incarnation;
-        let seg = self.store.put_segment(session, events, inc).await?;
+        let branch = self
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .map_or(0, |s| s.branch);
+        let seg = self.store.put_segment(session, events, branch).await?;
         // Weigh the in-memory size estimate by what was just written.
         let bytes = serde_json::to_vec(events).map(|b| b.len()).unwrap_or(0) as u64;
         let per = bytes * HEAP_PER_JSON_BYTE / events.len().max(1) as u64;
@@ -304,6 +312,11 @@ impl Shared {
     }
 
     /// Estimated bytes of resident events, and their count.
+    /// How long since this replica last built a snapshot (or started).
+    pub fn last_snapshot_age(&self) -> std::time::Duration {
+        self.last_snapshot.lock().elapsed()
+    }
+
     pub fn resident(&self) -> (u64, usize) {
         let events: usize = self
             .state
@@ -465,7 +478,7 @@ fn snapshot_header(meta: &Meta) -> io::Result<Vec<u8>> {
 
 /// A stored snapshot's metadata and where its state starts. Compact JSON
 /// has no raw newline, so the first one ends the header.
-fn split_snapshot(bytes: &[u8]) -> io::Result<(Meta, usize)> {
+pub(crate) fn split_snapshot(bytes: &[u8]) -> io::Result<(Meta, usize)> {
     let end = bytes
         .iter()
         .position(|b| *b == b'\n')
@@ -475,7 +488,11 @@ fn split_snapshot(bytes: &[u8]) -> io::Result<(Meta, usize)> {
 
 /// Write `data` (a cell state's JSON) as the current snapshot in `dir`, a
 /// node's snapshot directory: what a node opens on start.
-pub(crate) fn write_snapshot_file(dir: &std::path::Path, meta: &Meta, data: &[u8]) -> io::Result<()> {
+pub(crate) fn write_snapshot_file(
+    dir: &std::path::Path,
+    meta: &Meta,
+    data: &[u8],
+) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let tmp = dir.join("current.snap.tmp");
     let mut file = fs::File::create(&tmp)?;
@@ -541,6 +558,7 @@ fn stub(s: &SessionState) -> SessionState {
         turn_start: s.turn_start,
         checkpoints: s.checkpoints.clone(),
         files: s.files.clone(),
+        branch: s.branch,
     }
 }
 
@@ -679,6 +697,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
         self.shared
             .snapshot_ms
             .store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
+        *self.shared.last_snapshot.lock() = Instant::now();
         // openraft keeps only the metadata of a snapshot it built; a peer
         // gets the state through `get_current_snapshot`, which reads the
         // file. Handing the state back here would be one more copy held.

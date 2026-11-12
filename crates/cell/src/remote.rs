@@ -128,6 +128,7 @@ pub fn view(s: &SessionState, since: Option<i32>) -> SessionState {
         turn_start: s.turn_start,
         checkpoints: s.checkpoints.clone(),
         files: s.files.clone(),
+        branch: s.branch,
     }
 }
 
@@ -164,6 +165,11 @@ pub fn merge(state: &mut CellState, session: SessionId, delta: SessionDelta) -> 
     if delta.whole {
         // Replaces whatever the mirror held.
     } else if let Some(old) = state.sessions.remove(&session) {
+        // A restore took the session back (`Command::Revert`): the mirror's
+        // events past the point are not its history any more.
+        if old.branch != new.branch {
+            return false;
+        }
         new.definition = old.definition;
         let first_new = new.events.first().map(seq);
         let mut events: Vec<Event> = old
@@ -592,6 +598,23 @@ mod tests {
         // A partial view of a session the mirror never held.
         let mut other = CellState::default();
         assert!(!merge(&mut other, id, delta(&cell, 2, id, Some(2))));
+    }
+
+    #[test]
+    fn a_restored_session_is_fetched_whole_again() {
+        let id = SessionId::new();
+        let mut mirror = CellState::default();
+        let mut cell = CellState::default();
+        cell.sessions.insert(id, session(id, 1..=9, 0));
+        assert!(merge(&mut mirror, id, delta(&cell, 1, id, None)));
+        // Taken back to 5 on a new branch: the mirror's 6..=9 are not its
+        // history any more, so a partial view does not join up.
+        let mut restored = session(id, 1..=6, 0);
+        restored.branch = 7;
+        cell.sessions.insert(id, restored);
+        assert!(!merge(&mut mirror, id, delta(&cell, 2, id, Some(9))));
+        assert!(merge(&mut mirror, id, delta(&cell, 3, id, None)));
+        assert_eq!(mirror.sessions[&id].last_sequence(), Some(6));
     }
 
     #[test]

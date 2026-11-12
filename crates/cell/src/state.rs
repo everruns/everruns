@@ -210,6 +210,18 @@ pub enum Command {
     /// `Unexpire`), and its late write would land after the copy and be
     /// lost on forward (found by the protocol simulation).
     Revoke { session: SessionId, now_ms: i64 },
+    /// Take a live session back to `image`, its state at an earlier point
+    /// (a one-org restore, `restore::restore_org`): history, inbox and
+    /// workspace as they were then, written on from here on `branch`.
+    /// Placement and generation stay this copy's; the epoch counter jumps
+    /// past anything handed out and any claim ends, so a running turn's
+    /// executor is fenced out. Refused while the session is moving.
+    Revert {
+        session: SessionId,
+        image: Box<SessionState>,
+        branch: u64,
+        now_ms: i64,
+    },
     /// Undo a freeze. With `generation`, a move that was abandoned after
     /// it may have installed a copy elsewhere: the directory already took
     /// the session back at that generation (above the abandoned move's), so
@@ -299,7 +311,8 @@ impl Command {
             | Command::Append { now_ms, .. }
             | Command::Write { now_ms, .. }
             | Command::Files { now_ms, .. }
-            | Command::Revoke { now_ms, .. } => Some(*now_ms),
+            | Command::Revoke { now_ms, .. }
+            | Command::Revert { now_ms, .. } => Some(*now_ms),
             _ => None,
         }
     }
@@ -461,135 +474,23 @@ pub struct SessionState {
     /// The session's workspace (see `files`).
     #[serde(default, skip_serializing_if = "crate::files::Files::is_empty")]
     pub files: crate::files::Files,
+    /// The session's history branch: 0 until a restore takes it back to an
+    /// earlier point, then a newer number no earlier branch of it used
+    /// (`new_branch`). The segments it writes carry it (`store::SegRef`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub branch: u64,
 }
 
-impl SessionState {
-    pub fn last_sequence(&self) -> Option<i32> {
-        self.events
-            .last()
-            .and_then(|event| event.sequence)
-            .or((self.offloaded > 0).then_some(self.offloaded))
-    }
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
 
-    /// The last sequence this replica's segments cover.
-    pub fn flushed(&self) -> i32 {
-        self.segments.last().map(|s| s.to).unwrap_or(0)
-    }
-
-    /// Note that `seg` is stored, keeping `segments` contiguous from
-    /// sequence 1. A segment that starts where a recorded one does and
-    /// reaches the end replaces that one and those after it (compaction);
-    /// one that does not continue the list is ignored.
-    pub fn record(&mut self, seg: crate::store::SegRef) {
-        let flushed = self.flushed();
-        let first = self.segments.iter().position(|s| s.from == seg.from);
-        let last = self.segments.iter().position(|s| s.to == seg.to);
-        match (first, last) {
-            // A compaction: it replaces exactly the run it covers.
-            (Some(first), Some(last)) if first < last => {
-                self.segments.splice(first..=last, [seg]);
-            }
-            _ if seg.from == flushed + 1 => self.segments.push(seg),
-            _ => {}
-        }
-    }
-
-    /// The run of segments a compaction rewrites into one: the trailing run
-    /// whose older end is at most twice the size of what follows it, or
-    /// none while that run is the newest segment alone.
-    ///
-    /// Decision: tiered, never from sequence 1 (that made every compaction
-    /// cost the whole history), and never a forced pair. Forcing at least
-    /// two segments merged the newest one, once large, with each later
-    /// flush: an O(n) rewrite per flush (2400 times the events written in a
-    /// simulation with flushes of 11 to 77 events). Waiting instead until
-    /// the small segments after it add up to half its size keeps sizes
-    /// geometric: an event is rewritten about log(n) times, and a session
-    /// holds about COMPACT_AT segments. The run covers stored segments only;
-    /// the unstored tail is a flush's.
-    pub fn compaction_range(&self) -> Option<(i32, i32)> {
-        let segments = &self.segments;
-        let len = |s: &crate::store::SegRef| i64::from(s.to - s.from + 1);
-        let last = segments.len().checked_sub(1)?;
-        let mut at = last;
-        let mut size = len(&segments[at]);
-        // The first segment (the session's first flush, with
-        // `session.started`) is never merged: reads near the session's start
-        // then parse a few events, not half its history.
-        let floor = usize::from(segments.first().is_some_and(|s| s.from == 1));
-        while at > floor && len(&segments[at - 1]) <= 2 * size {
-            at -= 1;
-            size += len(&segments[at]);
-        }
-        (at < last && at >= floor).then(|| (segments[at].from, segments[last].to))
-    }
-
-    /// Where the current (or last) turn's events begin: its input or its
-    /// `turn.started`, whichever is earlier. A turn resumes from the events
-    /// after it; before it, only messages matter.
-    pub fn turn_from(&self) -> i32 {
-        let mut from = self.last_sequence().unwrap_or(0) + 1;
-        if self.turn_start > 0 {
-            from = from.min(self.turn_start);
-        }
-        // Admitted input no turn has consumed yet is read whole too.
-        if let Some(first) = self
-            .authority
-            .pending_inputs
-            .iter()
-            .find(|seq| **seq > self.authority.consumed)
-        {
-            from = from.min(*first as i32);
-        }
-        from
-    }
-
-    /// Where an executor's copy of the log begins: the current turn's
-    /// events, and the messages after the newest compaction checkpoint
-    /// (the engine reads no further back while it can restore one). Older
-    /// messages are read on demand.
-    pub fn context_from(&self) -> i32 {
-        let floor = self.checkpoints.iter().map(|c| c.source_sequence).max();
-        match floor {
-            Some(floor) => self.turn_from().min(floor.saturating_add(1) as i32),
-            None => 1,
-        }
-    }
-
-    /// Resident events with a sequence above `after`.
-    pub fn resident_after(&self, after: i32) -> &[Event] {
-        let skip = (after - self.offloaded).max(0) as usize;
-        &self.events[skip.min(self.events.len())..]
-    }
-
-    /// An epoch holds the session (a turn runs, or its holder is presumed
-    /// to until superseded).
-    pub fn turn_running(&self) -> bool {
-        self.authority.holder.is_some()
-    }
-
-    /// Admitted input no turn has consumed yet.
-    pub fn queued(&self) -> usize {
-        let consumed = self.authority.consumed;
-        self.authority
-            .pending_inputs
-            .iter()
-            .filter(|seq| **seq > consumed)
-            .count()
-    }
-
-    /// Turns with a Framework outcome.
-    pub fn turns_completed(&self) -> u64 {
-        self.authority.outcomes
-    }
-
-    /// No turn runs and none waits: safe to unload.
-    pub fn idle(&self) -> bool {
-        self.authority.holder.is_none()
-            && !self.authority.runnable
-            && self.authority.open.is_none()
-            && self.placement == Placement::Live
-    }
+/// A history branch number for a restore at `now_ms`: the restore's time
+/// in seconds in the high half, so later branches order above earlier ones
+/// (`control::turn_finished`), and 32 random bits below, so two restores of
+/// one session never share a branch's segment names.
+pub fn new_branch(now_ms: i64) -> u64 {
+    ((now_ms.max(0) / 1000) as u64) << 32 | u64::from(rand::random::<u32>().max(1))
 }
 
 /// Everything a cell replicates.
@@ -1098,8 +999,7 @@ impl CellState {
                 let before = state.turns_completed();
                 let renewed = state.renew(&holder, fence, ttl_ms, consumed, receipts, now_ms);
                 if state.turns_completed() > before {
-                    self.feed
-                        .turn_finished(index, self.incarnation, &session.to_string(), state);
+                    self.feed.turn_finished(index, &session.to_string(), state);
                 }
                 if riding && renewed.is_some() {
                     changes.push(Change::Session(session));
@@ -1140,8 +1040,7 @@ impl CellState {
                 let before = state.turns_completed();
                 let released = state.release(&holder, fence, consumed, hand_off, receipts, now_ms);
                 if state.turns_completed() > before {
-                    self.feed
-                        .turn_finished(index, self.incarnation, &session.to_string(), state);
+                    self.feed.turn_finished(index, &session.to_string(), state);
                 }
                 changes.push(Change::Session(session));
                 match released {
@@ -1178,8 +1077,7 @@ impl CellState {
                 let before = state.turns_completed();
                 let applied = state.write(fence, change, now_ms);
                 if state.turns_completed() > before {
-                    self.feed
-                        .turn_finished(index, self.incarnation, &session.to_string(), state);
+                    self.feed.turn_finished(index, &session.to_string(), state);
                 }
                 changes.push(Change::Session(session));
                 self.applied(session, applied, changes)
@@ -1328,6 +1226,37 @@ impl CellState {
                 if state.authority.holder.take().is_some() {
                     changes.push(Change::Session(session));
                 }
+                Response::Ok
+            }
+            Command::Revert {
+                session,
+                image,
+                branch,
+                now_ms: _,
+            } => {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                let Some(state) = self.sessions.get_mut(&session) else {
+                    return self.missing(session);
+                };
+                if state.branch == branch {
+                    return Response::Duplicate;
+                }
+                if state.placement != Placement::Live {
+                    return Response::Rejected {
+                        reason: "the session is moving; restore it once it settles".into(),
+                    };
+                }
+                let mut image = *image;
+                image.authority.fence = state.authority.fence.max(image.authority.fence) + 1;
+                image.authority.holder = None;
+                image.placement = state.placement;
+                image.generation = state.generation;
+                image.moving_to = None;
+                image.tenant = state.tenant.clone();
+                image.branch = branch;
+                *state = image;
+                self.feed.turn_finished(index, &session.to_string(), state);
+                changes.push(Change::Session(session));
                 Response::Ok
             }
             Command::Thaw {
@@ -1526,6 +1455,9 @@ fn generation_cost_micros(event: &Event) -> Option<i64> {
         .unwrap_or(0.0);
     Some((usd * 1_000_000.0).ceil() as i64)
 }
+
+#[path = "state_session.rs"]
+mod session;
 
 #[cfg(test)]
 #[path = "state_tests.rs"]

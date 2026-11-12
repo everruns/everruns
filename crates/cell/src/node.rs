@@ -165,7 +165,7 @@ pub struct Node {
     /// Sessions whose move this leader is finishing.
     moving: Mutex<HashSet<SessionId>>,
     /// Ships the committed log to the object store while this node leads.
-    shipper: crate::ship::Shipper,
+    pub(crate) shipper: crate::ship::Shipper,
     /// The cell's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
@@ -310,6 +310,7 @@ impl Node {
         tokio::spawn(self.clone().rebalance_loop());
         tokio::spawn(self.clone().control_loop());
         tokio::spawn(self.clone().tenants_loop());
+        tokio::spawn(self.clone().restore_points_loop());
     }
 
     /// While this node leads: ship the committed log to the object store
@@ -869,7 +870,9 @@ impl Node {
                 }
                 match self.batcher.submit(command.clone()).await {
                     Ok((response, index)) if index > 0 && crate::ship::ships_first(&command) => {
-                        self.ship_first(index, deadline).await.map(|()| (response, index))
+                        self.ship_first(index, deadline)
+                            .await
+                            .map(|()| (response, index))
                     }
                     other => other,
                 }
@@ -895,31 +898,6 @@ impl Node {
             }
             tokio::time::sleep(backoff).await;
             backoff = (backoff * 2).min(Duration::from_millis(200));
-        }
-    }
-
-    /// Ship the log through `index` before answering (`ship::ships_first`),
-    /// retrying until `deadline`. On failure the caller gets an error: the
-    /// write committed, but nothing that depends on it may happen yet (a
-    /// tool does not start, a move does not go on), and a retry of the
-    /// write is a duplicate that ships again.
-    async fn ship_first(&self, index: u64, deadline: Instant) -> anyhow::Result<()> {
-        let started = Instant::now();
-        let mut backoff = Duration::from_millis(20);
-        loop {
-            let inc = self.shared.state.read().incarnation;
-            match self.shipper.flush(index, inc).await {
-                Ok(()) => {
-                    self.prom.ship_first_seconds.observe(&[], started.elapsed());
-                    return Ok(());
-                }
-                Err(error) if Instant::now() >= deadline => {
-                    return Err(error.context("ship before answering"));
-                }
-                Err(error) => tracing::debug!(%error, "ship-first retry"),
-            }
-            tokio::time::sleep(backoff).await;
-            backoff = (backoff * 2).min(Duration::from_millis(500));
         }
     }
 

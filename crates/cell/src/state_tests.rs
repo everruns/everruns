@@ -76,14 +76,18 @@ fn compaction_keeps_tiers_whatever_the_flush_sizes() {
         s.record(SegRef {
             from,
             to: from + n - 1,
-            inc: 0,
+            branch: 0,
         });
         writes += i64::from(n);
         if s.segments.len() >= 16
             && let Some((from, to)) = s.compaction_range()
         {
             writes += i64::from(to - from + 1);
-            s.record(SegRef { from, to, inc: 0 });
+            s.record(SegRef {
+                from,
+                to,
+                branch: 0,
+            });
         }
         assert!(s.segments.len() <= 20, "flush {flush}: {:?}", s.segments);
         // Contiguous from 1; the first segment is the first flush.
@@ -99,12 +103,12 @@ fn compaction_keeps_tiers_whatever_the_flush_sizes() {
     s.record(SegRef {
         from: 7,
         to: s.flushed(),
-        inc: 0,
+        branch: 0,
     });
     s.record(SegRef {
         from: 1,
         to: 5,
-        inc: 0,
+        branch: 0,
     });
     assert_eq!(s.segments, before);
 }
@@ -174,4 +178,55 @@ fn checkpoints_keep_the_newest_per_model() {
             .source_sequence,
         20
     );
+}
+
+#[test]
+fn a_revert_takes_a_session_back_and_fences_its_epoch() {
+    let id = SessionId::new();
+    let mut state = CellState::default();
+    let mut now = SessionState {
+        tenant: Some("org".into()),
+        generation: 4,
+        ..Default::default()
+    };
+    now.authority.fence = 9;
+    now.authority.holder = Some(crate::authority::Holder {
+        name: "exec".into(),
+        node: 1,
+        fence: 9,
+        expires_ms: i64::MAX,
+    });
+    state.sessions.insert(id, now);
+    let mut then = SessionState {
+        generation: 2,
+        created_ms: 5,
+        ..Default::default()
+    };
+    then.authority.fence = 3;
+    let revert = |branch| Command::Revert {
+        session: id,
+        image: Box::new(then.clone()),
+        branch,
+        now_ms: 1,
+    };
+    let mut changes = Vec::new();
+    assert!(matches!(
+        state.apply(revert(11), &mut changes),
+        Response::Ok
+    ));
+    let s = &state.sessions[&id];
+    assert_eq!(s.created_ms, 5, "the image's history");
+    assert_eq!((s.generation, s.branch), (4, 11), "this copy's generation");
+    assert_eq!(s.authority.fence, 10, "past every epoch handed out");
+    assert!(s.authority.holder.is_none());
+    assert_eq!(s.tenant.as_deref(), Some("org"));
+    assert!(matches!(
+        state.apply(revert(11), &mut changes),
+        Response::Duplicate
+    ));
+    state.sessions.get_mut(&id).unwrap().placement = Placement::Frozen;
+    assert!(matches!(
+        state.apply(revert(12), &mut changes),
+        Response::Rejected { .. }
+    ));
 }

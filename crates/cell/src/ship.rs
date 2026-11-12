@@ -152,7 +152,9 @@ impl Shipper {
                 );
             }
             let bytes = serde_json::to_vec(&entries)?;
-            self.store.put_log(self.cell, inc, first, last, bytes).await?;
+            self.store
+                .put_log(self.cell, inc, first, last, bytes)
+                .await?;
             shipped = last;
         }
         let mut state = self.state.lock();
@@ -178,9 +180,9 @@ impl Shipper {
 /// Whether `command` is answered only once it is shipped (see the module
 /// decisions).
 pub fn ships_first(command: &Command) -> bool {
+    use everruns::hosting::spi::session_commands::SessionCommand;
     use everruns_contracts::runtime::events::EventData;
     use everruns_contracts::tool_types::SideEffectClass;
-    use everruns::hosting::spi::session_commands::SessionCommand;
     match command {
         Command::Batch { commands } | Command::Chain { commands } => {
             commands.iter().any(ships_first)
@@ -201,7 +203,8 @@ pub fn ships_first(command: &Command) -> bool {
         | Command::Activate { .. }
         | Command::Forward { .. }
         | Command::Drop { .. }
-        | Command::Thaw { .. } => true,
+        | Command::Thaw { .. }
+        | Command::Revert { .. } => true,
         _ => false,
     }
 }

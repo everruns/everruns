@@ -47,6 +47,7 @@ pub mod moves;
 pub mod network;
 pub mod node;
 pub mod node_control;
+mod node_restore;
 pub mod org_token;
 pub mod prof;
 pub mod prom;
