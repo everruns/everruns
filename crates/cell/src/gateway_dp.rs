@@ -63,6 +63,10 @@ pub fn cell_router(node: Arc<Node>) -> Router {
             "/cell/orgs/{org}/secrets/{secret}",
             get(cell_secret).post(cell_secret),
         )
+        .route(
+            "/cell/orgs/{org}/connections/{connection}",
+            get(cell_connection).post(cell_connection),
+        )
         .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
         .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
         .with_state(node.clone())
@@ -477,6 +481,23 @@ async fn cell_secret(
             data_key: c.data_key.clone()?,
         })
     })))
+}
+
+/// `org`'s connection, for the executor that runs a turn needing it (its
+/// token stays sealed: the executor opens it with `secrets`).
+async fn cell_connection(
+    State(node): State<Arc<Node>>,
+    Path((org, connection)): Path<(String, String)>,
+) -> Result<Json<Option<everruns_contracts::dataplane::Connection>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(
+        state
+            .orgs
+            .orgs
+            .get(&org)
+            .and_then(|c| c.connections.get(&connection).cloned()),
+    ))
 }
 
 /// Every session of `org` in this cell, with its full log (an export).

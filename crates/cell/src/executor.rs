@@ -76,8 +76,9 @@ impl Executor {
         let remote = Remote::new(cfg.id, cfg.store.clone())?;
         remote.set_cells(cfg.topology.read()?.cells);
         let hosting = RaftHosting::remote(remote.clone());
-        let engine = crate::node::engine(hosting.clone(), host);
-        Ok(Arc::new(Self {
+        let orgs = Arc::new(crate::providers::OrgProviders::default());
+        let engine = crate::node::engine(hosting.clone(), host, Some(orgs.host_providers()));
+        let executor = Arc::new(Self {
             free: AtomicUsize::new(cfg.slots),
             cfg,
             remote,
@@ -90,7 +91,10 @@ impl Executor {
             tenants: Default::default(),
             stats: Default::default(),
             dp_key: Mutex::new(data_plane_key()?),
-        }))
+        });
+        let material: Arc<dyn crate::providers::OrgMaterial> = executor.clone();
+        orgs.bind(Arc::downgrade(&material));
+        Ok(executor)
     }
 
     /// Start pulling from every cell, and keep up with the topology and
@@ -140,6 +144,23 @@ impl Executor {
             .await?;
         let found = found.ok_or_else(|| anyhow::anyhow!("org {org} has no secret {secret_id}"))?;
         Ok(found.open(org, &dp_key)?)
+    }
+
+    /// `org`'s connection `id`, from the directory cell.
+    pub async fn connection(
+        &self,
+        org: &str,
+        id: &str,
+    ) -> anyhow::Result<Option<everruns_contracts::dataplane::Connection>> {
+        let directory = self.cfg.topology.read()?.directory_cell;
+        self.remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/connections/{id}"),
+                &serde_json::json!({}),
+                Duration::from_secs(5),
+            )
+            .await
     }
 
     pub fn running(&self) -> usize {
@@ -415,4 +436,29 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
             ),
         )
         .with_state(executor)
+}
+
+#[async_trait::async_trait]
+impl crate::providers::OrgMaterial for Executor {
+    fn tenant(&self, session: SessionId) -> Option<String> {
+        self.remote
+            .shared
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .and_then(|s| s.tenant.clone())
+    }
+
+    async fn connection(
+        &self,
+        org: &str,
+        id: &str,
+    ) -> anyhow::Result<Option<everruns_contracts::dataplane::Connection>> {
+        Executor::connection(self, org, id).await
+    }
+
+    async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>> {
+        Executor::secret(self, org, secret_id).await
+    }
 }

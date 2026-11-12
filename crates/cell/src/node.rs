@@ -107,13 +107,17 @@ fn turn_runtime() -> &'static tokio::runtime::Handle {
 /// with the session, so any node or executor, of any deploy, can rebuild it
 /// (see `hosting::BUILD_ID`). Sessions' workspaces live in the cell
 /// (`hosting::files`).
-pub fn engine(hosting: crate::hosting::RaftHosting, host: Arc<dyn Host>) -> everruns::Engine {
+pub fn engine(
+    hosting: crate::hosting::RaftHosting,
+    host: Arc<dyn Host>,
+    orgs: Option<everruns::hosting::services::HostProviders>,
+) -> everruns::Engine {
     everruns::Engine::builder()
         .hosting(hosting.clone())
         .definition_environment(hosting.files())
         .hydrator(move |definition: &everruns::hosting::AgentDefinition| {
             let agent = host
-                .agent(&definition.runtime_agent.agent)
+                .agent_with(&definition.runtime_agent.agent, orgs.as_ref())
                 .map_err(everruns_contracts::error::AgentLoopError::config)?;
             Ok(everruns::hosting::Hydrated {
                 agent,
@@ -230,7 +234,10 @@ impl Node {
             .build()?;
         let node = Arc::new_cyclic(|weak: &std::sync::Weak<Node>| {
             let hosting = crate::hosting::RaftHosting::new(weak.clone());
-            let engine = engine(hosting.clone(), host.clone());
+            // Nodes build org agents but never open an org's key: those turns run
+            // on executors (`providers.rs`).
+            let orgs = Arc::new(crate::providers::OrgProviders::default());
+            let engine = engine(hosting.clone(), host.clone(), Some(orgs.host_providers()));
             Self {
                 batcher,
                 raft,

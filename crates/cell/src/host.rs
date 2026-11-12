@@ -11,12 +11,21 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use everruns::hosting::services::{HostProviders, HostServices};
 use everruns::{Agent, AgentPackage, FunctionTool, Model};
 use serde_json::Value;
 
 pub trait Host: Send + Sync + 'static {
     /// Build the agent `definition` describes, or say why this node cannot.
     fn agent(&self, definition: &Value) -> Result<Agent, String>;
+
+    /// [`agent`](Self::agent), where `orgs` serves the model providers of
+    /// orgs on the data plane (`providers.rs`) that this host does not
+    /// serve itself.
+    fn agent_with(&self, definition: &Value, orgs: Option<&HostProviders>) -> Result<Agent, String> {
+        let _ = orgs;
+        self.agent(definition)
+    }
 
     /// The tools this node offers, as a definition's `tools` entries.
     fn tools(&self) -> Vec<Value> {
@@ -97,6 +106,10 @@ pub fn package(definition: &Value) -> Result<AgentPackage, String> {
 
 impl Host for StandardHost {
     fn agent(&self, definition: &Value) -> Result<Agent, String> {
+        self.agent_with(definition, None)
+    }
+
+    fn agent_with(&self, definition: &Value, orgs: Option<&HostProviders>) -> Result<Agent, String> {
         let package = package(definition)?;
         let manifest = package.manifest();
         let mut builder = Agent::builder();
@@ -111,16 +124,25 @@ impl Host for StandardHost {
             .model
             .as_ref()
             .ok_or("the definition names no model")?;
-        let model = self
+        // A provider this host serves itself wins; otherwise the org's own
+        // provider, by its key, when the org runs on the data plane.
+        let local = self
             .providers
             .get(model.provider.as_str())
-            .and_then(|factory| factory(&model.model))
-            .ok_or_else(|| {
-                format!(
+            .and_then(|factory| factory(&model.model));
+        let model = match (local, orgs) {
+            (Some(model), _) => model,
+            (None, Some(orgs)) => {
+                builder = builder.host_services(HostServices::new().providers(orgs.clone()));
+                Model::on(model.provider.as_str(), model.model.as_str())
+            }
+            (None, None) => {
+                return Err(format!(
                     "this node does not serve {} on {}",
                     model.model, model.provider
-                )
-            })?;
+                ));
+            }
+        };
         // Decision: a session's workspace is its own durable one in the
         // cell, so its file tools may write it, as the platform's workers
         // allow (hidden and sensitive paths stay denied by the policy).

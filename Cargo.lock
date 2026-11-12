@@ -3916,6 +3916,7 @@ dependencies = [
  "everruns",
  "everruns-contracts",
  "everruns-core",
+ "everruns-drivers",
  "futures",
  "hex",
  "jsonwebtoken",
