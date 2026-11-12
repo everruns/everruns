@@ -12,9 +12,8 @@ links:
 ---
 
 Console chat and Work Chat now share the 69-component A2UI 1.0 standard catalog.
-Forms, charts, tables, tabs, media and cards use one renderer, with matching
-bindings, validation and message actions. Saved nested A2UI trees and OpenUI
-replies continue to render.
+Forms, charts, tables and cards share bindings, validation and message actions.
+Saved nested A2UI trees and OpenUI replies still render.
 
 Enable the **A2UI** capability and ask:
 
@@ -22,14 +21,11 @@ Enable the **A2UI** capability and ask:
 Show a quote request form with name, email, plan and notes.
 ```
 
-Form submissions use the conversation's existing message and approval path.
-Busy and read-only views disable message actions. HTML widgets remain sandboxed
-without scripts or external network access. See [Generative UI in chat](/features/generative-ui/)
-for the supported format and interaction limits.
+Forms use existing message approvals; busy/read-only views disable actions.
+HTML stays sandboxed without scripts or network access. See [supported formats](/features/generative-ui/).
 
-Explore the [component gallery](/reference/generative-ui/) for interactive examples
-in both themes and the A2UI source for each example. See [AG-UI support](/integrations/ag-ui/)
-for the event protocol and chat integration boundaries.
+Explore the [component gallery](/reference/generative-ui/) for source examples in both
+themes; see [AG-UI support](/integrations/ag-ui/) for protocol boundaries.
 
 ![A quote request form rendered by the shared chat component catalog](./review-form@2x.png)
 
@@ -41,5 +37,4 @@ run is needed.
 
 Chat and Work Chat now accept the official A2UI `"1.0"` wire-version marker.
 New prompts and examples use it, while saved `"v1.0"` operations remain readable.
-This compatibility fix does not enable agent/renderer function RPC or arbitrary
-catalogs; the existing message and approval boundary remains unchanged.
+Function RPC and arbitrary catalogs remain unsupported.
