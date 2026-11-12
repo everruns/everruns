@@ -122,9 +122,26 @@ jobs:
           REVISION: ${{ inputs.revision }}
         run: |
           set -euo pipefail
+          # A dispatched revision must be a full SHA already on main; a PR-branch
+          # commit (gone after squash merge) or a typo is refused, not validated.
+          # Name the reason so the failure tracker's issue is self-explanatory.
           if [ -n "$REVISION" ]; then
-            [[ "$GITHUB_REF" == refs/heads/main && "$REVISION" =~ ^[0-9a-f]{40}$ ]]
-            git merge-base --is-ancestor "$REVISION" origin/main
+            if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+              echo "::error::revision input is only accepted on main dispatches (got $GITHUB_REF)"
+              exit 1
+            fi
+            if [[ ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::revision must be a full 40-character lowercase commit SHA (got '$REVISION')"
+              exit 1
+            fi
+            if ! git cat-file -e "$REVISION^{commit}" 2>/dev/null; then
+              echo "::error::revision $REVISION does not exist in the repository; dispatch a commit that is on main (a squash-merged PR's branch commits are not)"
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$REVISION" origin/main; then
+              echo "::error::revision $REVISION is not an ancestor of origin/main; only main commits can be validated"
+              exit 1
+            fi
             git -c advice.detachedHead=false checkout --detach "$REVISION"
           fi
 
