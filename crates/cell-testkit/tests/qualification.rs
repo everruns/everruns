@@ -14,22 +14,15 @@ use everruns_cell::remote::EXECUTOR_IDS;
 use serde_json::{Value, json};
 use support::{Fleet, types};
 
-/// The current epoch's fence of `session`.
-async fn fence(fleet: &Fleet, session: &str) -> u64 {
-    fleet.held(session).await;
-    fleet.get(&format!("/v1/sessions/{session}")).await["active"]["fence"]
-        .as_u64()
-        .unwrap()
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn a_stale_executor_is_fenced_out() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     let session = fleet.create_in("slow", 0).await;
     fleet.say(&session, "go").await;
-    assert_eq!(fleet.held(&session).await, EXECUTOR_IDS + 1);
-    let stale = fence(&fleet, &session).await;
+    let holder = fleet.holder(&session).await;
+    assert_eq!(holder["node"], EXECUTOR_IDS + 1, "{holder}");
+    let stale = holder["fence"].as_u64().unwrap();
     // Executor 1 stops answering (a long pause looks the same to the
     // cell); executor 2 takes the turn over under a newer epoch.
     fleet.kill_executor(1);
