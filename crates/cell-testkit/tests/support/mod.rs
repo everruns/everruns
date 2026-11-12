@@ -449,11 +449,26 @@ impl Fleet {
 
     /// Wait until an executor holds `session`; its id.
     pub async fn held(&self, session: &str) -> u64 {
+        self.holder(session).await["node"].as_u64().unwrap()
+    }
+
+    /// Wait until an executor holds `session`; the fence of its epoch.
+    pub async fn fence(&self, session: &str) -> u64 {
+        self.holder(session).await["fence"].as_u64().unwrap()
+    }
+
+    /// Wait until an executor holds `session`; its epoch (`node`, `fence`).
+    ///
+    /// Decision: take every field of the epoch from one view. The gateway
+    /// spreads reads over the cell's members and each answers from its own
+    /// applied state, so a second GET can reach a follower that has not
+    /// applied the claim the first one saw, and find no epoch at all.
+    pub async fn holder(&self, session: &str) -> Value {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let view = self.get(&format!("/v1/sessions/{session}")).await;
-            if let Some(node) = view["active"]["node"].as_u64() {
-                return node;
+            if view["active"]["node"].is_u64() {
+                return view["active"].clone();
             }
             assert!(Instant::now() < deadline, "nobody took {session}: {view}");
             tokio::time::sleep(Duration::from_millis(50)).await;

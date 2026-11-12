@@ -173,14 +173,6 @@ async fn view(fleet: &Fleet, addr: &str) -> View {
         .unwrap()
 }
 
-/// The current epoch's fence of `session`.
-async fn fence(fleet: &Fleet, session: &str) -> u64 {
-    fleet.held(session).await;
-    fleet.get(&format!("/v1/sessions/{session}")).await["active"]["fence"]
-        .as_u64()
-        .unwrap()
-}
-
 /// Turns of the `slow` agent take long enough to publish into.
 fn slow_turns() {
     // This binary's tests all want the same value.
@@ -211,7 +203,7 @@ async fn a_stale_publisher_reaches_no_watcher() {
         "connected"
     );
     fleet.say(&session, "go").await;
-    let stale = fence(&fleet, &session).await;
+    let stale = fleet.fence(&session).await;
     // Executor 1 stops answering; executor 2 takes the turn over under a
     // newer epoch.
     fleet.kill_executor(1);
@@ -261,7 +253,7 @@ async fn a_publisher_on_another_view_is_redirected_to_the_owner() {
         "connected"
     );
     fleet.say(&session, "go").await;
-    let current = fence(&fleet, &session).await;
+    let current = fleet.fence(&session).await;
     let addrs = fleet.addrs(0);
     let view = view(&fleet, &addrs[0].1).await;
     let owner = view.rank(id)[0].1.clone();
