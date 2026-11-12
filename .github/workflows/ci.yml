@@ -1891,7 +1891,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.mode != 'pr' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
-    timeout-minutes: 30
+    # A cache miss must still fit (knowledge/project/ci-build-time.md). Cold, the
+    # job spent 5 min building sqlx-cli, 19 min on the server offload test and
+    # 5.5 min on serve, and 30 min cancelled it with both suites passing (nightly
+    # 2026-11-11). Warm it takes about 15 min.
+    timeout-minutes: 45
     services:
       postgres:
         image: mirror.gcr.io/library/postgres:17-alpine
