@@ -229,6 +229,15 @@ fn matches_provider_overload_as_transient() {
 }
 
 #[test]
+fn matches_a_request_that_never_reached_the_provider_as_transient() {
+    // Nightly 2026-11-12: the driver's own two send retries failed to connect,
+    // so the turn ended without any response from Anthropic.
+    assert!(is_transient_transport_error(
+        "LLM error: provider 'anthropic': Failed to send request: error sending request for url (https://api.anthropic.com/v1/messages) (after 2 retries)"
+    ));
+}
+
+#[test]
 fn does_not_treat_real_failures_as_transient() {
     // A capacity rejection is transient; a functional break is not.
     assert!(!is_transient_transport_error(

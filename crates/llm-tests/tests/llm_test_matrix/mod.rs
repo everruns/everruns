@@ -809,12 +809,18 @@ macro_rules! skip_if_quota {
 /// reported the same rejection without the words "stream error" would have been
 /// treated as a hard regression. Bare status codes are deliberately *not*
 /// matched: `503`/`529` as substrings collide with token counts and request ids.
+///
+/// `error sending request` is reqwest's message for a request that produced no
+/// HTTP response (connect, TLS or stale-connection failure). The driver already
+/// retries those (`llm_retry::is_transient_send_error`); once its retries run
+/// out, the turn fails with no provider response, so the test retries the turn.
 pub fn is_transient_transport_error(err: &str) -> bool {
     let e = err.to_ascii_lowercase();
     [
         "transport error",
         "stream error",
         "error decoding response body",
+        "error sending request",
         "connection reset",
         "connection closed",
         "connection error",

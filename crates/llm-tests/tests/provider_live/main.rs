@@ -43,6 +43,8 @@ pub(crate) fn is_transient_transport(message: &str) -> bool {
     [
         "transport error",
         "error decoding response body",
+        // reqwest: the request produced no HTTP response (connect/TLS failure).
+        "error sending request",
         "connection reset",
         "connection closed",
         "unexpected eof",
