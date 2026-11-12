@@ -2057,7 +2057,7 @@ impl ReasonAtom {
             locale: resolved_locale,
             network_access: turn_agent.network_access.clone(),
             parallel_tool_calls: turn_agent.parallel_tool_calls,
-            ..ReasonResult::default()
+            ..ReasonResult::for_snapshot(&assembled.snapshot)
         };
         if let Some(coordinator) = &self.native_async {
             coordinator

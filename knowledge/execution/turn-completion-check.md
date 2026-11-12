@@ -38,7 +38,12 @@ would finish the turn:
    [Tool Execution](tool-execution.md#turn-completion-gate)) decides the
    clear-cut cases. Only `Evaluate` (tool-using work with a candidate answer)
    goes further. Questions, length stops and live background work never
-   continue.
+   continue. One exception: under `always`, a plain answer that ran no tools
+   is reviewed too. A coding agent that says "Running the tests now" and stops
+   has made the same unkept promise without a tool call (yolop's own check
+   caught these before it moved to the engine). The reason step carries the
+   setting (`ReasonResult::review_tool_free_answers`), so agents on `off` or
+   `unattended` still finish a tool-free answer without loading the session.
 2. The setting and the session origin decide whether the check applies.
 3. A review call runs on the session's own model through the normal provider
    path (purpose `completion_review`, 45 s timeout). Its verdict is `achieved`,

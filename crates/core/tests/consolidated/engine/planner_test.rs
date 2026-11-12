@@ -68,6 +68,7 @@ fn reason_result() -> ReasonResult {
         parallel_tool_calls: None,
         waiting_for_tool_results: false,
         truncation_retry: false,
+        review_tool_free_answers: false,
     }
 }
 
