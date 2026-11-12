@@ -30,4 +30,10 @@ export interface FeatureFlags {
   machine_payments: boolean;
   /** Runs the org's sessions on the Everruns Engine. Platform rollout switch. */
   engine_hosting?: boolean;
+  /**
+   * The org's sessions run on a data plane (v2). Derived by the server from
+   * the org's data plane, never set by hand. Stage 1 serves chat only, so
+   * session files, MCP and sandboxes are hidden.
+   */
+  data_plane?: boolean;
 }

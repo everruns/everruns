@@ -84,11 +84,17 @@ impl ProviderService {
         result.map_err(|error| BadRequestError::new(error.to_string()).into())
     }
 
-    /// Invalidate resolver cache after provider mutation.
+    /// Invalidate resolver cache after provider mutation, and bring an org
+    /// on a data plane up to date (its providers travel as connections).
     async fn invalidate_resolver_cache(&self, org_id: i64) {
         if let Some(ref resolver) = self.provider_resolver {
             resolver.invalidate_cache(org_id).await;
         }
+        let mut cp = crate::domains::data_plane::ControlPlane::from_env(self.db.clone());
+        if self.encryption.is_some() {
+            cp.encryption = self.encryption.clone();
+        }
+        crate::domains::data_plane::providers::sync_logged(&cp, org_id).await;
     }
 
     pub async fn create(&self, caller: &Caller, req: CreateProviderRequest) -> Result<Provider> {

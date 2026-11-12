@@ -79,7 +79,7 @@ pub fn resolve_provider_api_key(
 }
 
 /// Read the connection's chat API selection, rejecting malformed stored values.
-pub(crate) fn provider_api(settings: &serde_json::Value) -> Result<Option<String>> {
+pub fn provider_api(settings: &serde_json::Value) -> Result<Option<String>> {
     match settings.get("api") {
         None | Some(serde_json::Value::Null) => Ok(None),
         Some(serde_json::Value::String(api)) => Ok(Some(api.clone())),

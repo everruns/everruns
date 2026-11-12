@@ -123,6 +123,10 @@ enum Mode {
         /// The data plane org tokens must name.
         #[arg(long, env = "CELL_DATA_PLANE")]
         data_plane: Option<String>,
+        /// The path the API is served under (`/api` behind the local
+        /// proxy); empty when it is served at the root.
+        #[arg(long, env = "CELL_EDGE_API_PREFIX", default_value = "")]
+        api_prefix: String,
     },
     /// Run a stateless gateway.
     Gateway {
@@ -222,16 +226,19 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             control_plane,
             jwks_url,
             data_plane,
+            api_prefix,
         } => {
             let jwks = jwks_url.unwrap_or_else(|| {
                 format!(
-                    "{}/.well-known/jwks.json",
-                    control_plane.trim_end_matches('/')
+                    "{}{}/.well-known/jwks.json",
+                    control_plane.trim_end_matches('/'),
+                    api_prefix.trim_end_matches('/'),
                 )
             });
             let tokens = Arc::new(crate::org_token::OrgTokens::new(Some(jwks), data_plane));
             let gateway = Gateway::new(TopologySource { path: topology });
-            let edge = crate::edge::Edge::new(gateway, &control_plane, tokens);
+            let edge =
+                crate::edge::Edge::with_prefix(gateway, &control_plane, tokens, &api_prefix);
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, control_plane, "edge listening");
             axum::serve(listener, edge.router()).await?;

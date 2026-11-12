@@ -142,6 +142,19 @@ async fn store(
                     last_activity_at: at(*last_activity_unix_ms),
                 })
                 .await?;
+            // The session's own record (created by the control plane's
+            // `POST /v1/sessions`) shows the same state in every list.
+            if let Ok(id) = session_id.parse::<everruns_contracts::typed_id::SessionId>() {
+                let outcome = if status == "failed" { "failed" } else { "completed" };
+                cp.db
+                    .dp_apply_session_summary(
+                        org_id,
+                        id.uuid(),
+                        outcome,
+                        at(*last_activity_unix_ms),
+                    )
+                    .await?;
+            }
         }
         Record::SecretRefreshed {
             secret_id,

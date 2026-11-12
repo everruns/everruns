@@ -213,6 +213,7 @@ export function buildSessionNavigation({
   fileCount,
   activeScheduleCount,
   inRun,
+  dataPlane,
 }: {
   basePath: string;
   features: Set<string>;
@@ -226,16 +227,22 @@ export function buildSessionNavigation({
   activeScheduleCount?: number;
   /** Another agent handed this session its work. */
   inRun?: boolean;
+  /**
+   * The org's sessions run on a data plane, which serves chat only for now:
+   * no session files, repositories, or background work to show.
+   */
+  dataPlane?: boolean;
 }): SessionNavItem[] {
   const hasFeature = (feature: string) => features.has(feature);
   // Work covers subagents, leased resources and the schedules this session
   // created. A count covers a recording whose capability was removed later.
   const hasWork =
-    hasFeature("leased_resources") ||
+    !dataPlane &&
+    (hasFeature("leased_resources") ||
     hasFeature("schedules") ||
     (taskCount ?? 0) > 0 ||
-    (activeScheduleCount ?? 0) > 0;
-  const hasFiles = sessionShowsFiles(features, fileCount);
+      (activeScheduleCount ?? 0) > 0);
+  const hasFiles = !dataPlane && sessionShowsFiles(features, fileCount);
   // Agents shows the whole run: on a session that can hand work to other
   // agents, and on one another agent handed work to.
   const hasAgents = hasFeature("agent_handoffs") || !!inRun;
@@ -287,7 +294,7 @@ export function buildSessionNavigation({
       badge: tabBadge(eventCount),
     },
     // What a coding session changed in each repository it works on.
-    ...(hasFeature("repositories")
+    ...(!dataPlane && hasFeature("repositories")
       ? [
           {
             key: "changes" as const,

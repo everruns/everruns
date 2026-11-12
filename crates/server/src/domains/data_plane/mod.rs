@@ -38,6 +38,8 @@ use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 pub mod allowances;
 pub mod feed;
 pub mod outbox;
+pub mod providers;
+pub mod sessions;
 pub mod tokens;
 
 #[cfg(test)]
@@ -90,6 +92,30 @@ impl ControlPlane {
         }
     }
 
+    /// For a request path (a session create, a provider edit): the link and
+    /// secrets key from the environment, read once, and one HTTP client
+    /// shared by every caller.
+    pub fn from_env(db: Arc<StorageBackend>) -> Self {
+        static SHARED: std::sync::OnceLock<(
+            Option<Arc<EncryptionService>>,
+            Link,
+            reqwest::Client,
+        )> = std::sync::OnceLock::new();
+        let (encryption, link, http) = SHARED.get_or_init(|| {
+            (
+                EncryptionService::from_env().ok().map(Arc::new),
+                Link::from_env().unwrap_or_default(),
+                reqwest::Client::new(),
+            )
+        });
+        Self {
+            db,
+            encryption: encryption.clone(),
+            link: link.clone(),
+            http: http.clone(),
+        }
+    }
+
     /// The server's secrets key: a v2 org's data key and the org token
     /// signing key are stored under it, so key rotation covers them.
     pub fn encryption(&self) -> anyhow::Result<&EncryptionService> {
@@ -138,6 +164,14 @@ pub trait DataPlane: Send + Sync {
         path: &str,
         body: &Value,
     ) -> anyhow::Result<Value>;
+    /// `POST /dp/v1/orgs/{org}/sessions`: create the org's session `id`
+    /// running its agent `agent_key`. Creating again is a no-op.
+    async fn create_session(
+        &self,
+        org: &str,
+        id: everruns_contracts::typed_id::SessionId,
+        agent_key: &str,
+    ) -> anyhow::Result<()>;
 }
 
 /// v1: the org runs on the platform's own workers.
@@ -161,6 +195,15 @@ impl DataPlane for NoDataPlane {
 
     async fn admin(&self, _: reqwest::Method, _: &str, _: &Value) -> anyhow::Result<Value> {
         Ok(Value::Null)
+    }
+
+    async fn create_session(
+        &self,
+        _: &str,
+        _: everruns_contracts::typed_id::SessionId,
+        _: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 
@@ -233,6 +276,21 @@ impl DataPlane for HttpDataPlane {
         }
         Ok(request.send().await?.error_for_status()?.json().await?)
     }
+
+    async fn create_session(
+        &self,
+        org: &str,
+        id: everruns_contracts::typed_id::SessionId,
+        agent_key: &str,
+    ) -> anyhow::Result<()> {
+        let url = format!("{}{}/orgs/{org}/sessions", self.row.url, dp::PREFIX);
+        self.request(reqwest::Method::POST, url)
+            .json(&serde_json::json!({ "id": id, "agent_ref": agent_key }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
 }
 
 /// The data plane `org_id` runs on: [`NoDataPlane`] for a v1 org.
@@ -272,6 +330,7 @@ pub async fn enable_org(
         .dp_insert_org(org_id, data_plane_id, &data_key_id, &stored)
         .await?;
     put_policy(cp, org_id, &TenantPolicy::default()).await?;
+    providers::sync(cp, org_id).await?;
     for key in cp.db.engine_agent_keys_for_edit(org_id, None).await? {
         if let Some((revision, _)) = cp.db.engine_agent_current(&key.agent_key).await? {
             agent_published(&cp.db, &key.agent_key, org_id, &revision).await?;

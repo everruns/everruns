@@ -128,32 +128,55 @@ async fn enrolled(db: &StorageBackend, org_id: i64) -> anyhow::Result<bool> {
 
 /// The first session-level override the Engine cannot express, if any.
 pub fn overrides(session: &SessionRow) -> Option<&'static str> {
-    let set = |value: &Value| match value {
-        Value::Null => false,
-        Value::Array(items) => !items.is_empty(),
-        Value::Object(fields) => !fields.is_empty(),
-        _ => true,
-    };
-    if session
-        .system_prompt
-        .as_deref()
-        .is_some_and(|p| !p.is_empty())
-    {
-        Some("system_prompt")
-    } else if set(&session.tools) {
-        Some("tools")
-    } else if set(&session.mcp_servers) {
-        Some("mcp_servers")
-    } else if set(&session.initial_files) {
-        Some("initial_files")
-    } else if session.network_access.as_ref().is_some_and(set) {
-        Some("network_access")
-    } else if session.max_iterations.is_some() {
-        Some("max_iterations")
-    } else if session.parallel_tool_calls.is_some() {
-        Some("parallel_tool_calls")
-    } else {
-        None
+    Overrides {
+        system_prompt: session.system_prompt.as_deref(),
+        tools: &session.tools,
+        mcp_servers: &session.mcp_servers,
+        initial_files: &session.initial_files,
+        network_access: session.network_access.as_ref(),
+        max_iterations: session.max_iterations.is_some(),
+        parallel_tool_calls: session.parallel_tool_calls.is_some(),
+    }
+    .first()
+}
+
+/// A session's own settings the Engine cannot express yet.
+pub struct Overrides<'a> {
+    pub system_prompt: Option<&'a str>,
+    pub tools: &'a Value,
+    pub mcp_servers: &'a Value,
+    pub initial_files: &'a Value,
+    pub network_access: Option<&'a Value>,
+    pub max_iterations: bool,
+    pub parallel_tool_calls: bool,
+}
+
+impl Overrides<'_> {
+    /// The first one set, if any.
+    pub fn first(&self) -> Option<&'static str> {
+        let set = |value: &Value| match value {
+            Value::Null => false,
+            Value::Array(items) => !items.is_empty(),
+            Value::Object(fields) => !fields.is_empty(),
+            _ => true,
+        };
+        if self.system_prompt.is_some_and(|p| !p.is_empty()) {
+            Some("system_prompt")
+        } else if set(self.tools) {
+            Some("tools")
+        } else if set(self.mcp_servers) {
+            Some("mcp_servers")
+        } else if set(self.initial_files) {
+            Some("initial_files")
+        } else if self.network_access.is_some_and(set) {
+            Some("network_access")
+        } else if self.max_iterations {
+            Some("max_iterations")
+        } else if self.parallel_tool_calls {
+            Some("parallel_tool_calls")
+        } else {
+            None
+        }
     }
 }
 

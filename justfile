@@ -185,6 +185,10 @@ start-dev *args:
 start-all *args:
     ./scripts/lib/services.sh start-all {{args}}
 
+# Put an org on the local data plane (needs `DATA_PLANE=v2 just start-all` running)
+dp-enable org:
+    ./scripts/lib/services.sh dp-enable {{org}}
+
 # Start in PRODUCTION MODE (release builds, no watchers, production UI)
 start-production *args:
     ./scripts/lib/services.sh start-production {{args}}

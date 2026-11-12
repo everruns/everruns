@@ -179,3 +179,26 @@ describe("buildSessionNavigation", () => {
     }
   });
 });
+
+describe("buildSessionNavigation on a data plane", () => {
+  it("hides files, changes and work, which a data plane does not serve yet", () => {
+    const features = new Set(["file_system", "repositories", "schedules", "leased_resources"]);
+    const keys = buildSessionNavigation({
+      basePath: "/sessions/session_1",
+      features,
+      fileCount: 3,
+      taskCount: 2,
+      dataPlane: true,
+    }).map((item) => item.key);
+    expect(keys).not.toContain("files");
+    expect(keys).not.toContain("changes");
+    expect(keys).not.toContain("work");
+    expect(keys).toContain("trace");
+    const v1 = buildSessionNavigation({
+      basePath: "/sessions/session_1",
+      features,
+      fileCount: 3,
+    }).map((item) => item.key);
+    expect(v1).toEqual(expect.arrayContaining(["files", "changes", "work"]));
+  });
+});

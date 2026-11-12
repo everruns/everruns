@@ -307,3 +307,56 @@ async fn a_delayed_feed_arrives_once_across_a_leader_change() {
     assert_eq!(cp.usage_repeats(), 0);
     assert_eq!(cp.sessions()[session.as_str()].turns, 2);
 }
+
+/// Step 8 gate: a config change while a turn runs leaves that turn, and its
+/// session, on the revision it started with.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_config_change_mid_turn_keeps_the_running_turns_revision() {
+    let cp = FakeCp::start().await.unwrap();
+    cp.set_balance(ORG, 10_000_000);
+    let mut fleet = Fleet::start_with(Some(cp.url.clone())).await;
+    fleet.executor(1);
+    // Revision 1 is slow (`CELL_MODEL_DELAY_MS`, 3 s by default).
+    let mut slow = everruns_cell_testkit::definition("slow").unwrap();
+    slow["name"] = json!("helper");
+    slow["instructions"] = json!("Revision 1: do the work.");
+    let first = json!({ "kind": "Agent", "agent_id": "helper", "revision": 1, "package": slow });
+    let ack = cp
+        .push_config(&fleet.base(), ORG, &update(1, 1, 0, vec![first]))
+        .await
+        .unwrap();
+    assert_eq!(ack, ConfigAck::Ok { applied_version: 1 });
+    let session = create(&fleet, 0).await;
+    fleet.say(&session, "go").await;
+    fleet
+        .until("the turn is running", || async {
+            types(&fleet.events(&session).await).contains(&"turn.started")
+        })
+        .await;
+    let ack = cp
+        .push_config(
+            &fleet.base(),
+            ORG,
+            &update(1, 2, 1, vec![agent("helper", 2)]),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ack, ConfigAck::Ok { applied_version: 2 });
+    assert!(
+        !types(&fleet.events(&session).await).contains(&"turn.completed"),
+        "the change landed while the turn ran"
+    );
+    fleet.turns(&session, 1).await;
+    let events = fleet.events(&session).await;
+    assert!(types(&events).contains(&"turn.completed"), "{:?}", types(&events));
+    let running = fleet.get(&format!("/v1/sessions/{session}/agent")).await;
+    assert!(running.to_string().contains("Revision 1"), "{running}");
+    // Its next turn too; a new session gets revision 2.
+    fleet.say(&session, "again").await;
+    fleet.turns(&session, 2).await;
+    let running = fleet.get(&format!("/v1/sessions/{session}/agent")).await;
+    assert!(running.to_string().contains("Revision 1"), "{running}");
+    let fresh = create(&fleet, 1).await;
+    let fresh = fleet.get(&format!("/v1/sessions/{fresh}/agent")).await;
+    assert!(fresh.to_string().contains("Revision 2"), "{fresh}");
+}

@@ -426,6 +426,57 @@ impl Database {
         Ok(())
     }
 
+    /// A v2 session's record follows its data plane summary: idle after a
+    /// turn, the turn's outcome, and when it ended. A row of another org,
+    /// or none, is left alone.
+    pub async fn dp_apply_session_summary(
+        &self,
+        org_id: i64,
+        session_id: uuid::Uuid,
+        last_turn_status: &str,
+        last_turn_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE sessions SET status = 'idle', last_turn_status = $3, last_turn_at = $4,
+                    updated_at = now()
+              WHERE org_id = $1 AND id = $2
+                AND (last_turn_at IS NULL OR last_turn_at <= $4)",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .bind(last_turn_status)
+        .bind(last_turn_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Whether `org_id` has, or had, sessions on a data plane.
+    pub async fn dp_org_ever(&self, org_id: i64) -> Result<bool> {
+        Ok(sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM dp_orgs WHERE org_id = $1
+             UNION ALL
+             SELECT 1 FROM dp_session_summaries WHERE org_id = $1
+             LIMIT 1",
+        )
+        .bind(org_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .is_some())
+    }
+
+    /// Whether `session_id` (its public id) runs on a data plane: it has a
+    /// summary from the moment the control plane created it there.
+    pub async fn dp_session_on_data_plane(&self, session_id: &str) -> Result<bool> {
+        Ok(sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM dp_session_summaries WHERE session_id = $1",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .is_some())
+    }
+
     /// v2 sessions of `org_id`, most recently active first.
     pub async fn dp_session_summaries(
         &self,

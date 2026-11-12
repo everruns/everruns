@@ -142,10 +142,33 @@ async fn a_turn_calls_the_orgs_own_provider_with_its_sealed_key() {
     let executor = fleet.executor(1);
     executor.set_dp_key(dp_key);
 
-    let created = fleet
-        .post("/v1/sessions", json!({ "org": ORG, "agent_ref": "helper" }))
-        .await;
-    let session = created["id"].as_str().unwrap().to_owned();
+    // The control plane creates the session under its record's id; again
+    // is the same session.
+    let id = everruns_contracts::typed_id::SessionId::new();
+    for _ in 0..2 {
+        let (status, created) = cp
+            .call(
+                &base,
+                Method::POST,
+                &format!("/dp/v1/orgs/{ORG}/sessions"),
+                &json!({ "id": id, "agent_ref": "helper" }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(status, StatusCode::CREATED, "{created}");
+        assert_eq!(created["id"], json!(id.to_string()));
+    }
+    let (status, _) = cp
+        .call(
+            &base,
+            Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": everruns_contracts::typed_id::SessionId::new(), "agent_ref": "nobody" }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, StatusCode::NOT_FOUND, "an agent the org does not have");
+    let session = id.to_string();
     fleet.say(&session, "ping").await;
     fleet.turns(&session, 1).await;
     let events = fleet.events(&session).await;

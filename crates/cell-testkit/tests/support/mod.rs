@@ -209,12 +209,17 @@ impl Fleet {
 
     /// Start executor `n` (ids from `EXECUTOR_IDS`).
     pub fn executor(&mut self, n: u64) -> Arc<Executor> {
+        self.executor_with(n, 8)
+    }
+
+    /// Executor `n`, running up to `slots` turns at once.
+    pub fn executor_with(&mut self, n: u64, slots: usize) -> Arc<Executor> {
         let rt = runtime();
         let cfg = ExecutorConfig {
             id: EXECUTOR_IDS + n,
             topology: self.topology.clone(),
             store: self.store().with_cache(16 << 20),
-            slots: 8,
+            slots,
             mirror_sessions: 64,
             pull_wait: Duration::from_secs(2),
         };

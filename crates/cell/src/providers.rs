@@ -32,36 +32,22 @@ use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::runtime_provider::ProviderKey;
 use everruns_contracts::typed_id::{ModelId, SessionId};
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 
-/// The connection kind of a model provider.
-pub const KIND: &str = "llm_provider";
+pub use everruns_contracts::dataplane::{
+    LLM_PROVIDER as KIND, LlmProviderSettings as Settings, llm_provider_connection as connection_id,
+};
+
 /// How long opened provider material is reused.
 const KEEP: Duration = Duration::from_secs(30);
 
-/// The connection id of provider `key`.
-pub fn connection_id(key: &str) -> String {
-    format!("llm:{}", ProviderKey::new(key))
+/// The driver configuration of an `llm_provider` connection.
+pub trait SettingsExt {
+    /// With `api_key` when it was opened.
+    fn config(&self, api_key: Option<String>) -> ProviderConfig;
 }
 
-/// An `llm_provider` connection's settings.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct Settings {
-    /// The provider's key (its normalized name).
-    pub provider_key: String,
-    /// The driver: `openai`, `openrouter`, `anthropic`, ...
-    pub provider_type: String,
-    #[serde(default)]
-    pub base_url: Option<String>,
-    #[serde(default)]
-    pub api: Option<String>,
-    #[serde(default)]
-    pub request_options: everruns_contracts::provider::ProviderRequestOptions,
-}
-
-impl Settings {
-    /// The driver configuration, with `api_key` when it was opened.
-    pub fn config(&self, api_key: Option<String>) -> ProviderConfig {
+impl SettingsExt for Settings {
+    fn config(&self, api_key: Option<String>) -> ProviderConfig {
         // Unknown driver names parse as external drivers.
         let driver = self
             .provider_type

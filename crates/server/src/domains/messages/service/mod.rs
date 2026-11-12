@@ -282,6 +282,24 @@ impl MessageService {
             "Creating user message"
         );
 
+        // Data plane v2: a session the org's data plane runs takes its
+        // messages there (through the edge). The platform's workers must
+        // never start a second copy of it.
+        let data_plane = crate::domains::data_plane::ControlPlane::from_env(self.db.clone());
+        if crate::domains::data_plane::sessions::runs_on_data_plane(
+            &data_plane,
+            ctx.org_id,
+            SessionId::from_uuid(ctx.session_id),
+        )
+        .await?
+        {
+            return Err(ConflictError::new(
+                "this session runs on the organization's data plane: send its messages there",
+            )
+            .with_code("session_on_data_plane")
+            .into());
+        }
+
         if let Some(client_message_id) = req.client_message_id
             && let Some(row) = self
                 .db

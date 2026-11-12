@@ -44,6 +44,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
         .route("/dp/v1/orgs/{org}/config", get(position))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
+        .route("/dp/v1/orgs/{org}/sessions", post(org_session))
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
             crate::node_control::require_link_token,
@@ -131,6 +132,30 @@ async fn config(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
         other => Err((StatusCode::CONFLICT, format!("{other:?}"))),
     }
+}
+
+/// A session the control plane creates for an org on the data plane.
+#[derive(serde::Deserialize)]
+struct OrgSession {
+    /// The control plane's id for it, so its record and the data plane's
+    /// session are one session; creating again is a no-op.
+    id: everruns_contracts::typed_id::SessionId,
+    /// The org's agent, at its current revision.
+    agent_ref: String,
+}
+
+/// `POST /dp/v1/orgs/{org}/sessions`: the control plane creating an org's
+/// session (its `POST /v1/sessions` for an org on a data plane).
+async fn org_session(
+    State(gateway): State<Arc<Gateway>>,
+    Path(org): Path<String>,
+    Json(body): Json<OrgSession>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let revision = gateway.agent_revision(&org, &body.agent_ref).await?;
+    let created = gateway
+        .create(revision.package, None, Some(body.id), Some(org))
+        .await?;
+    Ok((StatusCode::CREATED, Json(created)))
 }
 
 async fn position(

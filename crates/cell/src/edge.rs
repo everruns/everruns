@@ -53,6 +53,10 @@ pub struct Edge {
     gateway: Arc<Gateway>,
     app: Router,
     control_plane: String,
+    /// The path prefix the API is served under (`/api` behind the local
+    /// proxy, empty in production), kept on calls to the control plane and
+    /// dropped on calls to the data plane.
+    prefix: String,
     http: reqwest::Client,
     tokens: Arc<OrgTokens>,
     exchanged: Mutex<HashMap<[u8; 32], Exchanged>>,
@@ -101,12 +105,23 @@ impl Edge {
     /// control plane calls to `control_plane` and checking org tokens with
     /// `tokens`.
     pub fn new(gateway: Arc<Gateway>, control_plane: &str, tokens: Arc<OrgTokens>) -> Arc<Self> {
+        Self::with_prefix(gateway, control_plane, tokens, "")
+    }
+
+    /// [`Edge::new`] for an API served under `prefix` (such as `/api`).
+    pub fn with_prefix(
+        gateway: Arc<Gateway>,
+        control_plane: &str,
+        tokens: Arc<OrgTokens>,
+        prefix: &str,
+    ) -> Arc<Self> {
         gateway.require_org_tokens(tokens.clone());
         let app = crate::gateway::router(gateway.clone());
         Arc::new(Self {
             gateway,
             app,
             control_plane: control_plane.trim_end_matches('/').to_owned(),
+            prefix: prefix.trim_end_matches('/').to_owned(),
             http: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
@@ -170,7 +185,7 @@ impl Edge {
     async fn exchange(&self, headers: &HeaderMap) -> Result<Exchanged, ()> {
         let mut request = self
             .http
-            .post(format!("{}/v1/auth/token", self.control_plane))
+            .post(format!("{}{}/v1/auth/token", self.control_plane, self.prefix))
             .header(header::CONTENT_TYPE, "application/json")
             .body("{}")
             .timeout(Duration::from_secs(5));
@@ -291,6 +306,17 @@ impl Edge {
             return (StatusCode::BAD_GATEWAY, "unusable org token").into_response();
         };
         headers.insert(header::AUTHORIZATION, value);
+        if !self.prefix.is_empty() {
+            let unprefixed = request
+                .uri()
+                .path_and_query()
+                .map(|p| p.as_str())
+                .and_then(|p| p.strip_prefix(self.prefix.as_str()))
+                .and_then(|p| p.parse::<axum::http::Uri>().ok());
+            if let Some(uri) = unprefixed {
+                *request.uri_mut() = uri;
+            }
+        }
         match self.app.clone().oneshot(request).await {
             Ok(response) => response,
             Err(never) => match never {},
@@ -299,7 +325,9 @@ impl Edge {
 }
 
 async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
-    let Route::Session(session) = route(request.uri().path()) else {
+    let path = request.uri().path();
+    let path = path.strip_prefix(edge.prefix.as_str()).unwrap_or(path);
+    let Route::Session(session) = route(path) else {
         return edge.to_control_plane(request).await;
     };
     let token = match explicit(request.headers()) {

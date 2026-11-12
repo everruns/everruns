@@ -175,6 +175,50 @@ impl everruns::ChatDriver for FilesSim {
     }
 }
 
+/// Deltas a `stamp` turn streams.
+pub const STAMPS: usize = 20;
+/// Time between a `stamp` turn's deltas.
+pub const STAMP_EVERY: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// A model whose deltas carry the time they were produced.
+struct StampSim;
+
+#[async_trait::async_trait]
+impl everruns::ChatDriver for StampSim {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &everruns::ProviderEndpoint,
+        _messages: Vec<everruns_contracts::Message>,
+        _config: &everruns::LlmCallConfig,
+    ) -> everruns_contracts::Result<everruns::LlmResponseStream> {
+        use everruns_contracts::driver_registry::{LlmCompletionMetadata, LlmStreamEvent};
+        let stream = futures::stream::unfold(0usize, |n| async move {
+            if n > STAMPS {
+                return None;
+            }
+            if n == STAMPS {
+                let done = LlmCompletionMetadata {
+                    prompt_tokens: Some(1),
+                    completion_tokens: Some(STAMPS as u32),
+                    total_tokens: Some(STAMPS as u32 + 1),
+                    ..Default::default()
+                };
+                return Some((Ok(LlmStreamEvent::Done(Box::new(done))), n + 1));
+            }
+            if n > 0 {
+                tokio::time::sleep(STAMP_EVERY).await;
+            }
+            let micros = chrono::Utc::now().timestamp_micros();
+            Some((Ok(LlmStreamEvent::TextDelta(format!("@{micros};"))), n + 1))
+        });
+        Ok(Box::pin(stream))
+    }
+}
+
+fn stamp_model() -> Model {
+    Model::new("stamp", everruns::Provider::new("llmsim", StampSim))
+}
+
 fn files_model() -> Model {
     Model::new("files", everruns::Provider::new("llmsim", FilesSim))
 }
@@ -447,6 +491,9 @@ static BLOB_SIM: std::sync::LazyLock<LlmSimConfig> = std::sync::LazyLock::new(||
 /// - `lead`: delegate to the member `worker3`, then report;
 /// - `chat`: a long answer, with no tools, and native compaction;
 /// - `files`: writes or reads a workspace file the message names;
+/// - `stamp`: streams [`STAMPS`] text deltas, each the Unix time in
+///   microseconds it was produced (`@<micros>;`), [`STAMP_EVERY`] apart:
+///   the streaming latency bench reads them off the wire;
 /// - anything else: plays the Everruns llmsim scenario named by a
 ///   `[[llmsim:<scenario>]]` marker in the message, and otherwise answers
 ///   "done.".
@@ -463,6 +510,7 @@ pub fn host() -> StandardHost {
                 "chat" => chat_model(),
                 "blob" => blob_model(),
                 "files" => files_model(),
+                "stamp" => stamp_model(),
                 _ => Model::simulated("done."),
             })
         })
@@ -518,6 +566,8 @@ fn agent(name: &str, instructions: &str, model: &str, tool_names: &[&str]) -> Va
 pub fn definition(name: &str) -> Option<Value> {
     Some(match name {
         "echo" => agent("echo", "Answer.", "echo", &[]),
+        // Deltas stamped with the time they were made (the latency bench).
+        "stamp" => agent("stamp", "Answer.", "stamp", &[]),
         "worker" => agent("worker", "Do the work, then report.", "work-1", &["work"]),
         "worker3" => agent("worker3", "Do the work, then report.", "work-3", &["work"]),
         "slow" => agent("slow", "Do the work, then report.", "slow", &["work"]),

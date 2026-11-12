@@ -125,6 +125,35 @@ pub struct Connection {
     pub refresh_owner: RefreshOwner,
 }
 
+/// The connection kind of an org's model provider.
+pub const LLM_PROVIDER: &str = "llm_provider";
+
+/// The connection id of the model provider an agent's `model.provider`
+/// names (`key`, normalized as provider keys are).
+pub fn llm_provider_connection(key: &str) -> String {
+    format!(
+        "llm:{}",
+        crate::runtime_provider::ProviderKey::new(key).as_str()
+    )
+}
+
+/// An [`LLM_PROVIDER`] connection's settings: what a driver needs besides
+/// the API key, which is the connection's token secret.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct LlmProviderSettings {
+    /// The provider's key: its normalized name.
+    pub provider_key: String,
+    /// The driver: `openai`, `openrouter`, `anthropic`, ...
+    pub provider_type: String,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// The chat API, when the provider selects one.
+    #[serde(default)]
+    pub api: Option<String>,
+    #[serde(default)]
+    pub request_options: crate::provider::ProviderRequestOptions,
+}
+
 /// The org, seen by the data plane only as a tenant.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct TenantPolicy {
