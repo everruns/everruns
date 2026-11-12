@@ -8,6 +8,8 @@ sidebar:
 
 This page lists the external vendors Everruns agents connect to. Tool integrations surface as [capabilities](/features/capabilities/), so a vendor that has a capability page (Daytona, E2B, Browserless, Slack) is documented there in full: setup, tools, and security. The remaining vendors have their own page in this section. Messaging integrations use [endpoints](/features/channels/) owned by the Agent.
 
+Building with the Framework instead? [Framework integrations](/framework/integrations/) lists the ones an embedded app can use and the Cargo feature for each.
+
 ## Sandboxes & execution
 
 Give agents an isolated environment to run code, edit files, and persist state.

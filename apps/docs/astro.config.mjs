@@ -357,6 +357,7 @@ export default defineConfig({
                   label: "Extend",
                   collapsed: true,
                   items: [
+                    { label: "Integrations", slug: "framework/integrations" },
                     { label: "Advanced Capabilities", slug: "framework/advanced-capabilities" },
                     { label: "Capability Integrations", slug: "framework/capability-integrations" },
                     { label: "Portable vs Hosted", slug: "framework/capability-boundaries" },
