@@ -348,7 +348,11 @@ async fn a_config_change_mid_turn_keeps_the_running_turns_revision() {
     );
     fleet.turns(&session, 1).await;
     let events = fleet.events(&session).await;
-    assert!(types(&events).contains(&"turn.completed"), "{:?}", types(&events));
+    assert!(
+        types(&events).contains(&"turn.completed"),
+        "{:?}",
+        types(&events)
+    );
     let running = fleet.get(&format!("/v1/sessions/{session}/agent")).await;
     assert!(running.to_string().contains("Revision 1"), "{running}");
     // Its next turn too; a new session gets revision 2.

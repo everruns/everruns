@@ -719,7 +719,11 @@ impl SessionView {
     }
 }
 
-pub(crate) fn lookup<T>(node: &Node, session: SessionId, f: impl FnOnce(&SessionState) -> T) -> Lookup<T> {
+pub(crate) fn lookup<T>(
+    node: &Node,
+    session: SessionId,
+    f: impl FnOnce(&SessionState) -> T,
+) -> Lookup<T> {
     let state = node.shared.state.read();
     match state.sessions.get(&session) {
         Some(s) => Lookup::Here(f(s)),

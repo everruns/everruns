@@ -53,10 +53,7 @@ async fn setup() -> Setup {
     let ack = cp.push_config(&fleet.base(), ORG, &update).await.unwrap();
     assert_eq!(ack, ConfigAck::Ok { applied_version: 1 });
 
-    let tokens = Arc::new(OrgTokens::new(
-        Some(cp.jwks_url()),
-        Some("dp-local".into()),
-    ));
+    let tokens = Arc::new(OrgTokens::new(Some(cp.jwks_url()), Some("dp-local".into())));
     let edge = Edge::new(Gateway::new(fleet.topology()), &cp.url, tokens);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
@@ -174,7 +171,12 @@ async fn a_v2_orgs_session_calls_reach_the_data_plane_and_records_the_control_pl
     assert!(from_control_plane(&body), "{body}");
     let other = everruns_contracts::typed_id::SessionId::new();
     let (_, body) = s
-        .call(Method::GET, &format!("/v1/sessions/{other}/events"), &me, None)
+        .call(
+            Method::GET,
+            &format!("/v1/sessions/{other}/events"),
+            &me,
+            None,
+        )
         .await;
     assert!(from_control_plane(&body), "{body}");
 }
@@ -186,11 +188,10 @@ async fn no_token_reaches_another_orgs_session() {
     let (status, body) = s.events("Bearer user-org-b").await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     // An org token sent outright: expired, or signed by someone else.
-    let expired = s
-        .cp
-        .signer
-        .token(ORG, "dp-local", "sessions:write", -120)
-        .unwrap();
+    let expired =
+        s.cp.signer
+            .token(ORG, "dp-local", "sessions:write", -120)
+            .unwrap();
     let forged = everruns_cell_testkit::signer::Signer::new("cp-key-1")
         .unwrap()
         .token(ORG, "dp-local", "admin", 600)
@@ -225,7 +226,11 @@ async fn no_token_reaches_another_orgs_session() {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(s.cp.exchanges(), exchanged, "nothing exchanged for a token sent");
+    assert_eq!(
+        s.cp.exchanges(),
+        exchanged,
+        "nothing exchanged for a token sent"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -150,9 +150,9 @@ impl Edge {
         let cached = self.exchanged.lock().get(&key).cloned();
         match &cached {
             Some(Exchanged::NotV2 { until }) if Instant::now() < *until => return None,
-            Some(Exchanged::Token {
-                token, refresh, ..
-            }) if now < *refresh => return Some(token.clone()),
+            Some(Exchanged::Token { token, refresh, .. }) if now < *refresh => {
+                return Some(token.clone());
+            }
             _ => {}
         }
         match self.exchange(headers).await {
@@ -185,7 +185,10 @@ impl Edge {
     async fn exchange(&self, headers: &HeaderMap) -> Result<Exchanged, ()> {
         let mut request = self
             .http
-            .post(format!("{}{}/v1/auth/token", self.control_plane, self.prefix))
+            .post(format!(
+                "{}{}/v1/auth/token",
+                self.control_plane, self.prefix
+            ))
             .header(header::CONTENT_TYPE, "application/json")
             .body("{}")
             .timeout(Duration::from_secs(5));
@@ -262,7 +265,10 @@ impl Edge {
             .map_or(parts.uri.path(), |p| p.as_str());
         let mut upstream = self
             .http
-            .request(parts.method.clone(), format!("{}{path}", self.control_plane))
+            .request(
+                parts.method.clone(),
+                format!("{}{path}", self.control_plane),
+            )
             .body(reqwest::Body::wrap_stream(body.into_data_stream()));
         for (name, value) in &parts.headers {
             if !hop_by_hop(name) && name != header::HOST {
@@ -408,12 +414,24 @@ mod tests {
         let id = SessionId::new();
         assert_eq!(route("/v1/sessions"), Route::ControlPlane);
         assert_eq!(route(&format!("/v1/sessions/{id}")), Route::ControlPlane);
-        assert_eq!(route(&format!("/v1/sessions/{id}/pin")), Route::ControlPlane);
-        assert_eq!(route(&format!("/v1/sessions/{id}/archive")), Route::ControlPlane);
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/pin")),
+            Route::ControlPlane
+        );
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/archive")),
+            Route::ControlPlane
+        );
         assert_eq!(route(&format!("/v1/sessions/{id}/sse")), Route::Session(id));
-        assert_eq!(route(&format!("/v1/sessions/{id}/messages")), Route::Session(id));
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/messages")),
+            Route::Session(id)
+        );
         // A stage 2 call goes to the data plane, which answers 501 for it.
-        assert_eq!(route(&format!("/v1/sessions/{id}/fs/a.md")), Route::Session(id));
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/fs/a.md")),
+            Route::Session(id)
+        );
         assert_eq!(route("/v1/sessions/not-an-id/sse"), Route::ControlPlane);
         assert_eq!(route("/v1/agents"), Route::ControlPlane);
     }
@@ -421,7 +439,10 @@ mod tests {
     #[test]
     fn a_credential_is_keyed_by_what_identifies_it() {
         let mut a = HeaderMap::new();
-        a.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer one"));
+        a.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer one"),
+        );
         let mut b = a.clone();
         assert_eq!(credential_key(&a), credential_key(&b));
         b.insert("x-org-id", HeaderValue::from_static("org_2"));
@@ -434,7 +455,10 @@ mod tests {
     #[test]
     fn an_api_key_is_not_taken_for_an_org_token() {
         let mut headers = HeaderMap::new();
-        headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Bearer evr_abc"));
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer evr_abc"),
+        );
         assert_eq!(explicit(&headers), None);
     }
 }

@@ -41,14 +41,12 @@ pub(crate) async fn resume(node: &Node, id: SessionId) -> Result<everruns::Sessi
         Ok(handle) => Ok(handle),
         // Engine folds authority errors into `Unavailable`; ask the replica
         // why.
-        Err(error) => Err(
-            match crate::api::lookup(node, id, |s| s.placement) {
-                Lookup::Moved { cell } => CellReply::Moved { cell },
-                Lookup::Missing => CellReply::NotFound,
-                Lookup::Here(Placement::Frozen | Placement::Prepared) => CellReply::Frozen,
-                Lookup::Here(_) => reply_of(error),
-            },
-        ),
+        Err(error) => Err(match crate::api::lookup(node, id, |s| s.placement) {
+            Lookup::Moved { cell } => CellReply::Moved { cell },
+            Lookup::Missing => CellReply::NotFound,
+            Lookup::Here(Placement::Frozen | Placement::Prepared) => CellReply::Frozen,
+            Lookup::Here(_) => reply_of(error),
+        }),
     }
 }
 

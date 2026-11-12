@@ -468,13 +468,15 @@ impl Database {
     /// Whether `session_id` (its public id) runs on a data plane: it has a
     /// summary from the moment the control plane created it there.
     pub async fn dp_session_on_data_plane(&self, session_id: &str) -> Result<bool> {
-        Ok(sqlx::query_scalar::<_, i32>(
-            "SELECT 1 FROM dp_session_summaries WHERE session_id = $1",
+        Ok(
+            sqlx::query_scalar::<_, i32>(
+                "SELECT 1 FROM dp_session_summaries WHERE session_id = $1",
+            )
+            .bind(session_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .is_some(),
         )
-        .bind(session_id)
-        .fetch_optional(&self.pool)
-        .await?
-        .is_some())
     }
 
     /// v2 sessions of `org_id`, most recently active first.

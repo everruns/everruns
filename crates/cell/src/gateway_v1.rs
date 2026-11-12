@@ -36,10 +36,7 @@ type ApiError = (StatusCode, String);
 
 pub fn routes() -> Router<Arc<Gateway>> {
     Router::new()
-        .route(
-            "/v1/sessions/{session}/messages",
-            post(send).get(messages),
-        )
+        .route("/v1/sessions/{session}/messages", post(send).get(messages))
         .route("/v1/sessions/{session}/events", get(events))
         .route("/v1/sessions/{session}/sse", get(sse))
         .route("/v1/sessions/{session}/cancel", post(cancel_turn))
@@ -86,33 +83,33 @@ struct SendBody {
     metadata: Option<Value>,
 }
 
-/// The text of an input message's content. Anything but text parts is a
-/// stage 2 feature.
-fn input_text(message: &Value) -> Result<String, Response> {
+/// The text of an input message's content, or the kind of the first part
+/// that is not text: anything but text parts is a stage 2 feature.
+fn input_text(message: &Value) -> Result<String, String> {
     let parts = message["content"].as_array().cloned().unwrap_or_default();
     let mut text = Vec::new();
     for part in &parts {
         match part["type"].as_str() {
             Some("text") => text.push(part["text"].as_str().unwrap_or_default().to_owned()),
-            other => {
-                let kind = other.unwrap_or("unknown").to_owned();
-                return Err((
-                    StatusCode::NOT_IMPLEMENTED,
-                    Json(json!({
-                        "title": "Not Implemented",
-                        "status": 501,
-                        "code": NOT_YET,
-                        "feature": format!("message content {kind}"),
-                        "detail": format!(
-                            "{kind} content is not available yet for sessions on a v2 data plane"
-                        ),
-                    })),
-                )
-                    .into_response());
-            }
+            other => return Err(other.unwrap_or("unknown").to_owned()),
         }
     }
     Ok(text.join("\n"))
+}
+
+/// 501 for an input content kind the data plane does not take yet.
+fn unsupported_content(kind: &str) -> Response {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({
+            "title": "Not Implemented",
+            "status": 501,
+            "code": NOT_YET,
+            "feature": format!("message content {kind}"),
+            "detail": format!("{kind} content is not available yet for sessions on a v2 data plane"),
+        })),
+    )
+        .into_response()
 }
 
 /// `POST /v1/sessions/{id}/messages`: admit a user message. Answers 201
@@ -129,17 +126,13 @@ async fn send(
         Err(error) => return error.into_response(),
     };
     if raw.as_deref().is_some_and(|q| q.contains("wait=true")) {
-        return not_yet(
-            Method::POST,
-            Path((String::new(), "messages?wait".into())),
-        )
-        .await;
+        return not_yet(Method::POST, Path((String::new(), "messages?wait".into()))).await;
     }
     let text = match (body.text, &body.message) {
         (Some(text), _) => text,
         (None, Some(message)) => match input_text(message) {
             Ok(text) => text,
-            Err(response) => return response,
+            Err(kind) => return unsupported_content(&kind),
         },
         (None, None) => {
             return (StatusCode::BAD_REQUEST, "message or text required").into_response();
@@ -301,8 +294,8 @@ async fn events(
     let run = async {
         let session = parse(&session)?;
         let query = EventsQuery::parse(raw.as_deref())?;
-        let mut events = read_events(&gateway, session, query.stream.after_sequence.unwrap_or(0))
-            .await?;
+        let mut events =
+            read_events(&gateway, session, query.stream.after_sequence.unwrap_or(0)).await?;
         if let Some(since) = &query.stream.since_id {
             let at = events
                 .iter()
@@ -354,7 +347,10 @@ async fn approvals(
 ) -> Result<Json<Value>, ApiError> {
     let session = parse(&session)?;
     if body.decisions.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "decisions must not be empty".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "decisions must not be empty".into(),
+        ));
     }
     let command = body.command_id.unwrap_or_else(uuid::Uuid::new_v4);
     let body = json!({ "command": command, "decisions": body.decisions });

@@ -92,7 +92,8 @@ impl Node {
     /// session's stream node, sent to it otherwise.
     pub async fn deliver_live(&self, batch: LiveBatch) {
         if self.check_stream_owner(batch.session, None).is_ok() {
-            self.publish_live(batch.session, batch.fence, batch.deltas);
+            self.publish_live(batch.session, batch.fence, batch.deltas)
+                .await;
             return;
         }
         let seeds: Vec<String> = self.members().into_values().collect();

@@ -77,7 +77,10 @@ async fn stub() -> (String, Stub) {
         let mut seen = seen.lock();
         let applied = seen.applied;
         seen.sessions.push((org, body.clone(), applied));
-        (axum::http::StatusCode::CREATED, Json(json!({ "id": body["id"] })))
+        (
+            axum::http::StatusCode::CREATED,
+            Json(json!({ "id": body["id"] })),
+        )
     }
     let app = Router::new()
         .route("/dp/v1/orgs/{org}", put(enable))
@@ -560,7 +563,9 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
     let id = cp.db.create_session(row).await.unwrap().id;
     assert!(!sessions::runs_on_data_plane(&cp, ORG, id).await.unwrap());
 
-    sessions::created(&cp, ORG, id, harness, None).await.unwrap();
+    sessions::created(&cp, ORG, id, harness, None)
+        .await
+        .unwrap();
     let (key, _) = crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, None)
         .await
         .unwrap();
@@ -592,10 +597,15 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
     assert_eq!(record.last_turn_status.as_deref(), Some("completed"));
 
     // A v1 org's session is left to the platform's workers.
-    let v1 = cp.db.create_session(crate::storage::test_database::test_session_row(3)).await;
+    let v1 = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(3))
+        .await;
     if let Ok(v1) = v1 {
         let before = seen.lock().sessions.len();
-        sessions::created(&cp, 3, v1.id, harness, None).await.unwrap();
+        sessions::created(&cp, 3, v1.id, harness, None)
+            .await
+            .unwrap();
         assert_eq!(seen.lock().sessions.len(), before);
         assert!(!sessions::runs_on_data_plane(&cp, 3, v1.id).await.unwrap());
     }
@@ -626,13 +636,21 @@ async fn a_providers_key_travels_sealed_and_only_when_it_changed() {
     let id = dp::llm_provider_connection(
         everruns_contracts::runtime_provider::ProviderKey::new("Acme Router").as_str(),
     );
-    let connection = cp.db.dp_item(ORG, "connection", &id).await.unwrap().unwrap();
+    let connection = cp
+        .db
+        .dp_item(ORG, "connection", &id)
+        .await
+        .unwrap()
+        .unwrap();
     let Some(ConfigChange::Connection(c)) = ConfigChange::parse(&connection.body.unwrap()) else {
         panic!("a connection");
     };
     let settings: dp::LlmProviderSettings = serde_json::from_value(c.settings).unwrap();
     assert_eq!(settings.provider_type, "openrouter");
-    assert_eq!(settings.base_url.as_deref(), Some("https://acme.example/v1"));
+    assert_eq!(
+        settings.base_url.as_deref(),
+        Some("https://acme.example/v1")
+    );
     assert_eq!(c.token_secret_id, id);
     let org = cp.db.dp_org(ORG).await.unwrap().unwrap();
     let opened = |cp: &ControlPlane| {
@@ -677,7 +695,10 @@ async fn a_providers_key_travels_sealed_and_only_when_it_changed() {
     assert_eq!(key, b"sk-acme-2");
 
     // Gone from the org: gone from the data plane.
-    cp.db.delete_provider(ORG, provider.id.uuid()).await.unwrap();
+    cp.db
+        .delete_provider(ORG, provider.id.uuid())
+        .await
+        .unwrap();
     providers::sync(&cp, ORG).await.unwrap();
     let live = cp.db.dp_items_live(ORG).await.unwrap();
     assert!(live.iter().all(|item| item.item_id != id), "{live:?}");

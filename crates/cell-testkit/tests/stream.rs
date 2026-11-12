@@ -38,7 +38,11 @@ struct Sse {
 impl Sse {
     async fn open(fleet: &Fleet, url: &str) -> Self {
         let response = fleet.http.get(url).send().await.unwrap();
-        assert!(response.status().is_success(), "{url}: {}", response.status());
+        assert!(
+            response.status().is_success(),
+            "{url}: {}",
+            response.status()
+        );
         Self {
             response,
             buf: String::new(),
@@ -107,11 +111,17 @@ async fn through(sse: &mut Sse, frames: &mut Vec<Frame>, last: &str) {
     if frames.iter().any(|f| f.id.as_deref() == Some(last)) {
         return;
     }
-    frames.extend(sse.until(|f| f.iter().any(|f| f.id.as_deref() == Some(last))).await);
+    frames.extend(
+        sse.until(|f| f.iter().any(|f| f.id.as_deref() == Some(last)))
+            .await,
+    );
 }
 
 fn completed(frames: &[Frame]) -> usize {
-    frames.iter().filter(|f| f.event == "turn.completed").count()
+    frames
+        .iter()
+        .filter(|f| f.event == "turn.completed")
+        .count()
 }
 
 /// The ids of the committed events a stream carried, in order.
@@ -191,8 +201,15 @@ async fn a_stale_publisher_reaches_no_watcher() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     let session = fleet.create_in("slow", 0).await;
-    let mut sse = Sse::open(&fleet, &format!("{}/v1/sessions/{session}/sse", gateway(&fleet))).await;
-    assert_eq!(sse.next(Duration::from_secs(5)).await.unwrap().event, "connected");
+    let mut sse = Sse::open(
+        &fleet,
+        &format!("{}/v1/sessions/{session}/sse", gateway(&fleet)),
+    )
+    .await;
+    assert_eq!(
+        sse.next(Duration::from_secs(5)).await.unwrap().event,
+        "connected"
+    );
     fleet.say(&session, "go").await;
     let stale = fence(&fleet, &session).await;
     // Executor 1 stops answering; executor 2 takes the turn over under a
@@ -220,7 +237,9 @@ async fn a_stale_publisher_reaches_no_watcher() {
     let frames = sse.until(|f| completed(f) >= 1).await;
     assert_eq!(completed(&frames), 1, "{frames:?}");
     assert!(
-        !frames.iter().any(|f| f.data.to_string().contains("STALE-MARKER")),
+        !frames
+            .iter()
+            .any(|f| f.data.to_string().contains("STALE-MARKER")),
         "a stale delta reached the stream"
     );
 }
@@ -232,8 +251,15 @@ async fn a_publisher_on_another_view_is_redirected_to_the_owner() {
     fleet.executor(1);
     let session = fleet.create_in("slow", 0).await;
     let id = SessionId::parse(&session).unwrap();
-    let mut sse = Sse::open(&fleet, &format!("{}/v1/sessions/{session}/sse", gateway(&fleet))).await;
-    assert_eq!(sse.next(Duration::from_secs(5)).await.unwrap().event, "connected");
+    let mut sse = Sse::open(
+        &fleet,
+        &format!("{}/v1/sessions/{session}/sse", gateway(&fleet)),
+    )
+    .await;
+    assert_eq!(
+        sse.next(Duration::from_secs(5)).await.unwrap().event,
+        "connected"
+    );
     fleet.say(&session, "go").await;
     let current = fence(&fleet, &session).await;
     let addrs = fleet.addrs(0);
@@ -274,13 +300,22 @@ async fn a_publisher_on_another_view_is_redirected_to_the_owner() {
     assert!(deliver.send(&fleet.http, 0, &seeds, batch).await);
 
     let frames = sse
-        .until(|f| f.iter().any(|f| f.data.to_string().contains("REDIRECTED-MARKER")))
+        .until(|f| {
+            f.iter()
+                .any(|f| f.data.to_string().contains("REDIRECTED-MARKER"))
+        })
         .await;
     assert!(
-        frames.iter().any(|f| f.data.to_string().contains("REDIRECTED-MARKER")),
+        frames
+            .iter()
+            .any(|f| f.data.to_string().contains("REDIRECTED-MARKER")),
         "the redirected delta reached the stream: {frames:?}"
     );
-    assert!(!frames.iter().any(|f| f.data.to_string().contains("WRONG-VIEW")));
+    assert!(
+        !frames
+            .iter()
+            .any(|f| f.data.to_string().contains("WRONG-VIEW"))
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -293,7 +328,11 @@ async fn a_restarted_stream_node_lags_and_the_stream_has_no_gap() {
     let owner_addr = view(&fleet, &addrs[0].1).await.rank(id)[0].1.clone();
     let owner = addrs.iter().find(|(_, a)| *a == owner_addr).unwrap().0;
 
-    let mut sse = Sse::open(&fleet, &format!("{}/v1/sessions/{session}/sse", gateway(&fleet))).await;
+    let mut sse = Sse::open(
+        &fleet,
+        &format!("{}/v1/sessions/{session}/sse", gateway(&fleet)),
+    )
+    .await;
     let mut frames = vec![sse.next(Duration::from_secs(5)).await.unwrap()];
     fleet.say(&session, "one").await;
     frames.extend(sse.until(|f| completed(f) >= 1).await);
@@ -317,7 +356,11 @@ async fn a_restarted_stream_node_lags_and_the_stream_has_no_gap() {
     assert_eq!(completed(&frames), 3, "{frames:?}");
     let streamed = ids(&frames);
     let from = all.iter().position(|id| *id == streamed[0]).unwrap();
-    assert_eq!(streamed, all[from..], "every committed event once, in order");
+    assert_eq!(
+        streamed,
+        all[from..],
+        "every committed event once, in order"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -340,7 +383,10 @@ async fn a_move_between_replay_and_live_keeps_one_stream() {
     let mut sse = Sse::open(&fleet, &url).await;
     let mut frames = vec![sse.next(Duration::from_secs(5)).await.unwrap()];
     fleet
-        .post(&format!("/v1/sessions/{session}/move"), json!({ "cell": 1 }))
+        .post(
+            &format!("/v1/sessions/{session}/move"),
+            json!({ "cell": 1 }),
+        )
         .await;
     fleet.say(&session, "four").await;
     frames.extend(sse.until(|f| completed(f) >= 4).await);
@@ -352,12 +398,13 @@ async fn a_move_between_replay_and_live_keeps_one_stream() {
         frames.iter().all(|f| f.event != "moved"),
         "the gateway follows the move for the client"
     );
-    assert_eq!(
-        frames.iter().filter(|f| f.event == "connected").count(),
-        1
-    );
+    assert_eq!(frames.iter().filter(|f| f.event == "connected").count(), 1);
     assert_eq!(completed(&frames), 4, "{frames:?}");
     let streamed = ids(&frames);
     let from = all.iter().position(|id| *id == since).unwrap() + 1;
-    assert_eq!(streamed, all[from..], "every event after since_id once, in order");
+    assert_eq!(
+        streamed,
+        all[from..],
+        "every event after since_id once, in order"
+    );
 }

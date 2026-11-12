@@ -237,8 +237,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             });
             let tokens = Arc::new(crate::org_token::OrgTokens::new(Some(jwks), data_plane));
             let gateway = Gateway::new(TopologySource { path: topology });
-            let edge =
-                crate::edge::Edge::with_prefix(gateway, &control_plane, tokens, &api_prefix);
+            let edge = crate::edge::Edge::with_prefix(gateway, &control_plane, tokens, &api_prefix);
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, control_plane, "edge listening");
             axum::serve(listener, edge.router()).await?;

@@ -22,7 +22,11 @@ pub trait Host: Send + Sync + 'static {
     /// [`agent`](Self::agent), where `orgs` serves the model providers of
     /// orgs on the data plane (`providers.rs`) that this host does not
     /// serve itself.
-    fn agent_with(&self, definition: &Value, orgs: Option<&HostProviders>) -> Result<Agent, String> {
+    fn agent_with(
+        &self,
+        definition: &Value,
+        orgs: Option<&HostProviders>,
+    ) -> Result<Agent, String> {
         let _ = orgs;
         self.agent(definition)
     }
@@ -109,7 +113,11 @@ impl Host for StandardHost {
         self.agent_with(definition, None)
     }
 
-    fn agent_with(&self, definition: &Value, orgs: Option<&HostProviders>) -> Result<Agent, String> {
+    fn agent_with(
+        &self,
+        definition: &Value,
+        orgs: Option<&HostProviders>,
+    ) -> Result<Agent, String> {
         let package = package(definition)?;
         let manifest = package.manifest();
         let mut builder = Agent::builder();

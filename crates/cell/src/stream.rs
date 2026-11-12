@@ -57,6 +57,10 @@ pub const CYCLE: Duration = Duration::from_secs(300);
 const CURSOR_WAIT: Duration = Duration::from_secs(10);
 /// Deltas a watcher may fall behind before it skips them.
 const WATCHER_DELTAS: usize = 1024;
+/// How long a stream node waits to apply a newer owner's claim before it
+/// drops that owner's live deltas: a follower learns of a new epoch a
+/// replication round after the executor starts publishing under it.
+const EPOCH_LAG: Duration = Duration::from_millis(500);
 
 /// A cell's committed membership, as the stream hash reads it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,7 +142,9 @@ pub struct LiveHub {
 struct Slot {
     tx: broadcast::Sender<Live>,
     fence: u64,
-    seq: u64,
+    /// The last delta taken in `fence`; none yet. The Engine numbers an
+    /// epoch's deltas from 0, so "none" must not read as 0.
+    seq: Option<u64>,
 }
 
 impl LiveHub {
@@ -150,7 +156,7 @@ impl LiveHub {
             .or_insert_with(|| Slot {
                 tx: broadcast::channel(WATCHER_DELTAS).0,
                 fence: 0,
-                seq: 0,
+                seq: None,
             })
             .tx
             .subscribe()
@@ -172,14 +178,14 @@ impl LiveHub {
         }
         if fence > slot.fence {
             slot.fence = fence;
-            slot.seq = 0;
+            slot.seq = None;
         }
         let mut taken = 0;
         for item in deltas {
-            if item.seq <= slot.seq {
+            if slot.seq.is_some_and(|last| item.seq <= last) {
                 continue;
             }
-            slot.seq = item.seq;
+            slot.seq = Some(item.seq);
             taken += 1;
             let _ = slot.tx.send(Live {
                 stream: item.stream,
@@ -303,10 +309,45 @@ impl Node {
             .is_some_and(|s| s.authority.current(fence, now_ms()))
     }
 
+    /// [`epoch_current`](Self::epoch_current), waiting up to [`EPOCH_LAG`]
+    /// when this replica has not applied the claim that made `fence` yet.
+    /// Decision: a claim commits on a quorum, so the stream node can be the
+    /// one member that has not applied it when the epoch's first deltas
+    /// arrive; dropping them would lose the start of the answer. A fence
+    /// older than the newest one known is stale at once.
+    pub async fn epoch_current_soon(&self, session: SessionId, fence: u64) -> bool {
+        let deadline = tokio::time::Instant::now() + EPOCH_LAG;
+        let mut applied = self.shared.applied.subscribe();
+        loop {
+            let (current, behind) = {
+                let state = self.shared.state.read();
+                match state.sessions.get(&session) {
+                    Some(s) => (
+                        s.authority.current(fence, now_ms()),
+                        s.authority.fence < fence,
+                    ),
+                    None => (false, true),
+                }
+            };
+            if current || !behind {
+                return current;
+            }
+            match tokio::time::timeout_at(deadline, applied.changed()).await {
+                Ok(Ok(())) => {}
+                _ => return false,
+            }
+        }
+    }
+
     /// Take an epoch's deltas for the session's watchers, if the epoch is
     /// still the session's current one.
-    pub fn publish_live(&self, session: SessionId, fence: u64, deltas: Vec<LiveItem>) -> bool {
-        let current = self.epoch_current(session, fence);
+    pub async fn publish_live(
+        &self,
+        session: SessionId,
+        fence: u64,
+        deltas: Vec<LiveItem>,
+    ) -> bool {
+        let current = self.epoch_current_soon(session, fence).await;
         if current {
             self.live.publish(session, fence, deltas);
         }
@@ -333,14 +374,16 @@ async fn view(State(node): State<Arc<Node>>) -> Json<View> {
 
 async fn live(State(node): State<Arc<Node>>, Json(batch): Json<LiveBatch>) -> Response {
     // A superseded epoch is dropped wherever it lands: no redirect for it.
-    if !node.epoch_current(batch.session, batch.fence) {
+    if !node.epoch_current_soon(batch.session, batch.fence).await {
         return Json(json!({ "taken": false })).into_response();
     }
     let view = Some(batch.view).filter(|generation| *generation != 0);
     if let Err(r) = node.check_stream_owner(batch.session, view) {
         return redirect(r);
     }
-    let taken = node.publish_live(batch.session, batch.fence, batch.deltas);
+    let taken = node
+        .publish_live(batch.session, batch.fence, batch.deltas)
+        .await;
     Json(json!({ "taken": taken })).into_response()
 }
 
@@ -425,10 +468,7 @@ async fn cursor_of(
         }
         match tokio::time::timeout_at(deadline, changes.recv()).await {
             Err(_) => {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    format!("unknown since_id {since}"),
-                ));
+                return Err((StatusCode::NOT_FOUND, format!("unknown since_id {since}")));
             }
             Ok(Err(broadcast::error::RecvError::Closed)) => {
                 return Err((StatusCode::SERVICE_UNAVAILABLE, "closing".into()));
@@ -502,7 +542,12 @@ pub async fn serve(
     // streams: it read the history it shows with `GET .../events`.
     let replay = query.since_id.is_some() || query.after_sequence.is_some();
     let (tx, rx) = mpsc::channel::<SseEvent>(256);
-    tokio::spawn(follow(node, session, query, after, replay, tx));
+    // Subscribe before answering: once a client has the response, nothing
+    // committed or published for the session can miss its stream.
+    let changes = node.shared.watch(session);
+    let live = node.live.subscribe(session);
+    let feeds = Feeds { changes, live };
+    tokio::spawn(follow(node, session, query, after, replay, feeds, tx));
     // `sequence` is where the stream starts: a relay resumes from it when
     // it reconnects before any event went out.
     let connected = futures::stream::once(async move {
@@ -518,17 +563,26 @@ pub async fn serve(
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(10))))
 }
 
+/// A stream's subscriptions: committed changes and live deltas.
+struct Feeds {
+    changes: broadcast::Receiver<Change>,
+    live: broadcast::Receiver<Live>,
+}
+
 async fn follow(
     node: Arc<Node>,
     session: SessionId,
     query: StreamQuery,
     after: i32,
     replay_first: bool,
+    feeds: Feeds,
     tx: mpsc::Sender<SseEvent>,
 ) {
-    // Subscribe before reading, so nothing falls between the two.
-    let mut changes = node.shared.watch(session);
-    let mut live = node.live.subscribe(session);
+    // Subscribed (in `serve`) before reading, so nothing falls between.
+    let Feeds {
+        mut changes,
+        mut live,
+    } = feeds;
     let mut sent = Sent {
         last: after,
         ..Default::default()
@@ -693,8 +747,11 @@ impl Deliver {
                 return false;
             };
             batch.view = view.generation;
-            let mut targets: Vec<String> =
-                view.rank(batch.session).into_iter().map(|(_, a)| a).collect();
+            let mut targets: Vec<String> = view
+                .rank(batch.session)
+                .into_iter()
+                .map(|(_, a)| a)
+                .collect();
             let mut i = 0;
             let mut redirected = false;
             while i < targets.len() {
@@ -766,7 +823,9 @@ mod tests {
         let members = view(&[1, 2, 3]);
         let mut owners = BTreeMap::<NodeId, usize>::new();
         for _ in 0..3000 {
-            *owners.entry(members.rank(SessionId::new())[0].0).or_default() += 1;
+            *owners
+                .entry(members.rank(SessionId::new())[0].0)
+                .or_default() += 1;
         }
         assert_eq!(owners.len(), 3);
         assert!(owners.values().all(|n| *n > 800), "{owners:?}");
@@ -809,12 +868,30 @@ mod tests {
     fn a_stale_epoch_and_repeated_seqs_are_dropped() {
         let hub = LiveHub::default();
         let session = SessionId::new();
-        assert_eq!(hub.publish(session, 1, vec![delta(1, "m")]), 0, "no watcher");
+        assert_eq!(
+            hub.publish(session, 1, vec![delta(1, "m")]),
+            0,
+            "no watcher"
+        );
         let mut rx = hub.subscribe(session);
-        assert_eq!(hub.publish(session, 2, vec![delta(1, "m"), delta(2, "m")]), 2);
+        assert_eq!(
+            hub.publish(session, 2, vec![delta(0, "m"), delta(1, "m")]),
+            2,
+            "an epoch's first delta is seq 0"
+        );
+        assert_eq!(hub.publish(session, 2, vec![delta(0, "m")]), 0, "repeated");
+        assert_eq!(hub.publish(session, 2, vec![delta(2, "m")]), 1);
         assert_eq!(hub.publish(session, 2, vec![delta(2, "m")]), 0, "repeated");
-        assert_eq!(hub.publish(session, 1, vec![delta(9, "m")]), 0, "stale epoch");
-        assert_eq!(hub.publish(session, 3, vec![delta(1, "n")]), 1, "a new epoch starts over");
+        assert_eq!(
+            hub.publish(session, 1, vec![delta(9, "m")]),
+            0,
+            "stale epoch"
+        );
+        assert_eq!(
+            hub.publish(session, 3, vec![delta(0, "n")]),
+            1,
+            "a new epoch starts over"
+        );
         assert_eq!(rx.try_recv().unwrap().stream, "m");
     }
 }

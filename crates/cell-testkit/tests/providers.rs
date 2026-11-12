@@ -167,7 +167,11 @@ async fn a_turn_calls_the_orgs_own_provider_with_its_sealed_key() {
         )
         .await
         .unwrap();
-    assert_eq!(status, StatusCode::NOT_FOUND, "an agent the org does not have");
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "an agent the org does not have"
+    );
     let session = id.to_string();
     fleet.say(&session, "ping").await;
     fleet.turns(&session, 1).await;

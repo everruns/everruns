@@ -73,12 +73,14 @@ pub trait OrgMaterial: Send + Sync {
     async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>>;
 }
 
+/// (org, key) -> the provider, opened, and when.
+type Opened = HashMap<(String, String), (Instant, Option<ProviderConfig>)>;
+
 /// The providers of the orgs whose turns run here.
 #[derive(Default)]
 pub struct OrgProviders {
     material: OnceLock<Weak<dyn OrgMaterial>>,
-    /// (org, key) -> the provider, opened, and when.
-    opened: Mutex<HashMap<(String, String), (Instant, Option<ProviderConfig>)>>,
+    opened: Mutex<Opened>,
 }
 
 impl OrgProviders {
@@ -181,17 +183,19 @@ mod tests {
         }
 
         async fn connection(&self, org: &str, id: &str) -> anyhow::Result<Option<Connection>> {
-            Ok((org == "org-a" && id == "llm:openrouter").then(|| Connection {
-                connection_id: id.into(),
-                kind: KIND.into(),
-                settings: serde_json::json!({
-                    "provider_key": "openrouter",
-                    "provider_type": "openrouter",
-                    "base_url": "https://openrouter.ai/api/v1",
+            Ok(
+                (org == "org-a" && id == "llm:openrouter").then(|| Connection {
+                    connection_id: id.into(),
+                    kind: KIND.into(),
+                    settings: serde_json::json!({
+                        "provider_key": "openrouter",
+                        "provider_type": "openrouter",
+                        "base_url": "https://openrouter.ai/api/v1",
+                    }),
+                    token_secret_id: id.into(),
+                    refresh_owner: Default::default(),
                 }),
-                token_secret_id: id.into(),
-                refresh_owner: Default::default(),
-            }))
+            )
         }
 
         async fn secret(&self, org: &str, _secret_id: &str) -> anyhow::Result<Vec<u8>> {
@@ -211,7 +215,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(config.api_key.as_deref(), Some("key-of-org-a"));
-        assert_eq!(config.base_url.as_deref(), Some("https://openrouter.ai/api/v1"));
+        assert_eq!(
+            config.base_url.as_deref(),
+            Some("https://openrouter.ai/api/v1")
+        );
         let shape = providers.get_provider_config(&key).await.unwrap().unwrap();
         assert_eq!((shape.api_key, shape.base_url), (None, None));
         let missing = ProviderKey::new("anthropic");

@@ -178,7 +178,9 @@ fn fields(raw: &[u8]) -> Frame {
         } else if let Some(value) = line.strip_prefix("id:") {
             frame.id = Some(value.trim_start().to_owned());
         } else if let Some(value) = line.strip_prefix("data:") {
-            frame.data.push_str(value.strip_prefix(' ').unwrap_or(value));
+            frame
+                .data
+                .push_str(value.strip_prefix(' ').unwrap_or(value));
         }
     }
     frame
