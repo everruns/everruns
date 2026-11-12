@@ -43,8 +43,10 @@ enum Mode {
         topology: PathBuf,
         #[arg(long)]
         cell: CellId,
-        #[arg(long)]
-        node: NodeId,
+        /// This node's id; unset, one more than the trailing ordinal of
+        /// `HOSTNAME` (a StatefulSet pod `cell0-2` is node 3).
+        #[arg(long, env = "CELL_NODE")]
+        node: Option<NodeId>,
         #[arg(long)]
         data: PathBuf,
         /// Object store for session history and snapshot copies, shared by
@@ -92,9 +94,10 @@ enum Mode {
     Executor {
         #[arg(long, env = "CELL_TOPOLOGY")]
         topology: PathBuf,
-        /// This executor's id (unique in the fleet; at least 2^32).
-        #[arg(long)]
-        id: u64,
+        /// This executor's id (unique in the fleet; at least 2^32); unset,
+        /// 2^32 plus the trailing ordinal of `HOSTNAME`.
+        #[arg(long, env = "CELL_EXECUTOR_ID")]
+        id: Option<u64>,
         #[arg(long, env = "CELL_STORE")]
         store: String,
         /// Turns this executor runs at once.
@@ -202,6 +205,19 @@ enum Inspect {
     Moves,
 }
 
+/// The trailing `-N` of `HOSTNAME`: a StatefulSet pod's ordinal, which
+/// names its node (decision: no shell in the image to compute it).
+fn hostname_ordinal() -> anyhow::Result<u64> {
+    let host = std::env::var("HOSTNAME")
+        .map_err(|_| anyhow::anyhow!("no id given and HOSTNAME is unset"))?;
+    ordinal(&host)
+        .ok_or_else(|| anyhow::anyhow!("no id given and HOSTNAME {host:?} ends in no ordinal"))
+}
+
+fn ordinal(host: &str) -> Option<u64> {
+    host.rsplit_once('-')?.1.parse().ok()
+}
+
 pub fn init_tracing() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
@@ -233,6 +249,10 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             executor_cap,
             control_plane,
         } => {
+            let node = match node {
+                Some(node) => node,
+                None => hostname_ordinal()? + 1,
+            };
             let source = TopologySource { path: topology };
             let seeded = source.read()?.cells.get(&cell).cloned();
             let members = match (&seeded, join) {
@@ -275,6 +295,10 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             cache_mb,
             listen,
         } => {
+            let id = match id {
+                Some(id) => id,
+                None => (1 << 32) + hostname_ordinal()?,
+            };
             let cfg = crate::executor::ExecutorConfig {
                 id,
                 topology: TopologySource { path: topology },
@@ -475,6 +499,10 @@ pub async fn serve_node_on(
     Ok(())
 }
 
+/// How long a draining executor waits for its turns to hand off. Below the
+/// pod's termination grace (`infra/k8s/dataplane` in the SaaS repository).
+const DRAIN_LIMIT: Duration = Duration::from_secs(60);
+
 /// Run an executor until stopped (SIGTERM drains it first).
 pub async fn serve_executor(
     cfg: crate::executor::ExecutorConfig,
@@ -496,8 +524,15 @@ pub async fn serve_executor(
     }
     tracing::info!(running = executor.running(), "draining");
     executor.drain();
-    while executor.running() > 0 {
+    // Decision: a drain waits a bounded time. A turn that cannot hand off
+    // (its cell does not answer) would hold the process forever; leaving
+    // it costs that turn one step, resumed elsewhere once its claim expires.
+    let limit = tokio::time::Instant::now() + DRAIN_LIMIT;
+    while executor.running() > 0 && tokio::time::Instant::now() < limit {
         tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    if executor.running() > 0 {
+        tracing::warn!(running = executor.running(), "drain limit reached; leaving");
     }
     Ok(())
 }
@@ -556,8 +591,10 @@ async fn inspect(topology: Topology, json: bool, what: Inspect) -> anyhow::Resul
             for nodes in reports.values() {
                 for (_, report) in nodes {
                     for m in report.iter().flat_map(|r| &r.moves) {
-                        if !placed.contains_key(&m.session) {
-                            placed.insert(m.session, inspector.placed(m.session).await);
+                        if let std::collections::hash_map::Entry::Vacant(entry) =
+                            placed.entry(m.session)
+                        {
+                            entry.insert(inspector.placed(m.session).await);
                         }
                     }
                 }
@@ -571,4 +608,15 @@ async fn inspect(topology: Topology, json: bool, what: Inspect) -> anyhow::Resul
     };
     println!("{out}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_statefulset_pod_names_its_ordinal() {
+        assert_eq!(super::ordinal("cell0-2"), Some(2));
+        assert_eq!(super::ordinal("executors-17"), Some(17));
+        assert_eq!(super::ordinal("cell0"), None);
+        assert_eq!(super::ordinal("cell0-x"), None);
+    }
 }

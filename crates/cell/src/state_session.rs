@@ -123,6 +123,22 @@ impl SessionState {
         self.authority.outcomes
     }
 
+    /// How long the last finished turn took, from its `turn.started` to the
+    /// event that ended it, when both are still in memory.
+    pub fn last_turn_ms(&self) -> Option<u64> {
+        let mut events = self.events.iter().rev();
+        let end = events.find(|e| {
+            matches!(
+                e.data,
+                EventData::TurnCompleted(_)
+                    | EventData::TurnFailed(_)
+                    | EventData::TurnCancelled(_)
+            )
+        })?;
+        let start = events.find(|e| matches!(e.data, EventData::TurnStarted(_)))?;
+        u64::try_from((end.ts - start.ts).num_milliseconds()).ok()
+    }
+
     /// No turn runs and none waits: safe to unload.
     pub fn idle(&self) -> bool {
         self.authority.holder.is_none()

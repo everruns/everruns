@@ -60,6 +60,7 @@ pub mod ship;
 pub mod sm;
 pub mod state;
 pub mod store;
+mod store_throttle;
 pub mod stream;
 pub mod tenants;
 pub mod types;

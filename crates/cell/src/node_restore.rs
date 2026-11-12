@@ -100,6 +100,7 @@ impl Node {
                 // have been applied up to one tick earlier: count it.
                 let lag = since.elapsed() + crate::ship::SHIP_EVERY;
                 self.prom.ship_lag_seconds.observe(&[], lag);
+                self.prom.ship_lag_window.observe(lag);
             }
             if let Err(error) = shipped {
                 tracing::warn!(cell = self.cfg.cell, %error, "log shipping failed; retrying");
@@ -118,6 +119,7 @@ impl Node {
             match self.shipper.flush(index, inc, || *applied.borrow()).await {
                 Ok(()) => {
                     self.prom.ship_first_seconds.observe(&[], started.elapsed());
+                    self.prom.ship_first_window.observe(started.elapsed());
                     return Ok(());
                 }
                 Err(error) if Instant::now() >= deadline => {

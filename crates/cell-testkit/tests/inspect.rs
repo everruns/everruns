@@ -16,6 +16,38 @@ async fn the_inspector_finds_a_session_and_reports_every_cell() {
     fleet.say(&session, "hello").await;
     fleet.turns(&session, 1).await;
 
+    // The SLO gauges the dashboard charts: the cell that ran the turn
+    // reports its one-minute p99.
+    let leader = fleet.leader(1).await;
+    let addr = fleet
+        .addrs(1)
+        .into_iter()
+        .find(|(n, _)| *n == leader)
+        .unwrap()
+        .1;
+    let metrics = reqwest::get(format!("http://{addr}/metrics"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let gauge = |name: &str| -> f64 {
+        metrics
+            .lines()
+            .find(|l| l.starts_with(&format!("{name}{{")))
+            .and_then(|l| l.rsplit(' ').next())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("no {name} in\n{metrics}"))
+    };
+    assert!(gauge("cell_slo_turn_p99_seconds") > 0.0);
+    for name in [
+        "cell_slo_ship_lag_p99_seconds",
+        "cell_slo_ship_first_p99_seconds",
+        "cell_slo_admit_p99_seconds",
+    ] {
+        assert!(gauge(name) >= 0.0);
+    }
+
     let inspector = Inspector::new(fleet.topology().read().unwrap()).unwrap();
     let id = everruns::SessionId::parse(&session).unwrap();
     let placed = inspector.placed(id).await.expect("the directory places it");
@@ -27,6 +59,33 @@ async fn the_inspector_finds_a_session_and_reports_every_cell() {
     let text = render_session(id, Some(placed), Some(&report));
     assert!(text.contains("directory: cell 1"), "{text}");
     assert!(text.contains("turn.completed"), "{text}");
+
+    // The directory spreads its shards over the cells: every session is
+    // found wherever its shard lives (a load run showed sessions whose
+    // shard sat in cell 1 as unknown).
+    let addr = fleet.addrs(0)[0].1.clone();
+    fleet
+        .until("directory shards reach cell 1", || {
+            let addr = addr.clone();
+            async move {
+                let registry: serde_json::Value =
+                    reqwest::get(format!("http://{addr}/cell/registry"))
+                        .await
+                        .unwrap()
+                        .json()
+                        .await
+                        .unwrap();
+                registry["shards"].as_object().is_some_and(|s| s.len() > 64)
+            }
+        })
+        .await;
+    for n in 0..8 {
+        let cell = n % 2;
+        let other = fleet.create_in("chat", cell).await;
+        let id = everruns::SessionId::parse(&other).unwrap();
+        let placed = inspector.placed(id).await;
+        assert_eq!(placed.map(|p| p.cell), Some(cell), "{other}");
+    }
 
     let reports = inspector.reports().await;
     assert_eq!(reports.keys().copied().collect::<Vec<_>>(), vec![0, 1]);

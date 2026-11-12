@@ -214,19 +214,33 @@ impl Inspector {
     /// directory cell's registry adds (cells that joined later, nodes added
     /// since), less retired cells.
     pub async fn cells(&self) -> BTreeMap<CellId, BTreeMap<NodeId, String>> {
-        let mut cells = self.topology.cells.clone();
+        let registry = self.registry().await;
+        self.merged(registry.as_ref())
+    }
+
+    /// The directory cell's registry: cells added since the topology file
+    /// was written, retired cells, and which cell holds each directory
+    /// shard.
+    async fn registry(&self) -> Option<crate::api::Registry> {
         for addr in self.topology.nodes(self.topology.directory_cell) {
-            if let Some(registry) = self
-                .get::<crate::api::Registry>(&addr, "/cell/registry")
-                .await
-            {
-                for (cell, nodes) in registry.cells {
-                    cells.entry(cell).or_default().extend(nodes);
-                }
-                for retired in registry.retired {
-                    cells.remove(&retired);
-                }
-                break;
+            if let Some(registry) = self.get(&addr, "/cell/registry").await {
+                return Some(registry);
+            }
+        }
+        None
+    }
+
+    fn merged(
+        &self,
+        registry: Option<&crate::api::Registry>,
+    ) -> BTreeMap<CellId, BTreeMap<NodeId, String>> {
+        let mut cells = self.topology.cells.clone();
+        if let Some(registry) = registry {
+            for (cell, nodes) in &registry.cells {
+                cells.entry(*cell).or_default().extend(nodes.clone());
+            }
+            for retired in &registry.retired {
+                cells.remove(retired);
             }
         }
         cells
@@ -247,9 +261,17 @@ impl Inspector {
 
     /// Where the directory places `session`.
     pub async fn placed(&self, session: SessionId) -> Option<Placed> {
-        for addr in self.topology.nodes(self.topology.directory_cell) {
+        // The directory is sharded across cells: ask the cell that holds
+        // this session's shard (the directory cell until shards spread).
+        let registry = self.registry().await;
+        let owner = registry
+            .as_ref()
+            .and_then(|r| r.shards.get(&crate::state::shard_of(session)).copied())
+            .unwrap_or(self.topology.directory_cell);
+        let cells = self.merged(registry.as_ref());
+        for addr in cells.get(&owner)?.values() {
             if let Some(placed) = self
-                .get::<Option<Placed>>(&addr, &format!("/cell/directory/{session}"))
+                .get::<Option<Placed>>(addr, &format!("/cell/directory/{session}"))
                 .await
             {
                 return placed;

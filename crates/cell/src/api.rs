@@ -284,6 +284,29 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
             &gateway.rebalanced,
         );
     }
+    // One-minute p99s, the SLO dashboard's gauges (`prom::Window`).
+    w.gauge(
+        "cell_slo_turn_p99_seconds",
+        "p99 turn time this cell finished in the last minute, turn.started to its end.",
+        node.shared.turn_window.p99(),
+    );
+    w.gauge(
+        "cell_slo_ship_lag_p99_seconds",
+        "p99 shipping lag in the last minute (budget 2 s).",
+        p.ship_lag_window.p99(),
+    );
+    w.gauge(
+        "cell_slo_ship_first_p99_seconds",
+        "p99 wait for the object store before answering, in the last minute.",
+        p.ship_first_window.p99(),
+    );
+    if let Some(gateway) = node.gateway.get() {
+        w.gauge(
+            "cell_slo_admit_p99_seconds",
+            "p99 admission through this node's gateway in the last minute.",
+            gateway.admit_window.p99(),
+        );
+    }
     let leader = node.leader();
     w.gauge(
         "cell_is_leader",

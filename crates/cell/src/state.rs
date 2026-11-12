@@ -552,6 +552,10 @@ pub struct CellState {
     /// Commands arriving in pieces, by id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub parts: std::collections::BTreeMap<uuid::Uuid, Assembly>,
+    /// Durations (ms) of turns finished since the state machine last took
+    /// them, for the turn SLO gauge. Not replicated state.
+    #[serde(skip)]
+    pub turns_finished: Vec<u64>,
 }
 
 impl CellState {
@@ -1008,6 +1012,7 @@ impl CellState {
                 let renewed = state.renew(&holder, fence, ttl_ms, consumed, receipts, now_ms);
                 if state.turns_completed() > before {
                     self.feed.turn_finished(index, &session.to_string(), state);
+                    self.turns_finished.extend(state.last_turn_ms());
                 }
                 if riding && renewed.is_some() {
                     changes.push(Change::Session(session));
@@ -1049,6 +1054,7 @@ impl CellState {
                 let released = state.release(&holder, fence, consumed, hand_off, receipts, now_ms);
                 if state.turns_completed() > before {
                     self.feed.turn_finished(index, &session.to_string(), state);
+                    self.turns_finished.extend(state.last_turn_ms());
                 }
                 changes.push(Change::Session(session));
                 match released {
@@ -1086,6 +1092,7 @@ impl CellState {
                 let applied = state.write(fence, change, now_ms);
                 if state.turns_completed() > before {
                     self.feed.turn_finished(index, &session.to_string(), state);
+                    self.turns_finished.extend(state.last_turn_ms());
                 }
                 changes.push(Change::Session(session));
                 self.applied(session, applied, changes)
