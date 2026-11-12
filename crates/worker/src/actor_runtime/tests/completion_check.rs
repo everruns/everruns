@@ -181,6 +181,66 @@ async fn a_completed_turn_is_checked_and_not_continued() {
     fixture.assert_idle();
 }
 
+/// A tool-free answer is final for an `unattended` agent, even in an
+/// unattended session, with no review call. An `always` agent has it
+/// reviewed, so a promise made without the call ("Checking your inbox now")
+/// continues and the continuation does the work.
+#[tokio::test]
+async fn only_an_always_agent_reviews_a_tool_free_answer() {
+    for (completion_check, unattended, reviewed) in [
+        (CompletionCheck::Unattended, true, false),
+        (CompletionCheck::Always, false, true),
+    ] {
+        let fixture = Fixture::with_setup(
+            LlmSimConfig::scripted(vec![
+                say("Checking your inbox now."),
+                verdict("in_progress", "The inbox was never read."),
+                tool("read_inbox"),
+                say("Your inbox is empty."),
+                verdict("achieved", "The inbox was checked."),
+            ]),
+            Setup {
+                completion_check,
+                unattended,
+                ..Setup::default()
+            },
+        )
+        .await;
+        let (worker, _) = fixture.worker("w1");
+        fixture.send("Check my inbox.").await;
+
+        assert_eq!(run_until_idle(&worker).await, 1);
+
+        let case = format!("{completion_check:?}, unattended {unattended}");
+        if reviewed {
+            assert_eq!(fixture.review_calls(), 2, "{case}");
+            assert_eq!(
+                actions(&fixture.checks().await),
+                vec![
+                    (
+                        Some(CompletionVerdict::InProgress),
+                        CompletionCheckAction::Continued,
+                        1
+                    ),
+                    (
+                        Some(CompletionVerdict::Achieved),
+                        CompletionCheckAction::Finished,
+                        1
+                    ),
+                ],
+                "{case}"
+            );
+            assert_eq!(fixture.continuations().await.len(), 1, "{case}");
+        } else {
+            assert_eq!(fixture.model_calls(), 1, "{case}");
+            assert_eq!(fixture.review_calls(), 0, "{case}");
+            assert!(fixture.checks().await.is_empty(), "{case}");
+        }
+        assert_eq!(fixture.count("turn.completed").await, 1, "{case}");
+        fixture.assert_idle();
+    }
+}
+
 /// `off` never checks; `unattended` (the default) does not check a chat
 /// session; `always` checks chat too.
 #[tokio::test]

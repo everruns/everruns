@@ -20,7 +20,10 @@ pub enum CompletionCheck {
     /// schedules. Interactive chat is not checked.
     #[default]
     Unattended,
-    /// Check every session, chat included.
+    /// Check every session, chat included, and also review final answers
+    /// that ran no tools, where the other settings take a plain answer as
+    /// final. For a coding agent, whose "Running the tests now" without the
+    /// call is the same unfinished work.
     Always,
 }
 

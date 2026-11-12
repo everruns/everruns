@@ -352,6 +352,8 @@ impl ReasonAtom {
         let truncation_gate = truncation_gate::Gate::new(&resolved_capability_configs, &messages);
         let turn_agent = assembled.turn_agent;
         let embedder_metadata = assembled.embedder_metadata;
+        let review_tool_free_answers =
+            assembled.snapshot.completion_check == crate::completion_check::CompletionCheck::Always;
 
         emit_capability_usage_snapshot(
             self.event_emitter.as_ref(),
@@ -2057,6 +2059,7 @@ impl ReasonAtom {
             locale: resolved_locale,
             network_access: turn_agent.network_access.clone(),
             parallel_tool_calls: turn_agent.parallel_tool_calls,
+            review_tool_free_answers,
             ..ReasonResult::default()
         };
         if let Some(coordinator) = &self.native_async {

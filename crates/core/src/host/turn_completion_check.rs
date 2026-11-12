@@ -22,6 +22,10 @@
 //!   enabled setting pays for the review call. Conclusive cases (a question
 //!   back, a token or iteration ceiling, background work still running) never
 //!   continue: those are the person's, the cap's, or the task's to resolve.
+//!   The one exception is a tool-free answer of an agent set to `always`: a
+//!   coding agent that says "Running the tests now" and stops has made the
+//!   same unkept promise without a tool call, so it is reviewed too. The
+//!   reason step carries that setting, so other agents pay nothing extra.
 //! - The review runs on the session's own model through the same provider
 //!   path a turn uses ([`StoreCommandHost`] completion, purpose
 //!   `completion_review`, bounded by [`REVIEW_TIMEOUT`]). A failed or
@@ -55,7 +59,9 @@ use crate::events::{
 use crate::host::StoreCommandHost;
 use crate::host::runtime_host::RuntimeHostAdapter;
 use crate::message::MESSAGE_ORIGIN_METADATA_KEY;
-use crate::turn_completion::{ContinuationBudget, GateDecision, TurnSummary, gate_turn};
+use crate::turn_completion::{
+    CompletionState, ContinuationBudget, GateDecision, TurnSummary, gate_turn,
+};
 use crate::{RuntimeMessage, RuntimeMessageRole};
 use everruns_contracts::message_origin::{MessageOrigin, MessageOriginKind};
 
@@ -107,7 +113,15 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
         // `Evaluate` into a conclusive wait.
         has_active_background: false,
     };
-    if gate_turn(&summary) != GateDecision::Evaluate {
+    let gate = gate_turn(&summary);
+    // A plain answer that ran no tools is final by the gate, except for an
+    // agent set to `always`: there an announcement made without the call
+    // ("Running the tests now") is reviewed too. The reason carries that
+    // setting, so no other agent loads the session for a tool-free answer.
+    let tool_free_answer = reason_result.review_tool_free_answers
+        && summary.tool_calls_count == 0
+        && gate == GateDecision::Conclusive(CompletionState::Achieved);
+    if gate != GateDecision::Evaluate && !tool_free_answer {
         return Ok(None);
     }
     let resolved = adapter.load_resolved_turn(org_id, session_id).await?;

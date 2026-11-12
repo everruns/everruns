@@ -72,3 +72,27 @@ async fn the_default_leaves_an_attended_turn_unchecked() {
     assert!(turn.success, "{:?}", turn.error);
     assert_eq!(turn.response, "Fixing the test now.");
 }
+
+#[tokio::test]
+async fn always_reviews_a_promise_made_without_a_tool_call() {
+    let verdict =
+        |state: &str| SimTurn::Assistant(json!({"state": state, "reason": "checked"}).to_string());
+    let session = InMemoryEngine::new().create(
+        Agent::builder()
+            .instructions("Run the tests.")
+            .model(Model::simulated_with_config(LlmSimConfig::scripted(vec![
+                SimTurn::Assistant("Running the tests now.".into()),
+                verdict("in_progress"),
+                SimTurn::Assistant("All tests pass.".into()),
+                verdict("achieved"),
+            ])))
+            .completion_check(CompletionCheck::Always)
+            .build()
+            .expect("valid agent"),
+    );
+
+    let turn = session.run("Run the tests.").await.expect("turn runs");
+
+    assert!(turn.success, "{:?}", turn.error);
+    assert_eq!(turn.response, "All tests pass.");
+}

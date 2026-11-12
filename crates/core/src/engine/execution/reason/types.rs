@@ -113,6 +113,12 @@ pub struct ReasonResult {
     /// gate retries: the turn runs another reason step even without calls.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub truncation_retry: bool,
+    /// The agent's completion check is `always`, so the check also reviews a
+    /// final answer that ran no tools (`crate::host::turn_completion_check`).
+    /// Carried here so a tool-free answer of any other agent finishes without
+    /// loading the session to read the setting.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub review_tool_free_answers: bool,
 }
 
 impl ReasonResult {

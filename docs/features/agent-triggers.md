@@ -174,7 +174,9 @@ Set it on the agent:
 { "completion_check": "always" }
 ```
 
-`always` checks chat sessions too; `off` never checks. Each review records a
+`always` checks chat sessions too, and also reviews a final answer that used
+no tools, so "Running the tests now" with no call made continues as well. `off`
+never checks. Each review records a
 [`turn.completion_checked`](/event-reference/#turncompletion_checked) event.
 
 ## See also
