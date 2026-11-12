@@ -71,7 +71,15 @@ impl StandardHost {
         key: &str,
         factory: impl Fn(&str) -> Option<Model> + Send + Sync + 'static,
     ) -> Self {
-        self.providers.insert(key.into(), Arc::new(factory));
+        // Provider names match as the Engine matches them (`ProviderKey`:
+        // trimmed, any case): the control plane names a provider by its
+        // display name, such as "LlmSim".
+        self.providers.insert(
+            everruns_contracts::runtime_provider::ProviderKey::new(key)
+                .as_str()
+                .to_owned(),
+            Arc::new(factory),
+        );
         self
     }
 
@@ -136,12 +144,32 @@ impl Host for StandardHost {
         // provider, by its key, when the org runs on the data plane.
         let local = self
             .providers
-            .get(model.provider.as_str())
+            .get(
+                everruns_contracts::runtime_provider::ProviderKey::new(model.provider.as_str())
+                    .as_str(),
+            )
             .and_then(|factory| factory(&model.model));
+        // Decision: the `tool_approval` capability an agent names is served
+        // here, its decisions kept in the session's storage
+        // (`DurableToolApprover`), so a risky call parks the turn as a
+        // tool marked for approval does. Registered, not activated, and only
+        // for an agent that names it: a registered one would stand in for
+        // the gate of tools marked for approval (`durable_approvals`) and
+        // let them run unasked.
+        let mut services = HostServices::new();
+        if manifest
+            .capabilities
+            .iter()
+            .any(|c| c.id() == everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID)
+        {
+            services = services.register(everruns_core::builtins::ToolApprovalCapability::new(
+                Arc::new(everruns_core::builtins::DurableToolApprover),
+            ));
+        }
         let model = match (local, orgs) {
             (Some(model), _) => model,
             (None, Some(orgs)) => {
-                builder = builder.host_services(HostServices::new().providers(orgs.clone()));
+                services = services.providers(orgs.clone());
                 Model::on(model.provider.as_str(), model.model.as_str())
             }
             (None, None) => {
@@ -155,10 +183,15 @@ impl Host for StandardHost {
         // cell, so its file tools may write it, as the platform's workers
         // allow (hidden and sensitive paths stay denied by the policy).
         builder
+            .host_services(services)
             .model(model)
             .package(&package)
             .map_err(|e| e.to_string())?
             .workspace_policy(everruns::WorkspacePolicy::read_write())
+            // A tool that needs approval parks the turn until a person
+            // answers through `POST /v1/sessions/{id}/tool-approvals`: a
+            // cell never holds a turn open on a callback.
+            .durable_approvals()
             .build()
             .map_err(|e| e.to_string())
     }

@@ -34,6 +34,8 @@ pub const ADMIN: &str = "admin";
 const REFETCH: Duration = Duration::from_secs(10);
 /// How long fetched keys are trusted before they are refetched anyway.
 const KEYS_FOR: Duration = Duration::from_secs(300);
+/// Clock skew allowed on an org token's expiry, in seconds.
+const LEEWAY_SECS: u64 = 5;
 
 type ApiError = (StatusCode, String);
 
@@ -135,7 +137,10 @@ impl OrgTokens {
             .ok_or_else(|| unauthorized("the token's key is not known"))?;
         let mut validation = Validation::new(Algorithm::EdDSA);
         validation.validate_aud = false;
-        validation.leeway = 30;
+        // Decision: 5 s of clock skew, not jsonwebtoken's 60 s or a
+        // generous 30: an org token lives minutes (30 s in the expiry
+        // drill), and leeway is extra life for a token nobody refreshed.
+        validation.leeway = LEEWAY_SECS;
         let claims = jsonwebtoken::decode::<OrgTokenClaims>(token, &key, &validation)
             .map_err(unauthorized)?
             .claims;

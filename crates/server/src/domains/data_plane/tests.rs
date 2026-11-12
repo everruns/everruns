@@ -287,6 +287,7 @@ fn summary(version: u64, turns: u64) -> Record {
         last_activity_unix_ms: chrono::Utc::now().timestamp_millis(),
         turns,
         cost_micros: 0,
+        last_turn: "completed".into(),
     }
 }
 
@@ -702,4 +703,40 @@ async fn a_providers_key_travels_sealed_and_only_when_it_changed() {
     providers::sync(&cp, ORG).await.unwrap();
     let live = cp.db.dp_items_live(ORG).await.unwrap();
     assert!(live.iter().all(|item| item.item_id != id), "{live:?}");
+}
+
+/// The console's own Chat stays on the control plane in a v2 org: its page
+/// tools are the console's, and the data plane holds only the org's
+/// published agents. Any other agent's session goes to the data plane.
+#[tokio::test]
+async fn the_consoles_chat_stays_on_the_control_plane() {
+    let (cp, _, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    // The test database is shared: the org may have its Chat already.
+    let name = crate::platform_chat_agent::NAME;
+    let chat = match cp.db.get_agent_by_name(ORG, name).await.unwrap() {
+        Some(chat) => chat,
+        None => cp
+            .db
+            .create_agent(
+                ORG,
+                crate::platform_chat_agent::definition(
+                    harness,
+                    everruns_contracts::typed_id::AgentId::new(),
+                ),
+            )
+            .await
+            .unwrap(),
+    };
+    assert!(sessions::stays_on_control_plane(Some(&chat)));
+
+    let mut other = crate::platform_chat_agent::definition(
+        harness,
+        everruns_contracts::typed_id::AgentId::new(),
+    );
+    other.name = format!("helper-{}", uuid::Uuid::new_v4().simple());
+    other.is_built_in = false;
+    let other = cp.db.create_agent(ORG, other).await.unwrap();
+    assert!(!sessions::stays_on_control_plane(Some(&other)));
+    assert!(!sessions::stays_on_control_plane(None));
 }

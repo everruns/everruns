@@ -402,6 +402,10 @@ pub enum Record {
         turns: u64,
         #[serde(default)]
         cost_micros: i64,
+        /// How the last turn ended: `completed`, `failed` or `cancelled`;
+        /// empty before the first.
+        #[serde(default)]
+        last_turn: String,
     },
     /// A data-plane-refreshed connection token.
     SecretRefreshed {

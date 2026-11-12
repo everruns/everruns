@@ -54,6 +54,47 @@ fn work_tool() -> FunctionTool {
     )
 }
 
+/// A tool a person must approve before it runs (the approval gate).
+fn guarded_tool() -> FunctionTool {
+    FunctionTool::new(
+        "guarded",
+        "Change something that needs a person's approval.",
+        json!({ "type": "object", "properties": {} }),
+        |_args: Value| async move { Ok::<_, String>(json!({ "changed": true })) },
+    )
+    .always_needs_approval()
+}
+
+/// A tool that changes something and says nothing about its risk: the
+/// `tool_approval` capability in its protective mode gates it.
+fn note_tool() -> FunctionTool {
+    FunctionTool::new(
+        "note",
+        "Write a note.",
+        json!({ "type": "object", "properties": {} }),
+        |_args: Value| async move { Ok::<_, String>(json!({ "noted": true })) },
+    )
+}
+
+/// A simulated model that calls `tool`, calls it again once told it was
+/// approved (as the Engine asks), then answers.
+fn approve_model(tool: &str) -> Model {
+    let call = || {
+        SimTurn::ToolCalls(vec![SimToolCall {
+            name: tool.into(),
+            arguments: json!({}),
+            id: None,
+        }])
+    };
+    let sim = LlmSimConfig::scripted(vec![
+        call(),
+        call(),
+        SimTurn::Assistant("Changed, as approved.".into()),
+    ])
+    .with_on_exhausted(OnExhausted::Loop);
+    Model::simulated_with_config(sim)
+}
+
 fn work_call() -> SimTurn {
     SimTurn::ToolCalls(vec![SimToolCall {
         name: "work".into(),
@@ -489,6 +530,11 @@ static BLOB_SIM: std::sync::LazyLock<LlmSimConfig> = std::sync::LazyLock::new(||
 /// - `lead`: delegate to the member `worker3`, then report;
 /// - `chat`: a long answer, with no tools, and native compaction;
 /// - `files`: writes or reads a workspace file the message names;
+/// - `slow-chat`: a plain answer after `CELL_MODEL_DELAY_MS` (3 s);
+/// - `approve`: calls `guarded`, which waits for a person's approval,
+///   then answers;
+/// - `gate`: the same with `note`, which the agent's `tool_approval`
+///   capability gates;
 /// - `stamp`: streams [`STAMPS`] text deltas, each the Unix time in
 ///   microseconds it was produced (`@<micros>;`), [`STAMP_EVERY`] apart:
 ///   the streaming latency bench reads them off the wire;
@@ -509,10 +555,20 @@ pub fn host() -> StandardHost {
                 "blob" => blob_model(),
                 "files" => files_model(),
                 "stamp" => stamp_model(),
+                "approve" => approve_model("guarded"),
+                "gate" => approve_model("note"),
+                // A plain answer that takes `CELL_MODEL_DELAY_MS`: a turn
+                // to cancel, for an agent the control plane defines.
+                "slow-chat" => Model::simulated_with_config(
+                    LlmSimConfig::fixed("Thought about it for a while.")
+                        .with_response_delay(env_ms("CELL_MODEL_DELAY_MS", 3000)),
+                ),
                 _ => Model::simulated("done."),
             })
         })
         .tool(work_tool)
+        .tool(guarded_tool)
+        .tool(note_tool)
         .tool(delegate_tool)
         .tool(|| file_tool("list_directory", "List a directory."))
         .tool(|| file_tool("read_file", "Read a file."))
@@ -566,6 +622,17 @@ pub fn definition(name: &str) -> Option<Value> {
         "echo" => agent("echo", "Answer.", "echo", &[]),
         // Deltas stamped with the time they were made (the latency bench).
         "stamp" => agent("stamp", "Answer.", "stamp", &[]),
+        // Calls a tool that waits for a person's approval.
+        "approve" => agent("approve", "Ask, then change.", "approve", &["guarded"]),
+        // Its `tool_approval` capability gates a state-changing tool.
+        "gate" => {
+            let mut gate = agent("gate", "Ask, then change.", "gate", &["note"]);
+            gate["capabilities"] = json!([{
+                "ref": "tool_approval",
+                "config": { "mode": "protective" }
+            }]);
+            gate
+        }
         "worker" => agent("worker", "Do the work, then report.", "work-1", &["work"]),
         "worker3" => agent("worker3", "Do the work, then report.", "work-3", &["work"]),
         "slow" => agent("slow", "Do the work, then report.", "slow", &["work"]),

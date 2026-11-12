@@ -32,6 +32,7 @@ pub mod control;
 pub mod dispatch;
 pub mod dp;
 pub mod edge;
+mod edge_commands;
 pub mod exec_api;
 pub mod executor;
 pub mod files;

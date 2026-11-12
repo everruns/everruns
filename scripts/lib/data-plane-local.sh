@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Local data plane v2 (DATA_PLANE=v2 just start-all): one cell of three
-# nodes, one executor and the edge router, next to the usual stack.
+# Local data plane v2 (DATA_PLANE=v2 just start-all): one cell (cell 0,
+# the directory cell) of three nodes, one executor and the edge router,
+# next to the usual stack.
 #
 # Decisions:
 # - Ports come from the stack's PORT_PREFIX: nodes ${PORT_PREFIX}41..43,
@@ -53,8 +54,9 @@ data_plane_local_topology() {
   local dir="$1"
   cat > "$dir/topology.json" <<EOF
 {
+  "directory_cell": 0,
   "cells": {
-    "1": {
+    "0": {
       "1": "127.0.0.1:${PORT_PREFIX}41",
       "2": "127.0.0.1:${PORT_PREFIX}42",
       "3": "127.0.0.1:${PORT_PREFIX}43"
@@ -77,7 +79,7 @@ data_plane_local_start() {
   local node
   for node in 1 2 3; do
     CELL_GATEWAY="127.0.0.1:${PORT_PREFIX}4${node}" CELL_EXECUTOR_CAP=256 \
-      "$bin" node --topology "$dir/topology.json" --cell 1 --node "$node" \
+      "$bin" node --topology "$dir/topology.json" --cell 0 --node "$node" \
       --data "$dir/data/n$node" --store "$store" \
       --control-plane "$CELL_CONTROL_PLANE" \
       >> "$dir/logs/n$node.log" 2>&1 &
@@ -107,7 +109,7 @@ data_plane_local_start() {
   # config and sessions, the same node for org admin.
   cargo run -q -p everruns-server --bin everruns-dataplane -- \
     register "$DP_LOCAL_ID" "http://127.0.0.1:${PORT_PREFIX}41" || return 1
-  echo "   ✅ Data plane $DP_LOCAL_ID: cell 1 (3 nodes), 1 executor, edge :${DP_EDGE_PORT}"
+  echo "   ✅ Data plane $DP_LOCAL_ID: cell 0 (3 nodes), 1 executor, edge :${DP_EDGE_PORT}"
   echo "      Move an org onto it: just dp-enable <org public id>"
 }
 
@@ -117,6 +119,7 @@ data_plane_local_enable() {
   [ -n "$org" ] || { echo "usage: just dp-enable <org public id>" >&2; return 2; }
   data_plane_local_env
   export DATABASE_URL="${DATABASE_URL:-$DB_URL_DEFAULT}"
-  configure_local_development_encryption_key || return 1
+  # The API server's key (Doppler's, or the per-prefix local one).
+  [ -n "${SECRETS_ENCRYPTION_KEY:-}" ] || configure_local_development_encryption_key || return 1
   cargo run -q -p everruns-server --bin everruns-dataplane -- enable "$org" "$DP_LOCAL_ID"
 }

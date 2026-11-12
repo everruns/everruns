@@ -597,7 +597,8 @@ impl SessionService {
         // the org's data plane (see `data_plane::sessions`).
         let data_plane = crate::domains::data_plane::ControlPlane::from_env(self.db.clone());
         let on_data_plane =
-            crate::domains::data_plane::sessions::on_data_plane(&data_plane, org_id).await?;
+            !crate::domains::data_plane::sessions::stays_on_control_plane(agent.as_ref())
+                && crate::domains::data_plane::sessions::on_data_plane(&data_plane, org_id).await?;
         if on_data_plane
             && let Some(setting) = crate::domains::data_plane::sessions::unsupported(
                 &input,

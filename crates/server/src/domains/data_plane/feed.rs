@@ -126,6 +126,7 @@ async fn store(
             last_activity_unix_ms,
             turns,
             cost_micros,
+            last_turn,
         } => {
             cp.db
                 .dp_upsert_session_summary(DpSessionSummary {
@@ -145,10 +146,10 @@ async fn store(
             // The session's own record (created by the control plane's
             // `POST /v1/sessions`) shows the same state in every list.
             if let Ok(id) = session_id.parse::<everruns_contracts::typed_id::SessionId>() {
-                let outcome = if status == "failed" {
-                    "failed"
-                } else {
-                    "completed"
+                let outcome = match (last_turn.as_str(), status.as_str()) {
+                    ("completed" | "failed" | "cancelled", _) => last_turn.as_str(),
+                    (_, "failed") => "failed",
+                    _ => "completed",
                 };
                 cp.db
                     .dp_apply_session_summary(

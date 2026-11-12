@@ -6,7 +6,8 @@
 //!   the edge, and everything else straight to the control plane: only
 //!   session calls can belong to a data plane.
 //! - A session's record (get, update, delete, archive, pin, cost, budgets,
-//!   and the list and create calls) always goes to the control plane,
+//!   resolved model, participants, slash commands, run requests, and the
+//!   list and create calls) always goes to the control plane,
 //!   which keeps the record of every session, a data plane's too. The rest
 //!   of a session's calls go to the data plane when the session is there.
 //! - The edge finds the caller's org token itself, so the console and the
@@ -22,6 +23,8 @@
 //!   any client (signature, data plane, the session's org).
 //! - A session the data plane does not know (made before its org moved) is
 //!   the control plane's; that answer is cached for half a minute.
+//! - The CLI's command transport (`POST /v1/commands/{name}`) is routed the
+//!   same way for a session's running calls (`edge_commands.rs`).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,18 +33,34 @@ use std::time::{Duration, Instant};
 use axum::Router;
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use everruns_contracts::typed_id::SessionId;
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt as _;
 
+use serde_json::Value;
+
+use crate::edge_commands;
 use crate::gateway::Gateway;
 use crate::org_token::OrgTokens;
 
-/// A session's calls that stay with the control plane: its record.
-const RECORD: &[&str] = &["archive", "pin", "cost", "budgets", "budget-check"];
+/// A session's calls that stay with the control plane: its record, and
+/// what the record answers (the model it resolves to, its participants,
+/// the agent's slash commands, run requests). The console reads these for
+/// every chat; without the resolved model its composer stays disabled.
+const RECORD: &[&str] = &[
+    "archive",
+    "pin",
+    "cost",
+    "budgets",
+    "budget-check",
+    "resolved-model",
+    "participants",
+    "commands",
+    "run-requests",
+];
 /// How long "not on a data plane" is believed.
 const NOT_V2_FOR: Duration = Duration::from_secs(60);
 /// How long "the data plane does not know this session" is believed.
@@ -333,25 +352,106 @@ impl Edge {
 async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
     let path = request.uri().path();
     let path = path.strip_prefix(edge.prefix.as_str()).unwrap_or(path);
+    if let Some(name) = path.strip_prefix("/v1/commands/")
+        && request.method() == Method::POST
+        && edge_commands::is_session_command(name)
+    {
+        let name = name.to_owned();
+        return edge.command(name, request).await;
+    }
     let Route::Session(session) = route(path) else {
         return edge.to_control_plane(request).await;
     };
-    let token = match explicit(request.headers()) {
-        // An org token the caller sent is checked here: an expired or
-        // forged one is refused, never swapped for another credential's.
-        Some(token) => match edge.tokens.verify(token).await {
-            Ok(_) => token.to_owned(),
-            Err(error) => return error.into_response(),
-        },
-        None => match edge.exchanged_token(request.headers()).await {
-            Some(token) => token,
-            None => return edge.to_control_plane(request).await,
-        },
+    let token = match edge.token_for(request.headers()).await {
+        Ok(Some(token)) => token,
+        Ok(None) => return edge.to_control_plane(request).await,
+        Err(refused) => return refused,
     };
     if !edge.on_data_plane(session).await {
         return edge.to_control_plane(request).await;
     }
     edge.to_data_plane(request, &token).await
+}
+
+impl Edge {
+    /// The org token for a caller's call: the one it sent, checked, or its
+    /// credential's exchanged one; None when its org is not on a data plane.
+    async fn token_for(&self, headers: &HeaderMap) -> Result<Option<String>, Response> {
+        match explicit(headers) {
+            // An org token the caller sent is checked here: an expired or
+            // forged one is refused, never swapped for another credential's.
+            Some(token) => match self.tokens.verify(token).await {
+                Ok(_) => Ok(Some(token.to_owned())),
+                Err(error) => Err(error.into_response()),
+            },
+            None => Ok(self.exchanged_token(headers).await),
+        }
+    }
+
+    /// `POST /v1/commands/{name}` for a session command (`edge_commands.rs`):
+    /// the data plane's call in the command's envelope when the session is
+    /// there, the control plane's answer otherwise.
+    async fn command(&self, name: String, request: Request) -> Response {
+        let (parts, body) = request.into_parts();
+        let Ok(bytes) = axum::body::to_bytes(body, edge_commands::MAX_BODY).await else {
+            return (StatusCode::PAYLOAD_TOO_LARGE, "command body too large").into_response();
+        };
+        let envelope: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        let key = parts
+            .headers
+            .get("idempotency-key")
+            .and_then(|v| v.to_str().ok());
+        let target = match edge_commands::translate(&name, &envelope, key) {
+            None => None,
+            Some(call) => match self.token_for(&parts.headers).await {
+                Err(refused) => return refused,
+                Ok(None) => None,
+                Ok(Some(token)) => self
+                    .on_data_plane(call.session)
+                    .await
+                    .then_some((call, token)),
+            },
+        };
+        let Some((call, token)) = target else {
+            return self
+                .to_control_plane(Request::from_parts(parts, Body::from(bytes)))
+                .await;
+        };
+        let mut forwarded = Request::new(Body::from(
+            call.body.map(|body| body.to_string()).unwrap_or_default(),
+        ));
+        *forwarded.method_mut() = call.method;
+        let Ok(uri) = call.path_and_query.parse() else {
+            return (StatusCode::BAD_REQUEST, "unusable command params").into_response();
+        };
+        *forwarded.uri_mut() = uri;
+        for (name, value) in &parts.headers {
+            if !hop_by_hop(name)
+                && name != header::HOST
+                && name != header::CONTENT_LENGTH
+                && name != header::CONTENT_TYPE
+            {
+                forwarded.headers_mut().append(name.clone(), value.clone());
+            }
+        }
+        forwarded.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        let (answer, body) = self.to_data_plane(forwarded, &token).await.into_parts();
+        if !answer.status.is_success() {
+            return Response::from_parts(answer, body);
+        }
+        let Ok(bytes) = axum::body::to_bytes(body, edge_commands::MAX_BODY).await else {
+            return (
+                StatusCode::BAD_GATEWAY,
+                "the data plane's answer was too large",
+            )
+                .into_response();
+        };
+        let output = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        axum::Json(edge_commands::answer(&name, &envelope, output)).into_response()
+    }
 }
 
 async fn metrics(State(edge): State<Arc<Edge>>) -> String {
@@ -420,6 +520,14 @@ mod tests {
         );
         assert_eq!(
             route(&format!("/v1/sessions/{id}/archive")),
+            Route::ControlPlane
+        );
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/resolved-model")),
+            Route::ControlPlane
+        );
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/participants")),
             Route::ControlPlane
         );
         assert_eq!(route(&format!("/v1/sessions/{id}/sse")), Route::Session(id));

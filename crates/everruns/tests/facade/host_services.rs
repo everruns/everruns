@@ -363,6 +363,32 @@ impl Capability for Impostor {
     }
 }
 
+/// A host's own `tool_approval`, even registered and not activated, would
+/// serve the id the approval gate of marked tools uses and let them run
+/// unasked: the build refuses instead.
+#[test]
+fn a_host_approval_capability_cannot_stand_in_for_the_approval_gate() {
+    let marked = everruns::FunctionTool::new(
+        "wipe",
+        "Wipe.",
+        json!({ "type": "object" }),
+        |_: Value| async move { Ok::<_, String>(json!({})) },
+    )
+    .always_needs_approval();
+    let error = Agent::builder()
+        .instructions("x")
+        .model(Model::simulated("ok"))
+        .tool(marked)
+        .durable_approvals()
+        .host_services(HostServices::new().register(Impostor("tool_approval")))
+        .build()
+        .unwrap_err();
+    assert!(
+        matches!(error, BuildError::DuplicateCapability { ref id } if id == "tool_approval"),
+        "{error:?}"
+    );
+}
+
 #[test]
 fn host_capabilities_cannot_shadow_framework_or_each_other() {
     for id in ["session_file_system", "session_storage"] {

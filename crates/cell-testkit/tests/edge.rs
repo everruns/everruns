@@ -182,6 +182,70 @@ async fn a_v2_orgs_session_calls_reach_the_data_plane_and_records_the_control_pl
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_clis_commands_for_a_v2_session_reach_the_data_plane() {
+    let s = setup().await;
+    let me = [
+        ("authorization", "Bearer user-org-a"),
+        ("idempotency-key", "send-1"),
+    ];
+    let send = json!({
+        "api_version": "v1",
+        "schema_hash": "abc",
+        "params": {
+            "session_id": s.session,
+            "message": { "role": "user", "content": [{ "type": "text", "text": "hi" }] },
+        },
+    });
+    let (status, first) = s
+        .call(
+            Method::POST,
+            "/v1/commands/create_message",
+            &me,
+            Some(send.clone()),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(first["command"], "create_message");
+    assert_eq!(first["schema_hash"], "abc");
+    assert_eq!(first["output"]["status"], "accepted", "{first}");
+    // A retry with the same key is the same message, admitted once.
+    let (_, again) = s
+        .call(Method::POST, "/v1/commands/create_message", &me, Some(send))
+        .await;
+    assert_eq!(again["output"]["id"], first["output"]["id"]);
+
+    let list = json!({ "params": { "session_id": s.session, "limit": 1, "order_desc": true } });
+    let (status, listed) = s
+        .call(Method::POST, "/v1/commands/list_events", &me, Some(list))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(
+        listed["output"]["data"].as_array().map(Vec::len),
+        Some(1),
+        "{listed}"
+    );
+    assert!(!from_control_plane(&listed["output"]));
+
+    // Any other command, and one for a session the data plane does not
+    // hold, is the control plane's, body and all.
+    let other = everruns_contracts::typed_id::SessionId::new();
+    for (name, params) in [
+        ("create_agent", json!({ "name": "x" })),
+        ("list_events", json!({ "session_id": other.to_string() })),
+    ] {
+        let (_, body) = s
+            .call(
+                Method::POST,
+                &format!("/v1/commands/{name}"),
+                &me,
+                Some(json!({ "params": params })),
+            )
+            .await;
+        assert!(from_control_plane(&body), "{name}: {body}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn no_token_reaches_another_orgs_session() {
     let s = setup().await;
     // A member of another org on the data plane.
@@ -192,11 +256,17 @@ async fn no_token_reaches_another_orgs_session() {
         s.cp.signer
             .token(ORG, "dp-local", "sessions:write", -120)
             .unwrap();
+    // Past its life by more than the clock skew allowed (5 s), but within
+    // the 30 s a looser check gave a 30 s token.
+    let just_expired =
+        s.cp.signer
+            .token(ORG, "dp-local", "sessions:write", -10)
+            .unwrap();
     let forged = everruns_cell_testkit::signer::Signer::new("cp-key-1")
         .unwrap()
         .token(ORG, "dp-local", "admin", 600)
         .unwrap();
-    for token in [expired, forged] {
+    for token in [expired, just_expired, forged] {
         for header in ["authorization", "x-everruns-org-token"] {
             let value = if header == "authorization" {
                 format!("Bearer {token}")

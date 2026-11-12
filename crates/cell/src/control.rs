@@ -452,9 +452,11 @@ impl Feed {
                     | EventData::TurnCancelled(_)
             )
         });
-        let status = match last.map(|e| &e.data) {
-            Some(EventData::TurnFailed(_)) => "failed",
-            _ => "idle",
+        let (status, last_turn) = match last.map(|e| &e.data) {
+            Some(EventData::TurnFailed(_)) => ("failed", "failed"),
+            Some(EventData::TurnCancelled(_)) => ("idle", "cancelled"),
+            Some(_) => ("idle", "completed"),
+            None => ("idle", ""),
         };
         let at = last.map_or(s.created_ms, |e| e.ts.timestamp_millis());
         let record = Record::Session {
@@ -467,6 +469,7 @@ impl Feed {
             turns: s.turns_completed(),
             title: String::new(),
             cost_micros: 0,
+            last_turn: last_turn.into(),
         };
         self.push(index, org, at, record);
     }

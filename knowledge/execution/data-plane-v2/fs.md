@@ -143,7 +143,7 @@ These are estimates to be checked in the stress bench (plan steps 5 and 6) and t
 
 1. **Step 5 (cell crate):** workspace tree types, commit command, delta, compaction, fork. The simulated executor writes files in chaos tests. Checks: no lost committed write, forks independent, quota never exceeded.
 2. **Step 6 (cell executor):** `SessionFileSystem` over the cell, executor cache, grep.
-3. **Step 8 (gateway):** `/fs` routes, uploads, downloads.
+3. **Stage 2 (gateway):** `/fs` routes, uploads, downloads. Moved from step 8, which kept stage 1 to chat (design.md, "Step 8 progress").
 4. **Stage 2 features**, after the core proof, not part of it: `everruns-fs` for sandboxes (sync mode first, then mount mode), local-only paths, the chunk cache tier, Memories as shared volumes.
 5. **Stage 3:** External volume capability (Archil, S3), trigram index.
 

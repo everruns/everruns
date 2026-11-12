@@ -1379,6 +1379,116 @@ Decisions for now: the link uses a bearer token per data plane, and the
 wrapping key is a local key; mTLS and KMS replace both in step 10.
 v2 sessions show in the console from step 8.
 
+### Step 8 progress (2026-11-12)
+
+A v2 org's sessions now run on its data plane end to end: the console and
+the CLI keep one URL, the control plane keeps every session's record, and
+the cells run the turns. Decisions (approved 2026-11-12):
+
+- **The edge is a mode of the cell binary** (`serve edge`, `crates/cell/src/edge.rs`).
+  The proxy in front sends `/v1/sessions` and below to it. The edge sends
+  a session's record calls (get, list, create, title, archive, and what
+  the record answers: resolved model, participants, slash commands, run
+  requests) and every
+  v1 org's calls to the control plane unchanged, and a v2 session's
+  running calls (messages, events, SSE, cancel, approvals, tool results) to
+  the data plane. It finds the caller's org token by exchanging the
+  caller's own credential at `POST /v1/auth/token`, caches it and
+  refreshes it before it ends, so the console and the CLI carry no token
+  code.
+- **The control plane creates, the data plane runs.** `POST /v1/sessions`
+  writes the record as for any org, then creates the session on the org's
+  data plane under the same id (`POST /dp/v1/orgs/{org}/sessions`, after
+  the agent's revision is delivered). A refused create fails the request
+  and soft-deletes the record, so no record waits for answers that never
+  come. Messages to such a session never reach the platform's workers.
+  Feed summaries keep the record's status and last turn current.
+- **Stage 1 is chat.** Session files, MCP servers, sandboxes and per-session
+  overrides answer 501 with the feature's name on a cell, the control
+  plane refuses a v2 session that asks for them, and the console hides
+  them for a v2 org (`data_plane` in the org's feature flags). The `/fs`
+  routes ([fs.md](fs.md)) move to stage 2 with the rest.
+- **An org's own model provider** reaches executors as an `llm_provider`
+  connection whose key is a sealed secret; only the executor running the
+  turn opens it (`crates/cell/src/providers.rs`).
+- **Tools that need a person's approval** park the turn (the Engine's
+  durable approver), and `POST /v1/sessions/{id}/tool-approvals` resumes it.
+  An agent's `tool_approval` capability ("ask before acting") is served on
+  cells with the same durable approver, registered only for an agent that
+  names it: a host's own `tool_approval` would otherwise stand in for the
+  gate of tools marked for approval, and the Framework now refuses to build
+  such an agent rather than let those tools run unasked.
+- **The CLI needs no change.** It sends every call as
+  `POST /v1/commands/{name}`; the edge turns a v2 session's chat commands
+  (send and list messages, list events, cancel, tool results) into the
+  `/v1` call they name and answers in the command's envelope
+  (`crates/cell/src/edge_commands.rs`). A send keeps its idempotency: the
+  message id comes from the command's key.
+- **The console's own Chat stays on the control plane** in a v2 org: its
+  page tools are the console's, and a data plane runs only the org's
+  published agents (`data_plane::sessions::stays_on_control_plane`).
+- **Live streaming:** an epoch's deltas go to the session's stream node,
+  which relays them to every watcher; a stream subscribes before its
+  response goes out, so a client that has the response misses nothing.
+- **Local full v2:** `DATA_PLANE=v2 just start-all` adds one cell of three
+  nodes, one executor and the edge next to the usual stack, and
+  `just dp-enable <org>` moves an org onto it
+  (`scripts/lib/data-plane-local.sh`).
+
+Gate, measured:
+
+- **Live deltas, 200 sessions streaming at once:** p50 3.8 ms, p99 69 ms
+  from the executor making a delta to its SSE client; first delta of an
+  answer p50 4.1 ms, p99 25 ms; against 100 ms (release build, one machine,
+  three nodes, two executors and 200 clients in one process; 3 976 of
+  4 000 deltas arrived live, the rest were the last of an answer, which its
+  committed message already carries; `crates/cell-testkit/tests/latency.rs`). The bench found that every
+  answer lost its first delta on the live stream: the stream node
+  numbered "nothing taken yet" as 0, the number of an epoch's first delta.
+- **Edge hop:** p50 0.1 ms, p99 under 1 ms, against 5 ms (400 calls
+  through the edge and straight to a gateway, alternating; one token
+  exchange, then the cached token).
+- **Token expiry** with a 30 s token: an expired token gets 401. Clock
+  skew allowed on an org token was cut from 30 s to 5 s, which had given
+  a 30 s token twice its life. A token of another org reaches nothing
+  (`crates/cell-testkit/tests/edge.rs`).
+- **Control plane down:** running sessions keep taking messages and
+  finishing turns through the edge; new sessions and record calls fail
+  until it is back (the record is the control plane's).
+- **A config change mid-turn** leaves the running turn on its revision; the
+  next turn takes the new one (`control_plane.rs`).
+- **Real-server run:** the API server as control plane, three nodes, an
+  executor and the edge, driven over HTTP: create an agent, a session, chat
+  with streaming, cancel, the session list, control plane down, token
+  expiry. It found eight bugs the fake control plane hid: provider names
+  compared by case (the control plane says "LlmSim"), the local topology
+  without its directory cell, `dp-enable` failing when Doppler supplies the
+  secrets key, tools needing approval refused on cells, a cancelled turn
+  listed as completed, the token leeway above, the CLI's chat refused
+  (it sends commands, not `/v1` calls), and the console's own Chat sent
+  to the data plane, which could not run it, so it never opened.
+- **The console in a browser** (Playwright, through the edge, the UI's dev
+  server behind a stand-in for Caddy): an agent created in the console,
+  a Playground chat on the data plane, a Muse answer rendering as it
+  streams (18, 33, 41, then 123 characters over 250 ms), Stop cancelling a
+  running turn (`turn.cancelled`, then idle), and "Allow once" on an
+  approval card resuming the turn and running the tool. It found two more:
+  the chat box stayed disabled because the edge sent the session's
+  resolved-model lookup to the data plane, which answers 501, and an agent
+  with "ask before acting" could not start a session on a cell at all.
+- **A real model:** an agent on Muse Spark 1.3 Contributor through an
+  org's own OpenRouter provider answered through the edge with streaming
+  (first token 3.5 s, all of it OpenRouter's). The key went to the data
+  plane sealed and was opened only on the executor.
+
+- **The CLI** against the same stack: `everruns sessions create`, `chat`
+  with Muse (streamed answer through the edge) and `sessions list`.
+
+Left as found: opening the Playground from an agent's "Test in
+Playground" keeps Start disabled until the page is reloaded without the
+agent in its address (the form's draft baseline changes when the virtual
+user loads); it is the console's, not the data plane's.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
