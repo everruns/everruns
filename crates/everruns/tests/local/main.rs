@@ -17,4 +17,5 @@ mod local_schedule_store_test;
 mod local_session_leases_test;
 mod local_spawn_agent_runtime_test;
 mod local_task_registry_test;
+mod local_task_snapshot_test;
 mod workspace_environment;

@@ -49,6 +49,14 @@ Use the generic `session_tasks` tools to monitor and steer subagents after spawn
 - `cancel_task`, request cooperative cancellation of a subagent; returns the task's state after the cancel request plus its recent messages, the same shape as `get_task`
 - `wait_task`, block until a subagent reaches a terminal or interrupted state
 
+Repeated `list_tasks` polls can pass the previous response's `snapshot` as
+`since`, using the same filters. If nothing changed, the response contains
+`unchanged: true`, `count`, and `snapshot` instead of repeating the tasks.
+Progress, pending input requests, state details, and outcomes still trigger a
+fresh list. Omit `since` to retrieve the list again, or use `get_task` for full
+details. When you only need to wait for completion or a request for input,
+prefer `wait_task` over polling.
+
 ## Notes
 
 - **Governed spawning**: subagents can spawn nested subagents up to `max_subagent_depth` (default 2); set it to 0 to block subagent spawning. Each root session also has `max_active_descendant_tasks` (default 16) and `max_total_descendant_tasks` (default 200) caps to bound wide fan-out and repeated spawn loops.

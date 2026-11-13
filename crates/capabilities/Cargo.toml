@@ -82,13 +82,11 @@ poppy-client = [
     "dep:jsonwebtoken",
     "dep:parking_lot",
     "dep:serde_urlencoded",
-    "dep:sha2",
     "dep:url",
     "dep:urlencoding",
 ]
 container-sandbox = [
     "dep:reqwest",
-    "dep:sha2",
     "dep:hex",
     "dep:tar",
     "dep:urlencoding",
@@ -134,7 +132,7 @@ inventory.workspace = true
 # Each capability retains its runtime egress and deployment-grade checks.
 reqwest = { workspace = true, features = ["json", "rustls"], optional = true }
 thiserror.workspace = true
-sha2 = { workspace = true, optional = true }
+sha2.workspace = true
 hex = { workspace = true, optional = true }
 tar = { workspace = true, optional = true }
 urlencoding = { version = "2", optional = true }

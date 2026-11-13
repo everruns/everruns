@@ -21,6 +21,7 @@ use everruns_core::session_task::{
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::{Instant, sleep};
@@ -89,7 +90,7 @@ impl Capability for SessionTasksCapability {
     }
 }
 
-const SESSION_TASKS_SYSTEM_PROMPT: &str = "Every spawned background work item (subagent, external agent, background tool) is a task with a task_id. Use list_tasks/get_task to check status instead of re-spawning. Answer a task in awaiting_input with message_task (set in_reply_to to the pending input request id). Use wait_task only when you have nothing else to do until the task finishes.";
+const SESSION_TASKS_SYSTEM_PROMPT: &str = "Every spawned background work item (subagent, external agent, background tool) is a task with a task_id. Use list_tasks/get_task to check status instead of re-spawning. Answer a task in awaiting_input with message_task (set in_reply_to to the pending input request id). When polling list_tasks, pass its previous snapshot as since with the same filters to avoid repeating unchanged results. Omit since to retrieve the list again. Use wait_task only when you have nothing else to do until the task finishes.";
 
 // =============================================================================
 // Helpers
@@ -139,6 +140,7 @@ fn compact_task_json(task: &SessionTask) -> Value {
         "state": task.state,
         "state_detail": task.state_detail,
         "progress": task.progress,
+        "input_request": task.input_request,
         "summary": task.summary.as_deref().map(compact_summary),
         "created_at": task.created_at.to_rfc3339(),
         "finished_at": task.finished_at.map(|t| t.to_rfc3339()),
@@ -185,7 +187,7 @@ impl Tool for ListTasksTool {
     }
 
     fn description(&self) -> &str {
-        "List this session's background tasks (subagents, external agents, background tools) with state, progress, and summary."
+        "List this session's background tasks (subagents, external agents, background tools) with state, progress, input request, and summary. For repeated polls, pass the previous snapshot as since with the same filters; unchanged results omit tasks. Omit since to retrieve the list again. get_task always returns full details."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -200,6 +202,10 @@ impl Tool for ListTasksTool {
                 "kind": {
                     "type": "string",
                     "description": "Filter by task kind (e.g. 'subagent', 'external_agent', 'background_tool')."
+                },
+                "since": {
+                    "type": "string",
+                    "description": "Snapshot from the previous list_tasks result with the same filters. Returns a short unchanged response if nothing changed. Omit to always return tasks."
                 }
             },
             "additionalProperties": false
@@ -265,10 +271,49 @@ async fn list_tasks_impl(
         .list(context.session_id, Some(&filter))
         .await
         .map_err(ToolExecutionResult::internal_error)?;
+    // Caller-held snapshots survive worker/turn changes without hidden cache state.
+    // Sort only the fingerprint: registry presentation order remains unchanged.
+    // Ignore heartbeat/update timestamps, but include full outcomes so a change
+    // beyond the compact summary boundary still invalidates the snapshot.
+    let mut snapshots = tasks.iter().collect::<Vec<_>>();
+    snapshots.sort_by(|a, b| a.id.cmp(&b.id));
+    let snapshots = snapshots
+        .into_iter()
+        .map(|task| {
+            let mut snapshot = full_task_json(task);
+            if let Some(fields) = snapshot.as_object_mut() {
+                fields.remove("heartbeat_at");
+                fields.remove("updated_at");
+            }
+            snapshot
+        })
+        .collect::<Vec<_>>();
+    let fingerprint = json!({
+        "session_id": context.session_id,
+        "kind": filter.kind,
+        "state": filter.state,
+        "tasks": snapshots,
+    });
+    let digest = Sha256::digest(fingerprint.to_string().as_bytes());
+    let snapshot = format!(
+        "v1:{}",
+        digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    if arguments.get("since").and_then(Value::as_str) == Some(snapshot.as_str()) {
+        return Ok(ToolExecutionResult::success(json!({
+            "unchanged": true,
+            "count": tasks.len(),
+            "snapshot": snapshot,
+        })));
+    }
     let entries = tasks.iter().map(compact_task_json).collect::<Vec<_>>();
     Ok(ToolExecutionResult::success(json!({
         "tasks": entries,
         "count": entries.len(),
+        "snapshot": snapshot,
     })))
 }
 
