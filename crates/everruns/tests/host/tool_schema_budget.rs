@@ -88,6 +88,10 @@ async fn embedded_turn_reserves_tools_before_sending_history_to_provider() {
         .iter()
         .filter(|m| m.role == MessageRole::User)
         .collect();
+    println!(
+        "provider request retained {} of 10 user turns with an 8,000-byte tool description",
+        users.len()
+    );
     assert!(
         users.len() < 10,
         "message-only budgeting would keep all ten turns"
