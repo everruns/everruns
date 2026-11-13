@@ -23,7 +23,7 @@ Fields: `{"invoice_number":{"type":"text"},"total":{"type":"number"}}`.
 
 ## Steps
 
-1. Open Extractions through the sidebar and Command-K. Verify the charge warning, source and field inputs, and the extraction model selector in light and dark themes.
+1. Open Extractions through the sidebar and Command-K in both console layouts. Verify users without model-management permission cannot see either destination. Verify the charge warning, source and field inputs, and the extraction model selector in light and dark themes.
 2. With no model or source, verify Extract is disabled. Choose an extraction model; chat-only models must not appear.
 3. Enter malformed field JSON, then Extract. Verify a local error and no API request.
 4. Enter valid fields and Extract. Verify inputs and button disable while pending and a second click cannot submit again.
@@ -31,6 +31,7 @@ Fields: `{"invoice_number":{"type":"text"},"total":{"type":"number"}}`.
 6. While another request is pending, switch organizations. Verify the form clears, and completing the old request cannot reveal its source or result.
 7. Trigger a provider error. Verify the generic error, no credential/document leakage, and a usable retry button.
 8. Navigate away and Back. Verify navigation works and an old request cannot replace a newly submitted result.
+9. Open page Chat. Verify its context identifies Extractions without copying source text, results, or provider data, and it cannot submit an extraction.
 
 ## Expected Result
 
