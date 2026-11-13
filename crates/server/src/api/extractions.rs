@@ -211,6 +211,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn another_organizations_model_is_not_visible_to_extraction() {
+        let state = state();
+        let provider = state
+            .db
+            .create_provider(
+                2,
+                crate::storage::CreateProviderRow {
+                    name: "Other org provider".into(),
+                    provider_type: "openrouter".into(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let model = state
+            .db
+            .create_model(
+                2,
+                crate::storage::CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: "cloudflare/clairic".into(),
+                    display_name: "Clairic".into(),
+                    capabilities: vec!["extractions".into()],
+                    is_favorite: false,
+                    enabled: true,
+                    source: "manual".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .unwrap();
+        let org = ResolvedOrg {
+            org_id: 1,
+            public_id: "org_test".into(),
+            name: "Test".into(),
+            user_id: None,
+            role: everruns_core::OrgRole::Owner,
+            is_platform_user: false,
+            feature_flags: crate::domains::common::all_feature_flags_for_test(),
+            read_only: false,
+        };
+        let mut input = request();
+        input.model_id = model.id.to_string();
+        let error = extract(org, State(state), Json(input)).await.unwrap_err();
+        assert_eq!(error.0, axum::http::StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn route_requires_authentication() {
         use tower::ServiceExt;
         let db = std::sync::Arc::new(crate::storage::StorageBackend::test_database());

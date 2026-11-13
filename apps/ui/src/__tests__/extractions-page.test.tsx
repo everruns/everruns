@@ -3,8 +3,9 @@ import ExtractionsPage from "@/app/(main)/extractions/page";
 import { api } from "@/lib/api/client";
 
 jest.mock("@/hooks", () => ({ usePageTitle: jest.fn() }));
+let mockOrgId = "org_test";
 jest.mock("@/providers/org-provider", () => ({
-  useOrg: () => ({ currentOrg: { public_id: "org_test" } }),
+  useOrg: () => ({ currentOrg: { public_id: mockOrgId } }),
 }));
 jest.mock("@/providers/locale-provider", () => ({ useUiTranslations: () => (s: string) => s }));
 jest.mock("@/lib/api/client", () => ({ api: { post: jest.fn() } }));
@@ -22,7 +23,10 @@ jest.mock("@/components/layout/page-layout", () => ({
   PageMasthead: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockOrgId = "org_test";
+});
 
 it("submits the configured model and preserves nullable evidence in the result", async () => {
   (api.post as jest.Mock).mockResolvedValue({
@@ -64,4 +68,25 @@ it("does not expose provider error bodies", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Extract" }));
   expect(await screen.findByRole("alert")).toBeInTheDocument();
   expect(screen.queryByText(/secret upstream/)).not.toBeInTheDocument();
+});
+
+it("does not reveal an old organization's pending response after switching organizations", async () => {
+  let complete!: (value: unknown) => void;
+  (api.post as jest.Mock).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const { rerender } = render(<ExtractionsPage />);
+  fireEvent.change(screen.getByLabelText("Model"), { target: { value: "model_test" } });
+  fireEvent.change(screen.getByLabelText("Source text"), { target: { value: "Private invoice" } });
+  fireEvent.click(screen.getByRole("button", { name: "Extract" }));
+  expect(screen.getByRole("button", { name: "Extracting…" })).toBeDisabled();
+  mockOrgId = "org_other";
+  rerender(<ExtractionsPage />);
+  complete({ data: { answers: { secret: "Old organization result" } } });
+  await waitFor(() => expect(screen.getByLabelText("Source text")).toHaveValue(""));
+  expect(screen.queryByText(/Old organization result/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Extract" })).toBeDisabled();
 });

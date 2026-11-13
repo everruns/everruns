@@ -9,9 +9,9 @@ The upstream OpenRouter API is **alpha**. Providers differ in supported fields a
 
 ## Framework
 
-```rust,no_run
+```rust
 use everruns::{Extractions, ExtractionField};
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let key = std::env::var("OPENROUTER_API_KEY")?;
 let provider = everruns_drivers::openrouter::provider("openrouter", key);
 let result = Extractions::new("cloudflare/clairic", provider)
@@ -20,7 +20,8 @@ let result = Extractions::new("cloudflare/clairic", provider)
     .field("total", ExtractionField::number())
     .send().await?;
 println!("{:?}", result.answers);
-# Ok(()) }
+    Ok(())
+}
 ```
 
 Enable the driver's `openrouter` feature. Run the synthetic invoice example:

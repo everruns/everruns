@@ -16,7 +16,7 @@ The Server exposes `POST /v1/extractions`, and the console has an **Extractions*
 
 See [Typed Extractions](/framework/extractions/) for configuration, evidence semantics, examples and opt-in live tests. This source change does not imply availability in a published release or deployed Cloud.
 
-```rust,ignore
+```rust
 let result = Extractions::new("cloudflare/clairic", provider)
     .about("Invoice INV-42")
     .field("invoice_number", ExtractionField::text())
