@@ -373,11 +373,20 @@ pub async fn make_listener(
         secrets,
     });
     Ok(match config.provider {
-        TraceProvider::Otlp => Arc::new(
-            everruns_core::host::observability::customer::otlp_listener(
+        TraceProvider::Otlp | TraceProvider::Langfuse | TraceProvider::Langsmith => Arc::new(
+            everruns_core::host::observability::customer::native_otlp_listener(
                 &config.endpoint,
                 service,
                 config.capture_content,
+                match config.provider {
+                    TraceProvider::Langfuse => {
+                        everruns_core::host::observability::customer::NativeTraceProvider::Langfuse
+                    }
+                    TraceProvider::Langsmith => {
+                        everruns_core::host::observability::customer::NativeTraceProvider::Langsmith
+                    }
+                    _ => everruns_core::host::observability::customer::NativeTraceProvider::Generic,
+                },
             )
             .map_err(|_| anyhow::anyhow!("Unable to initialize OTLP exporter"))?,
         ),

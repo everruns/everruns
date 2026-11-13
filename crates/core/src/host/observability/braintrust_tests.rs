@@ -65,3 +65,6 @@ mod conversion;
 
 #[path = "braintrust_payload_tests.rs"]
 mod payload;
+
+#[path = "braintrust_quality_tests.rs"]
+mod quality;

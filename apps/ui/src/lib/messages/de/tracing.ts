@@ -1,5 +1,9 @@
 // Product-owned tracing copy. Keep credentials and authored destination names outside translation.
 export const messages: Readonly<Record<string, string>> = {
+  "Agent-based LangSmith workspace": "Agentenbasierter LangSmith-Arbeitsbereich",
+  "LangSmith agent ID": "LangSmith-Agent-ID",
+  "LangSmith environment": "LangSmith-Umgebung",
+
   "The model declined this request.": "Das Modell hat diese Anfrage abgelehnt.",
   "Model declined request": "Modell hat Anfrage abgelehnt",
   Tracing: "Tracing",
@@ -93,4 +97,11 @@ export const messages: Readonly<Record<string, string>> = {
   "Organization default": "Organisationsvorgabe",
   "Agent selections: {value0}": "Agentenauswahlen: {value0}",
   Unassigned: "Nicht zugewiesen",
+  "Send agent traces to Braintrust, Langfuse, LangSmith, or OTLP collectors.":
+    "Agenten-Traces an Braintrust, Langfuse, LangSmith oder OTLP-Kollektoren senden.",
+  "Connect a tracing provider, then choose organization defaults and agent overrides.":
+    "Verbinden Sie einen Tracing-Anbieter und wählen Sie dann Organisationsvorgaben und Agenten-Ausnahmen.",
+  "Project name": "Projektname",
+  "Public key": "Öffentlicher Schlüssel",
+  "Secret key": "Geheimer Schlüssel",
 };

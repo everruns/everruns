@@ -5,6 +5,9 @@
 //
 // See knowledge/operations/observability.md for full specification.
 //
+#[path = "braintrust_quality.rs"]
+mod quality;
+
 use super::braintrust_delivery::{
     DeliveryAttempt, PermanentFailureReporting, report_permanent_failure,
 };
@@ -31,7 +34,7 @@ use crate::{
 };
 
 /// Configuration for Braintrust integration
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BraintrustConfig {
     /// API key for authentication
     pub api_key: String,
@@ -129,13 +132,14 @@ struct BraintrustTurnState {
     retry_wait_ms: Option<u64>,
     compaction: Option<serde_json::Value>,
     session_status: Option<String>,
+    thinking_spans: HashMap<String, String>,
 }
 
 struct BraintrustState {
     config: BraintrustConfig,
     client: Client,
     egress: Option<std::sync::Arc<dyn crate::EgressService>>,
-    sender: mpsc::Sender<DeliveryMessage>,
+    sender: Mutex<Option<mpsc::Sender<DeliveryMessage>>>,
     receiver: Mutex<Option<mpsc::Receiver<DeliveryMessage>>>,
     sessions: Mutex<HashMap<String, BraintrustSessionState>>,
     turns: Mutex<HashMap<String, BraintrustTurnState>>,
@@ -147,7 +151,7 @@ struct BraintrustState {
 
 enum DeliveryMessage {
     Event(Box<BraintrustLogEvent>),
-    Flush(oneshot::Sender<()>),
+    Flush(oneshot::Sender<Result<(), String>>),
 }
 
 /// Response from Braintrust list projects API
@@ -357,18 +361,20 @@ struct BraintrustMetrics {
     #[serde(skip_serializing_if = "Option::is_none")]
     end: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    prompt_tokens: Option<u32>,
+    prompt_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tokens: Option<u32>,
+    tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     time_to_first_token: Option<f64>,
     /// Prompt caching: tokens read from cache (Claude, OpenAI)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "prompt_cached_tokens")]
     cache_read_tokens: Option<u32>,
     /// Prompt caching: tokens written to cache (Claude)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "prompt_cache_creation_tokens")]
     cache_creation_tokens: Option<u32>,
 }
 
@@ -442,7 +448,7 @@ impl BraintrustListener {
             config,
             client,
             egress: None,
-            sender,
+            sender: Mutex::new(Some(sender)),
             receiver: Mutex::new(Some(receiver)),
             sessions: Mutex::new(HashMap::new()),
             turns: Mutex::new(HashMap::new()),
@@ -525,7 +531,7 @@ impl BraintrustListener {
                             }
                             Some(DeliveryMessage::Flush(completion)) => {
                                 Self::flush_batch(&state, &mut batch).await;
-                                let _ = completion.send(());
+                                let _ = completion.send(quality::delivery_result(&state));
                             }
                             None => {
                                 if !batch.is_empty() {
@@ -629,30 +635,28 @@ impl BraintrustListener {
                     DeliveryAttempt::Success
                 } else if response.status().as_u16() == 429 || response.status().is_server_error() {
                     let status = response.status();
-                    let body = response.text().await.unwrap_or_default();
-                    DeliveryAttempt::Retryable(format!("HTTP {} {}", status, body))
+                    DeliveryAttempt::Retryable(format!("HTTP {}", status))
                 } else {
                     let status = response.status();
-                    let body = response.text().await.unwrap_or_default();
                     DeliveryAttempt::Permanent {
                         // The numeric status, not `Display`, which appends the
                         // reason phrase and would make the class wordier without
                         // distinguishing anything.
                         class: format!("HTTP {}", status.as_u16()),
-                        reason: format!("HTTP {} {}", status, body),
+                        reason: format!("HTTP {}", status),
                     }
                 }
             }
             Err(e) => {
                 if e.is_timeout() || e.is_connect() || e.is_request() {
-                    DeliveryAttempt::Retryable(e.to_string())
+                    DeliveryAttempt::Retryable("Braintrust transport failed".into())
                 } else {
                     // One class for every non-transient transport failure: the
                     // Display text carries request-specific detail, so it would
                     // re-report on noise rather than on a changed fault.
                     DeliveryAttempt::Permanent {
                         class: "transport".to_string(),
-                        reason: e.to_string(),
+                        reason: "Braintrust transport failed".into(),
                     }
                 }
             }
@@ -669,11 +673,10 @@ impl BraintrustListener {
     }
 
     fn enqueue_event(&self, bt_event: BraintrustLogEvent) {
-        if let Err(error) = self
-            .state
-            .sender
-            .try_send(DeliveryMessage::Event(Box::new(bt_event)))
-        {
+        let Some(sender) = self.delivery_sender() else {
+            return;
+        };
+        if let Err(error) = sender.try_send(DeliveryMessage::Event(Box::new(bt_event))) {
             self.state.dropped_events.fetch_add(1, Ordering::Relaxed);
             warn!(
                 dropped_events = self.state.dropped_events.load(Ordering::Relaxed),
@@ -750,6 +753,7 @@ impl BraintrustListener {
         metadata["deployment_grade"] =
             serde_json::json!(self.state.config.deployment_grade.to_string());
         super::provider_attrs::annotate_braintrust(event, metadata);
+        quality::annotate_costs(event, metadata);
         if let Some(sequence) = event.sequence {
             metadata["session_event_sequence"] = serde_json::json!(sequence);
         }
@@ -1267,24 +1271,12 @@ impl BraintrustListener {
         });
         self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
-        // Build metrics if we have usage/duration (with prompt caching support)
-        let metrics = if data.usage.is_some() || data.duration_ms.is_some() {
-            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
-            let start_time = data.duration_ms.map(|d| end_time - (d as f64 / 1000.0));
-
-            Some(BraintrustMetrics {
-                start: start_time,
-                end: Some(end_time),
-                prompt_tokens: data.usage.as_ref().map(|u| u.input_tokens),
-                completion_tokens: data.usage.as_ref().map(|u| u.output_tokens),
-                tokens: data.usage.as_ref().map(|u| u.total_tokens()),
-                time_to_first_token: None,
-                cache_read_tokens: data.usage.as_ref().and_then(|u| u.cache_read_tokens),
-                cache_creation_tokens: data.usage.as_ref().and_then(|u| u.cache_creation_tokens),
-            })
-        } else {
-            None
-        };
+        let metrics = Some(quality::terminal_metrics(
+            event,
+            data.duration_ms,
+            data.usage.as_ref(),
+            None,
+        ));
 
         if let Some(duration_ms) = data.duration_ms {
             metadata["duration_ms"] = serde_json::json!(duration_ms);
@@ -1363,28 +1355,12 @@ impl BraintrustListener {
         }
         self.annotate_event_metadata(event, &mut metadata);
 
-        // Build metrics with prompt caching support
-        let metrics = data.metadata.usage.as_ref().map(|usage| {
-            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
-            let start_time = data
-                .metadata
-                .duration_ms
-                .map(|d| end_time - (d as f64 / 1000.0));
-
-            BraintrustMetrics {
-                start: start_time,
-                end: Some(end_time),
-                prompt_tokens: Some(usage.input_tokens),
-                completion_tokens: Some(usage.output_tokens),
-                tokens: Some(usage.total_tokens()),
-                time_to_first_token: data
-                    .metadata
-                    .time_to_first_token_ms
-                    .map(|t| t as f64 / 1000.0),
-                cache_read_tokens: usage.cache_read_tokens,
-                cache_creation_tokens: usage.cache_creation_tokens,
-            }
-        });
+        let metrics = Some(quality::terminal_metrics(
+            event,
+            data.metadata.duration_ms,
+            data.metadata.usage.as_ref(),
+            data.metadata.time_to_first_token_ms,
+        ));
 
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
@@ -1394,7 +1370,9 @@ impl BraintrustListener {
             created: event.ts,
             input: self.llm_input_payload(data),
             output: self.llm_output_payload(data),
-            error: data.metadata.error.clone(),
+            error: data.metadata.error.as_deref().map(|error| {
+                quality::private_text(error, self.state.config.content.record_content)
+            }),
             metadata,
             metrics,
             span_attributes: BraintrustSpanAttributes {
@@ -1458,22 +1436,12 @@ impl BraintrustListener {
 
         self.annotate_event_metadata(event, &mut metadata);
 
-        // Build metrics if we have duration for timeline display
-        let metrics = data.duration_ms.map(|duration_ms| {
-            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
-            let start_time = end_time - (duration_ms as f64 / 1000.0);
-
-            BraintrustMetrics {
-                start: Some(start_time),
-                end: Some(end_time),
-                prompt_tokens: None,
-                completion_tokens: None,
-                tokens: None,
-                time_to_first_token: None,
-                cache_read_tokens: None,
-                cache_creation_tokens: None,
-            }
-        });
+        let metrics = Some(quality::terminal_metrics(
+            event,
+            data.duration_ms,
+            None,
+            None,
+        ));
 
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
@@ -1486,7 +1454,15 @@ impl BraintrustListener {
             created: event.ts,
             input: Some(input),
             output: Some(output),
-            error: data.error.clone(),
+            error: data.error.as_deref().map(|error| {
+                quality::private_text(
+                    error,
+                    matches!(
+                        self.state.config.content.tool_results_mode,
+                        BraintrustPayloadMode::Full
+                    ),
+                )
+            }),
             metadata,
             metrics,
             span_attributes: BraintrustSpanAttributes {
@@ -1523,9 +1499,12 @@ impl BraintrustListener {
             output: Some(serde_json::json!({
                 "status": "failed",
             })),
-            error: Some(data.error.clone()),
+            error: Some(quality::private_text(
+                &data.error,
+                self.state.config.content.record_content,
+            )),
             metadata,
-            metrics: None,
+            metrics: Some(quality::terminal_metrics(event, None, None, None)),
             span_attributes: BraintrustSpanAttributes {
                 name: "agent turn".to_string(),
                 span_type: "task".to_string(),
@@ -1550,20 +1529,17 @@ impl BraintrustListener {
         });
         self.annotate_metadata(event, &mut metadata, Some(&turn_id));
 
-        // Build metrics if we have usage
-        let metrics = data.usage.as_ref().map(|usage| BraintrustMetrics {
-            start: None,
-            end: Some(event.ts.timestamp_micros() as f64 / 1_000_000.0),
-            prompt_tokens: Some(usage.input_tokens),
-            completion_tokens: Some(usage.output_tokens),
-            tokens: Some(usage.total_tokens()),
-            time_to_first_token: None,
-            cache_read_tokens: usage.cache_read_tokens,
-            cache_creation_tokens: usage.cache_creation_tokens,
-        });
-
+        let metrics = Some(quality::terminal_metrics(
+            event,
+            None,
+            data.usage.as_ref(),
+            None,
+        ));
         if let Some(reason) = &data.reason {
-            metadata["cancellation_reason"] = serde_json::json!(reason);
+            metadata["cancellation_reason"] = serde_json::json!(quality::private_text(
+                reason,
+                self.state.config.content.record_content
+            ));
         }
 
         // Root span: span_id and root_span_id both reference self (turn_id)
@@ -1680,24 +1656,12 @@ impl BraintrustListener {
             },
         });
 
-        // Build metrics if we have duration/usage for timeline display
-        let metrics = if data.duration_ms.is_some() || data.usage.is_some() {
-            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
-            let start_time = data.duration_ms.map(|d| end_time - (d as f64 / 1000.0));
-
-            Some(BraintrustMetrics {
-                start: start_time,
-                end: Some(end_time),
-                prompt_tokens: data.usage.as_ref().map(|u| u.input_tokens),
-                completion_tokens: data.usage.as_ref().map(|u| u.output_tokens),
-                tokens: data.usage.as_ref().map(|u| u.total_tokens()),
-                time_to_first_token: None,
-                cache_read_tokens: data.usage.as_ref().and_then(|u| u.cache_read_tokens),
-                cache_creation_tokens: data.usage.as_ref().and_then(|u| u.cache_creation_tokens),
-            })
-        } else {
-            None
-        };
+        let metrics = Some(quality::terminal_metrics(
+            event,
+            data.duration_ms,
+            data.usage.as_ref(),
+            None,
+        ));
 
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
@@ -1715,7 +1679,9 @@ impl BraintrustListener {
             created: event.ts,
             input: None,
             output: Some(output),
-            error: data.error.clone(),
+            error: data.error.as_deref().map(|error| {
+                quality::private_text(error, self.state.config.content.record_content)
+            }),
             metadata,
             metrics,
             span_attributes: BraintrustSpanAttributes {
@@ -1749,7 +1715,7 @@ impl BraintrustListener {
         }
 
         // Parent-child linking using OTel-style span fields from context
-        let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
+        let (span_id, root_span_id, span_parents) = self.thinking_span_linkage(event);
 
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
@@ -1808,7 +1774,7 @@ impl BraintrustListener {
         let output = self.thinking_output_payload(&data.thinking);
 
         // Parent-child linking using OTel-style span fields from context
-        let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
+        let (span_id, root_span_id, span_parents) = self.thinking_span_linkage(event);
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -1852,7 +1818,9 @@ impl BraintrustListener {
         let mut metadata = serde_json::json!({
             "tool_count": data.tool_calls.len(),
         });
-        if let Some(headline) = &data.headline {
+        if self.include_tool_call_labels()
+            && let Some(headline) = &data.headline
+        {
             metadata["headline"] = serde_json::json!(headline);
         }
 
@@ -1861,8 +1829,8 @@ impl BraintrustListener {
                 serde_json::json!({
                     "id": tc.id,
                     "name": tc.name,
-                    "display_name": tc.display_name,
-                    "narration": tc.narration,
+                    "display_name": if self.include_tool_call_labels() { tc.display_name.as_ref() } else { None },
+                    "narration": if self.include_tool_call_labels() { tc.narration.as_ref() } else { None },
                 })
             }).collect::<Vec<_>>(),
         });
@@ -1919,7 +1887,9 @@ impl BraintrustListener {
             "success_count": data.success_count,
             "error_count": data.error_count,
         });
-        if let Some(headline) = &data.headline {
+        if self.include_tool_call_labels()
+            && let Some(headline) = &data.headline
+        {
             metadata["headline"] = serde_json::json!(headline);
         }
 
@@ -1929,22 +1899,12 @@ impl BraintrustListener {
             "error_count": data.error_count,
         });
 
-        // Build metrics if we have duration for timeline display
-        let metrics = data.duration_ms.map(|duration_ms| {
-            let end_time = event.ts.timestamp_micros() as f64 / 1_000_000.0;
-            let start_time = end_time - (duration_ms as f64 / 1000.0);
-
-            BraintrustMetrics {
-                start: Some(start_time),
-                end: Some(end_time),
-                prompt_tokens: None,
-                completion_tokens: None,
-                tokens: None,
-                time_to_first_token: None,
-                cache_read_tokens: None,
-                cache_creation_tokens: None,
-            }
-        });
+        let metrics = Some(quality::terminal_metrics(
+            event,
+            data.duration_ms,
+            None,
+            None,
+        ));
 
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);
@@ -2154,6 +2114,7 @@ impl EventListener for BraintrustListener {
                     "Processing llm.generation for Braintrust"
                 );
                 self.record_llm_state(event, data);
+                self.reparent_thinking(event);
                 self.convert_llm_generation(event, data)
             }
 
@@ -2239,14 +2200,14 @@ impl EventListener for BraintrustListener {
     async fn flush(&self) -> Result<(), String> {
         self.ensure_delivery_worker();
         let (completion, completed) = oneshot::channel();
-        self.state
-            .sender
+        self.delivery_sender()
+            .ok_or_else(|| "Braintrust listener stopped".to_string())?
             .send(DeliveryMessage::Flush(completion))
             .await
             .map_err(|_| "Braintrust delivery worker stopped".to_string())?;
         completed
             .await
-            .map_err(|_| "Braintrust flush was interrupted".to_string())
+            .map_err(|_| "Braintrust flush was interrupted".to_string())?
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {

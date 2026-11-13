@@ -120,18 +120,19 @@ Use Braintrust grouping, timeline, or thread views on `metadata.session_id` to a
 
 ### LLM Generations
 
-- `prompt_tokens` - Input token count
+- `prompt_tokens` - Cache-inclusive input token count
 - `completion_tokens` - Output token count
-- `cache_read_tokens` - Tokens read from prompt cache (Claude)
-- `cache_creation_tokens` - Tokens written to prompt cache (Claude)
+- `prompt_cached_tokens` - Input tokens read from prompt cache
+- `prompt_cache_creation_tokens` - Input tokens written to prompt cache
 - `time_to_first_token` - Time until first token received
 - `duration_ms` - Total LLM call duration
+- `actual_cost_usd`, `estimated_cost_usd`, `effective_cost_usd` - Cost provenance in metadata when known; missing prices are not reported as zero
 
 ### Tool Calls
 
 - `status` - Success/failure
 - `duration_ms` - Execution time
-- `error` - Error message (on failure)
+- `error` - Failure marker; free-text detail only when the applicable content policy permits it
 
 ## Delivery Behavior
 
@@ -141,7 +142,9 @@ Use Braintrust grouping, timeline, or thread views on `metadata.session_id` to a
 - If the queue fills, new events are dropped and the exporter logs the drop counter.
 - Framework applications that register `Braintrust::from_env()` and call `Engine::shutdown` wait for the final HTTP batch.
 
-This is best-effort durability, not a disk-backed queue.
+A flush reports failure when events have already been dropped or batches failed; draining
+a queue is not proof of delivery. Dropping the listener drains queued work and releases
+its worker and credentials. This is best-effort delivery, not a disk-backed queue.
 
 ## Privacy Controls
 
@@ -149,6 +152,7 @@ The Braintrust exporter defaults to conservative content handling:
 
 - raw turn and LLM text are off unless `BRAINTRUST_RECORD_CONTENT=true`
 - when raw content is off, the exporter emits structural metadata only; it does not emit truncated prompt/completion previews
+- free-text errors and cancellation reasons follow content policy because they may echo private inputs
 - extended thinking is off unless `BRAINTRUST_RECORD_THINKING` says otherwise
 - tool arguments default to `redacted`
 - tool results default to `summary`

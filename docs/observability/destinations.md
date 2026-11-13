@@ -1,6 +1,6 @@
 ---
 title: Customer tracing destinations
-description: Connect organization and agent traces to multiple Braintrust projects and OpenTelemetry collectors with explicit privacy and routing controls.
+description: Connect organization and agent traces to Braintrust, Langfuse, LangSmith and OpenTelemetry collectors with explicit privacy and routing controls.
 ---
 
 Connect your own tracing backends from **Settings → Organization → Tracing**.
@@ -14,13 +14,20 @@ hosts must also be allowed by the deployment's egress policy.
 ## Add a destination
 
 1. Choose **Add destination** and give it a recognizable name.
-2. Select **Braintrust** or **OpenTelemetry / OTLP**. You can add multiple
+2. Select **Braintrust**, **Langfuse**, **LangSmith**, or **OpenTelemetry / OTLP**. You can add multiple
    destinations using the same provider.
 3. Enter an HTTPS endpoint. For Braintrust, enter the project UUID and API key.
    For OTLP, choose the authentication header your collector expects, or leave
    it empty for a collector that needs no authentication. Supported headers are
    `Authorization`, `X-API-Key`, and `Api-Key`. The exporter uses
    HTTP/protobuf and appends `/v1/traces` unless it is already present.
+   For Langfuse, enter the project public key and secret key. Use the region's full
+   `/api/public/otel/v1/traces` HTTPS endpoint. Everruns supplies Basic authentication
+   and the v4 ingestion header automatically. For LangSmith, enter a workspace-scoped API key,
+   project name, and the full `/otel/v1/traces` endpoint for your region (self-hosted
+   deployments may use `/api/v1/otel/v1/traces`). For agent-based LangSmith workspaces,
+   use the environment's `tracer_session_name` as the project name. Create the
+   agent/environment in LangSmith first; Everruns does not provision it.
 4. New destinations start with metadata only. After creation, use **Edit destination**
    to enable **Include messages and tool content** when your retention policy
    permits exporting inputs, outputs and tool arguments/results. **Include reasoning content**
@@ -36,6 +43,21 @@ credentials, queries or fragments. Host egress policy can block private networks
 or disallowed hosts; customer exports require DNS pinning.
 
 New destinations start **Unassigned**. Creating one does not export agent data.
+
+Native Langfuse and LangSmith destinations use OTLP/HTTP protobuf with provider
+span kinds and session correlation, alongside GenAI/OpenInference model, usage,
+content and error attributes. No collector or process-wide environment variables
+are required. LangSmith supports either a project name for project-based workspaces, or a
+registered LangSmith agent ID with its local/development/staging/production
+environment. These are receiver destinations, independent of the Everruns agent
+that inherits or overrides organization routing. The two receiver modes are
+mutually exclusive; each destination has its own exporter and request-level
+routing headers, so batches do not mix destinations.
+Regional/self-hosted endpoints remain explicit: switching provider
+or endpoint requires entering replacement credentials. Provider UI indexing and
+cost estimation remain receiver-specific; test-trace acceptance is not a live
+UI verification. See the [Langfuse OTLP reference](https://langfuse.com/integrations/native/opentelemetry)
+and [LangSmith OTLP reference](https://docs.langchain.com/langsmith/trace-with-opentelemetry).
 
 ## Choose routing
 

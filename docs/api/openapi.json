@@ -48264,6 +48264,20 @@
             "description": "HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.",
             "example": "https://collector.example.com/v1/traces"
           },
+          "langsmith_agent_environment": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "LangSmith agent environment: local, development, staging, or production."
+          },
+          "langsmith_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Registered LangSmith agent identifier, mutually exclusive with project_name."
+          },
           "name": {
             "type": "string",
             "description": "Human-readable destination name, from 1 to 128 characters.",
@@ -48278,9 +48292,16 @@
             "description": "Braintrust project identifier; required for Braintrust receivers.",
             "example": "00000000-0000-0000-0000-000000000002"
           },
+          "project_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "LangSmith project name for project-based workspaces."
+          },
           "provider": {
             "$ref": "#/components/schemas/TraceProvider",
-            "description": "Receiver protocol: Braintrust project or generic OTLP over HTTPS."
+            "description": "Native Braintrust, Langfuse, LangSmith, or generic OTLP over HTTPS."
           }
         },
         "additionalProperties": false
@@ -79515,6 +79536,8 @@
         "description": "Receiver protocol used for customer trace delivery.",
         "enum": [
           "braintrust",
+          "langfuse",
+          "langsmith",
           "otlp"
         ]
       },

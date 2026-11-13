@@ -15767,6 +15767,10 @@ export interface components {
        * @example https://collector.example.com/v1/traces
        */
       endpoint: string;
+      /** @description LangSmith agent environment: local, development, staging, or production. */
+      langsmith_agent_environment?: string | null;
+      /** @description Registered LangSmith agent identifier, mutually exclusive with project_name. */
+      langsmith_agent_id?: string | null;
       /**
        * @description Human-readable destination name, from 1 to 128 characters.
        * @example Production traces
@@ -15778,7 +15782,9 @@ export interface components {
        * @example 00000000-0000-0000-0000-000000000002
        */
       project_id?: string | null;
-      /** @description Receiver protocol: Braintrust project or generic OTLP over HTTPS. */
+      /** @description LangSmith project name for project-based workspaces. */
+      project_name?: string | null;
+      /** @description Native Braintrust, Langfuse, LangSmith, or generic OTLP over HTTPS. */
       provider: components["schemas"]["TraceProvider"];
     };
     /** @description Destination settings, safe delivery health, and routing usage; excludes credentials. */
@@ -33104,7 +33110,7 @@ export interface components {
      * @description Receiver protocol used for customer trace delivery.
      * @enum {string}
      */
-    TraceProvider: "braintrust" | "otlp";
+    TraceProvider: "braintrust" | "langfuse" | "langsmith" | "otlp";
     /** @description One message of a model request. */
     TraceRequestMessage: {
       /** @description The whole message, when asked for and within the limit. */
