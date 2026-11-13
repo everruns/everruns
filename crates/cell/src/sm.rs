@@ -19,7 +19,7 @@ use std::io::{self, Cursor, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use openraft::storage::{RaftStateMachine, Snapshot};
 use openraft::{
@@ -49,6 +49,9 @@ pub struct Shared {
     watchers: parking_lot::Mutex<HashMap<SessionId, broadcast::Sender<Change>>>,
     /// Index of the last applied entry, for read-your-writes waits.
     pub applied: watch::Sender<u64>,
+    /// Turns this cell finished in the last minute, as this replica applied
+    /// them (`cell_slo_turn_p99_seconds`).
+    pub turn_window: crate::prom::Window,
     /// Session history segments and snapshot copies.
     pub store: Store,
     pub cell: CellId,
@@ -78,6 +81,7 @@ impl Shared {
             changes: broadcast::channel(65_536).0,
             watchers: Default::default(),
             applied: watch::channel(0).0,
+            turn_window: Default::default(),
             store,
             cell,
             touched: Default::default(),
@@ -311,12 +315,12 @@ impl Shared {
         Ok(seg)
     }
 
-    /// Estimated bytes of resident events, and their count.
     /// How long since this replica last built a snapshot (or started).
     pub fn last_snapshot_age(&self) -> std::time::Duration {
         self.last_snapshot.lock().elapsed()
     }
 
+    /// Estimated bytes of resident events, and their count.
     pub fn resident(&self) -> (u64, usize) {
         let events: usize = self
             .state
@@ -663,6 +667,7 @@ impl StateMachine {
             allowances: state.allowances.clone(),
             orgs: state.orgs.clone(),
             feed: state.feed.clone(),
+            turns_finished: Vec::new(),
         }
     }
 }
@@ -744,6 +749,9 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
                         responses.push(Response::Ok);
                     }
                 }
+            }
+            for ms in std::mem::take(&mut state.turns_finished) {
+                self.shared.turn_window.observe(Duration::from_millis(ms));
             }
         }
         crate::prof::add("apply", t, 1);

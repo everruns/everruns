@@ -1,0 +1,137 @@
+# The data plane v2 cell image (docker/Dockerfile.cell) for EKS load runs
+# and the step 10 deployment (design.md, step 10).
+#
+# Decisions:
+# - Its own workflow, dispatched by hand: release images stay what
+#   docker-publish.yml builds at tags, and no image is built per main
+#   commit. A pull request that changes the Dockerfile or this workflow
+#   builds the image without pushing it.
+# - The image is tagged with the full commit SHA it was built from; the
+#   deployment pins that tag's digest.
+# - Binaries compile inside the bookworm image the runtime base matches,
+#   with the release profile's link-time settings the drill uses
+#   (cell-drill.yml), which keep a 4-core runner inside its memory.
+name: Cell Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit or branch to build (default: the dispatching ref)'
+        required: false
+        type: string
+  pull_request:
+    paths:
+      - 'docker/Dockerfile.cell'
+      - '.github/workflows/cell-image.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build cell image
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: rust:1.99.1-slim-bookworm
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git pkg-config clang
+          rm -rf /var/lib/apt/lists/*
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve source
+        id: source
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries
+        run: |
+          set -euo pipefail
+          cargo build --locked --release -p everruns-cell-testkit --bin cell-testnode --bin cell-drive
+          mkdir -p bin
+          cp target/release/cell-testnode target/release/cell-drive bin/
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cell-bin
+          path: bin/
+          retention-days: 3
+          compression-level: 1
+
+  image:
+    name: Build and push image
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+
+      - name: Download binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: cell-bin
+          path: bin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and push when dispatched)
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: docker/Dockerfile.cell
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'workflow_dispatch' }}
+          tags: ghcr.io/${{ github.repository_owner }}/everruns-cell:${{ needs.build.outputs.sha }}
+          labels: org.opencontainers.image.revision=${{ needs.build.outputs.sha }}
+
+      - name: Summarize
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SHA: ${{ needs.build.outputs.sha }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          {
+            echo "### Cell image"
+            echo
+            echo "\`ghcr.io/${OWNER}/everruns-cell:${SHA}@${DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

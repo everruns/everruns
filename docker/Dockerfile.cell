@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.4
+#
+# The data plane v2 cell image (crates/cell, crates/cell-testkit): one image
+# for every role, chosen by the command.
+#   cell-testnode node | executor | edge | gateway | restore | inspect ...
+#   cell-drive load | check ...      (the load driver, for in-cluster runs)
+#
+# `cell-testnode` is the standard host plus the simulated `llmsim` provider,
+# so a fleet runs the step 10 load with no model keys, and an org's own
+# providers through its sealed connections.
+#
+# Built by .github/workflows/cell-image.yml from binaries compiled in the
+# bookworm userland this runtime base ships (glibc must match), the way
+# docker/Dockerfile.prebuilt is. Expects ./bin/cell-testnode and
+# ./bin/cell-drive in the build context. amd64 only: the EKS node pools are.
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f
+
+WORKDIR /app
+
+COPY --chmod=0755 bin/cell-testnode /app/cell-testnode
+COPY --chmod=0755 bin/cell-drive /app/cell-drive
+
+# Node, gateway and Raft traffic; an executor's and the edge's own ports are
+# set by their commands.
+EXPOSE 7000
+
+ENV RUST_LOG=info,openraft=warn
+
+ENTRYPOINT ["/app/cell-testnode"]

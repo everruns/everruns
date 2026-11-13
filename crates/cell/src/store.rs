@@ -153,6 +153,21 @@ impl std::fmt::Debug for Store {
     }
 }
 
+/// `CELL_STORE_THROTTLE_MS` (`store_throttle.rs`); unset or 0: no wait.
+fn throttled(inner: Arc<dyn ObjectStore>) -> Arc<dyn ObjectStore> {
+    let ms: u64 = std::env::var("CELL_STORE_THROTTLE_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    if ms == 0 {
+        return inner;
+    }
+    Arc::new(crate::store_throttle::Slow::new(
+        inner,
+        Duration::from_millis(ms),
+    ))
+}
+
 impl Store {
     /// Open `url`: `file:///dir`, `memory://`, or `s3://bucket/prefix`.
     pub fn open(url: &str) -> anyhow::Result<Self> {
@@ -164,8 +179,9 @@ impl Store {
             .filter(|(key, _)| key.starts_with("AWS_"))
             .map(|(key, value)| (key.to_ascii_lowercase(), value));
         let (inner, prefix) = object_store::parse_url_opts(&parsed, options)?;
+        let inner: Arc<dyn ObjectStore> = Arc::from(inner);
         Ok(Self {
-            inner: Arc::from(inner),
+            inner: throttled(inner),
             prefix,
             cache: None,
         })

@@ -43,8 +43,10 @@ enum Mode {
         topology: PathBuf,
         #[arg(long)]
         cell: CellId,
-        #[arg(long)]
-        node: NodeId,
+        /// This node's id; unset, one more than the trailing ordinal of
+        /// `HOSTNAME` (a StatefulSet pod `cell0-2` is node 3).
+        #[arg(long, env = "CELL_NODE")]
+        node: Option<NodeId>,
         #[arg(long)]
         data: PathBuf,
         /// Object store for session history and snapshot copies, shared by
@@ -92,9 +94,10 @@ enum Mode {
     Executor {
         #[arg(long, env = "CELL_TOPOLOGY")]
         topology: PathBuf,
-        /// This executor's id (unique in the fleet; at least 2^32).
-        #[arg(long)]
-        id: u64,
+        /// This executor's id (unique in the fleet; at least 2^32); unset,
+        /// 2^32 plus the trailing ordinal of `HOSTNAME`.
+        #[arg(long, env = "CELL_EXECUTOR_ID")]
+        id: Option<u64>,
         #[arg(long, env = "CELL_STORE")]
         store: String,
         /// Turns this executor runs at once.
@@ -171,6 +174,17 @@ enum Mode {
         #[arg(long, value_parser = parse_at)]
         at: i64,
     },
+    /// Where a session is and what it is doing, and how each cell keeps
+    /// up (`inspect.rs`). Read only.
+    Inspect {
+        #[arg(long, env = "CELL_TOPOLOGY")]
+        topology: PathBuf,
+        /// Print JSON instead of text.
+        #[arg(long)]
+        json: bool,
+        #[command(subcommand)]
+        what: Inspect,
+    },
     /// Run a stateless gateway.
     Gateway {
         #[arg(long, env = "CELL_TOPOLOGY")]
@@ -178,6 +192,30 @@ enum Mode {
         #[arg(long)]
         listen: SocketAddr,
     },
+}
+
+#[derive(Subcommand)]
+enum Inspect {
+    /// Every cell: leader, shipping, snapshot age, load, and each node's lag.
+    Cells,
+    /// One session: its directory entry, its cell, its claim and its last
+    /// events.
+    Session { id: String },
+    /// Sessions part way through a move, with the directory's view of each.
+    Moves,
+}
+
+/// The trailing `-N` of `HOSTNAME`: a StatefulSet pod's ordinal, which
+/// names its node (decision: no shell in the image to compute it).
+fn hostname_ordinal() -> anyhow::Result<u64> {
+    let host = std::env::var("HOSTNAME")
+        .map_err(|_| anyhow::anyhow!("no id given and HOSTNAME is unset"))?;
+    ordinal(&host)
+        .ok_or_else(|| anyhow::anyhow!("no id given and HOSTNAME {host:?} ends in no ordinal"))
+}
+
+fn ordinal(host: &str) -> Option<u64> {
+    host.rsplit_once('-')?.1.parse().ok()
 }
 
 pub fn init_tracing() {
@@ -211,6 +249,10 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             executor_cap,
             control_plane,
         } => {
+            let node = match node {
+                Some(node) => node,
+                None => hostname_ordinal()? + 1,
+            };
             let source = TopologySource { path: topology };
             let seeded = source.read()?.cells.get(&cell).cloned();
             let members = match (&seeded, join) {
@@ -253,6 +295,10 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             cache_mb,
             listen,
         } => {
+            let id = match id {
+                Some(id) => id,
+                None => (1 << 32) + hostname_ordinal()?,
+            };
             let cfg = crate::executor::ExecutorConfig {
                 id,
                 topology: TopologySource { path: topology },
@@ -322,6 +368,11 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
+        Mode::Inspect {
+            topology,
+            json,
+            what,
+        } => inspect(Topology::load(&topology)?, json, what).await,
         Mode::Gateway { topology, listen } => {
             let gateway = Gateway::new(TopologySource { path: topology });
             let listener = tokio::net::TcpListener::bind(listen).await?;
@@ -448,6 +499,10 @@ pub async fn serve_node_on(
     Ok(())
 }
 
+/// How long a draining executor waits for its turns to hand off. Below the
+/// pod's termination grace (`infra/k8s/dataplane` in the SaaS repository).
+const DRAIN_LIMIT: Duration = Duration::from_secs(60);
+
 /// Run an executor until stopped (SIGTERM drains it first).
 pub async fn serve_executor(
     cfg: crate::executor::ExecutorConfig,
@@ -469,8 +524,15 @@ pub async fn serve_executor(
     }
     tracing::info!(running = executor.running(), "draining");
     executor.drain();
-    while executor.running() > 0 {
+    // Decision: a drain waits a bounded time. A turn that cannot hand off
+    // (its cell does not answer) would hold the process forever; leaving
+    // it costs that turn one step, resumed elsewhere once its claim expires.
+    let limit = tokio::time::Instant::now() + DRAIN_LIMIT;
+    while executor.running() > 0 && tokio::time::Instant::now() < limit {
         tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    if executor.running() > 0 {
+        tracing::warn!(running = executor.running(), "drain limit reached; leaving");
     }
     Ok(())
 }
@@ -494,4 +556,67 @@ pub fn local_topology(cells: u32, nodes: u64, base: u16) -> Topology {
         topology.cells.insert(cell, members);
     }
     topology
+}
+
+async fn inspect(topology: Topology, json: bool, what: Inspect) -> anyhow::Result<()> {
+    use crate::inspect::{Inspector, render_cells, render_moves, render_session};
+    let inspector = Inspector::new(topology)?;
+    let out = match what {
+        Inspect::Cells => {
+            let reports = inspector.reports().await;
+            if json {
+                serde_json::to_string_pretty(&reports)?
+            } else {
+                render_cells(&reports)
+            }
+        }
+        Inspect::Session { id } => {
+            let session = everruns::SessionId::parse(&id)?;
+            let placed = inspector.placed(session).await;
+            let report = match placed {
+                Some(p) => inspector.session(p.cell, session).await,
+                None => None,
+            };
+            if json {
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"placed": placed, "session": report}),
+                )?
+            } else {
+                render_session(session, placed, report.as_ref())
+            }
+        }
+        Inspect::Moves => {
+            let reports = inspector.reports().await;
+            let mut placed = std::collections::HashMap::new();
+            for nodes in reports.values() {
+                for (_, report) in nodes {
+                    for m in report.iter().flat_map(|r| &r.moves) {
+                        if let std::collections::hash_map::Entry::Vacant(entry) =
+                            placed.entry(m.session)
+                        {
+                            entry.insert(inspector.placed(m.session).await);
+                        }
+                    }
+                }
+            }
+            if json {
+                serde_json::to_string_pretty(&reports)?
+            } else {
+                render_moves(&reports, &placed)
+            }
+        }
+    };
+    println!("{out}");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_statefulset_pod_names_its_ordinal() {
+        assert_eq!(super::ordinal("cell0-2"), Some(2));
+        assert_eq!(super::ordinal("executors-17"), Some(17));
+        assert_eq!(super::ordinal("cell0"), None);
+        assert_eq!(super::ordinal("cell0-x"), None);
+    }
 }

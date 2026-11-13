@@ -1603,6 +1603,57 @@ writers behind it find theirs shipped (`Shipper::flush`). The shipping lag
 histogram gained 1.5 s and 2 s buckets, because the 2.5 s bound could not
 show a 2 s bar was met.
 
+### Step 10 progress (2026-11-12)
+
+The tools to run and operate a fleet on EKS, and three bugs a
+production-shaped run found before it got there. Decisions (user,
+2026-11-12): run it, no plan round; the EKS load gets its own NodePool,
+capped at 48 vCPU and scaled to zero after a run.
+
+1. **Inspector.** `cell-testnode inspect cells | session <id> | moves`
+   answers "where is session X and what is it doing" and how each cell
+   keeps up, read only (`inspect.rs`). It asks the cell that holds the
+   session's directory shard, since the directory spreads its shards over
+   the cells.
+2. **SLO gauges.** Each node reports one-minute p99s as gauges
+   (`cell_slo_turn_p99_seconds`, `_admit_`, `_ship_lag_`, `_ship_first_`;
+   `prom::Window`), so a scraper that keeps only gauges charts the
+   budgets. Vector ships them to CloudWatch for the SaaS dashboard.
+3. **Runbooks** for a lost leader, a stuck move and a drain:
+   [operations.md](operations.md).
+4. **Production-shaped load, locally.** `cell-drive load --stream <share>`
+   holds SSE open for a share of the sessions next to their turns;
+   `CELL_STORE_THROTTLE_MS` makes every object store call wait, as a
+   throttled S3 does. Node and executor ids default to the pod ordinal, so
+   a StatefulSet needs no per-pod configuration; `docker/Dockerfile.cell`
+   and `cell-image.yml` build the image.
+5. **The EKS run** lives in the SaaS repository (its
+   `knowledge/operations/dataplane-load.md`): the NodePool, a bucket with
+   a 14-day expiry, Pod Identity roles, the dashboard, and a workflow that
+   renders the fleet, ramps the drivers, kills a cell node and a quarter
+   of the executors after the ramp, samples the inspector every 20 s, and
+   tears everything down.
+
+What the local production-shaped run found (two cells of three nodes, two
+executors, 500 llmsim sessions of the mix, half of them streaming, 50 ms
+before every store call):
+
+| Found | Cause | Fix |
+| --- | --- | --- |
+| Sessions stalled for good after the balancer moved them | The executor that last ran a session kept waiting for its writes at their position in the old cell's log | Positions are per cell: a session that comes back from another cell starts with none (`Executor::run`, `executors.rs` test) |
+| About 55 of 500 sessions held a claim and never moved again, with the slow store | `object_store`'s throttle wrapper panics on a local file read; the panic killed the activation task, and its slot and claim stayed held | Our own wrapper (`store_throttle.rs`), and an activation runs in its own task, so a panic ends it as an error and frees its slot (`Executor::run`) |
+| The inspector called a session unknown | It asked only the directory cell, not the cell holding the session's shard | Ask the shard's cell (`inspect.rs` test) |
+| (while chasing the above) An input that reaches an executor's mirror in the reply to its own write is not reported by the watch | The watch waits for changes after the mirror | Every refresh of the mirror announces itself, as a node's applied changes do (`Remote::absorb`, unit test) |
+| An executor never exited on SIGTERM once its cells were gone | Its drain waited for turns that could not hand off | The drain waits at most 60 s; the turn resumes elsewhere when its claim expires |
+
+After the fixes the same run finishes: 500 sessions, 1 500 turns, no
+errors; 250 sessions streamed 66 465 events with no stream error;
+shipping lag p99 1.1 s and ship-first p99 52 ms with 50 ms added to every
+store call. Admission p99 was 318 ms (p50 5 ms) with all eight processes
+on one machine and two executors of 64 slots for 200 sessions at once, so
+turns queued; that is a local box, not the budget, which the EKS run
+measures.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

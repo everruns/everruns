@@ -14,9 +14,9 @@
 //!   replica holds the same numbers, so only one reports them, and a leader
 //!   change continues the same series.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Write;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
@@ -85,6 +85,61 @@ impl Histograms {
     }
 }
 
+/// The last minute of one SLO's samples, for its p99 gauge (`cell_slo_*`).
+///
+/// Decision: each node reports its own one-minute p99 as a gauge, beside
+/// the cumulative histograms. A scraper that keeps only gauges (Vector into
+/// CloudWatch, step 10's dashboard) charts the budget as is, and the worst
+/// minute in a period is the gauge's maximum. Capped, so a burst costs
+/// bounded memory: past the cap the oldest samples go first.
+#[derive(Default)]
+pub struct Window(Mutex<VecDeque<(Instant, f64)>>);
+
+const WINDOW: Duration = Duration::from_secs(60);
+const WINDOW_CAP: usize = 50_000;
+
+impl Window {
+    pub fn observe(&self, elapsed: Duration) {
+        self.observe_at(Instant::now(), elapsed);
+    }
+
+    fn observe_at(&self, now: Instant, elapsed: Duration) {
+        let mut samples = self.0.lock();
+        samples.push_back((now, elapsed.as_secs_f64()));
+        while samples.len() > WINDOW_CAP {
+            samples.pop_front();
+        }
+        trim(&mut samples, now);
+    }
+
+    /// The p99 of the last minute's samples, in seconds; 0 with none.
+    pub fn p99(&self) -> f64 {
+        self.p99_at(Instant::now())
+    }
+
+    fn p99_at(&self, now: Instant) -> f64 {
+        let mut samples = self.0.lock();
+        trim(&mut samples, now);
+        let mut values: Vec<f64> = samples.iter().map(|(_, v)| *v).collect();
+        drop(samples);
+        if values.is_empty() {
+            return 0.0;
+        }
+        values.sort_by(f64::total_cmp);
+        let rank = ((values.len() as f64) * 0.99).ceil() as usize;
+        values[rank.clamp(1, values.len()) - 1]
+    }
+}
+
+fn trim(samples: &mut VecDeque<(Instant, f64)>, now: Instant) {
+    while samples
+        .front()
+        .is_some_and(|(at, _)| now.saturating_duration_since(*at) > WINDOW)
+    {
+        samples.pop_front();
+    }
+}
+
 /// Everything a node counts for `/metrics`.
 #[derive(Default)]
 pub struct Prom {
@@ -107,6 +162,9 @@ pub struct Prom {
     /// (an upper bound, to the tick): the most a lost cell could lose of
     /// the log.
     pub ship_lag_seconds: Histograms,
+    /// The last minute of each, for the SLO gauges.
+    pub ship_first_window: Window,
+    pub ship_lag_window: Window,
     /// Messages admitted through this node's gateway.
     pub messages_admitted: Counters,
     /// Model calls by model and result, with duration and time to first
@@ -272,6 +330,26 @@ impl Writer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_reports_the_last_minutes_p99() {
+        let w = Window::default();
+        let start = Instant::now();
+        assert_eq!(w.p99_at(start), 0.0);
+        for ms in 1..=100 {
+            w.observe_at(start, Duration::from_millis(ms));
+        }
+        assert!(
+            (w.p99_at(start) - 0.099).abs() < 1e-9,
+            "{}",
+            w.p99_at(start)
+        );
+        // One slow sample a minute later: the old ones age out.
+        let later = start + Duration::from_secs(61);
+        w.observe_at(later, Duration::from_secs(3));
+        assert_eq!(w.p99_at(later), 3.0);
+        assert_eq!(w.p99_at(later + Duration::from_secs(61)), 0.0);
+    }
 
     #[test]
     fn histogram_buckets_are_cumulative() {

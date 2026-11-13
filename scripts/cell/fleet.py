@@ -247,13 +247,36 @@ def add_cell(cell, nodes=3):
 
 def down():
     pids = os.path.join(STATE, "pids")
+    executors = []
     if os.path.isdir(pids):
         for name in os.listdir(pids):
             if name.startswith("e"):
-                kill_executor(int(name[1:-4]), signal.SIGTERM)
+                pid = kill_executor(int(name[1:-4]), signal.SIGTERM)
+                if pid:
+                    executors.append(pid)
                 continue
             cell, node = name[1:-4].split("n")
             kill(int(cell), int(node), signal.SIGTERM)
+    # A draining executor waits for its turns to hand off, and with the
+    # cells gone they never do: give it a moment, then stop it, so it
+    # cannot hold its port into the next fleet.
+    deadline = time.time() + 5
+    while executors and time.time() < deadline:
+        executors = [p for p in executors if alive(p)]
+        time.sleep(0.2)
+    for pid in executors:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
 
 
 def main():

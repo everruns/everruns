@@ -33,6 +33,11 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/propose", post(propose))
         .route("/cell/activate/{session}", post(activate))
         .route("/cell/stats", get(stats))
+        .route("/cell/inspect", get(crate::inspect::cell))
+        .route(
+            "/cell/sessions/{session}/inspect",
+            get(crate::inspect::session),
+        )
         .route("/metrics", get(metrics))
         .route("/cell/metrics/reset", post(reset_metrics))
         .route("/cell/snapshot", post(trigger_snapshot))
@@ -142,7 +147,7 @@ pub struct Stats {
 }
 
 /// This process's resident set size, from `/proc` (0 elsewhere).
-fn rss_mb() -> u64 {
+pub(crate) fn rss_mb() -> u64 {
     std::fs::read_to_string("/proc/self/statm")
         .ok()
         .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
@@ -277,6 +282,29 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
             "cell_rebalance_moves_total",
             "Moves the rebalancer started from this node, by kind (busy, idle, drain, drain-idle).",
             &gateway.rebalanced,
+        );
+    }
+    // One-minute p99s, the SLO dashboard's gauges (`prom::Window`).
+    w.gauge(
+        "cell_slo_turn_p99_seconds",
+        "p99 turn time this cell finished in the last minute, turn.started to its end.",
+        node.shared.turn_window.p99(),
+    );
+    w.gauge(
+        "cell_slo_ship_lag_p99_seconds",
+        "p99 shipping lag in the last minute (budget 2 s).",
+        p.ship_lag_window.p99(),
+    );
+    w.gauge(
+        "cell_slo_ship_first_p99_seconds",
+        "p99 wait for the object store before answering, in the last minute.",
+        p.ship_first_window.p99(),
+    );
+    if let Some(gateway) = node.gateway.get() {
+        w.gauge(
+            "cell_slo_admit_p99_seconds",
+            "p99 admission through this node's gateway in the last minute.",
+            gateway.admit_window.p99(),
         );
     }
     let leader = node.leader();

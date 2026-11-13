@@ -63,6 +63,11 @@ enum Mode {
         /// soon as the turn ends.
         #[arg(long, default_value = "0")]
         think: f64,
+        /// Share of sessions (0 to 1) that also hold the session's SSE
+        /// stream open for their whole run, as a browser does: heavy
+        /// streaming next to the turns. Turns still finish through `wait`.
+        #[arg(long, default_value = "0")]
+        stream: f64,
     },
     /// Print a test agent's definition (what a client sends to create a
     /// session running it).
@@ -165,6 +170,7 @@ async fn main() -> anyhow::Result<()> {
             rate,
             duration,
             think,
+            stream,
         } => {
             let shape = Shape {
                 sessions,
@@ -173,6 +179,7 @@ async fn main() -> anyhow::Result<()> {
                 rate,
                 duration,
                 think,
+                stream,
             };
             load(
                 gateways,
@@ -254,6 +261,7 @@ struct Shape {
     rate: f64,
     duration: f64,
     think: f64,
+    stream: f64,
 }
 
 /// An exponential sample with this mean, capped at five means (a person
@@ -274,14 +282,59 @@ async fn create(client: &Client, agent: &Value) -> anyhow::Result<String> {
 }
 
 /// Run `turns` turns in session `id`, pausing `think` (mean) between them.
+/// Whether session `i` holds its stream open (`--stream`): spread evenly.
+fn streams(i: usize, share: f64) -> bool {
+    share > 0.0 && ((i + 1) as f64 * share).floor() > (i as f64 * share).floor()
+}
+
+/// Hold `id`'s SSE stream open, counting events, until aborted.
+fn follow(client: &Client, id: &str, progress: Arc<Progress>) -> tokio::task::JoinHandle<()> {
+    let url = format!("{}/v1/sessions/{id}/sse", client.base());
+    let http = client.http.clone();
+    tokio::spawn(async move {
+        loop {
+            match http.get(&url).send().await {
+                Ok(mut response) if response.status().is_success() => {
+                    while let Ok(Some(chunk)) = response.chunk().await {
+                        let events = chunk.windows(6).filter(|w| w == b"event:").count();
+                        progress.streamed.fetch_add(events, Ordering::Relaxed);
+                    }
+                }
+                _ => {
+                    progress.stream_errors.fetch_add(1, Ordering::Relaxed);
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+            }
+        }
+    })
+}
+
 async fn drive_session(
     client: Arc<Client>,
     id: String,
     turns: u64,
     scenario: String,
     think: f64,
+    streaming: bool,
     progress: Arc<Progress>,
 ) -> anyhow::Result<SessionRun> {
+    let stream = streaming.then(|| follow(&client, &id, progress.clone()));
+    let run = run_turns(&client, &id, turns, &scenario, think, &progress).await;
+    if let Some(stream) = stream {
+        stream.abort();
+    }
+    let (admits, turn_latency) = run?;
+    anyhow::Ok((admits, turn_latency, scenario))
+}
+
+async fn run_turns(
+    client: &Client,
+    id: &str,
+    turns: u64,
+    scenario: &str,
+    think: f64,
+    progress: &Progress,
+) -> anyhow::Result<(Vec<u128>, Vec<u128>)> {
     let mut admits = Vec::new();
     let mut turn_latency = Vec::new();
     for turn in 1..=turns {
@@ -294,7 +347,7 @@ async fn drive_session(
             .send(
                 "POST",
                 &format!("/v1/sessions/{id}/messages"),
-                Some(&json!({ "text": text(&scenario, turn), "id": message_id })),
+                Some(&json!({ "text": text(scenario, turn), "id": message_id })),
             )
             .await?;
         admits.push(at.elapsed().as_micros());
@@ -315,7 +368,7 @@ async fn drive_session(
         progress.turns.fetch_add(1, Ordering::Relaxed);
         turn_latency.push(at.elapsed().as_micros());
     }
-    anyhow::Ok((admits, turn_latency, scenario))
+    anyhow::Ok((admits, turn_latency))
 }
 
 #[derive(Default)]
@@ -323,6 +376,9 @@ struct Progress {
     sessions: AtomicUsize,
     running: AtomicUsize,
     turns: AtomicUsize,
+    /// SSE events read by sessions holding their stream (`--stream`).
+    streamed: AtomicUsize,
+    stream_errors: AtomicUsize,
 }
 
 /// Print progress every 10 s to stderr, for long runs.
@@ -377,6 +433,7 @@ async fn load(
         rate,
         duration,
         think,
+        stream: stream_share,
     } = shape;
 
     let started;
@@ -401,7 +458,8 @@ async fn load(
                 let id = create(&client, &agent).await;
                 let _ = tx.send(id.as_ref().ok().cloned());
                 progress.sessions.fetch_add(1, Ordering::Relaxed);
-                drive_session(client, id?, turns, scenario, think, progress).await
+                let streaming = streams(i, stream_share);
+                drive_session(client, id?, turns, scenario, think, streaming, progress).await
             });
             i += 1;
         }
@@ -445,6 +503,7 @@ async fn load(
                     turns,
                     scenario_for(i),
                     think,
+                    streams(i, stream_share),
                     progress.clone(),
                 )
             })
@@ -485,6 +544,9 @@ async fn load(
         "turns_per_session": turns,
         "rate": rate,
         "think_secs": think,
+        "streaming_sessions": (0..ids.len()).filter(|i| streams(*i, stream_share)).count(),
+        "streamed_events": progress.streamed.load(Ordering::Relaxed),
+        "stream_errors": progress.stream_errors.load(Ordering::Relaxed),
         "turns_completed": latencies.len(),
         "errors": errors.len(),
         "first_errors": errors.iter().take(5).collect::<Vec<_>>(),
