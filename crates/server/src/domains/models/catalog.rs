@@ -18,7 +18,10 @@ pub fn assign(
             "Model metadata must be an object"
         ));
     }
-    let inferred = profiles::get_model_profile_key(driver, model);
+    // Extraction can use a model also registered for chat. Do not bind an
+    // explicitly selected extraction endpoint to the chat profile.
+    let inferred = profiles::get_model_profile_key(driver, model)
+        .filter(|_| service != Some(ServiceKind::Extractions));
     let key = profile_key
         .map(str::to_owned)
         .or(inferred)
@@ -230,5 +233,22 @@ mod tests {
             );
         }
         assert!(assign("openrouter", "x", &[], Some("unknown"), None, None).is_err());
+    }
+    #[test]
+    fn explicit_extraction_does_not_inherit_a_chat_profile() {
+        let metadata = assign(
+            "openrouter",
+            "openai/gpt-6.1-sol",
+            &[],
+            None,
+            Some(ServiceKind::Extractions),
+            None,
+        )
+        .unwrap();
+        assert_eq!(service(Some(&metadata)), ServiceKind::Extractions);
+        assert!(key(Some(&metadata)).starts_with("custom/"));
+        // Other inferred catalog identities remain unchanged.
+        let chat = assign("openrouter", "openai/gpt-6.1-sol", &[], None, None, None).unwrap();
+        assert_eq!(service(Some(&chat)), ServiceKind::Chat);
     }
 }

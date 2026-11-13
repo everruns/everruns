@@ -97,12 +97,43 @@ pub fn provider(
     api_token: impl Into<String>,
     gateway_id: Option<&str>,
 ) -> Provider {
-    Provider::new(id, CloudflareChatDriver::new())
+    let account = Provider::new(id, CloudflareChatDriver::new())
         .base_url(account_base_url(account_id))
         .auth(CloudflareAuth::new(
             api_token.into(),
             gateway_id.map(str::to_string),
-        ))
+        ));
+    with_extractions(account)
+}
+
+fn with_extractions(account: Provider) -> Provider {
+    #[cfg(not(target_arch = "wasm32"))]
+    let account = account
+        .with_extractions(crate::extractions::cloudflare::CloudflareExtractionDriver::default());
+    account
+}
+
+fn provider_from_config(config: &DriverConfig) -> Provider {
+    let base_url = config
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            account_base_url(
+                config
+                    .credentials
+                    .get("account_id")
+                    .map_or("", String::as_str),
+            )
+        });
+    with_extractions(
+        Provider::new(config.provider.clone(), CloudflareChatDriver::new())
+            .base_url(base_url)
+            .auth(CloudflareAuth::from_driver_config(config)),
+    )
+    .with_driver_id(DriverId::Cloudflare)
 }
 
 /// Cloudflare driver using the AI REST API's Chat Completions surface.
@@ -178,7 +209,7 @@ impl ChatDriver for CloudflareChatDriver {
         }
 
         let resolved = endpoint.resolve("GET", &models_url, &[]).await?;
-        let mut request = self.inner.client().get(&resolved.url);
+        let mut request = self.inner.http_client().get(&resolved.url);
         for (name, value) in resolved.headers {
             request = request.header(name, value);
         }
@@ -495,30 +526,19 @@ pub const CLOUDFLARE_RECOMMENDED:
 pub fn descriptor() -> DriverDescriptor {
     DriverDescriptor {
         display_name: "Cloudflare AI Gateway".into(),
+        services: vec![
+            everruns_contracts::driver_registry::ServiceKind::Chat,
+            #[cfg(not(target_arch = "wasm32"))]
+            everruns_contracts::driver_registry::ServiceKind::Extractions,
+        ],
+        provider: Some(std::sync::Arc::new(provider_from_config)),
         // No vendor default: the base URL is derived from the account id below
         // unless one is configured explicitly.
         base_url_env: None,
         credential_schema: cloudflare_credential_schema(),
         recommended_models: Some(CLOUDFLARE_RECOMMENDED),
         ..DriverDescriptor::chat_only(DriverId::Cloudflare, |config| {
-            let base_url = config
-                .base_url
-                .as_deref()
-                .map(str::trim)
-                .filter(|url| !url.is_empty())
-                .map(str::to_string)
-                .unwrap_or_else(|| {
-                    account_base_url(
-                        config
-                            .credentials
-                            .get("account_id")
-                            .map_or("", String::as_str),
-                    )
-                });
-            Provider::new(config.provider.clone(), CloudflareChatDriver::new())
-                .base_url(base_url)
-                .auth(CloudflareAuth::from_driver_config(config))
-                .into_boxed_driver()
+            provider_from_config(config).into_boxed_driver()
         })
     }
 }
@@ -555,6 +575,31 @@ pub fn from_env(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn registry_preserves_extraction_service_and_account_endpoint() {
+        use everruns_contracts::{ProviderConfig, ServiceKind};
+        let mut registry = DriverRegistry::new();
+        register_driver(&mut registry);
+        let config = ProviderConfig::for_provider("cf-account", DriverId::Cloudflare)
+            .with_api_key(r#"{"api_key":"test-token","account_id":"acct123"}"#);
+        let account = registry.create_provider(&config).unwrap();
+        assert!(account.supports_service(ServiceKind::Extractions));
+        assert!(account.supports_service(ServiceKind::Chat));
+        assert_eq!(
+            account.endpoint().base_url(),
+            Some("https://api.cloudflare.com/client/v4/accounts/acct123/ai/v1")
+        );
+        let custom = registry
+            .create_provider(&config.with_base_url("https://proxy.example/ai/v1"))
+            .unwrap();
+        assert!(custom.supports_service(ServiceKind::Extractions));
+        assert_eq!(
+            custom.endpoint().base_url(),
+            Some("https://proxy.example/ai/v1")
+        );
+    }
 
     /// The catalog is a sibling of `v1`, not a path under it: the chat base
     /// stops at `/ai/v1` only because the protocol driver appends

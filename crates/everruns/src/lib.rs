@@ -112,6 +112,11 @@ pub mod completion_check {
 }
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;
+pub mod extractions;
+pub use everruns_contracts::extractions::{
+    ExtractionField, ExtractionOutcome, ExtractionRequest, ExtractionType, ExtractionsService,
+};
+pub use extractions::{Extraction, Extractions};
 /// Phrasing helpers for application-authored tool narration
 /// ([`FunctionTool::narrate`], `#[everruns::tool(narrate = …)]`, and
 /// `capability::Handler::narrate`). They bound and redact model-supplied
@@ -581,3 +586,6 @@ pub use everruns_core::host::McpDiscoveryStatus;
 /// Per-server MCP readiness snapshot, change watch and probe results.
 #[cfg(feature = "mcp")]
 pub use everruns_core::host::{McpReadiness, McpReadinessWatch, McpServerReadiness};
+
+#[cfg(feature = "utility-llm")]
+pub mod utility_extractions;

@@ -207,3 +207,10 @@ required-features = ["mistral"]
 [[test]]
 name = "anthropic_message_threads_wire"
 required-features = ["anthropic"]
+
+# Explicit paid-provider qualification, not an ignored/default-CI test.
+[[bench]]
+name = "extractions_live"
+harness = false
+test = false
+required-features = ["openrouter", "cloudflare"]

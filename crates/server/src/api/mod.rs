@@ -121,3 +121,5 @@ pub use common::{ErrorResponse, ListResponse, PaginatedResponse};
 pub mod runtime_auth;
 
 pub mod tracing_destinations;
+
+pub mod extractions;

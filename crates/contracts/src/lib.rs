@@ -244,6 +244,8 @@ pub mod slack_action;
 
 pub mod decision_driver;
 pub mod decisions;
+pub mod extraction_driver;
+pub mod extractions;
 pub mod images;
 
 /// Voice channels and speech-to-speech provider sessions.

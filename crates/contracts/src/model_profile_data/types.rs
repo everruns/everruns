@@ -36,6 +36,8 @@ pub enum ServiceKind {
     Chat,
     /// Typed decisions over application state.
     Decisions,
+    /// Typed extraction of values from documents.
+    Extractions,
     /// Text embeddings.
     Embeddings,
     /// Realtime voice sessions (server-side adapter using provider credentials).
@@ -51,6 +53,7 @@ impl std::fmt::Display for ServiceKind {
         let s = match self {
             ServiceKind::Chat => "chat",
             ServiceKind::Decisions => "decisions",
+            ServiceKind::Extractions => "extractions",
             ServiceKind::Embeddings => "embeddings",
             ServiceKind::Realtime => "realtime",
             ServiceKind::Images => "images",

@@ -5,6 +5,7 @@ import { modelService } from "@/lib/model-capabilities";
 export const SERVICE_ORDER: ModelService[] = [
   "chat",
   "decisions",
+  "extractions",
   "embeddings",
   "realtime",
   "images",
@@ -14,6 +15,7 @@ export const SERVICE_ORDER: ModelService[] = [
 export const SERVICE_LABELS: Record<ModelService, string> = {
   chat: "Chat",
   decisions: "Decisions",
+  extractions: "Extractions",
   embeddings: "Embeddings",
   realtime: "Realtime",
   images: "Images",

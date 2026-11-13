@@ -469,3 +469,11 @@ name = "batch_classification"
 
 [[example]]
 name = "batch_eval"
+
+[[example]]
+name = "direct_extractions"
+required-features = ["utility-llm"]
+
+[[example]]
+name = "direct_cloudflare_extractions"
+required-features = ["cloudflare"]

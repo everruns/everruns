@@ -25,7 +25,7 @@ import {
 import { useCreateModel, useProvidersConfig } from "@/hooks/use-providers";
 import type { CreateModelRequest, Provider } from "@/lib/api/types";
 
-type ModelType = "chat" | "embeddings" | "decisions";
+type ModelType = "chat" | "embeddings" | "decisions" | "extractions";
 import { ModelProfileSelect } from "./model-profile-select";
 
 export function AddModelDialog({
@@ -159,19 +159,25 @@ export function AddModelDialog({
                     ? ui("Embeddings")
                     : modelType === "decisions"
                       ? ui("Decisions")
-                      : ui("Chat")}
+                      : modelType === "extractions"
+                        ? ui("Extractions")
+                        : ui("Chat")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {services
-                  .filter((service) => ["chat", "embeddings", "decisions"].includes(service))
+                  .filter((service) =>
+                    ["chat", "embeddings", "decisions", "extractions"].includes(service),
+                  )
                   .map((service) => (
                     <SelectItem key={service} value={service}>
                       {service === "chat"
                         ? ui("Chat")
                         : service === "decisions"
                           ? ui("Decisions")
-                          : ui("Embeddings")}
+                          : service === "extractions"
+                            ? ui("Extractions")
+                            : ui("Embeddings")}
                     </SelectItem>
                   ))}
               </SelectContent>

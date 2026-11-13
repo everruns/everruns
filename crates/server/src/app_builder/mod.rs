@@ -1137,6 +1137,7 @@ impl ServerAppBuilder {
             .merge(schedules_state)
             .merge(api::files::routes(api_state.clone()))
             .merge(api::images::routes(api_state.clone()))
+            .merge(api::extractions::routes(api_state.clone()))
             .merge(api::skills::routes(api_state.clone()))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::org_invitations::routes(org_invitations_state))

@@ -127,3 +127,9 @@ pub fn register_drivers(registry: &mut DriverRegistry) {
 pub mod systemone;
 #[cfg(feature = "typesafe")]
 pub mod typesafe;
+
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    any(feature = "openrouter", feature = "cloudflare")
+))]
+pub mod extractions;

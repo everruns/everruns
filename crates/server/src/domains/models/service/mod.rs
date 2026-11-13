@@ -153,6 +153,16 @@ impl ModelService {
                     && matches!(row.source.as_str(), "discovered" | "predefined")
             })
         {
+            // One catalog row represents a provider model across endpoints.
+            // Adding extraction support must not reclassify an existing chat model.
+            if req.service == Some(everruns_contracts::ServiceKind::Extractions)
+                && crate::domains::models::catalog::service(discovered.provider_metadata.as_ref())
+                    != everruns_contracts::ServiceKind::Extractions
+            {
+                return Err(crate::errors::BadRequestError::new(
+                    "Model already exists with another service; sync and enable its extraction capability instead",
+                ).into());
+            }
             let update = UpdateModel {
                 provider_metadata: Some(metadata),
                 display_name: Some(req.display_name),
