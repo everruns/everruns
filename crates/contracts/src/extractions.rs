@@ -14,14 +14,23 @@ use std::collections::BTreeMap;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionType {
+    /// A string extracted from the source.
     Text,
+    /// A numeric value.
     Number,
+    /// An ISO calendar date (YYYY-MM-DD).
     Date,
+    /// A time of day, with hours and minutes and optional seconds or fractional seconds.
     Time,
+    /// An RFC 3339 timestamp or a local ISO date and time with seconds.
     Datetime,
+    /// A numeric duration in the requested unit.
     Duration,
+    /// A homogeneous array with the configured element type.
     List,
+    /// A numeric or date estimate with optional distribution statistics.
     Estimate,
+    /// A horizon-length array of numeric or date predictions; individual values may be null.
     Forecast,
 }
 
@@ -30,8 +39,11 @@ pub enum ExtractionType {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionItemType {
+    /// String elements.
     Text,
+    /// Numeric elements.
     Number,
+    /// ISO calendar date elements (YYYY-MM-DD).
     Date,
 }
 
@@ -40,7 +52,9 @@ pub enum ExtractionItemType {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(untagged)]
 pub enum ExtractionBound {
+    /// A finite numeric endpoint.
     Number(f64),
+    /// An ISO calendar date endpoint (YYYY-MM-DD).
     Date(String),
 }
 
@@ -49,37 +63,54 @@ pub enum ExtractionBound {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(untagged)]
 pub enum ExtractionStep {
+    /// A finite, positive numeric resolution.
     Number(f64),
+    /// A month or year resolution, valid only with date bounds.
     Calendar(CalendarStep),
 }
 
+/// Calendar resolution for an estimate or forecast with date bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CalendarStep {
+    /// Resolve dates by month.
     Month,
+    /// Resolve dates by year.
     Year,
 }
 
+/// Scale requested for an estimate or forecast distribution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionScale {
+    /// Request a linear distribution scale.
     Linear,
+    /// Request a logarithmic distribution scale; numeric lower bounds must be positive.
     Log,
 }
 
+/// Spacing between successive forecast values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ForecastInterval {
+    /// Abstract successive steps without a calendar unit.
     Step,
+    /// One-minute intervals.
     Minute,
+    /// One-hour intervals.
     Hour,
+    /// One-day intervals.
     Day,
+    /// One-week intervals.
     Week,
+    /// One-month intervals.
     Month,
+    /// One-quarter intervals.
     Quarter,
+    /// One-year intervals.
     Year,
 }
 
@@ -89,30 +120,48 @@ pub enum ForecastInterval {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExtractionField {
+    /// Requested output shape; determines which field options are valid.
     #[serde(rename = "type")]
     pub kind: ExtractionType,
+    /// Field-specific extraction guidance, which may reference named assets.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
+    /// Requested value unit. Duration units are seconds, minutes, hours, days, weeks, months or
+    /// years.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    /// Requested null-suppression threshold, finite and within 0..=1. Providers may impose stricter
+    /// limits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub null_threshold: Option<f64>,
+    /// Request integer precision for a number, duration or list of numbers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integer: Option<bool>,
+    /// Requested decimal precision, at most six, for a number, duration or list of numbers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decimals: Option<u8>,
+    /// Required element type for lists; invalid for other field types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub items: Option<ExtractionItemType>,
+    /// Required lower bound for estimates and forecasts; must be below max and use the same numeric
+    /// or date type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min: Option<ExtractionBound>,
+    /// Required upper bound for estimates and forecasts; must exceed min and use the same numeric
+    /// or date type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<ExtractionBound>,
+    /// Optional estimate or forecast resolution. Numeric steps must be finite and positive;
+    /// calendar steps require date bounds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub step: Option<ExtractionStep>,
+    /// Optional estimate or forecast scale. Logarithmic numeric bounds must be positive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scale: Option<ExtractionScale>,
+    /// Required number of forecast values, from 1 through 64; invalid for other field types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub horizon: Option<u8>,
+    /// Required spacing between forecast values; invalid for other field types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interval: Option<ForecastInterval>,
 }
@@ -226,21 +275,30 @@ impl ExtractionField {
     }
 }
 
+/// Media category of an inline extraction asset; must agree with its format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionAssetType {
+    /// An image encoded as PNG, JPEG or WebP.
     Image,
+    /// A document encoded as PDF.
     Document,
 }
+/// Supported inline asset encoding; provider support may be narrower.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum ExtractionAssetFormat {
+    /// PNG image data.
     Png,
+    /// JPEG image data, using the jpg format label.
     Jpg,
+    /// JPEG image data, using the jpeg format label.
     Jpeg,
+    /// WebP image data.
     Webp,
+    /// PDF document data; unsupported by image-only providers.
     Pdf,
 }
 /// Inline asset; URLs are deliberately not fetched by the runtime.
@@ -248,34 +306,47 @@ pub enum ExtractionAssetFormat {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExtractionAsset {
+    /// Optional media category. PDF requires document; other formats require image when specified.
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<ExtractionAssetType>,
+    /// Encoding of the supplied bytes; support depends on the selected provider.
     pub format: ExtractionAssetFormat,
+    /// Nonempty standard base64 content, without a data URL prefix.
     pub data_base64: String,
 }
 
+/// Named typed fields to extract from text or inline assets, with optional provider routing.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ExtractionRequest {
+    /// Optional explicit provider account for Framework routing; the Server rejects this override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub provider: Option<crate::ProviderKey>,
+    /// Optional nonempty provider model identifier; the Server selects its model outside this
+    /// input.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Source text and extraction context. May be empty when inline assets are supplied.
     #[serde(default)]
     pub state: String,
+    /// Nonempty map of field names to typed extraction specifications; names must not be blank.
     pub fields: BTreeMap<String, ExtractionField>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     /// Defensive runtime ceiling: 32 assets and 32 MiB total encoded data.
     /// Individual providers and the HTTP API may impose lower limits.
     pub assets: BTreeMap<String, ExtractionAsset>,
+    /// Optional ISO calendar date (YYYY-MM-DD) for interpreting relative dates.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_date: Option<String>,
+    /// Optional caller-supplied user identifier forwarded by supporting providers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    /// Optional caller-supplied session identifier forwarded by supporting providers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// Optional trace metadata forwarded by supporting providers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trace: Option<Value>,
     /// Provider-specific options, without routing credentials or headers.
@@ -371,85 +442,140 @@ pub type ExtractionSpan = [usize; 2];
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractionSource {
+    /// Evidence from state text.
     Text,
+    /// Evidence from an image asset.
     Image,
+    /// Evidence from a document asset.
     Document,
 }
+/// One typed answer with optional provider-reported evidence and uncertainty.
+/// Missing probabilities remain unknown; a null value is not replaced by its guess.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExtractionAnswer {
+    /// Output shape matching the requested field type.
     #[serde(rename = "type")]
     pub kind: ExtractionType,
+    /// Typed extracted value, or null when absent or suppressed. Forecast arrays match the
+    /// requested horizon.
     pub value: Value,
+    /// Optional typed candidate retained even when value is null; not an automatic replacement for
+    /// value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guess: Option<Value>,
+    /// Optional half-open [start, end] evidence range in Unicode code points of returned state_text
+    /// or the original state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Vec<usize>>))]
     pub span: Option<ExtractionSpan>,
+    /// Optional per-list-item evidence ranges, aligned with value items or a retained guess; null
+    /// entries indicate missing evidence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Vec<Option<Vec<usize>>>>))]
     pub spans: Option<Vec<Option<ExtractionSpan>>>,
+    /// Optional provider-reported probability of no answer, within 0..=1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p_null: Option<f64>,
+    /// Optional provider-reported answer confidence, within 0..=1; absence means unknown, not
+    /// certainty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
+    /// Optional per-list-item confidence values within 0..=1, aligned with value items or a
+    /// retained guess; null entries are unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidences: Option<Vec<Option<f64>>>,
+    /// Optional provider-reported spelling confidence, within 0..=1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spell_confidence: Option<f64>,
+    /// Optional source media category; image and document answers may have no textual span.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ExtractionSource>,
+    /// Provider-reported unit of the extracted value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
+    /// Optional distribution mean for an estimate, or horizon-aligned means for a forecast, using
+    /// the field value type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mean: Option<Value>,
+    /// Optional distribution median for an estimate, or horizon-aligned medians for a forecast,
+    /// using the field value type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub median: Option<Value>,
+    /// Optional tenth percentile for an estimate, or horizon-aligned percentiles for a forecast,
+    /// using the field value type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p10: Option<Value>,
+    /// Optional ninetieth percentile for an estimate, or horizon-aligned percentiles for a
+    /// forecast, using the field value type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p90: Option<Value>,
+    /// Optional provider-reported probability below the requested lower bound, within 0..=1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p_below: Option<f64>,
+    /// Optional provider-reported probability above the requested upper bound, within 0..=1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p_above: Option<f64>,
+    /// Optional provider-specific quantile data for an estimate or forecast, preserved as JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantiles: Option<Value>,
+    /// Optional provider-specific distribution step data for an estimate or forecast, preserved as
+    /// JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steps: Option<Value>,
 }
 
+/// Provider-reported token usage, cost and extraction work.
+/// Optional counters remain absent when the provider does not report them.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExtractionUsage {
+    /// Provider-reported input token count; defaults to zero if omitted.
     #[serde(default)]
     pub input_tokens: u64,
+    /// Provider-reported output token count; defaults to zero if omitted.
     #[serde(default)]
     pub output_tokens: u64,
+    /// Optional finite, nonnegative provider-reported cost; no cost is inferred when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
+    /// Optional token count attributed to input state text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_tokens: Option<u64>,
+    /// Optional token count attributed to image inputs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_tokens: Option<u64>,
+    /// Optional token count attributed to field specifications.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema_tokens: Option<u64>,
+    /// Optional number of extraction passes reported by the provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub passes: Option<u64>,
 }
+/// Validated extraction results, keyed by the requested field names.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExtractionOutcome {
+    /// Optional provider-assigned extraction result identifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// Model identifier reported for the extraction.
     pub model: String,
+    /// Optional provider identifier associated with the result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Exactly one typed answer per requested field, keyed by the original field names.
     pub answers: BTreeMap<String, ExtractionAnswer>,
+    /// Whether the provider reports that it did not read the whole input; defaults to false if
+    /// omitted.
     #[serde(default)]
     pub truncated: bool,
+    /// Optional returned source text used for evidence offsets; when absent, offsets refer to the
+    /// original state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_text: Option<String>,
+    /// Provider usage details; defaults to zero token counts and absent optional metrics when
+    /// omitted.
     #[serde(default)]
     pub usage: ExtractionUsage,
 }

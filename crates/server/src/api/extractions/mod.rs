@@ -29,13 +29,15 @@ use utoipa::ToSchema;
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExtractRequest {
+    /// Enabled extraction-capable model ID from the current organization's catalog.
     pub model_id: String,
+    /// Source content and typed fields; nested provider and model selectors must be absent.
     pub input: ExtractionRequest,
 }
 
 pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/extractions", post(extract))
+        .route("/v1/extractions", post(extract_typed_fields))
         .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
         .with_state(state)
 }
@@ -49,7 +51,7 @@ pub fn routes(state: ApiState) -> Router {
  (status = 413, description = "Request body exceeds 8 MiB"),
  (status = 502, description = "Extraction provider failed"),
  (status = 504, description = "Extraction timed out")), tag = "extractions")]
-pub async fn extract(
+pub async fn extract_typed_fields(
     org: ResolvedOrg,
     State(state): State<ApiState>,
     Json(mut request): Json<ExtractRequest>,
