@@ -41991,6 +41991,7 @@
       },
       "CalendarStep": {
         "type": "string",
+        "description": "Calendar resolution for an estimate or forecast with date bounds.",
         "enum": [
           "month",
           "year"
@@ -51605,16 +51606,19 @@
         ],
         "properties": {
           "input": {
-            "$ref": "#/components/schemas/ExtractionRequest"
+            "$ref": "#/components/schemas/ExtractionRequest",
+            "description": "Source content and typed fields; nested provider and model selectors must be absent."
           },
           "model_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Enabled extraction-capable model ID from the current organization's catalog."
           }
         },
         "additionalProperties": false
       },
       "ExtractionAnswer": {
         "type": "object",
+        "description": "One typed answer with optional provider-reported evidence and uncertainty.\nMissing probabilities remain unknown; a null value is not replaced by its guess.",
         "required": [
           "type",
           "value"
@@ -51625,7 +51629,8 @@
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Optional provider-reported answer confidence, within 0..=1; absence means unknown, not\ncertainty."
           },
           "confidences": {
             "type": [
@@ -51638,39 +51643,56 @@
                 "null"
               ],
               "format": "double"
-            }
+            },
+            "description": "Optional per-list-item confidence values within 0..=1, aligned with value items or a\nretained guess; null entries are unknown."
           },
-          "guess": {},
-          "mean": {},
-          "median": {},
-          "p10": {},
-          "p90": {},
+          "guess": {
+            "description": "Optional typed candidate retained even when value is null; not an automatic replacement for\nvalue."
+          },
+          "mean": {
+            "description": "Optional distribution mean for an estimate, or horizon-aligned means for a forecast, using\nthe field value type."
+          },
+          "median": {
+            "description": "Optional distribution median for an estimate, or horizon-aligned medians for a forecast,\nusing the field value type."
+          },
+          "p10": {
+            "description": "Optional tenth percentile for an estimate, or horizon-aligned percentiles for a forecast,\nusing the field value type."
+          },
+          "p90": {
+            "description": "Optional ninetieth percentile for an estimate, or horizon-aligned percentiles for a\nforecast, using the field value type."
+          },
           "p_above": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Optional provider-reported probability above the requested upper bound, within 0..=1."
           },
           "p_below": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Optional provider-reported probability below the requested lower bound, within 0..=1."
           },
           "p_null": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Optional provider-reported probability of no answer, within 0..=1."
           },
-          "quantiles": {},
+          "quantiles": {
+            "description": "Optional provider-specific quantile data for an estimate or forecast, preserved as JSON."
+          },
           "source": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ExtractionSource"
+                "$ref": "#/components/schemas/ExtractionSource",
+                "description": "Optional source media category; image and document answers may have no textual span."
               },
               {
                 "type": "null"
@@ -51685,7 +51707,8 @@
             "items": {
               "type": "integer",
               "minimum": 0
-            }
+            },
+            "description": "Optional half-open [start, end] evidence range in Unicode code points of returned state_text\nor the original state."
           },
           "spans": {
             "type": [
@@ -51701,26 +51724,34 @@
                 "type": "integer",
                 "minimum": 0
               }
-            }
+            },
+            "description": "Optional per-list-item evidence ranges, aligned with value items or a retained guess; null\nentries indicate missing evidence."
           },
           "spell_confidence": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Optional provider-reported spelling confidence, within 0..=1."
           },
-          "steps": {},
+          "steps": {
+            "description": "Optional provider-specific distribution step data for an estimate or forecast, preserved as\nJSON."
+          },
           "type": {
-            "$ref": "#/components/schemas/ExtractionType"
+            "$ref": "#/components/schemas/ExtractionType",
+            "description": "Output shape matching the requested field type."
           },
           "unit": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider-reported unit of the extracted value."
           },
-          "value": {}
+          "value": {
+            "description": "Typed extracted value, or null when absent or suppressed. Forecast arrays match the\nrequested horizon."
+          }
         }
       },
       "ExtractionAsset": {
@@ -51732,15 +51763,18 @@
         ],
         "properties": {
           "data_base64": {
-            "type": "string"
+            "type": "string",
+            "description": "Nonempty standard base64 content, without a data URL prefix."
           },
           "format": {
-            "$ref": "#/components/schemas/ExtractionAssetFormat"
+            "$ref": "#/components/schemas/ExtractionAssetFormat",
+            "description": "Encoding of the supplied bytes; support depends on the selected provider."
           },
           "type": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ExtractionAssetType"
+                "$ref": "#/components/schemas/ExtractionAssetType",
+                "description": "Optional media category. PDF requires document; other formats require image when specified."
               },
               {
                 "type": "null"
@@ -51752,6 +51786,7 @@
       },
       "ExtractionAssetFormat": {
         "type": "string",
+        "description": "Supported inline asset encoding; provider support may be narrower.",
         "enum": [
           "png",
           "jpg",
@@ -51762,6 +51797,7 @@
       },
       "ExtractionAssetType": {
         "type": "string",
+        "description": "Media category of an inline extraction asset; must agree with its format.",
         "enum": [
           "image",
           "document"
@@ -51771,10 +51807,12 @@
         "oneOf": [
           {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A finite numeric endpoint."
           },
           {
-            "type": "string"
+            "type": "string",
+            "description": "An ISO calendar date endpoint (YYYY-MM-DD)."
           }
         ],
         "description": "A numeric or calendar bound for an estimate."
@@ -51792,6 +51830,7 @@
               "null"
             ],
             "format": "int32",
+            "description": "Requested decimal precision, at most six, for a number, duration or list of numbers.",
             "minimum": 0
           },
           "horizon": {
@@ -51800,24 +51839,28 @@
               "null"
             ],
             "format": "int32",
+            "description": "Required number of forecast values, from 1 through 64; invalid for other field types.",
             "minimum": 0
           },
           "instructions": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Field-specific extraction guidance, which may reference named assets."
           },
           "integer": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Request integer precision for a number, duration or list of numbers."
           },
           "interval": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ForecastInterval"
+                "$ref": "#/components/schemas/ForecastInterval",
+                "description": "Required spacing between forecast values; invalid for other field types."
               },
               {
                 "type": "null"
@@ -51827,7 +51870,8 @@
           "items": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ExtractionItemType"
+                "$ref": "#/components/schemas/ExtractionItemType",
+                "description": "Required element type for lists; invalid for other field types."
               },
               {
                 "type": "null"
@@ -51837,7 +51881,8 @@
           "max": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ExtractionBound"
+                "$ref": "#/components/schemas/ExtractionBound",
+                "description": "Required upper bound for estimates and forecasts; must exceed min and use the same numeric\nor date type."
               },
               {
                 "type": "null"
@@ -51847,7 +51892,8 @@
           "min": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ExtractionBound"
+                "$ref": "#/components/schemas/ExtractionBound",
+                "description": "Required lower bound for estimates and forecasts; must be below max and use the same numeric\nor date type."
               },
               {
                 "type": "null"
@@ -51859,12 +51905,14 @@
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Requested null-suppression threshold, finite and within 0..=1. Providers may impose stricter\nlimits."
           },
           "scale": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ExtractionScale"
+                "$ref": "#/components/schemas/ExtractionScale",
+                "description": "Optional estimate or forecast scale. Logarithmic numeric bounds must be positive."
               },
               {
                 "type": "null"
@@ -51874,7 +51922,8 @@
           "step": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ExtractionStep"
+                "$ref": "#/components/schemas/ExtractionStep",
+                "description": "Optional estimate or forecast resolution. Numeric steps must be finite and positive;\ncalendar steps require date bounds."
               },
               {
                 "type": "null"
@@ -51882,13 +51931,15 @@
             ]
           },
           "type": {
-            "$ref": "#/components/schemas/ExtractionType"
+            "$ref": "#/components/schemas/ExtractionType",
+            "description": "Requested output shape; determines which field options are valid."
           },
           "unit": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Requested value unit. Duration units are seconds, minutes, hours, days, weeks, months or\nyears."
           }
         },
         "additionalProperties": false
@@ -51904,6 +51955,7 @@
       },
       "ExtractionOutcome": {
         "type": "object",
+        "description": "Validated extraction results, keyed by the requested field names.",
         "required": [
           "model",
           "answers"
@@ -51911,6 +51963,7 @@
         "properties": {
           "answers": {
             "type": "object",
+            "description": "Exactly one typed answer per requested field, keyed by the original field names.",
             "additionalProperties": {
               "$ref": "#/components/schemas/ExtractionAnswer"
             },
@@ -51922,33 +51975,40 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional provider-assigned extraction result identifier."
           },
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "Model identifier reported for the extraction."
           },
           "provider": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional provider identifier associated with the result."
           },
           "state_text": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional returned source text used for evidence offsets; when absent, offsets refer to the\noriginal state."
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the provider reports that it did not read the whole input; defaults to false if\nomitted."
           },
           "usage": {
-            "$ref": "#/components/schemas/ExtractionUsage"
+            "$ref": "#/components/schemas/ExtractionUsage",
+            "description": "Provider usage details; defaults to zero token counts and absent optional metrics when\nomitted."
           }
         }
       },
       "ExtractionRequest": {
         "type": "object",
+        "description": "Named typed fields to extract from text or inline assets, with optional provider routing.",
         "required": [
           "fields"
         ],
@@ -51965,6 +52025,7 @@
           },
           "fields": {
             "type": "object",
+            "description": "Nonempty map of field names to typed extraction specifications; names must not be blank.",
             "additionalProperties": {
               "$ref": "#/components/schemas/ExtractionField"
             },
@@ -51976,13 +52037,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional nonempty provider model identifier; the Server selects its model outside this\ninput."
           },
           "provider": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional explicit provider account for Framework routing; the Server rejects this override."
           },
           "provider_options": {
             "type": "object",
@@ -51996,29 +52059,36 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional ISO calendar date (YYYY-MM-DD) for interpreting relative dates."
           },
           "session_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional caller-supplied session identifier forwarded by supporting providers."
           },
           "state": {
-            "type": "string"
+            "type": "string",
+            "description": "Source text and extraction context. May be empty when inline assets are supplied."
           },
-          "trace": {},
+          "trace": {
+            "description": "Optional trace metadata forwarded by supporting providers."
+          },
           "user": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional caller-supplied user identifier forwarded by supporting providers."
           }
         },
         "additionalProperties": false
       },
       "ExtractionScale": {
         "type": "string",
+        "description": "Scale requested for an estimate or forecast distribution.",
         "enum": [
           "linear",
           "log"
@@ -52037,10 +52107,12 @@
         "oneOf": [
           {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "A finite, positive numeric resolution."
           },
           {
-            "$ref": "#/components/schemas/CalendarStep"
+            "$ref": "#/components/schemas/CalendarStep",
+            "description": "A month or year resolution, valid only with date bounds."
           }
         ],
         "description": "The resolution of an estimate."
@@ -52062,13 +52134,15 @@
       },
       "ExtractionUsage": {
         "type": "object",
+        "description": "Provider-reported token usage, cost and extraction work.\nOptional counters remain absent when the provider does not report them.",
         "properties": {
           "cost": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Optional finite, nonnegative provider-reported cost; no cost is inferred when absent."
           },
           "image_tokens": {
             "type": [
@@ -52076,16 +52150,19 @@
               "null"
             ],
             "format": "int64",
+            "description": "Optional token count attributed to image inputs.",
             "minimum": 0
           },
           "input_tokens": {
             "type": "integer",
             "format": "int64",
+            "description": "Provider-reported input token count; defaults to zero if omitted.",
             "minimum": 0
           },
           "output_tokens": {
             "type": "integer",
             "format": "int64",
+            "description": "Provider-reported output token count; defaults to zero if omitted.",
             "minimum": 0
           },
           "passes": {
@@ -52094,6 +52171,7 @@
               "null"
             ],
             "format": "int64",
+            "description": "Optional number of extraction passes reported by the provider.",
             "minimum": 0
           },
           "schema_tokens": {
@@ -52102,6 +52180,7 @@
               "null"
             ],
             "format": "int64",
+            "description": "Optional token count attributed to field specifications.",
             "minimum": 0
           },
           "state_tokens": {
@@ -52110,6 +52189,7 @@
               "null"
             ],
             "format": "int64",
+            "description": "Optional token count attributed to input state text.",
             "minimum": 0
           }
         }
@@ -53064,6 +53144,7 @@
       },
       "ForecastInterval": {
         "type": "string",
+        "description": "Spacing between successive forecast values.",
         "enum": [
           "step",
           "minute",
