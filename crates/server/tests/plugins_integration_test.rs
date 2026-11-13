@@ -32,28 +32,6 @@ async fn dev_server() -> TestServer {
     TestServer::in_memory().await
 }
 
-async fn all_capabilities(server: &TestServer) -> Vec<serde_json::Value> {
-    let mut capabilities = Vec::new();
-    loop {
-        // A small page exercises pagination even when the built-in catalog changes size.
-        let page = server
-            .get(&format!(
-                "/v1/capabilities?offset={}&limit=25",
-                capabilities.len()
-            ))
-            .await
-            .assert_success()
-            .json_value();
-        let data = page["data"].as_array().unwrap();
-        let total = page["total"].as_u64().unwrap() as usize;
-        assert!(!data.is_empty() || capabilities.len() >= total);
-        capabilities.extend(data.iter().cloned());
-        if capabilities.len() >= total {
-            return capabilities;
-        }
-    }
-}
-
 // ============================================================
 // Marketplace CRUD
 // ============================================================
@@ -261,7 +239,7 @@ async fn test_install_plugin_and_capability_listing() {
     assert_eq!(plugin["marketplace"], "install-test-mkt");
 
     // GET /v1/capabilities exposes exactly the same stable ref.
-    let caps = all_capabilities(&server).await;
+    let caps = server.all_capabilities().await;
     let cap_ids: Vec<&str> = caps.iter().filter_map(|c| c["id"].as_str()).collect();
     assert!(
         cap_ids.contains(&capability_ref.as_str()),
@@ -432,7 +410,7 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
 
     // The disabled anchor must NOT surface as a runtime MCP capability, and
     // the plugin capability itself must be present.
-    let caps = all_capabilities(&server).await;
+    let caps = server.all_capabilities().await;
     let cap_ids: Vec<&str> = caps.iter().filter_map(|c| c["id"].as_str()).collect();
     assert!(
         !cap_ids.contains(&anchor_cap_id.as_str()),

@@ -178,6 +178,26 @@ class Policy(unittest.TestCase):
         self.assertIn('service_mcp_oauth_lifecycle_test::', focused.risk_filters(['crates/server/tests/test_harness.rs']))
         self.assertIn('db_pool_isolation_test::', focused.risk_filters(['crates/server/tests/test_harness/database.rs']))
 
+    def test_changed_domain_fixtures_run_instead_of_only_compiling(self):
+        for path, module in [
+            ('skills_integration_test.rs', 'skills_integration_test'),
+            ('mcp_oauth_user_switch_test/tool_cache.rs', 'mcp_oauth_user_switch_test'),
+            ('agent_packages_test.rs', 'agent_packages_test'),
+        ]:
+            self.assertIn(module + '::', focused.risk_filters(['crates/server/tests/domain/' + path]))
+
+    def test_catalog_and_reason_changes_exercise_consuming_fixtures(self):
+        for path in ['crates/capabilities/src/integrations_catalog.rs',
+                     'crates/server/src/records/feature_flags.rs',
+                     'crates/server/tests/test_harness/capabilities.rs',
+                     '.github/scripts/ci/focused.py']:
+            with self.subTest(path=path):
+                filters = focused.risk_filters([path])
+                self.assertIn('skills_integration_test::', filters)
+                self.assertIn('mcp_oauth_user_switch_test::', filters)
+        self.assertIn('agent_packages_test::', focused.risk_filters([
+            'crates/server/src/domains/change_history/mod.rs']))
+
     def test_admission_changes_run_the_http_cancellation_and_replay_contracts(self):
         paths = [
             'crates/server/src/api/agent_api_idempotency.rs',

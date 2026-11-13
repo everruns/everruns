@@ -595,14 +595,8 @@ async fn oauth_callback_discovery_and_capability_reads_never_write_or_leak_share
     }
 
     poison(server.db.as_ref(), id).await;
-    let listed: Value = server
-        .get("/v1/capabilities?limit=100")
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    let listed_mcp = listed["data"]
-        .as_array()
-        .unwrap()
+    let listed = server.all_capabilities().await;
+    let listed_mcp = listed
         .iter()
         .find(|item| item["id"] == capability_id)
         .unwrap();

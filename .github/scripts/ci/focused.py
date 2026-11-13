@@ -50,6 +50,18 @@ def affected(packages, paths, root):
 
 def risk_filters(paths):
     filters = set()
+    # Compile-only coverage misses stale fixture assumptions in changed domain tests.
+    for path in paths:
+        if path.startswith('crates/server/tests/domain/') and path.endswith('.rs'):
+            module = path.removeprefix('crates/server/tests/domain/').split('/')[0].removesuffix('.rs')
+            if module not in ('main', 'mod'):
+                filters.add(module + '::')
+    if any(p.startswith(('crates/server/src/services/capability',
+                         'crates/server/src/domains/capabilities/'))
+           or p in ('crates/capabilities/src/integrations_catalog.rs',
+                    'crates/server/src/records/feature_flags.rs',
+                    '.github/scripts/ci/focused.py') for p in paths):
+        filters.update(['skills_integration_test::', 'mcp_oauth_user_switch_test::'])
     if any(p.startswith('crates/core/src/mcp/')
            or p in ('crates/server/src/domains/agent_triggers/mcp_event.rs',
                     'crates/server/tests/domain/mcp_event_triggers_test.rs',
@@ -80,6 +92,7 @@ def risk_filters(paths):
         # History/context writes must retain their baseline and revision guards
         # across the real REST and command adapters, not just unit fixtures.
         filters.add('change_history_test::')
+        filters.add('agent_packages_test::')
     if any(p in (
             'crates/server/src/api/agent_api_idempotency.rs',
             'crates/server/src/api/command_dispatch.rs',
@@ -123,7 +136,9 @@ def risk_filters(paths):
            or p.endswith('/storage/test_database.rs') for p in paths):
         filters.update(['auth_integration_test::', 'org_isolation_test::',
                         'db_pool_isolation_test::', 'service_mcp_oauth_lifecycle_test::',
-                        'migration_baseline_test::', 'migration_history_test::'])
+                        'migration_baseline_test::', 'migration_history_test::',
+                        'skills_integration_test::', 'mcp_oauth_user_switch_test::',
+                        'agent_packages_test::'])
     if 'crates/server/tests/domain/db_pool_isolation_test.rs' in paths:
         filters.add('db_pool_isolation_test::')
     return sorted(filters)
