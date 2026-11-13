@@ -8,6 +8,8 @@ const resources: Record<string, { type: string; roots: string[] }> = {
   home: { type: "home", roots: ["agents", "sessions", "sandboxes"] },
   approvals: { type: "approval", roots: [] },
   exposures: { type: "exposure", roots: [] },
+  // Extraction input/results stay private to the form; Chat cannot run paid requests.
+  extractions: { type: "extraction", roots: [] },
   agents: {
     type: "agent",
     roots: ["agents", "agent", "agent-channels", "agent-triggers", "agent-examples"],

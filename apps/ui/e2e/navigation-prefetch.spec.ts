@@ -116,6 +116,9 @@ const STARTUP_API_ALLOWLIST = new Set([
   "/api/v1/health-issues",
   "/api/v1/sandboxes/stats",
   "/api/v1/mcp-servers/config",
+  // Shared navigation gates the Extractions destination on model management.
+  // The small policy map is required by the shell; extraction data is never prefetched.
+  "/api/v1/models/config",
 ]);
 
 function isStartupApi(pathname: string) {
@@ -165,6 +168,28 @@ for (const layout of ["chat_first", "classic"] as const)
       });
       expect(unrelatedApiRequests.map((request) => new URL(request.url()).pathname)).toEqual([]);
     });
+
+    for (const allowed of [true, false]) {
+      test(`Extractions navigation respects model permissions (${allowed})`, async ({ page }) => {
+        await page.route("**/api/v1/models/config", (route) =>
+          route.fulfill({ json: { policies: { "model.manage": allowed } } }),
+        );
+        await page.goto("/chats");
+        await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        const extractionLink = page.getByRole("link", { name: "Extractions", exact: true });
+        if (allowed) {
+          await expect(extractionLink).toBeVisible();
+          await extractionLink.click();
+          await expect(page).toHaveURL(/\/extractions$/, { timeout: NAVIGATION_TIMEOUT });
+          await expect(
+            page.getByRole("heading", { name: "Extractions", exact: true }),
+          ).toBeVisible();
+        } else {
+          await expect(extractionLink).toHaveCount(0);
+        }
+      });
+    }
 
     // EVE-785's dashboard-specific cases are gone with the Dashboard (EVE-855).
     // They asserted that the empty Dashboard's three "Create your first agent"

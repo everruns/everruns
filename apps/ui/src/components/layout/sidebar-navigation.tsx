@@ -16,6 +16,7 @@ import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import { WarningBadge } from "@/components/ui/warning-badge";
 import type { NavigationItem, NavigationSection } from "./sidebar";
 import { visibleNavigationSections } from "@/lib/navigation";
+import { useNavigationPolicy } from "@/hooks/use-navigation-policy";
 import { useOrg } from "@/providers/org-provider";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 import { useHomeAttention } from "@/components/home/use-home-attention";
@@ -206,7 +207,14 @@ export function SidebarNavigation({
 }) {
   const orgContext = useOrg();
   const hasRole = orgContext.hasRole ?? (() => true);
-  const visibleSections = visibleNavigationSections(sections, featureFlags, hasRole, isDev);
+  const canNavigate = useNavigationPolicy();
+  const visibleSections = visibleNavigationSections(
+    sections,
+    featureFlags,
+    hasRole,
+    isDev,
+    canNavigate,
+  );
 
   return (
     <nav className="flex-1 min-h-0 overflow-y-auto space-y-0.5 bg-background py-2.5">

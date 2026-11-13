@@ -76,3 +76,12 @@ it("projects bounded non-secret summaries rather than serializing cached respons
   expect(summary).toEqual({ name: "Example", items: [{ id: "one", name: "Visible" }] });
   expect(summarizePageData(Array.from({ length: 90 }, () => ({ name: "Row" })))).toHaveLength(50);
 });
+
+it("identifies Extractions without exposing extraction or provider data to page chat", () => {
+  const page = pageLocation("/extractions");
+  expect(page).toMatchObject({ entity_type: "extraction", label: "Extractions" });
+  expect(page.entity_id).toBeUndefined();
+  for (const resource of ["extractions", "models", "providers"]) {
+    expect(isPageQuery([resource, "org_1"], page, "org_1")).toBe(false);
+  }
+});
