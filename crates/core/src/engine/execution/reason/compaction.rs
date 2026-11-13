@@ -1,3 +1,6 @@
+#[path = "request_budget.rs"]
+mod request_budget;
+
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -21,6 +24,7 @@ pub(super) const PROACTIVE_RETRY_GROWTH_DIVISOR: u64 = 20;
 pub(super) fn proactive_source_fingerprint(
     provider_opaque_context: Option<&crate::engine::ProviderOpaqueContext>,
     messages: &[Message],
+    tools: &[crate::engine::tool_types::ToolDefinition],
 ) -> [u8; 32] {
     let mut input = match provider_opaque_context {
         Some(crate::engine::ProviderOpaqueContext::OpenResponsesCompact { output, .. }) => output
@@ -31,7 +35,19 @@ pub(super) fn proactive_source_fingerprint(
     };
     input.extend(messages_to_compact_input(messages));
     let bytes = serde_json::to_vec(&input).unwrap_or_default();
-    Sha256::digest(bytes).into()
+    let mut fingerprint = Sha256::new();
+    fingerprint.update(bytes);
+    for tool in tools {
+        fingerprint.update(
+            serde_json::json!({
+                "name": tool.name(), "description": tool.description(),
+                "parameters": tool.parameters_for_model(),
+            })
+            .to_string()
+            .as_bytes(),
+        );
+    }
+    fingerprint.finalize().into()
 }
 
 #[derive(Debug)]
@@ -254,6 +270,8 @@ pub(super) async fn try_apply_native_compaction(
     // Apply only after the durable install succeeds, so checkpoint failures do
     // not partially mutate the retry request.
     llm_config.previous_response_id = None;
+    llm_config.tool_baseline = None;
+    llm_config.system_prompt_baseline = None;
     llm_config.provider_opaque_context = Some(opaque_context);
     llm_messages.retain(|message| message.role == MessageRole::System);
     if let Some(state) = llm_config.reasoning_state.as_mut() {
@@ -331,6 +349,23 @@ pub(super) fn proactive_skip_reason(
     }
 }
 
+fn context_window(
+    driver: &dyn crate::engine::ChatDriver,
+    provider_type: &str,
+    model: &str,
+) -> usize {
+    driver
+        .effective_context_window(model)
+        .or_else(|| {
+            crate::engine::model_profiles::get_model_profile(
+                &everruns_contracts::DriverId::external(provider_type),
+                model,
+            )
+            .and_then(|profile| profile.limits.map(|limits| limits.context as usize))
+        })
+        .unwrap_or(128_000)
+}
+
 pub(super) async fn apply_proactive_compaction(
     context: ProactiveCompactionContext<'_>,
     messages: &mut Vec<Message>,
@@ -339,17 +374,7 @@ pub(super) async fn apply_proactive_compaction(
     use crate::engine::compaction_policy::CompactionStrategy;
 
     let settings = context.policy.settings();
-    let context_window = context
-        .chat_driver
-        .effective_context_window(context.model)
-        .or_else(|| {
-            crate::engine::model_profiles::get_model_profile(
-                &everruns_contracts::DriverId::external(context.provider_type),
-                context.model,
-            )
-            .and_then(|profile| profile.limits.map(|limits| limits.context as usize))
-        })
-        .unwrap_or(128_000);
+    let context_window = context_window(context.chat_driver, context.provider_type, context.model);
     let checkpoint_rearmed = context.current_floor.is_none()
         || context.checkpoint_suffix_message_count >= CHECKPOINT_REARM_MIN_SUFFIX_MESSAGES;
     let native_strategy = matches!(
@@ -359,7 +384,19 @@ pub(super) async fn apply_proactive_compaction(
     let durable_source = context
         .checkpoint_store
         .zip(context.message_source_sequence);
-    let estimated_tokens_before = context.policy.estimate_total_tokens(messages) as u64;
+    let tool_tokens = request_budget::tool_tokens_for_request(config, messages);
+    let current_tool_tokens = request_budget::tools_tokens(&config.tools);
+    let history_budget = request_budget::history_budget(
+        context.policy,
+        messages,
+        current_tool_tokens,
+        context_window,
+        settings.budget_percent,
+    )?;
+    let estimated_tokens_before = context
+        .policy
+        .estimate_total_tokens(messages)
+        .saturating_add(tool_tokens) as u64;
     let native_attempt_rearmed = if let Some((store, source_sequence)) = durable_source {
         match store
             .get_proactive_attempt(context.session_id, context.provider_type, context.model)
@@ -374,6 +411,7 @@ pub(super) async fn apply_proactive_compaction(
                 let same_source_lineage = proactive_source_fingerprint(
                     config.provider_opaque_context.as_ref(),
                     &messages[..attempt.input_message_count],
+                    &config.tools,
                 ) == attempt.source_fingerprint;
                 if !same_source_lineage {
                     return true;
@@ -398,9 +436,10 @@ pub(super) async fn apply_proactive_compaction(
     } else {
         true
     };
-    let window_pressure = context
-        .policy
-        .should_compact_proactively(messages, context_window);
+    let window_pressure =
+        context
+            .policy
+            .should_compact_with_fixed_input(messages, context_window, tool_tokens);
     let cost_pressure = context.policy.should_compact_for_cost(
         estimated_tokens_before as usize,
         context.raw_tool_result_bytes,
@@ -428,8 +467,11 @@ pub(super) async fn apply_proactive_compaction(
         .unwrap_or((None, None));
     let applied = if let (true, Some((store, source_sequence))) = (should_attempt, durable_source) {
         let input_message_count = messages_before;
-        let source_fingerprint =
-            proactive_source_fingerprint(config.provider_opaque_context.as_ref(), messages);
+        let source_fingerprint = proactive_source_fingerprint(
+            config.provider_opaque_context.as_ref(),
+            messages,
+            &config.tools,
+        );
         // A transient hosted attempt is a parked continuation. Do not mark
         // it as a completed proactive evaluation or the next instance would
         // skip compaction and send the original oversized context instead.
@@ -556,7 +598,12 @@ pub(super) async fn apply_proactive_compaction(
                         driver: None,
                         budget_remaining_tokens: applied
                             .tokens_after
-                            .map(|after| (context_window.saturating_sub(after as usize)) as u64)
+                            .map(|after| {
+                                context_window
+                                    .saturating_sub(after as usize)
+                                    .saturating_sub(current_tool_tokens)
+                                    as u64
+                            })
                             .or(Some(budget_remaining_before)),
                         source_sequence: context.message_source_sequence,
                         cache_read_tokens: None,
@@ -583,6 +630,14 @@ pub(super) async fn apply_proactive_compaction(
     // below closes with an install event instead of dangling.
     let mut fallback_installed_strategy: Option<&str> = None;
     if local_pressure && applied.is_none() {
+        // Historical schema changes are compactable too. Restart the declaration
+        // epoch before trimming, so removed transitions cannot leave stale tools.
+        if config.tool_baseline.take().is_some() {
+            config.system_prompt_baseline = None;
+            if tool_tokens > current_tool_tokens {
+                fallback_installed_strategy = Some("tool_rebase");
+            }
+        }
         if matches!(
             settings.strategy,
             CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
@@ -603,11 +658,12 @@ pub(super) async fn apply_proactive_compaction(
                 fallback_installed_strategy = Some("masking");
             }
         }
-        let budget_tokens = (context_window as f32 * settings.budget_percent) as usize;
+        let budget_tokens = history_budget;
         if context.policy.estimate_total_tokens(messages) > budget_tokens {
             fallback_installed_strategy = Some(match fallback_installed_strategy {
                 // Masking may have installed just above; report the full chain.
                 Some("masking") => "masking+trim",
+                Some("tool_rebase") => "tool_rebase+trim",
                 _ => "trim",
             });
             *messages = context.policy.aggressive_trim(
@@ -622,7 +678,10 @@ pub(super) async fn apply_proactive_compaction(
     if let Some(fallback_strategy) = fallback_installed_strategy {
         // The fallback installed compacted context: close the lifecycle it
         // opened as an install.
-        let fallback_tokens_after = context.policy.estimate_total_tokens(messages) as u64;
+        let fallback_tokens_after = context
+            .policy
+            .estimate_total_tokens(messages)
+            .saturating_add(current_tool_tokens) as u64;
         let _ = context
             .event_emitter
             .emit(EventRequest::new(
@@ -737,6 +796,14 @@ pub(super) async fn apply_reactive_compaction(
     use crate::engine::compaction_policy::CompactionStrategy;
 
     let settings = context.policy.settings();
+    let tool_tokens = request_budget::tools_tokens(&config.tools);
+    let history_budget = request_budget::history_budget(
+        context.policy,
+        messages,
+        tool_tokens,
+        context_window(context.chat_driver, context.provider_type, context.model),
+        settings.budget_percent,
+    )?;
     let messages_before = messages.len();
     tracing::info!(
         session_id = %context.session_id,
@@ -769,6 +836,8 @@ pub(super) async fn apply_reactive_compaction(
         ))
         .await;
 
+    config.tool_baseline = None;
+    config.system_prompt_baseline = None;
     let cascade_start = Instant::now();
     let mut steps = Vec::new();
     let mut strategies_used = Vec::new();
@@ -1026,7 +1095,9 @@ pub(super) async fn apply_reactive_compaction(
 
     if strategies_used.is_empty() || messages.len() > messages_before / 2 {
         let step_start = Instant::now();
-        let target = context.policy.estimate_total_tokens(messages) / 2;
+        let target = (context.policy.estimate_total_tokens(messages) / 2)
+            .min(history_budget)
+            .max(request_budget::system_tokens(context.policy, messages).saturating_add(1));
         let trimmed = context
             .policy
             .aggressive_trim(messages, target, has_system_prompt);

@@ -56,6 +56,19 @@ pub trait CompactionPolicy: Send + Sync + Debug {
     fn estimate_total_tokens(&self, messages: &[Message]) -> usize;
     fn total_tool_result_bytes(&self, messages: &[RuntimeMessage]) -> usize;
     fn should_compact_proactively(&self, messages: &[Message], context_window: usize) -> bool;
+    /// Request-aware pressure, retaining the message-only hook for custom policies.
+    /// The default reduces the effective window by the fixed input's share of
+    /// the policy's threshold; policies with other threshold semantics can override it.
+    fn should_compact_with_fixed_input(
+        &self,
+        messages: &[Message],
+        context_window: usize,
+        fixed_input_tokens: usize,
+    ) -> bool {
+        let reserved_window =
+            (fixed_input_tokens as f64 / self.settings().budget_percent as f64).ceil() as usize;
+        self.should_compact_proactively(messages, context_window.saturating_sub(reserved_window))
+    }
     fn should_compact_for_cost(
         &self,
         estimated_input_tokens: usize,
