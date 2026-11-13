@@ -37,6 +37,8 @@ pub use egress_fakes::{McpServerSlot, WebhookReceiver};
 #[path = "test_harness/response.rs"]
 mod response;
 pub use response::TestResponse;
+#[path = "test_harness/capabilities.rs"]
+mod capabilities;
 #[path = "test_harness/database.rs"]
 mod database;
 #[allow(unused_imports)] // each test binary uses a different subset

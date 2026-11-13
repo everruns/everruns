@@ -252,6 +252,14 @@ async fn platform_chat_cli_resolves_workspace_folders_and_exports_zip_artifacts(
             "http://localhost",
         ),
     };
+    let missing_reason = invoke(
+        Operation::Execute,
+        &json!({"commands":"everruns agents import /agent/agent.toml"}),
+        context.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(missing_reason.contains("Changes made by agents need a reason"));
     for (operation, commands) in [
         (Operation::Query, "everruns agents validate /agent"),
         (
@@ -260,7 +268,7 @@ async fn platform_chat_cli_resolves_workspace_folders_and_exports_zip_artifacts(
         ),
         (
             Operation::Execute,
-            "everruns agents import /agent/agent.toml",
+            "everruns agents import /agent/agent.toml --reason 'Import the requested workspace package'",
         ),
         (
             Operation::Execute,

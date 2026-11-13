@@ -351,9 +351,7 @@ async fn test_skill_appears_in_capabilities_listing() {
         .assert_status(StatusCode::CREATED);
 
     // List capabilities - skill should appear
-    let resp = server.get("/v1/capabilities").await.assert_success();
-    let body = resp.json_value();
-    let capabilities = body["data"].as_array().unwrap();
+    let capabilities = server.all_capabilities().await;
 
     let skill_caps: Vec<&serde_json::Value> = capabilities
         .iter()
@@ -402,9 +400,7 @@ async fn test_disabled_skill_hidden_from_capabilities() {
         .assert_success();
 
     // List capabilities - disabled skill should NOT appear
-    let resp = server.get("/v1/capabilities").await.assert_success();
-    let body = resp.json_value();
-    let capabilities = body["data"].as_array().unwrap();
+    let capabilities = server.all_capabilities().await;
 
     let skill_caps: Vec<&serde_json::Value> = capabilities
         .iter()
@@ -434,8 +430,7 @@ async fn test_deleted_skill_hidden_from_usage() {
         .assert_status(StatusCode::CREATED);
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
 
-    let caps_resp = server.get("/v1/capabilities").await.assert_success();
-    let capabilities = caps_resp.json_value()["data"].as_array().unwrap().clone();
+    let capabilities = server.all_capabilities().await;
     let skill_cap = capabilities
         .iter()
         .find(|c| c["name"].as_str() == Some(skill_name.as_str()))
@@ -558,14 +553,8 @@ async fn test_registry_skill_capability_mounts_into_session() {
         .assert_status(StatusCode::CREATED);
 
     // Capability ref (`skill:{uuid}`) comes from the catalog, mirroring the UI.
-    let caps = server
-        .get("/v1/capabilities")
-        .await
-        .assert_success()
-        .json_value();
-    let cap_id = caps["data"]
-        .as_array()
-        .unwrap()
+    let capabilities = server.all_capabilities().await;
+    let cap_id = capabilities
         .iter()
         .find(|c| c["name"].as_str() == Some(name.as_str()))
         .expect("skill capability should be in the catalog")["id"]
@@ -633,14 +622,8 @@ async fn test_archived_skill_capability_skips_mount_without_failing_session() {
         .json_value();
     let skill_id = created["id"].as_str().unwrap().to_string();
 
-    let caps = server
-        .get("/v1/capabilities")
-        .await
-        .assert_success()
-        .json_value();
-    let cap_id = caps["data"]
-        .as_array()
-        .unwrap()
+    let capabilities = server.all_capabilities().await;
+    let cap_id = capabilities
         .iter()
         .find(|c| c["name"].as_str() == Some(name.as_str()))
         .expect("skill capability should be in the catalog")["id"]
