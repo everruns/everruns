@@ -14,10 +14,16 @@ fn tool_tokens(tool: &ToolDefinition) -> usize {
         .as_ref()
         .filter(|schema| schema.to_string().len() > projected.to_string().len())
         .unwrap_or(&projected);
+    // Include a function envelope as well as the schema. Flat provider formats
+    // use fewer bytes; omitting the envelope would undercount large catalogs.
     let definition = serde_json::json!({
-        "name": tool.name(),
-        "description": tool.description(),
-        "parameters": parameters,
+        "type": "function",
+        "function": {
+            "name": tool.name(),
+            "description": tool.description(),
+            "parameters": parameters,
+            "strict": normalized.is_some(),
+        },
     });
     // Value serialization cannot fail. Round up rather than losing small schemas.
     definition.to_string().len().div_ceil(4)
@@ -84,7 +90,7 @@ pub(super) fn history_budget(
         .max(system_tokens.saturating_add(1)))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "builtins"))]
 mod tests {
     use super::*;
     use crate::builtins::{Capability, CompactionCapability};
