@@ -31,7 +31,7 @@ export function useCapabilities(options: { enabled?: boolean; includeRetired?: b
 
   const query = useQuery({
     queryKey: ["capabilities", org, includeRetired],
-    queryFn: () => listCapabilities(includeRetired),
+    queryFn: () => listCapabilities(includeRetired, org),
     enabled: !!org && (options.enabled ?? true),
   });
 
