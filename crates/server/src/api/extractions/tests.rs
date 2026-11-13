@@ -221,7 +221,7 @@ async fn configured_org_key_and_model_reach_native_provider_without_chat() {
 async fn disabled_inactive_managed_and_missing_key_accounts_fail_before_dispatch() {
     for (enabled, status, managed, expected) in [
         (false, "active", false, "Select an enabled extraction model"),
-        (true, "inactive", false, "Provider is not active"),
+        (true, "disabled", false, "Provider is not active"),
         (
             true,
             "active",
