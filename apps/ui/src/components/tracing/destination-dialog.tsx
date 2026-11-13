@@ -6,6 +6,7 @@ import {
   type TracingConfig,
   type TracingDestination,
 } from "@/lib/api/tracing";
+import { tracingAuthHeaders, tracingProviders } from "./provider-config";
 import { useRefreshTracing } from "@/hooks/use-tracing";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,6 +33,9 @@ const empty: TracingConfig = {
   provider: "braintrust",
   endpoint: "https://api.braintrust.dev",
   project_id: null,
+  project_name: null,
+  langsmith_agent_id: null,
+  langsmith_agent_environment: null,
   capture_content: false,
   capture_reasoning: false,
   enabled: true,
@@ -49,6 +53,7 @@ export function TracingDestinationDialog({
   const refresh = useRefreshTracing();
   const [config, setConfig] = useState<TracingConfig>(destination?.config ?? empty);
   const [secret, setSecret] = useState("");
+  const [publicKey, setPublicKey] = useState("");
   const [header, setHeader] = useState("Authorization");
   const [replaceAuth, setReplaceAuth] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -66,19 +71,16 @@ export function TracingDestinationDialog({
     try {
       await saveTracingDestination(
         {
-          config: { ...config, name: config.name.trim() },
+          config: {
+            ...config,
+            name: config.name.trim(),
+            project_name: config.project_name?.trim() || null,
+          },
           revision: destination?.revision,
           ...(needsSecret
             ? {
                 secrets: {
-                  headers: secret.trim()
-                    ? {
-                        [header]:
-                          config.provider === "braintrust"
-                            ? `Bearer ${secret.replace(/^Bearer\s+/i, "")}`
-                            : secret,
-                      }
-                    : {},
+                  headers: tracingAuthHeaders(config.provider, secret, publicKey, header),
                 },
               }
             : {}),
@@ -122,18 +124,26 @@ export function TracingDestinationDialog({
               onValueChange={(provider) => {
                 set({
                   provider: provider as TracingConfig["provider"],
-                  endpoint: provider === "braintrust" ? "https://api.braintrust.dev" : "",
+                  endpoint: tracingProviders[provider as TracingConfig["provider"]].endpoint,
                   project_id: null,
+                  project_name: null,
+                  langsmith_agent_id: null,
+                  langsmith_agent_environment: null,
                 });
                 setSecret("");
+                setPublicKey("");
+                setHeader("Authorization");
               }}
             >
               <SelectTrigger id="trace-provider" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="braintrust">Braintrust</SelectItem>
-                <SelectItem value="otlp">OpenTelemetry / OTLP</SelectItem>
+                {Object.entries(tracingProviders).map(([value, provider]) => (
+                  <SelectItem key={value} value={value}>
+                    {provider.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -177,6 +187,64 @@ export function TracingDestinationDialog({
               />
             </div>
           )}
+          {config.provider === "langsmith" && (
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={config.langsmith_agent_id != null}
+                  disabled={busy}
+                  onCheckedChange={(v) =>
+                    set({
+                      project_name: v ? null : "",
+                      langsmith_agent_id: v ? "" : null,
+                      langsmith_agent_environment: v ? "production" : null,
+                    })
+                  }
+                />
+                {ui("Agent-based LangSmith workspace")}
+              </label>
+              {config.langsmith_agent_id != null ? (
+                <>
+                  <Label htmlFor="trace-langsmith-agent">{ui("LangSmith agent ID")}</Label>
+                  <Input
+                    id="trace-langsmith-agent"
+                    required
+                    maxLength={63}
+                    pattern="[a-z]([a-z0-9-]*[a-z0-9])?"
+                    value={config.langsmith_agent_id}
+                    disabled={busy}
+                    onChange={(e) => set({ langsmith_agent_id: e.target.value })}
+                  />
+                  <Label htmlFor="trace-langsmith-environment">{ui("LangSmith environment")}</Label>
+                  <select
+                    id="trace-langsmith-environment"
+                    className="w-full rounded-md border p-2"
+                    disabled={busy}
+                    value={config.langsmith_agent_environment ?? "production"}
+                    onChange={(e) => set({ langsmith_agent_environment: e.target.value })}
+                  >
+                    {["local", "development", "staging", "production"].map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <Label htmlFor="trace-project-name">{ui("Project name")}</Label>
+                  <Input
+                    id="trace-project-name"
+                    required
+                    maxLength={256}
+                    value={config.project_name ?? ""}
+                    onChange={(e) => set({ project_name: e.target.value || null })}
+                    disabled={busy}
+                  />
+                </>
+              )}
+            </div>
+          )}
           {destination && !receiverChanged && (
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
@@ -206,15 +274,35 @@ export function TracingDestinationDialog({
                   </Select>
                 </div>
               )}
+              {config.provider === "langfuse" && (
+                <div className="space-y-2">
+                  <Label htmlFor="trace-public-key">{ui("Public key")}</Label>
+                  <Input
+                    id="trace-public-key"
+                    required
+                    autoComplete="off"
+                    value={publicKey}
+                    onChange={(e) => setPublicKey(e.target.value)}
+                    disabled={busy}
+                    placeholder="pk-lf-…"
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="trace-secret">
-                  {ui(config.provider === "braintrust" ? "API key" : "Header value (optional)")}
+                  {ui(
+                    config.provider === "langfuse"
+                      ? "Secret key"
+                      : config.provider === "otlp"
+                        ? "Header value (optional)"
+                        : "API key",
+                  )}
                 </Label>
                 <Input
                   id="trace-secret"
                   type="password"
                   autoComplete="off"
-                  required={config.provider === "braintrust"}
+                  required={config.provider !== "otlp"}
                   value={secret}
                   onChange={(e) => setSecret(e.target.value)}
                   disabled={busy}

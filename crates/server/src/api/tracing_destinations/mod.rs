@@ -192,17 +192,9 @@ pub async fn create_destination(
     let secrets = body.secrets.unwrap_or(TraceSecrets {
         headers: Default::default(),
     });
-    if body.config.provider == TraceProvider::Braintrust
-        && !secrets
-            .headers
-            .iter()
-            .any(|(k, v)| k.eq_ignore_ascii_case("authorization") && !v.trim().is_empty())
-    {
-        return Err(error(
-            StatusCode::BAD_REQUEST,
-            "Braintrust requires an Authorization header",
-        ));
-    }
+    secrets
+        .validate_for(&body.config.provider)
+        .map_err(|m| error(StatusCode::BAD_REQUEST, m))?;
     let encryption = state.encryption.as_ref().ok_or_else(|| {
         error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -270,17 +262,9 @@ pub async fn update_destination(
         ));
     }
     let encrypted = if let Some(secrets) = body.secrets {
-        if body.config.provider == TraceProvider::Braintrust
-            && !secrets
-                .headers
-                .iter()
-                .any(|(k, v)| k.eq_ignore_ascii_case("authorization") && !v.trim().is_empty())
-        {
-            return Err(error(
-                StatusCode::BAD_REQUEST,
-                "Braintrust requires an Authorization header",
-            ));
-        }
+        secrets
+            .validate_for(&body.config.provider)
+            .map_err(|m| error(StatusCode::BAD_REQUEST, m))?;
         let encryption = state.encryption.as_ref().ok_or_else(|| {
             error(
                 StatusCode::SERVICE_UNAVAILABLE,

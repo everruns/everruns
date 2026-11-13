@@ -11,6 +11,10 @@ use opentelemetry_sdk::{
 };
 use std::{sync::Arc, time::Duration};
 
+#[path = "customer_native.rs"]
+mod native;
+pub use native::NativeTraceProvider;
+
 struct EgressHttpClient {
     service: Arc<dyn EgressService>,
     runtime: tokio::runtime::Handle,
@@ -63,6 +67,16 @@ pub fn otlp_listener(
     service: Arc<dyn EgressService>,
     capture: bool,
 ) -> Result<OtelEventListener, Box<dyn std::error::Error + Send + Sync>> {
+    native_otlp_listener(endpoint, service, capture, NativeTraceProvider::Generic)
+}
+
+/// Native vendor mapping shares the scoped transport and consent rules with generic OTLP.
+pub fn native_otlp_listener(
+    endpoint: &str,
+    service: Arc<dyn EgressService>,
+    capture: bool,
+    native_provider: NativeTraceProvider,
+) -> Result<OtelEventListener, Box<dyn std::error::Error + Send + Sync>> {
     let exporter = SpanExporter::builder()
         .with_http()
         .with_http_client(EgressHttpClient {
@@ -75,14 +89,17 @@ pub fn otlp_listener(
         // Override environment headers: customer credentials come exclusively from the scoped boundary.
         .with_headers(Default::default())
         .build()?;
-    let processor = BatchSpanProcessor::builder(exporter)
-        .with_batch_config(
-            BatchConfigBuilder::default()
-                .with_max_queue_size(128)
-                .with_max_export_batch_size(16)
-                .build(),
-        )
-        .build();
+    let processor = BatchSpanProcessor::builder(native::NativeExporter {
+        inner: exporter,
+        provider: native_provider,
+    })
+    .with_batch_config(
+        BatchConfigBuilder::default()
+            .with_max_queue_size(128)
+            .with_max_export_batch_size(16)
+            .build(),
+    )
+    .build();
     let provider = SdkTracerProvider::builder()
         .with_span_processor(processor)
         .with_sampler(Sampler::AlwaysOn)

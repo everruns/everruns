@@ -1,5 +1,9 @@
 // Ukrainian product copy for customer tracing.
 export const messages: Readonly<Record<string, string>> = {
+  "Agent-based LangSmith workspace": "Робочий простір LangSmith на основі агентів",
+  "LangSmith agent ID": "ID агента LangSmith",
+  "LangSmith environment": "Середовище LangSmith",
+
   "The model declined this request.": "Модель відмовилася виконати цей запит.",
   "Model declined request": "Модель відхилила запит",
   Tracing: "Трасування",
@@ -92,4 +96,11 @@ export const messages: Readonly<Record<string, string>> = {
   "Organization default": "Типове призначення організації",
   "Agent selections: {value0}": "Вибрано агентами: {value0}",
   Unassigned: "Не призначено",
+  "Send agent traces to Braintrust, Langfuse, LangSmith, or OTLP collectors.":
+    "Надсилайте траси агентів до Braintrust, Langfuse, LangSmith або колекторів OTLP.",
+  "Connect a tracing provider, then choose organization defaults and agent overrides.":
+    "Підключіть провайдера трасування, а потім виберіть типові налаштування організації та винятки для агентів.",
+  "Project name": "Назва проєкту",
+  "Public key": "Публічний ключ",
+  "Secret key": "Секретний ключ",
 };

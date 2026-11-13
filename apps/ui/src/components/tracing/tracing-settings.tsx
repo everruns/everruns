@@ -12,6 +12,7 @@ import {
   testTracingDestination,
   type TracingDestination,
 } from "@/lib/api/tracing";
+import { tracingProviders } from "./provider-config";
 import { TracingDestinationDialog } from "./destination-dialog";
 import { TracingRoutingForm } from "./routing-form";
 import { useTracingDestinationRows } from "./use-tracing-page-context";
@@ -78,7 +79,7 @@ function OrganizationTracing() {
         <div>
           <h2 className="text-xl font-semibold">{ui("Tracing")}</h2>
           <p className="text-sm text-muted-foreground">
-            {ui("Send agent traces to your Braintrust projects and OTLP collectors.")}
+            {ui("Send agent traces to Braintrust, Langfuse, LangSmith, or OTLP collectors.")}
           </p>
         </div>
         {canManage && (
@@ -112,7 +113,7 @@ function OrganizationTracing() {
           <h3 className="text-sm font-medium">{ui("No tracing destinations")}</h3>
           <p className="mt-2 text-sm text-muted-foreground">
             {ui(
-              "Connect Braintrust or an OpenTelemetry collector, then choose which agents export traces.",
+              "Connect a tracing provider, then choose organization defaults and agent overrides.",
             )}
           </p>
         </Card>
@@ -141,7 +142,7 @@ function OrganizationTracing() {
                         {d.config.name}
                       </button>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {d.config.provider === "braintrust" ? "Braintrust" : "OpenTelemetry / OTLP"}
+                        {tracingProviders[d.config.provider].label}
                       </p>
                     </TableCell>
                     <TableCell className="text-xs">

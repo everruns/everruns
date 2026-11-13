@@ -7,9 +7,12 @@ export interface TracingPolicyView {
 }
 export interface TracingConfig {
   name: string;
-  provider: "braintrust" | "otlp";
+  provider: "braintrust" | "langfuse" | "langsmith" | "otlp";
   endpoint: string;
   project_id: string | null;
+  project_name?: string | null;
+  langsmith_agent_id?: string | null;
+  langsmith_agent_environment?: string | null;
   capture_content: boolean;
   capture_reasoning: boolean;
   enabled: boolean;

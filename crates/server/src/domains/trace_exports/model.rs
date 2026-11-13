@@ -62,6 +62,8 @@ impl RoutingPolicy {
 #[serde(rename_all = "snake_case")]
 pub enum TraceProvider {
     Braintrust,
+    Langfuse,
+    Langsmith,
     Otlp,
 }
 
@@ -72,7 +74,7 @@ pub struct DestinationConfig {
     /// Human-readable destination name, from 1 to 128 characters.
     #[schema(example = "Production traces")]
     pub name: String,
-    /// Receiver protocol: Braintrust project or generic OTLP over HTTPS.
+    /// Native Braintrust, Langfuse, LangSmith, or generic OTLP over HTTPS.
     #[schema(example = "otlp")]
     pub provider: TraceProvider,
     /// HTTPS receiver endpoint without embedded credentials, query parameters, or fragments.
@@ -81,6 +83,15 @@ pub struct DestinationConfig {
     /// Braintrust project identifier; required for Braintrust receivers.
     #[schema(example = "00000000-0000-0000-0000-000000000002")]
     pub project_id: Option<Uuid>,
+    #[serde(default)]
+    /// LangSmith project name for project-based workspaces.
+    pub project_name: Option<String>,
+    #[serde(default)]
+    /// Registered LangSmith agent identifier, mutually exclusive with project_name.
+    pub langsmith_agent_id: Option<String>,
+    #[serde(default)]
+    /// LangSmith agent environment: local, development, staging, or production.
+    pub langsmith_agent_environment: Option<String>,
     #[serde(default)]
     /// Explicit consent to export message and tool content; defaults to metadata only.
     #[schema(example = false)]
@@ -120,6 +131,52 @@ impl DestinationConfig {
         if self.provider == TraceProvider::Braintrust && self.project_id.is_none() {
             return Err("Braintrust requires a project ID");
         }
+        if self.provider == TraceProvider::Langsmith {
+            match (
+                &self.project_name,
+                &self.langsmith_agent_id,
+                &self.langsmith_agent_environment,
+            ) {
+                (Some(project), None, None) if !project.trim().is_empty() => {}
+                (None, Some(agent), Some(environment))
+                    if !agent.is_empty()
+                        && agent.len() <= 63
+                        && agent.as_bytes()[0].is_ascii_lowercase()
+                        && agent
+                            .as_bytes()
+                            .last()
+                            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+                        && agent
+                            .bytes()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
+                        && matches!(
+                            environment.as_str(),
+                            "local" | "development" | "staging" | "production"
+                        ) => {}
+                _ => {
+                    return Err(
+                        "LangSmith requires either a project name or a valid agent ID and environment",
+                    );
+                }
+            }
+        } else if self.langsmith_agent_id.is_some() || self.langsmith_agent_environment.is_some() {
+            return Err("LangSmith agent routing requires the LangSmith provider");
+        }
+        if self.project_name.as_ref().is_some_and(|p| {
+            p.len() > 256 || !p.is_ascii() || p.bytes().any(|b| b < 32 || b == 127)
+        }) {
+            return Err("Project name must be 1 to 256 printable ASCII characters");
+        }
+        if matches!(
+            self.provider,
+            TraceProvider::Langfuse | TraceProvider::Langsmith
+        ) && !url
+            .path()
+            .trim_end_matches('/')
+            .ends_with("/otel/v1/traces")
+        {
+            return Err("Native OTLP providers require their full /otel/v1/traces endpoint");
+        }
         if self.capture_reasoning && !self.capture_content {
             return Err("Reasoning capture requires content capture");
         }
@@ -136,6 +193,41 @@ pub struct TraceSecrets {
     pub headers: std::collections::BTreeMap<String, String>,
 }
 impl TraceSecrets {
+    pub fn validate_for(&self, provider: &TraceProvider) -> Result<(), &'static str> {
+        self.validate()?;
+        let header = |name: &str| {
+            self.headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
+        match provider {
+            TraceProvider::Braintrust if header("authorization").trim().is_empty() => {
+                Err("Braintrust requires an Authorization header")
+            }
+            TraceProvider::Langfuse => {
+                use base64::Engine;
+                let credentials = header("authorization")
+                    .strip_prefix("Basic ")
+                    .and_then(|value| base64::engine::general_purpose::STANDARD.decode(value).ok())
+                    .and_then(|v| String::from_utf8(v).ok());
+                if credentials
+                    .as_deref()
+                    .and_then(|s| s.split_once(':'))
+                    .is_some_and(|(public, secret)| !public.is_empty() && !secret.is_empty())
+                {
+                    Ok(())
+                } else {
+                    Err("Langfuse requires Basic authentication with public and secret keys")
+                }
+            }
+            TraceProvider::Langsmith if header("x-api-key").trim().is_empty() => {
+                Err("LangSmith requires an X-API-Key header")
+            }
+            _ => Ok(()),
+        }
+    }
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.headers.len() > 8 {
             return Err("At most 8 authentication headers are allowed");

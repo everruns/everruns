@@ -36,10 +36,41 @@ impl EgressService for DestinationTransport {
             .headers
             .retain(|k, _| k.eq_ignore_ascii_case("content-type"));
         request.headers.extend(self.secrets.headers.clone());
+        // Provider routing headers come from validated non-secret configuration, not arbitrary headers.
+        match config.provider {
+            super::TraceProvider::Langfuse => {
+                request
+                    .headers
+                    .insert("x-langfuse-ingestion-version".into(), "4".into());
+            }
+            super::TraceProvider::Langsmith => {
+                if let (Some(agent), Some(environment)) = (
+                    &config.langsmith_agent_id,
+                    &config.langsmith_agent_environment,
+                ) {
+                    request
+                        .headers
+                        .insert("Langsmith-Agent-Id".into(), agent.clone());
+                    request
+                        .headers
+                        .insert("Langsmith-Agent-Environment".into(), environment.clone());
+                } else if let Some(project) = &config.project_name {
+                    request
+                        .headers
+                        .insert("Langsmith-Project".into(), project.clone());
+                }
+            }
+            _ => {}
+        }
         let result = self.inner.send(request).await;
+        let rejected = result.as_ref().is_ok_and(|r| {
+            (200..300).contains(&r.status)
+                && config.provider != super::TraceProvider::Braintrust
+                && !otlp_accepted(&r.body)
+        });
         let error = match &result {
             Ok(r) if (200..300).contains(&r.status) => {
-                if config.provider == super::TraceProvider::Otlp && !otlp_accepted(&r.body) {
+                if config.provider != super::TraceProvider::Braintrust && !otlp_accepted(&r.body) {
                     Some("Receiver rejected spans or returned an invalid OTLP response".into())
                 } else {
                     None
@@ -60,6 +91,11 @@ impl EgressService for DestinationTransport {
             )
             .await;
         let _ = super::health::refresh(&self.db, self.row.org_id).await;
+        if rejected {
+            return Err(EgressError::invalid(
+                "Receiver rejected spans or returned an invalid OTLP response",
+            ));
+        }
         result
     }
     async fn send_stream(&self, _: EgressRequest) -> EgressResult<EgressStreamResponse> {

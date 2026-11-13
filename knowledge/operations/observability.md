@@ -38,6 +38,15 @@ credential dialogs remain protected manual UI.
 [Public setup and delivery limits](../../docs/observability/destinations.md)
 explain assignment, test traces, receiver acceptance, and troubleshooting.
 
+Native Langfuse and LangSmith destinations reuse the same organization/agent
+routing and transport as generic OTLP. Receiver-specific aliases are added only
+after the listener filters content; they never read platform credentials. Langfuse
+uses scoped Basic auth plus its ingestion version header; LangSmith uses a scoped
+API key and validated project header. The protocol implementation is in
+[customer native mapping](../../crates/core/src/host/observability/customer_native.rs).
+Official receiver contracts: [Langfuse](https://langfuse.com/integrations/native/opentelemetry)
+and [LangSmith](https://docs.langchain.com/langsmith/trace-with-opentelemetry).
+
 ## Common Architecture
 
 ### Span Hierarchy

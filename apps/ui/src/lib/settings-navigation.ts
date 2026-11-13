@@ -71,7 +71,7 @@ export const settingsNavigationSections: NavigationSection[] = [
         href: "/settings/tracing",
         // A trace waterfall, so it does not repeat the pulse line Health uses.
         icon: ChartGantt,
-        keywords: ["braintrust", "otel", "otlp", "traces"],
+        keywords: ["braintrust", "langfuse", "langsmith", "otel", "otlp", "traces"],
         description: "Manage agent trace exports",
       },
       {
