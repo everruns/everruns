@@ -8,6 +8,22 @@ tags:
 ---
 # Compaction
 
+## Request budget invariant
+
+Proactive pressure includes model-visible tool declarations after discovery and
+schema projection. Private deferred full schemas are excluded. Cache-stable
+baseline/replay declarations are a separate compactable representation, not an
+immutable prefix: fallback compaction restarts the epoch using the current
+catalog. Native checkpoints and reactive history changes also invalidate the
+old declaration baseline.
+
+Trimming reserves the current catalog and keeps system instructions; fixed input
+that reaches the estimated hard window fails explicitly rather than dropping
+instructions or repeatedly compacting history. Estimates remain approximate and
+can differ from provider tokenization and hosted-tool scaffolding. See the
+[request budget implementation](../../crates/core/src/engine/execution/reason/request_budget.rs)
+and [public behavior](../../docs/advanced/compaction.md).
+
 ## Abstract
 
 Context compaction manages conversations that exceed LLM context windows. Users building agents and harnesses must be able to choose between **native provider compaction** (e.g., OpenAI `/responses/compact`) and **our own strategies** (observation masking, LLM summarization). This spec defines the compaction capability, its configuration surface, the strategy cascade, user-visible feedback, and implementation plan.

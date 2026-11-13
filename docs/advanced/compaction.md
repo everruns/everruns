@@ -19,6 +19,20 @@ Compaction operates at two points:
 
 2. **Reactively**: if the LLM still returns a `RequestTooLarge` error (estimation can undercount), the compaction cascade runs and the request is retried automatically.
 
+The proactive estimate includes the schemas offered to the model, not just messages.
+Deferred tools contribute their visible schema stubs, not the private full schemas
+kept for later discovery. History trimming reserves room for those declarations
+and system instructions. If that fixed input alone reaches the estimated context
+window, the request fails explicitly: reduce active schemas or instructions, or
+choose a larger-context model. Removing conversation history cannot fix it.
+
+Estimates use bytes divided by four, including the larger strict-schema shape
+where applicable; they are not provider token counts. Cache-stable tool epochs
+also reserve room for replayed schema changes. Under pressure Everruns can restart
+the declaration epoch with the current catalog before trimming history. Provider
+wrappers, hosted tools and opaque checkpoints can still change actual usage, so
+reactive overflow recovery remains necessary.
+
 In both cases, the same cascade of strategies executes:
 
 ![Compaction Cascade](../images/advanced/compaction-cascade.svg)

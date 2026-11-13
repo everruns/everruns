@@ -9,6 +9,7 @@ mod mcp_catalog_lifecycle;
 #[cfg(feature = "mcp")]
 mod mcp_runtime_test;
 mod tool_catalog_lifecycle;
+mod tool_schema_budget;
 
 #[cfg(feature = "hosting-conformance")]
 mod hosting_conformance;
