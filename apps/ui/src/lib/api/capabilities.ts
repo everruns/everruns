@@ -5,6 +5,7 @@
 // See agents.ts for createAgent/updateAgent with capabilities.
 
 import { api } from "./client";
+import { getActiveOrgId, ORG_HEADER } from "./active-org";
 import type {
   Capability,
   CapabilityId,
@@ -13,6 +14,7 @@ import type {
   GuardrailExample,
   GuardrailExamplesResponse,
   ListResponse,
+  PaginatedResponse,
   UpdateDeclarativeCapabilityRequest,
 } from "./types";
 
@@ -22,11 +24,26 @@ import type {
  * existing agent or harness already references, so a retired one can be named
  * and removed instead of showing up as an unknown reference.
  */
-export async function listCapabilities(includeRetired = false): Promise<Capability[]> {
-  const response = await api.get<ListResponse<Capability>>(
-    includeRetired ? "/v1/capabilities?include_retired=true" : "/v1/capabilities",
-  );
-  return response.data.data;
+export async function listCapabilities(
+  includeRetired = false,
+  orgId = getActiveOrgId(),
+): Promise<Capability[]> {
+  // An org switch between pages must not mix catalogs in the original query's cache.
+  const options = orgId ? { headers: { [ORG_HEADER]: orgId } } : undefined;
+  const capabilities: Capability[] = [];
+  let offset = 0;
+  while (true) {
+    const params = new URLSearchParams({ offset: String(offset), limit: "100" });
+    if (includeRetired) params.set("include_retired", "true");
+    const { data: page } = await api.get<PaginatedResponse<Capability>>(
+      `/v1/capabilities?${params}`,
+      options,
+    );
+    capabilities.push(...page.data);
+    if (page.data.length === 0) return capabilities;
+    offset = page.offset + page.limit;
+    if (offset >= page.total) return capabilities;
+  }
 }
 
 export async function getCapability(capabilityId: CapabilityId): Promise<Capability> {

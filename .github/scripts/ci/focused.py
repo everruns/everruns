@@ -130,9 +130,8 @@ def risk_filters(paths):
 
 
 def real_server_targets(paths):
-    # These production-router tests configure their own process environment and
-    # bypass TestServer; backend changes must exercise their database setup too.
-    targets = ['background_sweep_wiring_test', 'pat_scope_sweep_test']
+    # These fixtures retain separate processes for router/host environment state.
+    targets = ['background_sweep_wiring_test', 'pat_scope_sweep_test', 'plugins_integration_test']
     if any(p.startswith(('crates/server/tests/test_harness',
                          'crates/server/src/storage/embedded_postgres/'))
            or p in ('crates/server/src/storage/test_database.rs',
@@ -147,6 +146,13 @@ def real_server_targets(paths):
         # OpenAPI command declarations do not mount handlers. Exercise the
         # production router and its token scopes before merging route changes.
         selected.add('pat_scope_sweep_test')
+    if any(p in ('crates/capabilities/src/integrations_catalog.rs',
+                 '.github/scripts/ci/focused.py')
+           or p.startswith(('crates/server/src/domains/plugins/',
+                            'crates/server/src/services/capability',
+                            'crates/server/src/api/plugins')) for p in paths):
+        # Installed entries can fall beyond the first built-in catalog page.
+        selected.add('plugins_integration_test')
     return [target for target in targets if target in selected]
 
 
