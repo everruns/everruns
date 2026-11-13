@@ -71,60 +71,48 @@ impl DbSlackActionInvoker {
         &self,
         session: &crate::storage::SessionRow,
     ) -> Result<(everruns_contracts::typed_id::AppId, AgentChannel), SlackActionError> {
-        let Some(app_internal_id) = session.app_id else {
-            use crate::api::channel_ingress::{channel_liveness, resolve_channel};
-            let channel_id = session.channel_id.ok_or(SlackActionError::NoSlackSession)?;
-            let public_id = self
+        use crate::api::channel_ingress::{channel_liveness, resolve_channel};
+
+        // The FK is authoritative. Only sessions from before its backfill may
+        // fall back to their persisted channel tag, never to a sibling channel.
+        let public_id = match session.channel_id {
+            Some(channel_id) => self
                 .db
                 .get_agent_channel_public_id(self.org_id, channel_id)
                 .await
                 .map_err(|e| SlackActionError::Transient(e.to_string()))?
-                .ok_or(SlackActionError::ChannelUnavailable)?;
-            let (context, endpoint) =
-                resolve_channel(&self.db, self.encryption.as_ref(), &public_id)
-                    .await
-                    .map_err(|e| SlackActionError::Transient(e.to_string()))?
-                    .ok_or(SlackActionError::ChannelUnavailable)?;
-            // THREAT[TM-SLACK-005]: native endpoints have no archival App row.
-            // Resolve only the authoritative session FK and recheck its agent.
-            if context.org_id != self.org_id
-                || context.historical_app_id.is_some()
-                || session.agent_id.map(|id| id.uuid()) != Some(context.agent_internal_id)
-                || endpoint.internal_id != channel_id
-            {
-                return Err(SlackActionError::NoSlackSession);
-            }
-            channel_liveness(&context, &endpoint)
-                .map_err(|_| SlackActionError::ChannelUnavailable)?;
-            let app_id = context.public_id;
-            return Ok((app_id, endpoint.into_channel()));
-        };
-        // Decide which endpoint before loading the app, so the tag fallback and
-        // the FK agree on a single target.
-        let endpoint_selector = match session.channel_id {
-            Some(internal_id) => ChannelSelector::Internal(internal_id),
-            None => session
+                .ok_or(SlackActionError::ChannelUnavailable)?,
+            None if session.app_id.is_some() => session
                 .tags
                 .iter()
                 .find_map(|tag| tag.strip_prefix(SLACK_CHANNEL_TAG_PREFIX))
-                .map(|public_id| ChannelSelector::Public(public_id.to_string()))
+                .map(str::to_owned)
                 .ok_or(SlackActionError::NoSlackSession)?,
+            None => return Err(SlackActionError::NoSlackSession),
         };
+        let (context, channel) = resolve_channel(&self.db, self.encryption.as_ref(), &public_id)
+            .await
+            .map_err(|e| SlackActionError::Transient(e.to_string()))?
+            .ok_or(SlackActionError::ChannelUnavailable)?;
 
-        let app = crate::domains::apps::queries::get_by_internal_id(
-            &self.db,
-            self.encryption.as_ref(),
-            self.org_id,
-            app_internal_id,
-        )
-        .await
-        .map_err(|e| SlackActionError::Transient(e.to_string()))?
-        .ok_or(SlackActionError::ChannelUnavailable)?;
-
-        let endpoint = select_slack_channel(&app, &endpoint_selector)
-            .ok_or(SlackActionError::NoSlackSession)?;
-
-        Ok((app.public_id, endpoint.clone()))
+        // THREAT[TM-SLACK-005]: migrated and native sessions use the same
+        // channel-owned authority. Historical attribution is a binding check,
+        // not a reason to read a frozen App or revive its publication state.
+        if context.org_id != self.org_id
+            || context.historical_app_id != session.app_id
+            || channel.channel_type != ChannelType::Slack
+            || session
+                .channel_id
+                .is_some_and(|id| id != channel.internal_id)
+            || match session.agent_id {
+                Some(id) => id.uuid() != context.agent_internal_id,
+                None => session.app_id.is_none(),
+            }
+        {
+            return Err(SlackActionError::NoSlackSession);
+        }
+        channel_liveness(&context, &channel).map_err(|_| SlackActionError::ChannelUnavailable)?;
+        Ok((context.public_id, channel.into_channel()))
     }
 
     pub(super) async fn resolve_post_context(

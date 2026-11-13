@@ -17,15 +17,13 @@
 //! two different bots, and `App::slack_channel()` would return whichever comes
 //! first.
 //!
-//! Org scoping is structural rather than a check bolted on: the session read is
-//! `get_session(org_id, session_id)` and the app read is
-//! `get_by_internal_id(.., org_id, ..)`, so a session id from another tenant
-//! resolves to nothing rather than to another tenant's bot.
+//! Sessions are read within their organization. Channel resolution rechecks that
+//! organization, the owning Agent, and historical attribution without loading
+//! the frozen App. A session cannot borrow another tenant's or App's bot.
 
 use std::sync::Arc;
 
 use crate::domains::agent_channels::record::{AgentChannel, ChannelType};
-use crate::domains::apps::record::App;
 use async_trait::async_trait;
 use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
@@ -194,28 +192,6 @@ impl SlackActionContext {
         }
         Ok(())
     }
-}
-
-/// Which channel on the app a session belongs to.
-enum ChannelSelector {
-    /// From `sessions.channel_id`, the authoritative FK (EVE-1004).
-    Internal(uuid::Uuid),
-    /// From the `slack:channel:{id}` routing tag, for pre-backfill sessions.
-    Public(String),
-}
-
-/// Pick the Slack channel `selector` names, or `None` when it names none.
-///
-/// Requires `ChannelType::Slack` even when the id matches: an id that resolves
-/// to a non-Slack channel means the session came through another channel, and
-/// falling through to a sibling Slack channel would be exactly the
-/// wrong-bot bug that resolving by channel exists to prevent.
-fn select_slack_channel<'a>(app: &'a App, selector: &ChannelSelector) -> Option<&'a AgentChannel> {
-    let channel = app.channels.iter().find(|channel| match selector {
-        ChannelSelector::Internal(internal_id) => channel.internal_id == *internal_id,
-        ChannelSelector::Public(public_id) => &channel.public_id.to_string() == public_id,
-    })?;
-    (channel.channel_type == ChannelType::Slack).then_some(channel)
 }
 
 /// A Slack API failure as the action tool reports it.
@@ -879,6 +855,8 @@ mod tests {
             name: "eyes".to_string(),
         }
     }
+
+    mod legacy_app_tests;
 
     /// The case the issue calls out: an agent with the capability enabled,
     /// running from the API or a schedule, must fail closed.

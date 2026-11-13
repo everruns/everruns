@@ -53,7 +53,7 @@ They return frozen records for archival consumers. Create, update, delete, publi
 
 `agent_channels` is the source of truth for ingress. Each channel stores its agent ownership, channel identity, channel configuration, authentication data, lifecycle status, and `legacy_alias_id`.
 
-Traffic-serving resolution reads `agent_channels JOIN agents`. It does not read `apps` or `app_channels`, directly or indirectly. This rule applies to Slack, AG-UI, FCP, A2A, API channel, Public Chat, webhook, and schedule compatibility paths.
+Traffic-serving resolution reads `agent_channels JOIN agents`. It does not read `apps` or `app_channels`, directly or indirectly. This rule applies to Slack, AG-UI, FCP, A2A, API channel, Public Chat, webhook, and schedule compatibility paths. Slack actions from previously created sessions use the same channel-owned resolution; frozen App lifecycle state does not authorize or disable them. Channel and Agent liveness still apply, and historical attribution remains a binding check.
 
 A channel accepts traffic only when:
 
