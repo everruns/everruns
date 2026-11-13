@@ -255,12 +255,15 @@ impl Remote {
     /// belong to one cell's log, so the old cell's index would make the new
     /// cell's views look late and be ignored (found by the qualification
     /// suite: a session moved back and forth stalled on a stale mirror).
-    pub fn bind(&self, session: SessionId, cell: CellId) {
+    /// `true` when it moved: the caller drops its own positions too.
+    pub fn bind(&self, session: SessionId, cell: CellId) -> bool {
         let previous = self.homes.lock().insert(session, cell);
-        if previous.is_some_and(|previous| previous != cell) {
+        let moved = previous.is_some_and(|previous| previous != cell);
+        if moved {
             self.shared.state.write().sessions.remove(&session);
             self.applied.lock().remove(&session);
         }
+        moved
     }
 
     /// The cell `session` runs from. Decision: a session nothing bound
@@ -296,23 +299,36 @@ impl Remote {
             .map(|s| s.last_sequence().unwrap_or(0))
     }
 
-    /// Fold `delta` in unless the mirror already holds a newer copy.
+    /// Fold `delta` in unless the mirror already holds a newer copy, and
+    /// announce a newer copy on the mirror (`Shared::publish`).
+    ///
+    /// Decision: every path that refreshes the mirror announces, not only
+    /// the watch, as every applied change does on a node. An input that
+    /// reaches the mirror in the reply to this executor's own write (a
+    /// claim renewal, an append) moves the mirror past it, so the watch,
+    /// which waits for changes after the mirror, would never report it.
     fn absorb(&self, session: SessionId, delta: SessionDelta) -> bool {
-        let mut applied = self.applied.lock();
-        let current = applied.get(&session).copied().unwrap_or(0);
-        if delta.applied < current {
-            return true; // late: the mirror is newer
+        let (merged, advanced) = {
+            let mut applied = self.applied.lock();
+            let current = applied.get(&session).copied().unwrap_or(0);
+            if delta.applied < current {
+                return true; // late: the mirror is newer
+            }
+            let at = delta.applied;
+            let mut state = self.shared.state.write();
+            if merge(&mut state, session, delta) {
+                applied.insert(session, at);
+                (true, at > current)
+            } else {
+                state.sessions.remove(&session);
+                applied.remove(&session);
+                (false, false)
+            }
+        };
+        if advanced {
+            self.shared.publish(crate::state::Change::Session(session));
         }
-        let at = delta.applied;
-        let mut state = self.shared.state.write();
-        if merge(&mut state, session, delta) {
-            applied.insert(session, at);
-            true
-        } else {
-            state.sessions.remove(&session);
-            applied.remove(&session);
-            false
-        }
+        merged
     }
 
     /// The members of `cell`, its last known leader first.
@@ -447,6 +463,7 @@ impl Remote {
             ATTEMPT + Duration::from_millis(wait_ms),
         )
         .await
+        .map_err(|e| anyhow::anyhow!("view of {session} in cell {cell} at {min_index}: {e:#}"))
     }
 
     /// The mirror holds `session` as of `index` or later.
@@ -551,6 +568,38 @@ mod tests {
             events: events.map(|seq| event(id, seq)).collect(),
             ..Default::default()
         }
+    }
+
+    /// However the mirror moves forward (a watch, or the reply to the
+    /// executor's own write), Engine's waiters hear it; a stale reply does
+    /// not wake them.
+    #[test]
+    fn every_newer_copy_is_announced_and_a_late_one_is_not() {
+        let remote = Remote::new(
+            crate::remote::EXECUTOR_IDS,
+            crate::store::Store::open("memory://").unwrap(),
+        )
+        .unwrap();
+        let heard = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = heard.clone();
+        let _ = remote.shared.on_change.set(Box::new(move |_| {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }));
+        let id = SessionId::new();
+        let mut cell = CellState::default();
+        cell.sessions.insert(id, session(id, 1..=5, 0));
+        assert!(remote.absorb(id, delta(&cell, 10, id, None)));
+        cell.sessions.insert(id, session(id, 1..=6, 0));
+        // The reply to a renewal brings the new input with it.
+        assert!(remote.absorb(id, delta(&cell, 12, id, Some(5))));
+        assert_eq!(heard.load(std::sync::atomic::Ordering::SeqCst), 2);
+        // An older reply that arrives late changes nothing.
+        assert!(remote.absorb(id, delta(&cell, 11, id, Some(5))));
+        assert_eq!(heard.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(
+            remote.shared.state.read().sessions[&id].last_sequence(),
+            Some(6)
+        );
     }
 
     #[test]

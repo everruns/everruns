@@ -149,7 +149,8 @@ mod catalog_tests {
             assert!(prompt.contains(operation));
         }
         assert!(prompt.contains("copilotkit/standard@1"));
-        assert!(prompt.contains(r#"version: "1.0""#));
+        assert!(prompt.contains(r#""version":"1.0""#));
+        assert!(!prompt.contains(r#""version":"v1.0""#));
         assert!(prompt.contains("Never emit callRendererFunction"));
     }
 }

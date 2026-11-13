@@ -239,22 +239,14 @@ async fn test_install_plugin_and_capability_listing() {
     assert_eq!(plugin["marketplace"], "install-test-mkt");
 
     // GET /v1/capabilities exposes exactly the same stable ref.
-    let caps_resp = server.get("/v1/capabilities").await.assert_success();
-    let caps = caps_resp.json_value();
-    let cap_ids: Vec<&str> = caps["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|c| c["id"].as_str())
-        .collect();
+    let caps = server.all_capabilities().await;
+    let cap_ids: Vec<&str> = caps.iter().filter_map(|c| c["id"].as_str()).collect();
     assert!(
         cap_ids.contains(&capability_ref.as_str()),
         "capabilities should include {capability_ref}; got: {:?}",
         cap_ids
     );
-    let plugin_capability = caps["data"]
-        .as_array()
-        .unwrap()
+    let plugin_capability = caps
         .iter()
         .find(|capability| capability["id"] == capability_ref)
         .unwrap();
@@ -418,17 +410,8 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
 
     // The disabled anchor must NOT surface as a runtime MCP capability, and
     // the plugin capability itself must be present.
-    let caps = server
-        .get("/v1/capabilities")
-        .await
-        .assert_success()
-        .json_value();
-    let cap_ids: Vec<&str> = caps["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|c| c["id"].as_str())
-        .collect();
+    let caps = server.all_capabilities().await;
+    let cap_ids: Vec<&str> = caps.iter().filter_map(|c| c["id"].as_str()).collect();
     assert!(
         !cap_ids.contains(&anchor_cap_id.as_str()),
         "disabled anchor {anchor_cap_id} must not be a runtime MCP capability; got {cap_ids:?}"

@@ -445,6 +445,10 @@ test.describe("Page masthead responsive layout", () => {
   });
 
   test("keeps a representative standard-action consumer contained on mobile", async ({ page }) => {
+    // This is the suite's first harness-detail visit. Allow its cold dev-server
+    // compilation, as for the agent/trigger pages above; UI assertions keep
+    // their normal budgets.
+    test.slow();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/harnesses/${HARNESS_ID}`);
 

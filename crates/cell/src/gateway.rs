@@ -53,6 +53,8 @@ pub struct Gateway {
     next: AtomicUsize,
     /// Messages admitted (`accepted`, `duplicate`) and sessions created.
     pub admitted: crate::prom::Counters,
+    /// The last minute of admissions, gateway to answer.
+    pub admit_window: crate::prom::Window,
     pub created: crate::prom::Counters,
     /// Moves the rebalancer (on this node) started.
     pub rebalanced: crate::prom::Counters,
@@ -85,6 +87,7 @@ impl Gateway {
             cache: Mutex::default(),
             next: AtomicUsize::new(0),
             admitted: Default::default(),
+            admit_window: Default::default(),
             created: Default::default(),
             rebalanced: Default::default(),
             org_tokens: std::sync::OnceLock::new(),
@@ -599,10 +602,12 @@ impl Gateway {
         text: String,
         id: Option<MessageId>,
     ) -> Result<Value, ApiError> {
+        let started = Instant::now();
         let message_id = id.unwrap_or_default();
         let body = json!({ "text": text, "id": message_id });
         let value = self.session_command(session, "messages", &body).await?;
         self.admitted.inc(&[("status", "accepted")]);
+        self.admit_window.observe(started.elapsed());
         Ok(value)
     }
 

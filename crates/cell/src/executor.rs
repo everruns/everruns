@@ -94,6 +94,30 @@ impl Executor {
         });
         let material: Arc<dyn crate::providers::OrgMaterial> = executor.clone();
         orgs.bind(Arc::downgrade(&material));
+        // Whatever refreshes the mirror wakes Engine's waiters, as a node's
+        // applied changes do (`Remote::absorb`); a session that left the
+        // mirror or froze hands off.
+        let weak = Arc::downgrade(&executor);
+        let _ = executor
+            .remote
+            .shared
+            .on_change
+            .set(Box::new(move |change| {
+                let (crate::state::Change::Session(session)
+                | crate::state::Change::Event(session, _)) = change;
+                let Some(executor) = weak.upgrade() else {
+                    return;
+                };
+                let frozen = executor
+                    .remote
+                    .shared
+                    .state
+                    .read()
+                    .sessions
+                    .get(session)
+                    .is_none_or(|s| s.placement == Placement::Frozen);
+                executor.hosting.changed(*session, frozen);
+            }));
         Ok(executor)
     }
 
@@ -279,17 +303,30 @@ impl Executor {
             return;
         }
         self.recent.lock().retain(|s| *s != session);
-        self.remote.bind(session, cell);
+        if self.remote.bind(session, cell) {
+            // Moved since it last ran here: the writes this hosting waits
+            // to see were at positions in the old cell's log.
+            self.hosting.forget(session);
+        }
         let watching = Arc::new(AtomicBool::new(true));
         tokio::spawn(self.clone().watch(session, watching.clone()));
         tokio::spawn(async move {
             for _ in 0..64 {
                 let started = std::time::Instant::now();
-                let outcome = match self.engine.activate(session).await {
-                    Ok(()) => "completed",
-                    Err(error) => {
+                // Its own task: an activation that panics ends as an error
+                // here, and its slot and claim go back, instead of the
+                // slot staying held for good.
+                let engine = self.clone();
+                let activation = tokio::spawn(async move { engine.engine.activate(session).await });
+                let outcome = match activation.await {
+                    Ok(Ok(())) => "completed",
+                    Ok(Err(error)) => {
                         tracing::warn!(%session, %error, "activation stopped");
                         "error"
+                    }
+                    Err(error) => {
+                        tracing::error!(%session, %error, "activation panicked");
+                        "panicked"
                     }
                 };
                 self.stats.inc(&[("activation", outcome)]);
@@ -329,21 +366,15 @@ impl Executor {
     /// Keep `session`'s mirror current while it runs: input, cancels and a
     /// freeze for a move reach Engine's waiters and hand-off flag.
     async fn watch(self: Arc<Self>, session: SessionId, watching: Arc<AtomicBool>) {
+        // A change the watch folds in announces itself (`Remote::absorb`).
         while watching.load(Ordering::SeqCst) {
-            match self.remote.watch(session, Duration::from_secs(10)).await {
-                Ok(true) => {
-                    let frozen = self
-                        .remote
-                        .shared
-                        .state
-                        .read()
-                        .sessions
-                        .get(&session)
-                        .is_none_or(|s| s.placement == Placement::Frozen);
-                    self.hosting.changed(session, frozen);
-                }
-                Ok(false) => {}
-                Err(_) => tokio::time::sleep(Duration::from_millis(200)).await,
+            if self
+                .remote
+                .watch(session, Duration::from_secs(10))
+                .await
+                .is_err()
+            {
+                tokio::time::sleep(Duration::from_millis(200)).await;
             }
         }
     }

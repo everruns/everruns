@@ -5,7 +5,8 @@
 //! What it shows: turns run on executors, never on the nodes; a cancel
 //! reaches a turn on an executor; a killed executor's turn finishes on
 //! another; a turn survives its cell's leader dying; live deltas reach SSE
-//! from an executor; the workspace survives executors and a move.
+//! from an executor; the workspace survives executors and a move; an
+//! executor runs a session again after it moved cells.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -152,6 +153,45 @@ async fn the_workspace_survives_executors_and_a_move() {
         "the big file came back whole"
     );
     assert!(answers.iter().all(|a| !a.contains("error")), "{answers:?}");
+}
+
+/// The balancer moves a session that last ran here: the next turn runs
+/// here again at once. Log positions are per cell, so what this executor
+/// waited for in the old cell means nothing in the new one (a load run
+/// found turns waiting for cell 0's position in cell 1's log).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_executor_runs_a_session_again_after_it_moved_cells() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    // Put cell 0's log well ahead of cell 1's.
+    for _ in 0..10 {
+        let other = fleet.create_in("chat", 0).await;
+        fleet.say(&other, "hello").await;
+        fleet.turns(&other, 1).await;
+    }
+    let session = fleet.create_in("chat", 0).await;
+    fleet.say(&session, "hello").await;
+    fleet.turns(&session, 1).await;
+    let ahead = fleet.stats(0).await["applied"].as_u64().unwrap();
+
+    let moved = fleet
+        .post(
+            &format!("/v1/sessions/{session}/move"),
+            json!({ "cell": 1 }),
+        )
+        .await;
+    assert_eq!(moved["to"], 1, "{moved}");
+    let behind = fleet.stats(1).await["applied"].as_u64().unwrap();
+    assert!(ahead > behind + 30, "cell 0 at {ahead}, cell 1 at {behind}");
+    let started = Instant::now();
+    fleet.say(&session, "again").await;
+    fleet.turns(&session, 2).await;
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "the turn after the move took {:?}",
+        started.elapsed()
+    );
+    fleet.check();
 }
 
 #[tokio::test(flavor = "multi_thread")]
