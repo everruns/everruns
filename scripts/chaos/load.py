@@ -7,8 +7,8 @@ completion and latency come from the stream; the end-of-run assertions do not
 trust it and re-read every session's events with paged GETs.
 
 Session kinds (assigned round robin by weight so a run is reproducible). Turn
-shape comes from llmsim scenario markers (`[[llmsim:<name>]]`, built-ins in
-`crates/drivers/llmsim/scenarios/`); a message without a marker gets the
+shape comes from llmsim scenario markers (`[[llmsim:<name>]]`, built-ins from
+llmsim's `ScenarioSet::builtin()`); a message without a marker gets the
 instant `llmsim-default` answer, which is the platform-overhead probe.
 
 - plain:    3 sequential unmarked turns (instant model).
