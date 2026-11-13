@@ -66,6 +66,7 @@
     "evals/[evalId]/runs/[runId]/page.tsx",
     "evals/findings/[issueId]/page.tsx",
     "evals/page.tsx",
+    "extractions/page.tsx",
     "harnesses/examples/page.tsx",
     "harnesses/page.tsx",
     "home/page.tsx",

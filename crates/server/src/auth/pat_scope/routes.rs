@@ -460,6 +460,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/evals/{eval_id}/runs/{run_id}/artifacts", Read),
     ("POST", "/v1/evals/{eval_id}/runs/{run_id}/dataset", Write),
     ("POST", "/v1/evals/{eval_id}/runs/{run_id}/share", Never),
+    // Inference can spend the organization's provider balance.
+    ("POST", "/v1/extractions", Write),
     ("GET", "/v1/files", Read),
     ("POST", "/v1/files", Write),
     ("DELETE", "/v1/files/{file_id}", Write),

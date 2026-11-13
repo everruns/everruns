@@ -21,6 +21,7 @@
 * [Email Sending](email.md) - Internal email delivery abstraction.
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.
+* [Native Extraction Services](extractions-service.md) - Typed evidence, provider boundaries, and organization-owned admission.
 * [Decisions Service](decisions-service.md) - Provider-bound decisions and separate utility authority.
 * [OpenRouter Decisions Proposal](openrouter-decisions-proposal.md) - Provider service and catalog design.
 * [Voice Channels on the Platform Server](voice.md) - How the server runs voice calls: voice channel type, call routes, delegated voice loop, leases and events.

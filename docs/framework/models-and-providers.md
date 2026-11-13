@@ -185,13 +185,13 @@ The set below is what ships today. The boundary is open, so a
 | Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
 | Google Gemini | `everruns-drivers` (`gemini`) | Gemini `generateContent`, Decisions API | chat, decisions | yes |
 | AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
-| OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One, OpenRouter Images | chat, decisions, images | yes, including decision models |
+| OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One, OpenRouter Images, native Extractions | chat, decisions, images, extractions | yes, including decision and extraction models |
 | TypeSafe | `everruns-drivers` (`typesafe`) | System One | decisions | yes, plus curated Jev profiles |
 | Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions, System One (Azure AI Foundry) | chat, decisions | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
 | Meta | `everruns-drivers` (`meta`) | OpenAI Responses-compatible, OpenAI-compatible Images | chat, images | yes |
 | Mistral AI | `everruns-drivers` (`mistral`) | Chat Completions; connection-selected stateless Responses | chat | yes |
-| Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
+| Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible, Workers AI Clairic | chat, extractions | Workers AI only |
 | Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
 | LLM Simulator | `everruns-llmsim` | none — in-process test double | chat, realtime (simulated) | no |
 
@@ -210,8 +210,8 @@ have a registered web OAuth client and callback for that flow.
 
 ### Beyond chat
 
-Most drivers implement chat only. Two capabilities go further, and both are
-OpenAI-only today:
+Some drivers offer services beyond chat. The table above is the supported
+service inventory; each service has its own input and output contract:
 
 **Embeddings.** The OpenAI driver powers embedding models for knowledge-base
 retrieval alongside its chat models.
@@ -230,6 +230,12 @@ needs the platform server; an embedded Framework process does not expose it.
 **Images.** OpenAI, Azure OpenAI, OpenRouter and Meta also serve image models
 (GPT Image 2.6, Muse Image) for the
 [image generation capability](/capabilities/image-generation/).
+
+**Extractions.** OpenRouter's native alpha API and direct Cloudflare Workers AI
+Clairic return typed values with optional confidence and source evidence. Native
+Rust hosts expose the [Framework Extractions service](/framework/extractions/);
+the Server and console use organization-owned provider credentials. This does
+not add native extraction support to WebAssembly builds.
 
 ### Interactive connect
 

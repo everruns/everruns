@@ -203,6 +203,17 @@ describe("Sidebar", () => {
     expect(screen.getByText("Side conversation")).toBeInTheDocument();
   });
 
+  it.each([true, false])("gates Extractions on model management permission: %s", (allowed) => {
+    mockUsePolicies.mockReturnValue({
+      data: { policies: { "durable.view": true } },
+      can: (policyId: string) => policyId === "model.manage" && allowed,
+    });
+    render(<Sidebar />);
+    const link = screen.queryByRole("link", { name: "Extractions" });
+    if (allowed) expect(link).toHaveAttribute("href", "/extractions");
+    else expect(link).not.toBeInTheDocument();
+  });
+
   it("keeps search row focused on search only", () => {
     render(<Sidebar />);
 

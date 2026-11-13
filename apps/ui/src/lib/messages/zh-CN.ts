@@ -1,3 +1,4 @@
+import { messages as extractions } from "./zh-CN/extractions";
 import { messages as rooms } from "./zh-CN/rooms";
 import { messages as chatLayout } from "./zh-CN/chat-layout";
 import { messages as slackSocketMode } from "./zh-CN/slack-socket-mode";
@@ -75,5 +76,6 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   channelsAndTriggers,
   slackSocketMode,
   chatLayout,
+  extractions,
   rooms,
 );

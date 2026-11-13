@@ -69,6 +69,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
             &[
                 ServiceKind::Chat,
                 ServiceKind::Decisions,
+                ServiceKind::Extractions,
                 ServiceKind::Images,
             ],
             true,
@@ -100,7 +101,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
         (
             DriverId::Cloudflare,
             "Cloudflare AI Gateway",
-            &[ServiceKind::Chat],
+            &[ServiceKind::Chat, ServiceKind::Extractions],
             false,
         ),
         (
@@ -162,14 +163,22 @@ fn each_driver_powers_the_services_the_page_claims() {
              offers_oauth={offers_oauth}"
         );
 
-        if services.contains(&ServiceKind::Decisions) {
+        for service in [ServiceKind::Decisions, ServiceKind::Extractions] {
+            if !services.contains(&service) {
+                continue;
+            }
+            let credentials = if id == DriverId::Cloudflare {
+                r#"{"api_key":"synthetic-key","account_id":"synthetic-account"}"#
+            } else {
+                "synthetic-key"
+            };
             let provider = registry
                 .create_provider(
                     &everruns_contracts::driver_registry::ProviderConfig::new(id.clone())
-                        .with_api_key("synthetic-key"),
+                        .with_api_key(credentials),
                 )
-                .expect("decision account can be built");
-            assert!(provider.supports_service(ServiceKind::Decisions));
+                .expect("declared account can be built");
+            assert!(provider.supports_service(service));
         }
 
         // A declared service needs a factory behind it, or the page promises

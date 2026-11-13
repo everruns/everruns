@@ -1,5 +1,7 @@
+import { messages as extractions } from "./en-GB/extractions";
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  ...extractions,
   "Private approval cards": "Private approval cards",
   "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.":
     "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.",

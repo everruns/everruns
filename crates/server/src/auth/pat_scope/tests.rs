@@ -102,6 +102,14 @@ fn monitoring_preserves_scoped_token_denial() {
 }
 
 #[test]
+fn extractions_requires_write_scope() {
+    let access = classify(&Method::POST, "/v1/extractions");
+    assert_eq!(access, Some(RouteAccess::Write));
+    assert!(!PatScope::Read.permits(access));
+    assert!(PatScope::Full.permits(access));
+}
+
+#[test]
 fn decision_4_routes_are_never() {
     let never = [
         ("GET", "/v1/users/me/export"),

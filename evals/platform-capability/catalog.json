@@ -7347,6 +7347,7 @@
           "enum": [
             "chat",
             "decisions",
+            "extractions",
             "embeddings",
             "realtime",
             "images",
@@ -17440,6 +17441,7 @@
           "enum": [
             "chat",
             "decisions",
+            "extractions",
             "embeddings",
             "realtime",
             "images",
@@ -28070,6 +28072,7 @@
           "enum": [
             "chat",
             "decisions",
+            "extractions",
             "embeddings",
             "realtime",
             "images",

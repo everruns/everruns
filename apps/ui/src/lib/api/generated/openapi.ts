@@ -4048,6 +4048,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/extractions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Extract typed fields */
+    post: operations["extract_typed_fields"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/files": {
     parameters: {
       query?: never;
@@ -12147,6 +12164,11 @@ export interface components {
       results: components["schemas"]["BulkUpdateEvalResultScoresItem"][];
     };
     /**
+     * @description Calendar resolution for an estimate or forecast with date bounds.
+     * @enum {string}
+     */
+    CalendarStep: "month" | "year";
+    /**
      * @description Status of the cancel operation
      * @enum {string}
      */
@@ -17582,6 +17604,299 @@ export interface components {
      */
     ExternalScoreStatus: "passed" | "failed" | "errored";
     /**
+     * @description A configured org catalog model and its extraction input. Provider/model selection
+     *     inside `input` is rejected; the catalog identity is authoritative.
+     */
+    ExtractRequest: {
+      /** @description Source content and typed fields; nested provider and model selectors must be absent. */
+      input: components["schemas"]["ExtractionRequest"];
+      /** @description Enabled extraction-capable model ID from the current organization's catalog. */
+      model_id: string;
+    };
+    /**
+     * @description One typed answer with optional provider-reported evidence and uncertainty.
+     *     Missing probabilities remain unknown; a null value is not replaced by its guess.
+     */
+    ExtractionAnswer: {
+      /**
+       * Format: double
+       * @description Optional provider-reported answer confidence, within 0..=1; absence means unknown, not
+       *     certainty.
+       */
+      confidence?: number | null;
+      /**
+       * @description Optional per-list-item confidence values within 0..=1, aligned with value items or a
+       *     retained guess; null entries are unknown.
+       */
+      confidences?: (number | null)[] | null;
+      /**
+       * @description Optional typed candidate retained even when value is null; not an automatic replacement for
+       *     value.
+       */
+      guess?: unknown;
+      /**
+       * @description Optional distribution mean for an estimate, or horizon-aligned means for a forecast, using
+       *     the field value type.
+       */
+      mean?: unknown;
+      /**
+       * @description Optional distribution median for an estimate, or horizon-aligned medians for a forecast,
+       *     using the field value type.
+       */
+      median?: unknown;
+      /**
+       * @description Optional tenth percentile for an estimate, or horizon-aligned percentiles for a forecast,
+       *     using the field value type.
+       */
+      p10?: unknown;
+      /**
+       * @description Optional ninetieth percentile for an estimate, or horizon-aligned percentiles for a
+       *     forecast, using the field value type.
+       */
+      p90?: unknown;
+      /**
+       * Format: double
+       * @description Optional provider-reported probability above the requested upper bound, within 0..=1.
+       */
+      p_above?: number | null;
+      /**
+       * Format: double
+       * @description Optional provider-reported probability below the requested lower bound, within 0..=1.
+       */
+      p_below?: number | null;
+      /**
+       * Format: double
+       * @description Optional provider-reported probability of no answer, within 0..=1.
+       */
+      p_null?: number | null;
+      /** @description Optional provider-specific quantile data for an estimate or forecast, preserved as JSON. */
+      quantiles?: unknown;
+      source?: components["schemas"]["ExtractionSource"] | null;
+      /**
+       * @description Optional half-open [start, end] evidence range in Unicode code points of returned state_text
+       *     or the original state.
+       */
+      span?: number[] | null;
+      /**
+       * @description Optional per-list-item evidence ranges, aligned with value items or a retained guess; null
+       *     entries indicate missing evidence.
+       */
+      spans?: (number[] | null)[] | null;
+      /**
+       * Format: double
+       * @description Optional provider-reported spelling confidence, within 0..=1.
+       */
+      spell_confidence?: number | null;
+      /**
+       * @description Optional provider-specific distribution step data for an estimate or forecast, preserved as
+       *     JSON.
+       */
+      steps?: unknown;
+      /** @description Output shape matching the requested field type. */
+      type: components["schemas"]["ExtractionType"];
+      /** @description Provider-reported unit of the extracted value. */
+      unit?: string | null;
+      /**
+       * @description Typed extracted value, or null when absent or suppressed. Forecast arrays match the
+       *     requested horizon.
+       */
+      value: unknown;
+    };
+    /** @description Inline asset; URLs are deliberately not fetched by the runtime. */
+    ExtractionAsset: {
+      /** @description Nonempty standard base64 content, without a data URL prefix. */
+      data_base64: string;
+      /** @description Encoding of the supplied bytes; support depends on the selected provider. */
+      format: components["schemas"]["ExtractionAssetFormat"];
+      type?: components["schemas"]["ExtractionAssetType"] | null;
+    };
+    /**
+     * @description Supported inline asset encoding; provider support may be narrower.
+     * @enum {string}
+     */
+    ExtractionAssetFormat: "png" | "jpg" | "jpeg" | "webp" | "pdf";
+    /**
+     * @description Media category of an inline extraction asset; must agree with its format.
+     * @enum {string}
+     */
+    ExtractionAssetType: "image" | "document";
+    /** @description A numeric or calendar bound for an estimate. */
+    ExtractionBound: number | string;
+    /**
+     * @description A typed field specification. Constructors select a shape; validation rejects
+     *     options which do not apply to it before any provider call.
+     */
+    ExtractionField: {
+      /**
+       * Format: int32
+       * @description Requested decimal precision, at most six, for a number, duration or list of numbers.
+       */
+      decimals?: number | null;
+      /**
+       * Format: int32
+       * @description Required number of forecast values, from 1 through 64; invalid for other field types.
+       */
+      horizon?: number | null;
+      /** @description Field-specific extraction guidance, which may reference named assets. */
+      instructions?: string | null;
+      /** @description Request integer precision for a number, duration or list of numbers. */
+      integer?: boolean | null;
+      interval?: components["schemas"]["ForecastInterval"] | null;
+      items?: components["schemas"]["ExtractionItemType"] | null;
+      max?: components["schemas"]["ExtractionBound"] | null;
+      min?: components["schemas"]["ExtractionBound"] | null;
+      /**
+       * Format: double
+       * @description Requested null-suppression threshold, finite and within 0..=1. Providers may impose stricter
+       *     limits.
+       */
+      null_threshold?: number | null;
+      scale?: components["schemas"]["ExtractionScale"] | null;
+      step?: components["schemas"]["ExtractionStep"] | null;
+      /** @description Requested output shape; determines which field options are valid. */
+      type: components["schemas"]["ExtractionType"];
+      /**
+       * @description Requested value unit. Duration units are seconds, minutes, hours, days, weeks, months or
+       *     years.
+       */
+      unit?: string | null;
+    };
+    /**
+     * @description A list element type.
+     * @enum {string}
+     */
+    ExtractionItemType: "text" | "number" | "date";
+    /** @description Validated extraction results, keyed by the requested field names. */
+    ExtractionOutcome: {
+      /** @description Exactly one typed answer per requested field, keyed by the original field names. */
+      answers: {
+        [key: string]: components["schemas"]["ExtractionAnswer"];
+      };
+      /** @description Optional provider-assigned extraction result identifier. */
+      id?: string | null;
+      /** @description Model identifier reported for the extraction. */
+      model: string;
+      /** @description Optional provider identifier associated with the result. */
+      provider?: string | null;
+      /**
+       * @description Optional returned source text used for evidence offsets; when absent, offsets refer to the
+       *     original state.
+       */
+      state_text?: string | null;
+      /**
+       * @description Whether the provider reports that it did not read the whole input; defaults to false if
+       *     omitted.
+       */
+      truncated?: boolean;
+      /**
+       * @description Provider usage details; defaults to zero token counts and absent optional metrics when
+       *     omitted.
+       */
+      usage?: components["schemas"]["ExtractionUsage"];
+    };
+    /** @description Named typed fields to extract from text or inline assets, with optional provider routing. */
+    ExtractionRequest: {
+      /**
+       * @description Defensive runtime ceiling: 32 assets and 32 MiB total encoded data.
+       *     Individual providers and the HTTP API may impose lower limits.
+       */
+      assets?: {
+        [key: string]: components["schemas"]["ExtractionAsset"];
+      };
+      /** @description Nonempty map of field names to typed extraction specifications; names must not be blank. */
+      fields: {
+        [key: string]: components["schemas"]["ExtractionField"];
+      };
+      /**
+       * @description Optional nonempty provider model identifier; the Server selects its model outside this
+       *     input.
+       */
+      model?: string | null;
+      /** @description Optional explicit provider account for Framework routing; the Server rejects this override. */
+      provider?: string | null;
+      /** @description Provider-specific options, without routing credentials or headers. */
+      provider_options?: {
+        [key: string]: unknown;
+      };
+      /** @description Optional ISO calendar date (YYYY-MM-DD) for interpreting relative dates. */
+      reference_date?: string | null;
+      /** @description Optional caller-supplied session identifier forwarded by supporting providers. */
+      session_id?: string | null;
+      /** @description Source text and extraction context. May be empty when inline assets are supplied. */
+      state?: string;
+      /** @description Optional trace metadata forwarded by supporting providers. */
+      trace?: unknown;
+      /** @description Optional caller-supplied user identifier forwarded by supporting providers. */
+      user?: string | null;
+    };
+    /**
+     * @description Scale requested for an estimate or forecast distribution.
+     * @enum {string}
+     */
+    ExtractionScale: "linear" | "log";
+    /**
+     * @description Which input supplied an answer. Text evidence indexes the state string.
+     * @enum {string}
+     */
+    ExtractionSource: "text" | "image" | "document";
+    /** @description The resolution of an estimate. */
+    ExtractionStep: number | components["schemas"]["CalendarStep"];
+    /**
+     * @description The output shape requested for one field.
+     * @enum {string}
+     */
+    ExtractionType:
+      | "text"
+      | "number"
+      | "date"
+      | "time"
+      | "datetime"
+      | "duration"
+      | "list"
+      | "estimate"
+      | "forecast";
+    /**
+     * @description Provider-reported token usage, cost and extraction work.
+     *     Optional counters remain absent when the provider does not report them.
+     */
+    ExtractionUsage: {
+      /**
+       * Format: double
+       * @description Optional finite, nonnegative provider-reported cost; no cost is inferred when absent.
+       */
+      cost?: number | null;
+      /**
+       * Format: int64
+       * @description Optional token count attributed to image inputs.
+       */
+      image_tokens?: number | null;
+      /**
+       * Format: int64
+       * @description Provider-reported input token count; defaults to zero if omitted.
+       */
+      input_tokens?: number;
+      /**
+       * Format: int64
+       * @description Provider-reported output token count; defaults to zero if omitted.
+       */
+      output_tokens?: number;
+      /**
+       * Format: int64
+       * @description Optional number of extraction passes reported by the provider.
+       */
+      passes?: number | null;
+      /**
+       * Format: int64
+       * @description Optional token count attributed to field specifications.
+       */
+      schema_tokens?: number | null;
+      /**
+       * Format: int64
+       * @description Optional token count attributed to input state text.
+       */
+      state_tokens?: number | null;
+    };
+    /**
      * @description One failed reporting-outbox row, surfaced in
      *     `ReportingOutboxDiagnostics.failed_rows` so operators can triage
      *     projector failures without dropping to SQL.
@@ -18078,6 +18393,11 @@ export interface components {
        */
       passed: number;
     };
+    /**
+     * @description Spacing between successive forecast values.
+     * @enum {string}
+     */
+    ForecastInterval: "step" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
     /**
      * @description Request to fork a session. Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
@@ -30256,7 +30576,14 @@ export interface components {
      *     embedding drivers over shared authentication.
      * @enum {string}
      */
-    ServiceKind: "chat" | "decisions" | "embeddings" | "realtime" | "images" | "rerank";
+    ServiceKind:
+      | "chat"
+      | "decisions"
+      | "extractions"
+      | "embeddings"
+      | "realtime"
+      | "images"
+      | "rerank";
     /**
      * @description Session - instance of agentic loop execution.
      *     A session represents a single conversation with an agent.
@@ -47971,6 +48298,72 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["EvalSampleImportReport"];
         };
+      };
+    };
+  };
+  extract_typed_fields: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ExtractRequest"];
+      };
+    };
+    responses: {
+      /** @description Typed extraction values, evidence and usage */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExtractionOutcome"];
+        };
+      };
+      /** @description Invalid or unsupported extraction request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Model management permission required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Model not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request body exceeds 8 MiB */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Extraction provider failed */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Extraction timed out */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

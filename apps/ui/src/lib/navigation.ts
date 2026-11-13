@@ -131,6 +131,13 @@ export const defaultOperationalNavigation: NavigationItem[] = [
 ];
 
 export const defaultBuildingNavigation: NavigationItem[] = [
+  {
+    name: "Extractions",
+    href: "/extractions",
+    icon: ReportIcon,
+    policy: "model.manage",
+    keywords: ["extract", "structured data", "evidence"],
+  },
   // Overview (route /home) leads Building: what needs a person across the org,
   // with the count of waiting items on its sidebar entry (knowledge/ui/org-home.md).
   {

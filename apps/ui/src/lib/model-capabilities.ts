@@ -3,6 +3,7 @@ type ModelCapabilities = Pick<Model, "capabilities" | "service">;
 const SERVICES: ModelService[] = [
   "chat",
   "decisions",
+  "extractions",
   "embeddings",
   "realtime",
   "images",
@@ -14,7 +15,12 @@ export function modelService(model: ModelCapabilities): ModelService {
   return SERVICES.find((service) => service !== "chat" && tags.includes(service)) ?? "chat";
 }
 export function matchesModelService(model: ModelCapabilities, service: ModelService): boolean {
-  return modelService(model) === service;
+  // Extraction is additive: one provider model can also remain a chat model.
+  return (
+    modelService(model) === service ||
+    (service === "extractions" &&
+      model.capabilities.some((tag) => tag.toLowerCase() === "extractions"))
+  );
 }
 export function isEmbeddingModel(model: ModelCapabilities): boolean {
   return matchesModelService(model, "embeddings");

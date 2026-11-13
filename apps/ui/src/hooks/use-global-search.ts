@@ -190,6 +190,7 @@ export function useGlobalSearch(query: string) {
       featureFlags,
       hasRole,
       process.env.NODE_ENV === "development",
+      canNavigate,
     );
     const settings = visibleNavigationSections(
       settingsNavigationSections,

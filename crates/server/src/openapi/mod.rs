@@ -322,6 +322,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::providers::get_provider,
         api::providers::update_provider,
         api::providers::delete_provider,
+        api::extractions::extract_typed_fields,
         api::models::create_model,
         api::models::list_provider_models,
         api::models::list_all_models,

@@ -33,7 +33,9 @@ pub fn provider(
 ) -> Provider {
     let provider = Provider::new(id, OpenRouterChatDriver::new());
     #[cfg(not(target_arch = "wasm32"))]
-    let provider = provider.with_decisions(crate::systemone::OpenRouterDecisionDriver::default());
+    let provider = provider
+        .with_decisions(crate::systemone::OpenRouterDecisionDriver::default())
+        .with_extractions(crate::extractions::openrouter::OpenRouterExtractionDriver::default());
     provider
         .base_url("https://openrouter.ai/api/v1")
         .auth(BearerAuth::new(api_key))
@@ -311,6 +313,8 @@ pub fn descriptor() -> DriverDescriptor {
             everruns_contracts::ServiceKind::Chat,
             #[cfg(not(target_arch = "wasm32"))]
             everruns_contracts::ServiceKind::Decisions,
+            #[cfg(not(target_arch = "wasm32"))]
+            everruns_contracts::ServiceKind::Extractions,
             // `/api/v1/images` (GPT Image, Muse Image, Gemini image models).
             #[cfg(not(target_arch = "wasm32"))]
             everruns_contracts::ServiceKind::Images,
@@ -400,6 +404,7 @@ mod tests {
             vec![
                 ServiceKind::Chat,
                 ServiceKind::Decisions,
+                ServiceKind::Extractions,
                 ServiceKind::Images,
             ]
         );

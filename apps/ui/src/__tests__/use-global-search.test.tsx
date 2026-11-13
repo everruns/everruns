@@ -347,6 +347,17 @@ describe("useGlobalSearch", () => {
     ).toBe(false);
   });
 
+  it("offers Extractions only to people who can manage models", () => {
+    const allowed = renderHook(() => useGlobalSearch("extractions"));
+    expect(allowed.result.current).toContainEqual(
+      expect.objectContaining({ category: "navigation", href: "/extractions" }),
+    );
+
+    mockDurableAllowed.value = false;
+    const denied = renderHook(() => useGlobalSearch("extractions"));
+    expect(denied.result.current.some((item) => item.href === "/extractions")).toBe(false);
+  });
+
   it("does not return the retired Apps route", () => {
     const { result } = renderHook(() => useGlobalSearch("apps"));
 

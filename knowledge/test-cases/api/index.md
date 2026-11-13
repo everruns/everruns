@@ -14,3 +14,5 @@
 * [Session storage](session_storage/) - Secret lifecycle, metadata redaction, validation, and isolation.
 * [Sessions](sessions/) - Manual API cases.
 * [Subagents](subagents/) - Manual API cases.
+
+* [Extractions](extractions/) - Typed field requests, tenant authorization and native provider boundaries.

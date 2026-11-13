@@ -1,3 +1,4 @@
+import { messages as extractions } from "./messages/uk/extractions";
 import { messages as rooms } from "./messages/uk/rooms";
 import { messages as chatLayout } from "./messages/uk/chat-layout";
 import { messages as slackSocketMode } from "./messages/uk/slack-socket-mode";
@@ -80,6 +81,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   channelsAndTriggers,
   slackSocketMode,
   chatLayout,
+  extractions,
   rooms,
 );
 
