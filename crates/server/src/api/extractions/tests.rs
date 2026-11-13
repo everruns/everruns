@@ -47,7 +47,7 @@ async fn member_and_read_only_owner_cannot_spend_provider_credentials() {
             feature_flags: crate::domains::common::all_feature_flags_for_test(),
             read_only,
         };
-        let error = extract(org, State(state()), Json(request()))
+        let error = extract_typed_fields(org, State(state()), Json(request()))
             .await
             .unwrap_err();
         assert_eq!(error.0, axum::http::StatusCode::FORBIDDEN);
@@ -100,7 +100,9 @@ async fn another_organizations_model_is_not_visible_to_extraction() {
     };
     let mut input = request();
     input.model_id = model.id.to_string();
-    let error = extract(org, State(state), Json(input)).await.unwrap_err();
+    let error = extract_typed_fields(org, State(state), Json(input))
+        .await
+        .unwrap_err();
     assert_eq!(error.0, axum::http::StatusCode::NOT_FOUND);
 }
 
@@ -198,7 +200,7 @@ async fn configured_org_key_and_model_reach_native_provider_without_chat() {
         feature_flags: crate::domains::common::all_feature_flags_for_test(),
         read_only: false,
     };
-    let result = extract(
+    let result = extract_typed_fields(
         org,
         State(state),
         Json(ExtractRequest {
@@ -291,7 +293,9 @@ async fn disabled_inactive_managed_and_missing_key_accounts_fail_before_dispatch
         };
         let mut input = request();
         input.model_id = model.id.to_string();
-        let (status, Json(error)) = extract(org, State(state), Json(input)).await.unwrap_err();
+        let (status, Json(error)) = extract_typed_fields(org, State(state), Json(input))
+            .await
+            .unwrap_err();
         assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
         assert!(serde_json::to_string(&error).unwrap().contains(expected));
     }
