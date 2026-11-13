@@ -520,3 +520,78 @@ async fn provider_identity_prefixes_start_and_stream_errors() {
     };
     assert_eq!(error.message, "provider 'customer-gateway': stream failed");
 }
+
+struct ExtractionCatalog {
+    fail: bool,
+}
+#[async_trait]
+impl crate::extraction_driver::ExtractionDriver for ExtractionCatalog {
+    fn id(&self) -> &str {
+        "test-extractions"
+    }
+    fn capabilities(&self) -> crate::extraction_driver::ExtractionDriverCapabilities {
+        crate::extraction_driver::ExtractionDriverCapabilities::all()
+    }
+    async fn extract(
+        &self,
+        _: &ProviderEndpoint,
+        _: crate::extractions::ExtractionRequest,
+    ) -> Result<crate::extractions::ExtractionOutcome> {
+        unreachable!("catalog fixture must not execute")
+    }
+    async fn list_models(
+        &self,
+        _: &ProviderEndpoint,
+    ) -> Result<Option<Vec<crate::driver_registry::DiscoveredModel>>> {
+        if self.fail {
+            return Err(crate::AgentLoopError::llm("catalog unavailable"));
+        }
+        Ok(Some(
+            ["gpt-5.6-terra", "extraction-only"]
+                .into_iter()
+                .map(|id| crate::driver_registry::DiscoveredModel {
+                    model_id: id.into(),
+                    display_name: Some("Extraction catalog name".into()),
+                    created_at: None,
+                    owned_by: None,
+                    capabilities: vec!["extractions".into()],
+                    discovered_profile: Some(crate::model::ModelProfile::minimal(id)),
+                })
+                .collect(),
+        ))
+    }
+}
+
+#[tokio::test]
+async fn extraction_catalog_merges_service_tags_without_duplicate_model_identities() {
+    let provider =
+        Provider::new("account", Catalog).with_extractions(ExtractionCatalog { fail: false });
+    assert!(provider.supports_service(crate::ServiceKind::Extractions));
+    let models = provider.list_models().await.unwrap().unwrap();
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0].model_id, "gpt-5.6-terra");
+    assert_eq!(models[0].capabilities, ["chat", "extractions"]);
+    assert_eq!(models[1].capabilities, ["extractions"]);
+}
+
+#[tokio::test]
+async fn extraction_catalog_failure_preserves_available_chat_models() {
+    let provider =
+        Provider::new("account", Catalog).with_extractions(ExtractionCatalog { fail: true });
+    let models = provider.list_models().await.unwrap().unwrap();
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].capabilities, ["chat"]);
+}
+
+#[tokio::test]
+async fn bound_extraction_provider_rejects_another_account_before_dispatch() {
+    let provider =
+        Provider::new("account", Noop).with_extractions(ExtractionCatalog { fail: false });
+    let request = crate::extractions::ExtractionRequest::new("Invoice")
+        .field("number", crate::extractions::ExtractionField::text())
+        .on(crate::ModelSpec::on("other-account", "model"));
+    assert!(matches!(
+        provider.extract(request).await,
+        Err(crate::AgentLoopError::Configuration(_))
+    ));
+}

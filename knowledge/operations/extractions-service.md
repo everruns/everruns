@@ -39,8 +39,8 @@ reject read-only callers and host-managed providers until hosted extraction
 accounting exists. Do not borrow deployment utility credentials for tenant calls.
 The explicit deployment-owned utility is opt-in by extraction model configuration.
 
-Bound input assets before decoding and responses before parsing. Disable redirects
-and suppress provider response bodies in errors: they may repeat source documents
+Bound input assets before decoding and responses before parsing. Disable redirects,
+pin connections to public DNS answers, and suppress provider response bodies in errors: they may repeat source documents
 or credentials. No remote asset URL fetching occurs in this API.
 
 ## Markkit composition

@@ -15705,6 +15705,61 @@
         }
       }
     },
+    "/v1/extractions": {
+      "post": {
+        "tags": [
+          "extractions"
+        ],
+        "summary": "Extract typed fields",
+        "operationId": "extract_typed_fields",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Typed extraction values, evidence and usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractionOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unsupported extraction request"
+          },
+          "403": {
+            "description": "Model management permission required"
+          },
+          "404": {
+            "description": "Model not found"
+          },
+          "413": {
+            "description": "Request body exceeds 8 MiB"
+          },
+          "502": {
+            "description": "Extraction provider failed"
+          },
+          "504": {
+            "description": "Extraction timed out"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires an organization-owned provider and an enabled extraction model",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/files": {
       "get": {
         "tags": [
@@ -41934,6 +41989,13 @@
           }
         }
       },
+      "CalendarStep": {
+        "type": "string",
+        "enum": [
+          "month",
+          "year"
+        ]
+      },
       "CancelStatus": {
         "type": "string",
         "description": "Status of the cancel operation",
@@ -51534,6 +51596,524 @@
           "errored"
         ]
       },
+      "ExtractRequest": {
+        "type": "object",
+        "description": "A configured org catalog model and its extraction input. Provider/model selection\ninside `input` is rejected; the catalog identity is authoritative.",
+        "required": [
+          "model_id",
+          "input"
+        ],
+        "properties": {
+          "input": {
+            "$ref": "#/components/schemas/ExtractionRequest"
+          },
+          "model_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExtractionAnswer": {
+        "type": "object",
+        "required": [
+          "type",
+          "value"
+        ],
+        "properties": {
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "confidences": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "format": "double"
+            }
+          },
+          "guess": {},
+          "mean": {},
+          "median": {},
+          "p10": {},
+          "p90": {},
+          "p_above": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "p_below": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "p_null": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "quantiles": {},
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "span": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "spans": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "spell_confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "steps": {},
+          "type": {
+            "$ref": "#/components/schemas/ExtractionType"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {}
+        }
+      },
+      "ExtractionAsset": {
+        "type": "object",
+        "description": "Inline asset; URLs are deliberately not fetched by the runtime.",
+        "required": [
+          "format",
+          "data_base64"
+        ],
+        "properties": {
+          "data_base64": {
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ExtractionAssetFormat"
+          },
+          "type": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionAssetType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExtractionAssetFormat": {
+        "type": "string",
+        "enum": [
+          "png",
+          "jpg",
+          "jpeg",
+          "webp",
+          "pdf"
+        ]
+      },
+      "ExtractionAssetType": {
+        "type": "string",
+        "enum": [
+          "image",
+          "document"
+        ]
+      },
+      "ExtractionBound": {
+        "oneOf": [
+          {
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "type": "string"
+          }
+        ],
+        "description": "A numeric or calendar bound for an estimate."
+      },
+      "ExtractionField": {
+        "type": "object",
+        "description": "A typed field specification. Constructors select a shape; validation rejects\noptions which do not apply to it before any provider call.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "decimals": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "horizon": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "integer": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "interval": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ForecastInterval"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionItemType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionBound"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionBound"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "null_threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "scale": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionScale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionStep"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "$ref": "#/components/schemas/ExtractionType"
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExtractionItemType": {
+        "type": "string",
+        "description": "A list element type.",
+        "enum": [
+          "text",
+          "number",
+          "date"
+        ]
+      },
+      "ExtractionOutcome": {
+        "type": "object",
+        "required": [
+          "model",
+          "answers"
+        ],
+        "properties": {
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExtractionAnswer"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state_text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ExtractionUsage"
+          }
+        }
+      },
+      "ExtractionRequest": {
+        "type": "object",
+        "required": [
+          "fields"
+        ],
+        "properties": {
+          "assets": {
+            "type": "object",
+            "description": "Defensive runtime ceiling: 32 assets and 32 MiB total encoded data.\nIndividual providers and the HTTP API may impose lower limits.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExtractionAsset"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExtractionField"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_options": {
+            "type": "object",
+            "description": "Provider-specific options, without routing credentials or headers.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "reference_date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "trace": {},
+          "user": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExtractionScale": {
+        "type": "string",
+        "enum": [
+          "linear",
+          "log"
+        ]
+      },
+      "ExtractionSource": {
+        "type": "string",
+        "description": "Which input supplied an answer. Text evidence indexes the state string.",
+        "enum": [
+          "text",
+          "image",
+          "document"
+        ]
+      },
+      "ExtractionStep": {
+        "oneOf": [
+          {
+            "type": "number",
+            "format": "double"
+          },
+          {
+            "$ref": "#/components/schemas/CalendarStep"
+          }
+        ],
+        "description": "The resolution of an estimate."
+      },
+      "ExtractionType": {
+        "type": "string",
+        "description": "The output shape requested for one field.",
+        "enum": [
+          "text",
+          "number",
+          "date",
+          "time",
+          "datetime",
+          "duration",
+          "list",
+          "estimate",
+          "forecast"
+        ]
+      },
+      "ExtractionUsage": {
+        "type": "object",
+        "properties": {
+          "cost": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "image_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "passes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "schema_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "state_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "FailedReportingOutboxRow": {
         "type": "object",
         "description": "One failed reporting-outbox row, surfaced in\n`ReportingOutboxDiagnostics.failed_rows` so operators can triage\nprojector failures without dropping to SQL.",
@@ -52481,6 +53061,19 @@
             "minimum": 0
           }
         }
+      },
+      "ForecastInterval": {
+        "type": "string",
+        "enum": [
+          "step",
+          "minute",
+          "hour",
+          "day",
+          "week",
+          "month",
+          "quarter",
+          "year"
+        ]
       },
       "ForkSessionRequest": {
         "type": "object",
@@ -74469,6 +75062,7 @@
         "enum": [
           "chat",
           "decisions",
+          "extractions",
           "embeddings",
           "realtime",
           "images",
@@ -88203,6 +88797,10 @@
       "x-displayName": "Models"
     },
     {
+      "name": "extractions",
+      "x-displayName": "Extractions"
+    },
+    {
       "name": "mcp-servers",
       "description": "MCP Server management endpoints",
       "x-displayName": "MCP servers"
@@ -88379,6 +88977,7 @@
       "tags": [
         "providers",
         "models",
+        "extractions",
         "mcp-servers",
         "mcp_servers",
         "web-search",

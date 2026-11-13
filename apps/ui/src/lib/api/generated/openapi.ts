@@ -4048,6 +4048,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/extractions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Extract typed fields */
+    post: operations["extract_typed_fields"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/files": {
     parameters: {
       query?: never;
@@ -12146,6 +12163,8 @@ export interface components {
       /** @description Per-result score updates applied together. */
       results: components["schemas"]["BulkUpdateEvalResultScoresItem"][];
     };
+    /** @enum {string} */
+    CalendarStep: "month" | "year";
     /**
      * @description Status of the cancel operation
      * @enum {string}
@@ -17582,6 +17601,152 @@ export interface components {
      */
     ExternalScoreStatus: "passed" | "failed" | "errored";
     /**
+     * @description A configured org catalog model and its extraction input. Provider/model selection
+     *     inside `input` is rejected; the catalog identity is authoritative.
+     */
+    ExtractRequest: {
+      input: components["schemas"]["ExtractionRequest"];
+      model_id: string;
+    };
+    ExtractionAnswer: {
+      /** Format: double */
+      confidence?: number | null;
+      confidences?: (number | null)[] | null;
+      guess?: unknown;
+      mean?: unknown;
+      median?: unknown;
+      p10?: unknown;
+      p90?: unknown;
+      /** Format: double */
+      p_above?: number | null;
+      /** Format: double */
+      p_below?: number | null;
+      /** Format: double */
+      p_null?: number | null;
+      quantiles?: unknown;
+      source?: components["schemas"]["ExtractionSource"] | null;
+      span?: number[] | null;
+      spans?: (number[] | null)[] | null;
+      /** Format: double */
+      spell_confidence?: number | null;
+      steps?: unknown;
+      type: components["schemas"]["ExtractionType"];
+      unit?: string | null;
+      value: unknown;
+    };
+    /** @description Inline asset; URLs are deliberately not fetched by the runtime. */
+    ExtractionAsset: {
+      data_base64: string;
+      format: components["schemas"]["ExtractionAssetFormat"];
+      type?: components["schemas"]["ExtractionAssetType"] | null;
+    };
+    /** @enum {string} */
+    ExtractionAssetFormat: "png" | "jpg" | "jpeg" | "webp" | "pdf";
+    /** @enum {string} */
+    ExtractionAssetType: "image" | "document";
+    /** @description A numeric or calendar bound for an estimate. */
+    ExtractionBound: number | string;
+    /**
+     * @description A typed field specification. Constructors select a shape; validation rejects
+     *     options which do not apply to it before any provider call.
+     */
+    ExtractionField: {
+      /** Format: int32 */
+      decimals?: number | null;
+      /** Format: int32 */
+      horizon?: number | null;
+      instructions?: string | null;
+      integer?: boolean | null;
+      interval?: components["schemas"]["ForecastInterval"] | null;
+      items?: components["schemas"]["ExtractionItemType"] | null;
+      max?: components["schemas"]["ExtractionBound"] | null;
+      min?: components["schemas"]["ExtractionBound"] | null;
+      /** Format: double */
+      null_threshold?: number | null;
+      scale?: components["schemas"]["ExtractionScale"] | null;
+      step?: components["schemas"]["ExtractionStep"] | null;
+      type: components["schemas"]["ExtractionType"];
+      unit?: string | null;
+    };
+    /**
+     * @description A list element type.
+     * @enum {string}
+     */
+    ExtractionItemType: "text" | "number" | "date";
+    ExtractionOutcome: {
+      answers: {
+        [key: string]: components["schemas"]["ExtractionAnswer"];
+      };
+      id?: string | null;
+      model: string;
+      provider?: string | null;
+      state_text?: string | null;
+      truncated?: boolean;
+      usage?: components["schemas"]["ExtractionUsage"];
+    };
+    ExtractionRequest: {
+      /**
+       * @description Defensive runtime ceiling: 32 assets and 32 MiB total encoded data.
+       *     Individual providers and the HTTP API may impose lower limits.
+       */
+      assets?: {
+        [key: string]: components["schemas"]["ExtractionAsset"];
+      };
+      fields: {
+        [key: string]: components["schemas"]["ExtractionField"];
+      };
+      model?: string | null;
+      provider?: string | null;
+      /** @description Provider-specific options, without routing credentials or headers. */
+      provider_options?: {
+        [key: string]: unknown;
+      };
+      reference_date?: string | null;
+      session_id?: string | null;
+      state?: string;
+      trace?: unknown;
+      user?: string | null;
+    };
+    /** @enum {string} */
+    ExtractionScale: "linear" | "log";
+    /**
+     * @description Which input supplied an answer. Text evidence indexes the state string.
+     * @enum {string}
+     */
+    ExtractionSource: "text" | "image" | "document";
+    /** @description The resolution of an estimate. */
+    ExtractionStep: number | components["schemas"]["CalendarStep"];
+    /**
+     * @description The output shape requested for one field.
+     * @enum {string}
+     */
+    ExtractionType:
+      | "text"
+      | "number"
+      | "date"
+      | "time"
+      | "datetime"
+      | "duration"
+      | "list"
+      | "estimate"
+      | "forecast";
+    ExtractionUsage: {
+      /** Format: double */
+      cost?: number | null;
+      /** Format: int64 */
+      image_tokens?: number | null;
+      /** Format: int64 */
+      input_tokens?: number;
+      /** Format: int64 */
+      output_tokens?: number;
+      /** Format: int64 */
+      passes?: number | null;
+      /** Format: int64 */
+      schema_tokens?: number | null;
+      /** Format: int64 */
+      state_tokens?: number | null;
+    };
+    /**
      * @description One failed reporting-outbox row, surfaced in
      *     `ReportingOutboxDiagnostics.failed_rows` so operators can triage
      *     projector failures without dropping to SQL.
@@ -18078,6 +18243,8 @@ export interface components {
        */
       passed: number;
     };
+    /** @enum {string} */
+    ForecastInterval: "step" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
     /**
      * @description Request to fork a session. Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
@@ -30256,7 +30423,14 @@ export interface components {
      *     embedding drivers over shared authentication.
      * @enum {string}
      */
-    ServiceKind: "chat" | "decisions" | "embeddings" | "realtime" | "images" | "rerank";
+    ServiceKind:
+      | "chat"
+      | "decisions"
+      | "extractions"
+      | "embeddings"
+      | "realtime"
+      | "images"
+      | "rerank";
     /**
      * @description Session - instance of agentic loop execution.
      *     A session represents a single conversation with an agent.
@@ -47971,6 +48145,72 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["EvalSampleImportReport"];
         };
+      };
+    };
+  };
+  extract_typed_fields: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ExtractRequest"];
+      };
+    };
+    responses: {
+      /** @description Typed extraction values, evidence and usage */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ExtractionOutcome"];
+        };
+      };
+      /** @description Invalid or unsupported extraction request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Model management permission required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Model not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request body exceeds 8 MiB */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Extraction provider failed */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Extraction timed out */
+      504: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

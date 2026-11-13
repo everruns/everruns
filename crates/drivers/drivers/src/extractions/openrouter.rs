@@ -24,7 +24,12 @@ fn route(endpoint: &ProviderEndpoint) -> Result<String> {
         .ok_or_else(|| invalid("Extraction endpoint is required"))?;
     let mut url = reqwest::Url::parse(base).map_err(|_| invalid("Invalid extraction endpoint"))?;
     let path = url.path().trim_end_matches('/');
-    let prefix = path.strip_suffix("/v1").unwrap_or(path);
+    let prefix = path
+        .strip_suffix("/alpha/extractions")
+        .or_else(|| path.strip_suffix("/v1/responses"))
+        .or_else(|| path.strip_suffix("/v1/chat/completions"))
+        .or_else(|| path.strip_suffix("/v1"))
+        .unwrap_or(path);
     url.set_path(&format!("{prefix}/alpha/extractions"));
     url.set_query(None);
     url.set_fragment(None);
@@ -93,19 +98,25 @@ impl ExtractionDriver for OpenRouterExtractionDriver {
         &self,
         endpoint: &ProviderEndpoint,
     ) -> Result<Option<Vec<DiscoveredModel>>> {
-        let Some(url) = endpoint
-            .url("models?endpoints=/api/alpha/extractions")
-            .filter(|u| everruns_contracts::openai_protocol::url_host_eq(u, "openrouter.ai"))
-        else {
+        let url = route(endpoint)?;
+        if !everruns_contracts::openai_protocol::url_host_eq(&url, "openrouter.ai") {
             return Ok(None);
-        };
+        }
+        let mut url =
+            reqwest::Url::parse(&url).map_err(|_| invalid("Invalid extraction endpoint"))?;
+        url.set_path(&format!(
+            "{}/v1/models",
+            url.path().trim_end_matches("/alpha/extractions")
+        ));
+        url.query_pairs_mut()
+            .append_pair("endpoints", "/api/alpha/extractions");
         let value = json(
             self.http
                 .as_ref()
                 .ok_or_else(|| invalid("Extraction HTTP client unavailable"))?,
             endpoint,
             reqwest::Method::GET,
-            url,
+            url.to_string(),
             None,
         )
         .await?;
@@ -150,6 +161,25 @@ mod tests {
         r.model = Some("cloudflare/clairic".into());
         r
     }
+    #[test]
+    fn extraction_route_accepts_existing_chat_and_native_endpoints() {
+        for suffix in [
+            "/v1",
+            "/v1/responses",
+            "/v1/chat/completions",
+            "/alpha/extractions",
+        ] {
+            let endpoint = ProviderEndpoint::from_parts(
+                format!("https://openrouter.ai/api{suffix}"),
+                BearerAuth::new("test"),
+            );
+            assert_eq!(
+                route(&endpoint).unwrap(),
+                "https://openrouter.ai/api/alpha/extractions"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn alpha_endpoint_preserves_unicode_evidence_and_unknown_confidence() {
         let server = MockServer::start().await;
@@ -191,6 +221,29 @@ mod tests {
         .unwrap();
         assert!(result.validate(&request()).is_err());
     }
+    #[tokio::test]
+    async fn hostname_resolving_to_loopback_cannot_receive_provider_credentials() {
+        let server = MockServer::start().await;
+        let endpoint = ProviderEndpoint::from_parts(
+            format!("{}/api/v1", server.uri().replace("127.0.0.1", "localhost")),
+            BearerAuth::new("private-provider-key"),
+        );
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "cloudflare/clairic",
+                "answers": {"invoice": {"type": "text", "value": "INV-42"}}
+            })))
+            .mount(&server)
+            .await;
+        assert!(
+            OpenRouterExtractionDriver::default()
+                .extract(&endpoint, request())
+                .await
+                .is_err()
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
     #[test]
     fn account_id_is_not_upstream_provider_routing() {
         let mut r = request();

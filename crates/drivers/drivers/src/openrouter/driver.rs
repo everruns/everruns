@@ -404,6 +404,7 @@ mod tests {
             vec![
                 ServiceKind::Chat,
                 ServiceKind::Decisions,
+                ServiceKind::Extractions,
                 ServiceKind::Images,
             ]
         );

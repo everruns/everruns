@@ -40,12 +40,15 @@ pub fn routes(state: ApiState) -> Router {
         .with_state(state)
 }
 
-#[utoipa::path(post, path = "/v1/extractions", request_body = ExtractRequest,
+#[utoipa::path(post, path = "/v1/extractions", operation_id = "extract_typed_fields",
+ summary = "Extract typed fields", request_body = ExtractRequest,
  responses((status = 200, description = "Typed extraction values, evidence and usage", body = ExtractionOutcome),
  (status = 400, description = "Invalid or unsupported extraction request"),
  (status = 403, description = "Model management permission required"),
  (status = 404, description = "Model not found"),
- (status = 502, description = "Extraction provider failed")), tag = "extractions")]
+ (status = 413, description = "Request body exceeds 8 MiB"),
+ (status = 502, description = "Extraction provider failed"),
+ (status = 504, description = "Extraction timed out")), tag = "extractions")]
 pub async fn extract(
     org: ResolvedOrg,
     State(state): State<ApiState>,
@@ -153,137 +156,4 @@ fn validate_selection(request: &ExtractRequest) -> Result<(), CommandError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn rejects_provider_and_model_override() {
-        for selector in [
-            serde_json::json!({"provider":"other"}),
-            serde_json::json!({"model":"unconfigured"}),
-        ] {
-            let mut input =
-                serde_json::json!({"state":"Invoice 42", "fields":{"number":{"type":"text"}}});
-            input
-                .as_object_mut()
-                .unwrap()
-                .extend(selector.as_object().unwrap().clone());
-            let request: ExtractRequest =
-                serde_json::from_value(serde_json::json!({"model_id":"unused", "input":input}))
-                    .unwrap();
-            assert!(validate_selection(&request).is_err());
-        }
-    }
-    fn state() -> ApiState {
-        let db = std::sync::Arc::new(crate::storage::StorageBackend::test_database());
-        let auth = crate::auth::AuthState::builtin(crate::auth::AuthConfig::default(), db.clone());
-        ApiState::for_test(db, None, auth)
-    }
-
-    fn request() -> ExtractRequest {
-        serde_json::from_value(serde_json::json!({
-            "model_id": ModelId::new().to_string(),
-            "input": {"state": "Invoice", "fields": {"total": {"type": "number"}}}
-        }))
-        .unwrap()
-    }
-
-    #[tokio::test]
-    async fn member_and_read_only_owner_cannot_spend_provider_credentials() {
-        for (role, read_only) in [
-            (everruns_core::OrgRole::Member, false),
-            (everruns_core::OrgRole::Owner, true),
-        ] {
-            let org = ResolvedOrg {
-                org_id: 1,
-                public_id: "org_test".into(),
-                name: "Test".into(),
-                user_id: None,
-                role,
-                is_platform_user: false,
-                feature_flags: crate::domains::common::all_feature_flags_for_test(),
-                read_only,
-            };
-            let error = extract(org, State(state()), Json(request()))
-                .await
-                .unwrap_err();
-            assert_eq!(error.0, axum::http::StatusCode::FORBIDDEN);
-        }
-    }
-
-    #[tokio::test]
-    async fn another_organizations_model_is_not_visible_to_extraction() {
-        let state = state();
-        let provider = state
-            .db
-            .create_provider(
-                2,
-                crate::storage::CreateProviderRow {
-                    name: "Other org provider".into(),
-                    provider_type: "openrouter".into(),
-                    base_url: None,
-                    api_key_encrypted: None,
-                    settings: None,
-                },
-            )
-            .await
-            .unwrap();
-        let model = state
-            .db
-            .create_model(
-                2,
-                crate::storage::CreateModelRow {
-                    provider_id: provider.id,
-                    model_id: "cloudflare/clairic".into(),
-                    display_name: "Clairic".into(),
-                    capabilities: vec!["extractions".into()],
-                    is_favorite: false,
-                    enabled: true,
-                    source: "manual".into(),
-                    provider_metadata: None,
-                },
-            )
-            .await
-            .unwrap();
-        let org = ResolvedOrg {
-            org_id: 1,
-            public_id: "org_test".into(),
-            name: "Test".into(),
-            user_id: None,
-            role: everruns_core::OrgRole::Owner,
-            is_platform_user: false,
-            feature_flags: crate::domains::common::all_feature_flags_for_test(),
-            read_only: false,
-        };
-        let mut input = request();
-        input.model_id = model.id.to_string();
-        let error = extract(org, State(state), Json(input)).await.unwrap_err();
-        assert_eq!(error.0, axum::http::StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn route_requires_authentication() {
-        use tower::ServiceExt;
-        let db = std::sync::Arc::new(crate::storage::StorageBackend::test_database());
-        let auth = crate::auth::AuthState::builtin(
-            crate::auth::AuthConfig {
-                mode: crate::auth::config::AuthMode::Full,
-                ..Default::default()
-            },
-            db.clone(),
-        );
-        let response = routes(ApiState::for_test(db, None, auth))
-            .oneshot(
-                axum::http::Request::builder()
-                    .method("POST")
-                    .uri("/v1/extractions")
-                    .header("content-type", "application/json")
-                    .body(axum::body::Body::from(
-                        serde_json::to_vec(&request()).unwrap(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
-    }
-}
+mod tests;

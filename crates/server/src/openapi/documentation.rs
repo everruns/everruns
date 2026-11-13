@@ -68,6 +68,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
         &[
             "providers",
             "models",
+            "extractions",
             "mcp-servers",
             "mcp_servers",
             "web-search",
@@ -275,6 +276,7 @@ fn apply(spec: &mut Value) {
                 "availability": if experimental { "Requires machine_payments; disabled by default" }
                     else if tag == "monitoring" { "Requires organization adoption of the monitoring feature flag" }
                     else if tag == "evals" { "Requires the evals feature flag" }
+                    else if tag == "extractions" { "Requires an organization-owned provider and an enabled extraction model" }
                     else { "Everruns Cloud and self-hosted Platform" },
             });
             if let Some(summary) = agent_summary(&id) {
@@ -525,6 +527,15 @@ mod tests {
     fn every_operation_has_public_classification_and_legacy_successors_resolve() {
         let spec = serde_json::to_value(ApiDoc::openapi()).unwrap();
         assert_eq!(spec["x-tagGroups"][0]["name"], "Agent API");
+        let extraction = &spec["paths"]["/v1/extractions"]["post"]["x-docs"];
+        assert_eq!(extraction["group"], "models-integrations");
+        assert_eq!(extraction["support"], "preview");
+        assert!(
+            extraction["availability"]
+                .as_str()
+                .unwrap()
+                .contains("organization-owned")
+        );
         let operations: Vec<_> = spec["paths"]
             .as_object()
             .unwrap()
