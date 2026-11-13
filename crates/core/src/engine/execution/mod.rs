@@ -7,6 +7,7 @@ pub use cpu_time::ThreadCpuClock;
 mod input;
 mod provider_checkpoint;
 mod reason;
+pub mod tool_cancel;
 pub mod tool_detach;
 mod tool_scheduler;
 pub use tool_scheduler::configured_max_tool_concurrency;

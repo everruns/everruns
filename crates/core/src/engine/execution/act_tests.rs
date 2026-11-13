@@ -682,6 +682,78 @@ async fn test_act_atom_cancels_detached_tool_work_when_the_turn_is_cancelled() {
         .expect("drop signal should be sent");
 }
 
+/// A host cancels one running call (`tool_cancel`): the tool future is
+/// dropped, the call completes as `cancelled` with an error the model reads,
+/// and the act goes on to settle the rest of its batch.
+#[tokio::test]
+async fn test_act_atom_cancels_one_tool_call_through_its_host() {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+
+    let mut executor = ToolRegistry::new();
+    executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
+    executor.register(ArgumentEchoTool);
+
+    let cancels = Arc::new(tool_cancel::ToolCallCancels::new());
+    let mut services = crate::engine::tool_context::ToolContextServices::default();
+    services.extensions.insert(cancels.clone());
+    let atom = ActAtom::new(executor, NoopEventEmitter).with_context_services(services);
+    let session_id = SessionId::new();
+    let context = ExecutionContext::new(session_id, TurnId::new(), MessageId::new());
+    let input = ActInput {
+        org_id: Some(1),
+        context,
+        harness_id: HarnessId::from_seed(1),
+        agent_id: Some(AgentId::new()),
+        tool_calls: vec![
+            ToolCall {
+                id: "call_1".to_string(),
+                name: "cancellation_probe".to_string(),
+                arguments: json!({}),
+            },
+            ToolCall {
+                id: "call_2".to_string(),
+                name: "argument_echo".to_string(),
+                arguments: json!({ "value": "x" }),
+            },
+        ],
+        tool_definitions: vec![
+            recording_tool_def("cancellation_probe", None, false),
+            recording_tool_def("argument_echo", None, false),
+        ],
+        locale: None,
+        blueprint_id: None,
+        network_access: None,
+        parallel_tool_calls: None,
+    };
+
+    let act_task = tokio::spawn(async move { atom.execute(input).await });
+    started.notified().await;
+    assert!(cancels.is_running(session_id, "call_1"));
+    assert!(cancels.cancel(session_id, "call_1"));
+
+    let result = act_task.await.unwrap().expect("act should succeed");
+    let cancelled = &result.results[0];
+    assert_eq!(cancelled.status, tool_cancel::CANCELLED_STATUS);
+    assert!(!cancelled.success);
+    assert_eq!(
+        cancelled.result.error.as_deref(),
+        Some(tool_cancel::CANCELLED_MESSAGE)
+    );
+    assert_eq!(
+        result.results[1].status, "success",
+        "the rest of the batch ran"
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
+        .await
+        .expect("the cancelled tool future should be dropped")
+        .expect("drop signal should be sent");
+    assert!(
+        !cancels.is_running(session_id, "call_1"),
+        "a settled call is forgotten"
+    );
+}
+
 /// With `parallel_tool_calls = Some(false)`, the whole batch runs strictly
 /// sequentially regardless of class — peak concurrency must be 1.
 #[tokio::test]

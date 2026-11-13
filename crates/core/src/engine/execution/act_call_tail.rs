@@ -109,6 +109,17 @@ impl CallTail {
         result: Result<ToolResult>,
         worker_thread_cpu_ns: Option<u64>,
     ) -> ToolCallResult {
+        self.finish_as(result, worker_thread_cpu_ns, false).await
+    }
+
+    /// Settle the call; `cancelled` when a host cancelled it
+    /// ([`tool_cancel`](super::tool_cancel)).
+    pub(super) async fn finish_as(
+        self,
+        result: Result<ToolResult>,
+        worker_thread_cpu_ns: Option<u64>,
+        cancelled: bool,
+    ) -> ToolCallResult {
         let tool_call = &self.tool_call;
         let execution_tool_call = &self.execution_tool_call;
         match result {
@@ -126,7 +137,13 @@ impl CallTail {
 
                 let tool_duration_ms = self.tool_start.elapsed().as_millis() as u64;
                 let success = tool_result.error.is_none();
-                let status = if success { "success" } else { "error" };
+                let status = if success {
+                    "success"
+                } else if cancelled {
+                    super::tool_cancel::CANCELLED_STATUS
+                } else {
+                    "error"
+                };
 
                 // A delivered send_message is something the agent said. Record
                 // it before the tool completes so every surface sees the

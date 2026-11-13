@@ -72,6 +72,7 @@ pub(crate) mod tool_call_integrity {
 }
 
 pub use execution::capability_usage_records;
+pub use execution::tool_cancel;
 pub use execution::tool_detach;
 pub use execution::{
     ActAtom, ActInput, ActResult, ClientSideToolHook, ConnectionSetupHook, ExecutionContext,

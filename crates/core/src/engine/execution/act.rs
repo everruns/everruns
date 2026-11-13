@@ -11,7 +11,7 @@ use web_time::Instant;
 
 use super::ExecutionContext;
 use super::act_hooks::{self, PostActHook};
-use super::{tool_detach, tool_scheduler};
+use super::{tool_cancel, tool_detach, tool_scheduler};
 use crate::engine::error::Result;
 use crate::engine::events::{
     ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCompletedData,
@@ -114,10 +114,10 @@ pub struct ActResult {
     /// human to open a link. Kept apart from the generic flag because only a
     /// client that renders the consent card can answer it — see
     /// `plan_after_act`, which will not hold a turn for a card nobody can draw.
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub waiting_for_url_elicitation: bool,
     /// True when execution stopped before tool execution because a dependency was archived or deleted.
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub blocked: bool,
     /// Client-side tool calls that were NOT executed by ActAtom but need to be
     /// sent to the client. Populated by ActAtom's partitioning logic, consumed
@@ -127,10 +127,6 @@ pub struct ActResult {
     /// Tool definitions for the client-side tool calls (for narration/display).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub client_tool_definitions: Vec<ToolDefinition>,
-}
-
-fn is_false(value: &bool) -> bool {
-    !*value
 }
 
 // ============================================================================
@@ -1546,14 +1542,15 @@ where
             }
             None => {
                 // A tool that runs a child turn inline must not detach its
-                // calls into this turn's park.
-                let (result, cpu_ns) = Box::pin(tool_detach::without(self.invoke_observed(
+                // calls into this turn's park; a host may cancel it alone.
+                let invoke = tool_detach::without(self.invoke_observed(
                     &tail.execution_tool_call,
                     &tail.tool_def,
                     &tail.tool_context,
-                )))
-                .await;
-                Box::pin(tail.finish(result, cpu_ns)).await
+                ));
+                let (result, cpu_ns, cancelled) =
+                    tool_cancel::race(&tail.tool_context, context.session_id, invoke).await;
+                Box::pin(tail.finish_as(result, cpu_ns, cancelled)).await
             }
         }
     }

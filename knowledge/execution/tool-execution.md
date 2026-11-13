@@ -345,6 +345,21 @@ cancelled, act future dropped, or the tool simply returned, so the contract a
 tool sees is "this call is over; stop what you started for it". Cloning the
 token into detached work is what keeps it from outliving the call.
 
+#### Cancelling one call
+
+A host can also stop one running call and let its turn go on: an editor that
+shows each call (ACP `tool_call/cancel`) cancels a long command without
+cancelling the turn. The act registers each call it runs inline by
+`(session, tool call id)` in a `ToolCallCancels` (`engine::tool_cancel`) and
+races the call against it: the one a host put in the tool-context extensions,
+else a process-wide shared one, so an in-process embedder cancels through
+`everruns::Session::cancel_tool_call` with no wiring. A cancelled call's future
+is dropped, its `ToolContext.cancellation` fires, and it completes with status
+`cancelled` and an error the model reads, while the rest of the batch settles
+as usual. A detached call belongs to its host once it detaches, so it is not
+in the registry, and the registry is in-process: a host whose calls run on
+another worker routes the cancel there.
+
 ### Tool-Side Service Stores
 
 `ToolContext` may carry worker-backed service stores in addition to filesystem and session metadata handles. These stores let tools perform org-scoped operations without bypassing worker authorization boundaries.
