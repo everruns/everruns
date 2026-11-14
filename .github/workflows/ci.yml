@@ -2193,7 +2193,6 @@ jobs:
         ports:
         - 43379:6379
     env:
-      DATABASE_URL: postgres://everruns:everruns@localhost:43332/everruns_chaos
       SESSIONS: '60'
       CHAOS_FLAG: ''
     steps:
@@ -2212,7 +2211,9 @@ jobs:
       run: chmod +x ./bin/everruns-server ./bin/everruns-worker
     - name: Start PostgreSQL with pg_stat_statements
       run: |
-        docker run -d --name chaos-postgres -p 43332:5432 \
+        # Let Docker reserve the host port: fixed ports can already be in use
+        # by outbound connections in the runner's ephemeral range.
+        docker run -d --name chaos-postgres -p 127.0.0.1::5432 \
           -e POSTGRES_USER=everruns -e POSTGRES_PASSWORD=everruns -e POSTGRES_DB=everruns_chaos \
           mirror.gcr.io/library/postgres:17-alpine \
           -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all \
@@ -2226,6 +2227,8 @@ jobs:
         done
         docker exec chaos-postgres psql -h 127.0.0.1 -U everruns -d everruns_chaos \
           -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements'
+        address=$(docker port chaos-postgres 5432/tcp)
+        echo "DATABASE_URL=postgres://everruns:everruns@${address}/everruns_chaos" >> "$GITHUB_ENV"
     - name: Start NATS with JetStream
       run: |
         docker run -d --name chaos-nats -p 43322:4222 \
