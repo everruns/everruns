@@ -5,6 +5,9 @@ cd "$(dirname "$0")/.."
 PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
 import http.server
 import json
+import os
+import subprocess
+import textwrap
 import sys
 import threading
 import tempfile
@@ -174,6 +177,46 @@ class ActorLeaseTakeoverTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_ci_postgres_uses_allocated_port_when_default_is_busy(self):
+        workflow = Path(".github/workflows/ci.yml").read_text()
+        job = workflow.split("  chaos-test:", 1)[1].split("\n  workflow-test-build:", 1)[0]
+        step = job.split("    - name: Start PostgreSQL with pg_stat_statements\n", 1)[1]
+        script = textwrap.dedent(step.split("      run: |\n", 1)[1].split("\n    - ", 1)[0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            docker = root / "docker"
+            docker.write_text("""#!/bin/bash
+set -eu
+printf '%s\\n' "$*" >> "$DOCKER_LOG"
+case "$1" in
+  run)
+    [[ " $* " != *" -p 43332:5432 "* ]] || { echo 'address already in use' >&2; exit 125; }
+    [[ " $* " == *" -p 127.0.0.1::5432 "* ]] || exit 2
+    echo container-id ;;
+  port)
+    [[ "$*" == 'port chaos-postgres 5432/tcp' ]] || exit 2
+    echo '127.0.0.1:49173' ;;
+  exec)
+    [[ " $* " == *" -h 127.0.0.1 "* ]] || exit 2 ;;
+  *) exit 2 ;;
+esac
+""")
+            docker.chmod(0o755)
+            output = root / "env"
+            output.touch()
+            log = root / "docker.log"
+            env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}",
+                       GITHUB_ENV=str(output), DOCKER_LOG=str(log))
+            result = subprocess.run(["bash", "-e", "-c", script], env=env,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output.read_text(),
+                             "DATABASE_URL=postgres://everruns:everruns@127.0.0.1:49173/everruns_chaos\n")
+            self.assertIn("pg_isready -h 127.0.0.1", log.read_text())
+            self.assertIn("CREATE EXTENSION IF NOT EXISTS pg_stat_statements", log.read_text())
+            self.assertIn('--database-url "$DATABASE_URL"', job)
+            self.assertNotIn("localhost:43332", job)
+
     def test_ci_nats_runs_jetstream(self):
         wf = Path(".github/workflows/chaos.yml").read_text()
         services = wf.split("services:", 1)[1].split("steps:", 1)[0]
