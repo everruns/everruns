@@ -117,9 +117,17 @@ async fn deltas_reach_200_streaming_clients_within_100ms_p99() {
         let url = format!("{}/v1/sessions/{session}/sse", fleet.base());
         watchers.push(tokio::spawn(watch(fleet.http.clone(), url, ready.clone())));
     }
-    for _ in 0..SESSIONS {
-        connected.recv().await.unwrap();
-    }
+    drop(ready);
+    tokio::time::timeout(Duration::from_secs(30), async {
+        for _ in 0..SESSIONS {
+            connected
+                .recv()
+                .await
+                .expect("a stream failed before connecting");
+        }
+    })
+    .await
+    .expect("all streams connect before the latency measurement");
     let sent = Instant::now();
     let says: Vec<_> = sessions
         .iter()

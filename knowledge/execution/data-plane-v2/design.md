@@ -386,7 +386,11 @@ to Engine hosting; v2 adds them back with a small Engine hook (plan step 1).
 - **Deltas go straight from the executor to the stream node** (same hash,
   no lookup), over the connection the executor already holds to the cell,
   and never touch Raft or disk. The node drops them when the session has
-  no watchers, so an unwatched turn costs nothing.
+  no watchers, so an unwatched turn costs nothing. Streaming transports
+  disable Nagle on the server side too, drain live-delivery responses for
+  connection reuse, and share concurrent membership lookups per cell.
+  A slow cell must not hold up another cell's lookup, and an in-flight
+  lookup cannot overwrite a view learned from a redirect.
 - **Fencing:** deltas carry `(turn, step, attempt, seq)`, where the
   attempt is the durable model-call attempt above, and the stream node
   accepts them only from the executor holding the session's current epoch.

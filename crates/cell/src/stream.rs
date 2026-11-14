@@ -687,7 +687,19 @@ pub fn moved_event(cell: CellId) -> SseEvent {
 /// cached view of its cell.
 #[derive(Default)]
 pub struct Deliver {
-    views: Mutex<HashMap<CellId, (tokio::time::Instant, View)>>,
+    views: Mutex<HashMap<CellId, Arc<ViewSlot>>>,
+}
+
+#[derive(Default)]
+struct ViewSlot {
+    cached: Mutex<CachedView>,
+    refresh: tokio::sync::Mutex<()>,
+}
+
+#[derive(Default)]
+struct CachedView {
+    revision: u64,
+    value: Option<(tokio::time::Instant, View)>,
 }
 
 /// How long a cached view is trusted before it is read again.
@@ -703,11 +715,26 @@ impl Deliver {
         seeds: &[String],
         refresh: bool,
     ) -> Option<View> {
-        if !refresh
-            && let Some((at, view)) = self.views.lock().get(&cell)
-            && at.elapsed() < VIEW_FOR
+        let slot = self.slot(cell);
+        let revision = {
+            let cached = slot.cached.lock();
+            if !refresh
+                && let Some((at, view)) = &cached.value
+                && at.elapsed() < VIEW_FOR
+            {
+                return Some(view.clone());
+            }
+            cached.revision
+        };
+        // A cold or expired cell has one lookup in flight, not one per
+        // streaming session. Other cells use independent locks. A completed
+        // failed lookup is shared too, rather than retried by every waiter.
+        let _refresh = slot.refresh.lock().await;
         {
-            return Some(view.clone());
+            let cached = slot.cached.lock();
+            if cached.revision != revision {
+                return cached.value.as_ref().map(|(_, view)| view.clone());
+            }
         }
         for addr in seeds {
             if let Ok(reply) = http
@@ -718,17 +745,30 @@ impl Deliver {
                 && reply.status().is_success()
                 && let Ok(view) = reply.json::<View>().await
             {
-                self.learn(cell, view.clone());
-                return Some(view);
+                let mut cached = slot.cached.lock();
+                // A redirect may have taught this slot another view while
+                // the request was in flight. Do not overwrite that update.
+                if cached.revision == revision {
+                    cached.revision = cached.revision.wrapping_add(1);
+                    cached.value = Some((tokio::time::Instant::now(), view));
+                }
+                return cached.value.as_ref().map(|(_, view)| view.clone());
             }
         }
-        self.views.lock().get(&cell).map(|(_, v)| v.clone())
+        let mut cached = slot.cached.lock();
+        cached.revision = cached.revision.wrapping_add(1);
+        cached.value.as_ref().map(|(_, view)| view.clone())
+    }
+
+    fn slot(&self, cell: CellId) -> Arc<ViewSlot> {
+        self.views.lock().entry(cell).or_default().clone()
     }
 
     pub fn learn(&self, cell: CellId, view: View) {
-        self.views
-            .lock()
-            .insert(cell, (tokio::time::Instant::now(), view));
+        let slot = self.slot(cell);
+        let mut cached = slot.cached.lock();
+        cached.revision = cached.revision.wrapping_add(1);
+        cached.value = Some((tokio::time::Instant::now(), view));
     }
 
     /// Send `batch` to its stream node. Best effort: a batch nobody takes
@@ -764,7 +804,18 @@ impl Deliver {
                     .send()
                     .await;
                 match sent {
-                    Ok(reply) if reply.status().is_success() => return true,
+                    Ok(mut reply) if reply.status().is_success() => {
+                        // Finish the response so HTTP/1 can reuse the connection
+                        // for the next delta. Keep memory bounded and the request's
+                        // timeout active while consuming a fragmented body.
+                        loop {
+                            match reply.chunk().await {
+                                Ok(Some(_)) => {}
+                                Ok(None) => return true,
+                                Err(_) => return false,
+                            }
+                        }
+                    }
                     Ok(reply) if reply.status() == StatusCode::CONFLICT => {
                         let Ok(r) = reply.json::<Redirect>().await else {
                             return false;
@@ -893,5 +944,325 @@ mod tests {
             "a new epoch starts over"
         );
         assert_eq!(rx.try_recv().unwrap().stream, "m");
+    }
+
+    #[tokio::test]
+    async fn live_delivery_reuses_connections_with_a_delayed_response_body() {
+        use axum::serve::ListenerExt;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let count = accepted.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let app = Router::new().route(
+            "/cell/exec/live",
+            post(|| async {
+                // Headers and body can arrive in separate packets. The client
+                // must finish the response before returning its socket to the pool.
+                let body = axum::body::Body::from_stream(futures::stream::once(async {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    Ok::<_, Infallible>(r#"{"taken":true}"#)
+                }));
+                Response::new(body)
+            }),
+        );
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener.tap_io(move |_| {
+                    count.fetch_add(1, Ordering::Relaxed);
+                }),
+                app,
+            )
+            .await
+            .unwrap();
+        });
+        let deliver = Deliver::default();
+        deliver.learn(
+            1,
+            View {
+                generation: 7,
+                members: BTreeMap::from([(1, address.clone())]),
+            },
+        );
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let session = SessionId::new();
+        for seq in 0..3 {
+            assert!(
+                deliver
+                    .send(
+                        &http,
+                        1,
+                        std::slice::from_ref(&address),
+                        LiveBatch {
+                            session,
+                            fence: 1,
+                            view: 0,
+                            deltas: vec![delta(seq, "message")],
+                        }
+                    )
+                    .await
+            );
+        }
+        server.abort();
+        assert_eq!(
+            accepted.load(Ordering::Relaxed),
+            1,
+            "success replies must be drained for HTTP/1 connection reuse"
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_view_misses_share_one_fetch() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let fetched = Arc::new(AtomicUsize::new(0));
+        let count = fetched.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let expected = View {
+            generation: 7,
+            members: BTreeMap::from([(1, address.clone())]),
+        };
+        let response = expected.clone();
+        let app = Router::new().route(
+            "/cell/view",
+            get(move || {
+                let count = count.clone();
+                let response = response.clone();
+                async move {
+                    count.fetch_add(1, Ordering::Relaxed);
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    Json(response)
+                }
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let deliver = Deliver::default();
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let seeds = vec![address];
+        let views =
+            futures::future::join_all((0..8).map(|_| deliver.view(&http, 1, &seeds, false))).await;
+        assert!(views.iter().all(|view| view.as_ref() == Some(&expected)));
+        assert_eq!(
+            fetched.load(Ordering::Relaxed),
+            1,
+            "a cold cell view should not fan out one request per stream"
+        );
+        assert_eq!(
+            deliver.view(&http, 1, &seeds, false).await,
+            Some(expected.clone())
+        );
+        assert_eq!(fetched.load(Ordering::Relaxed), 1, "a fresh view is cached");
+        deliver.slot(1).cached.lock().value.as_mut().unwrap().0 -= VIEW_FOR;
+        let views =
+            futures::future::join_all((0..8).map(|_| deliver.view(&http, 1, &seeds, false))).await;
+        assert!(views.iter().all(|view| view.as_ref() == Some(&expected)));
+        assert_eq!(
+            fetched.load(Ordering::Relaxed),
+            2,
+            "expired views share their refresh"
+        );
+        let views =
+            futures::future::join_all((0..8).map(|_| deliver.view(&http, 1, &seeds, true))).await;
+        assert!(views.iter().all(|view| view.as_ref() == Some(&expected)));
+        assert_eq!(
+            fetched.load(Ordering::Relaxed),
+            3,
+            "forced refreshes also coalesce"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn failed_view_lookup_is_shared_by_waiters() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let fetched = Arc::new(AtomicUsize::new(0));
+        let count = fetched.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let seeds = vec![listener.local_addr().unwrap().to_string()];
+        let app = Router::new().route(
+            "/cell/view",
+            get(move || {
+                let count = count.clone();
+                async move {
+                    count.fetch_add(1, Ordering::Relaxed);
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let deliver = Deliver::default();
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let views =
+            futures::future::join_all((0..8).map(|_| deliver.view(&http, 1, &seeds, false))).await;
+        assert!(views.iter().all(Option::is_none));
+        assert_eq!(fetched.load(Ordering::Relaxed), 1);
+        assert!(deliver.view(&http, 1, &seeds, false).await.is_none());
+        assert_eq!(
+            fetched.load(Ordering::Relaxed),
+            2,
+            "a later call retries a failed lookup"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_late_lookup_keeps_a_newer_redirect_and_does_not_block_other_cells() {
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let arrived = reached.clone();
+        let proceed = release.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let old = View {
+            generation: 7,
+            members: BTreeMap::from([(1, address.clone())]),
+        };
+        let newer = View {
+            generation: old.generation,
+            members: BTreeMap::from([(2, "127.0.0.1:9000".to_owned())]),
+        };
+        let response = old.clone();
+        let app = Router::new().route(
+            "/cell/view",
+            get(move || {
+                let arrived = arrived.clone();
+                let proceed = proceed.clone();
+                let response = response.clone();
+                async move {
+                    arrived.notify_one();
+                    proceed.notified().await;
+                    Json(response)
+                }
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let deliver = Arc::new(Deliver::default());
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let fetching = deliver.clone();
+        let client = http.clone();
+        let seeds = vec![address];
+        let lookup = tokio::spawn(async move { fetching.view(&client, 1, &seeds, false).await });
+        reached.notified().await;
+        // No seeds: another cell's lookup completes immediately even while
+        // this one is waiting on its network response.
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(100),
+                deliver.view(&http, 2, &[], false)
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        deliver.learn(1, newer.clone());
+        release.notify_one();
+        assert_eq!(lookup.await.unwrap(), Some(newer.clone()));
+        assert_eq!(deliver.view(&http, 1, &[], false).await, Some(newer));
+        let restored = View {
+            generation: 1,
+            ..old
+        };
+        deliver.learn(1, restored.clone());
+        assert_eq!(
+            deliver.view(&http, 1, &[], false).await,
+            Some(restored),
+            "an explicit learned view is not ordered by log index across restores"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn live_delivery_refuses_a_truncated_success_response() {
+        use futures::StreamExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        let app = Router::new().route(
+            "/cell/exec/live",
+            post(|| async {
+                let body = futures::stream::once(async { Ok::<_, std::io::Error>("{") }).chain(
+                    futures::stream::once(async {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                        Err(std::io::Error::other("truncated response"))
+                    }),
+                );
+                Response::new(axum::body::Body::from_stream(body))
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let deliver = Deliver::default();
+        deliver.learn(
+            1,
+            View {
+                generation: 7,
+                members: BTreeMap::from([(1, address.clone())]),
+            },
+        );
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        assert!(
+            !deliver
+                .send(
+                    &http,
+                    1,
+                    &[address],
+                    LiveBatch {
+                        session: SessionId::new(),
+                        fence: 1,
+                        view: 0,
+                        deltas: vec![delta(0, "message")],
+                    }
+                )
+                .await
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_view_lookup_releases_its_refresh_lock() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let fetched = Arc::new(AtomicUsize::new(0));
+        let reached = Arc::new(tokio::sync::Notify::new());
+        let count = fetched.clone();
+        let arrived = reached.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let seeds = vec![listener.local_addr().unwrap().to_string()];
+        let app = Router::new().route(
+            "/cell/view",
+            get(move || {
+                let count = count.clone();
+                let arrived = arrived.clone();
+                async move {
+                    if count.fetch_add(1, Ordering::Relaxed) == 0 {
+                        arrived.notify_one();
+                        std::future::pending::<()>().await;
+                    }
+                    Json(View {
+                        generation: 7,
+                        members: BTreeMap::new(),
+                    })
+                }
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let deliver = Arc::new(Deliver::default());
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let fetching = deliver.clone();
+        let client = http.clone();
+        let targets = seeds.clone();
+        let first = tokio::spawn(async move { fetching.view(&client, 1, &targets, false).await });
+        reached.notified().await;
+        first.abort();
+        assert!(first.await.unwrap_err().is_cancelled());
+        let view = tokio::time::timeout(
+            Duration::from_secs(1),
+            deliver.view(&http, 1, &seeds, false),
+        )
+        .await
+        .unwrap();
+        assert_eq!(view.unwrap().generation, 7);
+        assert_eq!(fetched.load(Ordering::Relaxed), 2);
+        server.abort();
     }
 }

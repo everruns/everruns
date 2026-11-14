@@ -329,7 +329,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             let edge = crate::edge::Edge::with_prefix(gateway, &control_plane, tokens, &api_prefix);
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, control_plane, "edge listening");
-            axum::serve(listener, edge.router()).await?;
+            axum::serve(streaming_listener(listener), edge.router()).await?;
             Ok(())
         }
         Mode::Restore {
@@ -377,7 +377,11 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             let gateway = Gateway::new(TopologySource { path: topology });
             let listener = tokio::net::TcpListener::bind(listen).await?;
             tracing::info!(%listen, "gateway listening");
-            axum::serve(listener, crate::gateway::router(gateway)).await?;
+            axum::serve(
+                streaming_listener(listener),
+                crate::gateway::router(gateway),
+            )
+            .await?;
             Ok(())
         }
     }
@@ -444,6 +448,21 @@ fn parse_at(value: &str) -> Result<i64, String> {
     })
 }
 
+/// The streaming servers' listener, shared by nodes, gateways and edges.
+fn streaming_listener(
+    listener: tokio::net::TcpListener,
+) -> impl axum::serve::Listener<Io = tokio::net::TcpStream, Addr = SocketAddr> {
+    use axum::serve::ListenerExt;
+
+    // Client TCP_NODELAY only covers requests. SSE responses must not wait
+    // for an ACK of the preceding small frame on either relay hop.
+    listener.tap_io(|stream| {
+        if let Err(error) = stream.set_nodelay(true) {
+            tracing::warn!(%error, "cannot disable Nagle for streaming connection");
+        }
+    })
+}
+
 /// Start a node and serve its API and the gateway API on `listen`.
 pub async fn serve_node(
     cfg: NodeConfig,
@@ -487,7 +506,7 @@ pub async fn serve_node_on(
         .merge(crate::gateway_dp::cell_router(node.clone()))
         .merge(crate::gateway::router(gateway));
     tracing::info!(cell, node = id, %listen, "node listening");
-    let server = tokio::spawn(async move { axum::serve(listener, app).await });
+    let server = tokio::spawn(async move { axum::serve(streaming_listener(listener), app).await });
     if !join && let Err(error) = node.bootstrap().await {
         // Decision: a node that can't form its cell stops serving too, so
         // it reads as down rather than as a member that never elects.
@@ -612,6 +631,21 @@ async fn inspect(topology: Topology, json: bool, what: Inspect) -> anyhow::Resul
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn streaming_connections_send_small_frames_without_nagle() {
+        use axum::serve::Listener;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let address = listener.local_addr().expect("address");
+        let mut listener = super::streaming_listener(listener);
+        let (client, (server, _)) =
+            tokio::join!(tokio::net::TcpStream::connect(address), listener.accept(),);
+        let _client = client.expect("connect");
+        assert!(server.nodelay().expect("TCP_NODELAY"));
+    }
+
     #[test]
     fn a_statefulset_pod_names_its_ordinal() {
         assert_eq!(super::ordinal("cell0-2"), Some(2));
