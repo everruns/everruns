@@ -53,6 +53,12 @@ Pinned to the specs we implemented against (2026-09-30):
 MCP Apps expose compact Agent, Harness, Capability and Knowledge collection cards,
 plus the complete organization Home and Session workspaces. Session includes the
 same Trace, Approvals, Work, Events, Files and Cost views as the browser UI.
+Data tools (`agent_run`, `session_send_message`, `session_get_status`) return
+results without mounting UI. The model explicitly calls `session_open` when a
+user needs the workspace; app-only reads and actions update that mounted view
+without opening another component. Templates have versioned resource URIs; a
+breaking shell update must use a new URI so hosts do not reuse incompatible HTML.
+Previously published unversioned URIs remain readable for existing conversations.
 The entry tools and resource identities live in the
 [tool registry](../../crates/server/src/api/mcp_endpoint/tool_registry.rs).
 
@@ -86,6 +92,16 @@ credentials can load the workspace. The parent fixes the organization from the
 entry result rather than accepting a child-selected organization. An app bridge
 call may echo that already resolved organization, including with a PAT; selecting
 a different organization retains the normal PAT override prohibition.
+
+Repeated entry results for the same view preserve the selected tab, drafts and
+query cache. A new view in the same organization reuses the authenticated
+bootstrap; changing organization clears its cache and remounts presentation
+state. Theme and display-mode updates do not navigate or remount the workspace.
+
+Bridge deadlines are cleared on reply and all pending requests are rejected on
+teardown. Organization changes invalidate pending data calls and fence their
+late responses. A failed host handshake offers an explicit connection retry;
+writes are never automatically replayed.
 
 Session updates poll bounded event pages using a forward sequence cursor.
 A since-id cursor is resolved within that session before paging, avoiding the
@@ -132,6 +148,8 @@ browser's preview environment.
 - [Authenticated API bridge](../../crates/server/src/api/mcp_endpoint/apps/bridge.rs)
 - [Embedded providers, routing and event transport](../../apps/ui/src/components/mcp-app/)
 - [Integration coverage](../../crates/server/tests/domain/mcp_apps_test/workspace.rs)
+- [Shell lifecycle regression tests](../../apps/ui/src/components/mcp-app/__tests__/shell.test.ts)
+- [Workspace draft and navigation regression tests](../../apps/ui/src/components/mcp-app/__tests__/provider.test.tsx)
 - [Transport cursor and lifecycle tests](../../apps/ui/src/components/mcp-app/__tests__/transport.test.ts)
 
 [Entity cards](mcp-cards.md) share this transport and authorization contract.

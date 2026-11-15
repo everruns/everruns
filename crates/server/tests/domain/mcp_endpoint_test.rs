@@ -490,7 +490,7 @@ async fn test_mcp_tools_list() {
     assert_eq!(agent_run["title"], "Run Agent");
     assert_eq!(agent_run["outputSchema"]["type"], "object");
     assert_eq!(agent_run["annotations"]["openWorldHint"], true);
-    assert!(agent_run["_meta"]["ui"]["resourceUri"].is_string());
+    assert!(agent_run.get("_meta").is_none());
 
     let discover = tools
         .iter()

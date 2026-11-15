@@ -5,9 +5,9 @@ use super::super::{
 };
 use serde_json::{Value, json};
 
-pub(super) const HARNESS_URI: &str = "ui://everruns/app/harness";
-pub(super) const CAPABILITY_URI: &str = "ui://everruns/app/capability";
-pub(super) const KNOWLEDGE_URI: &str = "ui://everruns/app/knowledge";
+pub(super) const HARNESS_URI: &str = "ui://everruns/app/v3/harness.html";
+pub(super) const CAPABILITY_URI: &str = "ui://everruns/app/v3/capability.html";
+pub(super) const KNOWLEDGE_URI: &str = "ui://everruns/app/v3/knowledge.html";
 const SHELL: &str = include_str!("workspace.html");
 
 pub(super) fn entity_tool(name: &str) -> bool {
@@ -84,13 +84,15 @@ pub(crate) async fn handle(
 }
 
 pub(crate) fn resource(uri: &str, frontend: &str) -> Option<Value> {
+    // Published before template versioning: keep existing conversations
+    // readable, while new tool discovery advertises only versioned URIs.
     let kind = match uri {
-        super::HOME_VIEW_URI => "home",
-        super::SESSION_VIEW_URI => "session",
-        super::AGENT_VIEW_URI => "agent",
-        HARNESS_URI => "harness",
-        CAPABILITY_URI => "capability",
-        KNOWLEDGE_URI => "knowledge",
+        super::HOME_VIEW_URI | "ui://everruns/app/home" => "home",
+        super::SESSION_VIEW_URI | "ui://everruns/app/session" => "session",
+        super::AGENT_VIEW_URI | "ui://everruns/app/agent" => "agent",
+        HARNESS_URI | "ui://everruns/app/harness" => "harness",
+        CAPABILITY_URI | "ui://everruns/app/capability" => "capability",
+        KNOWLEDGE_URI | "ui://everruns/app/knowledge" => "knowledge",
         _ => return None,
     };
     let url = url::Url::parse(frontend).ok()?;
@@ -141,5 +143,26 @@ mod tests {
             assert!(!html.contains("innerHTML"));
         }
         assert!(resource(HARNESS_URI, "javascript:alert(1)").is_none());
+    }
+
+    #[test]
+    fn previously_published_templates_remain_readable() {
+        for kind in [
+            "home",
+            "session",
+            "agent",
+            "harness",
+            "capability",
+            "knowledge",
+        ] {
+            let uri = format!("ui://everruns/app/{kind}");
+            let content = resource(&uri, "https://app.example.test").unwrap();
+            assert_eq!(content["contents"][0]["uri"], uri);
+        }
+        assert!(
+            super::super::resource_list_entries()
+                .iter()
+                .all(|entry| { entry["uri"].as_str().unwrap().contains("/v3/") })
+        );
     }
 }

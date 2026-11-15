@@ -31,3 +31,9 @@ summary for clients without app rendering.
 Agent, Harness, Capability and Knowledge cards now reuse the product UI. Home
 and Session open the full workspaces, including Session Trace. See
 [the shared workspace update](/changelog/2026-11-03-mcp-shared-workspaces/).
+
+## Update 2026-11-15
+
+Session UI now opens explicitly through `session_open`; data tools no longer
+mount another view. See [MCP workspace reliability](/changelog/2026-11-15-mcp-workspace-reliability/)
+for draft preservation and connection recovery.

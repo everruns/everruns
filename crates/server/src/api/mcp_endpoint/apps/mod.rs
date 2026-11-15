@@ -22,11 +22,11 @@ pub(super) const UI_EXTENSION_KEY: &str = "io.modelcontextprotocol/ui";
 pub(super) const APP_MIME_TYPE: &str = "text/html;profile=mcp-app";
 
 /// Template for a single session: status, transcript tail, question, approval.
-pub(super) const SESSION_VIEW_URI: &str = "ui://everruns/app/session";
+pub(super) const SESSION_VIEW_URI: &str = "ui://everruns/app/v3/session.html";
 /// Template for one agent card.
-pub(super) const AGENT_VIEW_URI: &str = "ui://everruns/app/agent";
+pub(super) const AGENT_VIEW_URI: &str = "ui://everruns/app/v3/agent.html";
 /// Template for the home panel: agents, recent sessions, what waits on you.
-pub(super) const HOME_VIEW_URI: &str = "ui://everruns/app/home";
+pub(super) const HOME_VIEW_URI: &str = "ui://everruns/app/v3/home.html";
 
 /// Model-visible entrypoint that opens the home panel.
 pub(super) const HOME_TOOL: &str = "everruns_home";
@@ -36,16 +36,6 @@ pub(super) const SESSION_VIEW_TOOL: &str = "session_view";
 pub(super) const ANSWER_TOOL: &str = "session_answer_question";
 /// App-only: approve or decline a `request_approval` pause.
 pub(super) const APPROVAL_TOOL: &str = "session_decide_approval";
-
-/// Tools whose results the session view renders.
-const SESSION_VIEW_TOOLS: &[&str] = &[
-    "agent_run",
-    "session_send_message",
-    "session_get_status",
-    SESSION_VIEW_TOOL,
-    ANSWER_TOOL,
-    APPROVAL_TOOL,
-];
 
 /// Transcript messages carried in a session view. The view is a glance, not
 /// the full history: "Open in Everruns" is there for the rest.
@@ -118,16 +108,11 @@ pub(super) fn tool_meta(name: &str) -> Option<Value> {
             "openai/ui": { "entrypoints": [{ "type": "global" }, { "type": "thread" }] },
         }));
     }
-    if !SESSION_VIEW_TOOLS.contains(&name) {
-        return None;
-    }
-    let mut ui = json!({ "resourceUri": SESSION_VIEW_URI });
     if matches!(name, SESSION_VIEW_TOOL | ANSWER_TOOL | APPROVAL_TOOL) {
-        // Buttons in the view, not something the model should call: the model
-        // has `session_get_status` and `session_send_message` for that.
-        ui["visibility"] = json!(["app"]);
+        // App actions update the mounted workspace without opening another UI.
+        return Some(json!({ "ui": { "visibility": ["app"] } }));
     }
-    Some(json!({ "ui": ui }))
+    None
 }
 
 /// Tool `icons` (MCP `Icon[]`) for entrypoint tools.
@@ -649,12 +634,18 @@ mod tests {
     }
 
     #[test]
-    fn session_tools_point_at_the_session_view() {
+    fn only_explicit_render_tools_open_the_session_view() {
         for tool in ["agent_run", "session_send_message", "session_get_status"] {
-            let meta = tool_meta(tool).expect("session tools carry a view");
-            assert_eq!(meta["ui"]["resourceUri"], SESSION_VIEW_URI);
-            // Model-visible: no visibility restriction.
-            assert!(meta["ui"].get("visibility").is_none());
+            assert!(tool_meta(tool).is_none(), "{tool} must be data-only");
+        }
+        assert_eq!(
+            tool_meta("session_open").unwrap()["ui"]["resourceUri"],
+            SESSION_VIEW_URI
+        );
+        for action in [SESSION_VIEW_TOOL, ANSWER_TOOL, APPROVAL_TOOL] {
+            let meta = tool_meta(action).unwrap();
+            assert_eq!(meta["ui"]["visibility"], json!(["app"]));
+            assert!(meta["ui"].get("resourceUri").is_none());
         }
         assert!(tool_meta("discover").is_none());
     }

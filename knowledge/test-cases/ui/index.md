@@ -71,3 +71,5 @@
 * [Custom workers](custom_workers/) - Existing Playground and trace rendering of custom execution.
 
 * [Extractions](extractions/) - Typed field forms, pending requests and organization isolation.
+
+* [mcp_apps/](mcp_apps/) - Embedded workspace lifecycle and recovery.

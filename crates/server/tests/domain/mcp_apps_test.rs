@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const LATEST: &str = "2026-07-28";
-const SESSION_VIEW_URI: &str = "ui://everruns/app/session";
-const HOME_VIEW_URI: &str = "ui://everruns/app/home";
+const SESSION_VIEW_URI: &str = "ui://everruns/app/v3/session.html";
+const HOME_VIEW_URI: &str = "ui://everruns/app/v3/home.html";
 const APP_MIME: &str = "text/html;profile=mcp-app";
 
 /// Records resumes instead of running a model turn: what matters is that the
@@ -259,13 +259,16 @@ async fn tools_list_links_tools_to_views() {
     };
 
     assert_eq!(
-        tool("agent_run")["_meta"]["ui"]["resourceUri"],
+        tool("session_open")["_meta"]["ui"]["resourceUri"],
         SESSION_VIEW_URI
     );
     assert_eq!(
         tool("agent_get_card")["_meta"]["ui"]["resourceUri"],
-        "ui://everruns/app/agent"
+        "ui://everruns/app/v3/agent.html"
     );
+    for data_tool in ["agent_run", "session_send_message", "session_get_status"] {
+        assert!(tool(data_tool).get("_meta").is_none());
+    }
     let home = tool("everruns_home");
     assert_eq!(home["_meta"]["ui"]["resourceUri"], HOME_VIEW_URI);
     assert_eq!(
@@ -287,6 +290,7 @@ async fn tools_list_links_tools_to_views() {
         "session_decide_approval",
     ] {
         assert_eq!(tool(app_only)["_meta"]["ui"]["visibility"], json!(["app"]));
+        assert!(tool(app_only)["_meta"]["ui"].get("resourceUri").is_none());
     }
 
     assert_eq!(tool("app_write")["annotations"]["idempotentHint"], false);
@@ -314,10 +318,10 @@ async fn templates_are_served_as_mcp_app_resources() {
     for uri in [
         SESSION_VIEW_URI,
         HOME_VIEW_URI,
-        "ui://everruns/app/agent",
-        "ui://everruns/app/harness",
-        "ui://everruns/app/capability",
-        "ui://everruns/app/knowledge",
+        "ui://everruns/app/v3/agent.html",
+        "ui://everruns/app/v3/harness.html",
+        "ui://everruns/app/v3/capability.html",
+        "ui://everruns/app/v3/knowledge.html",
     ] {
         assert!(uris.contains(&uri));
         let read = rpc(
