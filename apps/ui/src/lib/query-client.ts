@@ -1,5 +1,6 @@
 import { QueryClient, hashKey, type QueryKey } from "@tanstack/react-query";
 import { getActiveOrgId } from "@/lib/api/active-org";
+import { ApiError } from "@/lib/api/client";
 import { authQueryKeys } from "@/lib/auth-query-keys";
 
 const accountKeys = new Set([hashKey(authQueryKeys.config()), hashKey(authQueryKeys.user())]);
@@ -27,6 +28,20 @@ const accountKeys = new Set([hashKey(authQueryKeys.config()), hashKey(authQueryK
  * dehydrated entries would not be picked up on hydration (see
  * `lib/server-query.ts`).
  */
+/**
+ * Retry only failures a second attempt can fix: network errors and 5xx.
+ *
+ * Decision: a 4xx is the server's answer, not a fault. Retrying a 404 doubled
+ * every miss when a link opened in the wrong org (each one is retried before
+ * the cross-org resolver can switch), and retrying a 429 answered Cloudflare's
+ * rate limit with more requests. A rate-limited query stays as it is and
+ * refreshes on the next mount, focus or invalidation.
+ */
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status < 500) return false;
+  return failureCount < 1;
+}
+
 export function createAppQueryClient(resolveOrgId: () => string | null = getActiveOrgId) {
   const orgScopedQueryKeyHash = (queryKey: QueryKey): string => {
     const key = hashKey(queryKey);
@@ -42,7 +57,7 @@ export function createAppQueryClient(resolveOrgId: () => string | null = getActi
       queries: {
         staleTime: 60 * 1000,
         refetchOnWindowFocus: true,
-        retry: 1,
+        retry: shouldRetryQuery,
         queryKeyHashFn: orgScopedQueryKeyHash,
       },
     },

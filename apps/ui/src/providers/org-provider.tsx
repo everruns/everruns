@@ -10,6 +10,12 @@
 //   because the cookie sync is a separate request that lands later — requests issued in
 //   between were answered in the previous org and cached under the new one, which is how
 //   a second Platform Chat thread got created on a page that already had one.
+// Decision: A page load that opens an entity link (e.g. /sessions/session_…) resolves
+//   the owning org *before* the first org commit. Starting in the stored org and
+//   switching after the entity 404s loaded the whole app twice (wrong org, then
+//   owning org) and tripped the edge rate limit. Resolution is bounded by a
+//   timeout; on any failure the stored org is used and the in-page fallback
+//   (hooks/use-resource-org-fallback.ts) still recovers.
 
 import {
   createContext,
@@ -25,6 +31,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./auth-provider";
 import { switchOrg as switchOrgApi } from "@/lib/api/users";
+import { resolveOrgForResource } from "@/lib/api/resolver";
 import { getActiveOrgId, setActiveOrgId } from "@/lib/api/active-org";
 import type { OrganizationMembership, OrgRole } from "@/lib/api/types";
 
@@ -33,7 +40,11 @@ const DEFAULT_ORG_PUBLIC_ID = "org_00000000000000000000000000000001";
 import { ORG_STORAGE_KEY } from "@/lib/constants";
 
 /** Check if a role has permission for a required role level */
-const ROLE_HIERARCHY: Record<OrgRole, number> = { owner: 3, admin: 2, member: 1 };
+const ROLE_HIERARCHY: Record<OrgRole, number> = {
+  owner: 3,
+  admin: 2,
+  member: 1,
+};
 
 export function hasPermission(currentRole: OrgRole, requiredRole: OrgRole): boolean {
   return ROLE_HIERARCHY[currentRole] >= ROLE_HIERARCHY[requiredRole];
@@ -63,6 +74,34 @@ function getEntityListPath(pathname: string): string | null {
     }
   }
   return null;
+}
+
+/** Prefixed public id (`session_<32 hex>`) on an entity detail route, if any. */
+export function entityIdFromPath(pathname: string | null | undefined): string | null {
+  if (!pathname) return null;
+  for (const prefix of ENTITY_PREFIXES) {
+    if (!pathname.startsWith(prefix)) continue;
+    const segment = pathname.slice(prefix.length).split("/", 1)[0];
+    return /^[a-z][a-z_]*_[0-9a-f]{32}$/.test(segment) ? segment : null;
+  }
+  return null;
+}
+
+/** How long a landing waits for the owning org before using the stored one. */
+const LANDING_RESOLVE_TIMEOUT_MS = 3000;
+
+/** The owning org of the entity a page load opened, or null when unknown. */
+async function resolveLandingOrg(entityId: string): Promise<string | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), LANDING_RESOLVE_TIMEOUT_MS);
+  });
+  try {
+    const result = await Promise.race([resolveOrgForResource(entityId).catch(() => null), timeout]);
+    return result?.org_id ?? null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface SetCurrentOrgOptions {
@@ -127,9 +166,63 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
   // User is always fetched (even in none mode) and includes organizations
   const organizations = useMemo(() => user?.organizations ?? [], [user?.organizations]);
 
-  // Initialize current org from localStorage or default
+  // Set once the cookie is known to name the current org (see the init sync).
+  const didInitSyncRef = useRef(false);
+
+  // Resolve the owning org of an entity link once, at page load, in parallel
+  // with auth. `undefined` = still resolving; null = nothing to resolve.
+  const [landingOrgId, setLandingOrgId] = useState<string | null | undefined>(() =>
+    entityIdFromPath(pathname) ? undefined : null,
+  );
+  const landingEntityRef = useRef(entityIdFromPath(pathname));
   useEffect(() => {
-    if (authLoading || isInitialized) return;
+    const entityId = landingEntityRef.current;
+    if (!entityId) return;
+    let cancelled = false;
+    void resolveLandingOrg(entityId).then((orgId) => {
+      if (!cancelled) setLandingOrgId(orgId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // True while the landing org is being made the cookie org before commit.
+  const landingSyncRef = useRef(false);
+
+  // Initialize current org from the landing entity, localStorage or default
+  useEffect(() => {
+    if (authLoading || isInitialized || landingSyncRef.current) return;
+    // Wait for the landing resolution only when the user has orgs to pick from.
+    if (landingOrgId === undefined && organizations.length > 0) return;
+
+    const landingOrg = landingOrgId
+      ? organizations.find((org) => org.public_id === landingOrgId)
+      : undefined;
+    if (landingOrg) {
+      const commit = () => {
+        setCurrentOrgState(landingOrg);
+        localStorage.setItem(ORG_STORAGE_KEY, landingOrg.public_id);
+        // The cookie already names this org; the init sync below has nothing to do.
+        didInitSyncRef.current = true;
+        setIsInitialized(true);
+      };
+      if (landingOrg.public_id === initialOrgId) {
+        commit();
+        return;
+      }
+      // Live streams authenticate the org by cookie, so make the landing org
+      // the cookie org before anything mounts in it.
+      landingSyncRef.current = true;
+      void switchOrgApi(landingOrg.public_id)
+        .catch((error) => {
+          console.warn("Failed to sync org cookie for the landing org:", error);
+        })
+        .finally(() => {
+          landingSyncRef.current = false;
+          commit();
+        });
+      return;
+    }
 
     const storedOrgId = localStorage.getItem(ORG_STORAGE_KEY);
     const preferredOrgId = initialOrgId ?? storedOrgId;
@@ -156,7 +249,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
     }
 
     setIsInitialized(true);
-  }, [authLoading, organizations, isInitialized, initialOrgId]);
+  }, [authLoading, organizations, isInitialized, initialOrgId, landingOrgId]);
 
   // Update current org when organizations change (e.g., after login)
   useEffect(() => {
@@ -193,7 +286,6 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
 
   // Sync currentOrg cookie on init only (fire-and-forget, not user-initiated).
   // Guard with ref to avoid redundant calls after user-initiated switches.
-  const didInitSyncRef = useRef(false);
   useEffect(() => {
     if (currentOrg && isInitialized && !didInitSyncRef.current) {
       didInitSyncRef.current = true;
@@ -209,7 +301,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
   // Track latest switch to handle concurrent calls (last one wins)
   const switchCounterRef = useRef(0);
 
-  // Atomic org switch: await cookie sync → commit state → invalidate queries
+  // Atomic org switch: await cookie sync → commit state → mark queries stale
   const setCurrentOrg = useCallback(
     (org: OrganizationMembership, options?: SetCurrentOrgOptions) => {
       // Skip if already on this org
@@ -230,8 +322,14 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
           if (switchCounterRef.current !== switchId) return;
           setCurrentOrgState(org);
           localStorage.setItem(ORG_STORAGE_KEY, org.public_id);
-          // Invalidate all org-scoped queries so stale data is refetched
-          void queryClient.invalidateQueries();
+          // Mark every cached entry stale, but refetch nothing here. Cache
+          // identity includes the org (lib/query-client.ts), so each mounted
+          // query re-renders onto a new-org entry and fetches it once. A blanket
+          // refetch at this point ran before that re-render: it re-sent every
+          // active query against its previous-org entry (in the new org, by
+          // header), then the re-render sent them all again. One switch cost
+          // the whole app's queries twice and tripped the edge rate limit.
+          void queryClient.invalidateQueries({ refetchType: "none" });
           // Redirect entity detail pages to their list page to avoid 404,
           // unless the caller has opted out (e.g. cross-org resource
           // resolver, where the detail URL is valid in the new org).
