@@ -9,7 +9,10 @@ import {
 import { Slider } from "@/components/ui/slider";
 
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
-import { useChatPageRows, useChatPageFilters } from "@/components/chat-mode/page-view-state";
+import {
+  useChatPageRows,
+  useChatPageFilters,
+} from "@/components/chat-mode/page-view-state";
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -58,6 +61,7 @@ import { WorkerGrid, groupWorkers } from "./worker-grid";
 import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
 import { MonitoringTimelineView } from "./timeline";
+import type { Plane } from "./timeline-model";
 import { MonitoringCellsView } from "./cells";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
@@ -66,7 +70,8 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const { currentOrg } = useOrg();
   const flags = useFeatureFlagsState();
   const policy = usePolicies(scope === "fleet" ? "durable" : "monitoring");
-  const loading = policy.isLoading || (scope === "organization" && flags.isLoading);
+  const loading =
+    policy.isLoading || (scope === "organization" && flags.isLoading);
   const allowed =
     scope === "fleet"
       ? policy.can("durable.view")
@@ -86,12 +91,18 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
         <EmptyState
           icon={<Activity />}
           title={
-            scope === "fleet" ? ui("Platform access required") : ui("Monitoring is not enabled")
+            scope === "fleet"
+              ? ui("Platform access required")
+              : ui("Monitoring is not enabled")
           }
           description={
             scope === "fleet"
-              ? ui("Cross-organization monitoring is available to platform operators.")
-              : ui("An organization administrator can enable Monitoring in Settings → Features.")
+              ? ui(
+                  "Cross-organization monitoring is available to platform operators.",
+                )
+              : ui(
+                  "An organization administrator can enable Monitoring in Settings → Features.",
+                )
           }
         />
       </PageContainer>
@@ -106,18 +117,45 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   );
 }
 
-const MONITORING_TABS = ["execution", "timeline", "cells", "workers", "actors", "metrics"];
+const MONITORING_TABS = [
+  "execution",
+  "timeline",
+  "cells",
+  "workers",
+  "actors",
+  "metrics",
+];
 
-function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
+function MonitoringWorkspace({
+  scope,
+  org,
+}: {
+  scope: MonitoringScope;
+  org: string;
+}) {
   const { displayLocale } = useLocale();
 
   const ui = useUiTranslations();
+  const flags = useFeatureFlagsState();
+  // Decision: an organization sees only the execution path it runs on. On a
+  // data plane (cells) the worker and actor views would always be empty, and
+  // off it the cell parts would be; the platform view keeps both.
+  const path: Plane | undefined =
+    scope === "fleet"
+      ? undefined
+      : flags.flags.data_plane
+        ? "cells"
+        : "workers";
+  const hidden = new Set([
+    ...(scope === "fleet" ? [] : ["cells"]),
+    ...(path === "cells" ? ["workers", "actors"] : []),
+  ]);
   // `?tab=timeline` lets Home link straight to the history it summarises.
   const requestedTab = useSearchParams().get("tab");
   const [tab, setTab] = useState(
     requestedTab &&
       MONITORING_TABS.includes(requestedTab) &&
-      (requestedTab !== "cells" || scope === "fleet")
+      !hidden.has(requestedTab)
       ? requestedTab
       : "execution",
   );
@@ -151,8 +189,13 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           key[2] === org &&
           event.query.state.status === "success"
         ) {
-          const observed = queryClient.getQueryData<MonitoringSnapshot>(["monitoring", scope, org]);
-          if (observed) setHistory((old) => appendHistory(old, historyPoint(observed)));
+          const observed = queryClient.getQueryData<MonitoringSnapshot>([
+            "monitoring",
+            scope,
+            org,
+          ]);
+          if (observed)
+            setHistory((old) => appendHistory(old, historyPoint(observed)));
         }
       }),
     [queryClient, scope, org],
@@ -164,7 +207,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   }, [paused]);
   const actors = useQuery({
     queryKey: ["monitoring-actors", scope, org, offset, worker, phase],
-    queryFn: () => getMonitoringActors(scope, offset, worker, phase ?? undefined),
+    queryFn: () =>
+      getMonitoringActors(scope, offset, worker, phase ?? undefined),
     enabled: tab === "actors" && !paused,
     refetchInterval: paused ? false : 1000,
     retry: false,
@@ -177,7 +221,10 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
     retry: false,
   });
   const data =
-    frozen ?? (replay && snapshot.data ? replaySnapshot(snapshot.data, replay) : snapshot.data);
+    frozen ??
+    (replay && snapshot.data
+      ? replaySnapshot(snapshot.data, replay)
+      : snapshot.data);
   useChatPageFilters({
     tab,
     type: view,
@@ -188,7 +235,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   });
   useChatPageRows(
     "Monitoring phases",
-    (data?.phases ?? []).map((p) => ({ phase: p.phase, count: p.count, oldest_ms: p.oldest_ms })),
+    (data?.phases ?? []).map((p) => ({
+      phase: p.phase,
+      count: p.count,
+      oldest_ms: p.oldest_ms,
+    })),
     { loading: snapshot.isLoading, error: !!snapshot.error },
   );
   useChatPageRows(
@@ -229,10 +280,15 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
       fence: a.fence,
       runnable_age_ms: a.runnable_age_ms,
     })),
-    { enabled: tab === "actors" && !paused, loading: actors.isLoading, error: !!actors.error },
+    {
+      enabled: tab === "actors" && !paused,
+      loading: actors.isLoading,
+      error: !!actors.error,
+    },
   );
   const terminalError =
-    snapshot.error instanceof ApiError && [401, 403, 404].includes(snapshot.error.status);
+    snapshot.error instanceof ApiError &&
+    [401, 403, 404].includes(snapshot.error.status);
   if (terminalError)
     return (
       <PageContainer>
@@ -240,7 +296,10 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         <EmptyState
           icon={<AlertTriangle />}
           title={ui("Monitoring is unavailable")}
-          description={snapshot.error?.message ?? ui("Access to Monitoring is unavailable.")}
+          description={
+            snapshot.error?.message ??
+            ui("Access to Monitoring is unavailable.")
+          }
         />
       </PageContainer>
     );
@@ -248,9 +307,12 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   const groups = data ? groupWorkers(data.workers, groupSize) : [];
   const selectedGroup = groups.find((g) => g.id === groupId);
   const serverNow = detail.data
-    ? Date.parse(detail.data.generated_at) + Math.max(0, clock - detail.dataUpdatedAt)
+    ? Date.parse(detail.data.generated_at) +
+      Math.max(0, clock - detail.dataUpdatedAt)
     : clock;
-  const replayIndex = replay ? history.findIndex((h) => h.at === replay.at) : history.length - 1;
+  const replayIndex = replay
+    ? history.findIndex((h) => h.at === replay.at)
+    : history.length - 1;
   function resume() {
     setFrozen(null);
     setReplay(null);
@@ -275,12 +337,18 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         title={ui("Monitoring")}
         icon={<Activity />}
         badges={
-          <Badge variant="outline">{scope === "fleet" ? ui("Platform") : ui("Organization")}</Badge>
+          <Badge variant="outline">
+            {scope === "fleet" ? ui("Platform") : ui("Organization")}
+          </Badge>
         }
         description={
           scope === "fleet"
-            ? ui("Live execution and worker ownership across all organizations.")
-            : ui("Live execution and actor leases within the selected organization.")
+            ? ui(
+                "Live execution and worker ownership across all organizations.",
+              )
+            : ui(
+                "Live execution and actor leases within the selected organization.",
+              )
         }
         meta={
           data && (
@@ -294,7 +362,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                     {number(data.organizations)} {ui("organizations")}
                   </span>
                   <span>
-                    {number(replay?.workers ?? data.workers.length)} {ui("workers")}
+                    {number(replay?.workers ?? data.workers.length)}{" "}
+                    {ui("workers")}
                   </span>
                 </>
               )}
@@ -306,8 +375,17 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         }
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className={stale && !paused ? "text-warning" : ""}>
-              {replay ? ui("Replay") : frozen ? ui("Paused") : stale ? ui("Stale") : ui("Live")}
+            <Badge
+              variant="outline"
+              className={stale && !paused ? "text-warning" : ""}
+            >
+              {replay
+                ? ui("Replay")
+                : frozen
+                  ? ui("Paused")
+                  : stale
+                    ? ui("Stale")
+                    : ui("Live")}
             </Badge>
             <Button
               variant="outline"
@@ -315,7 +393,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
               disabled={!snapshot.data}
               onClick={() => (paused ? resume() : setFrozen(snapshot.data!))}
             >
-              {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+              {paused ? (
+                <Play className="size-3.5" />
+              ) : (
+                <Pause className="size-3.5" />
+              )}
               {paused ? ui("Live") : ui("Pause")}
             </Button>
             <Button
@@ -343,9 +425,19 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             { value: "execution", label: ui("Execution") },
             { value: "timeline", label: ui("Timeline") },
             // Cells are shared by organizations: platform view only.
-            ...(scope === "fleet" ? [{ value: "cells", label: ui("Cells") }] : []),
-            { value: "workers", label: ui("Workers"), disabled: !!replay },
-            { value: "actors", label: ui("Actors"), disabled: !!replay },
+            ...(scope === "fleet"
+              ? [{ value: "cells", label: ui("Cells") }]
+              : []),
+            ...(hidden.has("workers")
+              ? []
+              : [
+                  {
+                    value: "workers",
+                    label: ui("Workers"),
+                    disabled: !!replay,
+                  },
+                  { value: "actors", label: ui("Actors"), disabled: !!replay },
+                ]),
             { value: "metrics", label: ui("Metrics") },
           ]}
         />
@@ -359,7 +451,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                   size="sm"
                   aria-pressed={view === v}
                   onClick={() => setView(v)}
-                  className={view === v ? "border-primary font-semibold" : "text-muted-foreground"}
+                  className={
+                    view === v
+                      ? "border-primary font-semibold"
+                      : "text-muted-foreground"
+                  }
                 >
                   {v === "flow" ? ui("Flow") : ui("Density")}
                 </Button>
@@ -386,16 +482,24 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                   <SharedSelectValue />
                 </SharedSelectTrigger>
                 <SharedSelectContent>
-                  <SharedSelectItem value={String(1)}>{ui("Individual workers")}</SharedSelectItem>
-                  <SharedSelectItem value={String(8)}>{ui("8 workers")}</SharedSelectItem>
-                  <SharedSelectItem value={String(32)}>{ui("32 workers")}</SharedSelectItem>
+                  <SharedSelectItem value={String(1)}>
+                    {ui("Individual workers")}
+                  </SharedSelectItem>
+                  <SharedSelectItem value={String(8)}>
+                    {ui("8 workers")}
+                  </SharedSelectItem>
+                  <SharedSelectItem value={String(32)}>
+                    {ui("32 workers")}
+                  </SharedSelectItem>
                 </SharedSelectContent>
               </SharedSelect>
             </label>
           ) : tab === "actors" ? (
             <div className="flex flex-wrap items-center gap-3 text-xs">
               <span className="text-muted-foreground">
-                {worker ? ui("Holder {value0}", { value0: worker }) : ui("All holders")}
+                {worker
+                  ? ui("Holder {value0}", { value0: worker })
+                  : ui("All holders")}
               </span>
               <SharedSelect
                 value={String(phase ?? "")}
@@ -412,7 +516,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                   <SharedSelectValue />
                 </SharedSelectTrigger>
                 <SharedSelectContent>
-                  <SharedSelectItem value="">{ui("All phases")}</SharedSelectItem>
+                  <SharedSelectItem value="">
+                    {ui("All phases")}
+                  </SharedSelectItem>
                   {phases.map((p) => (
                     <SharedSelectItem key={p.key} value={String(p.key)}>
                       {p.label}
@@ -434,19 +540,26 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
               )}
             </div>
           ) : (
-            <span className="text-xs text-muted-foreground">{ui("Last 60 seconds")}</span>
+            <span className="text-xs text-muted-foreground">
+              {ui("Last 60 seconds")}
+            </span>
           )}
           <span className="text-xs text-muted-foreground">
             {data
               ? ui("{value0} snapshot", {
-                  value0: new Date(data.generated_at).toLocaleTimeString(displayLocale),
+                  value0: new Date(data.generated_at).toLocaleTimeString(
+                    displayLocale,
+                  ),
                 })
               : ui("Waiting for a snapshot")}
           </span>
         </div>
       </PageControlStrip>
       {snapshot.error && !terminalError && (
-        <div role="status" className="border border-warning/40 bg-warning/5 p-3 text-sm">
+        <div
+          role="status"
+          className="border border-warning/40 bg-warning/5 p-3 text-sm"
+        >
           {ui(
             "Updates unavailable. Showing the last successful snapshot; lease validity is unknown until refresh succeeds.",
           )}
@@ -486,7 +599,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         </div>
       )}
       {tab === "timeline" ? (
-        <MonitoringTimelineView scope={scope} />
+        <MonitoringTimelineView scope={scope} path={path} />
       ) : tab === "cells" ? (
         <MonitoringCellsView />
       ) : !data ? (
@@ -495,7 +608,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             icon={<AlertTriangle />}
             title={ui("Monitoring could not load")}
             description={ui("Refresh when the service is available.")}
-            action={<Button onClick={() => snapshot.refetch()}>{ui("Retry")}</Button>}
+            action={
+              <Button onClick={() => snapshot.refetch()}>{ui("Retry")}</Button>
+            }
           />
         ) : (
           <Skeleton className="h-[500px]" />
@@ -506,7 +621,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
             <div role="tabpanel" aria-label={tab}>
               {tab === "execution" &&
                 (view === "flow" ? (
-                  <ExecutionFlow data={data} selected={phase} onSelect={selectPhase} />
+                  <ExecutionFlow
+                    data={data}
+                    selected={phase}
+                    onSelect={selectPhase}
+                  />
                 ) : (
                   <ExecutionDensity
                     history={history}
@@ -541,13 +660,17 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
               {tab === "metrics" && (
                 <MonitoringMetrics
                   data={data}
-                  history={replay ? history.filter((h) => h.at <= replay.at) : history}
+                  history={
+                    replay ? history.filter((h) => h.at <= replay.at) : history
+                  }
                 />
               )}
             </div>
             {tab === "execution" && (
               <section className="border bg-card p-4">
-                <h2 className="text-sm font-semibold">{ui("Lease lifecycle")}</h2>
+                <h2 className="text-sm font-semibold">
+                  {ui("Lease lifecycle")}
+                </h2>
                 <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
                   <span>
                     {number(data.actor_leases)} {ui("held")}
@@ -558,8 +681,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                   </span>
                   <span className="text-muted-foreground">→</span>
                   <span>
-                    {number(data.lease_events.reacquired ?? 0)} {ui("reacquired /")}{" "}
-                    {data.window_seconds}s
+                    {number(data.lease_events.reacquired ?? 0)}{" "}
+                    {ui("reacquired /")} {data.window_seconds}s
                   </span>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
@@ -577,13 +700,25 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           </PageMain>
           <PageRail>
             {actor && !detail.error && detail.data && !replay ? (
-              <ActorDetail detail={detail.data} serverNow={serverNow} stale={stale} />
+              <ActorDetail
+                detail={detail.data}
+                serverNow={serverNow}
+                stale={stale}
+              />
             ) : selectedGroup && tab === "workers" ? (
               <RailSection label={ui("Selected worker group")}>
-                <h2 className="break-all text-sm font-semibold">{selectedGroup.name}</h2>
+                <h2 className="break-all text-sm font-semibold">
+                  {selectedGroup.name}
+                </h2>
                 <dl className="mt-3 space-y-2 text-xs">
-                  <Row label={ui("Workers")} value={String(selectedGroup.workers.length)} />
-                  <Row label={ui("Actor leases")} value={number(selectedGroup.leases)} />
+                  <Row
+                    label={ui("Workers")}
+                    value={String(selectedGroup.workers.length)}
+                  />
+                  <Row
+                    label={ui("Actor leases")}
+                    value={number(selectedGroup.leases)}
+                  />
                   <Row
                     label={ui("Reported load")}
                     value={
@@ -592,7 +727,10 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                         : `${selectedGroup.load}/${selectedGroup.capacity}`
                     }
                   />
-                  <Row label={ui("Stale heartbeats")} value={String(selectedGroup.stale)} />
+                  <Row
+                    label={ui("Stale heartbeats")}
+                    value={String(selectedGroup.stale)}
+                  />
                 </dl>
                 <h3 className="mt-5 border-t pt-3 text-xs font-semibold">
                   {ui("Worker ownership")}
@@ -615,8 +753,14 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                         {data.ownership
                           .filter((o) => o.worker_id === w.id)
                           .map((o) => (
-                            <div key={o.org_id} className="flex justify-between gap-2">
-                              <span className="truncate font-mono text-[10px]" title={o.org_id}>
+                            <div
+                              key={o.org_id}
+                              className="flex justify-between gap-2"
+                            >
+                              <span
+                                className="truncate font-mono text-[10px]"
+                                title={o.org_id}
+                              >
                                 {o.org_id}
                               </span>
                               <span>{o.actor_leases}</span>
@@ -627,7 +771,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                   ))}
                 </div>
                 <p className="mt-4 text-[11px] text-muted-foreground">
-                  {ui("Select a worker to inspect its currently leased actors.")}
+                  {ui(
+                    "Select a worker to inspect its currently leased actors.",
+                  )}
                 </p>
               </RailSection>
             ) : (
@@ -655,11 +801,19 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                     <Row
                       key={p.key}
                       label={p.label}
-                      value={number(data.phases.find((r) => r.phase === p.key)?.count ?? 0)}
+                      value={number(
+                        data.phases.find((r) => r.phase === p.key)?.count ?? 0,
+                      )}
                     />
                   ))}
-                  <Row label={ui("Oldest runnable")} value={duration(data.oldest_runnable_ms)} />
-                  <Row label={ui("Expired leases")} value={number(data.expired_leases)} />
+                  <Row
+                    label={ui("Oldest runnable")}
+                    value={duration(data.oldest_runnable_ms)}
+                  />
+                  <Row
+                    label={ui("Expired leases")}
+                    value={number(data.expired_leases)}
+                  />
                 </dl>
                 <div className="mt-4 flex flex-col items-start gap-2">
                   {!replay && (
@@ -672,7 +826,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                       >
                         {ui("Inspect actors →")}
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setTab("workers")}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setTab("workers")}
+                      >
                         {ui("Show worker mapping →")}
                       </Button>
                     </>

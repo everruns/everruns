@@ -1,8 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MonitoringTimelineView } from "@/components/monitoring/timeline";
-import { selectionTotals, timelineRows, change } from "@/components/monitoring/timeline-model";
-import { getMonitoringTimeline, getMonitoringTimelineWindow } from "@/lib/api/monitoring";
+import {
+  selectionTotals,
+  timelineRows,
+  change,
+} from "@/components/monitoring/timeline-model";
+import {
+  getMonitoringTimeline,
+  getMonitoringTimelineWindow,
+} from "@/lib/api/monitoring";
 import type { MonitoringTimeline, TimelineBucket } from "@/lib/api/types";
 
 // jsdom has no ResizeObserver; charts render empty at zero size, which is fine here.
@@ -21,7 +28,10 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-function bucket(start: string, extra: Partial<TimelineBucket> = {}): TimelineBucket {
+function bucket(
+  start: string,
+  extra: Partial<TimelineBucket> = {},
+): TimelineBucket {
   return {
     start,
     sampled: true,
@@ -83,7 +93,10 @@ function timeline(): MonitoringTimeline {
         oldest_runnable_ms: null,
       }),
       bucket("2026-11-01T05:01:00Z"),
-      bucket("2026-11-01T05:02:00Z", { active_peak: 30, oldest_runnable_ms: 9800 }),
+      bucket("2026-11-01T05:02:00Z", {
+        active_peak: 30,
+        oldest_runnable_ms: 9800,
+      }),
     ],
     summary: {
       peak_active: 30,
@@ -125,7 +138,12 @@ describe("timeline model", () => {
   it("draws rebuilt history as one area without a phase split", () => {
     const rows = timelineRows(timeline().buckets);
     expect(rows[0]).toMatchObject({ rebuilt: 4, model: 0, wait: null });
-    expect(rows[1]).toMatchObject({ rebuilt: 0, model: 5, wait: 1.5, errors: 5 });
+    expect(rows[1]).toMatchObject({
+      rebuilt: 0,
+      model: 5,
+      wait: 1.5,
+      errors: 5,
+    });
   });
 
   it("totals a dragged range from loaded buckets", () => {
@@ -178,7 +196,10 @@ describe("timeline model", () => {
       on_cells: 8,
       completed: 20,
     });
-    expect(timelineRows(buckets, "workers")[0]).toMatchObject({ on_cells: 0, completed: 36 });
+    expect(timelineRows(buckets, "workers")[0]).toMatchObject({
+      on_cells: 0,
+      completed: 36,
+    });
   });
 
   it("does not compare against an empty previous period", () => {
@@ -199,11 +220,13 @@ describe("MonitoringTimelineView", () => {
     });
   });
 
-  function renderView() {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function renderView(path?: "workers" | "cells") {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     return render(
       <QueryClientProvider client={client}>
-        <MonitoringTimelineView scope="organization" />
+        <MonitoringTimelineView scope="organization" path={path} />
       </QueryClientProvider>,
     );
   }
@@ -213,7 +236,9 @@ describe("MonitoringTimelineView", () => {
     const kpis = await screen.findByTestId("timeline-kpis");
     expect(kpis).toHaveTextContent("Peak parallel sessions30");
     expect(kpis).toHaveTextContent("Open sessions42");
-    expect(screen.queryByRole("group", { name: "Execution path" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Execution path" }),
+    ).not.toBeInTheDocument();
     expect(kpis).toHaveTextContent("+30% vs previous period");
     expect(kpis).toHaveTextContent("5.1%");
     expect(kpis).toHaveTextContent("9.8s");
@@ -221,10 +246,25 @@ describe("MonitoringTimelineView", () => {
     expect(screen.getByText("provider rate limited")).toBeInTheDocument();
     expect(screen.getByText("web_fetch")).toBeInTheDocument();
     expect(screen.getByText(/rebuilt from turn records/)).toBeInTheDocument();
-    expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", { range: "24h" });
+    expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", {
+      range: "24h",
+    });
     fireEvent.click(screen.getByRole("button", { name: "7d" }));
     await waitFor(() =>
-      expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", { range: "7d" }),
+      expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", {
+        range: "7d",
+      }),
     );
+  });
+
+  it("an organization on cells counts its cells and drops the worker wait", async () => {
+    renderView("cells");
+    const kpis = await screen.findByTestId("timeline-kpis");
+    expect(kpis).toHaveTextContent("on cells");
+    expect(kpis).toHaveTextContent("Most waiting on cells");
+    expect(kpis).not.toHaveTextContent("Longest wait for a worker");
+    expect(
+      screen.queryByRole("group", { name: "Execution path" }),
+    ).not.toBeInTheDocument();
   });
 });

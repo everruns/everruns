@@ -58,12 +58,23 @@ import {
 const SYNC = "monitoring-timeline";
 
 // Axis ticks stay short (120K, not 120,000) so the fixed-width y axis never clips them.
-const COMPACT = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+const COMPACT = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
 function axisCount(v: number): string {
   return COMPACT.format(v);
 }
 
-export function MonitoringTimelineView({ scope }: { scope: MonitoringScope }) {
+/** `path` pins an organization to the execution path it runs on, which hides
+ * the All / Workers / Cells filter; the platform view leaves it unset. */
+export function MonitoringTimelineView({
+  scope,
+  path,
+}: {
+  scope: MonitoringScope;
+  path?: Plane;
+}) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
   const [bounds, setBounds] = useState<TimelineBounds>({ range: "24h" });
@@ -102,12 +113,17 @@ export function MonitoringTimelineView({ scope }: { scope: MonitoringScope }) {
             </Button>
           ))}
           {zoomed && (
-            <Button variant="ghost" size="sm" className="ml-2" onClick={() => choose(bounds.range)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-2"
+              onClick={() => choose(bounds.range)}
+            >
               {ui("Reset zoom")}
             </Button>
           )}
         </div>
-        {data && hasCells(data) && (
+        {data && !path && hasCells(data) && (
           <div className="flex" role="group" aria-label={ui("Execution path")}>
             {(["all", "workers", "cells"] as const).map((p) => (
               <Button
@@ -118,7 +134,11 @@ export function MonitoringTimelineView({ scope }: { scope: MonitoringScope }) {
                 onClick={() => setPlane(p)}
                 className={`-ml-px first:ml-0 ${plane === p ? "relative z-10 border-primary font-semibold" : "text-muted-foreground"}`}
               >
-                {p === "all" ? ui("All") : p === "workers" ? ui("Workers") : ui("Cells")}
+                {p === "all"
+                  ? ui("All")
+                  : p === "workers"
+                    ? ui("Workers")
+                    : ui("Cells")}
               </Button>
             ))}
           </div>
@@ -126,7 +146,9 @@ export function MonitoringTimelineView({ scope }: { scope: MonitoringScope }) {
         {data && (
           <span className="text-xs text-muted-foreground">
             {rangeLabel(data, displayLocale)} ·{" "}
-            {ui("{value0}-minute buckets", { value0: String(data.bucket_seconds / 60) })}
+            {ui("{value0}-minute buckets", {
+              value0: String(data.bucket_seconds / 60),
+            })}
           </span>
         )}
       </div>
@@ -136,7 +158,9 @@ export function MonitoringTimelineView({ scope }: { scope: MonitoringScope }) {
             icon={<AlertTriangle />}
             title={ui("History could not load")}
             description={ui("Refresh when the service is available.")}
-            action={<Button onClick={() => timeline.refetch()}>{ui("Retry")}</Button>}
+            action={
+              <Button onClick={() => timeline.refetch()}>{ui("Retry")}</Button>
+            }
           />
         ) : (
           <Skeleton className="h-[600px]" />
@@ -145,7 +169,7 @@ export function MonitoringTimelineView({ scope }: { scope: MonitoringScope }) {
         <TimelineBody
           scope={scope}
           data={data}
-          plane={hasCells(data) ? plane : "workers"}
+          plane={path ?? (hasCells(data) ? plane : "workers")}
           selection={selection}
           onSelect={setSelection}
           onZoom={(from, to) => {
@@ -168,7 +192,10 @@ function rangeLabel(data: MonitoringTimeline, locale: string) {
   return `${f.format(new Date(data.from))} – ${f.format(new Date(data.to))}`;
 }
 
-function markerLabel(ui: ReturnType<typeof useUiTranslations>, m: { kind: string; label: string }) {
+function markerLabel(
+  ui: ReturnType<typeof useUiTranslations>,
+  m: { kind: string; label: string },
+) {
   switch (m.kind) {
     case "deploy":
       return ui("deploy {value0}", { value0: m.label });
@@ -201,7 +228,10 @@ function TimelineBody({
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
   const fleet = scope === "fleet";
-  const rows = useMemo(() => timelineRows(data.buckets, plane), [data.buckets, plane]);
+  const rows = useMemo(
+    () => timelineRows(data.buckets, plane),
+    [data.buckets, plane],
+  );
   const cells = plane !== "workers" && hasCells(data);
   const workers = plane !== "cells";
   const [errorsOpen, setErrorsOpen] = useState(false);
@@ -225,11 +255,41 @@ function TimelineBody({
   };
   const phaseSeries: TimeSeries[] = workers
     ? [
-        { key: "model", label: ui("Model"), color: C.model, kind: "area", stack: "p" },
-        { key: "tools", label: ui("Tools"), color: C.tools, kind: "area", stack: "p" },
-        { key: "waiting", label: ui("Waiting"), color: C.waiting, kind: "area", stack: "p" },
-        { key: "runnable", label: ui("Runnable"), color: C.runnable, kind: "area", stack: "p" },
-        { key: "setup", label: ui("Setup / handoff"), color: C.setup, kind: "area", stack: "p" },
+        {
+          key: "model",
+          label: ui("Model"),
+          color: C.model,
+          kind: "area",
+          stack: "p",
+        },
+        {
+          key: "tools",
+          label: ui("Tools"),
+          color: C.tools,
+          kind: "area",
+          stack: "p",
+        },
+        {
+          key: "waiting",
+          label: ui("Waiting"),
+          color: C.waiting,
+          kind: "area",
+          stack: "p",
+        },
+        {
+          key: "runnable",
+          label: ui("Runnable"),
+          color: C.runnable,
+          kind: "area",
+          stack: "p",
+        },
+        {
+          key: "setup",
+          label: ui("Setup / handoff"),
+          color: C.setup,
+          kind: "area",
+          stack: "p",
+        },
       ]
     : [];
   const sessions: TimeSeries[] = [
@@ -256,7 +316,13 @@ function TimelineBody({
           } as TimeSeries,
         ]
       : []),
-    { key: "peak", label: ui("Peak"), color: C.peak, kind: "line", dashed: true },
+    {
+      key: "peak",
+      label: ui("Peak"),
+      color: C.peak,
+      kind: "line",
+      dashed: true,
+    },
     ...(fleet && workers
       ? [
           {
@@ -269,14 +335,48 @@ function TimelineBody({
       : []),
   ];
   const turns: TimeSeries[] = [
-    { key: "completed", label: ui("Completed"), color: C.completed, kind: "bar", stack: "t" },
-    { key: "cancelled", label: ui("Cancelled"), color: C.cancelled, kind: "bar", stack: "t" },
-    { key: "failed", label: ui("Failed"), color: C.failed, kind: "bar", stack: "t" },
+    {
+      key: "completed",
+      label: ui("Completed"),
+      color: C.completed,
+      kind: "bar",
+      stack: "t",
+    },
+    {
+      key: "cancelled",
+      label: ui("Cancelled"),
+      color: C.cancelled,
+      kind: "bar",
+      stack: "t",
+    },
+    {
+      key: "failed",
+      label: ui("Failed"),
+      color: C.failed,
+      kind: "bar",
+      stack: "t",
+    },
   ];
   const population: TimeSeries[] = [
-    { key: "open_sessions", label: ui("Open sessions"), color: C.open, kind: "line" },
-    { key: "agents", label: ui("Agents"), color: C.agents, kind: "line", dashed: true },
-    { key: "agents_working", label: ui("Agents working"), color: C.working, kind: "area" },
+    {
+      key: "open_sessions",
+      label: ui("Open sessions"),
+      color: C.open,
+      kind: "line",
+    },
+    {
+      key: "agents",
+      label: ui("Agents"),
+      color: C.agents,
+      kind: "line",
+      dashed: true,
+    },
+    {
+      key: "agents_working",
+      label: ui("Agents working"),
+      color: C.working,
+      kind: "area",
+    },
   ];
   const fleetSeries: TimeSeries[] = [
     { key: "servers", label: ui("Servers"), color: C.servers, kind: "line" },
@@ -284,7 +384,13 @@ function TimelineBody({
     ...(hasCells(data)
       ? ([
           { key: "cells", label: ui("Cells"), color: C.cells, kind: "line" },
-          { key: "nodes", label: ui("Cell nodes"), color: C.nodes, kind: "line", dashed: true },
+          {
+            key: "nodes",
+            label: ui("Cell nodes"),
+            color: C.nodes,
+            kind: "line",
+            dashed: true,
+          },
         ] as TimeSeries[])
       : []),
   ];
@@ -295,11 +401,13 @@ function TimelineBody({
   const bucketName =
     data.bucket_seconds >= 3600
       ? ui("per hour")
-      : ui("per {value0} minutes", { value0: String(data.bucket_seconds / 60) });
+      : ui("per {value0} minutes", {
+          value0: String(data.bucket_seconds / 60),
+        });
   return (
     <PageColumns>
       <PageMain>
-        <Kpis data={data} fleet={fleet} />
+        <Kpis data={data} fleet={fleet} plane={plane} />
         <ChartCard
           title={ui("Sessions and agents")}
           description={ui(
@@ -317,14 +425,20 @@ function TimelineBody({
           />
         </ChartCard>
         <ChartCard
-          title={fleet && workers ? ui("Working now, against capacity") : ui("Working now")}
+          title={
+            fleet && workers
+              ? ui("Working now, against capacity")
+              : ui("Working now")
+          }
           description={
             cells && workers
               ? ui(
                   "Turns running: on workers by phase, on cells as one band (cells report once a minute); dashed line is the peak.",
                 )
               : cells
-                ? ui("Turns running on cells, average per bucket; dashed line is the peak.")
+                ? ui(
+                    "Turns running on cells, average per bucket; dashed line is the peak.",
+                  )
                 : fleet
                   ? ui(
                       "All organizations, average per bucket by phase; dashed line is the peak, grey line is worker slots.",
@@ -381,7 +495,9 @@ function TimelineBody({
         {fleet && workers && <WorkerStrip data={data} formatX={formatX} />}
         <ChartCard
           title={ui("Turns")}
-          description={ui("Turns finished by outcome, {value0}.", { value0: bucketName })}
+          description={ui("Turns finished by outcome, {value0}.", {
+            value0: bucketName,
+          })}
           series={turns}
         >
           <TimeSeriesChart
@@ -394,12 +510,21 @@ function TimelineBody({
         {workers && (
           <ChartCard
             title={ui("Waiting for a worker")}
-            description={ui("Longest time a ready turn waited for a worker lease in each bucket.")}
+            description={ui(
+              "Longest time a ready turn waited for a worker lease in each bucket.",
+            )}
             series={[{ key: "wait", label: ui("Longest wait"), color: C.wait }]}
           >
             <TimeSeriesChart
               {...common}
-              series={[{ key: "wait", label: ui("Longest wait"), color: C.wait, kind: "line" }]}
+              series={[
+                {
+                  key: "wait",
+                  label: ui("Longest wait"),
+                  color: C.wait,
+                  kind: "line",
+                },
+              ]}
               height={100}
               formatY={(v) => `${number(v)}s`}
               ariaLabel={ui("Wait for a worker over time")}
@@ -409,11 +534,23 @@ function TimelineBody({
         <div className="grid gap-4 md:grid-cols-2">
           <SmallChart
             title={ui("Tool calls")}
-            description={ui("Started, {value0}; failures in red.", { value0: bucketName })}
+            description={ui("Started, {value0}; failures in red.", {
+              value0: bucketName,
+            })}
             common={common}
             series={[
-              { key: "tool_calls", label: ui("Tool calls"), color: C.tools, kind: "line" },
-              { key: "tool_failures", label: ui("Failed"), color: C.failed, kind: "line" },
+              {
+                key: "tool_calls",
+                label: ui("Tool calls"),
+                color: C.tools,
+                kind: "line",
+              },
+              {
+                key: "tool_failures",
+                label: ui("Failed"),
+                color: C.failed,
+                kind: "line",
+              },
             ]}
           />
           <SmallChart
@@ -421,9 +558,19 @@ function TimelineBody({
             description={ui("USD, {value0}.", { value0: bucketName })}
             common={common}
             formatY={(v) => usd(v)}
-            series={[{ key: "spend", label: ui("Spend"), color: C.spend, kind: "line" }]}
+            series={[
+              {
+                key: "spend",
+                label: ui("Spend"),
+                color: C.spend,
+                kind: "line",
+              },
+            ]}
             footer={
-              <Link href="/reports" className="text-xs underline-offset-4 hover:underline">
+              <Link
+                href="/reports"
+                className="text-xs underline-offset-4 hover:underline"
+              >
                 {ui("Open Reports →")}
               </Link>
             }
@@ -432,9 +579,20 @@ function TimelineBody({
             title={ui("Errors")}
             description={ui("Failed turns and failed tool calls.")}
             common={common}
-            series={[{ key: "errors", label: ui("Errors"), color: C.failed, kind: "line" }]}
+            series={[
+              {
+                key: "errors",
+                label: ui("Errors"),
+                color: C.failed,
+                kind: "line",
+              },
+            ]}
             footer={
-              <Button variant="ghost" size="sm" onClick={() => setErrorsOpen(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setErrorsOpen(true)}
+              >
                 {ui("What failed →")}
               </Button>
             }
@@ -444,25 +602,53 @@ function TimelineBody({
             description={ui("Model call duration, p95.")}
             common={common}
             formatY={(v) => `${number(v)}s`}
-            series={[{ key: "latency", label: ui("p95"), color: C.latency, kind: "line" }]}
+            series={[
+              {
+                key: "latency",
+                label: ui("p95"),
+                color: C.latency,
+                kind: "line",
+              },
+            ]}
           />
           {fleet && cells && (
             <SmallChart
               title={ui("Leader changes and moves")}
-              description={ui("Cell leader elections, and sessions moved to another cell.")}
+              description={ui(
+                "Cell leader elections, and sessions moved to another cell.",
+              )}
               common={common}
               series={[
-                { key: "elections", label: ui("Elections"), color: C.failed, kind: "bar" },
-                { key: "moves", label: ui("Moves"), color: C.wait, kind: "bar" },
+                {
+                  key: "elections",
+                  label: ui("Elections"),
+                  color: C.failed,
+                  kind: "bar",
+                },
+                {
+                  key: "moves",
+                  label: ui("Moves"),
+                  color: C.wait,
+                  kind: "bar",
+                },
               ]}
             />
           )}
           {cells && (
             <SmallChart
               title={ui("Waiting on cells")}
-              description={ui("Most messages waiting for a turn on cells in one minute.")}
+              description={ui(
+                "Most messages waiting for a turn on cells in one minute.",
+              )}
               common={common}
-              series={[{ key: "queued", label: ui("Waiting"), color: C.wait, kind: "line" }]}
+              series={[
+                {
+                  key: "queued",
+                  label: ui("Waiting"),
+                  color: C.wait,
+                  kind: "line",
+                },
+              ]}
             />
           )}
           {fleet && workers && (
@@ -470,7 +656,14 @@ function TimelineBody({
               title={ui("Lease takeovers")}
               description={ui("Expired leases another worker picked up.")}
               common={common}
-              series={[{ key: "takeovers", label: ui("Takeovers"), color: C.wait, kind: "bar" }]}
+              series={[
+                {
+                  key: "takeovers",
+                  label: ui("Takeovers"),
+                  color: C.wait,
+                  kind: "bar",
+                },
+              ]}
             />
           )}
         </div>
@@ -539,7 +732,10 @@ function SmallChart({
   title: string;
   description: string;
   series: TimeSeries[];
-  common: Omit<React.ComponentProps<typeof TimeSeriesChart>, "series" | "ariaLabel">;
+  common: Omit<
+    React.ComponentProps<typeof TimeSeriesChart>,
+    "series" | "ariaLabel"
+  >;
   formatY?: (v: number) => string;
   footer?: React.ReactNode;
 }) {
@@ -559,7 +755,13 @@ function SmallChart({
   );
 }
 
-function Delta({ value, worseWhenUp = false }: { value: number | null; worseWhenUp?: boolean }) {
+function Delta({
+  value,
+  worseWhenUp = false,
+}: {
+  value: number | null;
+  worseWhenUp?: boolean;
+}) {
   const ui = useUiTranslations();
   if (value === null || !Number.isFinite(value)) return null;
   // Compare the rounded figure so a tiny change never reads as a signed "−0%".
@@ -568,7 +770,13 @@ function Delta({ value, worseWhenUp = false }: { value: number | null; worseWhen
   const text = `${percent > 0 ? "+" : percent < 0 ? "−" : ""}${Math.abs(percent)}%`;
   return (
     <span>
-      <span className={percent === 0 ? "" : bad ? "text-destructive" : "text-success"}>{text}</span>{" "}
+      <span
+        className={
+          percent === 0 ? "" : bad ? "text-destructive" : "text-success"
+        }
+      >
+        {text}
+      </span>{" "}
       {ui("vs previous period")}
     </span>
   );
@@ -580,14 +788,26 @@ function PointsDelta({ rate, previous }: { rate: number; previous: number }) {
   const points = Math.round((rate - previous) * 1000) / 10;
   const sign = points > 0 ? "+" : points < 0 ? "−" : "";
   return (
-    <span className={points > 0 ? "text-destructive" : points < 0 ? "text-success" : ""}>
+    <span
+      className={
+        points > 0 ? "text-destructive" : points < 0 ? "text-success" : ""
+      }
+    >
       {sign}
       {number(Math.abs(points))} {ui("pts")}
     </span>
   );
 }
 
-function Kpis({ data, fleet }: { data: MonitoringTimeline; fleet: boolean }) {
+function Kpis({
+  data,
+  fleet,
+  plane,
+}: {
+  data: MonitoringTimeline;
+  fleet: boolean;
+  plane: Plane;
+}) {
   const { summary, previous } = data;
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
@@ -608,20 +828,32 @@ function Kpis({ data, fleet }: { data: MonitoringTimeline; fleet: boolean }) {
       value: number(data.open_sessions_now),
       detail: ui("{value0} agents", { value0: number(data.agents_now) }),
     },
-    {
-      label: ui("Peak parallel sessions"),
-      value: number(summary.peak_active),
-      detail:
-        summary.cells_peak_running != null
-          ? ui("on workers · {value0} on cells", { value0: number(summary.cells_peak_running) })
-          : summary.peak_at
-            ? ui("at {value0}", { value0: time(summary.peak_at)! })
-            : ui("No activity"),
-    },
+    plane === "cells"
+      ? {
+          label: ui("Peak parallel sessions"),
+          value: number(summary.cells_peak_running ?? 0),
+          detail: ui("on cells"),
+        }
+      : {
+          label: ui("Peak parallel sessions"),
+          value: number(summary.peak_active),
+          detail:
+            plane === "all" && summary.cells_peak_running != null
+              ? ui("on workers · {value0} on cells", {
+                  value0: number(summary.cells_peak_running),
+                })
+              : summary.peak_at
+                ? ui("at {value0}", { value0: time(summary.peak_at)! })
+                : ui("No activity"),
+        },
     {
       label: ui("Turns finished"),
       value: number(summary.turns_finished),
-      detail: <Delta value={change(summary.turns_finished, previous.turns_finished)} />,
+      detail: (
+        <Delta
+          value={change(summary.turns_finished, previous.turns_finished)}
+        />
+      ),
     },
     {
       label: ui("Failed turns"),
@@ -631,29 +863,44 @@ function Kpis({ data, fleet }: { data: MonitoringTimeline; fleet: boolean }) {
           ui("No finished turns")
         ) : (
           <span>
-            {prevRate != null && <PointsDelta rate={rate} previous={prevRate} />}
+            {prevRate != null && (
+              <PointsDelta rate={rate} previous={prevRate} />
+            )}
             {prevRate != null && " · "}
             {ui("{value0} turns", { value0: number(summary.turns_failed) })}
           </span>
         ),
     },
-    fleet && summary.seconds_above_90 != null
+    plane === "cells"
       ? {
-          label: ui("Time above 90% load"),
-          value: duration(summary.seconds_above_90 * 1000),
-          detail: ui("worker slots in use"),
+          label: ui("Most waiting on cells"),
+          value: number(
+            Math.max(0, ...data.buckets.map((b) => b.cells?.queued_peak ?? 0)),
+          ),
+          detail: ui("turns queued at once"),
         }
-      : {
-          label: ui("Longest wait for a worker"),
-          value: duration(summary.longest_wait_ms),
-          detail: summary.longest_wait_at
-            ? ui("at {value0}", { value0: time(summary.longest_wait_at)! })
-            : "",
-        },
+      : fleet && summary.seconds_above_90 != null
+        ? {
+            label: ui("Time above 90% load"),
+            value: duration(summary.seconds_above_90 * 1000),
+            detail: ui("worker slots in use"),
+          }
+        : {
+            label: ui("Longest wait for a worker"),
+            value: duration(summary.longest_wait_ms),
+            detail: summary.longest_wait_at
+              ? ui("at {value0}", { value0: time(summary.longest_wait_at)! })
+              : "",
+          },
     {
       label: ui("Model spend"),
       value: usd(summary.cost_usd),
-      detail: <Delta value={change(summary.cost_usd, previous.cost_usd)} worseWhenUp />,
+      detail: (
+        <Delta
+          value={change(summary.cost_usd, previous.cost_usd)}
+          worseWhenUp
+        />
+      ),
     },
   ];
   return (
@@ -664,8 +911,12 @@ function Kpis({ data, fleet }: { data: MonitoringTimeline; fleet: boolean }) {
       {tiles.map((t) => (
         <div key={t.label} className="bg-card p-4">
           <div className="text-[11px] text-muted-foreground">{t.label}</div>
-          <div className="mt-1 text-2xl font-semibold tabular-nums">{t.value}</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">{t.detail}</div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums">
+            {t.value}
+          </div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {t.detail}
+          </div>
         </div>
       ))}
     </div>
@@ -681,7 +932,9 @@ function WorkerStrip({
 }) {
   const ui = useUiTranslations();
   const ids = [
-    ...new Set(data.buckets.flatMap((b) => b.worker_loads.map((w) => w.worker_id))),
+    ...new Set(
+      data.buckets.flatMap((b) => b.worker_loads.map((w) => w.worker_id)),
+    ),
   ].sort();
   const n = data.buckets.length;
   return (
@@ -697,12 +950,18 @@ function WorkerStrip({
           series={[
             { key: "low", label: ui("Low"), color: "hsl(var(--info) / 0.25)" },
             { key: "high", label: ui("High"), color: "hsl(var(--info))" },
-            { key: "full", label: ui("Saturated"), color: "hsl(var(--destructive))" },
+            {
+              key: "full",
+              label: ui("Saturated"),
+              color: "hsl(var(--destructive))",
+            },
           ]}
         />
       </div>
       {ids.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{ui("No worker reports in this range.")}</p>
+        <p className="text-xs text-muted-foreground">
+          {ui("No worker reports in this range.")}
+        </p>
       ) : (
         <div className="space-y-1.5">
           {ids.map((id) => (
@@ -730,7 +989,9 @@ function WorkerStrip({
                       y={0}
                       width={1.02}
                       height={1}
-                      fill={u > 0.9 ? "hsl(var(--destructive))" : "hsl(var(--info))"}
+                      fill={
+                        u > 0.9 ? "hsl(var(--destructive))" : "hsl(var(--info))"
+                      }
                       fillOpacity={0.12 + 0.78 * u}
                     >
                       <title>{`${formatX(Date.parse(b.start))} · ${number(w.load_avg)}/${w.capacity}`}</title>
@@ -780,7 +1041,12 @@ function SelectionRail({
     hour: "numeric",
     minute: "2-digit",
   });
-  const phaseColor = { model: C.model, tools: C.tools, waiting: C.waiting, runnable: C.runnable };
+  const phaseColor = {
+    model: C.model,
+    tools: C.tools,
+    waiting: C.waiting,
+    runnable: C.runnable,
+  };
   const phaseLabel = {
     model: ui("Model"),
     tools: ui("Tools"),
@@ -791,7 +1057,11 @@ function SelectionRail({
     <>
       <RailSection
         label={
-          selection ? (single ? ui("Selected time") : ui("Selected range")) : ui("Whole range")
+          selection
+            ? single
+              ? ui("Selected time")
+              : ui("Selected range")
+            : ui("Whole range")
         }
       >
         {totals ? (
@@ -802,16 +1072,28 @@ function SelectionRail({
                 : `${fmt.format(new Date(totals.from))} – ${fmt.format(new Date(totals.to))}`}
             </h2>
             <dl className="mt-3 space-y-2 text-xs">
-              <Row label={ui("Peak parallel sessions")} value={number(totals.peak)} />
-              <Row label={ui("Average parallel")} value={number(totals.average)} />
-              <Row label={ui("Turns started")} value={number(totals.turnsStarted)} />
+              <Row
+                label={ui("Peak parallel sessions")}
+                value={number(totals.peak)}
+              />
+              <Row
+                label={ui("Average parallel")}
+                value={number(totals.average)}
+              />
+              <Row
+                label={ui("Turns started")}
+                value={number(totals.turnsStarted)}
+              />
               <Row
                 label={ui("Turns failed")}
                 value={number(totals.turnsFailed)}
                 warn={totals.turnsFailed > 0}
               />
               <Row label={ui("Tool calls")} value={number(totals.toolCalls)} />
-              <Row label={ui("Longest wait for a worker")} value={duration(totals.longestWaitMs)} />
+              <Row
+                label={ui("Longest wait for a worker")}
+                value={duration(totals.longestWaitMs)}
+              />
               <Row label={ui("Model spend")} value={usd(totals.spend)} />
               {scope === "fleet" && totals.elections + totals.moves > 0 && (
                 <>
@@ -820,7 +1102,10 @@ function SelectionRail({
                     value={number(totals.elections)}
                     warn={totals.elections > 0}
                   />
-                  <Row label={ui("Sessions moved")} value={number(totals.moves)} />
+                  <Row
+                    label={ui("Sessions moved")}
+                    value={number(totals.moves)}
+                  />
                 </>
               )}
             </dl>
@@ -839,7 +1124,9 @@ function SelectionRail({
                         />
                         {phaseLabel[p.key]}
                       </dt>
-                      <dd className="tabular-nums">{Math.round(p.share * 100)}%</dd>
+                      <dd className="tabular-nums">
+                        {Math.round(p.share * 100)}%
+                      </dd>
                     </div>
                   ))}
                 </dl>
@@ -847,7 +1134,11 @@ function SelectionRail({
             )}
             <div className="mt-4 flex flex-col items-start gap-1">
               {!single && (
-                <Button variant="ghost" size="sm" onClick={() => onZoom(totals.from, totals.to)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onZoom(totals.from, totals.to)}
+                >
                   {ui("Zoom to selection →")}
                 </Button>
               )}
@@ -865,7 +1156,13 @@ function SelectionRail({
         )}
       </RailSection>
       {windowFits && breakdown.data && (
-        <RailSection label={scope === "fleet" ? ui("Busiest organizations") : ui("Busiest agents")}>
+        <RailSection
+          label={
+            scope === "fleet"
+              ? ui("Busiest organizations")
+              : ui("Busiest agents")
+          }
+        >
           {breakdown.data.busiest.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               {ui("No turns started in this window.")}
@@ -873,12 +1170,18 @@ function SelectionRail({
           ) : (
             <dl className="space-y-2 text-xs">
               {breakdown.data.busiest.map((r) => (
-                <div key={r.id ?? "none"} className="flex justify-between gap-3">
+                <div
+                  key={r.id ?? "none"}
+                  className="flex justify-between gap-3"
+                >
                   <dt className="truncate">
                     {scope === "fleet" ? (
                       <span className="font-mono text-[11px]">{r.id}</span>
                     ) : r.id ? (
-                      <Link href={`/agents/${r.id}`} className="underline-offset-4 hover:underline">
+                      <Link
+                        href={`/agents/${r.id}`}
+                        className="underline-offset-4 hover:underline"
+                      >
                         {r.name}
                       </Link>
                     ) : (
@@ -900,14 +1203,20 @@ function SelectionRail({
           <FailureList
             rows={breakdown.data.failures}
             empty={ui("No failed turns in this window.")}
-            label={(code) => (code === "other" ? ui("other") : code.replaceAll("_", " "))}
+            label={(code) =>
+              code === "other" ? ui("other") : code.replaceAll("_", " ")
+            }
           />
           {breakdown.data.failed_tools.length > 0 && (
             <>
               <h3 className="mt-4 border-t pt-3 text-xs font-semibold">
                 {ui("Failed tool calls by tool")}
               </h3>
-              <FailureList rows={breakdown.data.failed_tools} empty="" label={(code) => code} />
+              <FailureList
+                rows={breakdown.data.failed_tools}
+                empty=""
+                label={(code) => code}
+              />
             </>
           )}
         </RailSection>
@@ -916,8 +1225,13 @@ function SelectionRail({
         <RailSection label={ui("Changes in this range")}>
           <dl className="space-y-2 text-xs">
             {data.markers.slice(-8).map((m) => (
-              <div key={`${m.at}-${m.kind}-${m.label}`} className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">{fmt.format(new Date(m.at))}</dt>
+              <div
+                key={`${m.at}-${m.kind}-${m.label}`}
+                className="flex justify-between gap-3"
+              >
+                <dt className="text-muted-foreground">
+                  {fmt.format(new Date(m.at))}
+                </dt>
                 <dd className="truncate text-right">{markerLabel(ui, m)}</dd>
               </div>
             ))}
@@ -928,11 +1242,23 @@ function SelectionRail({
   );
 }
 
-function Row({ label, value, warn = false }: { label: string; value: string; warn?: boolean }) {
+function Row({
+  label,
+  value,
+  warn = false,
+}: {
+  label: string;
+  value: string;
+  warn?: boolean;
+}) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className={`text-right tabular-nums ${warn ? "text-destructive" : ""}`}>{value}</dd>
+      <dd
+        className={`text-right tabular-nums ${warn ? "text-destructive" : ""}`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }
@@ -946,7 +1272,8 @@ function FailureList({
   empty: string;
   label: (code: string) => string;
 }) {
-  if (rows.length === 0) return <p className="mt-2 text-xs text-muted-foreground">{empty}</p>;
+  if (rows.length === 0)
+    return <p className="mt-2 text-xs text-muted-foreground">{empty}</p>;
   return (
     <dl className="mt-2 space-y-2 text-xs">
       {rows.map((f) => (
@@ -1008,7 +1335,11 @@ function ErrorsDrawer({
         )
       : [];
   const moves = data.buckets
-    .filter((b) => Date.parse(b.start) >= Date.parse(from) && Date.parse(b.start) < Date.parse(to))
+    .filter(
+      (b) =>
+        Date.parse(b.start) >= Date.parse(from) &&
+        Date.parse(b.start) < Date.parse(to),
+    )
     .reduce((a, b) => a + (b.cells?.moves ?? 0), 0);
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -1024,9 +1355,14 @@ function ErrorsDrawer({
             <h3 className="text-xs font-semibold">{ui("Platform")}</h3>
             <dl className="mt-2 space-y-2 text-xs">
               {leaderChanges.slice(-10).map((m) => (
-                <div key={`${m.at}-${m.label}`} className="flex justify-between gap-3">
+                <div
+                  key={`${m.at}-${m.label}`}
+                  className="flex justify-between gap-3"
+                >
                   <dt className="truncate">{markerLabel(ui, m)}</dt>
-                  <dd className="text-muted-foreground">{fmt.format(new Date(m.at))}</dd>
+                  <dd className="text-muted-foreground">
+                    {fmt.format(new Date(m.at))}
+                  </dd>
                 </div>
               ))}
               {moves > 0 && (
@@ -1047,15 +1383,21 @@ function ErrorsDrawer({
         ) : (
           <>
             <section>
-              <h3 className="text-xs font-semibold">{ui("Failed turns by cause")}</h3>
+              <h3 className="text-xs font-semibold">
+                {ui("Failed turns by cause")}
+              </h3>
               <FailureList
                 rows={breakdown.data.failures}
                 empty={ui("No failed turns in this window.")}
-                label={(code) => (code === "other" ? ui("other") : code.replaceAll("_", " "))}
+                label={(code) =>
+                  code === "other" ? ui("other") : code.replaceAll("_", " ")
+                }
               />
             </section>
             <section>
-              <h3 className="text-xs font-semibold">{ui("Failed tool calls by tool")}</h3>
+              <h3 className="text-xs font-semibold">
+                {ui("Failed tool calls by tool")}
+              </h3>
               <FailureList
                 rows={breakdown.data.failed_tools}
                 empty={ui("No failed tool calls in this window.")}
