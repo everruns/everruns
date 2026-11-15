@@ -184,13 +184,26 @@ pub struct AuthorizationServerMetadata {
 }
 
 /// A configured, dynamically registered, or public metadata-document client.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RegisteredClient {
     /// Issued client identifier, or the exact metadata-document URL for CIMD.
     pub client_id: String,
     /// Issued secret, for confidential clients only.
     #[serde(default)]
     pub client_secret: Option<String>,
+}
+
+impl std::fmt::Debug for RegisteredClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // THREAT[TM-FW-001]: confidential-client credentials must stay out of diagnostic output.
+        f.debug_struct("RegisteredClient")
+            .field("client_id", &self.client_id)
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish()
+    }
 }
 
 /// Validate a host-owned Client ID Metadata Document URL without fetching it.
@@ -1150,6 +1163,21 @@ mod tests {
         // Non-secret bookkeeping stays visible for debugging.
         assert!(rendered.contains("client-1"));
         assert!(rendered.contains("https://auth.example.com/token"));
+    }
+
+    #[test]
+    fn registered_client_debug_redacts_the_confidential_secret() {
+        let secret = "registration-secret-sentinel";
+        let client = RegisteredClient {
+            client_id: "public-client-id".into(),
+            client_secret: Some(secret.into()),
+        };
+        let debug = format!("{client:?}");
+        assert!(!debug.contains(secret));
+        assert!(debug.contains("public-client-id"));
+        // Secret-store serialization remains available and complete.
+        let stored = serde_json::to_string(&client).unwrap();
+        assert!(stored.contains(secret));
     }
 
     #[test]
