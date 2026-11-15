@@ -59,7 +59,7 @@ pub(crate) async fn before_call(
         status => {
             // Back, or only the request can tell: no other check may resume
             // this wait a second time.
-            policy::cancel_queued_checks(store, context.session_id).await;
+            policy::cancel_queued_checks(store, context.session_id, check).await;
             let balance_checked = status.is_some();
             if balance_checked {
                 let mut data = record.data(CreditShortfallAction::Resumed);

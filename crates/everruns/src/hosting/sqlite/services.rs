@@ -486,6 +486,7 @@ impl LocalSessionRunner for HostedSessionRunner {
         session_id: SessionId,
         content: &str,
         occurrence: everruns_contracts::typed_id::MessageId,
+        origin: &everruns_contracts::message_origin::MessageOrigin,
     ) -> Result<()> {
         let session = self
             .engine()?
@@ -504,10 +505,9 @@ impl LocalSessionRunner for HostedSessionRunner {
         }
         // The same id reopens the receipt a lost acknowledgement left behind,
         // whether its turn is pending, running or already finished (EVE-1309).
-        let result = match session
-            .send_with_id(occurrence, crate::InputMessage::user(content))
-            .await
-        {
+        let mut input = crate::InputMessage::user(content);
+        origin.write(&mut input.metadata);
+        let result = match session.send_with_id(occurrence, input).await {
             Ok(sent) => sent.wait().await,
             Err(error) => Err(error),
         };
@@ -815,8 +815,9 @@ mod occurrence_tests {
             .claim_due("lost", first_due, timeout, 8, None)
             .unwrap();
         let first = crate::local::occurrence_message_id(&claim[0].schedule);
+        let origin = crate::local::fire_origin(&claim[0].schedule);
         runner
-            .deliver_occurrence(session, DESCRIPTION, first)
+            .deliver_occurrence(session, DESCRIPTION, first, &origin)
             .await
             .unwrap();
         assert_eq!(effects.load(Ordering::SeqCst), 1);
@@ -837,8 +838,9 @@ mod occurrence_tests {
             crate::local::occurrence_message_id(&claim[0].schedule),
             first
         );
+        let origin = crate::local::fire_origin(&claim[0].schedule);
         runner
-            .deliver_occurrence(session, DESCRIPTION, first)
+            .deliver_occurrence(session, DESCRIPTION, first, &origin)
             .await
             .unwrap();
         assert_eq!(
@@ -864,9 +866,11 @@ mod occurrence_tests {
         assert_ne!(second, first, "a later occurrence is a new admission");
         drop((runner, store));
         engine.shutdown(std::time::Duration::from_secs(5)).await;
-        let mut message =
-            everruns_core::host::AcceptedTurnInput::new(crate::InputMessage::user(DESCRIPTION))
-                .into_message();
+        // Admitted as the runner admits it, origin included: a retry must
+        // present the same input to reopen the admission.
+        let mut input = crate::InputMessage::user(DESCRIPTION);
+        crate::local::fire_origin(&claim[0].schedule).write(&mut input.metadata);
+        let mut message = everruns_core::host::AcceptedTurnInput::new(input).into_message();
         message.id = second;
         hosting.admit(session, message, false).await.unwrap();
         drop(hosting);
@@ -881,8 +885,9 @@ mod occurrence_tests {
             crate::local::occurrence_message_id(&claim[0].schedule),
             second
         );
+        let origin = crate::local::fire_origin(&claim[0].schedule);
         runner
-            .deliver_occurrence(session, DESCRIPTION, second)
+            .deliver_occurrence(session, DESCRIPTION, second, &origin)
             .await
             .unwrap();
         store
@@ -899,6 +904,73 @@ mod occurrence_tests {
         assert_eq!(journal_count(&engine, session, "turn.started").await, 2);
         let advanced = store.list_schedules(session).await.unwrap().remove(0);
         assert_eq!(advanced.trigger_count, 2, "one advancement per occurrence");
+    }
+
+    /// A schedule the local supervisor fires is admitted with the origin the
+    /// server's scheduler writes, so the engine recognizes the turn as
+    /// scheduled (a credit check is only read as one under that origin).
+    #[tokio::test]
+    async fn a_locally_fired_schedule_carries_its_schedule_origin() {
+        use everruns_contracts::message_origin::MessageOriginKind;
+        use everruns_core::events::EventData;
+        use everruns_core::host::{EventReadLimit, EventReadRequest};
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("authority.db");
+        let build = AgentBuild::new("assistant", "scheduled-v1");
+        let effects = Arc::new(AtomicUsize::new(0));
+        let session = SessionId::new();
+        let (engine, hosting, _runner) = open(&path, &build, &effects);
+        engine.create_registered(session, &build).await.unwrap();
+        let schedule = hosting
+            .services
+            .schedules(AUTHORITY_ORG, None)
+            .create_schedule(
+                session,
+                DESCRIPTION.into(),
+                None,
+                Some(chrono::Utc::now()),
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+
+        let stop = crate::CancellationToken::new();
+        let supervisor = {
+            let (engine, hosting, stop) = (engine.clone(), hosting.clone(), stop.clone());
+            tokio::spawn(async move { hosting.supervise(engine, stop).await })
+        };
+        let input = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            loop {
+                let page = hosting
+                    .reader(session)
+                    .event_log
+                    .read_page(EventReadRequest::new(session, EventReadLimit::default()))
+                    .await
+                    .unwrap();
+                let input = page.events.into_iter().find_map(|event| match event.data {
+                    EventData::InputMessage(data) => Some(data.message),
+                    _ => None,
+                });
+                if let Some(input) = input {
+                    return input;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("the schedule fired");
+        stop.cancel();
+        supervisor.await.unwrap().unwrap();
+
+        let origin = input.origin().expect("the fired input has an origin");
+        assert_eq!(origin.kind, MessageOriginKind::Schedule);
+        assert_eq!(origin.source_id, Some(schedule.id.to_string()));
+        assert_eq!(
+            origin,
+            schedule.fire_origin(),
+            "the origin the server writes"
+        );
     }
 }
 

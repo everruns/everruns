@@ -25,6 +25,11 @@
 //   second, and a resume cancels queued checks, so a wait never resumes twice.
 //   A resumed request the provider still refuses goes back to waiting until
 //   the deadline, which bounds the whole wait.
+// - A check never counts its own schedule. A host may run the check before it
+//   marks the firing row fired (local hosting completes a delivery after the
+//   turn), so that row still looks queued; the check carries the schedule id
+//   from its input's origin and skips it, or it would take itself for the
+//   next check, queue nothing, and end the wait after one check.
 // - Stand down: when the next check would land past the deadline, the turn
 //   fails with the ordinary `provider_quota_exhausted` error and no new wait
 //   starts from it.
@@ -38,10 +43,11 @@ use crate::engine::events::{
 };
 use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::engine::session_services::SessionScheduleStore;
-use crate::engine::typed_id::{MessageId, SessionId, TurnId};
+use crate::engine::typed_id::{MessageId, ScheduleId, SessionId, TurnId};
 use crate::engine::{UserFacingError, UserFacingErrorContext, user_facing_error_codes};
 use everruns_contracts::message_origin::MessageOriginKind;
 use everruns_contracts::provider_limit::CreditStatus;
+use everruns_contracts::runtime::session_schedule::SessionSchedule;
 
 /// Smallest balance, in output tokens, worth a smaller retry.
 pub const SHRINK_MIN_TOKENS: u64 = 4096;
@@ -101,6 +107,8 @@ fn parse_deadline(text: &str) -> Option<DateTime<Utc>> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CreditCheck {
     pub deadline: DateTime<Utc>,
+    /// The schedule that fired this check, from its input's origin.
+    pub schedule_id: Option<ScheduleId>,
 }
 
 /// The credit check this turn runs, when its input is one and the model has
@@ -121,10 +129,24 @@ pub(crate) fn credit_check(
     {
         return None;
     }
-    if input.origin()?.kind != MessageOriginKind::Schedule {
+    let origin = input.origin()?;
+    if origin.kind != MessageOriginKind::Schedule {
         return None;
     }
-    parse_deadline(input.text()?.trim()).map(|deadline| CreditCheck { deadline })
+    let schedule_id = origin.source_id.as_deref().and_then(|id| id.parse().ok());
+    parse_deadline(input.text()?.trim()).map(|deadline| CreditCheck {
+        deadline,
+        schedule_id,
+    })
+}
+
+/// A check still waiting to fire, other than the one running (`running`).
+fn is_queued_check(schedule: &SessionSchedule, running: Option<ScheduleId>) -> bool {
+    schedule.enabled
+        && schedule.trigger_count == 0
+        && schedule.cron_expression.is_none()
+        && Some(schedule.id) != running
+        && parse_deadline(&schedule.description).is_some()
 }
 
 /// What scheduling the next check came to.
@@ -162,9 +184,10 @@ pub(crate) async fn schedule_check(
             return Wait::Unavailable;
         }
     };
+    let running = check.and_then(|check| check.schedule_id);
     if let Some(queued) = schedules
         .iter()
-        .filter(|s| s.enabled && s.trigger_count == 0 && s.cron_expression.is_none())
+        .filter(|s| is_queued_check(s, running))
         .find_map(|s| parse_deadline(&s.description))
     {
         return Wait::Queued { deadline: queued };
@@ -192,14 +215,19 @@ pub(crate) async fn schedule_check(
     }
 }
 
-/// Cancel checks still queued, once a check resumed the turn.
-pub(crate) async fn cancel_queued_checks(store: &dyn SessionScheduleStore, session_id: SessionId) {
+/// Cancel checks still queued, once a check resumed the turn. The running
+/// check's own row is left to the host that fired it.
+pub(crate) async fn cancel_queued_checks(
+    store: &dyn SessionScheduleStore,
+    session_id: SessionId,
+    check: CreditCheck,
+) {
     let Ok(schedules) = store.list_schedules(session_id).await else {
         return;
     };
     for schedule in schedules
         .iter()
-        .filter(|s| s.enabled && s.trigger_count == 0 && parse_deadline(&s.description).is_some())
+        .filter(|s| is_queued_check(s, check.schedule_id))
     {
         if let Err(error) = store.cancel_schedule(session_id, schedule.id).await {
             tracing::warn!(%session_id, %error, "credit wait: could not cancel a queued check");

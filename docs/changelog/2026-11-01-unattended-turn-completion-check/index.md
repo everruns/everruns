@@ -15,7 +15,9 @@ A trigger or schedule session could end a turn on "Submitting the review now"
 without making the call. Nobody was watching, so the work was lost. Now, when a
 tool-using turn in such a session is about to finish, the agent's own model
 reviews whether the request was done. If it was not, an automatic continuation
-joins the same turn and the agent carries on.
+joins the same turn and the agent carries on. A turn that stops with no
+answer at all, after its tools or at its output limit, continues the same way
+without a review.
 
 The continuation is labeled as automatic, never as the person's words, and is
 bounded per input in turns, tokens and time. Each review records a

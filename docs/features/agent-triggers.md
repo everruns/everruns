@@ -165,7 +165,9 @@ A trigger or schedule session has nobody watching it, so a turn that ends on
 (`completion_check: "unattended"`), when such a turn used tools and is about to
 finish, the agent's own model reviews whether the request was done. If the work
 is still in progress, an automatic continuation is added to the same turn and
-the agent carries on. It is labeled as automatic, never as the person's words,
+the agent carries on. A turn that stops with no final answer at all (it ran
+tools and then said nothing, or hit its output limit) continues the same way,
+without a review. It is labeled as automatic, never as the person's words,
 and is bounded per input in turns, tokens and time.
 
 Set it on the agent:
