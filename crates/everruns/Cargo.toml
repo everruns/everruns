@@ -310,6 +310,10 @@ name = "mcp_resources"
 required-features = ["openai", "mcp-stdio"]
 
 [[example]]
+name = "code_mode_mcp"
+required-features = ["openai", "mcp-stdio", "bashkit"]
+
+[[example]]
 name = "ask_user"
 required-features = ["openai"]
 
