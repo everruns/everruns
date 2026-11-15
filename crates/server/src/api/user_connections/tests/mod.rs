@@ -1,8 +1,10 @@
 use super::mcp_oauth::discover_oauth_server_metadata;
 use super::*;
-use crate::oauth_client::egress_oauth_json;
+use crate::oauth_client::{ServerOAuthEgress, oauth_error};
 use crate::storage::{CreateAgentRow, CreateMcpServerRow, UpdateMcpServer};
 use everruns_contracts::typed_id::{AgentId, HarnessId};
+use everruns_core::mcp::oauth::OAuthClient;
+use everruns_core::mcp::oauth::protocol::validate_authorization_params;
 use everruns_core::{
     EgressRequest, EgressResponse, EgressService, OrgRole, Permission, PermissionResolver,
 };
@@ -79,8 +81,7 @@ fn service_authorization_params_cannot_override_reserved_oauth_fields() {
 
     let error = validate_authorization_params(&params).unwrap_err();
 
-    assert_eq!(error.0, StatusCode::BAD_REQUEST);
-    assert!(error.1.contains("'resource' is reserved"));
+    assert!(error.to_string().contains("'resource' is reserved"));
 }
 
 struct MismatchedIssuerEgress;
@@ -307,6 +308,7 @@ async fn identity_oauth_callback_stores_only_an_identity_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state),
             error: None,
@@ -383,6 +385,7 @@ async fn oauth_callback_rejects_configuration_changed_after_authorization() {
         &provider,
         &pending,
         &OAuthCallbackQuery {
+            iss: None,
             code: Some("code".into()),
             state: Some(pending.state.clone()),
             error: None,
@@ -561,6 +564,7 @@ async fn identity_oauth_callback_rejects_mismatched_state_without_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some("wrong-state".to_string()),
             error: None,
@@ -610,6 +614,7 @@ async fn identity_oauth_callback_rejects_archived_server_without_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state),
             error: None,
@@ -647,6 +652,7 @@ async fn identity_oauth_callback_rechecks_permission_before_writing_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state),
             error: None,
@@ -685,6 +691,7 @@ async fn identity_oauth_callback_rejects_deleted_authorized_agent_without_grant(
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state),
             error: None,
@@ -798,18 +805,30 @@ fn normalize_oauth_mode_rejects_unknown_values() {
 
 #[test]
 fn resource_origin_preserves_non_default_port() {
-    let url = reqwest::Url::parse("https://example.com:8443/v1/mcp").unwrap();
-    assert_eq!(resource_origin(&url).unwrap(), "https://example.com:8443");
+    assert_eq!(
+        everruns_core::mcp::oauth::protocol::authorization_server_issuer(
+            None,
+            "https://example.com:8443/v1/mcp"
+        )
+        .unwrap(),
+        "https://example.com:8443"
+    );
 }
 
 #[test]
 fn resource_origin_brackets_ipv6_hosts() {
-    let url = reqwest::Url::parse("https://[::1]:8443/v1/mcp").unwrap();
-    assert_eq!(resource_origin(&url).unwrap(), "https://[::1]:8443");
+    assert_eq!(
+        everruns_core::mcp::oauth::protocol::authorization_server_issuer(
+            None,
+            "https://[::1]:8443/v1/mcp"
+        )
+        .unwrap(),
+        "https://[::1]:8443"
+    );
 }
 
 /// Egress that fails the test if it is ever asked to send — used to prove
-/// that a blocked URL is rejected by `egress_oauth_json` before any request
+/// that a blocked URL is rejected by the shared OAuth client and Server egress before any request
 /// leaves the boundary (EVE-623).
 struct NeverSendEgress;
 
@@ -819,10 +838,7 @@ impl EgressService for NeverSendEgress {
         &self,
         request: EgressRequest,
     ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
-        panic!(
-            "egress_oauth_json must not send blocked URL: {}",
-            request.url
-        );
+        panic!("shared OAuth must not send blocked URL: {}", request.url);
     }
 
     async fn send_stream(
@@ -843,8 +859,11 @@ async fn oauth_egress_blocks_private_ip_literal_before_send() {
         "http://169.254.169.254/latest/meta-data/",
         "http://10.0.0.1/oauth/register",
     ] {
-        let result: Result<serde_json::Value, _> =
-            egress_oauth_json(&egress, "GET", url, &[], Vec::new()).await;
+        let guarded = ServerOAuthEgress(&egress);
+        let result = OAuthClient::new(&guarded, everruns_core::EgressRequestKind::Mcp)
+            .discover_authorization_server(url)
+            .await
+            .map_err(oauth_error);
         let (status, _msg) = result.expect_err("blocked URL must error");
         assert_eq!(
             status,
@@ -857,14 +876,11 @@ async fn oauth_egress_blocks_private_ip_literal_before_send() {
 #[tokio::test]
 async fn oauth_egress_blocks_localhost_hostname_before_send() {
     let egress = NeverSendEgress;
-    let result: Result<serde_json::Value, _> = egress_oauth_json(
-        &egress,
-        "POST",
-        "http://localhost:9000/token",
-        &[],
-        Vec::new(),
-    )
-    .await;
+    let guarded = ServerOAuthEgress(&egress);
+    let result = OAuthClient::new(&guarded, everruns_core::EgressRequestKind::Mcp)
+        .discover_authorization_server("http://localhost:9000/token")
+        .await
+        .map_err(oauth_error);
     let (status, _) = result.expect_err("localhost must be blocked");
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
@@ -1235,6 +1251,7 @@ async fn user_mcp_server_oauth_writes_only_the_owners_grant() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state),
             error: None,
@@ -1329,6 +1346,7 @@ async fn user_mcp_server_oauth_is_hidden_from_other_people() {
         forged,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state.clone()),
             error: None,
@@ -1353,3 +1371,5 @@ mod connect_errors_flow;
 mod connection_check_flow;
 mod github_org_flow;
 mod oauth_discovery_flow;
+
+mod shared_oauth_contract;

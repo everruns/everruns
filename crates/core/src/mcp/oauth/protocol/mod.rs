@@ -1,10 +1,8 @@
 //! OAuth 2.1 authorization-code client: the protocol steps, and nothing else.
 //!
-//! This started life in `everruns-core` as a client every host could share.
-//! EVE-879 moved it here: MCP login/refresh is its only consumer, and the
-//! execution kernel should not carry token-exchange plumbing or form encoding
-//! for a flow it never runs. The server's control-plane OAuth flows (provider
-//! connect, user connections) keep their own egress-based exchange client.
+//! The Framework and Server call this implementation for outbound MCP OAuth.
+//! Hosts own callback delivery, credential persistence, tenant attribution and
+//! refresh locking. This module owns the protocol requests and validation.
 //!
 //! What lives here is deliberately the *stateless* half:
 //!
@@ -50,7 +48,7 @@ pub enum OAuthError {
     InsecureUrl {
         /// Which endpoint was rejected.
         what: &'static str,
-        /// The offending URL.
+        /// Redacted URL marker; endpoint URLs can contain credentials.
         url: String,
     },
     /// The authorization server answered, but not with success.
@@ -60,7 +58,7 @@ pub enum OAuthError {
         what: &'static str,
         /// HTTP status returned.
         status: u16,
-        /// Response body, truncated for logging.
+        /// Safe, recognized OAuth error code; arbitrary provider text is redacted.
         body: String,
     },
     /// The response was not the JSON document this step expects.
@@ -91,7 +89,7 @@ pub enum OAuthError {
     Egress {
         /// Which step failed.
         what: &'static str,
-        /// Underlying error text.
+        /// Safe transport classification; upstream text and URLs are omitted.
         message: String,
     },
 }
@@ -157,12 +155,16 @@ pub struct ProtectedResourceMetadata {
     /// Issuers that can mint tokens for this resource.
     #[serde(default)]
     pub authorization_servers: Vec<String>,
+    /// Scopes advertised by the protected resource.
+    #[serde(default)]
+    pub scopes_supported: Vec<String>,
 }
 
 /// Authorization-server metadata (RFC 8414 / OpenID discovery).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthorizationServerMetadata {
     /// Issuer identifier; echoed back on the callback as `iss`.
+    #[serde(default, deserialize_with = "optional_issuer")]
     pub issuer: String,
     /// Where the user-agent is sent to authorize.
     pub authorization_endpoint: String,
@@ -181,6 +183,14 @@ pub struct AuthorizationServerMetadata {
     /// PKCE methods the server advertises.
     #[serde(default)]
     pub code_challenge_methods_supported: Vec<String>,
+}
+
+// Legacy Server metadata accepted both absent and null issuers. Discovery fills
+// either from the selected issuer before validating the rest of the flow.
+fn optional_issuer<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<String, D::Error> {
+    Option::<String>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 /// A configured, dynamically registered, or public metadata-document client.
@@ -380,6 +390,57 @@ pub fn authorize_url(
     Ok(url.to_string())
 }
 
+/// Validate host-supplied authorization extensions without allowing protocol fields to be replaced.
+pub fn validate_authorization_params(params: &BTreeMap<String, String>) -> Result<()> {
+    for key in params.keys() {
+        if [
+            "client_id",
+            "code_challenge",
+            "code_challenge_method",
+            "redirect_uri",
+            "resource",
+            "response_type",
+            "scope",
+            "state",
+        ]
+        .contains(&key.as_str())
+        {
+            return Err(OAuthError::Malformed {
+                what: "authorization parameters",
+                message: format!("OAuth authorization parameter '{key}' is reserved"),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Build a PKCE authorization URL with validated host-specific consent parameters.
+pub fn authorize_url_with_params(
+    metadata: &AuthorizationServerMetadata,
+    params: &AuthorizeParams<'_>,
+    extensions: &BTreeMap<String, String>,
+) -> Result<String> {
+    validate_authorization_params(extensions)?;
+    let mut url =
+        Url::parse(&authorize_url(metadata, params)?).map_err(|_| OAuthError::Malformed {
+            what: "authorization URL",
+            message: "invalid URL".into(),
+        })?;
+    url.query_pairs_mut().extend_pairs(extensions);
+    Ok(url.into())
+}
+
+/// Reject a callback whose state differs from the captured login, before any exchange.
+pub fn validate_callback_state(expected: &str, returned: &str) -> Result<()> {
+    if expected.is_empty() || returned != expected {
+        return Err(OAuthError::Malformed {
+            what: "callback state",
+            message: "authorization response state does not match".into(),
+        });
+    }
+    Ok(())
+}
+
 /// Validate the `iss` returned on the callback against the issuer the flow
 /// started with (RFC 9207). A server that returns no `iss` is accepted, since
 /// the parameter is not universally implemented; a *mismatched* one is not.
@@ -387,9 +448,9 @@ pub fn validate_callback_issuer(expected: &str, returned: Option<&str>) -> Resul
     match returned {
         None => Ok(()),
         Some(actual) if actual == expected => Ok(()),
-        Some(actual) => Err(OAuthError::IssuerMismatch {
-            expected: expected.to_string(),
-            actual: actual.to_string(),
+        Some(_actual) => Err(OAuthError::IssuerMismatch {
+            expected: "configured issuer".into(),
+            actual: "different callback issuer".into(),
         }),
     }
 }
@@ -399,7 +460,7 @@ pub fn validate_callback_issuer(expected: &str, returned: Option<&str>) -> Resul
 fn require_secure(raw: &str, what: &'static str) -> Result<Url> {
     let url = Url::parse(raw).map_err(|_| OAuthError::InsecureUrl {
         what,
-        url: raw.to_string(),
+        url: "[REDACTED]".to_string(),
     })?;
     let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
     if url.scheme() == "https" || (url.scheme() == "http" && loopback) {
@@ -407,9 +468,21 @@ fn require_secure(raw: &str, what: &'static str) -> Result<Url> {
     } else {
         Err(OAuthError::InsecureUrl {
             what,
-            url: raw.to_string(),
+            url: "[REDACTED]".to_string(),
         })
     }
+}
+
+/// First advertised authorization server, or the MCP endpoint's origin when metadata is absent.
+pub fn authorization_server_issuer(
+    metadata: Option<&ProtectedResourceMetadata>,
+    server_url: &str,
+) -> Result<String> {
+    let endpoint = require_secure(server_url, "resource")?;
+    Ok(metadata
+        .and_then(|m| m.authorization_servers.first())
+        .cloned()
+        .unwrap_or_else(|| endpoint.origin().ascii_serialization()))
 }
 
 /// The OAuth client. Holds no state: every call is a request/response.
@@ -453,7 +526,7 @@ impl<'a> OAuthClient<'a> {
             .await
             .map_err(|error| OAuthError::Egress {
                 what,
-                message: error.to_string(),
+                message: safe_egress_error(&error).to_string(),
             })?;
         if response.status == 404 {
             return Ok(None);
@@ -462,14 +535,14 @@ impl<'a> OAuthClient<'a> {
             return Err(OAuthError::Http {
                 what,
                 status: response.status,
-                body: truncate(&String::from_utf8_lossy(&response.body)),
+                body: safe_error_code(&response.body).to_string(),
             });
         }
         serde_json::from_slice(&response.body)
             .map(Some)
-            .map_err(|error| OAuthError::Malformed {
+            .map_err(|_| OAuthError::Malformed {
                 what,
-                message: error.to_string(),
+                message: "invalid JSON response".into(),
             })
     }
 
@@ -480,9 +553,9 @@ impl<'a> OAuthClient<'a> {
         what: &'static str,
     ) -> Result<TokenResponse> {
         require_secure(url, "token endpoint")?;
-        let body = serde_urlencoded::to_string(form).map_err(|error| OAuthError::Malformed {
+        let body = serde_urlencoded::to_string(form).map_err(|_| OAuthError::Malformed {
             what,
-            message: error.to_string(),
+            message: "invalid OAuth request or response".into(),
         })?;
         let request = EgressRequest::new("POST", url, self.kind.clone())
             .header("content-type", "application/x-www-form-urlencoded")
@@ -496,19 +569,22 @@ impl<'a> OAuthClient<'a> {
             .await
             .map_err(|error| OAuthError::Egress {
                 what,
-                message: error.to_string(),
+                message: safe_egress_error(&error).to_string(),
             })?;
         if !(200..300).contains(&response.status) {
             return Err(OAuthError::Http {
                 what,
                 status: response.status,
-                body: truncate(&String::from_utf8_lossy(&response.body)),
+                body: safe_error_code(&response.body).to_string(),
             });
         }
-        serde_json::from_slice(&response.body).map_err(|error| OAuthError::Malformed {
-            what,
-            message: error.to_string(),
-        })
+        let token: TokenResponse =
+            serde_json::from_slice(&response.body).map_err(|_| OAuthError::Malformed {
+                what,
+                message: "invalid JSON token response".into(),
+            })?;
+        token.expires_at()?;
+        Ok(token)
     }
 
     /// Fetch protected-resource metadata for `resource_url` (RFC 9728).
@@ -522,8 +598,20 @@ impl<'a> OAuthClient<'a> {
     ) -> Result<Option<ProtectedResourceMetadata>> {
         let url = require_secure(resource_url, "resource")?;
         let document = well_known(&url, "oauth-protected-resource");
-        self.get_json(&document, "protected-resource discovery")
-            .await
+        if let Some(metadata) = self
+            .get_json(&document, "protected-resource discovery")
+            .await?
+        {
+            return Ok(Some(metadata));
+        }
+        let root = format!(
+            "{}/.well-known/oauth-protected-resource",
+            url.origin().ascii_serialization()
+        );
+        if root == document {
+            return Ok(None);
+        }
+        self.get_json(&root, "protected-resource discovery").await
     }
 
     /// Fetch authorization-server metadata for `issuer`, trying the RFC 8414
@@ -533,23 +621,50 @@ impl<'a> OAuthClient<'a> {
         issuer: &str,
     ) -> Result<AuthorizationServerMetadata> {
         let url = require_secure(issuer, "issuer")?;
-        for suffix in ["oauth-authorization-server", "openid-configuration"] {
-            let document = well_known(&url, suffix);
-            if let Some(metadata) = self
+        let mut candidates = vec![
+            well_known(&url, "oauth-authorization-server"),
+            well_known(&url, "openid-configuration"),
+        ];
+        if !url.path().trim_end_matches('/').is_empty() {
+            candidates.push(format!(
+                "{}/.well-known/openid-configuration",
+                url.as_str().trim_end_matches('/')
+            ));
+            // Keep the historical Server fallback for existing presets.
+            candidates.push(format!(
+                "{}/.well-known/oauth-authorization-server",
+                url.as_str().trim_end_matches('/')
+            ));
+        }
+        for document in candidates {
+            if let Some(mut metadata) = self
                 .get_json::<AuthorizationServerMetadata>(
                     &document,
                     "authorization-server discovery",
                 )
                 .await?
             {
+                if metadata.issuer.is_empty() {
+                    metadata.issuer = issuer.to_string();
+                }
+                let advertised = require_secure(&metadata.issuer, "issuer")?;
+                if advertised.as_str().trim_end_matches('/') != url.as_str().trim_end_matches('/') {
+                    return Err(OAuthError::IssuerMismatch {
+                        expected: "configured issuer".into(),
+                        actual: "different metadata issuer".into(),
+                    });
+                }
                 require_secure(&metadata.authorization_endpoint, "authorization endpoint")?;
                 require_secure(&metadata.token_endpoint, "token endpoint")?;
+                if let Some(endpoint) = &metadata.registration_endpoint {
+                    require_secure(endpoint, "registration endpoint")?;
+                }
                 return Ok(metadata);
             }
         }
         Err(OAuthError::Malformed {
             what: "authorization-server discovery",
-            message: format!("no metadata document published by {issuer}"),
+            message: "authorization server publishes no metadata".into(),
         })
     }
 
@@ -559,13 +674,28 @@ impl<'a> OAuthClient<'a> {
         registration_endpoint: &str,
         registration: &ClientRegistration,
     ) -> Result<RegisteredClient> {
+        self.register_client_with_auth_method(
+            registration_endpoint,
+            registration,
+            ClientAuthMethod::None,
+        )
+        .await
+    }
+
+    /// Register a public or confidential client using the host's authentication policy.
+    pub async fn register_client_with_auth_method(
+        &self,
+        registration_endpoint: &str,
+        registration: &ClientRegistration,
+        auth_method: ClientAuthMethod,
+    ) -> Result<RegisteredClient> {
         require_secure(registration_endpoint, "registration endpoint")?;
         let mut body = serde_json::json!({
             "client_name": registration.client_name,
             "redirect_uris": registration.redirect_uris,
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
-            "token_endpoint_auth_method": "none",
+            "token_endpoint_auth_method": match auth_method { ClientAuthMethod::None => "none", ClientAuthMethod::ClientSecretPost => "client_secret_post" },
         });
         if let Some(scope) = &registration.scope {
             body["scope"] = serde_json::Value::String(scope.clone());
@@ -582,18 +712,18 @@ impl<'a> OAuthClient<'a> {
             .await
             .map_err(|error| OAuthError::Egress {
                 what: "client registration",
-                message: error.to_string(),
+                message: safe_egress_error(&error).to_string(),
             })?;
         if !(200..300).contains(&response.status) {
             return Err(OAuthError::Http {
                 what: "client registration",
                 status: response.status,
-                body: truncate(&String::from_utf8_lossy(&response.body)),
+                body: safe_error_code(&response.body).to_string(),
             });
         }
-        serde_json::from_slice(&response.body).map_err(|error| OAuthError::Malformed {
+        serde_json::from_slice(&response.body).map_err(|_| OAuthError::Malformed {
             what: "client registration",
-            message: error.to_string(),
+            message: "invalid JSON response".into(),
         })
     }
 
@@ -608,6 +738,30 @@ impl<'a> OAuthClient<'a> {
         redirect_uri: &str,
         resource: Option<&str>,
     ) -> Result<TokenSet> {
+        let response = self
+            .exchange_code_response(
+                token_endpoint,
+                client,
+                code,
+                code_verifier,
+                redirect_uri,
+                resource,
+            )
+            .await?;
+        response.into_token_set(token_endpoint, client, None, resource)
+    }
+
+    /// Exchange a code while leaving token persistence and expiry representation to the host.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn exchange_code_response(
+        &self,
+        token_endpoint: &str,
+        client: &RegisteredClient,
+        code: &str,
+        code_verifier: &str,
+        redirect_uri: &str,
+        resource: Option<&str>,
+    ) -> Result<TokenResponse> {
         let mut form = BTreeMap::new();
         form.insert("grant_type", "authorization_code".to_string());
         form.insert("code", code.to_string());
@@ -620,10 +774,7 @@ impl<'a> OAuthClient<'a> {
         if let Some(resource) = resource {
             form.insert("resource", resource.to_string());
         }
-        let response = self
-            .post_form(token_endpoint, &form, "code exchange")
-            .await?;
-        Ok(response.into_token_set(token_endpoint, client, None, resource))
+        self.post_form(token_endpoint, &form, "code exchange").await
     }
 
     /// Renew an access token from its refresh token.
@@ -653,10 +804,32 @@ impl<'a> OAuthClient<'a> {
             client_secret: tokens.client_secret.clone(),
         };
 
+        let response = self
+            .refresh_response(token_endpoint, &client, refresh_token, resource)
+            .await?;
+        response.into_token_set(
+            token_endpoint,
+            &client,
+            tokens.refresh_token.clone(),
+            Some(resource),
+        )
+    }
+
+    /// Renew a bound grant; hosts coordinate locking and persist rotation before releasing it.
+    pub async fn refresh_response(
+        &self,
+        token_endpoint: &str,
+        client: &RegisteredClient,
+        refresh_token: &str,
+        resource: &str,
+    ) -> Result<TokenResponse> {
+        if resource.trim().is_empty() {
+            return Err(OAuthError::ReauthorizationRequired);
+        }
         let mut form = BTreeMap::new();
         form.insert("grant_type", "refresh_token".to_string());
         form.insert("refresh_token", refresh_token.to_string());
-        // THREAT[TM-MCP-008]: never rediscover or infer the audience on refresh.
+        // THREAT[TM-MCP-008]: preserve the stored audience exactly, without discovery.
         form.insert("resource", resource.to_string());
         if !client.client_id.is_empty() {
             form.insert("client_id", client.client_id.clone());
@@ -664,43 +837,69 @@ impl<'a> OAuthClient<'a> {
         if let Some(secret) = &client.client_secret {
             form.insert("client_secret", secret.clone());
         }
-        let response = self
-            .post_form(token_endpoint, &form, "token refresh")
-            .await?;
-        Ok(response.into_token_set(
-            token_endpoint,
-            &client,
-            tokens.refresh_token.clone(),
-            Some(resource),
-        ))
+        self.post_form(token_endpoint, &form, "token refresh").await
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct TokenResponse {
-    access_token: String,
+/// Wire token response, intended for host-owned secret persistence.
+#[derive(Clone, Deserialize)]
+pub struct TokenResponse {
+    /// Access credential.
+    pub access_token: String,
+    /// Rotated refresh credential, when supplied.
     #[serde(default)]
-    refresh_token: Option<String>,
+    pub refresh_token: Option<String>,
+    /// Authorization scheme; absence means Bearer.
     #[serde(default)]
-    token_type: Option<String>,
+    pub token_type: Option<String>,
+    /// Token lifetime in seconds.
     #[serde(default)]
-    expires_in: Option<i64>,
+    pub expires_in: Option<i64>,
+    /// Granted scopes.
     #[serde(default)]
-    scope: Option<String>,
+    pub scope: Option<String>,
+}
+impl std::fmt::Debug for TokenResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenResponse")
+            .field("credentials", &"[REDACTED]")
+            .finish_non_exhaustive()
+    }
+}
+
+/// Token-endpoint authentication requested during dynamic registration.
+#[derive(Debug, Clone, Copy)]
+pub enum ClientAuthMethod {
+    /// Public client, protected by PKCE.
+    None,
+    /// Confidential client, with its secret in the token form.
+    ClientSecretPost,
 }
 
 impl TokenResponse {
+    /// Convert the untrusted lifetime with checked arithmetic; invalid lifetimes never panic.
+    pub fn expires_at(&self) -> Result<Option<DateTime<Utc>>> {
+        self.expires_in
+            .map(|seconds| {
+                ChronoDuration::try_seconds(seconds)
+                    .and_then(|delta| Utc::now().checked_add_signed(delta))
+                    .ok_or(OAuthError::Malformed {
+                        what: "token lifetime",
+                        message: "invalid token lifetime".into(),
+                    })
+            })
+            .transpose()
+    }
+
     fn into_token_set(
         self,
         token_endpoint: &str,
         client: &RegisteredClient,
         carried_refresh_token: Option<String>,
         resource: Option<&str>,
-    ) -> TokenSet {
-        TokenSet {
-            expires_at: self
-                .expires_in
-                .map(|seconds| Utc::now() + ChronoDuration::seconds(seconds)),
+    ) -> Result<TokenSet> {
+        Ok(TokenSet {
+            expires_at: self.expires_at()?,
             refresh_token: self.refresh_token.or(carried_refresh_token),
             token_type: self.token_type.unwrap_or_else(default_token_type),
             scope: self.scope,
@@ -709,7 +908,7 @@ impl TokenResponse {
             resource: resource.map(str::to_owned),
             client_id: (!client.client_id.is_empty()).then(|| client.client_id.clone()),
             client_secret: client.client_secret.clone(),
-        }
+        })
     }
 }
 
@@ -733,487 +932,32 @@ fn well_known(url: &Url, suffix: &str) -> String {
     }
 }
 
-fn truncate(body: &str) -> String {
-    const LIMIT: usize = 512;
-    if body.len() <= LIMIT {
-        return body.to_string();
+fn safe_error_code(body: &[u8]) -> &'static str {
+    // THREAT[TM-MCP-016]: providers can echo credentials; retain only fixed classifications.
+    let value = serde_json::from_slice::<serde_json::Value>(body).ok();
+    match value
+        .as_ref()
+        .and_then(|v| v.get("error"))
+        .and_then(|v| v.as_str())
+    {
+        Some("invalid_grant") => "invalid_grant",
+        Some("invalid_client") => "invalid_client",
+        Some("invalid_scope") => "invalid_scope",
+        Some("invalid_request") => "invalid_request",
+        Some("unauthorized_client") => "unauthorized_client",
+        Some("unsupported_grant_type") => "unsupported_grant_type",
+        Some("access_denied") => "access_denied",
+        _ => "[REDACTED]",
     }
-    let mut end = LIMIT;
-    while !body.is_char_boundary(end) {
-        end -= 1;
+}
+
+fn safe_egress_error(error: &crate::egress::EgressError) -> &'static str {
+    match error {
+        crate::egress::EgressError::NetworkAccessDenied { .. } => "blocked_by_network_policy",
+        crate::egress::EgressError::InvalidRequest(_) => "blocked_url",
+        _ => "transport_failed",
     }
-    format!("{}…", &body[..end])
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::egress::{EgressError, EgressResponse, EgressResult};
-    use async_trait::async_trait;
-    use std::sync::{Arc, Mutex};
-
-    #[test]
-    fn client_metadata_capability_requires_a_boolean() {
-        for (field, expected) in [(None, false), (Some(false), false), (Some(true), true)] {
-            let mut value = serde_json::json!({
-                "issuer": "https://auth.example",
-                "authorization_endpoint": "https://auth.example/authorize",
-                "token_endpoint": "https://auth.example/token"
-            });
-            if let Some(field) = field {
-                value["client_id_metadata_document_supported"] = field.into();
-            }
-            let metadata: AuthorizationServerMetadata =
-                serde_json::from_value(value.clone()).unwrap();
-            assert_eq!(metadata.client_id_metadata_document_supported, expected);
-            for invalid in [
-                serde_json::json!("true"),
-                serde_json::json!(1),
-                serde_json::Value::Null,
-            ] {
-                value["client_id_metadata_document_supported"] = invalid;
-                assert!(
-                    serde_json::from_value::<AuthorizationServerMetadata>(value.clone()).is_err()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn client_metadata_url_obeys_cimd_identifier_rules() {
-        for valid in [
-            "https://client.example/oauth.json",
-            "https://client.example:8443/oauth/client.json",
-            // Queries are discouraged, but not forbidden by the draft.
-            "https://client.example/oauth.json?version=1",
-        ] {
-            validate_client_metadata_url(valid).unwrap();
-        }
-        for invalid in [
-            "",
-            "client.json",
-            "http://client.example/client.json",
-            "http://127.0.0.1/client.json",
-            "https://client.example",
-            "https://client.example/",
-            "https://client.example/#fragment",
-            "https://client.example/client.json#fragment",
-            "https://user@client.example/client.json",
-            "https://user:pass@client.example/client.json",
-            "https://@client.example/client.json",
-            "https://client.example/./client.json",
-            "https://client.example/a/../client.json",
-            "https://client.example/%2e/client.json",
-            "https://client.example/.%2E/client.json",
-            "https://client.example/%2e%2E/client.json",
-            " https://client.example/client.json",
-            "https://client.example/cli\nent.json",
-            "https://client.example/a\\client.json",
-        ] {
-            assert!(
-                validate_client_metadata_url(invalid).is_err(),
-                "accepted {invalid:?}"
-            );
-        }
-    }
-
-    /// Egress double: answers by URL, records what was sent. Tests exercise
-    /// the whole client without a socket, which is the payoff of routing OAuth
-    /// through the egress seam instead of a private HTTP client.
-    #[derive(Default)]
-    struct FakeEgress {
-        responses: Mutex<Vec<(String, u16, String)>>,
-        sent: Arc<Mutex<Vec<EgressRequest>>>,
-    }
-
-    impl FakeEgress {
-        fn with(routes: Vec<(&str, u16, &str)>) -> Self {
-            Self {
-                responses: Mutex::new(
-                    routes
-                        .into_iter()
-                        .map(|(url, status, body)| (url.to_string(), status, body.to_string()))
-                        .collect(),
-                ),
-                sent: Arc::new(Mutex::new(Vec::new())),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl EgressService for FakeEgress {
-        async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
-            self.sent.lock().unwrap().push(request.clone());
-            let responses = self.responses.lock().unwrap();
-            let matched = responses
-                .iter()
-                .find(|(url, _, _)| *url == request.url)
-                .map(|(_, status, body)| (*status, body.clone()));
-            match matched {
-                Some((status, body)) => Ok(EgressResponse {
-                    status,
-                    headers: BTreeMap::new(),
-                    body: body.into_bytes(),
-                }),
-                None => Ok(EgressResponse {
-                    status: 404,
-                    headers: BTreeMap::new(),
-                    body: Vec::new(),
-                }),
-            }
-        }
-
-        async fn send_stream(
-            &self,
-            _request: EgressRequest,
-        ) -> EgressResult<crate::egress::EgressStreamResponse> {
-            Err(EgressError::Transport(
-                "streaming not supported".to_string(),
-            ))
-        }
-    }
-
-    fn metadata_json() -> &'static str {
-        r#"{
-            "issuer": "https://auth.example.com",
-            "authorization_endpoint": "https://auth.example.com/authorize",
-            "token_endpoint": "https://auth.example.com/token",
-            "registration_endpoint": "https://auth.example.com/register",
-            "code_challenge_methods_supported": ["S256"]
-        }"#
-    }
-
-    #[test]
-    fn pkce_challenge_is_the_s256_of_the_verifier() {
-        let pair = PkcePair::generate();
-        let expected = base64_url(Sha256::digest(pair.verifier.as_bytes()).as_slice());
-        assert_eq!(pair.challenge, expected);
-        assert_ne!(pair.verifier, pair.challenge);
-        // Two generations must not collide.
-        assert_ne!(PkcePair::generate().verifier, pair.verifier);
-    }
-
-    #[test]
-    fn plaintext_endpoints_are_rejected_except_on_loopback() {
-        assert!(require_secure("https://auth.example.com/token", "token endpoint").is_ok());
-        assert!(require_secure("http://127.0.0.1:1455/callback", "redirect").is_ok());
-        assert!(require_secure("http://auth.example.com/token", "token endpoint").is_err());
-        assert!(require_secure("not-a-url", "token endpoint").is_err());
-    }
-
-    #[test]
-    fn authorize_url_carries_pkce_state_and_resource() {
-        let metadata: AuthorizationServerMetadata = serde_json::from_str(metadata_json()).unwrap();
-        let url = authorize_url(
-            &metadata,
-            &AuthorizeParams {
-                client_id: "client-1",
-                redirect_uri: "http://127.0.0.1:1455/callback",
-                code_challenge: "challenge",
-                state: "state-1",
-                scope: Some("mcp:read"),
-                resource: Some("https://mcp.example.com/"),
-            },
-        )
-        .unwrap();
-
-        assert!(url.starts_with("https://auth.example.com/authorize?"));
-        for expected in [
-            "response_type=code",
-            "client_id=client-1",
-            "code_challenge=challenge",
-            "code_challenge_method=S256",
-            "state=state-1",
-            "scope=mcp%3Aread",
-            "resource=https%3A%2F%2Fmcp.example.com%2F",
-        ] {
-            assert!(url.contains(expected), "missing {expected} in {url}");
-        }
-    }
-
-    #[test]
-    fn callback_issuer_must_match_when_present() {
-        assert!(validate_callback_issuer("https://auth.example.com", None).is_ok());
-        assert!(
-            validate_callback_issuer("https://auth.example.com", Some("https://auth.example.com"))
-                .is_ok()
-        );
-        assert!(matches!(
-            validate_callback_issuer("https://auth.example.com", Some("https://evil.example.com")),
-            Err(OAuthError::IssuerMismatch { .. })
-        ));
-    }
-
-    #[test]
-    fn well_known_inserts_the_suffix_before_an_issuer_path() {
-        let plain = Url::parse("https://auth.example.com").unwrap();
-        assert_eq!(
-            well_known(&plain, "oauth-authorization-server"),
-            "https://auth.example.com/.well-known/oauth-authorization-server"
-        );
-        let tenanted = Url::parse("https://auth.example.com/tenant-a").unwrap();
-        assert_eq!(
-            well_known(&tenanted, "oauth-authorization-server"),
-            "https://auth.example.com/.well-known/oauth-authorization-server/tenant-a"
-        );
-    }
-
-    #[tokio::test]
-    async fn discovery_falls_back_to_the_openid_document() {
-        let egress = FakeEgress::with(vec![(
-            "https://auth.example.com/.well-known/openid-configuration",
-            200,
-            metadata_json(),
-        )]);
-        let client = OAuthClient::new(&egress, EgressRequestKind::Mcp);
-
-        let metadata = client
-            .discover_authorization_server("https://auth.example.com")
-            .await
-            .expect("discovery should fall back");
-
-        assert_eq!(metadata.token_endpoint, "https://auth.example.com/token");
-        // The RFC 8414 location is tried first, then OpenID.
-        let sent = egress.sent.lock().unwrap();
-        assert_eq!(sent.len(), 2);
-        assert!(sent[0].url.contains("oauth-authorization-server"));
-        assert!(sent[1].url.contains("openid-configuration"));
-    }
-
-    #[tokio::test]
-    async fn discovery_requires_secure_endpoints_in_the_metadata() {
-        // A compromised or sloppy server advertising a plaintext token endpoint
-        // must not be used, even though the metadata document itself was HTTPS.
-        let egress = FakeEgress::with(vec![(
-            "https://auth.example.com/.well-known/oauth-authorization-server",
-            200,
-            r#"{
-                "issuer": "https://auth.example.com",
-                "authorization_endpoint": "https://auth.example.com/authorize",
-                "token_endpoint": "http://auth.example.com/token"
-            }"#,
-        )]);
-        let client = OAuthClient::new(&egress, EgressRequestKind::Mcp);
-
-        assert!(matches!(
-            client
-                .discover_authorization_server("https://auth.example.com")
-                .await,
-            Err(OAuthError::InsecureUrl { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn missing_protected_resource_document_is_not_an_error() {
-        let egress = FakeEgress::with(vec![]);
-        let client = OAuthClient::new(&egress, EgressRequestKind::Mcp);
-
-        let found = client
-            .discover_protected_resource("https://mcp.example.com/sse")
-            .await
-            .expect("a 404 means 'not published', not a failure");
-
-        assert!(found.is_none());
-    }
-
-    #[tokio::test]
-    async fn code_exchange_posts_pkce_and_returns_a_dated_token_set() {
-        let egress = FakeEgress::with(vec![(
-            "https://auth.example.com/token",
-            200,
-            r#"{"access_token":"at-1","refresh_token":"rt-1","token_type":"Bearer","expires_in":3600}"#,
-        )]);
-        let client = OAuthClient::new(&egress, EgressRequestKind::Mcp);
-
-        let tokens = client
-            .exchange_code(
-                "https://auth.example.com/token",
-                &RegisteredClient {
-                    client_id: "client-1".to_string(),
-                    client_secret: None,
-                },
-                "code-1",
-                "verifier-1",
-                "http://127.0.0.1:1455/callback",
-                Some("https://mcp.example.com/"),
-            )
-            .await
-            .expect("exchange should succeed");
-
-        assert_eq!(tokens.access_token, "at-1");
-        assert_eq!(tokens.authorization_value(), "Bearer at-1");
-        assert!(tokens.expires_at.is_some());
-        assert_eq!(
-            tokens.token_endpoint.as_deref(),
-            Some("https://auth.example.com/token")
-        );
-
-        let sent = egress.sent.lock().unwrap();
-        let body = String::from_utf8(sent[0].body.clone()).unwrap();
-        assert!(body.contains("grant_type=authorization_code"));
-        assert!(body.contains("code_verifier=verifier-1"));
-        assert!(body.contains("resource=https"));
-        assert!(sent[0].dns_pinning_required, "token calls must be pinned");
-    }
-
-    #[tokio::test]
-    async fn refresh_carries_the_old_refresh_token_when_the_server_does_not_rotate() {
-        let egress = FakeEgress::with(vec![(
-            "https://auth.example.com/token",
-            200,
-            r#"{"access_token":"at-2","token_type":"Bearer","expires_in":3600}"#,
-        )]);
-        let client = OAuthClient::new(&egress, EgressRequestKind::Mcp);
-        let existing = TokenSet {
-            access_token: "at-1".to_string(),
-            refresh_token: Some("rt-1".to_string()),
-            token_type: "Bearer".to_string(),
-            expires_at: Some(Utc::now() - ChronoDuration::seconds(1)),
-            scope: None,
-            token_endpoint: Some("https://auth.example.com/token".to_string()),
-            resource: Some("https://mcp.example.com/".to_string()),
-            client_id: Some("client-1".to_string()),
-            client_secret: None,
-        };
-
-        let renewed = client.refresh(&existing).await.expect("refresh");
-
-        assert_eq!(renewed.access_token, "at-2");
-        assert_eq!(renewed.resource, existing.resource);
-        assert_eq!(
-            renewed.refresh_token.as_deref(),
-            Some("rt-1"),
-            "a non-rotating server must not cost us the refresh token"
-        );
-    }
-
-    #[tokio::test]
-    async fn refresh_without_a_refresh_token_is_a_typed_error() {
-        let egress = FakeEgress::with(vec![]);
-        let client = OAuthClient::new(&egress, EgressRequestKind::Mcp);
-        let tokens = TokenSet {
-            access_token: "at-1".to_string(),
-            refresh_token: None,
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scope: None,
-            token_endpoint: Some("https://auth.example.com/token".to_string()),
-            resource: Some("https://mcp.example.com/".to_string()),
-            client_id: None,
-            client_secret: None,
-        };
-
-        assert!(matches!(
-            client.refresh(&tokens).await,
-            Err(OAuthError::NotRefreshable)
-        ));
-    }
-
-    #[tokio::test]
-    async fn token_endpoint_errors_surface_status_and_body() {
-        let egress = FakeEgress::with(vec![(
-            "https://auth.example.com/token",
-            400,
-            r#"{"error":"invalid_grant"}"#,
-        )]);
-        let client = OAuthClient::new(&egress, EgressRequestKind::Mcp);
-
-        let error = client
-            .exchange_code(
-                "https://auth.example.com/token",
-                &RegisteredClient {
-                    client_id: "client-1".to_string(),
-                    client_secret: None,
-                },
-                "code-1",
-                "verifier-1",
-                "http://127.0.0.1:1455/callback",
-                None,
-            )
-            .await
-            .expect_err("a 400 must not be read as success");
-
-        match error {
-            OAuthError::Http { status, body, .. } => {
-                assert_eq!(status, 400);
-                assert!(body.contains("invalid_grant"));
-            }
-            other => panic!("expected an HTTP error, got {other}"),
-        }
-    }
-
-    #[test]
-    fn token_set_debug_redacts_every_credential_field() {
-        let tokens = TokenSet {
-            access_token: "at-secret".to_string(),
-            refresh_token: Some("rt-secret".to_string()),
-            token_type: "Bearer".to_string(),
-            expires_at: None,
-            scope: Some("mcp:read".to_string()),
-            token_endpoint: Some("https://auth.example.com/token".to_string()),
-            resource: Some("https://mcp.example.com/".to_string()),
-            client_id: Some("client-1".to_string()),
-            client_secret: Some("cs-secret".to_string()),
-        };
-        let rendered = format!("{tokens:?}");
-        for secret in ["at-secret", "rt-secret", "cs-secret"] {
-            assert!(!rendered.contains(secret), "{secret} leaked: {rendered}");
-        }
-        assert!(rendered.contains("[REDACTED]"));
-        // Non-secret bookkeeping stays visible for debugging.
-        assert!(rendered.contains("client-1"));
-        assert!(rendered.contains("https://auth.example.com/token"));
-    }
-
-    #[test]
-    fn registered_client_debug_redacts_the_confidential_secret() {
-        let secret = "registration-secret-sentinel";
-        let client = RegisteredClient {
-            client_id: "public-client-id".into(),
-            client_secret: Some(secret.into()),
-        };
-        let debug = format!("{client:?}");
-        assert!(!debug.contains(secret));
-        assert!(debug.contains("public-client-id"));
-        // Secret-store serialization remains available and complete.
-        let stored = serde_json::to_string(&client).unwrap();
-        assert!(stored.contains(secret));
-    }
-
-    #[test]
-    fn pkce_debug_redacts_the_verifier() {
-        let pair = PkcePair::generate();
-        let rendered = format!("{pair:?}");
-        assert!(!rendered.contains(&pair.verifier), "{rendered}");
-        assert!(rendered.contains(&pair.challenge));
-    }
-
-    #[test]
-    fn expiry_and_refresh_windows_are_distinct() {
-        let now = Utc::now();
-        let tokens = TokenSet {
-            access_token: "at".to_string(),
-            refresh_token: None,
-            token_type: "Bearer".to_string(),
-            expires_at: Some(now + ChronoDuration::seconds(30)),
-            scope: None,
-            token_endpoint: None,
-            resource: None,
-            client_id: None,
-            client_secret: None,
-        };
-
-        assert!(!tokens.is_expired(now), "still valid for another 30s");
-        assert!(
-            tokens.needs_refresh(now, DEFAULT_REFRESH_SKEW_SECONDS),
-            "but inside the refresh window, so renew before using it"
-        );
-
-        let no_expiry = TokenSet {
-            expires_at: None,
-            ..tokens
-        };
-        assert!(!no_expiry.is_expired(now));
-        assert!(!no_expiry.needs_refresh(now, DEFAULT_REFRESH_SKEW_SECONDS));
-    }
-}
+mod tests;

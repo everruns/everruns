@@ -36,7 +36,6 @@ use everruns_contracts::connector::{
     ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
 };
 use rand::RngExt;
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, sync::Arc};
@@ -57,9 +56,7 @@ pub use connection_check::OAuthConnectionChecker;
 mod mcp_callback;
 use mcp_callback::complete_mcp_oauth_callback;
 mod mcp_oauth;
-use mcp_oauth::{
-    ensure_mcp_oauth_registration, oauth_refusal_message, validate_authorization_params,
-};
+use mcp_oauth::{ensure_mcp_oauth_registration, oauth_refusal_message};
 
 /// App state for user connections routes
 #[derive(Clone)]
@@ -290,6 +287,8 @@ pub struct OAuthAuthorizeQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct OAuthCallbackQuery {
+    /// RFC 9207 authorization-server issuer, when returned.
+    pub iss: Option<String>,
     pub code: Option<String>,
     pub state: Option<String>,
     pub error: Option<String>,
@@ -1004,12 +1003,10 @@ async fn authorize_connection_inner(
         _ => None,
     };
 
-    let oauth_state = {
-        let bytes: [u8; 16] = rand::rng().random();
-        hex::encode(bytes)
-    };
-    let code_verifier = generate_pkce_verifier();
-    let code_challenge = pkce_challenge(&code_verifier);
+    let oauth_state = everruns_core::mcp::oauth::random_state();
+    let pkce = everruns_core::mcp::oauth::PkcePair::generate();
+    let code_verifier = pkce.verifier;
+    let code_challenge = pkce.challenge;
 
     let (metadata, registration, mut updated_settings) =
         ensure_mcp_oauth_registration(&state, authority.org_id, &row, settings, &provider).await?;
@@ -1099,43 +1096,38 @@ async fn authorize_connection_inner(
             format!("Authorization endpoint blocked: {e}"),
         )
     })?;
-    let authorize_url = reqwest::Url::parse(&metadata.authorization_endpoint)
-        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
     let oauth = updated_settings.oauth.as_ref().ok_or((
         StatusCode::BAD_REQUEST,
-        "OAuth settings missing for MCP server".to_string(),
+        "OAuth settings missing for MCP server".into(),
     ))?;
     let scopes = oauth.scope.clone().unwrap_or_else(|| {
-        if !metadata.scopes_supported.is_empty() {
-            metadata.scopes_supported.join(" ")
+        if metadata.scopes_supported.is_empty() {
+            "email".into()
         } else {
-            "email".to_string()
+            metadata.scopes_supported.join(" ")
         }
     });
     let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, &provider);
-    let mut url = authorize_url;
-    {
-        let mut pairs = url.query_pairs_mut();
-        pairs
-            .append_pair("response_type", "code")
-            .append_pair("client_id", &registration.client_id)
-            .append_pair("redirect_uri", &redirect_uri)
-            .append_pair("scope", &scopes)
-            .append_pair("state", &oauth_state)
-            .append_pair("code_challenge", &code_challenge)
-            .append_pair("code_challenge_method", "S256");
-        if let Some(resource) = oauth.resource.as_deref() {
-            pairs.append_pair("resource", resource);
-        }
-        if service_grant {
-            validate_authorization_params(&oauth.service_authorization_params)?;
-            for (key, value) in &oauth.service_authorization_params {
-                pairs.append_pair(key, value);
-            }
-        }
-    }
+    let extensions = if service_grant {
+        oauth.service_authorization_params.clone()
+    } else {
+        Default::default()
+    };
+    let url = everruns_core::mcp::oauth::protocol::authorize_url_with_params(
+        &metadata,
+        &everruns_core::mcp::oauth::AuthorizeParams {
+            client_id: &registration.client_id,
+            redirect_uri: &redirect_uri,
+            code_challenge: &code_challenge,
+            state: &oauth_state,
+            scope: Some(&scopes),
+            resource: oauth.resource.as_deref(),
+        },
+        &extensions,
+    )
+    .map_err(crate::oauth_client::oauth_error)?;
 
-    Ok((jar.add(cookie), Redirect::to(url.as_str())))
+    Ok((jar.add(cookie), Redirect::to(&url)))
 }
 
 pub async fn connection_oauth_callback(

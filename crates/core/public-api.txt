@@ -83,6 +83,7 @@ everruns_core::evaluation::CITATION_JUDGE_RUBRIC	constant
 everruns_core::evaluation::GradeInput	struct
 everruns_core::evaluation::build_citation_pairs	function
 everruns_core::evaluation::score_citation_faithful	function
+everruns_core::evaluation::score_file_contains	function
 everruns_core::evaluation::score_json_schema	function
 everruns_core::evaluation::score_rule	function
 everruns_core::evaluation_judge	module

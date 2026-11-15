@@ -277,6 +277,7 @@ async fn linear_preset_oauth_differentiates_user_and_service_actors() {
         service_jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some(code),
             state: Some(pending.state),
             error: None,
@@ -325,6 +326,7 @@ async fn linear_preset_oauth_differentiates_user_and_service_actors() {
         refusal_jar,
         Path(provider),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: None,
             state: Some(refusal_state.state),
             error: Some("invalid_scope".to_string()),

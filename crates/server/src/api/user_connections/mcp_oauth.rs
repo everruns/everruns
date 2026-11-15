@@ -1,42 +1,19 @@
-use std::collections::BTreeMap;
-
 use axum::http::StatusCode;
 use everruns_core::EgressService;
 use everruns_core::mcp::validate_oauth_resource;
-use serde::{Deserialize, Serialize};
 
-use super::{AppState, mcp_oauth_redirect_uri, parse_and_validate_url, resource_origin};
-use crate::api::common::{sanitized_bad_gateway, sanitized_internal_error};
+use super::{AppState, mcp_oauth_redirect_uri};
+use crate::api::common::sanitized_internal_error;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerSettings};
 use crate::kernel_imports::contracts::url_validation::validate_safe_url;
-use crate::oauth_client::{egress_oauth_discovery_json, egress_oauth_json, org_scoped_egress};
+use crate::oauth_client::org_scoped_egress;
 
-#[derive(Debug, Deserialize)]
-pub(super) struct OAuthProtectedResourceMetadata {
-    #[serde(default)]
-    resource: Option<String>,
-    #[serde(default)]
-    authorization_servers: Vec<String>,
-    #[serde(default)]
-    scopes_supported: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(super) struct OAuthServerMetadata {
-    issuer: Option<String>,
-    pub authorization_endpoint: String,
-    pub token_endpoint: String,
-    #[serde(default)]
-    registration_endpoint: Option<String>,
-    #[serde(default)]
-    pub scopes_supported: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub(super) struct OAuthClientRegistration {
-    pub client_id: String,
-    client_secret: Option<String>,
-}
+use crate::oauth_client::{ServerOAuthEgress, oauth_error};
+use everruns_core::mcp::oauth::{
+    AuthorizationServerMetadata as OAuthServerMetadata, OAuthClient,
+    ProtectedResourceMetadata as OAuthProtectedResourceMetadata,
+    RegisteredClient as OAuthClientRegistration,
+};
 
 pub(super) async fn ensure_mcp_oauth_registration(
     state: &AppState,
@@ -102,11 +79,13 @@ pub(super) async fn ensure_mcp_oauth_registration_via(
     oauth.resource = Some(resource);
     let metadata = if !needs_server_discovery {
         OAuthServerMetadata {
-            issuer: oauth.issuer.clone(),
+            issuer: oauth.issuer.clone().unwrap_or_default(),
             authorization_endpoint: oauth.authorization_endpoint.clone().unwrap_or_default(),
             token_endpoint: oauth.token_endpoint.clone().unwrap_or_default(),
             registration_endpoint: oauth.registration_endpoint.clone(),
             scopes_supported: oauth.scopes_supported.clone(),
+            client_id_metadata_document_supported: false,
+            code_challenge_methods_supported: Vec::new(),
         }
     } else {
         let issuer = authorization_server_issuer(resource_metadata.as_ref(), &row.url)?;
@@ -117,7 +96,7 @@ pub(super) async fn ensure_mcp_oauth_registration_via(
             )
         })?;
         let metadata = discover_oauth_server_metadata(egress, &issuer).await?;
-        oauth.issuer = metadata.issuer.clone().or(Some(issuer));
+        oauth.issuer = Some(metadata.issuer.clone());
         oauth.authorization_endpoint = Some(metadata.authorization_endpoint.clone());
         oauth.token_endpoint = Some(metadata.token_endpoint.clone());
         oauth.registration_endpoint = metadata.registration_endpoint.clone();
@@ -181,22 +160,11 @@ pub(super) async fn discover_resource_metadata(
     egress: &dyn EgressService,
     server_url: &str,
 ) -> Result<Option<OAuthProtectedResourceMetadata>, (StatusCode, String)> {
-    let resource_url = parse_and_validate_url(server_url)?;
-    let origin = resource_origin(&resource_url)?;
-    let path = resource_url.path().trim_end_matches('/');
-    let mut candidates = Vec::with_capacity(2);
-    if !path.is_empty() {
-        candidates.push(format!(
-            "{origin}/.well-known/oauth-protected-resource{path}"
-        ));
-    }
-    candidates.push(format!("{origin}/.well-known/oauth-protected-resource"));
-    for candidate in candidates {
-        if let Some(metadata) = egress_oauth_discovery_json(egress, &candidate).await? {
-            return Ok(Some(metadata));
-        }
-    }
-    Ok(None)
+    let guarded = ServerOAuthEgress(egress);
+    OAuthClient::new(&guarded, everruns_core::EgressRequestKind::Mcp)
+        .discover_protected_resource(server_url)
+        .await
+        .map_err(oauth_error)
 }
 
 /// The authorization server to discover: the first one the protected-resource
@@ -206,85 +174,32 @@ pub(super) fn authorization_server_issuer(
     resource_metadata: Option<&OAuthProtectedResourceMetadata>,
     server_url: &str,
 ) -> Result<String, (StatusCode, String)> {
-    match resource_metadata.and_then(|metadata| metadata.authorization_servers.first()) {
-        Some(issuer) => Ok(issuer.clone()),
-        None => resource_origin(&parse_and_validate_url(server_url)?),
-    }
+    everruns_core::mcp::oauth::protocol::authorization_server_issuer(resource_metadata, server_url)
+        .map_err(oauth_error)
 }
 
-/// Well-known metadata locations for `issuer`, in the MCP authorization
-/// spec's order: RFC 8414 inserts the segment before an issuer path, OpenID
-/// Connect Discovery appends it after. The path-appended
-/// `oauth-authorization-server` is not in the spec list but is where discovery
-/// looked before; it stays last so presets that relied on it keep working.
-fn authorization_server_metadata_urls(
-    issuer: &reqwest::Url,
-) -> Result<Vec<String>, (StatusCode, String)> {
-    let origin = resource_origin(issuer)?;
-    let path = issuer.path().trim_end_matches('/');
-    Ok(if path.is_empty() {
-        vec![
-            format!("{origin}/.well-known/oauth-authorization-server"),
-            format!("{origin}/.well-known/openid-configuration"),
-        ]
-    } else {
-        vec![
-            format!("{origin}/.well-known/oauth-authorization-server{path}"),
-            format!("{origin}/.well-known/openid-configuration{path}"),
-            format!("{origin}{path}/.well-known/openid-configuration"),
-            format!("{origin}{path}/.well-known/oauth-authorization-server"),
-        ]
-    })
-}
-
-/// Authorization-server metadata for `issuer` (RFC 8414 / OpenID Connect
-/// Discovery). A 404 moves to the next well-known location; any other
-/// failure stops discovery.
+/// Discover with the same fallback order and issuer checks used by Framework login.
 pub(super) async fn discover_oauth_server_metadata(
     egress: &dyn EgressService,
     issuer: &str,
 ) -> Result<OAuthServerMetadata, (StatusCode, String)> {
-    let issuer = parse_and_validate_url(issuer)?;
-    let mut discovered = None;
-    for candidate in authorization_server_metadata_urls(&issuer)? {
-        discovered = egress_oauth_discovery_json::<OAuthServerMetadata>(egress, &candidate).await?;
-        if discovered.is_some() {
-            break;
-        }
-    }
-    let metadata = discovered.ok_or((
-        StatusCode::BAD_GATEWAY,
-        "OAuth authorization server publishes no metadata".to_string(),
-    ))?;
-    if let Some(discovered_issuer) = metadata.issuer.as_deref() {
-        let discovered_issuer = parse_and_validate_url(discovered_issuer)?;
-        if discovered_issuer.as_str().trim_end_matches('/') != issuer.as_str().trim_end_matches('/')
-        {
-            return Err((
-                StatusCode::BAD_GATEWAY,
-                "OAuth authorization server returned mismatched issuer metadata".to_string(),
-            ));
-        }
-    }
-    validate_safe_url(&metadata.authorization_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Authorization endpoint blocked: {e}"),
-        )
-    })?;
-    validate_safe_url(&metadata.token_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Token endpoint blocked: {e}"),
-        )
-    })?;
-    if let Some(registration_endpoint) = &metadata.registration_endpoint {
-        validate_safe_url(registration_endpoint).map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("Registration endpoint blocked: {e}"),
-            )
-        })?;
+    let guarded = ServerOAuthEgress(egress);
+    let metadata = OAuthClient::new(&guarded, everruns_core::EgressRequestKind::Mcp)
+        .discover_authorization_server(issuer)
+        .await
+        .map_err(oauth_error)?;
+    // Hosted metadata may not redirect a browser or later grant to an internal host.
+    // Local hosts retain their own policy for loopback test/native integrations.
+    for endpoint in [
+        Some(&metadata.authorization_endpoint),
+        Some(&metadata.token_endpoint),
+        metadata.registration_endpoint.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        validate_safe_url(endpoint)
+            .map_err(|_| (StatusCode::BAD_REQUEST, "OAuth endpoint blocked".into()))?;
     }
     Ok(metadata)
 }
@@ -294,53 +209,20 @@ async fn register_oauth_client(
     registration_endpoint: &str,
     redirect_uri: &str,
 ) -> Result<OAuthClientRegistration, (StatusCode, String)> {
-    validate_safe_url(registration_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Registration endpoint blocked: {e}"),
+    use everruns_core::mcp::oauth::protocol::{ClientAuthMethod, ClientRegistration};
+    let guarded = ServerOAuthEgress(egress);
+    OAuthClient::new(&guarded, everruns_core::EgressRequestKind::Mcp)
+        .register_client_with_auth_method(
+            registration_endpoint,
+            &ClientRegistration {
+                client_name: "Everruns MCP".into(),
+                redirect_uris: vec![redirect_uri.into()],
+                scope: None,
+            },
+            ClientAuthMethod::ClientSecretPost,
         )
-    })?;
-    let body = serde_json::to_vec(&serde_json::json!({
-        "client_name": "Everruns MCP",
-        "redirect_uris": [redirect_uri],
-        "grant_types": ["authorization_code", "refresh_token"],
-        "response_types": ["code"],
-        "token_endpoint_auth_method": "client_secret_post"
-    }))
-    .map_err(|e| sanitized_bad_gateway("OAuth registration body", &e))?;
-    egress_oauth_json(
-        egress,
-        "POST",
-        registration_endpoint,
-        &[("Content-Type", "application/json".to_string())],
-        body,
-    )
-    .await
-}
-
-const RESERVED_OAUTH_AUTHORIZATION_PARAMS: &[&str] = &[
-    "client_id",
-    "code_challenge",
-    "code_challenge_method",
-    "redirect_uri",
-    "resource",
-    "response_type",
-    "scope",
-    "state",
-];
-
-pub(super) fn validate_authorization_params(
-    params: &BTreeMap<String, String>,
-) -> Result<(), (StatusCode, String)> {
-    for key in params.keys() {
-        if RESERVED_OAUTH_AUTHORIZATION_PARAMS.contains(&key.as_str()) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("OAuth authorization parameter '{key}' is reserved"),
-            ));
-        }
-    }
-    Ok(())
+        .await
+        .map_err(oauth_error)
 }
 
 pub(super) fn oauth_refusal_message(error: &str, description: Option<&str>) -> String {

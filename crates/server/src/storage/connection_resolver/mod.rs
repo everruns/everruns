@@ -485,10 +485,10 @@ impl DbConnectionResolver {
         }
     }
 
-    fn expiry_from_response(token: &OAuthTokenResponse) -> Option<DateTime<Utc>> {
+    fn expiry_from_response(token: &OAuthTokenResponse) -> Result<Option<DateTime<Utc>>> {
         token
-            .expires_in
-            .map(|seconds| Utc::now() + Duration::seconds(seconds))
+            .expires_at()
+            .map_err(|_| AgentLoopError::store("Invalid OAuth token lifetime"))
     }
 
     /// Single-flight one grant's refresh: the in-process mutex queues this
@@ -570,7 +570,7 @@ impl DbConnectionResolver {
             grant.refresh_token = rotated.clone();
         }
         let rotated_refresh = grant.encode();
-        let expires_at = Self::expiry_from_response(&token);
+        let expires_at = Self::expiry_from_response(&token)?;
         // THREAT[TM-TOOL-025]: replace the complete rotated grant in one
         // storage transaction before exposing the new access token.
         let persisted = self
@@ -721,7 +721,7 @@ impl DbConnectionResolver {
                                 "Failed to encrypt OAuth refresh token: {e}"
                             ))
                         })?,
-                    expires_at: Self::expiry_from_response(&token),
+                    expires_at: Self::expiry_from_response(&token)?,
                     scopes: token.scope,
                 },
             )

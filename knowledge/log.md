@@ -4,6 +4,7 @@
 
 - [Framework application API](framework/application-api.md): promote application-owned integration credentials, MCP OAuth, Slack affordances, durable triggers, local SQL/knowledge, named memory, and shared trace/evaluation logic with real-model examples and Engine acceptance tests.
 - [Session SQL](runtime-resources/session-sqldb.md): share the authorizer/executor while retaining separate host persistence; local quotas use cross-process locking.
+- Consolidate outbound MCP OAuth protocol operations for Framework and Server, retaining host-specific egress, encrypted persistence and replica locking; qualify both adapters and document the [service sharing boundaries](framework/application-api.md#application-owned-services). Share file-content evaluation scoring as well.
 
 ## 2026-11-12
 

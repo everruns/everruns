@@ -50,16 +50,6 @@ pub(super) fn parse_mcp_oauth_provider_id(provider: &str) -> Option<uuid::Uuid> 
         .and_then(|value| uuid::Uuid::parse_str(value).ok())
 }
 
-pub(super) fn generate_pkce_verifier() -> String {
-    let bytes: [u8; 32] = rand::rng().random();
-    URL_SAFE_NO_PAD.encode(bytes)
-}
-
-pub(super) fn pkce_challenge(verifier: &str) -> String {
-    let digest = Sha256::digest(verifier.as_bytes());
-    URL_SAFE_NO_PAD.encode(digest)
-}
-
 pub(super) async fn register_pending_setup(
     state: &AppState,
     pending: &PendingOAuthState,
@@ -124,9 +114,8 @@ pub(super) fn validate_pending_oauth_state(
             "Missing state parameter".to_string(),
         )
     })?;
-    if pending.state != callback_state {
-        return Err((StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()));
-    }
+    everruns_core::mcp::oauth::validate_callback_state(&pending.state, callback_state)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
     Ok(pending)
 }
 
@@ -186,29 +175,6 @@ pub(super) fn normalize_oauth_mode(mode: Option<&str>) -> Result<String, (Status
             format!("Invalid OAuth mode: {other}"),
         )),
     }
-}
-
-pub(super) fn resource_origin(url: &Url) -> Result<String, (StatusCode, String)> {
-    let host = url.host_str().ok_or((
-        StatusCode::BAD_REQUEST,
-        "Invalid MCP server URL: missing host".to_string(),
-    ))?;
-    let host = if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host.to_string()
-    };
-    let mut origin = format!("{}://{}", url.scheme(), host);
-    if let Some(port) = url.port() {
-        origin.push(':');
-        origin.push_str(&port.to_string());
-    }
-    Ok(origin)
-}
-
-pub(super) fn parse_and_validate_url(url: &str) -> Result<Url, (StatusCode, String)> {
-    validate_safe_url(url).map_err(|e| (StatusCode::BAD_REQUEST, format!("Blocked URL: {e}")))?;
-    Url::parse(url).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid URL: {e}")))
 }
 
 #[utoipa::path(summary = "Start provider setup bound to the authorized virtual user.", get, path = "/v1/virtual-users/{identity_id}/connections/{provider}/authorize", params(("identity_id" = String, Path),("provider" = String, Path)),  responses((status = 303, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]

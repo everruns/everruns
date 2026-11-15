@@ -54,6 +54,22 @@ pub(super) async fn complete_mcp_oauth_callback(
         StatusCode::BAD_REQUEST,
         "OAuth metadata missing for MCP server".to_string(),
     ))?;
+    if query.iss.is_some() && oauth.issuer.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "OAuth issuer binding is missing; configure the MCP issuer and sign in again".into(),
+        ));
+    }
+    everruns_core::mcp::oauth::validate_callback_issuer(
+        oauth.issuer.as_deref().unwrap_or_default(),
+        query.iss.as_deref(),
+    )
+    .map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "OAuth authorization response issuer mismatch".into(),
+        )
+    })?;
     let config_hash = mcp_oauth_config_hash(&row.url, &oauth);
     if pending.mcp_config_hash.as_deref() != Some(config_hash.as_str()) {
         return Err((
@@ -106,8 +122,8 @@ pub(super) async fn complete_mcp_oauth_callback(
     });
 
     let expires_at = token
-        .expires_in
-        .map(|seconds| Utc::now() + chrono::Duration::seconds(seconds));
+        .expires_at()
+        .map_err(crate::oauth_client::oauth_error)?;
 
     if pending.mode == "session" {
         let session_id = pending

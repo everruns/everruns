@@ -33,6 +33,9 @@ nowhere else — in particular not under the admin who performed it.
 - One admin user holds both `org:mcp-servers:manage` and
   `org:agent-identities:manage`.
 - Use a disposable OAuth account; never authorize a real production account.
+- For the negative callback checks, use a controlled OAuth fixture that records
+  token requests and can return a wrong issuer or a disposable secret sentinel
+  in an error body. Record the fresh preset ID and request-count baseline.
 
 ## Test Data
 
@@ -58,6 +61,12 @@ nowhere else — in particular not under the admin who performed it.
    attachment.
 8. As the admin, revoke the identity's connection for that provider.
 9. As either non-admin user, invoke the Agent so it calls the tool again.
+10. Begin a new authorization and return a different callback issuer from the
+    controlled fixture. Check its token-request count and re-read the identity's
+    connection. Retry the consumed callback with the correct issuer.
+11. Begin another authorization and make the token endpoint return an OAuth
+    error with the disposable sentinel in its description. Inspect the browser
+    response and application diagnostics, then re-read the connection.
 
 ## Expected Result
 
@@ -76,3 +85,14 @@ nowhere else — in particular not under the admin who performed it.
 - Step 8: revocation succeeds.
 - Step 9: the call returns `connection_required` again, with no cached token
   surviving from the earlier successful calls.
+- Step 10: no token request or grant is created. Correcting and replaying the
+  same callback does not recover its consumed setup; a fresh login is required.
+- Step 11: the response and diagnostics can classify the OAuth failure but
+  contain neither the sentinel nor the provider response body. No grant is
+  created after the failed exchange.
+
+The [cross-host contracts](../../../../crates/server/src/api/user_connections/tests/shared_oauth_contract.rs)
+exercise the same protocol through embedded and browser login. The
+[replica refresh contract](../../../../crates/server/src/storage/connection_resolver/tests/shared_protocol.rs)
+checks concurrent resolution and encrypted rotation through the actual protocol
+exchange. These links describe automated coverage, not a recorded manual run.

@@ -9,6 +9,7 @@ const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
 mod resource_binding;
 mod sandbox;
+mod shared_protocol;
 use resource_binding::refresh_grant;
 
 struct FakeRefreshExchange {
@@ -48,6 +49,7 @@ impl OAuthRefreshExchange for FakeRefreshExchange {
             FakeRefreshResult::Success => {}
         }
         Ok(OAuthTokenResponse {
+            token_type: None,
             access_token: "fresh-access".to_string(),
             refresh_token: Some("rotated-refresh".to_string()),
             expires_in: Some(3600),
@@ -1430,71 +1432,4 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
 mod github;
 mod user_or_service;
 
-async fn agentmail_grant(fixture: &McpFixture, service: bool, key: &str) {
-    let token = Some(fixture.encryption.encrypt_string(key).unwrap());
-    let metadata = Some(serde_json::json!({ "inbox_id": format!("{key}@agentmail.to") }));
-    if service {
-        fixture
-            .db
-            .upsert_virtual_user_connection(CreateVirtualUserConnectionRow {
-                virtual_user_id: fixture.identity_id,
-                provider: "agentmail".into(),
-                connection_type: "api_key".into(),
-                provider_user_id: None,
-                provider_username: None,
-                access_token_encrypted: token,
-                refresh_token_encrypted: None,
-                scopes: None,
-                expires_at: None,
-                installation_id: None,
-                provider_metadata: metadata,
-            })
-            .await
-            .unwrap();
-    } else {
-        fixture
-            .db
-            .upsert_user_connection(CreateUserConnectionRow {
-                user_id: fixture.user_id,
-                provider: "agentmail".into(),
-                connection_type: "api_key".into(),
-                provider_user_id: None,
-                provider_username: None,
-                access_token_encrypted: token,
-                refresh_token_encrypted: None,
-                scopes: None,
-                expires_at: None,
-                installation_id: None,
-                provider_metadata: metadata,
-            })
-            .await
-            .unwrap();
-    }
-}
-
-#[tokio::test]
-async fn a_service_api_key_comes_from_the_agent_and_never_from_the_invoking_user() {
-    let fixture = mcp_setup(ATTENDED, false, false).await;
-    agentmail_grant(&fixture, false, "user-key").await;
-    let resolver = resolver_for(&fixture);
-    assert!(
-        resolver
-            .get_service_api_key_connection(fixture.session_id, "agentmail")
-            .await
-            .unwrap()
-            .is_none(),
-        "the invoking user's key must never stand in for the agent's"
-    );
-
-    agentmail_grant(&fixture, true, "agent-key").await;
-    let connection = resolver
-        .get_service_api_key_connection(fixture.session_id, "agentmail")
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(connection.api_key, "agent-key");
-    assert_eq!(
-        connection.metadata,
-        Some(serde_json::json!({ "inbox_id": "agent-key@agentmail.to" }))
-    );
-}
+mod service_api_key;
