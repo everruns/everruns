@@ -59,6 +59,11 @@ async fn the_inspector_finds_a_session_and_reports_every_cell() {
     let text = render_session(id, Some(placed), Some(&report));
     assert!(text.contains("directory: cell 1"), "{text}");
     assert!(text.contains("turn.completed"), "{text}");
+    // A finished session owes nothing and nobody holds it: the scheduling
+    // state that tells a lost turn from a waiting one.
+    assert!(!report.work.owed && !report.work.suspended, "{report:?}");
+    assert!(report.work.fence >= 1, "{report:?}");
+    assert!(text.contains("owed false"), "{text}");
 
     // The directory spreads its shards over the cells: every session is
     // found wherever its shard lives (a load run showed sessions whose
