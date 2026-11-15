@@ -13,16 +13,29 @@ import {
   useSyncExternalStore,
   Suspense,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Columns2, Maximize2 } from "lucide-react";
+import {
+  Columns2,
+  GripHorizontal,
+  Maximize2,
+  MessageSquare,
+  PanelRight,
+  PictureInPicture2,
+  X,
+} from "lucide-react";
 import { Sidebar, MobileSidebar } from "@/components/layout/sidebar";
 import { useFeatureFlags, useFeatureFlagsState } from "@/providers/feature-flags-provider";
 import { ChatSwitcher } from "@/components/chat/chat-switcher";
 import { useLandingRedirect } from "./landing";
-import { useLayoutPreference, type AppLayout } from "@/hooks/use-layout-preference";
+import {
+  useClassicChatPreference,
+  useLayoutPreference,
+  type AppLayout,
+} from "@/hooks/use-layout-preference";
 import { AppNavigationRail } from "@/components/layout/app-navigation-rail";
 import { useOrg } from "@/providers/org-provider";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
@@ -52,11 +65,12 @@ const ChatWorkspace = dynamic(() =>
   import("@/components/chat/chat-workspace").then((module) => module.ChatWorkspace),
 );
 
-// Chat-first is the default layout (knowledge/ui/chat-mode.md): Main chat on the
-// left, the page on the right, navigation in a rail on the right edge. Classic
-// keeps the left sidebar and opens Chat full screen. The layout is a personal
-// preference; the URL alone says which page is shown, so browser back and
-// forward step through pages and threads.
+// Classic is the default layout (knowledge/ui/chat-mode.md): the left sidebar,
+// with Chat full screen, floating over the page or docked on its right (a
+// second personal preference). Chat first puts Main chat on the left, the page
+// on the right and navigation in a rail on the right edge. The URL alone says
+// which page is shown, so browser back and forward step through pages and
+// threads; whether floating or docked Chat is open is per browser tab.
 export function ChatModeShell({
   children,
   navigation,
@@ -89,6 +103,7 @@ const readDesktop = () =>
 
 const NAV_EXPANDED_KEY = "everruns.nav-expanded";
 const ACTIVE_CHAT_KEY = "everruns.active-chat";
+const INLINE_OPEN_KEY = "everruns.classic-chat-open";
 
 function readStorage(key: string) {
   try {
@@ -117,7 +132,22 @@ function EnabledShell({
   // On small screens both layouts show one pane at a time, like classic.
   const chatFirst = layout === "chat_first" && desktop;
   const beside = chatFirst && !chatRoute;
-  const conversationVisible = fullChat || beside;
+  const { classicChat, setClassicChat } = useClassicChatPreference();
+  // Floating or docked Chat in Classic; small screens keep one pane at a time.
+  const inlineMode =
+    !chatFirst && desktop && classicChat !== "full_screen" ? classicChat : undefined;
+  const [inlineOpen, setInlineOpenState] = useState(() => readStorage(INLINE_OPEN_KEY) === "1");
+  const setInlineOpen = useCallback((value: boolean) => {
+    setInlineOpenState(value);
+    try {
+      window.sessionStorage.setItem(INLINE_OPEN_KEY, value ? "1" : "0");
+    } catch {
+      // Storage disabled: the choice lasts until reload.
+    }
+  }, []);
+  const inline = !!inlineMode && inlineOpen && !chatRoute;
+  const pageAware = beside || inline;
+  const conversationVisible = fullChat || pageAware;
   const [activeChatId, setActiveChatIdState] = useState<string | undefined>(() =>
     readStorage(ACTIVE_CHAT_KEY),
   );
@@ -146,7 +176,15 @@ function EnabledShell({
       // Storage disabled: the choice lasts until reload.
     }
   }, []);
-  const { width: chatWidth, setWidth: setChatWidth, reset: resetChatWidth } = useChatWidth();
+  // Docked Chat shares the left sidebar's row, so the page keeps its minimum
+  // after the sidebar rather than after the rail.
+  const reserved = inlineMode === "docked" ? SIDEBAR_WIDTH : RAIL_WIDTH;
+  const {
+    width: chatWidth,
+    setWidth: setChatWidth,
+    reset: resetChatWidth,
+  } = useChatWidth(reserved);
+  const floating = useFloatingBox();
   // Where "Show beside page" and ⌘⇧J return to from full-screen Chat.
   const lastPage = useRef<string>("/home");
   useEffect(() => {
@@ -268,50 +306,89 @@ function EnabledShell({
     router.push(chatHref(selectedChatId));
   }, [router, chatHref, selectedChatId]);
   const showBesidePage = useCallback(() => {
+    if (inlineMode) setInlineOpen(true);
     router.push(lastPage.current);
-  }, [router]);
+  }, [router, inlineMode, setInlineOpen]);
   const openBeside = useCallback(
     (chatId?: string) => {
       setActiveChatId(chatId === mainChatId ? undefined : chatId);
+      if (inlineMode) setInlineOpen(true);
       if (chatRoute) router.push(lastPage.current);
     },
-    [setActiveChatId, mainChatId, chatRoute, router],
+    [setActiveChatId, mainChatId, chatRoute, router, inlineMode, setInlineOpen],
   );
+  const focusComposer = useCallback(
+    () =>
+      document
+        .querySelector<HTMLElement>(
+          '.chat-mode-conversation textarea, .chat-mode-conversation [contenteditable="true"]',
+        )
+        ?.focus(),
+    [],
+  );
+  // Floating or docked Chat is shown on the next render; focus after it paints.
+  const showInline = useCallback(() => {
+    setInlineOpen(true);
+    requestAnimationFrame(focusComposer);
+  }, [setInlineOpen, focusComposer]);
+  const closeInline = useCallback(() => {
+    setInlineOpen(false);
+    requestAnimationFrame(() => pageRef.current?.focus());
+  }, [setInlineOpen]);
   const openThreadBeside = useCallback(
     (threadId: string) => router.push(`/threads/${threadId}`),
     [router],
   );
   const setOpen = useCallback(
     (value: boolean) => {
-      if (value && chatFirst) {
+      if (value && (chatFirst || inlineMode)) {
         if (chatRoute) showBesidePage();
+        else if (inlineMode) setInlineOpen(true);
       } else if (value) router.push(chatHref(selectedChatId));
       else if (chatRoute) showBesidePage();
+      else if (inlineMode) closeInline();
       else requestAnimationFrame(() => pageRef.current?.focus());
     },
-    [chatFirst, chatRoute, showBesidePage, router, chatHref, selectedChatId],
+    [
+      chatFirst,
+      inlineMode,
+      chatRoute,
+      showBesidePage,
+      setInlineOpen,
+      closeInline,
+      router,
+      chatHref,
+      selectedChatId,
+    ],
   );
 
   useEffect(() => {
-    // Cmd/Ctrl-J: chat-first focuses the composer; classic opens or closes
-    // full-screen Chat. Cmd/Ctrl-Shift-J switches full-screen Chat and the page.
+    // Cmd/Ctrl-J: chat-first focuses the composer; floating or docked Chat in
+    // Classic shows or hides; otherwise classic opens or closes full-screen
+    // Chat. Cmd/Ctrl-Shift-J switches full-screen Chat and the page.
     const shortcut = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "j") return;
       event.preventDefault();
-      const focusComposer = () =>
-        document
-          .querySelector<HTMLElement>(
-            '.chat-mode-conversation textarea, .chat-mode-conversation [contenteditable="true"]',
-          )
-          ?.focus();
-      if (event.shiftKey || !chatFirst) {
-        if (chatRoute) showBesidePage();
-        else showFullScreen();
-      } else focusComposer();
+      if (!event.shiftKey && chatFirst) focusComposer();
+      else if (!event.shiftKey && inlineMode && !chatRoute) {
+        if (inline) closeInline();
+        else showInline();
+      } else if (chatRoute) showBesidePage();
+      else showFullScreen();
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [chatFirst, chatRoute, showBesidePage, showFullScreen]);
+  }, [
+    chatFirst,
+    chatRoute,
+    inlineMode,
+    inline,
+    closeInline,
+    showInline,
+    focusComposer,
+    showBesidePage,
+    showFullScreen,
+  ]);
 
   const flags = useFeatureFlags();
   const { hasRole } = useOrg();
@@ -333,23 +410,31 @@ function EnabledShell({
     [navigation, durable, flags, hasRole, canNavigate],
   );
 
-  const mode = chatFirst ? (fullChat ? "chat" : "beside") : fullChat ? "classic-chat" : "classic";
+  const mode = chatFirst
+    ? fullChat
+      ? "chat"
+      : "beside"
+    : fullChat
+      ? "classic-chat"
+      : inline
+        ? `classic-${inlineMode}`
+        : "classic";
   return (
     <ChatModeContext.Provider
       value={{
         pageContainer: pageRef,
         pageContainerElement: pageElement,
-        open: beside,
+        open: pageAware,
         setOpen,
         page,
         registerPage,
         pageAdapter,
         pageViewAdapter: viewAdapter,
         threadId: selectedChatId,
-        openBeside: chatFirst ? openBeside : undefined,
+        openBeside: chatFirst || inlineMode ? openBeside : undefined,
         showFullScreen,
-        showBesidePage: chatFirst ? showBesidePage : undefined,
-        openThreadBeside: chatFirst ? openThreadBeside : undefined,
+        showBesidePage: chatFirst || inlineMode ? showBesidePage : undefined,
+        openThreadBeside: pageAware ? openThreadBeside : undefined,
         actions,
         recordAction,
       }}
@@ -358,7 +443,15 @@ function EnabledShell({
         className="chat-mode-shell min-h-0 flex-1"
         data-layout={mode}
         data-nav={navExpanded ? "expanded" : "rail"}
-        style={{ "--chat-width": `${chatWidth}px` } as CSSProperties}
+        style={
+          {
+            "--chat-width": `${chatWidth}px`,
+            "--float-right": `${floating.box.right}px`,
+            "--float-bottom": `${floating.box.bottom}px`,
+            "--float-width": `${floating.box.width}px`,
+            "--float-height": `${floating.box.height}px`,
+          } as CSSProperties
+        }
       >
         {!chatFirst && (
           <div className="chat-mode-sidebar min-h-0 overflow-hidden">
@@ -369,6 +462,7 @@ function EnabledShell({
         <section
           className="chat-mode-conversation min-h-0 overflow-hidden bg-background"
           aria-label={ui("Platform Chat")}
+          data-inline={inline ? inlineMode : undefined}
           hidden={!visited && !conversationVisible}
           inert={!conversationVisible}
           aria-hidden={!conversationVisible}
@@ -388,9 +482,56 @@ function EnabledShell({
                 activeChatId={activeChatId}
                 onActiveChatChange={setActiveChatId}
                 visible={conversationVisible}
-                pageAware={beside}
+                pageAware={pageAware}
                 extraActions={
-                  beside ? (
+                  inline ? (
+                    <>
+                      {inlineMode === "floating" && (
+                        <FloatingMoveHandle onMove={floating.move} onNudge={floating.nudge} />
+                      )}
+                      <ChatSwitcher
+                        mainChatId={thread.id}
+                        activeChatId={selectedChatId ?? thread.id}
+                        onSelectChat={(id) => setActiveChatId(id === thread.id ? undefined : id)}
+                        onSelectThread={openThreadBeside}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={
+                          inlineMode === "floating" ? ui("Dock to the right") : ui("Float")
+                        }
+                        title={inlineMode === "floating" ? ui("Dock to the right") : ui("Float")}
+                        onClick={() =>
+                          setClassicChat(inlineMode === "floating" ? "docked" : "floating")
+                        }
+                      >
+                        {inlineMode === "floating" ? (
+                          <PanelRight className="size-3.5" />
+                        ) : (
+                          <PictureInPicture2 className="size-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={ui("Full screen")}
+                        title={ui("Full screen (⌘⇧J)")}
+                        onClick={showFullScreen}
+                      >
+                        <Maximize2 className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={ui("Hide chat")}
+                        title={ui("Hide chat (⌘J)")}
+                        onClick={closeInline}
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </>
+                  ) : beside ? (
                     <>
                       <ChatSwitcher
                         mainChatId={thread.id}
@@ -416,7 +557,7 @@ function EnabledShell({
                       onClick={showBesidePage}
                     >
                       <Columns2 className="size-3.5" />{" "}
-                      {chatFirst ? ui("Show beside page") : ui("Back to page")}
+                      {chatFirst || inlineMode ? ui("Show beside page") : ui("Back to page")}
                     </Button>
                   ) : undefined
                 }
@@ -431,14 +572,30 @@ function EnabledShell({
                   : ui("Open Chat to begin.")}
             </p>
           )}
+          {inline && inlineMode === "floating" && (
+            <FloatingResizeHandle onResize={floating.resize} />
+          )}
         </section>
-        {beside && (
+        {(beside || (inline && inlineMode === "docked")) && (
           <ChatSplitter
+            side={beside ? "left" : "right"}
+            reserved={reserved}
             width={chatWidth}
             onWidthChange={setChatWidth}
             onReset={resetChatWidth}
             onCollapsePage={showFullScreen}
           />
+        )}
+        {inlineMode && !inline && !chatRoute && (
+          <Button
+            className="chat-mode-launcher"
+            aria-label={ui("Show chat")}
+            title={ui("Show chat (⌘J)")}
+            onClick={showInline}
+          >
+            <MessageSquare className="size-4" /> {ui("Chat")}
+            <kbd className="text-[10px] opacity-70">{ui("⌘J")}</kbd>
+          </Button>
         )}
         <PageViewRegistryContext.Provider value={viewRegistry}>
           <PageChangeReviewProvider>
@@ -478,11 +635,16 @@ function EnabledShell({
 const CHAT_WIDTH_KEY = "everruns.chat-width";
 const CHAT_MIN = 360;
 const PAGE_MIN = 480;
+const RAIL_WIDTH = 56;
+const SIDEBAR_WIDTH = 240;
 const defaultChatWidth = () =>
   typeof window === "undefined" ? 560 : Math.round(Math.min(600, window.innerWidth * 0.4));
 
-/** Chat pane width, remembered on this device and kept within both panes' minimums. */
-function useChatWidth() {
+/**
+ * Chat pane width, remembered on this device and kept within both panes'
+ * minimums. `reserved` is the fixed navigation beside the two panes.
+ */
+function useChatWidth(reserved: number) {
   const [stored, setStored] = useState<number | undefined>(() => {
     try {
       const value = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
@@ -491,16 +653,19 @@ function useChatWidth() {
       return undefined;
     }
   });
-  const width = clampChatWidth(stored ?? defaultChatWidth());
-  const setWidth = useCallback((value: number) => {
-    const next = clampChatWidth(value);
-    setStored(next);
-    try {
-      window.localStorage.setItem(CHAT_WIDTH_KEY, String(next));
-    } catch {
-      // Storage disabled: the width lasts until reload.
-    }
-  }, []);
+  const width = clampChatWidth(stored ?? defaultChatWidth(), undefined, reserved);
+  const setWidth = useCallback(
+    (value: number) => {
+      const next = clampChatWidth(value, undefined, reserved);
+      setStored(next);
+      try {
+        window.localStorage.setItem(CHAT_WIDTH_KEY, String(next));
+      } catch {
+        // Storage disabled: the width lasts until reload.
+      }
+    },
+    [reserved],
+  );
   const reset = useCallback(() => {
     setStored(undefined);
     try {
@@ -515,21 +680,28 @@ function useChatWidth() {
 export function clampChatWidth(
   value: number,
   viewport = typeof window === "undefined" ? 1440 : window.innerWidth,
+  reserved = RAIL_WIDTH,
 ) {
-  return Math.round(Math.max(CHAT_MIN, Math.min(value, viewport - PAGE_MIN - 56)));
+  return Math.round(Math.max(CHAT_MIN, Math.min(value, viewport - PAGE_MIN - reserved)));
 }
 
 /**
  * Visible divider between Chat and the page: a bordered gutter with a grip
- * that turns primary on hover or focus. Drag or use the arrow keys to resize; double-click resets. Dragging
- * the page narrower than half its minimum switches to full-screen Chat.
+ * that turns primary on hover or focus. Drag or use the arrow keys to resize;
+ * double-click resets. Dragging the page narrower than half its minimum
+ * switches to full-screen Chat. `side` is where Chat sits: left in Chat first,
+ * right when docked in Classic.
  */
 function ChatSplitter({
+  side,
+  reserved,
   width,
   onWidthChange,
   onReset,
   onCollapsePage,
 }: {
+  side: "left" | "right";
+  reserved: number;
   width: number;
   onWidthChange: (width: number) => void;
   onReset: () => void;
@@ -551,7 +723,9 @@ function ChatSplitter({
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           event.preventDefault();
-          onWidthChange(width + (event.key === "ArrowRight" ? 32 : -32));
+          // The arrow moves the divider; Chat grows on the side it moves away from.
+          const towardChat = (event.key === "ArrowLeft") === (side === "left");
+          onWidthChange(width + (towardChat ? -32 : 32));
         }
       }}
       onPointerDown={(event) => {
@@ -559,20 +733,195 @@ function ChatSplitter({
         event.preventDefault();
         const target = event.currentTarget;
         target.setPointerCapture?.(event.pointerId);
-        const left = target.parentElement?.getBoundingClientRect().left ?? 0;
+        const bounds = target.parentElement?.getBoundingClientRect();
+        const left = bounds?.left ?? 0;
+        const right = bounds?.right ?? window.innerWidth;
         setDragging(true);
-        const move = (moveEvent: PointerEvent) => onWidthChange(moveEvent.clientX - left);
+        const move = (moveEvent: PointerEvent) =>
+          onWidthChange(side === "left" ? moveEvent.clientX - left : right - moveEvent.clientX);
         const up = (upEvent: PointerEvent) => {
           setDragging(false);
           target.removeEventListener("pointermove", move);
           target.removeEventListener("pointerup", up);
           target.removeEventListener("pointercancel", up);
-          if (window.innerWidth - upEvent.clientX < PAGE_MIN / 2) onCollapsePage();
+          const pageLeft =
+            side === "left"
+              ? window.innerWidth - upEvent.clientX - reserved
+              : upEvent.clientX - left - reserved;
+          if (pageLeft < PAGE_MIN / 2) onCollapsePage();
         };
         target.addEventListener("pointermove", move);
         target.addEventListener("pointerup", up);
         target.addEventListener("pointercancel", up);
       }}
+    />
+  );
+}
+
+const FLOAT_KEY = "everruns.chat-float";
+const FLOAT_MARGIN = 16;
+const FLOAT_MIN = { width: 340, height: 360 };
+interface FloatingBox {
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+const defaultFloatingBox = (): FloatingBox => ({
+  right: 24,
+  bottom: 24,
+  width: 480,
+  height: typeof window === "undefined" ? 600 : Math.min(640, window.innerHeight - 96),
+});
+
+/** Keeps the floating card on screen and at least its minimum size. */
+export function clampFloatingBox(
+  box: FloatingBox,
+  viewport = typeof window === "undefined"
+    ? { width: 1440, height: 900 }
+    : { width: window.innerWidth, height: window.innerHeight },
+): FloatingBox {
+  const width = Math.round(
+    Math.max(FLOAT_MIN.width, Math.min(box.width, viewport.width - 2 * FLOAT_MARGIN)),
+  );
+  const height = Math.round(
+    Math.max(FLOAT_MIN.height, Math.min(box.height, viewport.height - 2 * FLOAT_MARGIN)),
+  );
+  return {
+    width,
+    height,
+    right: Math.round(
+      Math.max(FLOAT_MARGIN, Math.min(box.right, viewport.width - width - FLOAT_MARGIN)),
+    ),
+    bottom: Math.round(
+      Math.max(FLOAT_MARGIN, Math.min(box.bottom, viewport.height - height - FLOAT_MARGIN)),
+    ),
+  };
+}
+
+/** Floating Chat's position and size, remembered on this device. */
+function useFloatingBox() {
+  const [stored, setStored] = useState<FloatingBox | undefined>(() => {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(FLOAT_KEY) ?? "null");
+      return value && ["right", "bottom", "width", "height"].every((k) => Number.isFinite(value[k]))
+        ? value
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const box = clampFloatingBox(stored ?? defaultFloatingBox());
+  const boxRef = useRef(box);
+  useLayoutEffect(() => {
+    boxRef.current = box;
+  });
+  const save = useCallback((next: FloatingBox) => {
+    const value = clampFloatingBox(next);
+    setStored(value);
+    try {
+      window.localStorage.setItem(FLOAT_KEY, JSON.stringify(value));
+    } catch {
+      // Storage disabled: the box lasts until reload.
+    }
+  }, []);
+  /** Starts a drag; `apply` maps the pointer offset onto the starting box. */
+  const drag = useCallback(
+    (
+      event: ReactPointerEvent,
+      apply: (start: FloatingBox, dx: number, dy: number) => FloatingBox,
+    ) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const target = event.currentTarget as HTMLElement;
+      target.setPointerCapture?.(event.pointerId);
+      const start = boxRef.current;
+      const x = event.clientX;
+      const y = event.clientY;
+      const move = (moveEvent: PointerEvent) =>
+        save(apply(start, moveEvent.clientX - x, moveEvent.clientY - y));
+      const up = () => {
+        target.removeEventListener("pointermove", move);
+        target.removeEventListener("pointerup", up);
+        target.removeEventListener("pointercancel", up);
+      };
+      target.addEventListener("pointermove", move);
+      target.addEventListener("pointerup", up);
+      target.addEventListener("pointercancel", up);
+    },
+    [save],
+  );
+  const move = useCallback(
+    (event: ReactPointerEvent) =>
+      drag(event, (start, dx, dy) => ({
+        ...start,
+        right: start.right - dx,
+        bottom: start.bottom - dy,
+      })),
+    [drag],
+  );
+  // The card is anchored bottom-right, so the top-left corner resizes it.
+  const resize = useCallback(
+    (event: ReactPointerEvent) =>
+      drag(event, (start, dx, dy) => ({
+        ...start,
+        width: start.width - dx,
+        height: start.height - dy,
+      })),
+    [drag],
+  );
+  const nudge = useCallback(
+    (dx: number, dy: number) => {
+      const start = boxRef.current;
+      save({ ...start, right: start.right - dx, bottom: start.bottom - dy });
+    },
+    [save],
+  );
+  return { box, move, resize, nudge };
+}
+
+/** Drag to move the floating card; arrow keys move it too. */
+function FloatingMoveHandle({
+  onMove,
+  onNudge,
+}: {
+  onMove: (event: ReactPointerEvent) => void;
+  onNudge: (dx: number, dy: number) => void;
+}) {
+  const ui = useUiTranslations();
+  return (
+    <button
+      type="button"
+      className="chat-mode-float-move"
+      aria-label={ui("Move chat")}
+      title={ui("Drag to move")}
+      onPointerDown={onMove}
+      onKeyDown={(event) => {
+        const step = {
+          ArrowLeft: [-32, 0],
+          ArrowRight: [32, 0],
+          ArrowUp: [0, -32],
+          ArrowDown: [0, 32],
+        }[event.key];
+        if (!step) return;
+        event.preventDefault();
+        onNudge(step[0], step[1]);
+      }}
+    >
+      <GripHorizontal className="size-3.5" />
+    </button>
+  );
+}
+
+/** Top-left corner of the floating card: drag to resize. */
+function FloatingResizeHandle({ onResize }: { onResize: (event: ReactPointerEvent) => void }) {
+  const ui = useUiTranslations();
+  return (
+    <span
+      className="chat-mode-float-resize"
+      aria-hidden="true"
+      title={ui("Drag to resize")}
+      onPointerDown={onResize}
     />
   );
 }

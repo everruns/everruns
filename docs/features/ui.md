@@ -50,7 +50,8 @@ folded line, such as "Releases is done". Open the line to read the report. The
 coordinator still receives the full text and answers in the conversation.
 
 By default the app keeps the left sidebar and opens the conversation full screen.
-To keep the conversation on the left of every page, with navigation in a rail on
+To keep it next to the page instead, choose **Floating** (a card you can move and
+resize) or **Docked** (a column on the right) under **Chat in Classic**. To keep the conversation on the left of every page, with navigation in a rail on
 the right edge, choose **Chat first** under **Layout** in the profile menu or on
 **Profile**; the choice follows you to every device and organization. Drag the
 divider between chat and page to resize. See

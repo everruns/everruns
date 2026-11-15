@@ -37,4 +37,24 @@ export const messages: Readonly<Record<string, string>> = {
   "Resize chat": "调整聊天宽度",
   "Back to page (⌘⇧J)": "返回页面 (⌘⇧J)",
   "Back to page": "返回页面",
+  "Navigation on the left and the page fills the rest.": "导航在左侧，页面占据其余空间。",
+  "Chat in Classic": "经典布局中的聊天",
+  "Applies when the layout is Classic.": "在使用经典布局时生效。",
+  "Chat replaces the page. Command-J switches between them.":
+    "聊天替换页面。Command-J 在两者之间切换。",
+  Floating: "浮动",
+  "A card over the page that you can move and resize. Command-J shows it.":
+    "页面上方的卡片，可移动和调整大小。Command-J 显示它。",
+  Docked: "停靠",
+  "A column on the right of the page, with a divider you can drag.":
+    "页面右侧的一栏，带可拖动的分隔线。",
+  "Dock to the right": "停靠到右侧",
+  Float: "浮动显示",
+  "Hide chat": "隐藏聊天",
+  "Hide chat (⌘J)": "隐藏聊天 (⌘J)",
+  "Show chat": "显示聊天",
+  "Show chat (⌘J)": "显示聊天 (⌘J)",
+  "Move chat": "移动聊天",
+  "Drag to move": "拖动以移动",
+  "Drag to resize": "拖动以调整大小",
 };

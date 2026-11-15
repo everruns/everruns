@@ -37,4 +37,25 @@ export const messages: Readonly<Record<string, string>> = {
   "Resize chat": "Redimensionner le chat",
   "Back to page (⌘⇧J)": "Retour à la page (⌘⇧J)",
   "Back to page": "Retour à la page",
+  "Navigation on the left and the page fills the rest.":
+    "Navigation à gauche, la page occupe le reste.",
+  "Chat in Classic": "Chat dans la disposition classique",
+  "Applies when the layout is Classic.": "S’applique quand la disposition est classique.",
+  "Chat replaces the page. Command-J switches between them.":
+    "Le chat remplace la page. Command-J bascule entre les deux.",
+  Floating: "Flottant",
+  "A card over the page that you can move and resize. Command-J shows it.":
+    "Une carte au-dessus de la page, déplaçable et redimensionnable. Command-J l’affiche.",
+  Docked: "Ancré",
+  "A column on the right of the page, with a divider you can drag.":
+    "Une colonne à droite de la page, avec un séparateur déplaçable.",
+  "Dock to the right": "Ancrer à droite",
+  Float: "Rendre flottant",
+  "Hide chat": "Masquer le chat",
+  "Hide chat (⌘J)": "Masquer le chat (⌘J)",
+  "Show chat": "Afficher le chat",
+  "Show chat (⌘J)": "Afficher le chat (⌘J)",
+  "Move chat": "Déplacer le chat",
+  "Drag to move": "Faites glisser pour déplacer",
+  "Drag to resize": "Faites glisser pour redimensionner",
 };

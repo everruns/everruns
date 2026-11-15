@@ -26,18 +26,17 @@ export function parseAppLayout(value: unknown): AppLayout {
   return value === "chat_first" ? "chat_first" : "classic";
 }
 
-function readLocal(): AppLayout | undefined {
+function readLocal(key: string): string | undefined {
   try {
-    const value = window.localStorage.getItem(LOCAL_KEY);
-    return value ? parseAppLayout(value) : undefined;
+    return window.localStorage.getItem(key) ?? undefined;
   } catch {
     return undefined;
   }
 }
 
-function writeLocal(layout: AppLayout) {
+function writeLocal(key: string, value: string) {
   try {
-    window.localStorage.setItem(LOCAL_KEY, layout);
+    window.localStorage.setItem(key, value);
   } catch {
     // Private mode or disabled storage: the server value still applies.
   }
@@ -45,35 +44,85 @@ function writeLocal(layout: AppLayout) {
 
 const noSubscribe = () => () => {};
 
-export function useLayoutPreference() {
-  const query = useUserPreference(LAYOUT_PREFERENCE_KEY);
+/**
+ * One server-side choice mirrored on the device. `parse` maps anything stored
+ * (including values from older builds) onto a known option.
+ */
+function useStoredChoice<T extends string>(
+  key: string,
+  localKey: string,
+  parse: (value: unknown) => T,
+  fallback: T,
+) {
+  const query = useUserPreference(key);
   const save = useSetUserPreference();
   const queryClient = useQueryClient();
-  const local = useSyncExternalStore(noSubscribe, readLocal, () => undefined);
-  const stored = query.data ? parseAppLayout(query.data.value) : undefined;
+  const readDevice = useCallback(() => {
+    const value = readLocal(localKey);
+    return value ? parse(value) : undefined;
+  }, [localKey, parse]);
+  const local = useSyncExternalStore(noSubscribe, readDevice, () => undefined);
+  const stored = query.data ? parse(query.data.value) : undefined;
   useEffect(() => {
-    if (stored) writeLocal(stored);
-  }, [stored]);
-  const layout: AppLayout = stored ?? local ?? "classic";
+    if (stored) writeLocal(localKey, stored);
+  }, [localKey, stored]);
+  const value: T = stored ?? local ?? fallback;
 
-  const setLayout = useCallback(
-    (next: AppLayout) => {
-      writeLocal(next);
-      const queryKey = queryKeys.userPreferences.detail(LAYOUT_PREFERENCE_KEY);
-      // A read still in flight would land after this and switch the layout back.
+  const setValue = useCallback(
+    (next: T) => {
+      writeLocal(localKey, next);
+      const queryKey = queryKeys.userPreferences.detail(key);
+      // A read still in flight would land after this and switch the choice back.
       void queryClient.cancelQueries({ queryKey });
       // Switch immediately; the request only persists the choice.
       queryClient.setQueryData(queryKey, {
-        key: LAYOUT_PREFERENCE_KEY,
+        key,
         value: next,
         updated_at: new Date().toISOString(),
       });
-      save.mutate({ key: LAYOUT_PREFERENCE_KEY, value: next });
+      save.mutate({ key, value: next });
     },
-    [queryClient, save],
+    [key, localKey, queryClient, save],
   );
 
   // Known once the server answered, or from this device's last value.
   const ready = !!stored || !!local || !query.isLoading;
-  return { layout, ready, setLayout, saving: save.isPending, error: save.error };
+  return { value, ready, setValue, saving: save.isPending, error: save.error };
+}
+
+export function useLayoutPreference() {
+  const { value, setValue, ...rest } = useStoredChoice(
+    LAYOUT_PREFERENCE_KEY,
+    LOCAL_KEY,
+    parseAppLayout,
+    "classic",
+  );
+  return { layout: value, setLayout: setValue, ...rest };
+}
+
+/**
+ * How Chat opens in the Classic layout (decided 2026-11-15):
+ * - `full_screen` (default): Chat replaces the page at `/chats`, as before.
+ * - `floating`: a movable, resizable card over the page; a Chat button reopens it.
+ * - `docked`: a column on the right of the page with a visible divider.
+ * Floating and docked keep Chat page-aware, like Chat first. Full screen stays
+ * one click away from both.
+ */
+export type ClassicChat = "full_screen" | "floating" | "docked";
+
+export const CLASSIC_CHAT_PREFERENCE_KEY = "ui.classic_chat";
+const CLASSIC_CHAT_LOCAL_KEY = "everruns.ui.classic_chat";
+
+export function parseClassicChat(value: unknown): ClassicChat {
+  return value === "floating" || value === "docked" ? value : "full_screen";
+}
+
+export function useClassicChatPreference() {
+  const { value, setValue, ...rest } = useStoredChoice(
+    CLASSIC_CHAT_PREFERENCE_KEY,
+    CLASSIC_CHAT_LOCAL_KEY,
+    parseClassicChat,
+    "full_screen",
+  );
+  return { classicChat: value, setClassicChat: setValue, ...rest };
 }

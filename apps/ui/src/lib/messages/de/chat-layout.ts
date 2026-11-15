@@ -37,4 +37,25 @@ export const messages: Readonly<Record<string, string>> = {
   "Resize chat": "Chatbreite ändern",
   "Back to page (⌘⇧J)": "Zurück zur Seite (⌘⇧J)",
   "Back to page": "Zurück zur Seite",
+  "Navigation on the left and the page fills the rest.":
+    "Navigation links, die Seite füllt den Rest.",
+  "Chat in Classic": "Chat im klassischen Layout",
+  "Applies when the layout is Classic.": "Gilt, wenn das klassische Layout gewählt ist.",
+  "Chat replaces the page. Command-J switches between them.":
+    "Der Chat ersetzt die Seite. Command-J wechselt zwischen beiden.",
+  Floating: "Schwebend",
+  "A card over the page that you can move and resize. Command-J shows it.":
+    "Eine Karte über der Seite, die Sie verschieben und in der Größe ändern können. Command-J zeigt sie.",
+  Docked: "Angedockt",
+  "A column on the right of the page, with a divider you can drag.":
+    "Eine Spalte rechts neben der Seite mit verschiebbarem Trenner.",
+  "Dock to the right": "Rechts andocken",
+  Float: "Schweben lassen",
+  "Hide chat": "Chat ausblenden",
+  "Hide chat (⌘J)": "Chat ausblenden (⌘J)",
+  "Show chat": "Chat anzeigen",
+  "Show chat (⌘J)": "Chat anzeigen (⌘J)",
+  "Move chat": "Chat verschieben",
+  "Drag to move": "Zum Verschieben ziehen",
+  "Drag to resize": "Zum Ändern der Größe ziehen",
 };
