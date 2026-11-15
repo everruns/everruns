@@ -534,14 +534,6 @@ impl DecisionsService for OrgDecisionModel {
 // Rules
 // ============================================
 
-fn binary(pass: bool, reason: String) -> Score {
-    Score {
-        pass,
-        value: if pass { 1.0 } else { 0.0 },
-        reason,
-    }
-}
-
 use everruns_core::evaluation::score_citation_faithful;
 pub use everruns_core::evaluation::score_rule;
 // ============================================
