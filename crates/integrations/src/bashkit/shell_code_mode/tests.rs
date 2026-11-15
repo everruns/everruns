@@ -184,7 +184,7 @@ fn install_cli_surface(context: &mut ToolContext, registry: &ToolRegistry) {
         .filter_map(|name| registry.get(name))
         .map(|tool| tool.to_definition())
         .collect();
-    let routes = ToolsInShellCapability.tool_surface_routes_with_config(&json!({}), &definitions);
+    let routes = ShellCodeModeCapability.tool_surface_routes_with_config(&json!({}), &definitions);
     let mut plan =
         everruns_contracts::runtime::tool_surface::ToolSurfacePlan::for_mode(ToolSurfaceMode::Cli);
     plan.extend(routes);
@@ -511,7 +511,7 @@ fn hybrid_keeps_native_definitions_and_bash_schema_stable_as_catalog_changes() {
 
 #[test]
 fn resolved_routes_separate_cli_eligibility_from_native_schema_loading() {
-    let capability = ToolsInShellCapability;
+    let capability = ShellCodeModeCapability;
     let mut eager = definition("write_todos", ToolPolicy::Auto, ToolHints::default());
     if let ToolDefinition::Builtin(tool) = &mut eager {
         tool.deferrable = DeferrablePolicy::Never;
@@ -713,7 +713,7 @@ fn shell_search_loads_at_most_eight_matching_deferred_servers() {
 
 #[test]
 fn capability_contract() {
-    let capability = ToolsInShellCapability;
+    let capability = ShellCodeModeCapability;
     assert_eq!(capability.dependencies(), vec!["bashkit_shell"]);
     assert!(capability.supersedes().contains(&"tool_search"));
     assert_eq!(capability.tools()[0].name(), TOOLS_COMMAND);
@@ -786,4 +786,25 @@ fn capability_contract() {
         schema["properties"]["rate_unlabeled_tools"]["default"],
         true
     );
+}
+
+/// Agents saved before the rename name the capability `tools_in_shell`; the
+/// registry must still resolve that ID to Shell Code Mode.
+#[test]
+fn legacy_tools_in_shell_id_resolves_to_shell_code_mode() {
+    let mut registry = everruns_contracts::runtime::capabilities::CapabilityRegistry::new();
+    registry.register(ShellCodeModeCapability);
+    assert_eq!(
+        registry.canonical_id(LEGACY_SHELL_CODE_MODE_CAPABILITY_ID),
+        Some(SHELL_CODE_MODE_CAPABILITY_ID)
+    );
+    assert_eq!(
+        registry
+            .get("tools_in_shell")
+            .map(|capability| capability.name().to_string()),
+        Some("Shell Code Mode".to_string())
+    );
+    assert!(is_shell_code_mode_id("tools_in_shell"));
+    assert!(is_shell_code_mode_id("shell_code_mode"));
+    assert!(!is_shell_code_mode_id("bashkit_shell"));
 }

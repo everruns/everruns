@@ -1219,7 +1219,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-tools-in-shell-evals"
+name = "everruns-shell-code-mode-evals"
 version = "0.1.0"
 dependencies = [
  "async-trait",

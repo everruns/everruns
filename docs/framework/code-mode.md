@@ -23,7 +23,7 @@ server's data.
 ## Declare it
 
 Code mode is three lines on the agent builder: the shell, the
-[Tools in Shell](/capabilities/tools-in-shell/) capability in `cli` mode, and
+[Shell Code Mode](/capabilities/shell-code-mode/) capability in `cli` mode, and
 the MCP server. Enable the `bashkit` and `mcp-stdio` (or `mcp`) features.
 
 ```toml
@@ -48,7 +48,7 @@ let agent = Agent::builder()
     .model("gpt-6.1-sol")
     .capability(BashkitShell::new())
     .capability(
-        CapabilityRef::new("tools_in_shell")
+        CapabilityRef::new("shell_code_mode")
             .config(json!({"mode": "cli", "rate_unlabeled_tools": false})),
     )
     .mcp_server(McpServer::stdio("acme", "acme-mcp-server"))
@@ -69,7 +69,7 @@ the native route as well. `rate_unlabeled_tools: false` skips the decision
 service for tools that declare no read-only or destructive hint; leave it on
 when your server does not label its tools. Approvals still apply: a call that
 needs approval stops the script and asks. See
-[Tools in Shell](/capabilities/tools-in-shell/) for every option, and
+[Shell Code Mode](/capabilities/shell-code-mode/) for every option, and
 [Large MCP catalogs](/features/large-mcp-catalogs/) for the limits on catalog
 size and discovery.
 

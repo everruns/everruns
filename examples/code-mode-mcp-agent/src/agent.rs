@@ -1,4 +1,4 @@
-//! The agent declaration: Bashkit, Tools in Shell in CLI mode, one MCP server.
+//! The agent declaration: Bashkit, Shell Code Mode in CLI mode, one MCP server.
 
 use everruns::{Agent, BashkitShell, BuildError, CapabilityRef, McpServer, Provider};
 use serde_json::json;
@@ -33,7 +33,7 @@ pub fn build(provider: Provider, model: &str, server_command: &str) -> Result<Ag
         // read-only or destructive hints, so the decision service is not
         // needed to rate unlabeled ones.
         .capability(
-            CapabilityRef::new("tools_in_shell")
+            CapabilityRef::new("shell_code_mode")
                 .config(json!({"mode": "cli", "rate_unlabeled_tools": false})),
         )
         .mcp_server(acme)

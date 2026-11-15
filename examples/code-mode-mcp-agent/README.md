@@ -11,7 +11,7 @@ agent, not a scripted turn.
 ## What you learn
 
 How to declare code mode in the Framework: attach an MCP server, turn on
-`bashkit_shell`, and add `tools_in_shell` in `cli` mode. The MCP tools leave the
+`bashkit_shell`, and add `shell_code_mode` in `cli` mode. The MCP tools leave the
 model's tool list and become shell commands, so a huge catalog costs the prompt
 nothing and a task that needs many calls takes a few scripts.
 
@@ -19,7 +19,7 @@ nothing and a task that needs many calls takes a few scripts.
 Agent::builder()
     .capability(BashkitShell::new())
     .capability(
-        CapabilityRef::new("tools_in_shell")
+        CapabilityRef::new("shell_code_mode")
             .config(json!({"mode": "cli", "rate_unlabeled_tools": false})),
     )
     .mcp_server(McpServer::stdio("acme", server_command).arg("--mcp-server"))

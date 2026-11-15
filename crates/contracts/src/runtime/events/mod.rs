@@ -91,7 +91,7 @@ pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
 pub const TOOL_CALL_REPAIRED: &str = "tool.call_repaired";
 /// A provider-executed (hosted) tool call changed state (EVE-1115).
 pub const TOOL_HOSTED_CALL: &str = "tool.hosted_call";
-/// A tool a shell script called through `tools` finished (Tools in Shell).
+/// A tool a shell script called through `tools` finished (Shell Code Mode).
 pub const TOOL_NESTED_CALL: &str = "tool.nested_call";
 
 // LLM events

@@ -768,7 +768,7 @@ mod tests {
         // connecting an account is the opt-in.
         for capability in [
             "resource_discovery",
-            "tools_in_shell",
+            "shell_code_mode",
             "agentid",
             "jev",
             "brave_search",

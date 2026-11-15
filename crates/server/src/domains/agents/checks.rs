@@ -503,7 +503,7 @@ pub fn check_slack_without_reactions(
 /// nothing (`Capability::supersedes`; collection already skips it), so the
 /// agent pays for configuration that never takes effect. Takes the registry
 /// rather than a fixed pair list so the rule follows whatever a capability
-/// declares, e.g. Tools in Shell over tool search.
+/// declares, e.g. Shell Code Mode over tool search.
 pub fn check_superseded_capabilities(
     capabilities: &[AgentCapabilityConfig],
     registry: &everruns_contracts::runtime::capabilities::CapabilityRegistry,
@@ -1168,20 +1168,20 @@ mod tests {
     fn superseded_capability_is_flagged_only_when_both_are_on() {
         let mut registry = everruns_contracts::runtime::capabilities::CapabilityRegistry::new();
         registry.register(Stub(
-            "tools_in_shell",
-            "Tools in Shell",
+            "shell_code_mode",
+            "Shell Code Mode",
             vec!["tool_search"],
         ));
         registry.register(Stub("tool_search", "Tool Search", vec![]));
 
-        let both = [capability("tools_in_shell"), capability("tool_search")];
+        let both = [capability("shell_code_mode"), capability("tool_search")];
         let findings = check_superseded_capabilities(&both, &registry);
         assert_eq!(rule_ids(&findings), vec!["capabilities.superseded"]);
         assert_eq!(findings[0].severity, FindingSeverity::Suggestion);
         assert_eq!(findings[0].category, FindingCategory::Cost);
         assert_eq!(
             findings[0].message,
-            "Tool Search does nothing while Tools in Shell is on; remove it."
+            "Tool Search does nothing while Shell Code Mode is on; remove it."
         );
 
         let one = [capability("tool_search")];

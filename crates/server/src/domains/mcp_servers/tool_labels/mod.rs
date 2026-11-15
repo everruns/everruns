@@ -12,7 +12,7 @@
 //   updating it (MCP_SERVER_MANAGE). Reading takes MCP_SERVER_VIEW.
 // - Suggestions (user decision 2026-10-10, "rating suggests"): on request the
 //   deployment's decisions service rates every tool without a saved label,
-//   asking the question Tools in Shell ratings ask. The answer only fills
+//   asking the question Shell Code Mode ratings ask. The answer only fills
 //   `suggested_label`; it is shown but never applied, so prompts change only
 //   once a person confirms it by setting the label. A failed rating leaves the
 //   old suggestion as it was. See `suggestions.rs`.

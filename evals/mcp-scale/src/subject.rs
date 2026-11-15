@@ -91,7 +91,7 @@ pub fn build_session(
     }
     if surface != "native" {
         builder = builder.capability("bashkit_shell").capability(
-            CapabilityRef::new("tools_in_shell").config(json!({
+            CapabilityRef::new("shell_code_mode").config(json!({
                 "mode": surface,
                 "rate_unlabeled_tools": false
             })),

@@ -8,7 +8,7 @@ products: [platform, cloud]
 surfaces: [agent, ui]
 release: "0.48.0"
 links:
-  docs: [/capabilities/tools-in-shell/]
+  docs: [/capabilities/shell-code-mode/]
   prs: [everruns/everruns#4385, everruns/everruns#4386, everruns/everruns#4388, everruns/everruns#4435, everruns/everruns#4439, everruns/everruns#4443, everruns/everruns#4454, everruns/everruns#4501]
 ---
 
@@ -27,4 +27,8 @@ and their risk without running anything. Tools with no risk hints are rated
 once, which **Rate unlabeled tools** can turn off. Each call shows in the
 session timeline under its shell call.
 
-See [Tools in Shell](/capabilities/tools-in-shell/) and [#4385](https://github.com/everruns/everruns/pull/4385), [#4388](https://github.com/everruns/everruns/pull/4388), [#4435](https://github.com/everruns/everruns/pull/4435), [#4439](https://github.com/everruns/everruns/pull/4439), [#4443](https://github.com/everruns/everruns/pull/4443), [#4501](https://github.com/everruns/everruns/pull/4501).
+See [Tools in Shell](/capabilities/shell-code-mode/) and [#4385](https://github.com/everruns/everruns/pull/4385), [#4388](https://github.com/everruns/everruns/pull/4388), [#4435](https://github.com/everruns/everruns/pull/4435), [#4439](https://github.com/everruns/everruns/pull/4439), [#4443](https://github.com/everruns/everruns/pull/4443), [#4501](https://github.com/everruns/everruns/pull/4501).
+
+## Update 2026-11-15
+
+The capability is now called [Shell Code Mode](/changelog/2026-11-15-shell-code-mode/) (`shell_code_mode`). The `tools_in_shell` ID keeps working.

@@ -1,18 +1,22 @@
 ---
-title: Tools in Shell
+title: Shell Code Mode
 description: Call an agent's tools, MCP servers included, from the Bashkit shell with one tools command, so one script can chain several calls and return only what matters.
 appliesTo: [framework, platform, cloud]
 ---
 
 | | |
 |---|---|
-| **ID** | `tools_in_shell` |
+| **ID** | `shell_code_mode` |
 | **Category** | Execution |
 | **Risk** | High, assignment requires an org **Admin** |
 | **Depends on** | [Bashkit Shell](/capabilities/bashkit-shell/) |
 | **Rollout** | Experimental; adding the capability is the opt-in |
+| **Former ID** | `tools_in_shell`, still accepted |
 
-Tools in Shell adds a `tools` command inside the
+Shell Code Mode, also called code mode, was named Tools in Shell before. Agents
+saved with the old `tools_in_shell` ID keep working without any change.
+
+Shell Code Mode adds a `tools` command inside the
 [Bashkit Shell](/capabilities/bashkit-shell/). In the default `cli` mode,
 eligible operations move out of the model's direct tool list. `hybrid` mode
 keeps those operations available both through the shell and as native tools,
@@ -51,7 +55,7 @@ static Bash tool description.
 
 ```json
 {
-  "ref": "tools_in_shell",
+  "ref": "shell_code_mode",
   "config": { "mode": "hybrid" }
 }
 ```
@@ -254,10 +258,10 @@ tools scripts triage-prs repo=a/b  # run one
 
 ## Tool search
 
-In the default `cli` mode, Tools in Shell replaces tool search. When both are
+In the default `cli` mode, Shell Code Mode replaces tool search. When both are
 enabled, the tool search capabilities (`tool_search`, `auto_tool_search`,
 `openai_tool_search`, `claude_tool_search`) contribute nothing. In `hybrid`
-mode, bounded `tool_search` can reveal native schemas while Tools in Shell
+mode, bounded `tool_search` can reveal native schemas while Shell Code Mode
 provides the same operations through `tools`. See [Large MCP catalogs and
 tool surfaces](/features/large-mcp-catalogs/) for the shared registry model.
 [Agent Checks](/features/agent-checks/) report a redundant capability as a
@@ -269,7 +273,7 @@ mode.
 ```json
 {
   "capabilities": [
-    { "ref": "tools_in_shell", "config": { "mode": "cli", "keep_visible": ["web_fetch"] } }
+    { "ref": "shell_code_mode", "config": { "mode": "cli", "keep_visible": ["web_fetch"] } }
   ]
 }
 ```
@@ -289,7 +293,7 @@ A Rust host turns the capability on with the agent builder, next to
 ```rust
 let agent = Agent::builder()
     .capability("bashkit_shell")
-    .capability(CapabilityRef::new("tools_in_shell").config(json!({"mode": "cli"})))
+    .capability(CapabilityRef::new("shell_code_mode").config(json!({"mode": "cli"})))
     .mcp_server(McpServer::stdio("acme", "acme-mcp-server"))
     // provider, model, instructions...
     .build()?;

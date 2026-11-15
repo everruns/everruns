@@ -64,6 +64,8 @@ export default defineConfig({
     [`${LEGACY_GALLERY_ROOT}/`]: `${GALLERY_ROOT}/`,
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
+    // tools_in_shell capability renamed to shell_code_mode
+    "/capabilities/tools-in-shell/": "/capabilities/shell-code-mode/",
     // generic-tool-search page renamed to tool-search
     "/capabilities/generic-tool-search/": "/capabilities/tool-search/",
     // gpt_image_gen capability renamed to image_generation
@@ -539,7 +541,7 @@ export default defineConfig({
                         { label: "File System", slug: "capabilities/file-system" },
                         { label: "Read Tools", slug: "built-ins/read-tools" },
                         { label: "Bashkit Shell", slug: "capabilities/bashkit-shell" },
-                        { label: "Tools in Shell", slug: "capabilities/tools-in-shell" },
+                        { label: "Shell Code Mode", slug: "capabilities/shell-code-mode" },
                         { label: "Host Shell", slug: "capabilities/host-shell" },
                         { label: "Session", slug: "capabilities/session" },
                         { label: "Automatic session titles", slug: "capabilities/automatic-session-titles" },

@@ -94,7 +94,7 @@ the durable schedule id.
 A schedule or webhook trigger with a `script` runs that
 [saved script](agent-scripts.md) instead of asking the model: the message is
 dispatched with a reserved script-run marker, and that turn makes one `bash`
-call and no model call ([tools in shell D9](../execution/tools-in-shell.md)).
+call and no model call ([tools in shell D9](../execution/shell-code-mode.md)).
 
 ## Event pipeline
 

@@ -78,7 +78,7 @@ pub struct ToolApprovalRequired {
     /// recorded against it, so it only ever lets this exact call through.
     pub fingerprint: String,
     /// Why the gate asked: `destructive`, `open_world`, `mutating`, or `policy`.
-    /// Tools in Shell relabels `destructive` as `rated_changes` when the tool
+    /// Shell Code Mode relabels `destructive` as `rated_changes` when the tool
     /// declared nothing and only a decision-service rating marked it.
     pub risk: String,
     /// Approval mode the gate ran under.

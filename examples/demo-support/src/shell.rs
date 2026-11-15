@@ -175,7 +175,7 @@ pub async fn run_showing(
                 }
             }
             _ if event.event_type() == "tool.nested_call" => {
-                // A tool the script called through `tools_in_shell`: the model
+                // A tool the script called through `shell_code_mode`: the model
                 // never saw this call, so show it under the script that made it.
                 nested_call(&event.canonical_json()["data"]);
             }

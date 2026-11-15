@@ -1,5 +1,5 @@
 //! Triggers that run a saved script instead of asking the model (Tools in
-//! Shell D9, `knowledge/execution/tools-in-shell.md`).
+//! Shell D9, `knowledge/execution/shell-code-mode.md`).
 //!
 //! Decisions:
 //! - Only schedule and webhook triggers take a script, as the design names;

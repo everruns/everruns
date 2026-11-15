@@ -149,7 +149,7 @@ fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     #[cfg(feature = "bashkit")]
     _registry.register(everruns_integrations::bashkit::BashkitShellCapability);
     #[cfg(feature = "bashkit")]
-    _registry.register(everruns_integrations::bashkit::tools_in_shell::ToolsInShellCapability);
+    _registry.register(everruns_integrations::bashkit::shell_code_mode::ShellCodeModeCapability);
     // Both contribute a tool named `bash`, so an embedder selects one. Nothing
     // stops both features being on at once; the capability an agent enables is
     // what decides which shell it gets.

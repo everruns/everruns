@@ -30,7 +30,7 @@ pub(super) fn install_cli_tree(builder: BashBuilder, context: &ToolContext) -> B
         builder
     };
 
-    let builder = tools_in_shell::install(builder, context);
+    let builder = shell_code_mode::install(builder, context);
     if let Some(handle) = context
         .extensions
         .get::<crate::bashkit::cli::CliCommandSourceHandle>()

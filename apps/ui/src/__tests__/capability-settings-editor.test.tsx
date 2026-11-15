@@ -161,7 +161,7 @@ describe("CapabilitySettingsEditor", () => {
     render(
       <CapabilitySettingsEditor
         capability={capability({
-          id: "tools_in_shell",
+          id: "shell_code_mode",
           config_schema: {
             type: "object",
             properties: {
