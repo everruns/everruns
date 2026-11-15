@@ -625,7 +625,7 @@ impl SessionSchedule {
 
     /// Who wrote the message a fire injects: this schedule, with which run
     /// this is, the run limit, the end and the stop condition for a recurring
-    /// one (knowledge/execution/message-origin.md). Those travel as data: the
+    /// one. Those travel as data: the
     /// Chat and trace show them, and the model reads them in the origin header
     /// line instead of a duplicated text footer. Read from the schedule as
     /// fired, `trigger_count` counting this fire. Every host that fires a
