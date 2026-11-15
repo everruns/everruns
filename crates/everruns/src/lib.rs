@@ -66,6 +66,17 @@ pub mod ask_user;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
+/// Persistent agent-facing session databases.
+#[cfg(feature = "sql-database")]
+pub mod database;
+/// Application-owned knowledge retrieval and indexes.
+#[cfg(feature = "knowledge")]
+pub mod knowledge;
+#[cfg(feature = "native-services")]
+mod native;
+/// Native Slack actions with conversation-bound credentials.
+#[cfg(feature = "slack-actions")]
+pub mod slack;
 /// Credential verification for agent endpoints: OIDC/JWKS, OAuth 2.0
 /// introspection, claim requirements. The everruns server's channel verifier.
 ///
@@ -166,6 +177,13 @@ pub mod hosting;
 ///
 /// Stability: experimental — outside the [`stability`] promises.
 pub use everruns_contracts::execution_api;
+/// GitHub tools with application-owned credentials.
+///
+/// Stability: alpha — enabled by the `github` feature.
+#[cfg(feature = "github")]
+pub mod github {
+    pub use everruns_integrations::github::{GitHub, GitHubTokenProvider, GitHubTokenRequest};
+}
 mod harness;
 mod history;
 mod hooks;
@@ -174,7 +192,9 @@ pub mod llm;
 
 /// Stability: alpha — provider-native offline model requests.
 pub mod batch;
-mod mcp;
+/// MCP configuration and application-owned authentication.
+/// Stability: alpha.
+pub mod mcp;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod models;
 /// Built-in Engine observability integrations.
@@ -589,3 +609,25 @@ pub use everruns_core::host::{McpReadiness, McpReadinessWatch, McpServerReadines
 
 #[cfg(feature = "utility-llm")]
 pub mod utility_extractions;
+
+/// Application-owned credentials for optional native services.
+#[cfg(feature = "native-services")]
+pub mod services;
+
+/// Named persistent memory mounts.
+pub mod memory;
+pub use memory::MemoryDirectory;
+
+/// Canonical event projections for portable traces.
+pub mod trace;
+
+/// Durable event-trigger routing and source adapters.
+#[cfg(feature = "triggers")]
+pub mod triggers;
+
+/// Reusable scorers, evaluation runs and online scoring.
+#[cfg(feature = "evaluation")]
+pub mod evaluation;
+
+#[cfg(feature = "channels")]
+mod channel_controls;

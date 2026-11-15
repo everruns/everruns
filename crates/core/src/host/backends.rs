@@ -89,6 +89,12 @@ pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
 /// selection is always resolved from `HostComposition`.
 #[derive(Clone)]
 pub struct HostBackends {
+    /// Explicit host-authorized read surfaces, mounted after workspace policy.
+    pub file_mounts: Vec<(
+        String,
+        Arc<dyn crate::session_files::SessionFileSystem>,
+        String,
+    )>,
     pub memory_mounts: Vec<(
         String,
         Arc<dyn crate::session_files::SessionFileSystem>,
@@ -159,6 +165,7 @@ impl HostBackends {
     /// Use the chainable `with_*` setters to override individual stores.
     pub fn in_memory() -> Self {
         Self {
+            file_mounts: Vec::new(),
             memory_mounts: Vec::new(),
             dreaming_store: Arc::new(
                 crate::engine::dreaming::store::InMemoryDreamingStore::default(),

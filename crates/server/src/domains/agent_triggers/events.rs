@@ -375,21 +375,7 @@ impl ObservedChange {
 
 /// Why an event does not count as a change, or `None` when it does. No value
 /// (a cancelled CI run has no outcome) and a subject's first value both miss.
-fn change_miss(path: &str, value: Option<&Value>, previous: Option<&Value>) -> Option<String> {
-    let Some(value) = value else {
-        return Some(format!("{path} is missing"));
-    };
-    let shown = truncate(&value_label(value), 80);
-    match previous {
-        None => Some(format!("first {path} for this subject is {shown}")),
-        Some(previous) if values_equal(previous, value) => Some(format!("{path} is still {shown}")),
-        Some(_) => None,
-    }
-}
-
-fn values_equal(left: &Value, right: &Value) -> bool {
-    values_match(left, right) || values_match(right, left)
-}
+use everruns_core::triggers::change_miss;
 
 async fn record_duplicate(
     db: &Arc<StorageBackend>,
@@ -408,45 +394,7 @@ async fn prune(db: &Arc<StorageBackend>, trigger: &AgentTriggerRow) {
     }
 }
 
-/// Return why the event misses the filter, or `None` when every condition holds.
-pub fn filter_miss(filter: &TriggerEventFilter, context: &Value) -> Option<String> {
-    filter.conditions.iter().find_map(|condition| {
-        let actual = template_lookup(context, &condition.path);
-        let matched = actual.is_some_and(|actual| {
-            condition
-                .any_of
-                .iter()
-                .any(|expected| values_match(actual, expected))
-        });
-        (!matched).then(|| {
-            let shown = actual
-                .map(|value| truncate(&value_label(value), 80))
-                .unwrap_or_else(|| "missing".to_string());
-            format!("{} is {shown}", condition.path)
-        })
-    })
-}
-
-fn values_match(actual: &Value, expected: &Value) -> bool {
-    if actual == expected {
-        return true;
-    }
-    // A string condition matches the same scalar written differently
-    // (`"12"` matches `12`, `"true"` matches `true`), since conditions are
-    // often typed in a form.
-    match (actual, expected) {
-        (Value::Number(number), Value::String(text)) => number.to_string() == text.as_str(),
-        (Value::Bool(flag), Value::String(text)) => text.parse::<bool>().ok() == Some(*flag),
-        _ => false,
-    }
-}
-
-fn value_label(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
-    }
-}
+pub use everruns_core::triggers::filter_miss;
 
 fn clean_field(value: Option<String>) -> Option<String> {
     value

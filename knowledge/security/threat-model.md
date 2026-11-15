@@ -2215,3 +2215,17 @@ out across orgs. Leases retain their own org-scoped runtime owner; migration to 
 | TM-EXTRACT-002 | Large encoded assets or provider responses exhaust memory; provider errors disclose source documents | Contract asset count/encoded-byte checks precede decoding, driver-specific bounds apply, Server HTTP request bodies are bounded to 8 MiB and provider responses to 4 MiB, timeouts bound work, redirects are disabled, a DNS-pinning resolver rejects private/internal destinations after registration, and raw upstream bodies are excluded from errors. Models may still return inaccurate extraction or confidence; typed/evidence validation does not establish factual correctness. |
 
 See [Native Extraction Services](../operations/extractions-service.md).
+
+## Framework application services
+
+| ID | Threat | Mitigation |
+| --- | --- | --- |
+| TM-FW-001 | Application service credentials enter configuration, events, or a replacement MCP endpoint | Secrets remain in opaque application credential values, Debug is redacted, acquisition failures and native upstream bodies/transport URLs are sanitized, and MCP checks exact endpoint/name binding on every operation. Applications own token-store protection and scope. |
+| TM-FW-002 | Standalone Slack actions or callbacks cross the authorized conversation/person | Explicit channel/thread binding, message thread-membership checks, signed raw-body ingress, workspace pinning, forced thread session binding and expiring requester-bound one-use cards. New input supersedes old cards. Soft approval is conversational consent, not authorization to arbitrary tools. |
+| TM-FW-003 | Upload reservations redirect file bytes to an untrusted destination or disclose signed URLs | Shared Slack upload operations constrain the reservation origin, disable redirects, and suppress transport URL details. A non-default API origin is trusted application configuration. |
+| TM-FW-004 | Local SQL selects host paths, escapes its session, or races storage quotas | Shared name validation/authorizer, private per-session paths, symlink rejection, bounded SQL execution and cross-process file locks around quota checks and operations. Protect the storage root from native host processes; this is no OS sandbox. |
+| TM-FW-005 | Trigger retries/replays duplicate execution or alter change baselines | Authenticated source adapters (GitHub replay identity binds verified body bytes rather than its unsigned delivery header), bounded inputs, atomic state/receipt insertion, permanent tombstones for filtered and accepted events, immutable trigger revisions and stable Engine input identities retained before dispatch. Hosts protect stores and run recovery/supervision. |
+| TM-FW-006 | Retrieval, traces or online evaluation leak full source context or score incomplete data | Bound retrieval metadata/snippets and source IDs; shared trace projection retains previews only. Online evidence has fixed turn/byte bounds and terminal completeness checks; failures go to the result sink. Model graders use explicitly selected application models, without account fallback. |
+
+See [Framework application boundaries](../framework/application-api.md) and the
+[acceptance tests](../../crates/everruns/tests/service_parity.rs).

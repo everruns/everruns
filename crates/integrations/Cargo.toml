@@ -22,6 +22,7 @@ all-features = true
 ignored = ["prost", "protox", "tonic-prost", "tonic-prost-build", "connectrpc-build", "connectrpc", "buffa", "http-body"]
 
 [features]
+event-webhooks = ["dep:hmac", "dep:sha2", "dep:base64", "dep:rand", "dep:hex"]
 default = []
 bashkit = ["dep:everruns-cli-contract", "dep:async-trait", "dep:base64", "dep:bashkit", "dep:clap", "dep:serde_json", "dep:futures", "dep:tokio", "dep:tracing", "dep:url", "dep:everruns-contracts", "everruns-contracts/runtime"]
 brave-search = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:chrono", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
@@ -42,7 +43,7 @@ typesafe = ["dep:everruns-drivers", "everruns-drivers/typesafe", "everruns-drive
 web-search = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:futures", "dep:tokio", "tokio/time", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime"]
 web-fetch = ["dep:chrono", "dep:async-trait", "dep:url", "dep:base64", "dep:bytes", "dep:fetchkit", "dep:serde_json", "dep:futures", "dep:sha2", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
 webhook-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
-slack-channel = ["dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:hmac", "dep:sha2", "dep:hex", "dep:everruns-contracts", "everruns-contracts/runtime"]
+slack-channel = ["dep:uuid", "dep:url", "dep:reqwest", "dep:async-trait", "dep:serde_json", "dep:tracing", "dep:hmac", "dep:sha2", "dep:hex", "dep:everruns-contracts", "everruns-contracts/runtime"]
 modal = ["dep:inventory", "dep:async-trait", "dep:base64", "dep:chrono", "dep:futures", "dep:hyper-util", "dep:prost", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime", "dep:protox", "dep:tonic-prost-build"]
 boxd = ["dep:inventory", "dep:async-trait", "dep:chrono", "dep:futures", "dep:hyper-util", "dep:prost", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime", "everruns-contracts/session-sandbox", "dep:protox", "dep:tonic-prost-build"]
 brave-search-hosted = ["brave-search"]
@@ -68,6 +69,7 @@ boxd-test-util = ["boxd", "dep:prost-types"]
 
 
 [dependencies]
+rand = { workspace = true, optional = true }
 everruns-contracts = { workspace = true, default-features = false, optional = true }
 anyhow = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }

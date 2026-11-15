@@ -337,3 +337,12 @@ produce mixed-version citations or reveal another org's content.
 | 14: org indexer BYOK | [Organization indexers](knowledge-indexing.md#organization-indexers-and-byok). |
 | 15: chunk and binary storage | [Storage ownership](knowledge-indexing.md#storage-ownership). |
 | 16: Markkit | Extraction with Markkit. |
+
+## Framework collection binding
+
+The [application adapter](../../crates/everruns/src/knowledge.rs) binds local original
+files or an application Retriever to the current shared KnowledgeRuntime contract.
+It uses the unified native search/browse schemas and read-only collection mounts;
+it never revives the retired base/index capabilities. Application sources own their
+retrieval provider and catalog; explicit bindings constrain every query. Automatic
+evidence is retained by input identity in the host's protected service store.

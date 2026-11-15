@@ -122,3 +122,12 @@ types. The former core paths move as follows:
 Continue with [Configure and author capabilities](/framework/advanced-capabilities/)
 for agent-level activation or [Custom backends](/framework/custom-backends/)
 for host-level storage and orchestration.
+
+## GitHub
+
+The `github` feature adds `everruns::github::GitHub`: native repository and PR
+tools with application-owned credentials, read-only by default. See
+[GitHub tools](/framework/github/) for token providers, write options, and the
+runnable PR review example.
+
+For application-bound Slack, Cursor, Browserless, E2B, SQL and knowledge services, see [Application services](/framework/service-integrations/). These typed bindings supply the native tools with their real credential/storage dependencies.

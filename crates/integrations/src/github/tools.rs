@@ -11,16 +11,17 @@ use serde_json::{Value, json};
 use tracing::{debug, error};
 
 use crate::github::client::GitHubClient;
-use crate::github::{GITHUB_API_BASE, GITHUB_CONNECTION_PROVIDER, GITHUB_TOKEN_SECRET};
+use crate::github::{
+    GITHUB_API_BASE, GITHUB_CONNECTION_PROVIDER, GITHUB_TOKEN_SECRET, GitHubActsAs,
+};
 use everruns_contracts::runtime::GitHubAccess;
+#[cfg(test)]
 use everruns_contracts::runtime::mcp_server::McpServerActsAs;
 
 const DEFAULT_LIMIT: u32 = 10;
 const MAX_LIMIT: u32 = 30;
 
-/// Scout tools act as the person when they connected GitHub, else the agent.
-/// They only call read endpoints, across repositories they discover, so the
-/// token is not narrowed further.
+#[cfg(test)]
 fn scout_access() -> GitHubAccess {
     GitHubAccess::new(McpServerActsAs::UserOrService, &[])
 }
@@ -242,46 +243,14 @@ impl Tool for SearchGitHubCodeTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let query = match required_str(&arguments, "query") {
-            Ok(query) => query,
-            Err(e) => return e,
-        };
-        if let Err(e) = enforce_github_network_access(context) {
-            return e;
-        }
-        let token = match get_github_token(context, &scout_access()).await {
-            Ok(token) => token,
-            Err(e) => return e,
-        };
-
-        let scoped_query = scoped_query(query, &arguments);
-        match github_client(token)
-            .search_code(&scoped_query, limit(&arguments))
-            .await
-        {
-            Ok(response) => {
-                let results: Vec<Value> = response
-                    .items
-                    .into_iter()
-                    .map(|item| {
-                        json!({
-                            "repository": item.repository.full_name,
-                            "path": item.path,
-                            "name": item.name,
-                            "sha": item.sha,
-                            "url": item.html_url,
-                        })
-                    })
-                    .collect();
-                ToolExecutionResult::success(json!({
-                    "query": scoped_query,
-                    "total_count": response.total_count,
-                    "incomplete_results": response.incomplete_results,
-                    "results": results,
-                }))
-            }
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
+        search_code(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: GitHubActsAs::PersonOrAgent,
+            },
+            arguments,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
@@ -381,60 +350,14 @@ impl Tool for ReadGitHubFileTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let repo = match required_str(&arguments, "repo") {
-            Ok(repo) => repo,
-            Err(e) => return e,
-        };
-        if !is_valid_owner_repo(repo) {
-            return ToolExecutionResult::tool_error(
-                "Invalid repo. Expected owner/repo with alphanumeric, dot, dash, or underscore segments.",
-            );
-        }
-        let path = match required_str(&arguments, "path") {
-            Ok(path) => path,
-            Err(e) => return e,
-        };
-        if !is_valid_repo_path(path) {
-            return ToolExecutionResult::tool_error(
-                "Invalid path. Expected a relative repository file path without empty, dot, or dot-dot segments.",
-            );
-        }
-        let reference = arguments.get("ref").and_then(|v| v.as_str()).map(str::trim);
-        let (offset, limit) = match parse_read_file_window_args(&arguments) {
-            Ok(window) => window,
-            Err(err) => return ToolExecutionResult::tool_error(err),
-        };
-
-        if let Err(e) = enforce_github_network_access(context) {
-            return e;
-        }
-        let token = match get_github_token(context, &scout_access()).await {
-            Ok(token) => token,
-            Err(e) => return e,
-        };
-
-        match github_client(token).read_file(repo, path, reference).await {
-            Ok(file) => match file.decoded_content() {
-                Ok(content) => {
-                    let mut result = build_text_read_file_result(
-                        "read_github_file",
-                        &file.path,
-                        &content,
-                        "text",
-                        offset,
-                        limit,
-                    );
-                    result["repo"] = json!(repo);
-                    result["name"] = json!(file.name);
-                    result["sha"] = json!(file.sha);
-                    result["url"] = json!(file.html_url);
-                    result["download_url"] = json!(file.download_url);
-                    ToolExecutionResult::success(result)
-                }
-                Err(e) => ToolExecutionResult::tool_error(e),
+        read_file(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: GitHubActsAs::PersonOrAgent,
             },
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
+            arguments,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
@@ -525,52 +448,157 @@ impl Tool for SearchGitHubIssuesTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let query = match required_str(&arguments, "query") {
-            Ok(query) => query,
-            Err(e) => return e,
-        };
-        if let Err(e) = enforce_github_network_access(context) {
-            return e;
-        }
-        let token = match get_github_token(context, &scout_access()).await {
-            Ok(token) => token,
-            Err(e) => return e,
-        };
-
-        let scoped_query = scoped_query(query, &arguments);
-        match github_client(token)
-            .search_issues(&scoped_query, limit(&arguments))
-            .await
-        {
-            Ok(response) => {
-                let results: Vec<Value> = response
-                    .items
-                    .into_iter()
-                    .map(|item| {
-                        json!({
-                            "number": item.number,
-                            "title": item.title,
-                            "state": item.state,
-                            "author": item.user.map(|user| user.login),
-                            "kind": if item.pull_request.is_some() { "pull_request" } else { "issue" },
-                            "url": item.html_url,
-                            "body": item.body.unwrap_or_default(),
-                        })
-                    })
-                    .collect();
-                ToolExecutionResult::success(json!({
-                    "query": scoped_query,
-                    "total_count": response.total_count,
-                    "incomplete_results": response.incomplete_results,
-                    "results": results,
-                }))
-            }
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
+        search_issues(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: GitHubActsAs::PersonOrAgent,
+            },
+            arguments,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+pub(super) async fn search_code(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let query = match required_str(&arguments, "query") {
+        Ok(query) => query,
+        Err(e) => return e,
+    };
+    let client = match api.client("", &[]).await {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+
+    let scoped_query = scoped_query(query, &arguments);
+    match client.search_code(&scoped_query, limit(&arguments)).await {
+        Ok(response) => {
+            let results: Vec<Value> = response
+                .items
+                .into_iter()
+                .map(|item| {
+                    json!({
+                        "repository": item.repository.full_name,
+                        "path": item.path,
+                        "name": item.name,
+                        "sha": item.sha,
+                        "url": item.html_url,
+                    })
+                })
+                .collect();
+            ToolExecutionResult::success(json!({
+                "query": scoped_query,
+                "total_count": response.total_count,
+                "incomplete_results": response.incomplete_results,
+                "results": results,
+            }))
+        }
+        Err(e) => ToolExecutionResult::tool_error(e),
+    }
+}
+
+pub(super) async fn read_file(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let repo = match required_str(&arguments, "repo") {
+        Ok(repo) => repo,
+        Err(e) => return e,
+    };
+    if !is_valid_owner_repo(repo) {
+        return ToolExecutionResult::tool_error(
+            "Invalid repo. Expected owner/repo with alphanumeric, dot, dash, or underscore segments.",
+        );
+    }
+    let path = match required_str(&arguments, "path") {
+        Ok(path) => path,
+        Err(e) => return e,
+    };
+    if !is_valid_repo_path(path) {
+        return ToolExecutionResult::tool_error(
+            "Invalid path. Expected a relative repository file path without empty, dot, or dot-dot segments.",
+        );
+    }
+    let reference = arguments.get("ref").and_then(|v| v.as_str()).map(str::trim);
+    let (offset, limit) = match parse_read_file_window_args(&arguments) {
+        Ok(window) => window,
+        Err(err) => return ToolExecutionResult::tool_error(err),
+    };
+
+    let client = match api.client(repo, &[("contents", "read")]).await {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+
+    match client.read_file(repo, path, reference).await {
+        Ok(file) => match file.decoded_content() {
+            Ok(content) => {
+                let mut result = build_text_read_file_result(
+                    "read_github_file",
+                    &file.path,
+                    &content,
+                    "text",
+                    offset,
+                    limit,
+                );
+                result["repo"] = json!(repo);
+                result["name"] = json!(file.name);
+                result["sha"] = json!(file.sha);
+                result["url"] = json!(file.html_url);
+                result["download_url"] = json!(file.download_url);
+                ToolExecutionResult::success(result)
+            }
+            Err(e) => ToolExecutionResult::tool_error(e),
+        },
+        Err(e) => ToolExecutionResult::tool_error(e),
+    }
+}
+
+pub(super) async fn search_issues(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let query = match required_str(&arguments, "query") {
+        Ok(query) => query,
+        Err(e) => return e,
+    };
+    let client = match api.client("", &[]).await {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+
+    let scoped_query = scoped_query(query, &arguments);
+    match client.search_issues(&scoped_query, limit(&arguments)).await {
+        Ok(response) => {
+            let results: Vec<Value> = response
+                .items
+                .into_iter()
+                .map(|item| {
+                    json!({
+                        "number": item.number,
+                        "title": item.title,
+                        "state": item.state,
+                        "author": item.user.map(|user| user.login),
+                        "kind": if item.pull_request.is_some() { "pull_request" } else { "issue" },
+                        "url": item.html_url,
+                        "body": item.body.unwrap_or_default(),
+                    })
+                })
+                .collect();
+            ToolExecutionResult::success(json!({
+                "query": scoped_query,
+                "total_count": response.total_count,
+                "incomplete_results": response.incomplete_results,
+                "results": results,
+            }))
+        }
+        Err(e) => ToolExecutionResult::tool_error(e),
     }
 }
 

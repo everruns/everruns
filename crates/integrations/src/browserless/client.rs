@@ -105,18 +105,18 @@ impl BrowserlessClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Browserless API: {e}"))?;
+            .map_err(|_| "Failed to connect to Browserless API".to_string())?;
 
         let status = resp.status();
+        // THREAT[TM-FW-001]: upstream errors must never echo service credentials.
         if !status.is_success() {
-            let body_text = resp.text().await.unwrap_or_default();
-            return Err(format!("Browserless API error ({status}): {body_text}"));
+            return Err(format!("Browserless API error ({status})"));
         }
 
         resp.bytes()
             .await
             .map(|b| b.to_vec())
-            .map_err(|e| format!("Failed to read screenshot bytes: {e}"))
+            .map_err(|_| "Failed to read screenshot bytes".to_string())
     }
 
     // --- Content API ---
@@ -175,16 +175,16 @@ impl BrowserlessClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Browserless API: {e}"))?;
+            .map_err(|_| "Failed to connect to Browserless API".to_string())?;
 
         let status = resp.status();
         let body_text = resp
             .text()
             .await
-            .map_err(|e| format!("Failed to read response: {e}"))?;
+            .map_err(|_| "Failed to read response".to_string())?;
 
         if !status.is_success() {
-            return Err(format!("Browserless API error ({status}): {body_text}"));
+            return Err(format!("Browserless API error ({status})"));
         }
 
         Ok(body_text)
@@ -246,19 +246,19 @@ impl BrowserlessClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Browserless API: {e}"))?;
+            .map_err(|_| "Failed to connect to Browserless API".to_string())?;
 
         let status = resp.status();
         let body_text = resp
             .text()
             .await
-            .map_err(|e| format!("Failed to read response: {e}"))?;
+            .map_err(|_| "Failed to read response".to_string())?;
 
         if !status.is_success() {
-            return Err(format!("Browserless API error ({status}): {body_text}"));
+            return Err(format!("Browserless API error ({status})"));
         }
 
-        serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from Browserless: {e}"))
+        serde_json::from_str(&body_text).map_err(|_| "Invalid JSON from Browserless".to_string())
     }
 
     // --- Function API ---
@@ -280,23 +280,23 @@ impl BrowserlessClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Browserless API: {e}"))?;
+            .map_err(|_| "Failed to connect to Browserless API".to_string())?;
 
         let status = resp.status();
         let body_text = resp
             .text()
             .await
-            .map_err(|e| format!("Failed to read response: {e}"))?;
+            .map_err(|_| "Failed to read response".to_string())?;
 
         if !status.is_success() {
-            return Err(format!("Browserless API error ({status}): {body_text}"));
+            return Err(format!("Browserless API error ({status})"));
         }
 
         if body_text.is_empty() {
             return Ok(json!({}));
         }
 
-        serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from Browserless: {e}"))
+        serde_json::from_str(&body_text).map_err(|_| "Invalid JSON from Browserless".to_string())
     }
 }
 
@@ -555,5 +555,31 @@ mod tests {
             )
             .await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn credential_errors_omit_upstream_bodies_and_transport_urls() {
+        let secret = "browserless-secret-sentinel";
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/function"))
+            .respond_with(ResponseTemplate::new(403).set_body_string(secret))
+            .mount(&server)
+            .await;
+        let client = BrowserlessClient::with_base_url(secret.into(), server.uri());
+        let error = client
+            .function("export default () => 1", None)
+            .await
+            .unwrap_err();
+        assert!(error.contains("403"));
+        assert!(!error.contains(secret));
+        let disconnected =
+            BrowserlessClient::with_base_url(secret.into(), "http://127.0.0.1:0".into());
+        let error = disconnected
+            .function("export default () => 1", None)
+            .await
+            .unwrap_err();
+        assert!(!error.contains(secret));
+        assert!(!error.contains("token="));
     }
 }

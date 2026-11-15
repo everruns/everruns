@@ -1,5 +1,9 @@
 //! Application-facing MCP server configuration.
 
+/// OAuth login, token stores, and per-operation credentials.
+#[cfg(feature = "mcp-auth")]
+pub mod auth;
+
 use std::{collections::HashSet, fmt};
 
 use everruns_core::{McpServerTransportType, ScopedMcpServer, sanitize_mcp_server_name};

@@ -65,6 +65,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 ## Extend
 
 - [Capabilities](/framework/advanced-capabilities/), configure the optional standard policy bundle and open references, or package typed tools with stable metadata and lifecycle context.
+- [GitHub tools](/framework/github/), read PRs, explore repositories, and explicitly enable writes with application-owned credentials.
 - [Capability integrations](/framework/capability-integrations/), opt into filesystem, shell, web, Lua, and MCP implementation boundaries.
 - [Portable and hosted capabilities](/framework/capability-boundaries/), understand the Framework/Platform implementation boundary.
 - [Agent blueprints](/framework/agent-blueprints/), contribute a code-defined specialist agent from a capability.
@@ -85,3 +86,5 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [A2A](/framework/a2a/), serve Framework agents to other agents over A2A 1.0, and delegate work to remote A2A agents.
 - [Serve on AgentCore](/framework/serve-agentcore/) (experimental), deploy a serve app to Amazon Bedrock AgentCore Runtime.
 - [Serve on celld](/framework/serve-celld/) (experimental), run a serve app durably on celld, self-hosted Durable Objects.
+
+[Application services](/framework/service-integrations/) covers authenticated integrations, data services, durable event triggers, and portable evaluation/trace APIs.

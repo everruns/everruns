@@ -51,3 +51,7 @@ mod grpc_transport;
 
 #[cfg(all(test, any(feature = "bashkit", feature = "web-fetch")))]
 mod credential_test_support;
+
+/// Standard Webhooks signing and verification.
+#[cfg(feature = "event-webhooks")]
+pub mod standard_webhooks;

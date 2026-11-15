@@ -51,7 +51,7 @@ lua = ["everruns-capabilities/lua"]
 live-tests = []
 
 [dependencies]
-everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "web-search", "github", "slack-channel"] }
+everruns-integrations = { workspace = true, features = ["event-webhooks", "typesafe", "bashkit", "web-fetch", "web-search", "github", "slack-channel"] }
 
 mimalloc.workspace = true
 axum.workspace = true
@@ -158,11 +158,11 @@ serde_urlencoded = "0.7.1"
 url = "2"
 
 everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "channel-auth", "channels", "direct-egress", "host", "mcp", "observability", "openapi", "tree-sitter-outlines", "ui-capabilities", "voice"], default-features = false }
-everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
+everruns = { workspace = true, default-features = false, features = ["utility-llm", "sql-database"] }
 [dev-dependencies]
 everruns-llmsim.workspace = true
 # The OpenAI provider for the gated real-model Poppy test.
-everruns = { workspace = true, default-features = false, features = ["utility-llm", "openai"] }
+everruns = { workspace = true, default-features = false, features = ["utility-llm", "openai", "sql-database"] }
 a2a.workspace = true
 a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }

@@ -1,5 +1,10 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-15
+
+- [Framework application API](framework/application-api.md): promote application-owned integration credentials, MCP OAuth, Slack affordances, durable triggers, local SQL/knowledge, named memory, and shared trace/evaluation logic with real-model examples and Engine acceptance tests.
+- [Session SQL](runtime-resources/session-sqldb.md): share the authorizer/executor while retaining separate host persistence; local quotas use cross-process locking.
+
 ## 2026-11-12
 
 - [Decisions service](operations/decisions-service.md): Gemini providers answer decisions on Gemini Decision 1 through Google's Decisions API (translated envelope, positional question keys, System One validation); OpenRouter serves it as `google/gemini-decision-1`.

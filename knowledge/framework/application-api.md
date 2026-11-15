@@ -121,8 +121,14 @@ graph. Registration alone does not supply platform persistence or orchestration.
 [Brave Search](../../crates/integrations/src/brave_search/framework.rs) is the reference
 implementation. Its [acceptance test](../../crates/everruns/tests/brave_search_framework.rs)
 checks schema parity, execution through the public Engine, and credential
-separation. Other integrations adopt this boundary as they gain Framework
-support; this does not imply the entire hosted catalog is executable by default.
+separation. GitHub follows the same boundary through its
+[Framework adapter](../../crates/integrations/src/github/framework.rs): application-owned
+credentials are resolved per operation, and complete vendor operations and schemas
+are shared with the hosted adapter. Writes are explicit opt-ins; managed sandbox
+checkout and control-plane identity selection remain host concerns. Its
+[facade acceptance tests](../../crates/everruns/tests/github_framework.rs) cover
+execution, rotation, write policy and secret isolation. Other integrations adopt
+this boundary as they gain Framework support; this does not imply the entire hosted catalog is executable by default.
 
 ## Supported dependency paths
 
@@ -540,3 +546,37 @@ entrypoints.
 - `crates/everruns/tests/facade/host_services.rs`
 - `crates/everruns/src/session/controls.rs`
 - `crates/everruns/tests/facade/session_controls.rs`
+
+## Application-owned services
+
+The [service adapters](../../crates/everruns/src/native.rs) bind real host backends
+and tool-context extensions; they never fabricate a ToolContext or import Server
+records. SQL, unified Knowledge collections and Slack share native capability schemas and operations.
+Cursor, Browserless and E2B use the existing native implementations with credentials
+selected by application code per operation. Named memory mounts enforce read-only
+access at the filesystem boundary, independently of host file permissions.
+
+[MCP authentication](../../crates/everruns/src/mcp/auth.rs) retains credentials
+outside configuration and binds them to both logical name and exact HTTP endpoint
+on every operation, including after a live attachment change. OAuth login and token
+refresh remain the shared core implementation; secret-store durability and writer
+coordination belong to the application.
+
+[Trigger dispatch](../../crates/everruns/src/triggers/mod.rs) freezes input/session
+identities in an atomic outbox before Engine admission. Recovery reuses those
+identities. Filtered events also acquire receipt tombstones, so replay cannot reset
+a changes-only baseline after payload history is pruned. Source authentication and
+normalization are distinct from execution, and scheduling remains host-owned.
+
+Portable [trace projection](../../crates/core/src/session_trace/mod.rs),
+[evaluation rules](../../crates/core/src/evaluation.rs) and
+[judge prompt/parsing](../../crates/core/src/evaluation_judge.rs) have one shared
+implementation. Framework evaluation and online observation select their models
+explicitly; Server management/history, billing and durable scoring workers remain
+Server concerns. Online grading validates retained evidence against terminal turn
+counts and reports incompleteness rather than scoring a partial successful slice.
+
+The [service acceptance suite](../../crates/everruns/tests/service_parity.rs) checks
+execution through the public Engine, persistence, scope checks, replay/recovery and
+shared projections. Public configuration and runnable real-model examples live in
+the [application service guides](../../docs/framework/service-integrations.md).

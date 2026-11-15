@@ -228,6 +228,7 @@ impl EventSink for ExternalEventSink {
 fn external_backends(log: Arc<ExternalEventLog>) -> HostBackends {
     let defaults = HostBackends::in_memory();
     HostBackends {
+        file_mounts:Vec::new(),
         memory_mounts:Vec::new(),
         dreaming_store:HostBackends::in_memory().dreaming_store,
         native_async_store: defaults.native_async_store,

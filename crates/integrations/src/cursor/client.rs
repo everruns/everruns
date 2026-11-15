@@ -140,23 +140,24 @@ impl CursorClient {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("Failed to connect to Cursor API: {e}"))?;
+            .map_err(|_| "Failed to connect to Cursor API".to_string())?;
         let status = resp.status();
         let text = resp
             .text()
             .await
-            .map_err(|e| format!("Failed to read Cursor API response: {e}"))?;
+            .map_err(|_| "Failed to read Cursor API response".to_string())?;
 
+        // THREAT[TM-FW-001]: upstream errors must never echo service credentials.
         if !status.is_success() {
-            return Err(format!("Cursor API error ({status}): {text}"));
+            return Err(format!("Cursor API error ({status})"));
         }
 
         if text.trim().is_empty() {
             return serde_json::from_value(Value::Object(serde_json::Map::new()))
-                .map_err(|e| format!("Empty Cursor API response could not be decoded: {e}"));
+                .map_err(|_| "Empty Cursor API response could not be decoded".to_string());
         }
 
-        serde_json::from_str(&text).map_err(|e| format!("Invalid JSON from Cursor API: {e}"))
+        serde_json::from_str(&text).map_err(|_| "Invalid JSON from Cursor API".to_string())
     }
 
     pub async fn api_key_info(&self) -> Result<ApiKeyInfo, String> {
@@ -321,7 +322,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_error_is_returned() {
+    async fn api_error_retains_status_without_upstream_body() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v0/agents/bc_missing"))
@@ -335,7 +336,7 @@ mod tests {
         let client = CursorClient::with_base_url("test".into(), mock_server.uri());
         let err = client.get_agent("bc_missing").await.unwrap_err();
         assert!(err.contains("404"));
-        assert!(err.contains("not_found"));
+        assert!(!err.contains("not_found"));
     }
 
     #[tokio::test]
@@ -350,5 +351,28 @@ mod tests {
         let client = CursorClient::with_base_url("test".into(), mock_server.uri());
         let deleted = client.delete_agent("bc_done").await.unwrap();
         assert_eq!(deleted, json!({}));
+    }
+
+    #[tokio::test]
+    async fn credential_errors_omit_upstream_bodies_and_invalid_field_values() {
+        let secret = "cursor-secret-sentinel";
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v0/models"))
+            .respond_with(ResponseTemplate::new(401).set_body_string(secret))
+            .mount(&server)
+            .await;
+        let client = CursorClient::with_base_url(secret.into(), server.uri());
+        let error = client.list_models().await.unwrap_err();
+        assert!(error.contains("401"));
+        assert!(!error.contains(secret));
+        server.reset().await;
+        Mock::given(method("GET"))
+            .and(path("/v0/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"models": secret})))
+            .mount(&server)
+            .await;
+        let error = client.list_models().await.unwrap_err();
+        assert!(!error.contains(secret));
     }
 }

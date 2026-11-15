@@ -46,12 +46,16 @@ The PostgreSQL store is `crates/server/src/session_sqldb/postgres/mod.rs` (page 
 - Row-level locks on pages: too granular, risk of deadlocks
 **Rationale:** Every access re-reads the generation and reloads a stale cache before using it, so a process never queries or writes on top of another process's outdated view. A writer that loses the race between its check and its commit writes nothing, reloads, and re-runs the statement (bounded retries). Within a process, one async mutex per database serializes access to its cache.
 
-### Decision 6: Server-Owned Module
-**Chosen:** `crates/server/src/session_sqldb` isolates all SQLite and page-storage logic inside its only deployment owner
-**Alternatives considered:**
-- Standalone leaf crate: Adds package and release overhead without another consumer
-- In core crate: Core should stay lightweight
-**Rationale:** A focused server module keeps the rusqlite dependency, page persistence, query execution, and authorizer isolated without presenting a false reusable boundary. Portable contracts remain in platform; core stays lightweight.
+### Decision 6: Shared execution, host-owned persistence
+
+SQLite validation, authorizer policy, execution and result types live in the opt-in
+[embedded SQL module](../../crates/everruns/src/database/runtime/mod.rs). Both
+hosts use this implementation so safety fixes cannot diverge. The Server retains
+its PostgreSQL page cache and generation fencing; the Framework's
+[local store](../../crates/everruns/src/database/runtime/local.rs) persists separate
+session databases in a trusted directory, with process-wide file locking around
+quota checks and operations. Neither backend lets SQL choose filesystem paths.
+The rusqlite dependency remains optional and outside the default core/facade graph.
 
 ### Decision 7: Auto-Create on Execute
 **Chosen:** `sql_execute` tool auto-creates database if it doesn't exist

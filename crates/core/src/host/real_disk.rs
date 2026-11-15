@@ -61,6 +61,7 @@ pub struct RealDiskFileStore {
     /// and host-absolute display. The root is shared (Arc) so an embedder's
     /// worktree switch via `set_host_root` is seen by every clone of the store.
     paths: HostPathMap,
+    read_only: bool,
     readonly: Arc<RwLock<HashSet<String>>>,
 }
 
@@ -115,12 +116,27 @@ impl RealDiskFileStore {
     pub fn new(root: impl Into<PathBuf>) -> Result<Self> {
         Ok(Self {
             paths: HostPathMap::new(root)?,
+            read_only: false,
             readonly: Arc::new(RwLock::new(HashSet::new())),
         })
     }
 
+    /// Refuse every mutation through this store, including creation and deletion.
+    /// Does not change host file permissions or constrain processes outside the tool API.
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
+        self
+    }
+    fn require_writable(&self) -> Result<()> {
+        if self.read_only {
+            Err(AgentLoopError::tool("This filesystem mount is read-only"))
+        } else {
+            Ok(())
+        }
+    }
+
     async fn is_readonly(&self, canonical_path: &str) -> bool {
-        if self.readonly.read().await.contains(canonical_path) {
+        if self.read_only || self.readonly.read().await.contains(canonical_path) {
             return true;
         }
         let Ok(path) = self.resolve(canonical_path) else {
@@ -276,7 +292,7 @@ impl RealDiskFileStore {
             content: Some(content.to_string()),
             encoding: encoding.to_string(),
             is_directory: false,
-            is_readonly: false,
+            is_readonly: self.read_only,
             size_bytes: saturating_i64(bytes.len() as u64),
             created_at,
             updated_at,
@@ -292,6 +308,7 @@ impl SessionFileSystem for RealDiskFileStore {
         path: &str,
         content: &str,
     ) -> Result<bool> {
+        self.require_writable()?;
         use tokio::io::AsyncWriteExt;
         let absolute = self.resolve(path)?;
         self.reject_symlink_path(&absolute).await?;
@@ -364,6 +381,7 @@ impl SessionFileSystem for RealDiskFileStore {
     }
 
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        self.require_writable()?;
         let write_guard = shared_write_guard(&self.paths.root());
         let _guard = write_guard.lock().await;
         // Clear any prior readonly mark so seeding always wins over a
@@ -442,7 +460,7 @@ impl SessionFileSystem for RealDiskFileStore {
                 content: None,
                 encoding: "text".to_string(),
                 is_directory: true,
-                is_readonly: false,
+                is_readonly: self.read_only,
                 size_bytes: 0,
                 created_at,
                 updated_at,
@@ -477,6 +495,7 @@ impl SessionFileSystem for RealDiskFileStore {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
+        self.require_writable()?;
         let write_guard = shared_write_guard(&self.paths.root());
         let _guard = write_guard.lock().await;
         self.write_file_unlocked(session_id, path, content, encoding)
@@ -492,6 +511,7 @@ impl SessionFileSystem for RealDiskFileStore {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
+        self.require_writable()?;
         // Shared real-disk heads do not provide transaction isolation, but
         // Framework callers in this host process get an atomic read/compare/
         // write boundary and a visible `None` conflict instead of lost writes.
@@ -517,6 +537,7 @@ impl SessionFileSystem for RealDiskFileStore {
         path: &str,
         recursive: bool,
     ) -> Result<bool> {
+        self.require_writable()?;
         let write_guard = shared_write_guard(&self.paths.root());
         let _guard = write_guard.lock().await;
         let absolute = self.resolve(path)?;
@@ -623,7 +644,7 @@ impl SessionFileSystem for RealDiskFileStore {
                 name: FileInfo::name_from_path(&canonical),
                 path: canonical,
                 is_directory: is_dir,
-                is_readonly: false,
+                is_readonly: self.read_only,
                 size_bytes: if is_dir {
                     0
                 } else {
@@ -849,6 +870,7 @@ impl SessionFileSystem for RealDiskFileStore {
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
+        self.require_writable()?;
         let absolute = self.resolve(path)?;
         self.reject_symlink_path(&absolute).await?;
         tokio::fs::create_dir_all(&absolute).await.map_err(|e| {
@@ -868,7 +890,7 @@ impl SessionFileSystem for RealDiskFileStore {
             name: FileInfo::name_from_path(&canonical),
             path: canonical,
             is_directory: true,
-            is_readonly: false,
+            is_readonly: self.read_only,
             size_bytes: 0,
             created_at,
             updated_at,

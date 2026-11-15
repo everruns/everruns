@@ -2,6 +2,12 @@
 use super::*;
 
 impl AgentBuilder {
+    /// Bind application-owned authentication to configured MCP endpoints.
+    #[cfg(feature = "mcp-auth")]
+    pub fn mcp_auth(mut self, auth: crate::mcp::auth::McpAuth) -> Self {
+        self.mcp_auth = Some(auth);
+        self
+    }
     /// Declare a client-executed tool. Its calls park durably until
     /// [`Session::resolve_tools`](crate::Session::resolve_tools) supplies results.
     pub fn client_tool(
@@ -34,7 +40,7 @@ impl AgentBuilder {
         directory: impl Into<PathBuf>,
     ) -> Self {
         self.memory_directories
-            .push((mount.into(), directory.into()));
+            .push((mount.into(), directory.into(), false));
         self
     }
 
@@ -492,16 +498,30 @@ impl AgentBuilder {
         if self.local.is_some() && self.backends.is_some() {
             return Err(BuildError::ConflictingBackends);
         }
+        #[cfg(feature = "knowledge")]
+        if let Some(knowledge) = &self.native_services.knowledge {
+            knowledge
+                .validate()
+                .map_err(|reason| BuildError::InvalidCapability {
+                    id: "knowledge".into(),
+                    reason,
+                })?;
+        }
         let members = self.attach_members()?;
         let mut seen_memory = HashSet::new();
-        for (mount, _) in &self.memory_directories {
-            if !["/memory/user", "/memory/agent"].contains(&mount.as_str())
-                || !seen_memory.insert(mount)
+        for (mount, _, _) in &self.memory_directories {
+            if !mount.strip_prefix("/memory/").is_some_and(|name| {
+                !name.is_empty()
+                    && name.len() <= 64
+                    && name
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            }) || !seen_memory.insert(mount)
             {
                 return Err(BuildError::InvalidCapability {
                     id: "dreaming".into(),
                     reason:
-                        "Memory directories require distinct /memory/user or /memory/agent mounts"
+                        "Memory directories require distinct /memory/<name> mounts (letters, digits, underscores and hyphens)"
                             .into(),
                 });
             }
@@ -635,6 +655,11 @@ impl AgentBuilder {
         // runtime. This makes build-time schema checks and implementation
         // collision detection match execution instead of relying on a closed
         // facade-owned list.
+        #[cfg(feature = "mcp-auth")]
+        if let Some(auth) = &self.mcp_auth {
+            auth.validate(&mcp_servers)
+                .map_err(|reason| BuildError::InvalidMcpServer { reason })?;
+        }
         let capability_registry = {
             #[cfg(feature = "local")]
             if self.local.is_some() {
@@ -861,7 +886,11 @@ impl AgentBuilder {
             workspace_root: self.workspace_root,
             default_workspace,
             workspace_policy: self.workspace_policy,
+            #[cfg(feature = "native-services")]
+            native_services: self.native_services,
             mcp_servers,
+            #[cfg(feature = "mcp-auth")]
+            mcp_auth: self.mcp_auth,
             plugin_warnings: self.plugin_warnings,
             #[cfg(feature = "local")]
             local: self.local,

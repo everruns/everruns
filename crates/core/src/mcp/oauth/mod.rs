@@ -466,6 +466,7 @@ mod tests {
     fn auth_request<'a>(server_name: &'a str) -> McpAuthRequest<'a> {
         McpAuthRequest {
             server_name,
+            server_url: Some("https://mcp.example/mcp"),
             auth_mode: McpServerAuthMode::OAuth,
             oauth_provider_id: None,
         }

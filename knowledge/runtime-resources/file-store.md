@@ -665,3 +665,12 @@ APIs or the `SessionFileSystem` trait.
   semantics
 - `knowledge/foundations/runtime.md`, `HostBackends` and the embedder boundary
 - `knowledge/execution/capabilities.md`, `ToolContext` / `SystemPromptContext` wiring
+
+## Read-only directory bindings
+
+A [real-disk store](../../crates/core/src/host/real_disk.rs) can refuse every mutation
+through the SessionFileSystem API without changing host file permissions. Framework
+[named memory bindings](../../crates/everruns/src/memory.rs) use that mode for
+application-selected reference directories. Mount names remain one validated path
+component; the application owns directory sharing and isolation. Native host-process
+tools remain outside this filesystem API boundary.

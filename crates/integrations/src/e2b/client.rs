@@ -66,22 +66,23 @@ impl E2BClient {
         let response = req
             .send()
             .await
-            .map_err(|e| format!("Failed to reach E2B API: {e}"))?;
+            .map_err(|_| "Failed to reach E2B API".to_string())?;
         let status = response.status();
         let body_text = response
             .text()
             .await
-            .map_err(|e| format!("Failed to read E2B API response: {e}"))?;
+            .map_err(|_| "Failed to read E2B API response".to_string())?;
 
+        // THREAT[TM-FW-001]: upstream errors must never echo service credentials.
         if !status.is_success() {
-            return Err(format!("E2B API error ({status}): {body_text}"));
+            return Err(format!("E2B API error ({status})"));
         }
 
         if body_text.is_empty() {
             return Ok(json!({}));
         }
 
-        serde_json::from_str(&body_text).map_err(|e| format!("Invalid E2B JSON: {e}"))
+        serde_json::from_str(&body_text).map_err(|_| "Invalid E2B JSON".to_string())
     }
 
     fn create_sandbox_body(
@@ -135,7 +136,7 @@ impl E2BClient {
         let value = self
             .management_request(reqwest::Method::POST, "/sandboxes", Some(body))
             .await?;
-        serde_json::from_value(value).map_err(|e| format!("Failed to parse sandbox response: {e}"))
+        serde_json::from_value(value).map_err(|_| "Failed to parse sandbox response".to_string())
     }
 
     /// Replace a running sandbox's egress rules.
@@ -157,7 +158,7 @@ impl E2BClient {
                 None,
             )
             .await?;
-        serde_json::from_value(value).map_err(|e| format!("Failed to parse sandbox detail: {e}"))
+        serde_json::from_value(value).map_err(|_| "Failed to parse sandbox detail".to_string())
     }
 
     /// One page of `GET /v2/sandboxes`, filtered by `metadata` (every pair
@@ -195,7 +196,7 @@ impl E2BClient {
             .header("X-API-KEY", &self.api_key)
             .send()
             .await
-            .map_err(|e| format!("Failed to reach E2B API: {e}"))?;
+            .map_err(|_| "Failed to reach E2B API".to_string())?;
         let status = response.status();
         let next = response
             .headers()
@@ -206,12 +207,12 @@ impl E2BClient {
         let body = response
             .text()
             .await
-            .map_err(|e| format!("Failed to read E2B API response: {e}"))?;
+            .map_err(|_| "Failed to read E2B API response".to_string())?;
         if !status.is_success() {
-            return Err(format!("E2B API error ({status}): {body}"));
+            return Err(format!("E2B API error ({status})"));
         }
         let items: Vec<Value> =
-            serde_json::from_str(&body).map_err(|e| format!("Invalid E2B JSON: {e}"))?;
+            serde_json::from_str(&body).map_err(|_| "Invalid E2B JSON".to_string())?;
         Ok((items, next))
     }
 
@@ -241,7 +242,7 @@ impl E2BClient {
             )
             .await?;
         serde_json::from_value(value)
-            .map_err(|e| format!("Failed to parse sandbox resume response: {e}"))
+            .map_err(|_| "Failed to parse sandbox resume response".to_string())
     }
 
     pub async fn delete_sandbox(&self, sandbox_id: &str) -> Result<(), String> {
@@ -286,17 +287,14 @@ impl E2BClient {
             .headers(self.envd_headers(state)?)
             .send()
             .await
-            .map_err(|e| format!("Failed to read sandbox file: {e}"))?;
+            .map_err(|_| "Failed to read sandbox file".to_string())?;
         let status = response.status();
         let body = response
             .bytes()
             .await
-            .map_err(|e| format!("Failed to read sandbox file body: {e}"))?;
+            .map_err(|_| "Failed to read sandbox file body".to_string())?;
         if !status.is_success() {
-            return Err(format!(
-                "E2B sandbox file API error ({status}): {}",
-                String::from_utf8_lossy(&body)
-            ));
+            return Err(format!("E2B sandbox file API error ({status})"));
         }
         Ok(body.to_vec())
     }
@@ -331,14 +329,10 @@ impl E2BClient {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| format!("Failed to write sandbox file: {e}"))?;
+            .map_err(|_| "Failed to write sandbox file".to_string())?;
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| format!("Failed to read sandbox write response: {e}"))?;
         if !status.is_success() {
-            return Err(format!("E2B sandbox file API error ({status}): {body}"));
+            return Err(format!("E2B sandbox file API error ({status})"));
         }
         Ok(())
     }
@@ -388,7 +382,7 @@ impl E2BClient {
         let mut stream = client
             .start_with_options(request, options)
             .await
-            .map_err(|e| format!("Failed to start sandbox command: {e}"))?;
+            .map_err(|_| "Failed to start sandbox command".to_string())?;
 
         let mut stdout = String::new();
         let mut stderr = String::new();
@@ -398,7 +392,7 @@ impl E2BClient {
         while let Some(message) = stream
             .message()
             .await
-            .map_err(|e| format!("Failed reading sandbox command stream: {e}"))?
+            .map_err(|_| "Failed reading sandbox command stream".to_string())?
         {
             let Some(event) = message.view().event.as_option() else {
                 continue;
@@ -446,18 +440,18 @@ impl E2BClient {
         headers.insert(
             "E2b-Sandbox-Id",
             HeaderValue::from_str(&state.sandbox_id)
-                .map_err(|e| format!("Invalid sandbox id header: {e}"))?,
+                .map_err(|_| "Invalid sandbox id header".to_string())?,
         );
         headers.insert(
             "E2b-Sandbox-Port",
             HeaderValue::from_str(&E2B_ENVD_PORT.to_string())
-                .map_err(|e| format!("Invalid sandbox port header: {e}"))?,
+                .map_err(|_| "Invalid sandbox port header".to_string())?,
         );
         if let Some(token) = state.envd_access_token.as_ref() {
             headers.insert(
                 "X-Access-Token",
                 HeaderValue::from_str(token)
-                    .map_err(|e| format!("Invalid envd access token header: {e}"))?,
+                    .map_err(|_| "Invalid envd access token header".to_string())?,
             );
         }
         Ok(headers)
@@ -473,7 +467,7 @@ impl E2BClient {
             for cert in certs.certs {
                 roots
                     .add(cert)
-                    .map_err(|e| format!("Failed to load native CA roots: {e}"))?;
+                    .map_err(|_| "Failed to load native CA roots".to_string())?;
             }
 
             Ok::<Arc<rustls::ClientConfig>, String>(Arc::new(
@@ -486,7 +480,7 @@ impl E2BClient {
         let uri: http::Uri = self
             .envd_base_url(state)
             .parse()
-            .map_err(|e| format!("Invalid envd URI: {e}"))?;
+            .map_err(|_| "Invalid envd URI".to_string())?;
         let mut config = ClientConfig::new(uri)
             .with_protocol(Protocol::Connect)
             .with_default_timeout(Duration::from_secs(E2B_DEFAULT_TIMEOUT_SECS));
@@ -557,5 +551,22 @@ mod tests {
         let headers = client.envd_headers(&state).unwrap();
         assert_eq!(headers.get("e2b-sandbox-id").unwrap(), "sb_test");
         assert!(headers.get("x-access-token").is_none());
+    }
+
+    #[tokio::test]
+    async fn credential_errors_omit_upstream_bodies() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let secret = "e2b-secret-sentinel";
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/sandboxes/sandbox/pause"))
+            .respond_with(ResponseTemplate::new(403).set_body_string(secret))
+            .mount(&server)
+            .await;
+        let client = E2BClient::with_base_url(secret.into(), server.uri());
+        let error = client.pause_sandbox("sandbox").await.unwrap_err();
+        assert!(error.contains("403"));
+        assert!(!error.contains(secret));
     }
 }

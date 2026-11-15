@@ -269,14 +269,15 @@ fn test_map_ws_connect_error_403_returns_rest_mode_hint() {
 }
 
 #[test]
-fn test_map_ws_connect_error_other_preserves_message() {
+fn test_map_ws_connect_error_other_hides_transport_details() {
     let err =
-        tokio_tungstenite::tungstenite::Error::Io(std::io::Error::other("connection refused"));
+        tokio_tungstenite::tungstenite::Error::Io(std::io::Error::other("secret-token-sentinel"));
     let msg = map_ws_connect_error(err);
     assert!(
         msg.starts_with("CDP WebSocket connection failed:"),
         "non-HTTP error should use generic format: {msg}"
     );
+    assert!(!msg.contains("secret-token-sentinel"));
 }
 
 /// CdpSession::connect against a server returning 403 should produce the

@@ -87,6 +87,11 @@ impl McpClient {
         self.auth
             .authorization(&McpAuthRequest {
                 server_name: &connection.name,
+                server_url: match &connection.endpoint {
+                    McpEndpoint::Http { url, .. } => Some(url.as_str()),
+                    #[cfg(feature = "mcp-stdio")]
+                    _ => None,
+                },
                 auth_mode: connection.auth_mode.clone(),
                 oauth_provider_id: connection.oauth_provider_id.as_deref(),
             })

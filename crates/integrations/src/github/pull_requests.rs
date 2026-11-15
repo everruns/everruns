@@ -12,10 +12,8 @@ use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 use crate::github::GitHubActsAs;
-use crate::github::tools::{
-    enforce_github_network_access, get_github_token, github_client, is_valid_owner_repo,
-    required_str,
-};
+use crate::github::tools::{is_valid_owner_repo, required_str};
+#[cfg(test)]
 use everruns_contracts::runtime::GitHubAccess;
 
 const DEFAULT_DIFF_BYTES: u64 = 60_000;
@@ -41,17 +39,16 @@ pub(crate) fn target(arguments: &Value) -> Result<(String, u64), ToolExecutionRe
     Ok((repo.to_string(), number))
 }
 
-/// A token for one tool call: acting as `acts_as`, limited to `repo` and
-/// `permissions`.
 pub(crate) async fn github_token(
     context: &ToolContext,
     acts_as: GitHubActsAs,
     repo: &str,
     permissions: &[(&str, &str)],
 ) -> Result<String, ToolExecutionResult> {
-    enforce_github_network_access(context)?;
-    let access = GitHubAccess::new(acts_as.into(), permissions).for_repository(repo);
-    get_github_token(context, &access).await
+    crate::github::tools::enforce_github_network_access(context)?;
+    let access = everruns_contracts::runtime::GitHubAccess::new(acts_as.into(), permissions)
+        .for_repository(repo);
+    crate::github::tools::get_github_token(context, &access).await
 }
 
 pub(crate) fn target_schema(extra: Value) -> Value {
@@ -156,50 +153,14 @@ impl Tool for GetGitHubPullRequestTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let (repo, number) = match target(&arguments) {
-            Ok(target) => target,
-            Err(e) => return e,
-        };
-        let client =
-            match github_token(context, self.acts_as, &repo, &[("pull_requests", "read")]).await {
-                Ok(token) => github_client(token),
-                Err(e) => return e,
-            };
-        let pull = match client.pull_request(&repo, number).await {
-            Ok(pull) => pull,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-        let files = match client
-            .pull_request_files(&repo, number, MAX_LISTED_FILES)
-            .await
-        {
-            Ok(files) => files,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-        ToolExecutionResult::success(json!({
-            "repo": repo,
-            "number": pull.number,
-            "title": pull.title,
-            "body": pull.body,
-            "author": pull.user.map(|user| user.login),
-            "state": pull.state,
-            "draft": pull.draft,
-            "merged": pull.merged,
-            "url": pull.html_url,
-            "base": { "ref": pull.base.name, "sha": pull.base.sha },
-            "head": { "ref": pull.head.name, "sha": pull.head.sha },
-            "commits": pull.commits,
-            "additions": pull.additions,
-            "deletions": pull.deletions,
-            "changed_files": pull.changed_files,
-            "files": files.iter().map(|file| json!({
-                "path": file.filename,
-                "status": file.status,
-                "additions": file.additions,
-                "deletions": file.deletions,
-            })).collect::<Vec<_>>(),
-            "files_truncated": pull.changed_files > files.len() as u64,
-        }))
+        get_pull_request(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: self.acts_as,
+            },
+            arguments,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
@@ -277,30 +238,14 @@ impl Tool for GetGitHubPullRequestDiffTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let (repo, number) = match target(&arguments) {
-            Ok(target) => target,
-            Err(e) => return e,
-        };
-        let max_bytes = arguments
-            .get("max_bytes")
-            .and_then(Value::as_u64)
-            .unwrap_or(DEFAULT_DIFF_BYTES)
-            .clamp(1000, MAX_DIFF_BYTES) as usize;
-        let client =
-            match github_token(context, self.acts_as, &repo, &[("pull_requests", "read")]).await {
-                Ok(token) => github_client(token),
-                Err(e) => return e,
-            };
-        match client.pull_request_diff(&repo, number, max_bytes).await {
-            Ok(diff) => ToolExecutionResult::success(json!({
-                "repo": repo,
-                "number": number,
-                "diff": diff.text,
-                "total_bytes": diff.total_bytes,
-                "truncated": diff.truncated,
-            })),
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
+        get_pull_request_diff(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: self.acts_as,
+            },
+            arguments,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
@@ -386,59 +331,147 @@ impl Tool for UpsertGitHubCommentTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let (repo, number) = match target(&arguments) {
-            Ok(target) => target,
-            Err(e) => return e,
-        };
-        let body = match required_str(&arguments, "body") {
-            Ok(body) => body,
-            Err(e) => return e,
-        };
-        let marker = arguments
-            .get("marker")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|marker| !marker.is_empty())
-            .unwrap_or(DEFAULT_MARKER);
-        if !valid_marker(marker) {
-            return ToolExecutionResult::tool_error(
-                "marker may only contain letters, digits, '-', '_' and '.' (max 64)",
-            );
-        }
-        let marker = marker_line(marker);
-        let body = format!("{marker}\n{body}");
-        if body.len() > MAX_COMMENT_BYTES {
-            return ToolExecutionResult::tool_error(format!(
-                "Comment is {} bytes; GitHub accepts at most {MAX_COMMENT_BYTES}",
-                body.len()
-            ));
-        }
-        let client = match github_token(
-            context,
-            self.acts_as,
-            &repo,
-            &[("issues", "write"), ("pull_requests", "write")],
+        upsert_comment(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: self.acts_as,
+            },
+            arguments,
         )
         .await
-        {
-            Ok(token) => github_client(token),
-            Err(e) => return e,
-        };
-        let result = client
-            .upsert_marked_comment(&repo, number, &marker, &body, MAX_COMMENT_PAGES)
-            .await;
-        match result {
-            Ok((comment, created)) => ToolExecutionResult::success(json!({
-                "action": if created { "created" } else { "updated" },
-                "comment_id": comment.id,
-                "url": comment.html_url,
-            })),
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
     }
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+pub(super) async fn get_pull_request(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let (repo, number) = match target(&arguments) {
+        Ok(target) => target,
+        Err(e) => return e,
+    };
+    let client = match api.client(&repo, &[("pull_requests", "read")]).await {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+    let pull = match client.pull_request(&repo, number).await {
+        Ok(pull) => pull,
+        Err(e) => return ToolExecutionResult::tool_error(e),
+    };
+    let files = match client
+        .pull_request_files(&repo, number, MAX_LISTED_FILES)
+        .await
+    {
+        Ok(files) => files,
+        Err(e) => return ToolExecutionResult::tool_error(e),
+    };
+    ToolExecutionResult::success(json!({
+        "repo": repo,
+        "number": pull.number,
+        "title": pull.title,
+        "body": pull.body,
+        "author": pull.user.map(|user| user.login),
+        "state": pull.state,
+        "draft": pull.draft,
+        "merged": pull.merged,
+        "url": pull.html_url,
+        "base": { "ref": pull.base.name, "sha": pull.base.sha },
+        "head": { "ref": pull.head.name, "sha": pull.head.sha },
+        "commits": pull.commits,
+        "additions": pull.additions,
+        "deletions": pull.deletions,
+        "changed_files": pull.changed_files,
+        "files": files.iter().map(|file| json!({
+            "path": file.filename,
+            "status": file.status,
+            "additions": file.additions,
+            "deletions": file.deletions,
+        })).collect::<Vec<_>>(),
+        "files_truncated": pull.changed_files > files.len() as u64,
+    }))
+}
+
+pub(super) async fn get_pull_request_diff(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let (repo, number) = match target(&arguments) {
+        Ok(target) => target,
+        Err(e) => return e,
+    };
+    let max_bytes = arguments
+        .get("max_bytes")
+        .and_then(Value::as_u64)
+        .unwrap_or(DEFAULT_DIFF_BYTES)
+        .clamp(1000, MAX_DIFF_BYTES) as usize;
+    let client = match api.client(&repo, &[("pull_requests", "read")]).await {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+    match client.pull_request_diff(&repo, number, max_bytes).await {
+        Ok(diff) => ToolExecutionResult::success(json!({
+            "repo": repo,
+            "number": number,
+            "diff": diff.text,
+            "total_bytes": diff.total_bytes,
+            "truncated": diff.truncated,
+        })),
+        Err(e) => ToolExecutionResult::tool_error(e),
+    }
+}
+
+pub(super) async fn upsert_comment(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let (repo, number) = match target(&arguments) {
+        Ok(target) => target,
+        Err(e) => return e,
+    };
+    let body = match required_str(&arguments, "body") {
+        Ok(body) => body,
+        Err(e) => return e,
+    };
+    let marker = arguments
+        .get("marker")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|marker| !marker.is_empty())
+        .unwrap_or(DEFAULT_MARKER);
+    if !valid_marker(marker) {
+        return ToolExecutionResult::tool_error(
+            "marker may only contain letters, digits, '-', '_' and '.' (max 64)",
+        );
+    }
+    let marker = marker_line(marker);
+    let body = format!("{marker}\n{body}");
+    if body.len() > MAX_COMMENT_BYTES {
+        return ToolExecutionResult::tool_error(format!(
+            "Comment is {} bytes; GitHub accepts at most {MAX_COMMENT_BYTES}",
+            body.len()
+        ));
+    }
+    let client = match api
+        .client(&repo, &[("issues", "write"), ("pull_requests", "write")])
+        .await
+    {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+    let result = client
+        .upsert_marked_comment(&repo, number, &marker, &body, MAX_COMMENT_PAGES)
+        .await;
+    match result {
+        Ok((comment, created)) => ToolExecutionResult::success(json!({
+            "action": if created { "created" } else { "updated" },
+            "comment_id": comment.id,
+            "url": comment.html_url,
+        })),
+        Err(e) => ToolExecutionResult::tool_error(e),
     }
 }
 

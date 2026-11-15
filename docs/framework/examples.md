@@ -135,3 +135,27 @@ host example needs a self-hosted CP; its shared history lives there.
 The batch examples also accept `BATCH_PROVIDER=mistral`, `groq` or `fireworks`
 with the matching Cargo feature. Fireworks requires account and artifact-origin
 configuration; see [Batch Model Requests](/framework/batch-model-requests/).
+
+## Native GitHub PR review
+
+[`github_review.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/github_review.rs)
+reads a real PR with the native GitHub capability and prints an evidence-based
+review. It requires `OPENAI_API_KEY` and `GITHUB_TOKEN` and does not write to GitHub.
+See [GitHub tools](/framework/github/).
+
+```bash
+cargo run -p everruns --features github,openai --example github_review -- OWNER/REPO NUMBER
+```
+
+## Application services
+
+| Example | Required features | What it runs |
+| --- | --- | --- |
+| [OAuth MCP](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/mcp_oauth.rs) | `openai,mcp-auth` | Browser login, callback validation, authenticated MCP tool use |
+| [Slack actions](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/slack_actions.rs) | `openai,slack-actions` | React and upload into one authorized thread |
+| [Data services](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/service_data.rs) | `openai,sql-database,knowledge` | Retrieve policy, retain a SQL decision and write named memory |
+| [Native services](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/service_credentials.rs) | `openai,cursor,browserless,e2b` | Use one selected vendor with explicit credentials and resource cleanup |
+| [Event triggers](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/service_triggers.rs) | `openai,local,triggers` | Recoverable event dispatch and duplicate suppression across restarts |
+| [Evaluation and traces](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/service_evaluation.rs) | `openai,evaluation` | Run real cases, print scores and project canonical trace events |
+
+Every example uses a real model and reports failed turns. See [Application services](/framework/service-integrations/) for configuration and host responsibilities.

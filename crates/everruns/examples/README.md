@@ -14,6 +14,7 @@ otherwise, and requires `OPENAI_API_KEY`. `agent_decisions` also requires
 | [`live_session.rs`](live_session.rs) | Non-blocking send, iteration-boundary corrections, and transcript | `cargo run -p everruns --features openai --example live_session` |
 | [`hello.rs`](hello.rs) | Minimal agent, typed tool, turn result, and event observation | `cargo run -p everruns --features openai --example hello` |
 | [`production_agent.rs`](production_agent.rs) | Tool safety boundary and production-shaped multi-turn use | `cargo run -p everruns --features openai --example production_agent` |
+| [`github_review.rs`](github_review.rs) | Read-only PR review with native GitHub tools; also requires `GITHUB_TOKEN` | `cargo run -p everruns --features github,openai --example github_review -- OWNER/REPO NUMBER` |
 | [`github_monitor.rs`](github_monitor.rs) | Host-owned background work that wakes an agent when it finishes | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
 | [`session_work.rs`](session_work.rs) | Session-owned work, leased delivery, and completion wakes | `cargo run -p everruns --features openai --example session_work` |
 | [`ask_user.rs`](ask_user.rs) | Structured questions answered by a host responder, and the unattended defaults path | `cargo run -p everruns --features openai --example ask_user` |
@@ -47,3 +48,7 @@ These examples call real native provider batch APIs and can incur charges. Set `
 | [`batch_eval.rs`](batch_eval.rs) | Submit typed message lists, poll and score three eval cases by ID | `cargo run -p everruns --features anthropic --example batch_eval` |
 
 See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-requests/) for recovery, tenant isolation, provider and hosting limitations.
+
+## Application services
+
+See the [service guides](https://everruns.com/docs/framework/service-integrations/) for `mcp_oauth`, `slack_actions`, `service_data`, `service_credentials`, `service_triggers` and `service_evaluation`. Each source file lists its required features, secrets and run command. All use real provider calls.

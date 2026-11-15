@@ -1,7 +1,13 @@
 ---
 title: Knowledge
 description: Attach versioned file collections to agents, browse originals and extracted text, and optionally index them for keyword or hybrid retrieval.
+appliesTo: [framework, platform, cloud]
 ---
+
+## Framework
+
+Enable the `knowledge` Cargo feature and bind application-owned services with `.knowledge(collection)`. See [Framework services](/framework/data-services/) for credentials, persistence and a complete real-model example. The remaining setup sections describe the hosted Platform.
+
 
 Knowledge brings notes, uploaded files, repository trees and Everruns documentation into one collection model. Indexing is optional. Files remain available to browse, read and grep when indexing is off.
 

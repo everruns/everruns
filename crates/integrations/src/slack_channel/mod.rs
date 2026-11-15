@@ -32,8 +32,12 @@ use tracing::{info, warn};
 
 use web_api::{SLACK_API_BASE, SlackApiError, slack_api_call};
 
+pub mod actions;
+mod advanced;
 pub mod markdown;
+pub mod surfaces;
 pub mod web_api;
+pub use advanced::{Participation, SlackAdmission};
 
 const BOT_TOKEN_ENV: &str = "SLACK_BOT_TOKEN";
 const SIGNING_SECRET_ENV: &str = "SLACK_SIGNING_SECRET";
@@ -42,12 +46,18 @@ const SLACK_FILES_HOST: &str = "files.slack.com";
 /// Slack's own replay window.
 const MAX_CLOCK_SKEW_SECS: i64 = 5 * 60;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum Credential {
     /// Read from this environment variable at use, so a host can set it
     /// after the channel is built.
     Env(&'static str),
     Value(String),
+}
+
+impl std::fmt::Debug for Credential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Credential(<redacted>)")
+    }
 }
 
 impl Credential {
@@ -66,6 +76,8 @@ pub struct Slack {
     signing_secret: Credential,
     mention_only: bool,
     api_base: String,
+    advanced: advanced::Advanced,
+    workspace: Option<String>,
 }
 
 impl Slack {
@@ -92,9 +104,16 @@ impl Slack {
             signing_secret,
             mention_only: false,
             api_base: SLACK_API_BASE.to_string(),
+            advanced: advanced::Advanced::default(),
+            workspace: None,
         }
     }
 
+    /// Accept events from this Slack workspace only. Recommended for apps installed in multiple workspaces.
+    pub fn workspace(mut self, team_id: impl Into<String>) -> Self {
+        self.workspace = Some(team_id.into());
+        self
+    }
     /// Answer only when the bot is @-mentioned.
     pub fn mention_only(mut self) -> Self {
         self.mention_only = true;
@@ -112,6 +131,11 @@ impl Slack {
             warn!("slack: accepting an unsigned request, {SIGNING_SECRET_ENV} is not set");
             return Ok(());
         };
+        if secret.is_empty() {
+            return Err(ChannelError::Unauthorized(
+                "Slack signing secret is empty".into(),
+            ));
+        }
         let unauthorized = |why: &str| ChannelError::Unauthorized(format!("slack: {why}"));
         let timestamp = request
             .header_value("x-slack-request-timestamp")
@@ -119,7 +143,7 @@ impl Slack {
         let sent: i64 = timestamp
             .parse()
             .map_err(|_| unauthorized("bad x-slack-request-timestamp"))?;
-        if (unix_now() - sent).abs() > MAX_CLOCK_SKEW_SECS {
+        if unix_now().abs_diff(sent) > MAX_CLOCK_SKEW_SECS as u64 {
             return Err(unauthorized("request timestamp is too old"));
         }
         let signature = request
@@ -172,6 +196,26 @@ impl ChannelDeliveryAdapter for Slack {
         DeliveryResult::Ok
     }
 
+    fn streaming(
+        &self,
+    ) -> Option<&dyn everruns_contracts::runtime::channel::ChannelStreamDelivery> {
+        self.advanced.pane.then_some(self)
+    }
+    fn agent_surface(
+        &self,
+    ) -> Option<&dyn everruns_contracts::runtime::channel::ChannelAgentSurface> {
+        self.advanced.pane.then_some(self)
+    }
+    fn progress(
+        &self,
+    ) -> Option<&dyn everruns_contracts::runtime::channel::ChannelProgressSurface> {
+        self.advanced.progress.then_some(self)
+    }
+    fn approvals(
+        &self,
+    ) -> Option<&dyn everruns_contracts::runtime::channel::ChannelApprovalPrompt> {
+        self.advanced.approvals.then_some(self)
+    }
     async fn send_ack(&self, _: &str, _: &str, _: &DeliveryContext) -> DeliveryResult {
         DeliveryResult::Ok
     }
@@ -190,7 +234,18 @@ impl ChannelDriver for Slack {
     }
 
     async fn receive(&self, request: &ChannelRequest) -> Result<Inbound, ChannelError> {
+        if request.body.len() > 1024 * 1024 {
+            return Err(ChannelError::BadRequest(
+                "Slack request exceeds limit".into(),
+            ));
+        }
         self.verify(request)?;
+        if request
+            .header_value("content-type")
+            .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"))
+        {
+            return self.interactive(request);
+        }
         let body = request.body_json()?;
         match body.get("type").and_then(Value::as_str) {
             Some("url_verification") => {
@@ -202,11 +257,24 @@ impl ChannelDriver for Slack {
             Some("event_callback") => {}
             _ => return Ok(Inbound::Ignore),
         }
+        if self
+            .workspace
+            .as_ref()
+            .is_some_and(|team| body["team_id"].as_str() != Some(team.as_str()))
+        {
+            return Err(ChannelError::Unauthorized(
+                "Slack event belongs to another workspace".into(),
+            ));
+        }
         let Some(event) = body.get("event") else {
             return Ok(Inbound::Ignore);
         };
         let field = |name: &str| event.get(name).and_then(Value::as_str).unwrap_or("");
         let kind = field("type");
+        if let Some(control) = self.pane_control(event) {
+            return Ok(control);
+        }
+
         let wanted = kind == "app_mention" || (!self.mention_only && kind == "message");
         // Bots (this one included) and edits, joins and other subtypes are
         // not messages for the agent.
@@ -221,6 +289,7 @@ impl ChannelDriver for Slack {
             ));
         }
         let thread_ts = event.get("thread_ts").and_then(Value::as_str).unwrap_or(ts);
+        self.clear_approval_cards(channel, thread_ts);
         let user = field("user");
         let token = self.token.value().filter(|token| !token.is_empty());
         let attachments = event
@@ -254,12 +323,41 @@ impl ChannelDriver for Slack {
                     ("slack_thread_ts".to_string(), json!(thread_ts)),
                     ("slack_ts".to_string(), json!(ts)),
                     ("slack_user".to_string(), json!(user)),
+                    ("slack_mention".to_string(), json!(kind == "app_mention")),
                 ]),
             },
-            reply_to: DeliveryTarget::new(channel, thread_ts),
+            reply_to: advanced::target(
+                channel,
+                thread_ts,
+                user,
+                body["team_id"].as_str().unwrap_or(""),
+            ),
         })))
     }
 
+    fn binding(
+        &self,
+        _route: &everruns_contracts::runtime::channel::InboundRoute,
+        _configured: everruns_contracts::runtime::channel::SessionBinding,
+    ) -> everruns_contracts::runtime::channel::SessionBinding {
+        everruns_contracts::runtime::channel::SessionBinding::Thread
+    }
+    async fn admit(
+        &self,
+        message: &InboundMessage,
+        session_id: Option<&str>,
+    ) -> Result<bool, ChannelError> {
+        match &self.advanced.admission {
+            Some(policy) => policy.admit(message, session_id).await,
+            None => Ok(true),
+        }
+    }
+    async fn backfill(
+        &self,
+        message: &InboundMessage,
+    ) -> Result<Vec<InboundChannelEvent>, ChannelError> {
+        self.history(message).await
+    }
     fn delivery_context(&self, target: &DeliveryTarget) -> DeliveryContext {
         target.context(self.token.value().unwrap_or_default())
     }
