@@ -9,8 +9,10 @@ on:
       - "crates/contracts/**"
       - "crates/drivers/**"
       - "crates/durable-object/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
+      # The root Cargo.toml and Cargo.lock are left out on purpose: adding a
+      # workspace member or bumping an unrelated dependency should not rebuild
+      # this Worker. The cost is that a dependency bump that breaks the wasm
+      # build goes unnoticed until a change under crates/ triggers this job.
       - "rust-toolchain.toml"
       - ".github/workflows/cloudflare-durable-chat.yml"
   push:
