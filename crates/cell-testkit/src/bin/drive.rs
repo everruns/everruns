@@ -413,7 +413,7 @@ fn stalled(progress: &Progress) -> Vec<(String, u64, u64)> {
         .filter(|(_, (_, at))| at.elapsed() >= STALLED)
         .map(|(id, (turn, at))| (id.clone(), *turn, at.elapsed().as_secs()))
         .collect();
-    out.sort_by(|a, b| b.2.cmp(&a.2));
+    out.sort_by_key(|s| std::cmp::Reverse(s.2));
     out
 }
 
