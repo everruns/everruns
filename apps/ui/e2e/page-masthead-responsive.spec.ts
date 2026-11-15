@@ -6,6 +6,12 @@ async function useClassicLayout(page: Page) {
   );
 }
 
+async function useChatFirstLayout(page: Page) {
+  await page.route("**/api/v1/user/preferences/ui.layout", (route) =>
+    route.fulfill({ json: { key: "ui.layout", value: "chat_first" } }),
+  );
+}
+
 const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
 const HARNESS_ID = "harness_019fd9b43fa37512b8f25226b21c2c8b";
@@ -207,7 +213,7 @@ for (const scenario of [
     });
     await page.route(`**/api/v1/history/${triggerId}**`, (route) => route.fulfill({ json: [] }));
     // The page alone is the Classic layout; Chat first keeps Chat beside it.
-    if (!scenario.open) await useClassicLayout(page);
+    await (scenario.open ? useChatFirstLayout(page) : useClassicLayout(page));
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(`/agents/${AGENT_ID}?tab=integrations`);

@@ -32,15 +32,17 @@ started them.
 ## Chat beside your pages
 
 The app has two layouts, and you pick one under **Layout** in the profile menu or on
-**Profile**. The choice follows you to every device and organization.
+**Profile**. The choice is saved to your account, so it follows you to every
+device, browser and organization.
 
-- **Chat first** (the default) keeps the conversation on the left of every page,
-  with navigation in a rail on the right edge. The rail's » opens the full
-  sidebar, and system pages and Settings sit under one menu.
-- **Classic** keeps the left sidebar. Main chat and side chats open full screen,
-  and **Command-J** (**Ctrl-J** on Windows and Linux) toggles full-screen chat.
+- **Classic** (the default) keeps the left sidebar. Main chat and side chats open
+  full screen, and **Command-J** (**Ctrl-J** on Windows and Linux) toggles
+  full-screen chat.
+- **Chat first** keeps the conversation on the left of every page, with
+  navigation in a rail on the right edge. The rail's » opens the full sidebar,
+  and system pages and Settings sit under one menu.
 
-In Chat first, the conversation can see the page next to it. Drag the divider
+In Chat first, the conversation can see the page next to it. Drag the visible divider
 between them to resize, or double-click it to reset. Links in Chat's replies open
 in the page pane, so the conversation stays put. **Main chat ▾** in the
 conversation header switches between Main chat and side chats; opening a thread

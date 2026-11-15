@@ -32,47 +32,60 @@ beforeEach(() => {
 });
 
 describe("layout preference", () => {
-  it("treats anything but classic as chat first", () => {
+  it("treats anything but an explicit chat first choice as classic", () => {
     expect(parseAppLayout("classic")).toBe("classic");
     expect(parseAppLayout("chat_first")).toBe("chat_first");
-    expect(parseAppLayout(undefined)).toBe("chat_first");
-    expect(parseAppLayout(42)).toBe("chat_first");
+    expect(parseAppLayout(undefined)).toBe("classic");
+    expect(parseAppLayout(42)).toBe("classic");
   });
 
-  it("defaults to chat first when the person never chose", async () => {
+  it("defaults to classic when the person never chose", async () => {
     getUserPreference.mockResolvedValue(null);
     const { result } = renderHook(() => useLayoutPreference(), { wrapper });
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect(result.current.layout).toBe("chat_first");
+    expect(result.current.layout).toBe("classic");
+    expect(window.localStorage.getItem("everruns.ui.layout")).toBeNull();
+  });
+
+  it("keeps a stored chat first choice over the classic default", async () => {
+    getUserPreference.mockResolvedValue({ key: "ui.layout", value: "chat_first", updated_at: "" });
+    const { result } = renderHook(() => useLayoutPreference(), { wrapper });
+    await waitFor(() => expect(result.current.layout).toBe("chat_first"));
+    expect(window.localStorage.getItem("everruns.ui.layout")).toBe("chat_first");
+  });
+
+  it("lets the server choice win over this device's last layout", async () => {
+    window.localStorage.setItem("everruns.ui.layout", "classic");
+    getUserPreference.mockResolvedValue({ key: "ui.layout", value: "chat_first", updated_at: "" });
+    const { result } = renderHook(() => useLayoutPreference(), { wrapper });
+    await waitFor(() => expect(result.current.layout).toBe("chat_first"));
   });
 
   it("reads the stored choice and mirrors it on the device", async () => {
     getUserPreference.mockResolvedValue({ key: "ui.layout", value: "classic", updated_at: "" });
     const { result } = renderHook(() => useLayoutPreference(), { wrapper });
-    await waitFor(() => expect(result.current.layout).toBe("classic"));
-    expect(window.localStorage.getItem("everruns.ui.layout")).toBe("classic");
+    // Classic is also the default, so wait for the mirror that proves the read.
+    await waitFor(() => expect(window.localStorage.getItem("everruns.ui.layout")).toBe("classic"));
+    expect(result.current.layout).toBe("classic");
   });
 
   it("uses the device's last layout before the server answers", () => {
-    window.localStorage.setItem("everruns.ui.layout", "classic");
+    window.localStorage.setItem("everruns.ui.layout", "chat_first");
     getUserPreference.mockReturnValue(new Promise(() => {}));
     const { result } = renderHook(() => useLayoutPreference(), { wrapper });
-    expect(result.current.layout).toBe("classic");
+    expect(result.current.layout).toBe("chat_first");
     expect(result.current.ready).toBe(true);
   });
 
   it("switches immediately and saves the choice from Profile", async () => {
     getUserPreference.mockResolvedValue(null);
     render(<LayoutSettings />, { wrapper });
-    const classic = await screen.findByRole("radio", { name: /Classic/ });
-    expect(screen.getByRole("radio", { name: /Chat first/ })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    const chatFirst = await screen.findByRole("radio", { name: /Chat first/ });
+    expect(screen.getByRole("radio", { name: /Classic/ })).toHaveAttribute("aria-checked", "true");
     await act(async () => {
-      fireEvent.click(classic);
+      fireEvent.click(chatFirst);
     });
-    await waitFor(() => expect(classic).toHaveAttribute("aria-checked", "true"));
-    expect(setUserPreference).toHaveBeenCalledWith("ui.layout", "classic");
+    await waitFor(() => expect(chatFirst).toHaveAttribute("aria-checked", "true"));
+    expect(setUserPreference).toHaveBeenCalledWith("ui.layout", "chat_first");
   });
 });

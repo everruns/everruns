@@ -10,17 +10,17 @@ export function LayoutSettings() {
   const { layout, setLayout, error } = useLayoutPreference();
   const options: Array<{ value: AppLayout; label: string; description: string }> = [
     {
-      value: "chat_first",
-      label: ui("Chat first"),
-      description: ui(
-        "Main chat on the left, the page on the right, and navigation in a rail on the right.",
-      ),
-    },
-    {
       value: "classic",
       label: ui("Classic"),
       description: ui(
         "Navigation on the left and the page fills the rest. Chat opens full screen.",
+      ),
+    },
+    {
+      value: "chat_first",
+      label: ui("Chat first"),
+      description: ui(
+        "Main chat on the left, the page on the right, and navigation in a rail on the right.",
       ),
     },
   ];

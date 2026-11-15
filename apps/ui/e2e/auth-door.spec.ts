@@ -91,8 +91,9 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
 
   await page.goto("/login");
 
-  // Arrival goes through `/`, so Chat first (the default) lands on Overview beside Main chat.
-  await expect(page).toHaveURL(/\/home$/, { timeout: 30_000 });
+  // Arrival goes through `/`, so Classic (the default) lands on full-screen Main chat.
+  await expect(page).toHaveURL(/\/chats$/, { timeout: 30_000 });
+  await expect(page.locator(".chat-mode-shell")).toHaveAttribute("data-layout", "classic-chat");
   await expect(page.getByRole("link", { name: "Platform Chat", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Open session", exact: true })).toBeVisible();

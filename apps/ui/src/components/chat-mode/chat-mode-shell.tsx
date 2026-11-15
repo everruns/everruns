@@ -520,8 +520,8 @@ export function clampChatWidth(
 }
 
 /**
- * Invisible divider between Chat and the page: a line appears on hover or
- * focus. Drag or use the arrow keys to resize; double-click resets. Dragging
+ * Visible divider between Chat and the page: a bordered gutter with a grip
+ * that turns primary on hover or focus. Drag or use the arrow keys to resize; double-click resets. Dragging
  * the page narrower than half its minimum switches to full-screen Chat.
  */
 function ChatSplitter({

@@ -93,7 +93,7 @@ const TREES: Record<string, Record<string, unknown[]>> = {
 
 export async function mockKnowledgeApi(
   page: Page,
-  options: { role?: "owner" | "admin" | "member" } = {},
+  options: { role?: "owner" | "admin" | "member"; layout?: "chat_first" | "classic" } = {},
 ) {
   const model = {
     id: "model_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -112,7 +112,11 @@ export async function mockKnowledgeApi(
     const pathname = url.pathname;
     let json: unknown = { data: [], has_more: false, total: 0 };
 
-    if (pathname === "/api/v1/auth/config") {
+    if (pathname === "/api/v1/user/preferences/ui.layout") {
+      // These specs cover Chat beside the page, an explicit choice since Classic
+      // became the default.
+      json = { key: "ui.layout", value: options.layout ?? "chat_first", updated_at: "" };
+    } else if (pathname === "/api/v1/auth/config") {
       json = {
         mode: "none",
         password_auth_enabled: false,
