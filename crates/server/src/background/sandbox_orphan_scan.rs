@@ -34,6 +34,12 @@
 // cleanup-only `get_connection_token_for_connection`. The job is therefore
 // disabled without an encryption key (no connection resolver). Identical
 // tokens are listed once per organization.
+//
+// Decision: providers the deployment runs itself (`PLATFORM_SCAN_PROVIDERS`,
+// isolated sandboxes on Kubernetes) have no account to scan. They are listed
+// once per run, across organizations, and each candidate is attributed to the
+// organization its own label names; a candidate without a valid organization
+// label is left alone.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
@@ -58,6 +64,8 @@ pub const SANDBOX_ORPHAN_SCAN_ACTIVITY: &str = "sandbox_orphan_scan";
 
 /// Providers asked for their managed sandboxes.
 pub const SCAN_PROVIDERS: &[&str] = &["boxd", "daytona", "e2b", "modal"];
+/// Providers the deployment runs itself, listed without an account.
+pub const PLATFORM_SCAN_PROVIDERS: &[&str] = &["kubernetes"];
 /// Candidates younger than this may be a create whose state save is in flight.
 pub const MIN_AGE: chrono::Duration = chrono::Duration::minutes(30);
 /// A stopped orphan seen again this long after its first sighting is deleted.
@@ -395,6 +403,58 @@ pub async fn run_scan(
             )
             .await?;
             match acted {
+                Some(OrphanDecision::Stop) => {
+                    report.stopped += 1;
+                    budget -= 1;
+                }
+                Some(OrphanDecision::Delete) => {
+                    report.deleted += 1;
+                    budget -= 1;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for provider_id in PLATFORM_SCAN_PROVIDERS {
+        if budget == 0 {
+            break;
+        }
+        let Some(provider) = lookup(provider_id) else {
+            continue;
+        };
+        let labels = BTreeMap::from([
+            (LABEL_EVERRUNS.to_string(), "true".to_string()),
+            (LABEL_MANAGED.to_string(), "true".to_string()),
+        ]);
+        let sandboxes = match provider.list_owned("", &labels).await {
+            Ok(sandboxes) => sandboxes,
+            Err(SandboxAdminError::Unsupported) => continue,
+            Err(e) => {
+                // Not configured on this deployment is the common case.
+                debug!(error = %e, provider = provider_id, "Orphan scan skipped a platform provider");
+                continue;
+            }
+        };
+        report.accounts += 1;
+        for sandbox in sandboxes {
+            if budget == 0 {
+                break;
+            }
+            let Some(org) = sandbox
+                .labels
+                .get(LABEL_ORG_ID)
+                .and_then(|org| org.parse::<everruns_contracts::typed_id::OrgId>().ok())
+            else {
+                continue;
+            };
+            let org_public = org.to_string();
+            if !labels_match(&sandbox, &org_public) {
+                continue;
+            }
+            report.candidates += 1;
+            let org_id = everruns_core::organization::org_internal_id_from_public(org);
+            match handle_candidate(pool, provider.as_ref(), "", org_id, &sandbox, now).await? {
                 Some(OrphanDecision::Stop) => {
                     report.stopped += 1;
                     budget -= 1;

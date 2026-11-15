@@ -1,0 +1,68 @@
+{{- with .Values.sandboxes.kubernetes }}
+{{- if .enabled }}
+{{- /*
+Isolated sandboxes: one pod per agent sandbox in their own namespace.
+
+Decision: the server and workers get a Role in the sandbox namespace only,
+never cluster-wide: pods (and pods/proxy, for servers outside the cluster),
+volume claims, secrets and network policies there, nothing else. The sandbox
+pods themselves get no service account token.
+
+Decision: the namespace starts closed (default deny, both ways). Each sandbox
+adds its own NetworkPolicy: ingress from Everruns on the guest port, egress to
+the egress proxy, the internet, IP ranges, or nothing, per its template.
+*/}}
+{{- if .createNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .namespace }}
+  labels:
+    {{- include "everruns.labels" $ | nindent 4 }}
+    # Sandboxes run untrusted code: refuse privileged pods outright.
+    pod-security.kubernetes.io/enforce: baseline
+---
+{{- end }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "everruns.name" (list $ "sandboxes") }}
+  namespace: {{ .namespace }}
+  labels: {{- include "everruns.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, persistentvolumeclaims, secrets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods/proxy]
+    verbs: [get, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "everruns.name" (list $ "sandboxes") }}
+  namespace: {{ .namespace }}
+  labels: {{- include "everruns.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "everruns.name" (list $ "sandboxes") }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "everruns.sandboxServiceAccount" $ }}
+    namespace: {{ $.Release.Namespace }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ .namespace }}
+  labels: {{- include "everruns.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+{{- end }}
+{{- end }}

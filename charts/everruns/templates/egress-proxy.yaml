@@ -47,9 +47,16 @@ spec:
           ports:
             - { name: proxy, containerPort: 4750 }
             - { name: health, containerPort: 4751 }
+            {{- if .Values.sandboxes.kubernetes.enabled }}
+            - { name: socks, containerPort: 1080 }
+            {{- end }}
           env:
             - name: EVERRUNS_EGRESS_PROXY_SECRET
               valueFrom: { secretKeyRef: { name: {{ include "everruns.internalSecretName" . }}, key: EVERRUNS_EGRESS_PROXY_SECRET } }
+            {{- if .Values.sandboxes.kubernetes.enabled }}
+            # Isolated sandboxes tunnel their traffic here over SOCKS5.
+            - { name: EGRESS_PROXY_SOCKS_ADDR, value: "0.0.0.0:1080" }
+            {{- end }}
             # Each pod enforces its share of the caps.
             - { name: EGRESS_PROXY_REPLICAS, value: {{ .Values.egressProxy.replicas | quote }} }
             {{- with .Values.egressProxy.orgLimits }}
@@ -102,6 +109,9 @@ spec:
   selector: {{- include "everruns.selector" (list . "egress-proxy") | nindent 4 }}
   ports:
     - { name: proxy, port: 4750, targetPort: proxy }
+    {{- if .Values.sandboxes.kubernetes.enabled }}
+    - { name: socks, port: 1080, targetPort: socks }
+    {{- end }}
 {{- if gt (int .Values.egressProxy.replicas) 1 }}
 ---
 apiVersion: policy/v1

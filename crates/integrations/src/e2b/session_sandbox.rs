@@ -209,7 +209,7 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         // there, or it exits with no display. Pause and resume keep it running.
         if let Some(display) = desktop_display(config) {
             let state = provider_state(context, &instance).await?;
-            super::computer::start_display(&client, &state, display)
+            super::computer::start_e2b_display(&client, &state, display)
                 .await
                 .map_err(ToolExecutionResult::tool_error)?;
         }

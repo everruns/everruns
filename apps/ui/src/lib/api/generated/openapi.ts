@@ -29182,6 +29182,11 @@ export interface components {
        */
       idle_after_seconds?: number | null;
       /**
+       * @description Image the template asked for (`target.options.image`), when it named one.
+       * @example ghcr.io/everruns/sandbox-dev:v0.53.0
+       */
+      image?: string | null;
+      /**
        * Format: date-time
        * @description Last recorded tool activity or state change.
        */
@@ -29205,6 +29210,11 @@ export interface components {
        * @example Fix flaky CI
        */
       session_title?: string | null;
+      /**
+       * @description Size the template asked for (`target.options.size`), when it named one.
+       * @example small
+       */
+      size?: string | null;
       /**
        * @description `running`, `paused`, `lost`, `starting`, `failed`, `not_started` or `deleted`.
        * @example running
@@ -29420,12 +29430,37 @@ export interface components {
       durability: string;
       /** @description Lucide icon name used by management surfaces. */
       icon: string;
+      isolation?: components["schemas"]["SandboxTargetIsolation"] | null;
       /** @description Provider-neutral target class. */
       kind: string;
       /** @description Concrete provider adapter, when the target class requires one. */
       provider?: string | null;
       /** @description Why it is unavailable. Present only when `available` is false. */
       reason?: string | null;
+    };
+    /** @description Deployment settings of a target the deployment runs itself. */
+    SandboxTargetIsolation: {
+      /** @description Image used when a template names none. */
+      default_image: string;
+      /**
+       * Format: int32
+       * @description Running sandboxes one organization may hold at a time.
+       */
+      max_per_org: number;
+      /**
+       * @description Kubernetes runtime class sandbox pods run under (for example
+       *     `isolated-sandbox` for AWS Nitro Sandboxes); absent for plain
+       *     containers.
+       */
+      runtime_class?: string | null;
+      /** @description Sizes a template may pick (`small`, `medium`, `large`). */
+      sizes: string[];
+      /**
+       * @description Whether each sandbox runs in its own VM or kernel sandbox. Plain
+       *     containers share the node's kernel and are no boundary for untrusted
+       *     code.
+       */
+      vm_isolated: boolean;
     };
     /**
      * @description Provider-neutral target class.
@@ -31335,7 +31370,7 @@ export interface components {
      * @description Where a managed Sandbox obtains its provider credential.
      * @enum {string}
      */
-    SessionSandboxCredentialSource: "none" | "session_user" | "agent" | "organization";
+    SessionSandboxCredentialSource: "none" | "session_user" | "agent" | "organization" | "platform";
     /** @description The primary Sandbox a Session is running in. */
     SessionSandboxResponse: {
       build?: components["schemas"]["SandboxBuildProvenance"] | null;

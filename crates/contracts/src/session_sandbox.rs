@@ -148,6 +148,9 @@ pub enum SessionSandboxCredentialSource {
     SessionUser,
     Agent,
     Organization,
+    /// The deployment's own access (for example its Kubernetes cluster for
+    /// isolated sandboxes): no user connection, no token from a store.
+    Platform,
 }
 
 /// Non-secret, session-pinned credential binding.

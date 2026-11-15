@@ -103,7 +103,7 @@ click it for the full frame.
 ## Desktop in a Sandbox
 
 To give the agent a full Linux desktop instead of a browser page, turn on
-**Desktop** in a Daytona or E2B [Sandbox Template](/features/sandbox-templates/#desktop).
+**Desktop** in a Daytona, E2B or Isolated sandbox [Sandbox Template](/features/sandbox-templates/#desktop).
 The Agent then gets the same `computer` tool, driving the desktop of the
 Session's own Sandbox, so the shell, the files and the desktop are one machine,
 and the template's outbound network rule covers the desktop too. It takes the

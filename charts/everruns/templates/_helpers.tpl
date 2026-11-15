@@ -104,6 +104,54 @@ appears in the manifest.
 {{- end }}
 {{- end -}}
 
+{{/* Env entries for isolated sandboxes, on server and workers. */}}
+{{- define "everruns.sandboxEnv" -}}
+{{- with .Values.sandboxes.kubernetes }}
+{{- if .enabled }}
+- { name: KUBERNETES_SANDBOX_NAMESPACE, value: {{ .namespace | quote }} }
+{{- with .runtimeClassName }}
+- { name: KUBERNETES_SANDBOX_RUNTIME_CLASS, value: {{ . | quote }} }
+{{- end }}
+- { name: KUBERNETES_SANDBOX_IMAGE, value: {{ .image | default (printf "ghcr.io/everruns/sandbox-dev:%s" (ternary "latest" (printf "v%s" $.Chart.AppVersion) (eq $.Chart.AppVersion "latest"))) | quote }} }
+{{- with .allowedImages }}
+- { name: KUBERNETES_SANDBOX_ALLOWED_IMAGES, value: {{ . | quote }} }
+{{- end }}
+- { name: KUBERNETES_SANDBOX_SIZES, value: {{ join "," .sizes | quote }} }
+{{- with .storageClassName }}
+- { name: KUBERNETES_SANDBOX_STORAGE_CLASS, value: {{ . | quote }} }
+{{- end }}
+- { name: KUBERNETES_SANDBOX_WORKSPACE_SIZE, value: {{ .workspaceSize | quote }} }
+{{- with .nodeSelector }}
+- { name: KUBERNETES_SANDBOX_NODE_SELECTOR, value: {{ toJson . | quote }} }
+{{- end }}
+{{- with .tolerations }}
+- { name: KUBERNETES_SANDBOX_TOLERATIONS, value: {{ toJson . | quote }} }
+{{- end }}
+- { name: KUBERNETES_SANDBOX_MAX_PER_ORG, value: {{ .maxPerOrg | quote }} }
+- { name: KUBERNETES_SANDBOX_GUEST_ROUTE, value: pod_ip }
+- { name: KUBERNETES_SANDBOX_CONTROL_POD_LABELS, value: {{ printf "app.kubernetes.io/name=%s,app.kubernetes.io/instance=%s" $.Chart.Name $.Release.Name | quote }} }
+- { name: KUBERNETES_SANDBOX_CONTROL_NAMESPACE, value: {{ $.Release.Namespace | quote }} }
+- { name: KUBERNETES_SANDBOX_EGRESS, value: {{ .egress | quote }} }
+{{- if eq .egress "proxy" }}
+{{- $proxy := include "everruns.name" (list $ "egress-proxy") }}
+- { name: KUBERNETES_SANDBOX_EGRESS_PROXY_ADDRESS, value: {{ printf "%s.%s.svc:1080" $proxy $.Release.Namespace | quote }} }
+- { name: KUBERNETES_SANDBOX_EGRESS_PROXY_POD_LABELS, value: {{ printf "app.kubernetes.io/name=%s,app.kubernetes.io/instance=%s,app.kubernetes.io/component=egress-proxy" $.Chart.Name $.Release.Name | quote }} }
+- { name: KUBERNETES_SANDBOX_EGRESS_PROXY_NAMESPACE, value: {{ $.Release.Namespace | quote }} }
+# Sandbox proxy credentials are minted only when a SOCKS address is set. In
+# the cluster the sandboxes use the plain in-cluster listener above; set a
+# public TLS address in extraEnv if E2B sandboxes should be routed too.
+- { name: EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS, value: {{ printf "%s.%s.svc:1080" $proxy $.Release.Namespace | quote }} }
+- { name: EVERRUNS_EGRESS_PROXY_SOCKS_TLS, value: "false" }
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{/* The ServiceAccount server and workers run as when they manage sandboxes. */}}
+{{- define "everruns.sandboxServiceAccount" -}}
+{{- include "everruns.serverServiceAccount" . | default "default" -}}
+{{- end -}}
+
 {{- define "everruns.serverServiceAccount" -}}
 {{- if .Values.serviceAccount.create -}}
 {{- .Values.serviceAccount.name | default (include "everruns.name" (list . "server")) -}}
@@ -120,6 +168,19 @@ appears in the manifest.
 
 {{/* Stop with a clear message before anything is created. */}}
 {{- define "everruns.validate" -}}
+{{- with .Values.sandboxes.kubernetes }}
+{{- if .enabled }}
+{{- if not (has .egress (list "proxy" "direct" "none")) }}
+{{- fail (printf "sandboxes.kubernetes.egress must be proxy, direct or none, got %q" .egress) -}}
+{{- end }}
+{{- if and (eq .egress "proxy") (not $.Values.egressProxy.enabled) }}
+{{- fail "sandboxes.kubernetes.egress=proxy needs egressProxy.enabled=true (or set egress to direct or none)" -}}
+{{- end }}
+{{- if eq .namespace $.Release.Namespace }}
+{{- fail "sandboxes.kubernetes.namespace must differ from the release namespace" -}}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- $modes := list "admin" "full" "none" -}}
 {{- if not (has .Values.auth.mode $modes) -}}
 {{- fail (printf "auth.mode must be admin, full or none, got %q" .Values.auth.mode) -}}

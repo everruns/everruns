@@ -3,6 +3,7 @@
 ## 2026-11-15
 
 - [MCP Apps](ui/mcp-apps.md): separate data tools from explicit session rendering, preserve drafts and navigation on repeated entry results, version shell resources, and bound bridge lifecycles with connection recovery.
+- [Isolated Sandboxes (Kubernetes)](integrations/kubernetes-sandbox.md): new managed target run by the deployment itself, one pod per sandbox with the provider-neutral sandbox guest, VM isolation by runtime class, NetworkPolicy egress (domain allowlists refused), published sandbox images and a Dev Container Feature; the X11 desktop session is shared with E2B.
 - [Shell Code Mode](execution/shell-code-mode.md): rename the Tools in Shell capability to Shell Code Mode (`shell_code_mode`). `tools_in_shell` stays a registry alias, so saved agents keep working without a migration.
 - [Framework application API](framework/application-api.md): promote application-owned integration credentials, MCP OAuth, Slack affordances, durable triggers, local SQL/knowledge, named memory, and shared trace/evaluation logic with real-model examples and Engine acceptance tests.
 - [Session SQL](runtime-resources/session-sqldb.md): share the authorizer/executor while retaining separate host persistence; local quotas use cross-process locking.

@@ -221,6 +221,39 @@ networkPolicy:
   # Extra ingress rules for the server, such as an in-cluster client.
   extraServerIngress: []
 
+# Isolated sandboxes: one pod per agent sandbox in its own namespace, with
+# the Everruns guest agent as entrypoint. Adds the "Isolated sandbox" target
+# to Sandbox Templates. The server and workers get a Role in that namespace
+# only (pods, pods/proxy, volume claims, secrets, network policies).
+sandboxes:
+  kubernetes:
+    enabled: false
+    namespace: everruns-sandboxes
+    # Create the namespace (off when it is managed elsewhere).
+    createNamespace: true
+    # "isolated-sandbox" on EKS Auto Mode (AWS Nitro Sandboxes: each pod in
+    # its own VM), "gvisor" or "kata" elsewhere. Empty runs plain containers,
+    # which share the node's kernel: the UI warns that this is no security
+    # boundary for untrusted code.
+    runtimeClassName: ""
+    # Default image; templates may name another (see allowedImages).
+    # Empty uses ghcr.io/everruns/sandbox-dev at the chart's appVersion.
+    image: ""
+    # Image prefixes templates may use, comma separated; empty allows any.
+    allowedImages: ""
+    sizes: [small, medium, large]
+    storageClassName: ""
+    workspaceSize: 10Gi
+    nodeSelector: {}
+    tolerations: []
+    # Where open-network sandboxes may connect:
+    #   proxy:  only through the egress proxy (needs egressProxy.enabled)
+    #   direct: straight to the internet, private ranges excluded
+    #   none:   nowhere; only network deny templates start
+    egress: proxy
+    # Running sandboxes per organization; paused ones do not count.
+    maxPerOrg: 5
+
 # Tenant egress proxy: agent tool, integration and MCP traffic leaves through
 # it, so it can get its own address (schedule it on nodes with their own NAT)
 # and per-org caps. Platform calls still go direct.

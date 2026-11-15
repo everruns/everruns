@@ -57,6 +57,36 @@ one="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adm
 grep -q 'type: Recreate' <<<"$one" || fail "a single server must be replaced with Recreate"
 if grep -q 'kind: NetworkPolicy' <<<"$one"; then fail "network policies render when off"; fi
 
+echo "==> isolated sandboxes render least privilege"
+sbx="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set egressProxy.enabled=true --set networkPolicy.enabled=true --set sandboxes.kubernetes.enabled=true \
+  --set sandboxes.kubernetes.runtimeClassName=isolated-sandbox)"
+python3 - "$sbx" <<'PY'
+import sys
+docs = [d for d in sys.argv[1].split("\n---") if d.strip()]
+def find(kind, name=None):
+    return [d for d in docs if f"\nkind: {kind}\n" in "\n" + d and (name is None or f"name: {name}\n" in d)]
+role = find("Role")
+assert len(role) == 1, "one Role"
+assert "namespace: everruns-sandboxes" in role[0], "Role is namespaced to the sandboxes"
+assert "ClusterRole" not in sys.argv[1], "no cluster-wide rights"
+assert "pods/exec" not in role[0], "the guest, not kubectl exec, runs commands"
+deny = find("NetworkPolicy", "default-deny")
+assert deny and "policyTypes: [Ingress, Egress]" in deny[0], "sandbox namespace starts closed"
+assert "pod-security.kubernetes.io/enforce: baseline" in sys.argv[1], "no privileged sandbox pods"
+for component in ("server", "worker"):
+    dep = [d for d in find("Deployment") if f"app.kubernetes.io/component: {component}\n" in d][0]
+    assert "automountServiceAccountToken: true" in dep, f"{component} cannot reach the API"
+    assert "KUBERNETES_SANDBOX_RUNTIME_CLASS, value: \"isolated-sandbox\"" in dep, component
+    assert "KUBERNETES_SANDBOX_EGRESS_PROXY_ADDRESS" in dep, component
+proxy = [d for d in find("Deployment") if "component: egress-proxy" in d][0]
+assert "EGRESS_PROXY_SOCKS_ADDR" in proxy, "the proxy opens its SOCKS listener"
+PY
+if helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  | grep -q 'automountServiceAccountToken: true'; then
+  fail "the API token is mounted without isolated sandboxes"
+fi
+
 echo "==> refuses unsupported shapes"
 refuses() {
   local want="$1"; shift
@@ -72,6 +102,12 @@ refuses "needs deploymentGrade dev" --set postgresql.enabled=true --set auth.mod
 refuses "needs Valkey" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set server.replicas=2
 refuses "needs NATS" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set server.replicas=2 \
   --set valkey.enabled=true --set nats.enabled=false
+refuses "needs egressProxy.enabled" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set sandboxes.kubernetes.enabled=true
+refuses "must be proxy, direct or none" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set sandboxes.kubernetes.enabled=true --set sandboxes.kubernetes.egress=open
+refuses "must differ from the release namespace" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set sandboxes.kubernetes.enabled=true --set sandboxes.kubernetes.egress=none --set sandboxes.kubernetes.namespace=default
 refuses "needs storage.s3.bucket" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set storage.s3.enabled=true
 refuses "cannot be used with auth.mode full" --set postgresql.enabled=true --set auth.mode=full \
   --set auth.adminEmail=admin@example.com --set seedDefaultProviderKeys=true

@@ -57,6 +57,7 @@ hosted-integration-catalog = [
     "everruns-integrations/github",
     "everruns-integrations/modal",
     "everruns-integrations/image-generation",
+    "everruns-integrations/kubernetes-sandbox",
     "everruns-integrations/parallel",
     "everruns-integrations/typesafe",
     "everruns-integrations/typesafe-hosted",

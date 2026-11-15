@@ -3048,7 +3048,8 @@
             "none",
             "session_user",
             "agent",
-            "organization"
+            "organization",
+            "platform"
           ],
           "type": "string"
         },
@@ -10008,7 +10009,8 @@
             "none",
             "session_user",
             "agent",
-            "organization"
+            "organization",
+            "platform"
           ],
           "type": "string"
         },
@@ -24613,7 +24615,8 @@
             "none",
             "session_user",
             "agent",
-            "organization"
+            "organization",
+            "platform"
           ],
           "type": "string"
         },
@@ -31918,7 +31921,8 @@
             "none",
             "session_user",
             "agent",
-            "organization"
+            "organization",
+            "platform"
           ],
           "type": "string"
         },

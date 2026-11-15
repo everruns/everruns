@@ -361,7 +361,9 @@ impl SessionService {
             let provider = sandbox.spec.target.provider.clone().unwrap_or_default();
             let credential = &mut sandbox.spec.target.credential;
             match credential.source {
-                SessionSandboxCredentialSource::None => {}
+                // Platform targets run on the deployment's own access.
+                SessionSandboxCredentialSource::None | SessionSandboxCredentialSource::Platform => {
+                }
                 SessionSandboxCredentialSource::SessionUser if caller.user_id.is_none() => {
                     // Trigger and channel ingress start Sessions without a
                     // person. Rebind to the organization's sole account for the

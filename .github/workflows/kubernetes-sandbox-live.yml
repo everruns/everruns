@@ -1,0 +1,103 @@
+name: Isolated Sandbox Live
+
+# The `kubernetes` sandbox provider against a real cluster: kind, a minimal
+# image carrying the real guest binary, the provider driving pods, volumes,
+# secrets and network policies through the API server. The image itself
+# (docker/sandbox) is built by docker-publish.yml; this checks the provider.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/kubernetes-sandbox-live.yml'
+      - 'crates/integrations/src/kubernetes_sandbox/**'
+      - 'crates/integrations/src/sandbox_guest/**'
+      - 'crates/integrations/src/bin/everruns-sandbox-guest.rs'
+      - 'crates/contracts/src/sandbox_guest.rs'
+      - 'crates/integrations/tests/kubernetes_sandbox_live.rs'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/kubernetes-sandbox-live.yml'
+      - 'crates/integrations/src/kubernetes_sandbox/**'
+      - 'crates/integrations/src/sandbox_guest/**'
+      - 'crates/integrations/src/bin/everruns-sandbox-guest.rs'
+      - 'crates/contracts/src/sandbox_guest.rs'
+      - 'crates/integrations/tests/kubernetes_sandbox_live.rs'
+  workflow_dispatch:
+  # Weekly with the integration live sweep: shared crate changes reach the
+  # provider without touching its paths. Needs no secrets, so it lives here.
+  schedule:
+    - cron: '0 14 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  # kind's own CNI enforces NetworkPolicy since v0.24, which the blocked
+  # egress assertion relies on.
+  KIND_VERSION: v0.30.0
+
+jobs:
+  live:
+    name: Isolated sandbox on kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: "kubernetes-sandbox"
+
+      - name: Build the guest
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+          cargo build --locked --release -p everruns-integrations --features sandbox-guest \
+            --bin everruns-sandbox-guest --target x86_64-unknown-linux-musl
+
+      - name: Build a minimal sandbox image
+        run: |
+          mkdir -p /tmp/sandbox-image
+          cp target/x86_64-unknown-linux-musl/release/everruns-sandbox-guest /tmp/sandbox-image/
+          cat > /tmp/sandbox-image/Dockerfile <<'DOCKERFILE'
+          FROM debian:bookworm-slim
+          COPY everruns-sandbox-guest /usr/local/bin/everruns-sandbox-guest
+          ENTRYPOINT ["/usr/local/bin/everruns-sandbox-guest"]
+          DOCKERFILE
+          docker build -t everruns/sandbox-live:test /tmp/sandbox-image
+
+      - name: Create cluster
+        run: |
+          curl -fsSLo /tmp/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          sudo install /tmp/kind /usr/local/bin/kind
+          kind create cluster --name sandboxes --wait 120s
+          kind load docker-image everruns/sandbox-live:test --name sandboxes
+          kubectl create namespace everruns-sandboxes
+
+      - name: Run the live test
+        env:
+          KUBERNETES_SANDBOX_NAMESPACE: everruns-sandboxes
+          KUBERNETES_SANDBOX_IMAGE: everruns/sandbox-live:test
+          KUBERNETES_SANDBOX_EGRESS: none
+          KUBERNETES_SANDBOX_GUEST_ROUTE: api_proxy
+        run: |
+          cargo test --locked -p everruns-integrations --features kubernetes-sandbox-live-tests \
+            --test kubernetes_sandbox_live -- --test-threads=1
+
+      - name: Cluster state on failure
+        if: failure()
+        run: kubectl -n everruns-sandboxes get all,pvc,networkpolicy,events -o wide

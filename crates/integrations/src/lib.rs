@@ -25,6 +25,8 @@ pub mod filesystem;
 pub mod github;
 #[cfg(feature = "image-generation")]
 pub mod image_generation;
+#[cfg(feature = "kubernetes-sandbox")]
+pub mod kubernetes_sandbox;
 #[cfg(feature = "lua")]
 pub mod lua;
 #[cfg(feature = "modal")]
@@ -35,6 +37,8 @@ pub mod openai_decisions;
 pub mod openrouter;
 #[cfg(feature = "parallel")]
 pub mod parallel;
+#[cfg(feature = "sandbox-guest")]
+pub mod sandbox_guest;
 #[cfg(feature = "slack-channel")]
 pub mod slack_channel;
 #[cfg(feature = "typesafe")]
@@ -45,6 +49,8 @@ pub mod web_fetch;
 pub mod web_search;
 #[cfg(feature = "webhook-channel")]
 pub mod webhook_channel;
+#[cfg(any(feature = "e2b", feature = "kubernetes-sandbox"))]
+pub mod x11_desktop;
 
 #[cfg(any(feature = "modal", feature = "boxd"))]
 mod grpc_transport;

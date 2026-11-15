@@ -50,6 +50,9 @@ pub struct SandboxFleetRow {
     pub role: String,
     pub target_kind: Option<String>,
     pub idle_after_seconds: Option<i64>,
+    /// `target.options.size` and `.image` of the pinned specification.
+    pub size: Option<String>,
+    pub image: Option<String>,
     pub fleet_state: String,
     pub desired_state: String,
     pub generation: i64,
@@ -134,6 +137,8 @@ fn fleet_cte() -> String {
                    s.profile_snapshot->'target'->>'kind' AS target_kind,
                    (s.profile_snapshot->'lifecycle'->>'idle_after_seconds')::bigint
                        AS idle_after_seconds,
+                   s.profile_snapshot->'target'->'options'->>'size' AS size,
+                   s.profile_snapshot->'target'->'options'->>'image' AS image,
                    {FLEET_STATE_SQL} AS fleet_state,
                    s.desired_state, s.generation,
                    env.id AS template_id, env.display_name AS template_name,

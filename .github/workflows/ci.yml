@@ -1192,7 +1192,7 @@ jobs:
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
           cargo test -p everruns-contracts --all-features
-          cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,image-generation,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util,boxd,boxd-test-util -- --test-threads=1
+          cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,image-generation,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util,boxd,boxd-test-util,kubernetes-sandbox -- --test-threads=1
           # Experimental integrations stay on their own support track; unit and
           # deterministic coverage runs here.
           cargo test -p everruns-integrations-experimental --features agentid -- --test-threads=1
@@ -1270,6 +1270,10 @@ jobs:
             # boxd with its mock-gRPC provider and tool tests; live tests run in
             # boxd-integration.yml.
             cargo test -p everruns-integrations --features boxd,boxd-test-util
+            # Isolated sandboxes against the in-process Kubernetes API, whose
+            # pods run the real sandbox guest; the kind run is
+            # kubernetes-sandbox-live.yml.
+            cargo test -p everruns-integrations --features kubernetes-sandbox
             # The crate must also build with no vendor feature on.
             cargo check -p everruns-integrations --no-default-features
             cargo test -p everruns-integrations --features typesafe,typesafe-hosted

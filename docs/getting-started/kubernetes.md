@@ -198,6 +198,16 @@ touching the platform's. `egressProxy.orgLimits` caps requests, concurrency and
 bytes per organization. With network policies on, the proxy also cannot reach
 private address ranges, the cluster or instance metadata.
 
+## Run agent sandboxes as pods
+
+`sandboxes.kubernetes.enabled=true` adds the [Isolated sandbox](/features/isolated-sandboxes/)
+target: each agent sandbox runs as its own pod in `sandboxes.kubernetes.namespace`, with a
+workspace volume and its own network policy. Set `sandboxes.kubernetes.runtimeClassName` to
+`isolated-sandbox` on EKS with AWS Nitro Sandboxes, or `gvisor` or `kata`, so each sandbox gets
+its own kernel; without one, sandboxes are plain containers. Open-network sandboxes connect
+through the egress proxy, so turn on `egressProxy.enabled` too, or set
+`sandboxes.kubernetes.egress` to `direct` or `none`.
+
 ## Who signs in
 
 `auth.mode` works like the server's `AUTH_MODE`:

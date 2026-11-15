@@ -137,6 +137,30 @@ pub struct SandboxTargetDescriptor {
     pub durability: String,
     /// Credential sources accepted by this target.
     pub credential_sources: Vec<String>,
+    /// How this deployment runs the target, for targets it runs itself
+    /// (isolated sandboxes). Absent for provider accounts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isolation: Option<SandboxTargetIsolation>,
+}
+
+/// Deployment settings of a target the deployment runs itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct SandboxTargetIsolation {
+    /// Kubernetes runtime class sandbox pods run under (for example
+    /// `isolated-sandbox` for AWS Nitro Sandboxes); absent for plain
+    /// containers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_class: Option<String>,
+    /// Whether each sandbox runs in its own VM or kernel sandbox. Plain
+    /// containers share the node's kernel and are no boundary for untrusted
+    /// code.
+    pub vm_isolated: bool,
+    /// Sizes a template may pick (`small`, `medium`, `large`).
+    pub sizes: Vec<String>,
+    /// Image used when a template names none.
+    pub default_image: String,
+    /// Running sandboxes one organization may hold at a time.
+    pub max_per_org: u32,
 }
 
 /// Response body for the `list_sandbox_targets` operation.

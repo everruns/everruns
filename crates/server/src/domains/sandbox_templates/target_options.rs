@@ -28,6 +28,9 @@ pub(super) fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(
         SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("boxd") => {
             validate_boxd_options(profile, options)?;
         }
+        SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("kubernetes") => {
+            validate_kubernetes_options(profile, options)?;
+        }
         SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("e2b") => {
             validate_e2b_options(profile, options)?;
         }
@@ -215,6 +218,43 @@ fn validate_boxd_options(
     }
     everruns_integrations::boxd::validate_options(&Value::Object(options.clone()))
         .map_err(|error| format!("boxd target.options: {error}"))
+}
+
+/// Isolated sandbox (`kubernetes`) options mirror what the provider reads; the
+/// provider's own parser checks the values. Deployment limits (allowed sizes
+/// and images) are checked again when the sandbox starts.
+fn validate_kubernetes_options(
+    profile: &SandboxTemplateSpec,
+    options: &Map<String, Value>,
+) -> Result<(), String> {
+    const ALLOWED: &[&str] = &["size", "image", "workspace_path", "title", "desktop"];
+    // Pause deletes the pod and keeps the workspace volume; nothing portable
+    // is checkpointed.
+    if profile.durability == Some(SandboxDurability::Checkpointed) {
+        return Err("isolated sandbox durability must be provider_snapshot".to_string());
+    }
+    if let Some(key) = options.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
+        return Err(format!(
+            "isolated sandbox target.options.{key} is not caller-configurable"
+        ));
+    }
+    if let Some(value) = options.get("title")
+        && value
+            .as_str()
+            .filter(|value| !value.trim().is_empty() && value.len() <= 256)
+            .is_none()
+    {
+        return Err(
+            "isolated sandbox target.options.title must be a non-empty string no longer than 256 bytes"
+                .to_string(),
+        );
+    }
+    validate_desktop_option("kubernetes", options)?;
+    let mut provider_options = options.clone();
+    provider_options.remove("desktop");
+    provider_options.remove("title");
+    everruns_integrations::kubernetes_sandbox::validate_options(&Value::Object(provider_options))
+        .map_err(|error| format!("isolated sandbox target.options: {error}"))
 }
 
 /// Modal options mirror what the provider reads; it validates them again.
