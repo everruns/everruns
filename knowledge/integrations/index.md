@@ -40,6 +40,7 @@
 * [GitHub review and security agent templates](github-agent-templates.md) - PR Reviewer and Security Scanner: guided agent examples, deterministic repeat suppression, settings the tools enforce.
 * [Modal Sandboxes](modal.md) - Modal VM and gVisor sandboxes as the first module of the everruns-integrations crate: gRPC transport, credentials, state and leases, testing.
 * [boxd Sandboxes](boxd.md) - boxd.sh KVM machines as a Sandbox Template target and boxd_* tools: regions, login, lifecycle, egress, tests, what is left out.
+* [Isolated Sandboxes (Kubernetes)](kubernetes-sandbox.md) - One pod per sandbox on the deployment's own cluster: sandbox guest, VM isolation by runtime class, network-enforced egress, images, desktop, tests.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.
 * [Model Router Specification](model-router.md) - Model Routers.
 

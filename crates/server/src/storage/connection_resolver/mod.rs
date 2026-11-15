@@ -1068,7 +1068,9 @@ impl UserConnectionResolver for DbConnectionResolver {
             return Ok(None);
         }
         match credential.source {
-            SessionSandboxCredentialSource::None => Ok(None),
+            SessionSandboxCredentialSource::None | SessionSandboxCredentialSource::Platform => {
+                Ok(None)
+            }
             SessionSandboxCredentialSource::SessionUser | SessionSandboxCredentialSource::Agent => {
                 if credential.connection_id.is_some() {
                     return Ok(None);

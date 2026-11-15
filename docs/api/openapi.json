@@ -72338,6 +72338,14 @@
             "description": "Inactivity interval before the Sandbox is paused.",
             "example": 300
           },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Image the template asked for (`target.options.image`), when it named one.",
+            "example": "ghcr.io/everruns/sandbox-dev:v0.53.0"
+          },
           "last_activity_at": {
             "type": [
               "string",
@@ -72377,6 +72385,14 @@
             ],
             "description": "Session title, kept after the Session is deleted.",
             "example": "Fix flaky CI"
+          },
+          "size": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Size the template asked for (`target.options.size`), when it named one.",
+            "example": "small"
           },
           "state": {
             "type": "string",
@@ -72859,6 +72875,17 @@
             "type": "string",
             "description": "Lucide icon name used by management surfaces."
           },
+          "isolation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SandboxTargetIsolation",
+                "description": "How this deployment runs the target, for targets it runs itself\n(isolated sandboxes). Absent for provider accounts."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "type": "string",
             "description": "Provider-neutral target class."
@@ -72876,6 +72903,46 @@
               "null"
             ],
             "description": "Why it is unavailable. Present only when `available` is false."
+          }
+        }
+      },
+      "SandboxTargetIsolation": {
+        "type": "object",
+        "description": "Deployment settings of a target the deployment runs itself.",
+        "required": [
+          "vm_isolated",
+          "sizes",
+          "default_image",
+          "max_per_org"
+        ],
+        "properties": {
+          "default_image": {
+            "type": "string",
+            "description": "Image used when a template names none."
+          },
+          "max_per_org": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Running sandboxes one organization may hold at a time.",
+            "minimum": 0
+          },
+          "runtime_class": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Kubernetes runtime class sandbox pods run under (for example\n`isolated-sandbox` for AWS Nitro Sandboxes); absent for plain\ncontainers."
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sizes a template may pick (`small`, `medium`, `large`)."
+          },
+          "vm_isolated": {
+            "type": "boolean",
+            "description": "Whether each sandbox runs in its own VM or kernel sandbox. Plain\ncontainers share the node's kernel and are no boundary for untrusted\ncode."
           }
         }
       },
@@ -76388,7 +76455,8 @@
           "none",
           "session_user",
           "agent",
-          "organization"
+          "organization",
+          "platform"
         ]
       },
       "SessionSandboxResponse": {

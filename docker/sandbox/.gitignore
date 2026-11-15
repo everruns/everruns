@@ -1,0 +1,2 @@
+# Guest binaries copied in for a build (see Dockerfile); never committed.
+bin/

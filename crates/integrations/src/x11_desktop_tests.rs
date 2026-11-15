@@ -257,3 +257,117 @@ fn screenshots_of_the_wrong_size_or_format_are_errors() {
     assert!(decode_screenshot(b"\xFF\xD8\xFF\xE0 jpeg", display).is_err());
     assert!(decode_screenshot(&[], display).is_err());
 }
+
+// ---------------------------------------------------------------------------
+// Session over a host
+// ---------------------------------------------------------------------------
+
+/// One recorded command: program, arguments, environment.
+type RecordedCall = (String, Vec<String>, Vec<(String, String)>);
+
+/// Records every command and answers screenshots with a PNG of `size`.
+#[derive(Default)]
+struct RecordingHost {
+    calls: std::sync::Mutex<Vec<RecordedCall>>,
+    size: (u32, u32),
+    fail_xdotool: Option<String>,
+}
+
+#[async_trait]
+impl DesktopHost for RecordingHost {
+    async fn exec_argv(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(&str, &str)],
+        _timeout_ms: u64,
+    ) -> Result<DesktopExecOutput, String> {
+        self.calls.lock().unwrap().push((
+            program.to_string(),
+            args.to_vec(),
+            env.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        ));
+        let fail = program == "xdotool"
+            && self.fail_xdotool.as_deref() == args.first().map(String::as_str);
+        Ok(DesktopExecOutput {
+            exit_code: i32::from(fail),
+            stdout: "X=7\nY=9\n".to_string(),
+            stderr: if fail {
+                "no".to_string()
+            } else {
+                String::new()
+            },
+        })
+    }
+
+    async fn read_file(&self, _path: &str) -> Result<Vec<u8>, String> {
+        Ok(png(self.size.0, self.size.1))
+    }
+}
+
+fn host(fail_xdotool: Option<&str>) -> RecordingHost {
+    RecordingHost {
+        size: (1024, 768),
+        fail_xdotool: fail_xdotool.map(str::to_string),
+        ..Default::default()
+    }
+}
+
+const DISPLAY_1024: DisplaySize = DisplaySize {
+    width: 1024,
+    height: 768,
+};
+
+#[tokio::test]
+async fn a_session_starts_the_display_then_drives_xdotool_on_it() {
+    let mut session = X11DesktopSession::open(host(None), DISPLAY_1024)
+        .await
+        .unwrap();
+    session
+        .perform(&action(json!({"action": "type", "text": "-rf ; echo"})))
+        .await
+        .unwrap();
+    let shot = session.screenshot().await.unwrap();
+    assert_eq!(shot.media_type, "image/png");
+    assert_eq!(session.cursor_position().await.unwrap(), [7, 9]);
+
+    let calls = session.host.calls.lock().unwrap().clone();
+    assert_eq!(calls[0].0, "bash");
+    assert_eq!(calls[0].1[1], START_DISPLAY_SCRIPT);
+    assert_eq!(calls[0].1[4], "1024x768");
+    // Typed text is one argv entry, after `--`, on the desktop's display.
+    assert_eq!(calls[1].0, "xdotool");
+    assert_eq!(calls[1].1, ["type", "--delay", "12", "--", "-rf ; echo"]);
+    assert_eq!(
+        calls[1].2,
+        [("DISPLAY".to_string(), DESKTOP_DISPLAY.to_string())]
+    );
+    assert_eq!(calls[2].1[1], SCREENSHOT_SCRIPT);
+}
+
+#[tokio::test]
+async fn a_failed_action_still_releases_held_keys() {
+    let mut session = X11DesktopSession::open(host(Some("click")), DISPLAY_1024)
+        .await
+        .unwrap();
+    let err = session
+        .perform(&action(
+            json!({"action": "left_click", "coordinate": [1, 2], "text": "ctrl"}),
+        ))
+        .await
+        .unwrap_err();
+    assert!(err.starts_with("xdotool click failed"), "{err}");
+    let calls = session.host.calls.lock().unwrap().clone();
+    let last = calls.last().unwrap();
+    assert_eq!(last.1, ["keyup", "ctrl"]);
+}
+
+#[tokio::test]
+async fn a_frame_of_the_wrong_size_is_an_error() {
+    let mut wrong = host(None);
+    wrong.size = (800, 600);
+    let mut session = X11DesktopSession::open(wrong, DISPLAY_1024).await.unwrap();
+    assert!(session.screenshot().await.is_err());
+}

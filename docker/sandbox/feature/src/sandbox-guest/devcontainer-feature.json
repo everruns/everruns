@@ -1,0 +1,16 @@
+{
+  "id": "sandbox-guest",
+  "version": "1.0.0",
+  "name": "Everruns sandbox guest",
+  "description": "Installs the Everruns sandbox guest agent, so the image can run as an Everruns Isolated sandbox.",
+  "documentationURL": "https://everruns.com/docs/features/isolated-sandboxes/",
+  "licenseURL": "https://github.com/everruns/everruns/blob/main/LICENSE",
+  "options": {
+    "version": {
+      "type": "string",
+      "default": "latest",
+      "description": "Everruns release to take the guest from, such as v0.53.0. Pin it to the release your server runs."
+    }
+  },
+  "installsAfter": ["ghcr.io/devcontainers/features/common-utils"]
+}

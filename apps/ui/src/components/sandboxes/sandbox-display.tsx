@@ -92,6 +92,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   modal: "Modal",
   docker: "Docker",
   e2b: "E2B",
+  kubernetes: "Isolated sandbox",
   bashkit: "Bashkit",
   host: "Host",
 };

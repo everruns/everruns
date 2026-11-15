@@ -154,6 +154,14 @@ spec:
         {{- include "everruns.peer" (list . "worker") | nindent 8 }}
       ports:
         - { protocol: TCP, port: 4750 }
+    {{- if .Values.sandboxes.kubernetes.enabled }}
+    # Isolated sandboxes, over SOCKS5 only.
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.sandboxes.kubernetes.namespace }} }
+      ports:
+        - { protocol: TCP, port: 1080 }
+    {{- end }}
   # Defense in depth for the proxy's own address check: even if it were
   # bypassed, the proxy cannot open a connection into the cluster, the node
   # network, link-local (instance metadata) or CGNAT space. DNS is allowed.

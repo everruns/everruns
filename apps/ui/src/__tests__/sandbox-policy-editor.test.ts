@@ -31,6 +31,27 @@ const modal: SandboxTargetDescriptor = {
 };
 
 describe("SandboxPolicyEditor helpers", () => {
+  it("creates an Isolated sandbox profile on the deployment's own credential", () => {
+    const isolated: SandboxTargetDescriptor = {
+      ...modal,
+      provider: "kubernetes",
+      display_name: "Isolated sandbox",
+      credential_sources: ["platform"],
+      isolation: {
+        runtime_class: "isolated-sandbox",
+        vm_isolated: true,
+        sizes: ["small", "medium"],
+        default_image: "ghcr.io/everruns/sandbox-dev:v0.53.0",
+        max_per_org: 5,
+      },
+    };
+    expect(createSandboxTemplateSpec(isolated).target).toEqual({
+      kind: "managed",
+      provider: "kubernetes",
+      credential: { source: "platform" },
+    });
+  });
+
   it("creates a Modal profile that recovers through provider snapshots", () => {
     expect(createSandboxTemplateSpec(modal)).toEqual({
       target: { kind: "managed", provider: "modal", credential: { source: "session_user" } },

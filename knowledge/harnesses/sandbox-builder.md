@@ -31,7 +31,7 @@ owns inputs, lifecycle, commands and orchestration. The
 [storage implementation](../../crates/server/src/storage/backend/sandbox_builds.rs)
 owns tenant queries and atomic artifact application. Existing
 [template records](../../crates/server/src/domains/sandbox_templates/record.rs),
-[resolver](../../crates/server/src/domains/sandbox_templates/resolution.rs),
+[resolver](../../crates/server/src/domains/sandbox_templates/resolution/mod.rs),
 [HTTP routes](../../crates/server/src/api/sandbox_templates.rs), and
 [template UI](../../apps/ui/src/components/sandboxes/sandbox-template-build-panel.tsx)
 remain the surrounding product contracts.

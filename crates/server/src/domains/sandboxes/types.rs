@@ -71,6 +71,12 @@ pub struct SandboxFleetItem {
     /// Inactivity interval before the Sandbox is paused.
     #[schema(example = 300)]
     pub idle_after_seconds: Option<i64>,
+    /// Size the template asked for (`target.options.size`), when it named one.
+    #[schema(example = "small")]
+    pub size: Option<String>,
+    /// Image the template asked for (`target.options.image`), when it named one.
+    #[schema(example = "ghcr.io/everruns/sandbox-dev:v0.53.0")]
+    pub image: Option<String>,
     /// Error from the latest init commands, if they failed.
     pub last_init_error: Option<String>,
     /// Why this Sandbox needs attention: `lost`, `failed`, `init_failed`,
@@ -108,6 +114,8 @@ impl From<SandboxFleetRow> for SandboxFleetItem {
             external_id: row.external_id,
             workspace_path: row.workspace_path,
             idle_after_seconds: row.idle_after_seconds,
+            size: row.size,
+            image: row.image,
             last_init_error: row.last_init_error,
             attention: row.attention,
             created_at: row.created_at,

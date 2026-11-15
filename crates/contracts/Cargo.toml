@@ -89,6 +89,8 @@ wasm-bindgen-futures = "0.4"
 
 [features]
 session-sandbox = ["dep:inventory"]
+# Wire types of the sandbox guest agent (`sandbox_guest`); serde only.
+sandbox-guest = []
 # Runtime SPI that integrations implement (`everruns_contracts::runtime`). Off for
 # provider-only builds, which keep the lean wire-protocol tree.
 runtime = ["session-sandbox", "dep:inventory", "dep:tokio-util", "dep:jsonschema", "dep:serde-saphyr", "dep:toml", "dep:cron", "dep:globset", "dep:icu_segmenter", "dep:unicode-normalization"]

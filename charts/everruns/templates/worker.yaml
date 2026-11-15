@@ -22,7 +22,11 @@ spec:
       annotations: {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      automountServiceAccountToken: false
+      # The Kubernetes API token is mounted only to manage isolated sandboxes.
+      automountServiceAccountToken: {{ .Values.sandboxes.kubernetes.enabled }}
+      {{- if .Values.sandboxes.kubernetes.enabled }}
+      serviceAccountName: {{ include "everruns.sandboxServiceAccount" . }}
+      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
@@ -45,6 +49,7 @@ spec:
             {{- end }}
             {{- include "everruns.valkeyEnv" . | nindent 12 }}
             {{- include "everruns.egressProxyEnv" . | nindent 12 }}
+            {{- include "everruns.sandboxEnv" . | nindent 12 }}
             {{- with .Values.otel.endpoint }}
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
             {{- end }}

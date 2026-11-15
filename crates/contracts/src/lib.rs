@@ -236,6 +236,8 @@ pub mod session_sqldb;
 pub mod vector_store;
 
 pub mod sandbox_checkpoint;
+#[cfg(feature = "sandbox-guest")]
+pub mod sandbox_guest;
 pub mod session_sandbox;
 pub mod tools;
 

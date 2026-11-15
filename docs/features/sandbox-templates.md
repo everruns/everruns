@@ -23,7 +23,9 @@ when the Sandbox does not hold such a file, the read falls back to the Session's
 
 1. Open **Sandbox Templates** and select **New Sandbox Template**.
 2. Give it a stable name and display name.
-3. Select Bashkit or an available managed provider: Daytona, E2B, boxd, or Modal (when enabled).
+3. Select Bashkit, an [Isolated sandbox](/features/isolated-sandboxes/) on your own cluster (when
+   the deployment runs them), or an available managed provider: Daytona, E2B, boxd, or Modal
+   (when enabled).
 4. For a managed provider, choose its **Provider account**: whose connection the Sandbox uses,
    and so whose provider account pays. Each choice is labelled with the provider, for example
    **Daytona · Personal**:
@@ -203,7 +205,7 @@ counts as agent tools. E2B still applies the template rule first. See
 
 ## Desktop
 
-Daytona and E2B templates can start the primary Sandbox with a Linux desktop. Turn on **Desktop**
+Daytona, E2B and [Isolated sandbox](/features/isolated-sandboxes/) templates can start the primary Sandbox with a Linux desktop. Turn on **Desktop**
 in the template, or set `target.options.desktop` to `true`. The Agent then gets the `computer`
 tool: it takes screenshots of the desktop and clicks, types and scrolls on it. The desktop runs in
 the same Sandbox as the shell and file tools, so files the agent writes are on the desktop too,

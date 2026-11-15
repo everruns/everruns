@@ -58,6 +58,66 @@ fn bashkit_capabilities() -> SandboxCapabilities {
     }
 }
 
+/// Isolated sandboxes: pods in the deployment's own cluster. Offered when
+/// the provider is linked in and `KUBERNETES_SANDBOX_NAMESPACE` is set.
+fn kubernetes_target(registered: bool) -> SandboxTargetDescriptor {
+    use everruns_integrations::kubernetes_sandbox::configured_settings;
+    let settings = configured_settings();
+    let (available, reason, isolation) = match (registered, settings) {
+        (false, _) => (
+            false,
+            Some("the isolated sandbox provider is not registered in this deployment".to_string()),
+            None,
+        ),
+        (true, Ok(None)) => (
+            false,
+            Some(
+                "isolated sandboxes are not configured on this deployment (KUBERNETES_SANDBOX_NAMESPACE)"
+                    .to_string(),
+            ),
+            None,
+        ),
+        (true, Err(error)) => (
+            false,
+            Some(format!("isolated sandboxes are misconfigured: {error}")),
+            None,
+        ),
+        (true, Ok(Some(settings))) => (
+            true,
+            None,
+            Some(super::types::SandboxTargetIsolation {
+                runtime_class: settings.runtime_class.clone(),
+                vm_isolated: settings.vm_isolated(),
+                sizes: settings
+                    .sizes
+                    .iter()
+                    .map(|size| size.as_str().to_string())
+                    .collect(),
+                default_image: settings.image.clone(),
+                max_per_org: settings.max_per_org,
+            }),
+        ),
+    };
+    SandboxTargetDescriptor {
+        display_name: "Isolated sandbox".to_string(),
+        icon: "shield".to_string(),
+        kind: "managed".to_string(),
+        provider: Some("kubernetes".to_string()),
+        available,
+        reason,
+        // A per-sandbox NetworkPolicy enforces deny and IP allowlists; pause
+        // keeps the workspace volume, so nothing portable leaves the cluster.
+        capabilities: SandboxCapabilities {
+            network_enforced: true,
+            ..managed_capabilities(false)
+        },
+        containment_levels: vec!["isolated".to_string()],
+        durability: "provider_snapshot".to_string(),
+        credential_sources: vec!["platform".to_string()],
+        isolation,
+    }
+}
+
 fn managed_capabilities(portable_checkpoint: bool) -> SandboxCapabilities {
     SandboxCapabilities {
         portable_checkpoint,
@@ -285,6 +345,7 @@ fn sandbox_targets_for_grade(
     let modal_registered = registered("modal");
     let modal_offered = super::resolution::managed_provider_offered("modal", grade);
     let boxd_registered = registered("boxd");
+    let kubernetes = kubernetes_target(registered("kubernetes"));
 
     vec![
         SandboxTargetDescriptor {
@@ -298,6 +359,7 @@ fn sandbox_targets_for_grade(
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
             credential_sources: vec!["none".to_string()],
+            isolation: None,
         },
         SandboxTargetDescriptor {
             display_name: "Daytona".to_string(),
@@ -319,6 +381,7 @@ fn sandbox_targets_for_grade(
                 "agent".to_string(),
                 "organization".to_string(),
             ],
+            isolation: None,
         },
         SandboxTargetDescriptor {
             display_name: "E2B".to_string(),
@@ -340,6 +403,7 @@ fn sandbox_targets_for_grade(
                 "agent".to_string(),
                 "organization".to_string(),
             ],
+            isolation: None,
         },
         // Modal pauses by snapshotting the filesystem into a provider image;
         // nothing portable leaves Modal.
@@ -368,6 +432,7 @@ fn sandbox_targets_for_grade(
                 "agent".to_string(),
                 "organization".to_string(),
             ],
+            isolation: None,
         },
         // boxd pauses by hibernating the VM: disk and memory stay with boxd,
         // and running processes come back on resume.
@@ -391,7 +456,9 @@ fn sandbox_targets_for_grade(
                 "agent".to_string(),
                 "organization".to_string(),
             ],
+            isolation: None,
         },
+        kubernetes,
         SandboxTargetDescriptor {
             display_name: "Host".to_string(),
             icon: "server".to_string(),
@@ -406,6 +473,7 @@ fn sandbox_targets_for_grade(
             containment_levels: vec!["none".to_string()],
             durability: "none".to_string(),
             credential_sources: vec!["none".to_string()],
+            isolation: None,
         },
         SandboxTargetDescriptor {
             display_name: "Registered machine".to_string(),
@@ -418,6 +486,7 @@ fn sandbox_targets_for_grade(
             containment_levels: vec!["none".to_string()],
             durability: "none".to_string(),
             credential_sources: vec!["connection".to_string()],
+            isolation: None,
         },
     ]
 }

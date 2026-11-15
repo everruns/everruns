@@ -180,6 +180,8 @@ export const defaultBuildingNavigation: NavigationItem[] = [
       "daytona",
       "modal",
       "boxd",
+      "isolated sandbox",
+      "kubernetes",
       "containers",
       "running",
       "sandbox templates",

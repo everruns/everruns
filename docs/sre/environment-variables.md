@@ -27,6 +27,7 @@ a working default; each row links to the section that documents it.
 | [`SLACK_MANAGER_APP_CLIENT_ID`](#slack-manager-app), [`SLACK_MANAGER_APP_CLIENT_SECRET`](#slack-manager-app) | API | No | Organizations connect Slack workspaces by pasting a configuration token. |
 | [`EVERRUNS_EGRESS_*`](#outbound-egress) | API and workers | No | Tenant traffic may reach any public host, directly from the deployment's address. |
 | [`EGRESS_PROXY_*`](#tenant-egress-proxy) | `everruns-egress-proxy` | Only when running the proxy | No proxy. |
+| [`KUBERNETES_SANDBOX_*`](#isolated-sandboxes) | API and workers | Only for Isolated sandboxes | The Isolated sandbox target is off. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration), [`SERVER_SHUTDOWN_*`](#server-shutdown) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits, a 5 s linger and 20 s drain on shutdown. |
 | [`EVENT_GROUP_COMMIT`](#throughput-tuning), [`SESSION_ACTOR_STICKY_GRACE_MS`](#throughput-tuning), [`REPORTING_BACKGROUND_ENABLED`](#throughput-tuning) | API | No | Event writes share commits over 4 lanes, a session waits 300 ms for the worker that ran its last turn, reports are built. |
@@ -609,6 +610,29 @@ These apply to tenant traffic: requests an agent, capability, MCP server or inte
 | `EVERRUNS_EGRESS_PROXY_SECRET` | unset | Shared with the proxy, at least 32 bytes. With a proxy URL and no usable secret, tenant requests fail rather than leave directly. |
 | `EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS` | unset | Public `host:port` of the proxy's SOCKS5 listener. When set, E2B sandboxes send their own outbound TCP through the proxy (E2B's bring-your-own-proxy), under the same checks, caps and per-org counts as tenant traffic. Needs `EVERRUNS_EGRESS_PROXY_SECRET`; if it is missing or short, E2B sandboxes fail to start rather than leave directly. |
 | `EVERRUNS_EGRESS_PROXY_SOCKS_TLS` | `true` | E2B connects to the SOCKS5 address over TLS, so put a TLS terminator with a publicly trusted certificate in front of the listener. Set `false` only when E2B reaches the proxy over a private network: the sandbox credential would otherwise cross the internet in the clear. |
+
+## Isolated sandboxes
+
+Settings of the [Isolated sandbox](/features/isolated-sandboxes/) target, set on the API and the
+workers alike. The Helm chart sets them from `sandboxes.kubernetes`.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `KUBERNETES_SANDBOX_NAMESPACE` | unset | Namespace sandbox pods run in. Turns the target on. |
+| `KUBERNETES_SANDBOX_RUNTIME_CLASS` | unset | Runtime class of sandbox pods: `isolated-sandbox` (AWS Nitro Sandboxes on EKS), `gvisor` or `kata`. Unset runs plain containers, which the UI flags as no security boundary. |
+| `KUBERNETES_SANDBOX_IMAGE` | `ghcr.io/everruns/sandbox-dev:v<version>` | Image of templates that name none. |
+| `KUBERNETES_SANDBOX_ALLOWED_IMAGES` | any | Comma-separated image prefixes templates may use. |
+| `KUBERNETES_SANDBOX_STORAGE_CLASS` | cluster default | Storage class of workspace volumes. |
+| `KUBERNETES_SANDBOX_WORKSPACE_SIZE` | `10Gi` | Size of each workspace volume. |
+| `KUBERNETES_SANDBOX_NODE_SELECTOR`, `KUBERNETES_SANDBOX_TOLERATIONS` | none | JSON node selector and tolerations for sandbox pods. |
+| `KUBERNETES_SANDBOX_SIZES` | `small,medium,large` | Sizes templates may pick. |
+| `KUBERNETES_SANDBOX_MAX_PER_ORG` | `5` | Running sandboxes per organization; paused ones do not count. |
+| `KUBERNETES_SANDBOX_EGRESS` | `proxy` with a proxy address, else `none` | Where open-network sandboxes may connect: `proxy`, `direct` (internet, private ranges excluded) or `none`. A wrong value stops the server rather than widen egress. |
+| `KUBERNETES_SANDBOX_EGRESS_PROXY_ADDRESS` | unset | In-cluster `host:port` of the egress proxy's SOCKS5 listener. |
+| `KUBERNETES_SANDBOX_EGRESS_PROXY_POD_LABELS`, `KUBERNETES_SANDBOX_EGRESS_PROXY_NAMESPACE` | required with `proxy` | Labels (`key=value,...`) and namespace of the proxy pods the network policy lets sandboxes reach. |
+| `KUBERNETES_SANDBOX_GUEST_ROUTE` | `pod_ip` in a cluster, else `api_proxy` | How the server reaches the guest: straight to the pod IP, or through the API server's pod proxy. |
+| `KUBERNETES_SANDBOX_CONTROL_POD_LABELS`, `KUBERNETES_SANDBOX_CONTROL_NAMESPACE` | any pod | Pods allowed to reach the guest port. Every request also needs the sandbox's own token. |
+| `KUBERNETES_SANDBOX_READY_TIMEOUT_SECONDS` | `300` | How long a new pod may take to start. |
 
 ## Tenant egress proxy
 

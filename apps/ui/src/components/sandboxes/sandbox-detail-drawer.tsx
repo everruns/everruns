@@ -9,6 +9,7 @@ import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers
 import { useState } from "react";
 import { AlertTriangle, Pause, Play, Trash2 } from "lucide-react";
 import { useManageSandbox, useSandbox } from "@/hooks/use-sandbox-fleet";
+import { useSandboxTargets } from "@/hooks/use-sandbox-templates";
 import type { SandboxAction, SandboxFleetDetail, SandboxStateSpan } from "@/lib/api/sandboxes";
 import { Button, LinkButton } from "@/components/ui/button";
 import {
@@ -31,6 +32,13 @@ import {
 } from "./sandbox-display";
 import { sandboxTitle } from "./sandbox-fleet-table";
 import type { SandboxAttention } from "@/lib/api/sandboxes";
+
+// Sizes of the Isolated sandbox target (kubernetes_sandbox::SandboxSize).
+const ISOLATED_SIZES: Record<string, string> = {
+  small: "Small · 1 vCPU · 2 GiB",
+  medium: "Medium · 2 vCPU · 4 GiB",
+  large: "Large · 4 vCPU · 8 GiB",
+};
 
 const TARGET_LABELS: Record<string, string> = {
   managed: "Managed sandbox",
@@ -93,10 +101,38 @@ function History({ history }: { history: SandboxStateSpan[] }) {
 function Facts({ detail }: { detail: SandboxFleetDetail }) {
   const ui = useUiTranslations();
   const { displayLocale } = useFormattingLocale();
+  const isolated = detail.provider === "kubernetes";
+  const targets = useSandboxTargets();
+  // How the deployment isolates these sandboxes today, from its target.
+  const isolation = isolated
+    ? targets.data?.items.find((target) => target.provider === "kubernetes")?.isolation
+    : undefined;
   const rows: Array<[string, React.ReactNode]> = [
     ["State", <SandboxStateBadge key="s" state={detail.state} />],
     ["Wants", DESIRED_LABELS[detail.desired_state] ?? detail.desired_state],
     ["Provider", providerLabel(detail.provider)],
+    ...(isolated
+      ? ([
+          [
+            "Isolation",
+            isolation
+              ? isolation.vm_isolated
+                ? ui("VM per sandbox ({value0}), own kernel", {
+                    value0: isolation.runtime_class ?? "",
+                  })
+                : ui("Container only, no VM isolation")
+              : ui("Unknown"),
+          ],
+          ["Size", ui(ISOLATED_SIZES[detail.size ?? "small"] ?? detail.size ?? "")],
+          [
+            "Image",
+            <span key="i" className="font-mono text-xs">
+              {detail.image ?? isolation?.default_image ?? ui("Deployment default")}
+            </span>,
+          ],
+          ["Stop keeps", ui("The workspace volume. Running processes end.")],
+        ] as Array<[string, React.ReactNode]>)
+      : []),
     ["Target", TARGET_LABELS[detail.target_kind ?? ""] ?? detail.target_kind ?? "Unknown"],
     [
       "Template",

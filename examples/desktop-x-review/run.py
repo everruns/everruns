@@ -16,6 +16,8 @@ Usage:
     # Another account, provider, server or model:
     python3 examples/desktop-x-review/run.py --handle rustlang
     E2B_API_KEY=... python3 examples/desktop-x-review/run.py --provider e2b
+    # On the deployment's own cluster (Helm `sandboxes.kubernetes`), no key:
+    python3 examples/desktop-x-review/run.py --provider kubernetes
     EVERRUNS_API_URL=http://localhost:9300/api EVERRUNS_MODEL=gpt-6-luna \\
         python3 examples/desktop-x-review/run.py
 
@@ -93,7 +95,14 @@ def provider_connection(api, org, provider):
 
 
 def sandbox_policy(provider, connection_id):
-    """One fixed Sandbox with a desktop the agent can drive."""
+    """One fixed Sandbox with a desktop the agent can drive. An Isolated
+    sandbox (`kubernetes`) runs on the deployment's own cluster, so it has no
+    account: its credential source is `platform`."""
+    credential = (
+        {"source": "platform"}
+        if provider == "kubernetes"
+        else {"source": "organization", "connection_id": connection_id}
+    )
     return {
         "mode": "fixed",
         "default": "desktop",
@@ -102,10 +111,7 @@ def sandbox_policy(provider, connection_id):
                 "target": {
                     "kind": "managed",
                     "provider": provider,
-                    "credential": {
-                        "source": "organization",
-                        "connection_id": connection_id,
-                    },
+                    "credential": credential,
                     "options": {
                         "desktop": {
                             "display_width": 1280,
@@ -182,9 +188,10 @@ def main():
     parser.add_argument("--handle", default="everrunshq", help="X account to review")
     parser.add_argument(
         "--provider",
-        choices=["daytona", "e2b"],
+        choices=["daytona", "e2b", "kubernetes"],
         default="daytona",
-        help="Sandbox provider; its key comes from DAYTONA_API_KEY or E2B_API_KEY",
+        help="Sandbox provider; Daytona and E2B keys come from DAYTONA_API_KEY or "
+        "E2B_API_KEY, an Isolated sandbox (kubernetes) needs none",
     )
     args = parser.parse_args()
 
@@ -201,7 +208,9 @@ def main():
     if not model_id:
         raise SystemExit(f"Model {model} is not configured on this server.")
 
-    connection_id = provider_connection(api, org, args.provider)
+    connection_id = (
+        None if args.provider == "kubernetes" else provider_connection(api, org, args.provider)
+    )
     fields, system_prompt = read_agent_file()
     definition = {
         "name": fields["name"],

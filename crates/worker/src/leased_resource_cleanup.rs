@@ -198,6 +198,10 @@ async fn cleanup_resource(
     resolver: &dyn UserConnectionResolver,
     storage_store: &dyn SessionStorageStore,
 ) -> Result<String> {
+    // Isolated sandboxes run on the deployment's own cluster: no account.
+    if (resource.provider.as_str(), resource.resource_type.as_str()) == ("kubernetes", "sandbox") {
+        return cleanup_kubernetes(resource).await;
+    }
     let token = resolve_provider_token(resource, resolver).await?;
 
     match (resource.provider.as_str(), resource.resource_type.as_str()) {
@@ -362,6 +366,17 @@ async fn cleanup_modal(
     }
 
     Ok(format!("Terminated Modal sandbox {}", resource.external_id))
+}
+
+async fn cleanup_kubernetes(resource: &LeasedResource) -> Result<String> {
+    use everruns_contracts::session_sandbox::SessionSandboxProvider;
+    use everruns_integrations::kubernetes_sandbox::KubernetesSandboxProvider;
+
+    KubernetesSandboxProvider::from_environment()
+        .delete_by_id("", &resource.external_id)
+        .await
+        .map_err(|error| anyhow!("isolated sandbox cleanup failed: {error}"))?;
+    Ok(format!("Deleted isolated sandbox {}", resource.external_id))
 }
 
 async fn cleanup_boxd(

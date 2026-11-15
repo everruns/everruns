@@ -2,8 +2,8 @@
 
 An Everruns agent that opens a browser on a Sandbox desktop and reviews the
 recent posts of an X account. It is the end-to-end check for desktops in
-Sandbox Templates: a real model (`gpt-6.1-sol`) drives a real Daytona or E2B
-desktop through the `computer` tool, with no scripted steps.
+Sandbox Templates: a real model (`gpt-6.1-sol`) drives a real Daytona, E2B or
+Isolated sandbox desktop through the `computer` tool, with no scripted steps.
 
 The agent definition is [`desktop-x-review.md`](desktop-x-review.md). The
 runner, [`run.py`](run.py), needs only the Python standard library.
@@ -30,6 +30,10 @@ DAYTONA_API_KEY=... python3 examples/desktop-x-review/run.py
 # Or on E2B, or another account:
 E2B_API_KEY=... python3 examples/desktop-x-review/run.py --provider e2b
 python3 examples/desktop-x-review/run.py --handle rustlang
+
+# Or in an Isolated sandbox on the deployment's own cluster: a pod from
+# ghcr.io/everruns/sandbox-desktop, no provider account.
+python3 examples/desktop-x-review/run.py --provider kubernetes
 ```
 
 The first run saves the provider key as an organization account named
