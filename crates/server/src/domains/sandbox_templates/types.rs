@@ -161,6 +161,10 @@ pub struct SandboxTargetIsolation {
     pub default_image: String,
     /// Running sandboxes one organization may hold at a time.
     pub max_per_org: u32,
+    /// What running a sandbox costs the organization, in plain words;
+    /// absent when the deployment does not charge for them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub billing_note: Option<String>,
 }
 
 /// Response body for the `list_sandbox_targets` operation.

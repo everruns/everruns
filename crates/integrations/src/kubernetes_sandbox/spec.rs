@@ -36,6 +36,8 @@ use super::{GUEST_BINARY, SandboxSize};
 
 /// Label every object of one sandbox carries; its value is the sandbox name.
 pub const LABEL_SANDBOX: &str = "everruns.sandbox";
+/// Pod annotation holding the sandbox size (`small`, `medium`, `large`).
+pub const ANNOTATION_SIZE: &str = "everruns.size";
 /// Where the guest secret is mounted.
 pub const GUEST_SECRET_DIR: &str = "/var/run/everruns-guest";
 /// Key of the guest token in the Secret.
@@ -55,6 +57,60 @@ const DIRECT_EXCLUDED: &[&str] = &[
     "100.64.0.0/10",
     "127.0.0.0/8",
 ];
+
+/// IPv6 ranges a sandbox never reaches: loopback, IPv4-mapped, unique local
+/// and link-local.
+const PRIVATE_V6: &[&str] = &["::1/128", "::ffff:0:0/96", "fc00::/7", "fe80::/10"];
+
+/// A CIDR as `(is_v6, network, prefix)`, the address widened to 128 bits.
+fn parse_cidr(cidr: &str) -> Option<(bool, u128, u32)> {
+    let (address, prefix) = cidr.split_once('/')?;
+    let prefix: u32 = prefix.parse().ok()?;
+    let (v6, bits, width) = match address.parse::<std::net::IpAddr>().ok()? {
+        std::net::IpAddr::V4(ip) => (false, u128::from(u32::from(ip)), 32),
+        std::net::IpAddr::V6(ip) => (true, u128::from(ip), 128),
+    };
+    if prefix > width {
+        return None;
+    }
+    let host_bits = width - prefix;
+    let network = if host_bits >= 128 {
+        0
+    } else {
+        bits >> host_bits << host_bits
+    };
+    Some((v6, network, prefix + (128 - width)))
+}
+
+/// Whether `inner` lies within `outer` (both from [`parse_cidr`]).
+fn cidr_within(inner: (bool, u128, u32), outer: (bool, u128, u32)) -> bool {
+    let shift = 128 - outer.2;
+    inner.0 == outer.0
+        && inner.2 >= outer.2
+        && (shift >= 128 || inner.1 >> shift == outer.1 >> shift)
+}
+
+/// The private ranges inside an allowlisted `cidr`, to carve out of it, or an
+/// error when `cidr` itself is private: an allowlist reaches the internet,
+/// never the cluster, its network or the metadata service.
+fn private_inside(cidr: &str) -> Result<Vec<&'static str>, String> {
+    let allowed = parse_cidr(cidr).ok_or_else(|| format!("'{cidr}' is not an IP range"))?;
+    let mut carve = Vec::new();
+    for private in DIRECT_EXCLUDED.iter().chain(PRIVATE_V6) {
+        let Some(range) = parse_cidr(private) else {
+            continue;
+        };
+        if cidr_within(allowed, range) {
+            return Err(format!(
+                "isolated sandboxes cannot reach private or internal addresses ({cidr})"
+            ));
+        }
+        if cidr_within(range, allowed) {
+            carve.push(*private);
+        }
+    }
+    Ok(carve)
+}
 
 pub fn workspace_claim_name(name: &str) -> String {
     format!("{name}-workspace")
@@ -92,11 +148,16 @@ pub fn pod_egress(
             domains.join(", ")
         )),
         SandboxEgressMode::Allowlist { cidrs, .. } if cidrs.is_empty() => Ok(PodEgress::Blocked),
-        SandboxEgressMode::Allowlist { cidrs, .. } => Ok(PodEgress::Cidrs(cidrs.clone())),
+        SandboxEgressMode::Allowlist { cidrs, .. } => {
+            for cidr in cidrs {
+                private_inside(cidr)?;
+            }
+            Ok(PodEgress::Cidrs(cidrs.clone()))
+        }
         SandboxEgressMode::Open => match &settings.egress {
             EgressRoute::Proxy { address, .. } => {
                 let credential = proxy.ok_or(
-                    "the egress proxy is configured for isolated sandboxes, but this server cannot mint sandbox proxy credentials (EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS and the proxy secret)",
+                    "the egress proxy is configured for isolated sandboxes, but this server cannot mint sandbox proxy credentials (set EVERRUNS_EGRESS_PROXY_SECRET)",
                 )?;
                 Ok(PodEgress::Proxy {
                     exec_env: proxy_exec_env(address, credential),
@@ -260,7 +321,7 @@ impl SandboxObjects<'_> {
                 "name": self.name,
                 "labels": labels_value(&self.labels),
                 "annotations": {
-                    "everruns.size": self.size.as_str(),
+                    ANNOTATION_SIZE: self.size.as_str(),
                     "everruns.workspace_path": self.workspace_path,
                 },
             },
@@ -324,9 +385,18 @@ impl SandboxObjects<'_> {
                 dns,
                 {"to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": DIRECT_EXCLUDED}}]},
             ]),
-            PodEgress::Cidrs(cidrs) => json!([{
-                "to": cidrs.iter().map(|cidr| json!({"ipBlock": {"cidr": cidr}})).collect::<Vec<_>>(),
-            }]),
+            PodEgress::Cidrs(cidrs) => {
+                let mut to = Vec::new();
+                for cidr in cidrs {
+                    let except = private_inside(cidr)?;
+                    to.push(if except.is_empty() {
+                        json!({"ipBlock": {"cidr": cidr}})
+                    } else {
+                        json!({"ipBlock": {"cidr": cidr, "except": except}})
+                    });
+                }
+                json!([{"to": to}])
+            }
         };
         serde_json::from_value(json!({
             "apiVersion": "networking.k8s.io/v1",
@@ -560,6 +630,44 @@ mod tests {
                 .contains(&json!("169.254.0.0/16")),
             "the metadata service stays unreachable"
         );
+    }
+
+    #[test]
+    fn ip_allowlists_never_reach_private_or_metadata_addresses() {
+        let settings = settings();
+        let allow = |cidrs: &[&str]| {
+            pod_egress(
+                &rules(SandboxEgressMode::Allowlist {
+                    domains: vec![],
+                    cidrs: cidrs.iter().map(|cidr| cidr.to_string()).collect(),
+                }),
+                &settings,
+                None,
+            )
+        };
+        for private in [
+            "10.2.0.0/16",
+            "169.254.169.254/32",
+            "100.64.1.0/24",
+            "fd00::/8",
+            "::1/128",
+        ] {
+            let err = allow(&[private]).unwrap_err();
+            assert!(err.contains("private or internal"), "{private}: {err}");
+        }
+
+        // A wide range keeps working, with the private ranges carved out.
+        let wide = allow(&["0.0.0.0/0", "2001:db8::/32"]).unwrap();
+        let policy =
+            serde_json::to_value(objects(&settings).network_policy(&wide).unwrap()).unwrap();
+        let to = &policy["spec"]["egress"][0]["to"];
+        let except = to[0]["ipBlock"]["except"].as_array().unwrap();
+        for private in ["10.0.0.0/8", "169.254.0.0/16", "127.0.0.0/8"] {
+            assert!(except.contains(&json!(private)), "{private}");
+        }
+        assert!(to[1]["ipBlock"].get("except").is_none());
+        assert!(allow(&["8.0.0.0/7"]).is_ok());
+        assert!(allow(&["not-a-range"]).is_err());
     }
 
     #[test]

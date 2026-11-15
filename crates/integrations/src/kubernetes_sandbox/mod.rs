@@ -37,6 +37,7 @@
 //! assert!(validate_options(&serde_json::json!({"size": "huge"})).is_err());
 //! ```
 
+pub mod gate;
 mod provider;
 pub mod settings;
 pub mod spec;

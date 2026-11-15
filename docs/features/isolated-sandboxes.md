@@ -81,6 +81,13 @@ files stay, running processes end. The next command starts a new pod on the same
 volume itself is gone, Everruns starts a fresh sandbox. A per-organization limit counts running
 sandboxes only, so paused ones never block new work.
 
+## Charging for sandboxes
+
+Self-hosted sandboxes cost nothing beyond your cluster. A deployment that charges organizations
+for them (the managed demo pays from demo credit) asks before every pod starts and records how
+long each one ran. Each pod also gets a hard lifetime that Kubernetes enforces on its own. Set
+`sandboxes.kubernetes.billingNote` to tell template authors what a running sandbox costs.
+
 ## Network
 
 Egress is enforced by the cluster's network policy, outside the sandbox, so code running as root

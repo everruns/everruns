@@ -253,6 +253,9 @@ sandboxes:
     egress: proxy
     # Running sandboxes per organization; paused ones do not count.
     maxPerOrg: 5
+    # What a running sandbox costs an organization, shown where templates
+    # pick this target. Empty when sandboxes are free.
+    billingNote: ""
 
 # Tenant egress proxy: agent tool, integration and MCP traffic leaves through
 # it, so it can get its own address (schedule it on nodes with their own NAT)

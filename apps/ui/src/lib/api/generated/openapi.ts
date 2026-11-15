@@ -29440,6 +29440,11 @@ export interface components {
     };
     /** @description Deployment settings of a target the deployment runs itself. */
     SandboxTargetIsolation: {
+      /**
+       * @description What running a sandbox costs the organization, in plain words;
+       *     absent when the deployment does not charge for them.
+       */
+      billing_note?: string | null;
       /** @description Image used when a template names none. */
       default_image: string;
       /**

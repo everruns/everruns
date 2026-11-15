@@ -128,6 +128,9 @@ appears in the manifest.
 - { name: KUBERNETES_SANDBOX_TOLERATIONS, value: {{ toJson . | quote }} }
 {{- end }}
 - { name: KUBERNETES_SANDBOX_MAX_PER_ORG, value: {{ .maxPerOrg | quote }} }
+{{- with .billingNote }}
+- { name: KUBERNETES_SANDBOX_BILLING_NOTE, value: {{ . | quote }} }
+{{- end }}
 - { name: KUBERNETES_SANDBOX_GUEST_ROUTE, value: pod_ip }
 - { name: KUBERNETES_SANDBOX_CONTROL_POD_LABELS, value: {{ printf "app.kubernetes.io/name=%s,app.kubernetes.io/instance=%s" $.Chart.Name $.Release.Name | quote }} }
 - { name: KUBERNETES_SANDBOX_CONTROL_NAMESPACE, value: {{ $.Release.Namespace | quote }} }
@@ -137,11 +140,9 @@ appears in the manifest.
 - { name: KUBERNETES_SANDBOX_EGRESS_PROXY_ADDRESS, value: {{ printf "%s.%s.svc:1080" $proxy $.Release.Namespace | quote }} }
 - { name: KUBERNETES_SANDBOX_EGRESS_PROXY_POD_LABELS, value: {{ printf "app.kubernetes.io/name=%s,app.kubernetes.io/instance=%s,app.kubernetes.io/component=egress-proxy" $.Chart.Name $.Release.Name | quote }} }
 - { name: KUBERNETES_SANDBOX_EGRESS_PROXY_NAMESPACE, value: {{ $.Release.Namespace | quote }} }
-# Sandbox proxy credentials are minted only when a SOCKS address is set. In
-# the cluster the sandboxes use the plain in-cluster listener above; set a
-# public TLS address in extraEnv if E2B sandboxes should be routed too.
-- { name: EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS, value: {{ printf "%s.%s.svc:1080" $proxy $.Release.Namespace | quote }} }
-- { name: EVERRUNS_EGRESS_PROXY_SOCKS_TLS, value: "false" }
+# Sandboxes reach the proxy's plain in-cluster listener above with
+# credentials signed by the proxy secret. Set a public TLS
+# EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS in extraEnv to route E2B sandboxes too.
 {{- end }}
 {{- end }}
 {{- end }}

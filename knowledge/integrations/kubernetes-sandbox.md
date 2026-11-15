@@ -69,14 +69,31 @@ boundary for untrusted code. Outside a VM the container also drops
 privilege escalation and `NET_RAW`. The sandbox namespace enforces Pod
 Security `baseline`.
 
+## Platform gate
+
+A deployment that charges for sandboxes installs a `PlatformSandboxGate`
+(`kubernetes_sandbox::gate`) once at startup. Every pod start, create and
+resume alike, asks it first; its refusal is the plain-words error the agent
+sees. The grant's lifetime becomes the pod's `activeDeadlineSeconds`, so
+Kubernetes itself bounds what a run can cost even if no Everruns process
+comes back. The grant id and run id live as pod annotations, so whoever
+deletes the pod (pause, delete, orphan cleanup) settles it with the time the
+pod existed, capped at the lifetime, without any other state. A failed
+settle is logged, never fatal: the gate owner counts an unsettled grant as
+its whole lifetime. No gate means no limits beyond the deployment settings.
+`KUBERNETES_SANDBOX_BILLING_NOTE` tells template authors what a run costs.
+
 ## Egress
 
 Enforced by NetworkPolicy outside the guest, so root inside cannot bypass it:
 
 - Open: only the tenant egress proxy (SOCKS, credential minted per sandbox
   and written to the exec env) plus DNS, or the internet minus private,
-  link-local and CGNAT ranges (`direct`).
-- IP allowlist: those CIDRs only. Blocked: nothing.
+  link-local and CGNAT ranges (`direct`). The credential needs only the
+  proxy secret: with no public SOCKS listener the host mints in-cluster
+  credentials (empty address), which E2B treats as no route.
+- IP allowlist: those CIDRs only, minus the same private ranges; a range
+  that is itself private is refused. Blocked: nothing.
 - Domain allowlists are refused at template save and at creation: a
   NetworkPolicy cannot match names, and widening silently would be worse.
 
@@ -112,13 +129,13 @@ scripts run as guest argv exec, never a shell line.
 - `tests/kubernetes_sandbox.rs`: the provider against an in-process
   Kubernetes API whose pods run the real guest (lifecycle, eviction, lost
   volume, egress policies, caps, image limits, failed pulls, API proxy route,
-  orphan scan).
+  platform gate admit/settle, orphan scan).
 - `tests/kubernetes_sandbox_live.rs` on kind
   (`.github/workflows/kubernetes-sandbox-live.yml`): real pods, PVCs and
   network policy enforcement.
 
 ## Left out
 
-Hosted placement on the demo (separate cluster vs prod node pool) and demo
-credit metering are SaaS decisions. No BYOK cluster connections: a user's own
+Where the hosted demo runs sandboxes and how it meters demo credit are SaaS
+decisions, made through the platform gate and deployment settings. No BYOK cluster connections: a user's own
 cluster is not a supported credential.
