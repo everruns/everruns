@@ -21,6 +21,7 @@ use everruns_cell::gateway::Gateway;
 use everruns_cell::node_control::ControlPlane;
 use everruns_cell::org_token::OrgTokens;
 use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_cell_testkit::{STAMP_EVERY, STAMPS};
 use serde_json::{Value, json};
 use support::Fleet;
 
@@ -39,10 +40,20 @@ fn percentile(sorted: &[f64], p: f64) -> f64 {
     sorted[at.min(sorted.len() - 1)]
 }
 
-/// What one stream saw: every delta's latency, and the turn's first.
+/// What one stream saw: every delta's latency, the turn's first, and when
+/// (client clock, µs) its first and last deltas arrived.
 struct Seen {
     deltas: Vec<f64>,
     first: Option<f64>,
+    arrived: Option<(i64, i64)>,
+}
+
+impl Seen {
+    /// Time between the stream's first and last delta arriving, in ms.
+    fn spread(&self) -> f64 {
+        self.arrived
+            .map_or(0.0, |(first, last)| (last - first) as f64 / 1000.0)
+    }
 }
 
 /// Read `url`'s stream until the turn completes; latency of each delta in ms.
@@ -53,6 +64,7 @@ async fn watch(http: reqwest::Client, url: String, ready: tokio::sync::mpsc::Sen
     let mut seen = Seen {
         deltas: Vec::new(),
         first: None,
+        arrived: None,
     };
     let mut announced = false;
     let deadline = Instant::now() + Duration::from_secs(120);
@@ -94,6 +106,8 @@ async fn watch(http: reqwest::Client, url: String, ready: tokio::sync::mpsc::Sen
                     let ms = (now - made) as f64 / 1000.0;
                     seen.first.get_or_insert(ms);
                     seen.deltas.push(ms);
+                    let arrived = seen.arrived.get_or_insert((now, now));
+                    arrived.1 = now;
                 }
             }
         }
@@ -142,11 +156,14 @@ async fn deltas_reach_200_streaming_clients_within_100ms_p99() {
     }
     let mut deltas = Vec::new();
     let mut firsts = Vec::new();
+    let mut spreads = Vec::new();
     for watcher in watchers {
         let seen = watcher.await.unwrap();
+        spreads.push(seen.spread());
         deltas.extend(seen.deltas);
         firsts.extend(seen.first);
     }
+    spreads.sort_by(f64::total_cmp);
     deltas.sort_by(f64::total_cmp);
     firsts.sort_by(f64::total_cmp);
     let (p50, p99, max) = (
@@ -155,8 +172,9 @@ async fn deltas_reach_200_streaming_clients_within_100ms_p99() {
         percentile(&deltas, 1.0),
     );
     let first_p99 = percentile(&firsts, 0.99);
+    let least_spread = percentile(&spreads, 0.0);
     eprintln!(
-        "streaming: {} sessions, {} deltas in {:?}; delta latency p50 {p50:.1} ms, p99 {p99:.1} ms, max {max:.1} ms; first delta p50 {:.1} ms, p99 {first_p99:.1} ms",
+        "streaming: {} sessions, {} deltas in {:?}; delta latency p50 {p50:.1} ms, p99 {p99:.1} ms, max {max:.1} ms; first delta p50 {:.1} ms, p99 {first_p99:.1} ms; least stream spread {least_spread:.1} ms",
         SESSIONS,
         deltas.len(),
         sent.elapsed(),
@@ -164,16 +182,33 @@ async fn deltas_reach_200_streaming_clients_within_100ms_p99() {
     );
     assert_eq!(firsts.len(), SESSIONS, "every stream saw its deltas");
     assert!(
-        deltas.len() >= SESSIONS * everruns_cell_testkit::STAMPS * 9 / 10,
+        deltas.len() >= SESSIONS * STAMPS * 9 / 10,
         "few deltas: {}",
         deltas.len()
     );
-    // The budget is a release number. Unoptimized, with three nodes, two
+    // A stream that batches delivers its deltas together: every stream's
+    // deltas must arrive spread over at least half the time the model took
+    // to make them. Independent of the build, so it holds in debug too.
+    let made_over = STAMP_EVERY.as_secs_f64() * 1000.0 * (STAMPS - 1) as f64;
+    assert!(
+        least_spread >= made_over / 2.0,
+        "a stream batched its deltas: arrived over {least_spread:.1} ms, made over {made_over:.1} ms"
+    );
+    // The budgets are release numbers. Unoptimized, with three nodes, two
     // executors and 200 clients sharing one process on a small runner, the
-    // check keeps a looser bound that still catches a stream that batches
-    // or stalls.
-    let budget = if cfg!(debug_assertions) { 500.0 } else { 100.0 };
-    assert!(first_p99 < budget, "first delta p99 {first_p99:.1} ms");
+    // checks keep looser bounds that still catch a stream that stalls. The
+    // first delta is made while all 200 turns are being admitted at once,
+    // which an unoptimized build pays for most: main CI runners measured
+    // its p99 at 574-704 ms with a steady-state delta p99 under 500 ms.
+    let (first_budget, budget) = if cfg!(debug_assertions) {
+        (1000.0, 500.0)
+    } else {
+        (100.0, 100.0)
+    };
+    assert!(
+        first_p99 < first_budget,
+        "first delta p99 {first_p99:.1} ms"
+    );
     assert!(p99 < budget, "delta p99 {p99:.1} ms");
 }
 
