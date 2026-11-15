@@ -46,20 +46,42 @@ ownership. Return to **Live** for worker and actor inspection.
 from 15 minutes to 30 days; the server records a sample every 10 seconds and
 keeps it permanently, so history exists before you open the page.
 
-- **Parallel sessions**: sessions with an active turn, averaged per bucket and
-  split by phase, with a dashed line for the bucket's peak. Deploys are marked.
+- **Sessions and agents**: open (not archived) sessions, defined agents, and
+  agents with a turn running.
+- **Working now**: turns running, averaged per bucket and split by phase, with a
+  dashed line for the bucket's peak. Deploys are marked.
 - **Turns** finished per bucket by outcome, and **Waiting for a worker**: the
   longest time a ready turn waited for a lease.
 - **Tool calls**, **Model spend**, **Errors**, and **Model latency** (p95).
 
 Click a bucket to see its numbers, or drag across any chart to select a range
-and zoom into it. The side panel lists the busiest agents and failed turns by
-cause for the selection. Each summary tile compares with the previous period of
-the same length.
+and zoom into it. The side panel lists the busiest agents, failed turns by
+cause, and failed tool calls by tool for the selection; **What failed** under
+the Errors chart opens the same breakdown in a panel. Each summary tile
+compares with the previous period of the same length.
 
-The platform view adds worker capacity on the parallel sessions chart, a load
-strip per worker (red above 90% of its slots), lease takeovers, and worker
-joins and departures. It ranks organizations by ID only.
+When sessions run on data plane v2 cells, the charts include them, and an
+**All / Workers / Cells** switch shows one execution path at a time. Workers are
+sampled every 10 seconds; each cell reports once a minute, so cell lines move
+in one-minute steps. An organization sees its own sessions on cells but nothing
+about the cells themselves, which are shared.
+
+The platform view adds worker capacity on the working chart, a **Fleet** chart
+(server replicas, workers, cells, and cell nodes), the busiest cell node's CPU
+and fullest node's memory against their limits, cell leader changes and session
+moves, a load strip per worker (red above 90% of its slots), lease takeovers,
+and worker joins and departures. It ranks organizations by ID only.
+
+## Cells
+
+The platform view has a **Cells** tab listing each data plane v2 cell from its
+newest minute report: nodes (and how many answered the leader), sessions, turns
+running, messages waiting, the busiest node's CPU and fullest node's memory, and
+admit p99. A cell with no report for three minutes is marked silent. Select a
+cell for its leader, log shipping p99, leader changes, moves, and charts of its
+load, CPU and memory, and turns over the range. Cells need no metrics database:
+the reports travel the cell's existing feed and are kept with the rest of the
+history.
 
 History from before recording started is rebuilt from turn records and drawn in
 grey: it has running turns and outcomes, but no phase split, queue, or worker
@@ -94,7 +116,8 @@ remain denied. Organization adoption and read permissions still apply, and fleet
 access still requires platform authority. The adjacent `/actors` endpoints provide
 bounded, filtered pages and actor detail, and `/timeline` returns recorded
 history in buckets (`range` or `from`/`to`, optional `bucket` seconds) with
-`/timeline/window` for a selection's busiest agents and failure causes. The [API reference](/api/) owns the request and response contracts.
+`/timeline/window` for a selection's busiest agents, failure causes, and failed
+tools. `GET /api/v1/durable/monitoring/cells` lists cells with their history. The [API reference](/api/) owns the request and response contracts.
 
 Monitoring complements [OpenTelemetry](/observability/opentelemetry/) and
 [Braintrust](/observability/braintrust/), which provide trace exports and

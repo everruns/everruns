@@ -46,7 +46,7 @@ impl Counters {
     }
 }
 
-/// A gauge family that moves up and down (running turns per agent).
+/// A gauge family that moves up and down (running turns).
 #[derive(Default)]
 pub struct Gauges(Mutex<BTreeMap<String, i64>>);
 
@@ -143,11 +143,11 @@ fn trim(samples: &mut VecDeque<(Instant, f64)>, now: Instant) {
 /// Everything a node counts for `/metrics`.
 #[derive(Default)]
 pub struct Prom {
-    /// Turn executions on this node by agent and outcome.
+    /// Turn executions on this node by outcome.
     pub turns_executed: Counters,
     /// Wall time of each turn execution on this node.
     pub turn_seconds: Histograms,
-    /// Turns running on this node now, by agent.
+    /// Turns running on this node now.
     pub turns_running: Gauges,
     /// Durable events this node's executors appended, by event type.
     pub events_appended: Counters,

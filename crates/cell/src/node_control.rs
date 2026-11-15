@@ -16,6 +16,12 @@
 //! - Both directions of the link carry the data plane's token (`Authorization:
 //!   Bearer`, `CELL_DP_TOKEN`) when one is set; mTLS replaces it with the
 //!   EKS deployment (step 10).
+//! - Once a minute the leader measures its members (`GET /cell/usage`) and
+//!   commits a `Report`; applying it counts the population from state and
+//!   queues the `Health` feed record, so a report survives a leader change
+//!   like any other record. It rides the feed rather than a side channel:
+//!   Monitoring history then needs no second link, and nothing in it
+//!   depends on the control plane being reachable that minute.
 //! - A metered session's turn waits while its tenant has no money here and
 //!   the control plane has not refused it: with the control plane down,
 //!   turns run until the allowances are spent, then new turns wait. A
@@ -28,6 +34,7 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
+use crate::control::NodeReport;
 use crate::dp::{AllowanceGrant, AllowanceRequest, FeedAck, FeedBatch};
 use crate::node::{Node, now_ms};
 use crate::state::{CellState, Command, SessionState};
@@ -146,10 +153,23 @@ impl Node {
             return;
         };
         let mut tick = tokio::time::interval(Duration::from_millis(200));
+        let mut reported = 0i64;
         loop {
             tick.tick().await;
             if !self.is_leader() {
                 continue;
+            }
+            // The minute that just ended. A new leader reports it again
+            // even when the old one did; the control plane keeps the first.
+            let minute = now_ms().div_euclid(60_000) * 60_000 - 60_000;
+            if minute > reported {
+                reported = minute;
+                let node = self.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = node.report_minute(minute).await {
+                        tracing::debug!(%error, "minute report failed");
+                    }
+                });
             }
             if let Err(error) = self.deliver_feed(&cp).await {
                 tracing::debug!(%error, "feed delivery failed");
@@ -165,6 +185,65 @@ impl Node {
                 });
             }
         }
+    }
+
+    /// Measure every member for `minute` and commit the cell's report
+    /// (`Command::Report`), which the feed carries to Monitoring. A member
+    /// that does not answer in two seconds is counted as not answering.
+    pub(crate) async fn report_minute(&self, minute: i64) -> anyhow::Result<()> {
+        use crate::api::NodeUsage;
+        let members = self.members();
+        let others = members
+            .iter()
+            .filter(|(id, _)| **id != self.cfg.node_id)
+            .map(|(_, addr)| {
+                let request = self
+                    .http
+                    .get(format!("http://{addr}/cell/usage"))
+                    .timeout(Duration::from_secs(2));
+                async move {
+                    request
+                        .send()
+                        .await
+                        .ok()?
+                        .error_for_status()
+                        .ok()?
+                        .json::<NodeUsage>()
+                        .await
+                        .ok()
+                }
+            });
+        let answered: Vec<NodeUsage> = std::iter::once(crate::api::node_usage(self))
+            .chain(
+                futures::future::join_all(others)
+                    .await
+                    .into_iter()
+                    .flatten(),
+            )
+            .collect();
+        let fullest = answered.iter().max_by_key(|u| u.rss_bytes);
+        let busiest = answered
+            .iter()
+            .max_by(|a, b| a.cpu_cores.total_cmp(&b.cpu_cores));
+        let report = NodeReport {
+            minute_unix_ms: minute,
+            term: self.raft.metrics().borrow().current_term,
+            leader: self.cfg.node_id.to_string(),
+            nodes: members.len().max(1) as u32,
+            nodes_answering: answered.len() as u32,
+            rss_peak_bytes: fullest.map_or(0, |u| u.rss_bytes),
+            memory_limit_bytes: fullest.map_or(0, |u| u.memory_limit_bytes),
+            cpu_peak_cores: busiest.map_or(0.0, |u| u.cpu_cores),
+            cpu_limit_cores: busiest.map_or(0.0, |u| u.cpu_limit_cores),
+            admit_p99_ms: answered.iter().map(|u| u.admit_p99_ms).max().unwrap_or(0),
+            ship_lag_p99_ms: answered
+                .iter()
+                .map(|u| u.ship_lag_p99_ms)
+                .max()
+                .unwrap_or(0),
+        };
+        self.propose(Command::Report { report }).await?;
+        Ok(())
     }
 
     async fn deliver_feed(&self, cp: &ControlPlane) -> anyhow::Result<()> {

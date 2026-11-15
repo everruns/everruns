@@ -427,6 +427,24 @@ impl Orgs {
 }
 
 /// Feed records waiting for the control plane's acknowledgement.
+/// What the leader measured on its cell's nodes for one minute
+/// (`Command::Report`). Carried in the command, so the record it becomes
+/// is the same on every replica.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NodeReport {
+    pub minute_unix_ms: i64,
+    pub term: u64,
+    pub leader: String,
+    pub nodes: u32,
+    pub nodes_answering: u32,
+    pub rss_peak_bytes: u64,
+    pub memory_limit_bytes: u64,
+    pub cpu_peak_cores: f32,
+    pub cpu_limit_cores: f32,
+    pub admit_p99_ms: u32,
+    pub ship_lag_p99_ms: u32,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Feed {
     pub records: VecDeque<FeedRecord>,
@@ -498,6 +516,70 @@ impl Feed {
             agent_hash: String::new(),
         };
         self.push(index, org, at, record);
+    }
+
+    /// The minute report for Monitoring (`Record::Health`, no tenant): the
+    /// leader's node measurements in `measured`, the population counted
+    /// here from replicated state so every replica builds the same record.
+    pub fn report<'a>(
+        &mut self,
+        index: u64,
+        sessions: impl Iterator<Item = &'a SessionState>,
+        forwarded: usize,
+        measured: &NodeReport,
+    ) {
+        #[derive(Default)]
+        struct Org<'s> {
+            row: crate::dp::OrgHealth,
+            working: std::collections::BTreeSet<&'s str>,
+        }
+        let (mut total, mut running, mut queued, mut resumed) = (0u32, 0u32, 0u32, 0u32);
+        let mut orgs: BTreeMap<&str, Org<'_>> = BTreeMap::new();
+        for s in sessions {
+            let (run, q) = (s.turn_running(), s.queued() as u32);
+            total += 1;
+            running += u32::from(run);
+            queued += q;
+            resumed += u32::from(run && s.authority.attempts > 1);
+            let Some(tenant) = s.tenant.as_deref() else {
+                continue;
+            };
+            let org = orgs.entry(tenant).or_default();
+            org.row.sessions += 1;
+            org.row.running_turns += u32::from(run);
+            org.row.queued += q;
+            if run {
+                org.working.insert(s.agent.as_str());
+            }
+        }
+        let record = Record::Health {
+            sessions: total,
+            running_turns: running,
+            lag_ms: 0,
+            minute_unix_ms: measured.minute_unix_ms,
+            queued,
+            resumed_turns: resumed,
+            forwarded: forwarded as u64,
+            term: measured.term,
+            leader: measured.leader.clone(),
+            nodes: measured.nodes,
+            nodes_answering: measured.nodes_answering,
+            rss_peak_bytes: measured.rss_peak_bytes,
+            memory_limit_bytes: measured.memory_limit_bytes,
+            cpu_peak_cores: measured.cpu_peak_cores,
+            cpu_limit_cores: measured.cpu_limit_cores,
+            admit_p99_ms: measured.admit_p99_ms,
+            ship_lag_p99_ms: measured.ship_lag_p99_ms,
+            orgs: orgs
+                .into_iter()
+                .map(|(id, o)| crate::dp::OrgHealth {
+                    org_id: id.to_owned(),
+                    agents_working: o.working.len() as u32,
+                    ..o.row
+                })
+                .collect(),
+        };
+        self.push(index, "", measured.minute_unix_ms, record);
     }
 
     /// `session` recorded a turn's outcome: its summary for the tenant.
@@ -804,5 +886,81 @@ mod tests {
         feed.ack((7, 0));
         assert_eq!(feed.records.len(), 1, "an older ack changes nothing");
         assert_eq!(feed.acked, (7, 1));
+    }
+
+    fn session(
+        tenant: &str,
+        agent: &str,
+        running: bool,
+        queued: i64,
+        attempts: u32,
+    ) -> SessionState {
+        let mut s = SessionState {
+            agent: agent.into(),
+            tenant: Some(tenant.into()),
+            ..Default::default()
+        };
+        if running {
+            s.authority.holder = Some(crate::authority::Holder {
+                name: "h".into(),
+                node: 1,
+                fence: 1,
+                expires_ms: 0,
+            });
+        }
+        s.authority.pending_inputs = (1..=queued).collect();
+        s.authority.attempts = attempts;
+        s
+    }
+
+    #[test]
+    fn minute_report_counts_population_per_tenant() {
+        let sessions = [
+            session("o1", "a", true, 1, 2),
+            session("o1", "a", true, 0, 1),
+            session("o1", "b", false, 2, 0),
+            session("o2", "c", true, 0, 1),
+        ];
+        let measured = NodeReport {
+            minute_unix_ms: 60_000,
+            term: 4,
+            leader: "n1".into(),
+            nodes: 3,
+            nodes_answering: 2,
+            ..Default::default()
+        };
+        let mut feed = Feed::default();
+        feed.report(9, sessions.iter(), 5, &measured);
+        let record = &feed.records[0];
+        assert_eq!(
+            (record.index, record.org_id.as_str(), record.at_unix_ms),
+            (9, "", 60_000)
+        );
+        let Record::Health {
+            sessions,
+            running_turns,
+            queued,
+            resumed_turns,
+            forwarded,
+            term,
+            nodes_answering,
+            orgs,
+            ..
+        } = &record.record
+        else {
+            panic!("expected a health record");
+        };
+        assert_eq!(
+            (*sessions, *running_turns, *queued, *resumed_turns),
+            (4, 3, 3, 1)
+        );
+        assert_eq!((*forwarded, *term, *nodes_answering), (5, 4, 2));
+        let o1 = orgs.iter().find(|o| o.org_id == "o1").unwrap();
+        assert_eq!(
+            (o1.sessions, o1.running_turns, o1.queued, o1.agents_working),
+            (3, 2, 3, 1),
+            "two running sessions of one agent count one working agent"
+        );
+        assert_eq!(orgs.len(), 2);
     }
 }

@@ -917,16 +917,8 @@ impl Node {
         }
         let node = self.clone();
         turn_runtime().spawn(async move {
-            let agent = node
-                .shared
-                .state
-                .read()
-                .sessions
-                .get(&session)
-                .map(|s| s.agent.clone())
-                .unwrap_or_default();
             for _ in 0..64 {
-                let running = Running::new(&node, &agent);
+                let running = Running::new(&node);
                 let started = Instant::now();
                 let t = Instant::now();
                 let activated = node.engine.activate(session).await;
@@ -1412,44 +1404,36 @@ impl Node {
 
 /// Counts an activation in `/metrics`: running while alive, then one
 /// outcome (`completed`, `lost`, `error`).
+// Decision: node metrics carry no agent label. A label per agent makes one
+// series (and a histogram's dozen) per distinct agent on every node, which
+// grows with the fleet; per-agent and per-organization figures come from
+// Monitoring history instead (`control::Feed::report`).
 struct Running {
     node: Arc<Node>,
-    agent: String,
     done: bool,
 }
 
 impl Running {
-    fn new(node: &Arc<Node>, agent: &str) -> Self {
-        node.prom.turns_running.add(&[("agent", agent)], 1);
+    fn new(node: &Arc<Node>) -> Self {
+        node.prom.turns_running.add(&[], 1);
         Self {
             node: node.clone(),
-            agent: agent.to_string(),
             done: false,
         }
     }
 
     fn done(mut self, outcome: &str, elapsed: Duration) {
-        let labels = [("agent", self.agent.as_str()), ("outcome", outcome)];
-        self.node.prom.turns_executed.inc(&labels);
-        self.node
-            .prom
-            .turn_seconds
-            .observe(&[("agent", self.agent.as_str())], elapsed);
+        self.node.prom.turns_executed.inc(&[("outcome", outcome)]);
+        self.node.prom.turn_seconds.observe(&[], elapsed);
         self.done = true;
     }
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
-        self.node
-            .prom
-            .turns_running
-            .add(&[("agent", self.agent.as_str())], -1);
+        self.node.prom.turns_running.add(&[], -1);
         if !self.done {
-            self.node
-                .prom
-                .turns_executed
-                .inc(&[("agent", self.agent.as_str()), ("outcome", "error")]);
+            self.node.prom.turns_executed.inc(&[("outcome", "error")]);
         }
     }
 }

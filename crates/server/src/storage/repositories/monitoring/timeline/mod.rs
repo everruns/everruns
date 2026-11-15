@@ -17,6 +17,9 @@ use sqlx::{FromRow, QueryBuilder};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+mod fleet;
+pub use fleet::*;
+
 /// Key of the platform-wide row in `monitoring_minutes`.
 pub const PLATFORM_ORG: i64 = 0;
 
@@ -33,6 +36,8 @@ pub struct TimelineSampleRow {
     pub leased: i64,
     pub expired: i64,
     pub oldest_runnable_ms: Option<i64>,
+    /// Distinct agents with a session in the population.
+    pub agents_working: i64,
 }
 
 /// Registered worker load at one sample (platform row only).
@@ -183,7 +188,9 @@ impl Database {
             COUNT(*) FILTER (WHERE phase = 'runnable') AS runnable, \
             COUNT(*) FILTER (WHERE phase = 'setup') AS setup, \
             COUNT(*) FILTER (WHERE leased) AS leased, COUNT(*) FILTER (WHERE expired) AS expired, \
-            MAX(runnable_age_ms) AS oldest_runnable_ms FROM population GROUP BY org_key",
+            MAX(runnable_age_ms) AS oldest_runnable_ms, \
+            COUNT(DISTINCT agent_id) FILTER (WHERE phase <> 'idle') AS agents_working \
+            FROM population GROUP BY org_key",
         );
         Ok(sql
             .build_query_as()
@@ -217,6 +224,8 @@ impl Database {
             platform.leased += o.leased;
             platform.expired += o.expired;
             platform.oldest_runnable_ms = platform.oldest_runnable_ms.max(o.oldest_runnable_ms);
+            // Agents belong to one organization, so the sum is distinct.
+            platform.agents_working += o.agents_working;
         }
         let organizations = orgs.iter().filter(|o| o.active > 0).count() as i64;
         let (count, capacity, load, detail) = match workers {
@@ -244,10 +253,13 @@ impl Database {
             r#"INSERT INTO monitoring_minutes AS m (org_id, minute, samples, active_sum, active_peak,
                 model_sum, tools_sum, waiting_sum, runnable_sum, setup_sum, runnable_peak, leases_peak,
                 expired_peak, oldest_runnable_ms, organizations_peak, workers, worker_capacity,
-                worker_load_sum, worker_load_peak, worker_detail)
-            VALUES ($1, $2, 1, $3, $3, $4, $5, $6, $7, $8, $7, $9, $10, $11, $12, $13, $14, $15, $15, $16)
+                worker_load_sum, worker_load_peak, worker_detail, agents_working_sum, agents_working_peak)
+            VALUES ($1, $2, 1, $3, $3, $4, $5, $6, $7, $8, $7, $9, $10, $11, $12, $13, $14, $15, $15, $16,
+                $17, $17)
             ON CONFLICT (org_id, minute) DO UPDATE SET
                 samples = m.samples + 1, active_sum = m.active_sum + EXCLUDED.active_sum,
+                agents_working_sum = m.agents_working_sum + EXCLUDED.agents_working_sum,
+                agents_working_peak = GREATEST(m.agents_working_peak, EXCLUDED.agents_working_peak),
                 active_peak = GREATEST(m.active_peak, EXCLUDED.active_peak),
                 model_sum = m.model_sum + EXCLUDED.model_sum, tools_sum = m.tools_sum + EXCLUDED.tools_sum,
                 waiting_sum = m.waiting_sum + EXCLUDED.waiting_sum,
@@ -291,6 +303,7 @@ impl Database {
         .bind(capacity)
         .bind(load)
         .bind(detail)
+        .bind(platform.agents_working)
         .execute(&mut *tx)
         .await?;
         let active: Vec<&TimelineSampleRow> = orgs.iter().filter(|o| o.active > 0).collect();
@@ -300,14 +313,16 @@ impl Database {
             sqlx::query(
                 r#"INSERT INTO monitoring_minutes AS m (org_id, minute, samples, active_sum, active_peak,
                     model_sum, tools_sum, waiting_sum, runnable_sum, setup_sum, runnable_peak,
-                    leases_peak, expired_peak, oldest_runnable_ms)
+                    leases_peak, expired_peak, oldest_runnable_ms, agents_working_sum, agents_working_peak)
                 SELECT u.org_id, $1, 1, u.active, u.active, u.model, u.tools, u.waiting, u.runnable,
-                    u.setup, u.runnable, u.leased, u.expired, u.oldest
+                    u.setup, u.runnable, u.leased, u.expired, u.oldest, u.agents, u.agents
                 FROM UNNEST($2::bigint[], $3::bigint[], $4::bigint[], $5::bigint[], $6::bigint[],
-                    $7::bigint[], $8::bigint[], $9::bigint[], $10::bigint[], $11::bigint[])
-                    AS u(org_id, active, model, tools, waiting, runnable, setup, leased, expired, oldest)
+                    $7::bigint[], $8::bigint[], $9::bigint[], $10::bigint[], $11::bigint[], $12::bigint[])
+                    AS u(org_id, active, model, tools, waiting, runnable, setup, leased, expired, oldest, agents)
                 ON CONFLICT (org_id, minute) DO UPDATE SET
                     samples = m.samples + 1, active_sum = m.active_sum + EXCLUDED.active_sum,
+                    agents_working_sum = m.agents_working_sum + EXCLUDED.agents_working_sum,
+                    agents_working_peak = GREATEST(m.agents_working_peak, EXCLUDED.agents_working_peak),
                     active_peak = GREATEST(m.active_peak, EXCLUDED.active_peak),
                     model_sum = m.model_sum + EXCLUDED.model_sum,
                     tools_sum = m.tools_sum + EXCLUDED.tools_sum,
@@ -336,6 +351,7 @@ impl Database {
                     .map(|o| o.oldest_runnable_ms)
                     .collect::<Vec<_>>(),
             )
+            .bind(col(|o| o.agents_working))
             .execute(&mut *tx)
             .await?;
         }
@@ -563,6 +579,43 @@ impl Database {
         .bind(from)
         .bind(to)
         .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Tool calls that ended in an error or timeout, by tool name.
+    pub async fn timeline_failed_tools(
+        &self,
+        org: Option<i64>,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<TimelineFailureRow>> {
+        Ok(sqlx::query_as(
+            r#"SELECT COALESCE(NULLIF(e.data->>'tool_name', ''), 'unknown') AS code, COUNT(*) AS turns
+            FROM events e JOIN sessions s ON s.id = e.session_id
+            WHERE e.event_type = 'tool.completed' AND e.ts >= $2 AND e.ts < $3
+              AND (e.data->>'status' IN ('error', 'timeout') OR e.data->>'success' = 'false')
+              AND ($1::bigint IS NULL OR s.org_id = $1)
+            GROUP BY 1 ORDER BY turns DESC LIMIT 6"#,
+        )
+        .bind(org)
+        .bind(from)
+        .bind(to)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Open sessions and defined agents right now, for one organization or
+    /// the platform.
+    pub async fn timeline_live_counts(&self, org: Option<i64>) -> Result<(i64, i64)> {
+        Ok(sqlx::query_as(
+            r#"SELECT
+                (SELECT COUNT(*) FROM sessions WHERE archived_at IS NULL AND deleted_at IS NULL
+                    AND ($1::bigint IS NULL OR org_id = $1)),
+                (SELECT COUNT(*) FROM agents WHERE archived_at IS NULL AND deleted_at IS NULL
+                    AND ($1::bigint IS NULL OR org_id = $1))"#,
+        )
+        .bind(org)
+        .fetch_one(&self.pool)
         .await?)
     }
 

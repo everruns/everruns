@@ -58,6 +58,7 @@ import { WorkerGrid, groupWorkers } from "./worker-grid";
 import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
 import { MonitoringTimelineView } from "./timeline";
+import { MonitoringCellsView } from "./cells";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const ui = useUiTranslations();
@@ -105,7 +106,7 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   );
 }
 
-const MONITORING_TABS = ["execution", "timeline", "workers", "actors", "metrics"];
+const MONITORING_TABS = ["execution", "timeline", "cells", "workers", "actors", "metrics"];
 
 function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
   const { displayLocale } = useLocale();
@@ -114,7 +115,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   // `?tab=timeline` lets Home link straight to the history it summarises.
   const requestedTab = useSearchParams().get("tab");
   const [tab, setTab] = useState(
-    requestedTab && MONITORING_TABS.includes(requestedTab) ? requestedTab : "execution",
+    requestedTab &&
+      MONITORING_TABS.includes(requestedTab) &&
+      (requestedTab !== "cells" || scope === "fleet")
+      ? requestedTab
+      : "execution",
   );
   const [view, setView] = useState("flow");
   const [groupSize, setGroupSize] = useState(8);
@@ -337,6 +342,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           items={[
             { value: "execution", label: ui("Execution") },
             { value: "timeline", label: ui("Timeline") },
+            // Cells are shared by organizations: platform view only.
+            ...(scope === "fleet" ? [{ value: "cells", label: ui("Cells") }] : []),
             { value: "workers", label: ui("Workers"), disabled: !!replay },
             { value: "actors", label: ui("Actors"), disabled: !!replay },
             { value: "metrics", label: ui("Metrics") },
@@ -358,7 +365,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 </Button>
               ))}
             </div>
-          ) : tab === "timeline" ? (
+          ) : tab === "timeline" || tab === "cells" ? (
             <span className="text-xs text-muted-foreground">
               {ui("Recorded history, kept permanently")}
             </span>
@@ -480,6 +487,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
       )}
       {tab === "timeline" ? (
         <MonitoringTimelineView scope={scope} />
+      ) : tab === "cells" ? (
+        <MonitoringCellsView />
       ) : !data ? (
         snapshot.error ? (
           <EmptyState

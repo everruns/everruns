@@ -15,6 +15,11 @@
 //!   per attempt, and its session summaries carry versions below the
 //!   rebuilt sessions' (`control::turn_finished`), so they change nothing.
 //!   Refusing it would lose that spend.
+//! - Monitoring (knowledge/operations/monitoring.md): a cell's minute
+//!   `Health` report carries no organization and is stored before the
+//!   organization check; finished turns and model calls are tallied per
+//!   batch and added to the minute history once the batch's records are
+//!   stored. A failure there is logged and never refuses the batch.
 //! - Feed lag (record time to stored) is logged per batch at debug level.
 //!   The gate measures it in the cell suite (`FakeCp::feed_lag`); a metric
 //!   comes with step 10's per-cell dashboards.
@@ -24,7 +29,7 @@ use everruns_contracts::dataplane::{FeedAck, FeedBatch, FeedRecord, Record};
 
 use super::{ControlPlane, org_internal};
 use crate::domains::budgets::{BudgetService, DataPlaneUsage};
-use crate::storage::DpSessionSummary;
+use crate::storage::{CellBatchCounters, CellMinuteReport, DpSessionSummary};
 
 /// Store `batch`; the position through which it is stored.
 pub async fn ingest(
@@ -49,15 +54,23 @@ pub async fn ingest(
         .await?
         .map_or((0, 0), |(i, o)| (i as u64, o as u32));
     let start = through;
+    let mut counters = CellBatchCounters::default();
     for record in &batch.records {
         if (record.index, record.ordinal) <= start {
             continue;
         }
-        if let Err(error) = store(cp, budgets, &batch, record).await {
+        if let Err(error) = store(cp, budgets, &batch, record, &mut counters).await {
             tracing::warn!(source = %batch.source, index = record.index, %error, "feed record not stored");
             break;
         }
         through = (record.index, record.ordinal);
+    }
+    if let Err(error) = cp
+        .db
+        .monitoring_add_cell_counters(&batch.source, &batch.data_plane, &counters)
+        .await
+    {
+        tracing::warn!(source = %batch.source, %error, "feed counters not added to monitoring");
     }
     if through > start {
         cp.db
@@ -90,7 +103,14 @@ async fn store(
     budgets: &BudgetService,
     batch: &FeedBatch,
     record: &FeedRecord,
+    counters: &mut CellBatchCounters,
 ) -> anyhow::Result<()> {
+    if let Record::Health { .. } = &record.record {
+        if let Err(error) = store_health(cp, batch, record).await {
+            tracing::warn!(source = %batch.source, %error, "cell minute report not stored");
+        }
+        return Ok(());
+    }
     // A record of an org this control plane does not know is dropped: the
     // data plane learns of the org from this control plane only.
     let Some(org_id) = org_internal(&record.org_id) else {
@@ -130,6 +150,11 @@ async fn store(
                 .await?;
             if new {
                 cp.db.dp_add_feed_cost(org_id, *cost_micros).await?;
+                let c = counters.entry(org_id, at(record.at_unix_ms));
+                c.model_calls += 1;
+                c.input_tokens += *input_tokens as i64;
+                c.output_tokens += *output_tokens as i64;
+                c.cost_usd += *cost_micros as f64 / 1_000_000.0;
             }
         }
         Record::Session {
@@ -159,6 +184,13 @@ async fn store(
                     last_activity_at: at(*last_activity_unix_ms),
                 })
                 .await?;
+            let c = counters.entry(org_id, at(*last_activity_unix_ms));
+            match last_turn.as_str() {
+                "completed" => c.turns_completed += 1,
+                "failed" => c.turns_failed += 1,
+                "cancelled" => c.turns_cancelled += 1,
+                _ => {}
+            }
             // The session's own record (created by the control plane's
             // `POST /v1/sessions`) shows the same state in every list.
             if let Ok(id) = session_id.parse::<everruns_contracts::typed_id::SessionId>() {
@@ -207,6 +239,85 @@ async fn store(
                 .await?;
         }
         Record::Health { .. } | Record::Unknown => {}
+    }
+    Ok(())
+}
+
+/// A cell's minute report: platform-wide, with per-organization population
+/// for organizations this control plane knows.
+async fn store_health(
+    cp: &ControlPlane,
+    batch: &FeedBatch,
+    record: &FeedRecord,
+) -> anyhow::Result<()> {
+    let Record::Health {
+        sessions,
+        running_turns,
+        minute_unix_ms,
+        queued,
+        resumed_turns,
+        forwarded,
+        term,
+        leader,
+        nodes,
+        nodes_answering,
+        rss_peak_bytes,
+        memory_limit_bytes,
+        cpu_peak_cores,
+        cpu_limit_cores,
+        admit_p99_ms,
+        ship_lag_p99_ms,
+        orgs,
+        ..
+    } = &record.record
+    else {
+        return Ok(());
+    };
+    // A report from before this field existed has no minute: skip it.
+    if *minute_unix_ms <= 0 {
+        return Ok(());
+    }
+    let mut known = Vec::with_capacity(orgs.len());
+    for o in orgs {
+        if let Some(id) = org_internal(&o.org_id)
+            && cp.db.dp_org(id).await?.is_some()
+        {
+            known.push((
+                id,
+                i64::from(o.sessions),
+                i64::from(o.running_turns),
+                i64::from(o.queued),
+                i64::from(o.agents_working),
+            ));
+        }
+    }
+    let saturate = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
+    let stored = cp
+        .db
+        .monitoring_record_cell_report(&CellMinuteReport {
+            cell: batch.source.clone(),
+            data_plane: batch.data_plane.clone(),
+            minute: at(*minute_unix_ms),
+            leader: leader.clone(),
+            nodes: *nodes as i32,
+            nodes_answering: *nodes_answering as i32,
+            sessions: i64::from(*sessions),
+            running: i64::from(*running_turns),
+            queued: i64::from(*queued),
+            resumed: i64::from(*resumed_turns),
+            rss_peak_bytes: saturate(*rss_peak_bytes),
+            memory_limit_bytes: saturate(*memory_limit_bytes),
+            cpu_peak_cores: *cpu_peak_cores,
+            cpu_limit_cores: *cpu_limit_cores,
+            admit_p99_ms: *admit_p99_ms as i32,
+            ship_lag_p99_ms: *ship_lag_p99_ms as i32,
+            raft_term: saturate(*term),
+            forwarded: saturate(*forwarded),
+            orgs: known,
+        })
+        .await?;
+    if !stored {
+        tracing::debug!(source = %batch.source, "cell minute already reported");
     }
     Ok(())
 }

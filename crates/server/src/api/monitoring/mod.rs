@@ -547,6 +547,10 @@ pub fn routes(state: AppState) -> Router {
             get(timeline::get_fleet_monitoring_timeline_window),
         )
         .route(
+            "/v1/durable/monitoring/cells",
+            get(timeline::get_fleet_monitoring_cells),
+        )
+        .route(
             "/v1/durable/monitoring/actors",
             get(list_fleet_monitoring_actors),
         )

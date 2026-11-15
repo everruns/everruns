@@ -221,3 +221,202 @@ async fn backfill_rebuilds_running_turns_without_overwriting_samples() {
     // The marker row records progress for a day without activity.
     assert_eq!(db.timeline_earliest_minute().await.unwrap(), Some(from));
 }
+
+fn report(
+    cell: &str,
+    at: &str,
+    term: i64,
+    orgs: Vec<(i64, i64, i64, i64, i64)>,
+) -> CellMinuteReport {
+    CellMinuteReport {
+        cell: cell.into(),
+        data_plane: "dp".into(),
+        minute: minute(at),
+        leader: "n1".into(),
+        nodes: 3,
+        nodes_answering: 3,
+        sessions: orgs.iter().map(|o| o.1).sum(),
+        running: orgs.iter().map(|o| o.2).sum(),
+        queued: 0,
+        resumed: 0,
+        rss_peak_bytes: 512,
+        memory_limit_bytes: 1024,
+        cpu_peak_cores: 0.5,
+        cpu_limit_cores: 2.0,
+        admit_p99_ms: 4,
+        ship_lag_p99_ms: 9,
+        raft_term: term,
+        forwarded: 0,
+        orgs,
+    }
+}
+
+#[tokio::test]
+async fn a_cell_minute_report_counts_once_for_platform_and_tenants() {
+    let db = StorageBackend::test_database();
+    let first = report("cell-a", "2026-11-01T06:00:00Z", 1, vec![(2, 10, 4, 0, 3)]);
+    assert!(db.monitoring_record_cell_report(&first).await.unwrap());
+    // A new leader resends the minute with other numbers: ignored.
+    let resent = report("cell-a", "2026-11-01T06:00:00Z", 2, vec![(2, 99, 99, 0, 9)]);
+    assert!(!db.monitoring_record_cell_report(&resent).await.unwrap());
+    db.monitoring_record_cell_report(&report(
+        "cell-b",
+        "2026-11-01T06:00:00Z",
+        1,
+        vec![(2, 5, 1, 0, 1), (3, 7, 2, 0, 2)],
+    ))
+    .await
+    .unwrap();
+    // cell-a's next minute: a new term is an election.
+    db.monitoring_record_cell_report(&report(
+        "cell-a",
+        "2026-11-01T06:01:00Z",
+        3,
+        vec![(2, 10, 2, 0, 1)],
+    ))
+    .await
+    .unwrap();
+
+    let from = minute("2026-11-01T06:00:00Z");
+    let to = from + Duration::minutes(5);
+    let platform = db
+        .timeline_fleet_buckets(PLATFORM_ORG, from, to, 60)
+        .await
+        .unwrap();
+    let p = &platform[0];
+    assert_eq!(
+        (p.dp_reports, p.dp_sessions_sum, p.dp_running_sum),
+        (2, 22, 7)
+    );
+    assert_eq!(p.dp_agents_working_sum, 6);
+    let org2 = db.timeline_fleet_buckets(2, from, to, 300).await.unwrap();
+    assert_eq!(
+        (
+            org2[0].dp_minutes,
+            org2[0].dp_sessions_peak,
+            org2[0].dp_running_peak
+        ),
+        (2, 15, 5)
+    );
+
+    let cells = db.timeline_cells_buckets(from, to, 300).await.unwrap();
+    assert_eq!(
+        (cells[0].cells, cells[0].nodes, cells[0].elections),
+        (2, 6, 2)
+    );
+    assert_eq!(cells[0].memory_peak, Some(0.5));
+    assert_eq!(cells[0].cpu_peak, Some(0.25));
+    let markers = db.timeline_cell_markers(from, to).await.unwrap();
+    assert_eq!(markers.len(), 1);
+    assert_eq!(
+        (markers[0].kind.as_str(), markers[0].label.as_str()),
+        ("leader_change", "cell-a")
+    );
+}
+
+#[tokio::test]
+async fn the_cells_list_shows_each_cells_newest_report() {
+    let db = StorageBackend::test_database();
+    let now = timeline_minute(Utc::now());
+    let at = |m: i64| (now - Duration::minutes(m)).to_rfc3339();
+    for (cell, ago, term) in [("cell-a", 2, 1), ("cell-a", 1, 2), ("cell-b", 1, 7)] {
+        db.monitoring_record_cell_report(&report(cell, &at(ago), term, vec![]))
+            .await
+            .unwrap();
+    }
+    let latest = db.monitoring_cells_latest().await.unwrap();
+    let terms: Vec<_> = latest
+        .iter()
+        .map(|c| (c.cell.as_str(), c.raft_term))
+        .collect();
+    assert_eq!(terms, vec![("cell-a", Some(2)), ("cell-b", Some(7))]);
+}
+
+#[tokio::test]
+async fn cell_counters_add_to_tenants_platform_and_the_cell() {
+    let db = StorageBackend::test_database();
+    let at = minute("2026-11-01T06:00:30Z");
+    let mut counters = CellBatchCounters::default();
+    let c = counters.entry(2, at);
+    c.turns_completed += 2;
+    c.turns_failed += 1;
+    c.model_calls += 3;
+    c.cost_usd += 0.5;
+    counters.entry(3, at).turns_cancelled += 1;
+    db.monitoring_add_cell_counters("cell-a", "dp", &counters)
+        .await
+        .unwrap();
+    db.monitoring_add_cell_counters("cell-a", "dp", &counters)
+        .await
+        .unwrap();
+
+    let from = minute("2026-11-01T06:00:00Z");
+    let to = from + Duration::minutes(5);
+    let p = &db
+        .timeline_fleet_buckets(PLATFORM_ORG, from, to, 300)
+        .await
+        .unwrap()[0];
+    assert_eq!(
+        (
+            p.dp_turns_completed,
+            p.dp_turns_failed,
+            p.dp_turns_cancelled,
+            p.dp_model_calls
+        ),
+        (4, 2, 2, 6)
+    );
+    assert!((p.dp_cost_usd - 1.0).abs() < 1e-9);
+    // Counters alone are not a report: no cell population for the minute.
+    assert_eq!(p.dp_minutes, 0);
+    let org3 = &db.timeline_fleet_buckets(3, from, to, 300).await.unwrap()[0];
+    assert_eq!(org3.dp_turns_cancelled, 2);
+    let cell = db.timeline_cell_buckets(from, to, 300).await.unwrap();
+    assert_eq!(cell.len(), 1);
+    assert_eq!(
+        (
+            cell[0].reports,
+            cell[0].turns_completed,
+            cell[0].turns_failed,
+            cell[0].turns_cancelled
+        ),
+        (0, 4, 2, 2)
+    );
+}
+
+#[tokio::test]
+async fn open_sessions_are_counted_into_rows_that_exist_and_carried_forward() {
+    let db = StorageBackend::test_database();
+    runnable(&db, 2).await;
+    runnable(&db, 2).await;
+    db.create_session(test_session_row(4)).await.unwrap();
+    let at = minute("2026-11-01T06:00:05Z");
+    let orgs = db.timeline_sample(Utc::now()).await.unwrap();
+    assert!(orgs.iter().all(|o| o.agents_working <= o.active));
+    db.timeline_record_sample(at, &orgs, None).await.unwrap();
+    db.timeline_record_minute_counts(at).await.unwrap();
+
+    let from = minute("2026-11-01T06:00:00Z");
+    let to = from + Duration::minutes(5);
+    let p = &db
+        .timeline_fleet_buckets(PLATFORM_ORG, from, to, 300)
+        .await
+        .unwrap()[0];
+    assert_eq!(p.sessions, Some(3));
+    assert_eq!(p.servers, Some(0));
+    let org2 = &db.timeline_fleet_buckets(2, from, to, 300).await.unwrap()[0];
+    assert_eq!(org2.sessions, Some(2));
+    // Org 4 had no activity, so no row; nothing is written for it.
+    assert!(
+        db.timeline_fleet_buckets(4, from, to, 300)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        db.timeline_counts_before(2, to).await.unwrap().0,
+        Some(2),
+        "a later range starts from the newest count"
+    );
+    let (sessions, _) = db.timeline_live_counts(Some(4)).await.unwrap();
+    assert_eq!(sessions, 1);
+}

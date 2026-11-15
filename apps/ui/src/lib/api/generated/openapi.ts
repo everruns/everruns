@@ -2732,6 +2732,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/durable/monitoring/cells": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List data plane v2 cells with their newest report and history
+     * @description List data plane v2 cells with their newest report and history. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_cells"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/durable/monitoring/timeline": {
     parameters: {
       query?: never;
@@ -24483,6 +24503,200 @@ export interface components {
        */
       next_offset?: number | null;
     };
+    /** @description One data plane v2 cell: its newest minute report and its history. */
+    MonitoringCell: {
+      /**
+       * Format: int64
+       * @description Worst node's p99 time to admit a turn, in milliseconds.
+       */
+      admit_p99_ms: number;
+      /** @description History over the range, oldest first; buckets without a report are absent. */
+      buckets: components["schemas"]["MonitoringCellBucket"][];
+      /**
+       * @description Cell name.
+       * @example cell-07
+       */
+      cell: string;
+      /**
+       * Format: double
+       * @description The busiest node's CPU, in cores.
+       */
+      cpu_cores: number;
+      /**
+       * Format: double
+       * @description Its CPU limit in cores; null when unknown.
+       */
+      cpu_limit_cores?: number | null;
+      /** @description Data plane the cell belongs to. */
+      data_plane: string;
+      /** @description Leader node at the newest report. */
+      leader?: string | null;
+      /**
+       * Format: int64
+       * @description The fullest node's resident memory, in bytes.
+       */
+      memory_bytes: number;
+      /**
+       * Format: int64
+       * @description Its memory limit in bytes; null when unknown.
+       */
+      memory_limit_bytes?: number | null;
+      /**
+       * Format: int64
+       * @description Members.
+       */
+      nodes: number;
+      /**
+       * Format: int64
+       * @description Members that answered the leader.
+       */
+      nodes_answering: number;
+      /**
+       * Format: int64
+       * @description Messages waiting for a turn.
+       */
+      queued: number;
+      /**
+       * Format: date-time
+       * @description Minute of the newest report.
+       */
+      reported_at: string;
+      /**
+       * Format: int64
+       * @description Turns running on a second or later attempt.
+       */
+      resumed: number;
+      /**
+       * Format: int64
+       * @description Turns running.
+       */
+      running: number;
+      /**
+       * Format: int64
+       * @description Sessions resident.
+       */
+      sessions: number;
+      /**
+       * Format: int64
+       * @description Worst node's p99 log shipping lag, in milliseconds.
+       */
+      ship_lag_p99_ms: number;
+      /** @description No report for the last three minutes. */
+      silent: boolean;
+      /**
+       * Format: int64
+       * @description Raft term.
+       */
+      term: number;
+    };
+    /** @description One cell over one bucket. */
+    MonitoringCellBucket: {
+      /**
+       * Format: int64
+       * @description Worst node's p99 time to admit a turn, in milliseconds.
+       */
+      admit_p99_ms?: number | null;
+      /**
+       * Format: double
+       * @description The busiest node's CPU use as a percentage of its limit.
+       */
+      cpu_peak_pct?: number | null;
+      /**
+       * Format: int64
+       * @description Leader elections.
+       */
+      elections: number;
+      /**
+       * Format: double
+       * @description The fullest node's memory use as a percentage of its limit.
+       */
+      memory_peak_pct?: number | null;
+      /**
+       * Format: int64
+       * @description Sessions moved to another cell.
+       */
+      moves: number;
+      /**
+       * Format: int64
+       * @description Highest node count.
+       */
+      nodes?: number | null;
+      /**
+       * Format: int64
+       * @description Lowest count of nodes that answered the leader.
+       */
+      nodes_answering?: number | null;
+      /**
+       * Format: int64
+       * @description Highest messages waiting for a turn.
+       */
+      queued_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Minute reports received in the bucket.
+       */
+      reports: number;
+      /**
+       * Format: int64
+       * @description Highest turns running.
+       */
+      running_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Highest sessions resident.
+       */
+      sessions_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Worst node's p99 log shipping lag, in milliseconds.
+       */
+      ship_lag_p99_ms?: number | null;
+      /**
+       * Format: date-time
+       * @description UTC start of the bucket.
+       */
+      start: string;
+      /**
+       * Format: int64
+       * @description Turns cancelled.
+       */
+      turns_cancelled: number;
+      /**
+       * Format: int64
+       * @description Turns completed.
+       */
+      turns_completed: number;
+      /**
+       * Format: int64
+       * @description Turns failed.
+       */
+      turns_failed: number;
+    };
+    /** @description Data plane v2 cells as their minute reports show them. */
+    MonitoringCells: {
+      /**
+       * Format: int32
+       * @description Bucket size in seconds.
+       */
+      bucket_seconds: number;
+      /** @description Cells that reported in the last week, by name. */
+      cells: components["schemas"]["MonitoringCell"][];
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start of the history.
+       */
+      from: string;
+      /**
+       * Format: date-time
+       * @description UTC time of this read.
+       */
+      generated_at: string;
+      /**
+       * Format: date-time
+       * @description Exclusive UTC end.
+       */
+      to: string;
+    };
     /** @description Bounded execution breakdown for one organization and live lease holder. */
     MonitoringCohort: {
       /**
@@ -24718,6 +24932,11 @@ export interface components {
     /** @description Recorded execution history for one organization or the platform. */
     MonitoringTimeline: {
       /**
+       * Format: int64
+       * @description Agents defined right now.
+       */
+      agents_now: number;
+      /**
        * Format: int32
        * @description Bucket size in seconds.
        * @example 300
@@ -24735,8 +24954,13 @@ export interface components {
        * @description UTC time of this read.
        */
       generated_at: string;
-      /** @description Deploys and worker changes inside the range. */
+      /** @description Deploys, worker changes and cell leader changes inside the range. */
       markers: components["schemas"]["TimelineMarker"][];
+      /**
+       * Format: int64
+       * @description Sessions not archived right now, on any data plane.
+       */
+      open_sessions_now: number;
       /** @description Totals for the same length of time immediately before. */
       previous: components["schemas"]["TimelineSummary"];
       /**
@@ -24756,6 +24980,8 @@ export interface components {
     MonitoringTimelineWindow: {
       /** @description Up to 5 busiest agents (organization) or organizations (platform). */
       busiest: components["schemas"]["TimelineRank"][];
+      /** @description Up to 6 tools whose calls failed most often; `code` is the tool name. */
+      failed_tools: components["schemas"]["TimelineFailure"][];
       /** @description Up to 6 failure codes, most frequent first. */
       failures: components["schemas"]["TimelineFailure"][];
       /**
@@ -32301,8 +32527,24 @@ export interface components {
        * @example 112
        */
       active_peak: number;
+      /**
+       * Format: int64
+       * @description Agents defined, not archived: the newest count in or before the bucket.
+       */
+      agents?: number | null;
+      /**
+       * Format: double
+       * @description Average distinct agents with an active session on workers.
+       */
+      agents_working_avg: number;
+      /**
+       * Format: int64
+       * @description Highest sampled count of such agents.
+       */
+      agents_working_peak: number;
       /** @description Whether this bucket includes history rebuilt from turn records (no phase split or queue data). */
       backfilled: boolean;
+      cells?: components["schemas"]["TimelineCellsBucket"] | null;
       /**
        * Format: double
        * @description Model spend in USD, actual where reconciled, otherwise estimated.
@@ -32346,6 +32588,11 @@ export interface components {
       oldest_runnable_ms?: number | null;
       /**
        * Format: int64
+       * @description Sessions not archived, on any data plane: the newest count in or before the bucket.
+       */
+      open_sessions?: number | null;
+      /**
+       * Format: int64
        * @description Platform only: highest number of organizations with active sessions at once.
        */
       organizations_peak?: number | null;
@@ -32366,6 +32613,11 @@ export interface components {
       runnable_peak: number;
       /** @description Whether population was sampled; false for empty buckets and history rebuilt from turn records. */
       sampled: boolean;
+      /**
+       * Format: int64
+       * @description Platform only: server replicas running.
+       */
+      servers?: number | null;
       /**
        * Format: double
        * @description Average sessions in turn setup or a phase handoff.
@@ -32440,6 +32692,133 @@ export interface components {
        */
       workers?: number | null;
     };
+    /**
+     * @description What data plane v2 cells reported over a bucket. Population comes from
+     *     each cell's one-minute report; counters from the cells' feed.
+     */
+    TimelineCellsBucket: {
+      /**
+       * Format: int64
+       * @description Platform only: worst node's p99 time to admit a turn, in milliseconds.
+       */
+      admit_p99_ms?: number | null;
+      /**
+       * Format: double
+       * @description Average distinct agents with a running turn on cells.
+       */
+      agents_working_avg: number;
+      /**
+       * Format: int64
+       * @description Highest per-minute agents with a running turn on cells.
+       */
+      agents_working_peak: number;
+      /**
+       * Format: double
+       * @description Model spend on cells in USD.
+       */
+      cost_usd: number;
+      /**
+       * Format: double
+       * @description Platform only: the busiest node's CPU use as a percentage of its limit.
+       */
+      cpu_peak_pct?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: leader elections across cells.
+       */
+      elections?: number | null;
+      /**
+       * Format: int64
+       * @description Model input tokens on cells.
+       */
+      input_tokens: number;
+      /**
+       * Format: double
+       * @description Platform only: the fullest node's memory use as a percentage of its limit.
+       */
+      memory_peak_pct?: number | null;
+      /**
+       * Format: int64
+       * @description Model calls made on cells.
+       */
+      model_calls: number;
+      /**
+       * Format: int64
+       * @description Platform only: sessions moved to another cell.
+       */
+      moves?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: highest total of cell nodes (pods) in one minute.
+       */
+      nodes?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: lowest total of nodes that answered their leader in one minute.
+       */
+      nodes_answering?: number | null;
+      /**
+       * Format: int64
+       * @description Model output tokens on cells.
+       */
+      output_tokens: number;
+      /**
+       * Format: int64
+       * @description Highest per-minute messages waiting for a turn on cells.
+       */
+      queued_peak: number;
+      /**
+       * Format: int64
+       * @description Highest number of cells that reported in one minute.
+       * @example 12
+       */
+      reporting: number;
+      /**
+       * Format: int64
+       * @description Platform only: highest per-minute turns running on a second or later attempt.
+       */
+      resumed_peak?: number | null;
+      /**
+       * Format: double
+       * @description Average turns running on cells.
+       */
+      running_avg: number;
+      /**
+       * Format: int64
+       * @description Highest per-minute turns running on cells.
+       */
+      running_peak: number;
+      /**
+       * Format: double
+       * @description Average sessions resident on cells.
+       */
+      sessions_avg: number;
+      /**
+       * Format: int64
+       * @description Highest per-minute sessions resident on cells.
+       */
+      sessions_peak: number;
+      /**
+       * Format: int64
+       * @description Platform only: worst node's p99 log shipping lag, in milliseconds.
+       */
+      ship_lag_p99_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Turns cancelled on cells.
+       */
+      turns_cancelled: number;
+      /**
+       * Format: int64
+       * @description Turns completed on cells.
+       */
+      turns_completed: number;
+      /**
+       * Format: int64
+       * @description Turns failed on cells.
+       */
+      turns_failed: number;
+    };
     /** @description Failed turns of one classified error code. */
     TimelineFailure: {
       /**
@@ -32461,12 +32840,12 @@ export interface components {
        */
       at: string;
       /**
-       * @description deploy, worker_joined, or worker_left (worker changes are platform only).
+       * @description deploy, worker_joined, worker_left, or leader_change (all but deploy are platform only).
        * @example deploy
        */
       kind: string;
       /**
-       * @description Server version for a deploy, worker id otherwise.
+       * @description Server version for a deploy, worker id or cell name otherwise.
        * @example 0.50.1
        */
       label: string;
@@ -32490,6 +32869,16 @@ export interface components {
     };
     /** @description Totals over a range, for the summary row and the previous-period comparison. */
     TimelineSummary: {
+      /**
+       * Format: int64
+       * @description Platform only: leader elections across cells; null when no cell reported.
+       */
+      cells_elections?: number | null;
+      /**
+       * Format: int64
+       * @description Highest per-minute turns running on cells; null when no cell reported.
+       */
+      cells_peak_running?: number | null;
       /**
        * Format: double
        * @description Model spend in USD.
@@ -45098,6 +45487,59 @@ export interface operations {
       };
       /** @description Actor not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_fleet_monitoring_cells: {
+    parameters: {
+      query?: {
+        /**
+         * @description Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.
+         * @example 24h
+         */
+        range?: string;
+        /** @description Inclusive UTC start; use with `to` for a custom range of up to 31 days. */
+        from?: string;
+        /** @description Exclusive UTC end; defaults to now. */
+        to?: string;
+        /**
+         * @description Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.
+         * @example 300
+         */
+        bucket?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cells and their history */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringCells"];
+        };
+      };
+      /** @description Invalid range */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
         headers: {
           [name: string]: unknown;
         };
