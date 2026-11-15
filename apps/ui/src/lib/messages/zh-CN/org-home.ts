@@ -65,4 +65,8 @@ export const messages: Readonly<Record<string, string>> = {
   "{runs} turns in the last 24 hours": "最近 24 小时 {runs} 轮",
   "{sessions}. A paused run resumes when its limit is raised.":
     "{sessions}。提高上限后，暂停的运行会继续。",
+  "Switched to {org}": "已切换到 {org}",
+  "This page belongs to {org}, so the app switched organizations to open it.":
+    "此页面属于 {org}，因此应用已切换组织以打开它。",
+  "Back to {org}": "返回 {org}",
 };

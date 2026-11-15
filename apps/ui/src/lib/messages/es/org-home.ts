@@ -66,4 +66,8 @@ export const messages: Readonly<Record<string, string>> = {
   "{runs} turns in the last 24 hours": "{runs} turnos en las últimas 24 horas",
   "{sessions}. A paused run resumes when its limit is raised.":
     "{sessions}. Una ejecución en pausa sigue cuando se sube su límite.",
+  "Switched to {org}": "Cambiado a {org}",
+  "This page belongs to {org}, so the app switched organizations to open it.":
+    "Esta página pertenece a {org}, así que la aplicación cambió de organización para abrirla.",
+  "Back to {org}": "Volver a {org}",
 };
