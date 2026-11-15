@@ -61,6 +61,7 @@ is read-only, so it cannot post comments or reviews.
 | Default | `get_github_pull_request`, `get_github_pull_request_diff`, `search_github_code`, `read_github_file`, `search_github_issues` |
 | `.allow_writes(true)` | Also `upsert_github_comment`, `submit_github_pull_request_review`, `upsert_github_issue` |
 | `.allow_writes(true).allow_pull_requests(true)` | Also `create_github_pull_request` |
+| `.allow_writes(true).allow_merge(true)` | Also `mark_github_pull_request_ready`, `merge_github_pull_request` |
 
 Enable writes only for an application that should modify GitHub:
 

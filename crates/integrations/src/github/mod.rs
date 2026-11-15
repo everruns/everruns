@@ -38,6 +38,7 @@ mod client;
 mod fix_pull_requests;
 mod framework;
 mod issues;
+mod merge_pull_requests;
 mod operation;
 pub use framework::{GitHub, GitHubTokenProvider, GitHubTokenRequest};
 mod pull_requests;
@@ -58,6 +59,7 @@ use serde::{Deserialize, Serialize};
 use checkout::CheckoutGitHubPullRequestTool;
 use fix_pull_requests::CreateGitHubPullRequestTool;
 use issues::UpsertGitHubIssueTool;
+use merge_pull_requests::{MarkGitHubPullRequestReadyTool, MergeGitHubPullRequestTool};
 use pull_requests::{
     GetGitHubPullRequestDiffTool, GetGitHubPullRequestTool, UpsertGitHubCommentTool,
 };
@@ -118,7 +120,7 @@ impl From<GitHubActsAs> for everruns_contracts::runtime::mcp_server::McpServerAc
 }
 
 /// Per-agent settings for the `github` capability. The tools act as the agent
-/// and both switches default to off, so an agent that just lists `github` gets
+/// and every switch defaults to off, so an agent that just lists `github` gets
 /// the least it can do.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, default)]
@@ -135,6 +137,12 @@ pub struct GitHubConfig {
     /// Contents write permission.
     #[schemars(title = "Open pull requests")]
     pub allow_pull_requests: bool,
+    /// Offer `mark_github_pull_request_ready` and `merge_github_pull_request`,
+    /// so the agent can take a pull request out of draft and merge it. GitHub
+    /// must report it ready: no conflicts, required reviews in, every check
+    /// passed. Protect the branch on GitHub to set what "ready" requires.
+    #[schemars(title = "Merge pull requests")]
+    pub allow_merge: bool,
     /// Refuse to file issues on public repositories, so findings such as
     /// vulnerabilities are never disclosed in a public issue.
     #[schemars(title = "File issues on private repositories only")]
@@ -194,6 +202,10 @@ impl Capability for GitHubCapability {
         ];
         if config.allow_pull_requests {
             tools.push(Box::new(CreateGitHubPullRequestTool { acts_as }));
+        }
+        if config.allow_merge {
+            tools.push(Box::new(MarkGitHubPullRequestReadyTool { acts_as }));
+            tools.push(Box::new(MergeGitHubPullRequestTool { acts_as }));
         }
         tools
     }
@@ -334,6 +346,35 @@ mod tests {
         assert!(names(serde_json::json!({"allow_pull_requests": true})).contains(&open));
         // Unparseable config falls back to the safe defaults.
         assert!(!names(serde_json::json!({"allow_pull_requests": "yes"})).contains(&open));
+    }
+
+    #[test]
+    fn merging_is_opt_in_and_separate_from_opening() {
+        let names = |config: serde_json::Value| -> Vec<String> {
+            GitHubCapability
+                .tool_definitions_with_config(&config)
+                .iter()
+                .map(|definition| definition.name().to_string())
+                .collect()
+        };
+        let merge = [
+            "mark_github_pull_request_ready",
+            "merge_github_pull_request",
+        ];
+        let has = |names: &[String]| merge.map(|tool| names.contains(&tool.to_string()));
+        assert_eq!(has(&names(serde_json::json!({}))), [false, false]);
+        assert_eq!(
+            has(&names(serde_json::json!({"allow_pull_requests": true}))),
+            [false, false],
+            "opening pull requests does not bring merging"
+        );
+        let enabled = names(serde_json::json!({"allow_merge": true}));
+        assert_eq!(has(&enabled), [true, true]);
+        assert!(!enabled.contains(&"create_github_pull_request".to_string()));
+        assert_eq!(
+            has(&names(serde_json::json!({"allow_merge": "yes"}))),
+            [false, false]
+        );
     }
 
     /// The model is offered the tool exactly when execution provides it.

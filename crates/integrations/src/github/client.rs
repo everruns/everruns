@@ -105,6 +105,13 @@ pub struct PullRequest {
     #[serde(default)]
     pub merged: bool,
     pub html_url: String,
+    /// GraphQL id, which leaving draft needs (REST cannot do it).
+    #[serde(default)]
+    pub node_id: String,
+    /// GitHub's verdict on merging: `clean`, `blocked`, `behind`, `dirty`,
+    /// `unstable`, `draft`, or `unknown` while it is still computing.
+    #[serde(default)]
+    pub mergeable_state: Option<String>,
     #[serde(default)]
     pub user: Option<SearchUser>,
     pub base: PullRequestRef,
@@ -233,6 +240,15 @@ pub struct PullRequestSummary {
     pub html_url: String,
     #[serde(default)]
     pub draft: bool,
+}
+
+/// What the merge endpoint answers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeResult {
+    #[serde(default)]
+    pub sha: Option<String>,
+    #[serde(default)]
+    pub merged: bool,
 }
 
 /// A diff cut to a byte budget on a UTF-8 boundary.
@@ -613,6 +629,53 @@ impl GitHubClient {
             )
             .await?;
         parse_json(&text)
+    }
+
+    /// Merge a pull request, only while its head is still `sha`.
+    pub async fn merge_pull_request(
+        &self,
+        repo: &str,
+        number: u64,
+        merge: &serde_json::Value,
+    ) -> Result<MergeResult, String> {
+        let url = format!("{}/repos/{repo}/pulls/{number}/merge", self.api_base);
+        let text = self
+            .send(
+                self.http.put(&url).json(merge),
+                "application/vnd.github+json",
+            )
+            .await?;
+        parse_json(&text)
+    }
+
+    /// Take a pull request out of draft. GraphQL only: REST has no way to do it.
+    pub async fn mark_ready_for_review(&self, node_id: &str) -> Result<(), String> {
+        const MUTATION: &str = "mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) { pullRequest { isDraft } } }";
+        // github.com serves GraphQL beside REST; GitHub Enterprise serves REST
+        // under `/api/v3` and GraphQL under `/api/graphql`.
+        let url = match self.api_base.strip_suffix("/v3") {
+            Some(enterprise) => format!("{enterprise}/graphql"),
+            None => format!("{}/graphql", self.api_base),
+        };
+        let text = self
+            .send(
+                self.http.post(&url).json(&serde_json::json!({
+                    "query": MUTATION,
+                    "variables": { "id": node_id },
+                })),
+                "application/vnd.github+json",
+            )
+            .await?;
+        // GraphQL reports failures in a 200 body. The messages are untrusted
+        // text, so say only that it was refused.
+        let response: serde_json::Value = parse_json(&text)?;
+        if response
+            .get("errors")
+            .is_some_and(|errors| !errors.is_null())
+        {
+            return Err("GitHub refused to mark the pull request ready for review".to_string());
+        }
+        Ok(())
     }
 
     /// GET a list endpoint page by page (100 per page) until a short page or

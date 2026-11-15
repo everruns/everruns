@@ -74,7 +74,8 @@ is step 6, "Sandbox repositories", of the [GitHub model](../integrations/github-
   checkout, as data in the tool result.
 - **Pull requests.** One per repository, opened with
   `create_github_pull_request` from the `github` capability, which the harness
-  enables.
+  enables. Merging is not enabled by the harness: an agent whose owner wants it
+  to ship sets `allow_merge` on its own `github` capability.
 
 Token admission and the accepted exposure are TM-GITHUB-009 in the
 [threat model](../security/threat-model.md).

@@ -41,8 +41,25 @@ connection identities, triggers, and managed sandbox checkout.
 | `submit_github_pull_request_review` | Submits one review (`COMMENT` or `REQUEST_CHANGES`; it cannot approve) with a summary and inline comments on changed lines. |
 | `upsert_github_issue` | Files a finding as an issue keyed by a `fingerprint`; updates the open issue for the same fingerprint, leaves a closed one closed. |
 | `create_github_pull_request` | Opens a pull request (draft by default) from a branch already pushed to the same repository. Only offered when `allow_pull_requests` is on. |
+| `mark_github_pull_request_ready` | Takes a draft pull request out of draft. Only offered when `allow_merge` is on. |
+| `merge_github_pull_request` | Merges a pull request that GitHub reports ready to merge. Only offered when `allow_merge` is on. See [Merge a pull request](#merge-a-pull-request). |
 
 The pull request tools take `repo` (`owner/repo`) and `number`.
+
+### Merge a pull request
+
+`merge_github_pull_request` takes `head_sha`, the full head commit the agent
+read with `get_github_pull_request`, and merges only that commit: if someone
+pushed since, the merge is refused. `method` is `squash` (default), `merge` or
+`rebase`, and `commit_title` and `commit_message` set the resulting commit.
+
+GitHub decides whether the pull request may merge. The tool merges only when
+`mergeable_state` (also returned by `get_github_pull_request`) is `clean`: not
+a draft, no conflicts, required reviews in, and no failing or pending check on
+the head commit. Anything else is refused with the reason, and there is no
+argument to override it. Set what "ready" requires with branch protection on
+GitHub; the tool cannot bypass it. The agent cannot approve its own pull
+request, so a required review still needs a person.
 
 ### Check out a pull request
 
@@ -112,6 +129,7 @@ so a person cannot hide a finding by pasting a marker into their own comment.
 |---|---|---|
 | `acts_as` | `agent` | Whose GitHub identity the tools use: `agent`, `person`, or `person_or_agent`. See [Authentication](#authentication). |
 | `allow_pull_requests` | `false` | Adds `create_github_pull_request`. Pushing the branch also needs the GitHub App's **Contents: write** permission. |
+| `allow_merge` | `false` | Adds `mark_github_pull_request_ready` and `merge_github_pull_request`. Merging also needs the GitHub App's **Contents: write** permission. Independent of `allow_pull_requests`. |
 | `private_issues_only` | `false` | `upsert_github_issue` refuses public repositories, so a finding is never disclosed in a public issue. |
 
 `upsert_github_comment` starts the comment with a hidden
@@ -140,7 +158,9 @@ the permissions that tool needs: the read tools ask for **Pull requests: read**,
 the checkout tool for **Contents: read** and **Pull requests: read**,
 the comment tool for **Issues** and **Pull requests: write**, the review tool for
 **Pull requests: write**, the issue tool for **Issues: write**, and
-`create_github_pull_request` for **Pull requests: write** and **Contents: read**.
+`create_github_pull_request` for **Pull requests: write** and **Contents: read**,
+`mark_github_pull_request_ready` for **Pull requests: write**, and
+`merge_github_pull_request` for **Pull requests: write** and **Contents: write**.
 Without a connection for that identity the tools return `connection_required`.
 
 The session's network access policy must allow `https://api.github.com/` when

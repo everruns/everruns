@@ -663,7 +663,7 @@ mod tests {
     pub(super) struct TestProviderSandboxState {
         remote_status: SessionSandboxStatus,
         pub(super) resume_calls: usize,
-        exec_commands: Vec<String>,
+        pub(super) exec_commands: Vec<String>,
     }
 
     #[derive(Default)]
@@ -758,6 +758,11 @@ mod tests {
             sandbox_state.resume_calls += 1;
             sandbox_state.remote_status = SessionSandboxStatus::Running;
 
+            // A sandbox the provider deleted while paused comes back as a
+            // different, empty one.
+            if let Some(name) = instance.external_id.strip_prefix("sb_gone_") {
+                return Ok(test_instance(&format!("sb_new_{name}")));
+            }
             let mut resumed = instance.clone();
             resumed.metadata = json!({ "resumed": true });
             Ok(resumed)
@@ -876,40 +881,6 @@ mod tests {
     async fn ensure_running_resumes_when_remote_status_drifted_to_paused() {
         let external_id = "sb_drifted";
         reset_test_provider_state(external_id, SessionSandboxStatus::Paused);
-
-        let storage = Arc::new(MemorySecrets::default());
-        let context = ToolContext::with_storage_store(
-            everruns_contracts::typed_id::SessionId::new(),
-            storage,
-        );
-        let mut state = SessionSandboxState {
-            sandbox: None,
-            provider: "core-test-session-sandbox".to_string(),
-            status: SessionSandboxStatus::Running,
-            instance: test_instance(external_id),
-            init_completed_at: Some(now_rfc3339()),
-            last_init_error: None,
-            created_at: now_rfc3339(),
-            updated_at: now_rfc3339(),
-        };
-        save_session_sandbox_state(&context, &mut state)
-            .await
-            .unwrap();
-
-        let resolved = ensure_session_sandbox_running(&context, &test_config_with_init(vec![]))
-            .await
-            .unwrap();
-
-        let provider_state = test_provider_state(external_id);
-        assert_eq!(provider_state.resume_calls, 1);
-        assert_eq!(resolved.status, SessionSandboxStatus::Running);
-        assert_eq!(resolved.instance.metadata, json!({ "resumed": true }));
-    }
-
-    #[tokio::test]
-    async fn ensure_running_replaces_provider_instance_when_remote_status_is_lost() {
-        let external_id = "sb_lost";
-        reset_test_provider_state(external_id, SessionSandboxStatus::Lost);
 
         let storage = Arc::new(MemorySecrets::default());
         let context = ToolContext::with_storage_store(

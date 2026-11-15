@@ -50,7 +50,10 @@ What exists in code today:
   vocabulary for Bashkit and managed Daytona, E2B, and Modal targets, with one workspace;
 - initial workspace seeding, checkpoint-before-success for mutations, automatic
   replacement after provider loss, and `sandbox.instance_lost` /
-  `sandbox.recovered` lifecycle events;
+  `sandbox.recovered` lifecycle events. A replacement the provider could not
+  restore a workspace into (Daytona without a recovery volume, once Daytona
+  deleted the stopped sandbox) starts empty, so it is seeded and initialized
+  again;
 - one provider-neutral `coding` harness example. The earlier provider-specific
   coding harnesses are reconciliation-only legacy names;
 - the Workspace-tab sandbox panel in the UI.

@@ -398,6 +398,70 @@ async fn assert_lost_instance_is_replaced(lost_response: ResponseTemplate) {
     }));
 }
 
+// Daytona deletes a stopped sandbox by itself after `autoDeleteInterval`.
+// Without a recovery volume there is no workspace to bring back, but the
+// session still gets a sandbox instead of a 404 on every later call.
+#[tokio::test]
+async fn daytona_provider_replaces_a_deleted_instance_that_has_no_recovery_volume() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let mut config = test_config(&mock_server);
+    config.provider_config["workspace_path"] = json!("/workspace");
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = SessionSandboxInstance {
+        external_id: "sb_deleted".to_string(),
+        display_name: Some("Session Sandbox".to_string()),
+        workspace_path: Some("/workspace".to_string()),
+        provider_state: json!({}),
+        metadata: json!({ "remote_state": "stopped" }),
+    };
+
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_deleted"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("sandbox not found"))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_fresh",
+            "name": "Fresh Sandbox",
+            "state": "started"
+        })))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_fresh"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_fresh",
+            "name": "Fresh Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    setup_exec_mocks(&mock_server, "sb_fresh", 0, "").await;
+
+    let replacement = provider.resume(&context, &config, &instance).await.unwrap();
+
+    assert_eq!(replacement.external_id, "sb_fresh");
+    assert_eq!(replacement.metadata["replaced"], "sb_deleted");
+    // Not restored: the host must seed and initialize it again.
+    assert_eq!(replacement.metadata["recovered"], false);
+    assert_eq!(replacement.provider_state, json!({}));
+    let requests = mock_server.received_requests().await.unwrap();
+    let create = requests
+        .iter()
+        .find(|request| request.url.path() == "/sandbox" && request.method.as_str() == "POST")
+        .unwrap();
+    let create_body: serde_json::Value = serde_json::from_slice(&create.body).unwrap();
+    assert!(
+        create_body
+            .get("volumes")
+            .is_none_or(|v| v.is_null() || v == &json!([]))
+    );
+}
+
 #[tokio::test]
 async fn daytona_provider_checkpoints_after_completed_exec() {
     let mock_server = MockServer::start().await;
