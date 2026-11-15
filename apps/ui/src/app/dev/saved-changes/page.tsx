@@ -4,8 +4,9 @@
  * Dev page: Saved changes bar
  *
  * The bar that floats over the bottom of a page after a save, in each state:
- * collapsed, Review open with per-field Undo, the Undid confirmation, and a
- * resource that changed again since the save.
+ * collapsed, Review open with per-field Undo, several model toggles folded
+ * into one bar, the Undid confirmation, and a resource that changed again
+ * since the save. Each bar dismisses itself after a few seconds in the app.
  */
 
 import type { ReactNode } from "react";
@@ -29,6 +30,22 @@ const receipt: SavedPageChange = {
       to: ["chat", "tools", "vision", "thinking"],
     },
   ],
+};
+const selection: SavedPageChange = {
+  resource: { kind: "model_selection", id: "selection-dev", label: "Model selection" },
+  from: 0,
+  revision: 0,
+  stale: false,
+  pending: false,
+  members: ["Muse Ember", "Muse Spark 1.1", "GPT-6 Luna"].map((label, index) => ({
+    id: `model_${index}`,
+    label,
+    from_revision: 1,
+    revision: 2,
+    before: true,
+    after: false,
+  })),
+  fields: [0, 1, 2].map((index) => ({ field: `model_${index}`, from: true, to: false })),
 };
 const noop = () => {};
 
@@ -82,6 +99,15 @@ export default function SavedChangesDevPage() {
             receipt={receipt}
             dirty={false}
             initiallyOpen
+            onUndo={noop}
+            onDismiss={noop}
+            onHistory={noop}
+          />
+        </Frame>
+        <Frame title="Three models disabled in a row">
+          <SavedChangesBar
+            receipt={selection}
+            dirty={false}
             onUndo={noop}
             onDismiss={noop}
             onHistory={noop}

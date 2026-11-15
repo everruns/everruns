@@ -248,7 +248,7 @@ it("retains a model selection after failed atomic Undo, then undoes only one cho
   expect(receipt.fields).toEqual([{ field: "second", from: false, to: true }]);
 });
 
-it("bounds retained review groups without dropping the active page's state", async () => {
+it("folds consecutive model toggles into one selection receipt", async () => {
   const { manager } = setup();
   await manager.poll();
   for (let index = 0; index < 30; index++)
@@ -258,12 +258,86 @@ it("bounds retained review groups without dropping the active page's state", asy
         label: `Model ${index}`,
         from_revision: 1,
         revision: 2,
-        before: false,
-        after: true,
+        before: true,
+        after: false,
       },
     ]);
-  expect(manager.receipts()).toHaveLength(20);
+  expect(manager.receipts()).toHaveLength(1);
+  expect(manager.receipts()[0].fields).toHaveLength(30);
   expect(manager.guard("form").loading).toBe(false);
+});
+
+it("drops a model toggled back to where it started and undoes only its latest run", async () => {
+  const { manager, transport } = setup();
+  await manager.poll();
+  const toggle = (id: string, from_revision: number, before: boolean) =>
+    manager.recordSelection([
+      {
+        id,
+        label: id,
+        from_revision,
+        revision: from_revision + 1,
+        before,
+        after: !before,
+      },
+    ]);
+  toggle("a", 1, true);
+  toggle("b", 4, true);
+  toggle("a", 2, false);
+  expect(manager.receipts()[0].fields).toEqual([{ field: "b", from: true, to: false }]);
+  toggle("a", 3, true);
+  const receipt = manager.receipts()[0];
+  expect(receipt.members).toEqual([
+    expect.objectContaining({
+      id: "b",
+      from_revision: 4,
+      revision: 5,
+      before: true,
+      after: false,
+    }),
+    // Dropped when it returned to its start, so its new run starts at revision 3.
+    expect.objectContaining({
+      id: "a",
+      from_revision: 3,
+      revision: 4,
+      before: true,
+      after: false,
+    }),
+  ]);
+  transport.undoSelection = jest.fn(async () => []);
+  await manager.undo(receipt.resource, "a");
+  expect(transport.undoSelection).toHaveBeenCalledWith([
+    { id: "a", from_revision: 3, expected_revision: 4 },
+  ]);
+});
+
+it("starts a new receipt when another writer changed a model in between", async () => {
+  const { manager } = setup();
+  await manager.poll();
+  const member = { id: "a", label: "a", before: true, after: false };
+  manager.recordSelection([{ ...member, from_revision: 1, revision: 2 }]);
+  manager.recordSelection([
+    { ...member, before: false, after: true, from_revision: 3, revision: 4 },
+  ]);
+  expect(manager.receipts()).toHaveLength(2);
+});
+
+it("does not fold into a receipt that was dismissed", async () => {
+  const { manager } = setup();
+  await manager.poll();
+  const member = {
+    id: "a",
+    label: "a",
+    before: true,
+    after: false,
+    from_revision: 1,
+    revision: 2,
+  };
+  manager.recordSelection([member]);
+  manager.dismiss(manager.receipts()[0].resource);
+  manager.recordSelection([{ ...member, id: "b", label: "b" }]);
+  expect(manager.receipts()).toHaveLength(1);
+  expect(manager.receipts()[0].fields).toEqual([{ field: "b", from: true, to: false }]);
 });
 
 it("does not include a foreign writer's save between two Chat polls in Undo", async () => {
