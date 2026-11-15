@@ -75,25 +75,26 @@ size and discovery.
 
 ## What the model writes
 
-From the demo run, after `tools search customers invoices` and two `--help`
-calls, the model wrote this script. The two MCP calls under it ran inside the
-shell:
+In a run of the example, after `tools search customers invoices` and the two
+operations' `--help`, the model wrote this script. It is copied unedited from
+that run; the two MCP calls below it ran inside the shell:
 
 ```bash
+set -e
 fetch_all() {
  local op="$1" base="$2" cursor='' page all='[]' args
  while :; do
-  args=$(jq -cn --argjson base "$base" --arg cursor "$cursor" \
-    '$base + {limit:500} + (if $cursor == "" then {} else {cursor:$cursor} end)')
+  args=$(jq -cn --argjson b "$base" --arg c "$cursor" '$b + {limit:500} + (if $c == "" then {} else {cursor:$c} end)')
   page=$(tools acme "$op" "$args" | jq '.result | fromjson')
   all=$(jq -cn --argjson a "$all" --argjson p "$page" '$a + $p.items')
-  cursor=$(printf '%s' "$page" | jq -r '.next_cursor // empty')
+  cursor=$(jq -r '.next_cursor // empty' <<< "$page")
   [[ -n "$cursor" ]] || break
  done
  printf '%s' "$all"
 }
 customers=$(fetch_all crm-list-customers '{"region":"EU"}')
 invoices=$(fetch_all billing-list-invoices '{"status":"overdue"}')
+jq -n --argjson c "$customers" --argjson i "$invoices" '[$c[] | . as $customer | [$i[] | select(.customer_id==$customer.id)] as $invoices | select($invoices|length>0) | {customer:.name,total_overdue_usd:($invoices|map(.amount_usd)|add)}] | sort_by(-.total_overdue_usd) | .[:3]'
 ```
 
 ```text
