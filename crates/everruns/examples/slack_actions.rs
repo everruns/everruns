@@ -10,10 +10,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         channel.clone(),
         thread.clone(),
     );
-    let agent=Agent::builder().instructions("Use Slack actions only in the authorized conversation. Add an eyes reaction to the supplied message and upload a short text file that says this Framework bot is connected. Report success only after checking tool results.")
- .model(Model::new("gpt-6.1-sol",OpenAI::from_env()?)).slack_actions(actions).build()?;
+    let agent = Agent::builder()
+        .instructions(concat!(
+            "Use Slack actions only in the authorized conversation. ",
+            "Add an eyes reaction to the supplied message and upload a short text file ",
+            "that says this Framework bot is connected. ",
+            "Report success only after checking tool results.",
+        ))
+        .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+        .slack_actions(actions)
+        .build()?;
     let session = Engine::new().create(agent);
-    let turn=session.run(format!("Use channel {channel}, thread {thread}. React to the thread root and upload framework-hello.txt into that thread.")).await?;
+    let prompt = format!(
+        "Use channel {channel}, thread {thread}. React to the thread root \
+         and upload framework-hello.txt into that thread."
+    );
+    let turn = session.run(prompt).await?;
     if !turn.success {
         return Err(format!("Agent failed: {:?}", turn.error).into());
     }

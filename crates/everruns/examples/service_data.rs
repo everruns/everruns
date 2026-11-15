@@ -11,12 +11,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| ".local/framework-data".into());
     std::fs::create_dir_all(format!("{root}/memory"))?;
-    let agent=Agent::builder().instructions("Consult the refund policy with search_knowledge and cite its source. Save a small refund summary in SQL using sql_execute, query it to verify, then write a brief note in /memory/refunds/latest.md. Explain the result.")
- .model(Model::new("gpt-6.1-sol",OpenAI::from_env()?))
- .sql_database(SqlDatabase::open(format!("{root}/databases"))?)
- .knowledge(Knowledge::documents("refunds",vec![Document::new("Refund policy","Refunds are accepted within 30 days of purchase. Escalate disputed charges to billing.","https://example.com/policy/refunds")]))
- .memory(MemoryDirectory::directory("refunds",format!("{root}/memory")))
- .capability("session_file_system").build()?;
+    let policy = Document::new(
+        "Refund policy",
+        "Refunds are accepted within 30 days of purchase. Escalate disputed charges to billing.",
+        "https://example.com/policy/refunds",
+    );
+    let agent = Agent::builder()
+        .instructions(concat!(
+            "Consult the refund policy with search_knowledge and cite its source. ",
+            "Save a small refund summary in SQL using sql_execute, query it to verify, ",
+            "then write a brief note in /memory/refunds/latest.md. Explain the result.",
+        ))
+        .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+        .sql_database(SqlDatabase::open(format!("{root}/databases"))?)
+        .knowledge(Knowledge::documents("refunds", vec![policy]))
+        .memory(MemoryDirectory::directory(
+            "refunds",
+            format!("{root}/memory"),
+        ))
+        .capability("session_file_system")
+        .build()?;
     let engine = Engine::new();
     let session = engine.create(agent);
     let turn = session
