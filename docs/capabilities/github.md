@@ -1,14 +1,14 @@
 ---
 title: GitHub
 description: Read and review GitHub pull requests with inline comments, keep one comment per pull request up to date, and file deduplicated issues.
-appliesTo: [platform, cloud]
+appliesTo: [framework, platform, cloud]
 ---
 
 | | |
 |---|---|
 | **ID** | `github` |
 | **Category** | Integrations |
-| **Features** | None |
+| **Features** | `github` Cargo feature in Framework |
 | **Dependencies** | None |
 
 The GitHub capability gives an agent what it needs to work on one pull request:
@@ -18,6 +18,17 @@ Pair it with a GitHub trigger to build a pull request reviewer, or with a
 schedule trigger and a sandbox to build a security scanner. The
 [PR Reviewer and Security Scanner templates](/how-to/set-up-review-and-security-agents/)
 do both for you.
+
+## Framework
+
+Enable the `github` Cargo feature and add `everruns::github::GitHub` to an agent.
+The Framework adapter accepts application-owned credentials and is read-only by
+default; explicit options add write tools. It also exposes repository search and
+file reads directly. See [Framework GitHub tools](/framework/github/) for its tool
+selection, token providers, and runnable PR reviewer.
+
+The following sections describe the hosted Platform capability, including its
+connection identities, triggers, and managed sandbox checkout.
 
 ## Tools
 

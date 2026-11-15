@@ -358,3 +358,13 @@ instruction conflicts, objective retention, delegation decisions, and proportion
 verification. Local runtime/scorer checks cannot establish model behavior; production
 adoption requires live comparison and transcript review. The documented blocked
 comparison remains an open acceptance step, not a passing result.
+
+## Portable scoring boundary
+
+[Scorer vocabulary](../../crates/contracts/src/runtime/evaluation.rs),
+[deterministic rules](../../crates/core/src/evaluation.rs) and
+[judge prompt/parsing](../../crates/core/src/evaluation_judge.rs) are neutral/shared.
+The Server keeps eval definitions, org model selection, budget accounting, history
+and dispatch. Framework's [application evaluator](../../crates/everruns/src/evaluation/mod.rs)
+selects models explicitly, bounds case concurrency and retains debuggable evidence.
+Unavailable evidence or grader failure is an error, never a fabricated passing grade.

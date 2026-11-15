@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 
 use crate::github::GitHubActsAs;
 use crate::github::client::{GitHubClient, PullRequestFile};
-use crate::github::pull_requests::{github_token, target, target_schema, valid_marker};
+use crate::github::pull_requests::{target, target_schema, valid_marker};
 
 const MAX_COMMENTS: usize = 50;
 const MAX_COMMENT_BYTES: usize = 16_000;
@@ -406,41 +406,14 @@ impl Tool for SubmitGitHubReviewTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let (repo, number) = match target(&arguments) {
-            Ok(target) => target,
-            Err(e) => return e,
-        };
-        let body = arguments
-            .get("body")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
-        let event = match arguments.get("event").and_then(Value::as_str) {
-            None | Some("COMMENT") => "COMMENT",
-            Some("REQUEST_CHANGES") => "REQUEST_CHANGES",
-            Some(other) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "event must be COMMENT or REQUEST_CHANGES, got {other:?}; this tool cannot approve"
-                ));
-            }
-        };
-        let drafts = match parse_comments(&arguments) {
-            Ok(drafts) => drafts,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-        if body.is_empty() && drafts.is_empty() {
-            return ToolExecutionResult::tool_error("Provide a body, comments, or both");
-        }
-        let client =
-            match github_token(context, self.acts_as, &repo, &[("pull_requests", "write")]).await {
-                Ok(token) => crate::github::tools::github_client(token),
-                Err(e) => return e,
-            };
-        match submit(&client, &repo, number, &arguments, body, event, drafts).await {
-            Ok(result) => ToolExecutionResult::success(result),
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
+        submit_review(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: self.acts_as,
+            },
+            arguments,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
@@ -538,6 +511,46 @@ pub(crate) async fn submit(
         "moved_to_body": plan.outside_diff.len(),
         "duplicates": plan.duplicates,
     }))
+}
+
+pub(super) async fn submit_review(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let (repo, number) = match target(&arguments) {
+        Ok(target) => target,
+        Err(e) => return e,
+    };
+    let body = arguments
+        .get("body")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    let event = match arguments.get("event").and_then(Value::as_str) {
+        None | Some("COMMENT") => "COMMENT",
+        Some("REQUEST_CHANGES") => "REQUEST_CHANGES",
+        Some(other) => {
+            return ToolExecutionResult::tool_error(format!(
+                "event must be COMMENT or REQUEST_CHANGES, got {other:?}; this tool cannot approve"
+            ));
+        }
+    };
+    let drafts = match parse_comments(&arguments) {
+        Ok(drafts) => drafts,
+        Err(e) => return ToolExecutionResult::tool_error(e),
+    };
+    if body.is_empty() && drafts.is_empty() {
+        return ToolExecutionResult::tool_error("Provide a body, comments, or both");
+    }
+    let client = match api.client(&repo, &[("pull_requests", "write")]).await {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+    match submit(&client, &repo, number, &arguments, body, event, drafts).await {
+        Ok(result) => ToolExecutionResult::success(result),
+        Err(e) => ToolExecutionResult::tool_error(e),
+    }
 }
 
 #[cfg(test)]

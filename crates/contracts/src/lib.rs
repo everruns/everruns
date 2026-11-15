@@ -253,3 +253,6 @@ pub mod voice;
 
 #[cfg(all(feature = "http", target_arch = "wasm32"))]
 pub fn install_default_crypto_provider() {}
+
+/// Portable trace projection data.
+pub mod trace;

@@ -281,7 +281,7 @@ async fn slack_api_call_once(
         .json(payload)
         .send()
         .await
-        .map_err(|e| SlackApiError::Transient(e.to_string()))?;
+        .map_err(|e| SlackApiError::Transient(e.without_url().to_string()))?;
 
     let status = response.status();
     // Read the header before the body is consumed: a 429 carries its advice here,
@@ -291,7 +291,7 @@ async fn slack_api_call_once(
     let body: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| SlackApiError::Transient(e.to_string()))?;
+        .map_err(|e| SlackApiError::Transient(e.without_url().to_string()))?;
 
     if !body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
         let error = body
@@ -299,6 +299,17 @@ async fn slack_api_call_once(
             .and_then(|e| e.as_str())
             .unwrap_or("unknown");
 
+        // THREAT[TM-FW-001]: never reflect an upstream echo of the Authorization token.
+        let error = if (!bot_token.is_empty() && error.contains(bot_token))
+            || error.len() > 100
+            || !error
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        {
+            "unexpected_error"
+        } else {
+            error
+        };
         let failure = SlackApiError::from_code(error, retry_after);
 
         // Rate limits and `already_reacted` are routine, and workspace install

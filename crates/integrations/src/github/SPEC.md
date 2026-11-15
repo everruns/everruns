@@ -46,3 +46,14 @@ Read-only scout agent for repository exploration.
 
 - Unit and mocked HTTP coverage: `cargo test -p everruns-integrations --features github`
 - Live GitHub smoke test: `doppler run -- cargo test -p everruns-integrations --features github-live-tests --test live_api_test -- --test-threads=1`
+
+## Framework adapter
+
+`framework.rs` exposes `GitHub` through `IntoCapability`, with application-owned
+static or refreshable tokens and explicit write options. The default is read-only;
+search and file tools are available directly, without spawning a blueprint.
+Shared vendor operations accept a narrow credential/client provider; the hosted
+adapter resolves connection identity, while the Framework adapter calls its
+application token provider. Neither adapter duplicates validation or vendor behavior.
+Managed checkout stays hosted because it requires sandbox credential attestation.
+See [Framework GitHub tools](../../../../docs/framework/github.md).

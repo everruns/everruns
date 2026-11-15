@@ -1,8 +1,13 @@
 ---
 title: SQL Database
 description: "Session-scoped SQLite databases: create tables, run queries, and persist relational data per session."
-appliesTo: [platform, cloud]
+appliesTo: [framework, platform, cloud]
 ---
+
+## Framework
+
+Enable the `sql-database` Cargo feature and bind application-owned services with `.sql_database(databases)`. See [Framework services](/framework/data-services/) for credentials, persistence and a complete real-model example. The remaining setup sections describe the hosted Platform.
+
 
 | | |
 |---|---|

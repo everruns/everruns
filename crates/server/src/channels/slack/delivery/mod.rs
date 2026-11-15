@@ -239,66 +239,21 @@ use streams::classify_slack_failure;
 /// bridges over these, so both name sets work today and one of them will not.
 /// Pinning the `agents.sessions.*` set here — and nowhere else — makes a move a
 /// two-line change rather than a search (EVE-975).
-const SLACK_SET_STATUS_METHOD: &str = "agents.sessions.setStatus";
-const SLACK_SET_TITLE_METHOD: &str = "agents.sessions.rename";
-
-/// Slack rejects a title longer than this.
-const SLACK_TITLE_MAX_CHARS: usize = 250;
-
 #[async_trait]
 impl ChannelAgentSurface for SlackDeliveryAdapter {
-    async fn set_status(
-        &self,
-        status: &str,
-        context: &ChannelDeliveryContext,
-    ) -> ChannelDeliveryResult {
-        // The pane keys status off the thread, so a thread_ts is required; a
-        // channel post has none and has no status line to set either.
-        if context.thread_ref.is_empty() {
-            return ChannelDeliveryResult::Ok;
+    async fn set_status(&self, s: &str, c: &ChannelDeliveryContext) -> ChannelDeliveryResult {
+        everruns_integrations::slack_channel::surfaces::SlackSurfaces {
+            api_base: &self.api_base,
         }
-        let payload = serde_json::json!({
-            "channel_id": context.channel_id,
-            "thread_ts": context.thread_ref,
-            "status": status,
-        });
-        match slack_api_call(
-            &self.api_base,
-            &context.auth_token,
-            SLACK_SET_STATUS_METHOD,
-            payload,
-        )
+        .set_status(s, c)
         .await
-        {
-            Ok(_) => ChannelDeliveryResult::Ok,
-            Err(e) => classify_slack_failure(e),
-        }
     }
-
-    async fn set_title(
-        &self,
-        title: &str,
-        context: &ChannelDeliveryContext,
-    ) -> ChannelDeliveryResult {
-        if context.thread_ref.is_empty() {
-            return ChannelDeliveryResult::Ok;
+    async fn set_title(&self, t: &str, c: &ChannelDeliveryContext) -> ChannelDeliveryResult {
+        everruns_integrations::slack_channel::surfaces::SlackSurfaces {
+            api_base: &self.api_base,
         }
-        let payload = serde_json::json!({
-            "channel_id": context.channel_id,
-            "thread_ts": context.thread_ref,
-            "title": truncate_chars(title, SLACK_TITLE_MAX_CHARS),
-        });
-        match slack_api_call(
-            &self.api_base,
-            &context.auth_token,
-            SLACK_SET_TITLE_METHOD,
-            payload,
-        )
+        .set_title(t, c)
         .await
-        {
-            Ok(_) => ChannelDeliveryResult::Ok,
-            Err(e) => classify_slack_failure(e),
-        }
     }
 }
 
@@ -339,13 +294,11 @@ async fn post_to_slack_with_retry_base(
     unreachable!()
 }
 
+use everruns_integrations::slack_channel::markdown::reply_payloads;
 #[cfg(test)]
 use everruns_integrations::slack_channel::markdown::{
     SLACK_MARKDOWN_BLOCK_LIMIT, SLACK_MAX_BLOCKS_PER_MESSAGE, SLACK_MAX_OUTBOUND_REPLY_CHARS,
     SLACK_TEXT_FALLBACK_LIMIT, split_markdown_for_blocks,
-};
-use everruns_integrations::slack_channel::markdown::{
-    markdown_block, neutralize_broadcasts, reply_payloads, truncate_chars,
 };
 
 /// Correlation stamped onto a posted message via `chat.postMessage`'s

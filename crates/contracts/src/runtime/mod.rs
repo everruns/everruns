@@ -325,3 +325,9 @@ use crate::runtime_provider;
 use crate::tool_types;
 use crate::typed_id;
 use crate::user_facing_error;
+
+/// Portable scoring vocabulary.
+pub mod evaluation;
+
+/// Shared trigger vocabulary.
+pub mod triggers;

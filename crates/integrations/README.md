@@ -32,7 +32,7 @@ let _ = std::any::type_name::<FileSystemCapability>();
 | `duckduckgo` | `duckduckgo` | DuckDuckGo search |
 | `e2b` | `e2b` | E2B sandboxes and computer use |
 | `filesystem` | `filesystem` | Session filesystem tools |
-| `github` | `github` | GitHub repository tools |
+| `github` | `github` | GitHub repository tools and the application-owned `GitHub` Framework adapter |
 | `lua` | `lua` | Lua code mode |
 | `openai-decisions` | `openai_decisions` | OpenAI decision services |
 | `image-generation` | `image_generation` | Image generation (GPT Image, Muse, Gemini; stills, GIF, SVG) |

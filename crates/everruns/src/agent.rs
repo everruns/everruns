@@ -403,11 +403,15 @@ pub struct Agent {
     communication: crate::conversation::Communication,
     completion_check: everruns_core::completion_check::CompletionCheck,
     continuation_limits: Option<everruns_core::completion_check::ContinuationLimits>,
-    memory_directories: Vec<(String, PathBuf)>,
+    pub(crate) memory_directories: Vec<(String, PathBuf, bool)>,
     workspace_root: Option<PathBuf>,
     default_workspace: crate::default_workspace::DefaultWorkspace,
     workspace_policy: everruns_core::WorkspacePolicy,
+    #[cfg(feature = "native-services")]
+    native_services: crate::native::NativeServices,
     mcp_servers: everruns_core::ScopedMcpServers,
+    #[cfg(feature = "mcp-auth")]
+    mcp_auth: Option<crate::mcp::auth::McpAuth>,
     plugin_warnings: Vec<String>,
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
@@ -820,6 +824,10 @@ impl Agent {
         everruns_contracts::error::AgentLoopError,
     > {
         backends = crate::batteries::runtime_backends(backends);
+        #[cfg(feature = "native-services")]
+        {
+            backends = self.native_services.apply(backends);
+        }
         let host_services = self.host_services.as_deref();
         if let Some(providers) = host_services.and_then(|services| services.providers.as_ref()) {
             // Resolve before execution: an unknown host provider is a
@@ -843,8 +851,9 @@ impl Agent {
             ));
         }
         #[cfg(not(target_arch = "wasm32"))]
-        for (mount, path) in &self.memory_directories {
-            let store = Arc::new(everruns_core::host::RealDiskFileStore::new(path)?);
+        for (mount, path, readonly) in &self.memory_directories {
+            let disk = everruns_core::host::RealDiskFileStore::new(path)?;
+            let store = Arc::new(if *readonly { disk.read_only() } else { disk });
             let identity = std::fs::canonicalize(path)
                 .map_err(|e| everruns_contracts::error::AgentLoopError::config(e.to_string()))?;
             backends.memory_mounts.push((
@@ -1101,6 +1110,10 @@ impl Agent {
         if let Some(services) = host_services {
             builder = apply_host_services(builder, services);
         }
+        #[cfg(feature = "mcp-auth")]
+        if let Some(auth) = &self.mcp_auth {
+            builder = builder.mcp_auth_provider(Arc::new(auth.clone()));
+        }
         Ok(match &self.provider {
             Some(provider) => builder.provider(provider.clone()),
             None => builder,
@@ -1176,11 +1189,15 @@ pub struct AgentBuilder {
     communication: crate::conversation::Communication,
     completion_check: everruns_core::completion_check::CompletionCheck,
     continuation_limits: Option<everruns_core::completion_check::ContinuationLimits>,
-    memory_directories: Vec<(String, PathBuf)>,
+    pub(crate) memory_directories: Vec<(String, PathBuf, bool)>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
     workspace_backends: Vec<Arc<dyn WorkspaceBackend>>,
+    #[cfg(feature = "native-services")]
+    pub(crate) native_services: crate::native::NativeServices,
     mcp_servers: Vec<crate::McpServer>,
+    #[cfg(feature = "mcp-auth")]
+    mcp_auth: Option<crate::mcp::auth::McpAuth>,
     plugin_warnings: Vec<String>,
     #[cfg(feature = "builtins")]
     ask_user: Option<everruns_core::builtins::AskUserCapability>,

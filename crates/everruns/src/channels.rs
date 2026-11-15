@@ -53,13 +53,16 @@ use tracing::debug;
 
 use crate::{Agent, Engine, InputMessage, ResumeError, SendDisposition, Session};
 
+pub use crate::channel_controls::{ConversationState, ConversationStore, MemoryConversationStore};
 pub use everruns_core::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelDriver, ChannelError,
-    ChannelReactionSurface, ChannelRequest, ChannelResponse, ChannelStreamDelivery, ControlAction,
-    DeliveryContext, DeliveryResult, DeliveryTarget, ExternalActor, Inbound, InboundAttachment,
-    InboundChannelEvent, InboundControl, InboundDecision, InboundMessage, InboundReaction,
-    InboundRoute, OutboundChannelMessage, SessionBinding,
+    ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelDeliveryAdapter,
+    ChannelDriver, ChannelError, ChannelProgressSurface, ChannelReactionSurface, ChannelRequest,
+    ChannelResponse, ChannelStreamDelivery, ControlAction, DeliveryContext, DeliveryResult,
+    DeliveryTarget, ExternalActor, Inbound, InboundAttachment, InboundChannelEvent, InboundControl,
+    InboundDecision, InboundMessage, InboundReaction, InboundRoute, OutboundChannelMessage,
+    SessionBinding,
 };
+pub use everruns_core::channel_runtime::TurnDeliveryPlanner;
 /// File intake, for hosts that take files outside a channel (serve's
 /// message endpoint).
 pub use everruns_core::channel_runtime::{AttachmentIntake, AttachmentPolicy, AttachmentStore};
@@ -74,7 +77,7 @@ pub use everruns_core::channel_runtime::{
 pub use everruns_core::channel_runtime::{
     ChannelStore, DEFAULT_DELIVERY_LEASE, DeliveryOptions, MemoryChannelStore, PendingDelivery,
 };
-pub use everruns_integrations::slack_channel::Slack;
+pub use everruns_integrations::slack_channel::{Participation, Slack, SlackAdmission};
 pub use everruns_integrations::webhook_channel::Webhook;
 
 /// One channel: its platform driver, and how it binds sessions and delivers
@@ -83,6 +86,7 @@ pub use everruns_integrations::webhook_channel::Webhook;
 pub struct Channel {
     config: ChannelConfig,
     driver: Arc<dyn ChannelDriver>,
+    planner: Option<Arc<dyn TurnDeliveryPlanner>>,
 }
 
 impl<D: ChannelDriver> From<D> for Channel {
@@ -99,9 +103,22 @@ impl Channel {
         Self {
             config: ChannelConfig::new(""),
             driver: Arc::new(driver),
+            planner: None,
         }
     }
 
+    /// Slack with per-turn pane delivery: streams/status in DMs, completed replies in channels.
+    pub fn slack(driver: Slack) -> Self {
+        let planner = SlackPlanner(driver.clone());
+        let mut channel = Self::new(driver);
+        channel.planner = Some(Arc::new(planner));
+        channel
+    }
+    /// Plan each turn's adapter and options using its trusted delivery target.
+    pub fn delivery_planner(mut self, planner: impl TurnDeliveryPlanner + 'static) -> Self {
+        self.planner = Some(Arc::new(planner));
+        self
+    }
     /// How conversations map to sessions.
     pub fn binding(mut self, binding: SessionBinding) -> Self {
         self.config.binding = binding;
@@ -147,9 +164,10 @@ impl std::fmt::Debug for Channel {
 /// Builds [`Channels`].
 pub struct ChannelsBuilder {
     engine: Engine,
-    channels: Vec<(String, Channel, Agent)>,
+    channels: Vec<(String, Channel, ChannelAgent)>,
     store: Option<Arc<dyn ChannelStore>>,
     egress: Option<Arc<dyn everruns_core::EgressService>>,
+    conversations: Arc<dyn ConversationStore>,
 }
 
 impl ChannelsBuilder {
@@ -162,10 +180,25 @@ impl ChannelsBuilder {
         channel: impl Into<Channel>,
         agent: Agent,
     ) -> Self {
-        self.channels.push((name.into(), channel.into(), agent));
+        self.channels.push((
+            name.into(),
+            channel.into(),
+            ChannelAgent::Snapshot(Box::new(agent)),
+        ));
         self
     }
 
+    /// Bind an exact retained Agent registration. Use with durable Engine profiles and recovery.
+    pub fn channel_registered(
+        mut self,
+        name: impl Into<String>,
+        channel: impl Into<Channel>,
+        build: crate::hosting::AgentBuild,
+    ) -> Self {
+        self.channels
+            .push((name.into(), channel.into(), ChannelAgent::Registered(build)));
+        self
+    }
     /// Keep session bindings and unfinished deliveries here. Defaults to
     /// memory, which forgets them on restart.
     pub fn store(mut self, store: Arc<dyn ChannelStore>) -> Self {
@@ -182,17 +215,56 @@ impl ChannelsBuilder {
         self
     }
 
+    /// Persist latest title/view metadata with this application-owned store.
+    pub fn conversations(mut self, store: impl ConversationStore + 'static) -> Self {
+        self.conversations = Arc::new(store);
+        self
+    }
     /// Build the channels. Nothing runs until a request is handled.
     pub fn build(self) -> Channels {
         let mut agents = HashMap::new();
         let mut configs = Vec::new();
         for (name, channel, agent) in self.channels {
+            let agent = match agent {
+                ChannelAgent::Snapshot(agent)
+                    if self.engine.has_session_hosting()
+                        && agent.custom_backends().is_none()
+                        && {
+                            #[cfg(feature = "local")]
+                            {
+                                agent.local_config().is_none()
+                            }
+                            #[cfg(not(feature = "local"))]
+                            {
+                                true
+                            }
+                        } =>
+                {
+                    let build = crate::hosting::AgentBuild {
+                        agent: format!("channel:{name}"),
+                        build_id: uuid::Uuid::new_v4().to_string(),
+                    };
+                    match self.engine.register_agent(build.clone(), *agent) {
+                        Ok(()) => ChannelAgent::Registered(build),
+                        Err(_) => ChannelAgent::Unavailable,
+                    }
+                }
+                ChannelAgent::Snapshot(_) if !self.engine.permits_snapshot_creation() => {
+                    ChannelAgent::Unavailable
+                }
+                other => other,
+            };
             agents.insert(name.clone(), agent);
-            configs.push(channel.into_parts(name));
+            let planner = channel.planner.clone();
+            let (config, driver) = channel.into_parts(name);
+            let mut resolved = ResolvedChannel::messaging(config, driver);
+            resolved.planner = planner;
+            configs.push(resolved);
         }
         let port = Arc::new(EnginePort {
             engine: self.engine,
             agents,
+            conversations: self.conversations.clone(),
         });
         let mut builder = ChannelHost::builder(port).egress(
             self.egress
@@ -201,11 +273,12 @@ impl ChannelsBuilder {
         if let Some(store) = self.store {
             builder = builder.store(store);
         }
-        for (config, driver) in configs {
-            builder = builder.channel(config, driver);
+        for resolved in configs {
+            builder = builder.resolved(resolved);
         }
         Channels {
             host: builder.build(),
+            conversations: self.conversations,
         }
     }
 }
@@ -214,6 +287,7 @@ impl ChannelsBuilder {
 #[derive(Clone)]
 pub struct Channels {
     host: ChannelHost,
+    conversations: Arc<dyn ConversationStore>,
 }
 
 impl Channels {
@@ -224,6 +298,7 @@ impl Channels {
             channels: Vec::new(),
             store: None,
             egress: None,
+            conversations: Arc::new(MemoryConversationStore::default()),
         }
     }
 
@@ -252,6 +327,14 @@ impl Channels {
         self.host.recover().await
     }
 
+    /// Latest title and view metadata retained for a conversation.
+    pub async fn conversation_state(
+        &self,
+        session: &str,
+    ) -> Result<ConversationState, ChannelError> {
+        self.conversations.load(session).await
+    }
+
     /// Channel names, sorted.
     pub fn names(&self) -> Vec<String> {
         self.host.channel_names()
@@ -275,11 +358,12 @@ impl std::fmt::Debug for Channels {
 /// The session side of channels, over an [`Engine`].
 struct EnginePort {
     engine: Engine,
-    agents: HashMap<String, Agent>,
+    agents: HashMap<String, ChannelAgent>,
+    conversations: Arc<dyn ConversationStore>,
 }
 
 impl EnginePort {
-    fn agent(&self, channel: &str) -> Result<&Agent, ChannelError> {
+    fn agent(&self, channel: &str) -> Result<&ChannelAgent, ChannelError> {
         self.agents
             .get(channel)
             .ok_or_else(|| ChannelError::NotFound(format!("channel {channel}")))
@@ -291,8 +375,11 @@ impl EnginePort {
             .map_err(|_| ChannelError::Session(format!("invalid session id {session_id}")))?;
         match self.engine.resume(id).await {
             Err(ResumeError::SessionNotFound { .. }) => {
+                let ChannelAgent::Snapshot(agent) = self.agent(channel)? else {
+                    return Err(ChannelError::Session("Conversation session is unavailable; restore its retained Engine registration".into()));
+                };
                 self.engine
-                    .attach(id, self.agent(channel)?.clone())
+                    .attach(id, agent.as_ref().clone())
                     .await
                     .map_err(session_error)?;
                 self.engine.resume(id).await.map_err(session_error)
@@ -309,9 +396,19 @@ fn session_error(error: impl std::fmt::Display) -> ChannelError {
 #[async_trait]
 impl ChannelSessionPort for EnginePort {
     async fn create_session(&self, request: NewChannelSession) -> Result<String, ChannelError> {
-        let session = self
-            .engine
-            .create(self.agent(&request.channel.name)?.clone());
+        let session = match self.agent(&request.channel.name)? {
+            ChannelAgent::Snapshot(agent) => self.engine.create(agent.as_ref().clone()),
+            ChannelAgent::Registered(build) => self
+                .engine
+                .create_registered(SessionId::new(), build)
+                .await
+                .map_err(session_error)?,
+            ChannelAgent::Unavailable => {
+                return Err(ChannelError::Session(
+                    "Channel Agent cannot be registered on this Engine profile".into(),
+                ));
+            }
+        };
         Ok(session.id())
     }
 
@@ -345,8 +442,18 @@ impl ChannelSessionPort for EnginePort {
         &self,
         channel: &ChannelConfig,
         session_id: &str,
-        message: InputMessage,
+        mut message: InputMessage,
     ) -> Result<SendOutcome, ChannelError> {
+        let context = self.conversations.load(session_id).await?;
+        if !context.context.is_empty() {
+            message.content.insert(
+                0,
+                everruns_core::ContentPart::text(format!(
+                    "Current platform view (untrusted reference data): {}",
+                    serde_json::to_string(&context.context).map_err(session_error)?
+                )),
+            );
+        }
         let session = self.session(&channel.name, session_id).await?;
         let sent = session.send(message).await.map_err(session_error)?;
         Ok(match sent.disposition {
@@ -369,6 +476,86 @@ impl ChannelSessionPort for EnginePort {
         resolve_send(&self.session(&channel.name, session_id).await?, input).await
     }
 
+    async fn seed(
+        &self,
+        channel: &ChannelConfig,
+        id: &str,
+        history: Vec<InputMessage>,
+    ) -> Result<(), ChannelError> {
+        let session = self.session(&channel.name, id).await?;
+        let profile = session.inner.execution.hosting().ok_or_else(|| {
+            ChannelError::Session("History seeding requires Engine hosting".into())
+        })?;
+        let messages = history
+            .into_iter()
+            .map(|input| everruns_core::host::AcceptedTurnInput::new(input).into_message())
+            .collect();
+        profile
+            .seed_history(session.session_id(), uuid::Uuid::new_v4(), messages)
+            .await
+            .map_err(session_error)?;
+        Ok(())
+    }
+    async fn control(
+        &self,
+        channel: &ChannelConfig,
+        id: &str,
+        action: &ControlAction,
+    ) -> Result<(), ChannelError> {
+        let session = self.session(&channel.name, id).await?;
+        if !matches!(action, ControlAction::Cancel) {
+            return self.conversations.apply(id, action).await;
+        }
+        use everruns_core::host::{EventReadLimit, EventReadRequest};
+        let profile = session.inner.execution.hosting().ok_or_else(|| {
+            ChannelError::Session("Platform cancellation requires Engine hosting".into())
+        })?;
+        let status = profile
+            .status(session.session_id())
+            .await
+            .map_err(session_error)?;
+        let Some(turn) = status.open_turn else {
+            return Ok(());
+        };
+        let first = profile
+            .turn_sequences(session.session_id(), turn, 0, 1)
+            .await
+            .map_err(session_error)?
+            .first()
+            .copied();
+        let Some(first) = first else { return Ok(()) };
+        let page = profile
+            .reader(session.session_id())
+            .event_log
+            .read_page(
+                EventReadRequest::new(
+                    session.session_id(),
+                    EventReadLimit::new(1).map_err(session_error)?,
+                )
+                .with_cursor(
+                    everruns_core::host::EventCursor::after(
+                        session.session_id(),
+                        first.saturating_sub(1),
+                    )
+                    .map_err(session_error)?,
+                ),
+            )
+            .await
+            .map_err(session_error)?;
+        if let Some(input) = page.events.first().and_then(|e| e.context.input_message_id) {
+            profile
+                .command(
+                    session.session_id(),
+                    everruns_core::session_commands::SessionCommand::Cancel {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        input,
+                    },
+                )
+                .await
+                .map_err(session_error)?;
+        }
+        Ok(())
+    }
     async fn events(
         &self,
         channel: &ChannelConfig,
@@ -467,3 +654,78 @@ pub async fn session_events(
 #[cfg(test)]
 #[path = "channels_tests.rs"]
 mod tests;
+
+struct SlackPlanner(Slack);
+#[async_trait]
+impl TurnDeliveryPlanner for SlackPlanner {
+    async fn plan(
+        &self,
+        _session: &str,
+        target: &DeliveryTarget,
+        mut options: DeliveryOptions,
+    ) -> (Arc<dyn ChannelDeliveryAdapter>, DeliveryOptions) {
+        let pane = target.channel_id.starts_with('D');
+        options.stream &= pane;
+        options.agent_surface = pane;
+        options.thinking_status = "is thinking...".into();
+        (Arc::new(self.0.clone()), options)
+    }
+}
+/// Decision-model participation, evaluated before creating a turn.
+#[derive(Clone)]
+pub struct SlackRelevance {
+    decisions: crate::Decisions,
+    threshold: f64,
+}
+impl SlackRelevance {
+    /// Use a strict 0.9 threshold and a two-second deadline. Direct messages and mentions always pass.
+    pub fn new(decisions: crate::Decisions) -> Self {
+        Self {
+            decisions,
+            threshold: 0.9,
+        }
+    }
+    /// Set a finite probability threshold in [0,1].
+    pub fn threshold(mut self, threshold: f64) -> Result<Self, ChannelError> {
+        if !(0.0..=1.0).contains(&threshold) {
+            return Err(ChannelError::BadRequest(
+                "Invalid relevance threshold".into(),
+            ));
+        }
+        self.threshold = threshold;
+        Ok(self)
+    }
+}
+#[async_trait]
+impl Participation for SlackRelevance {
+    async fn admit(
+        &self,
+        message: &InboundMessage,
+        _session: Option<&str>,
+    ) -> Result<bool, ChannelError> {
+        if SlackAdmission::Direct.admit(message, None).await? {
+            return Ok(true);
+        }
+        let state =
+            serde_json::json!({"message":message.event.text,"thread":message.event.thread_ref});
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            self.decisions.probability(
+                "Is an AI agent reply clearly helpful or requested in this conversation?",
+                state,
+            ),
+        )
+        .await
+        {
+            Ok(Ok(value)) => Ok(value.is_finite() && value >= self.threshold),
+            _ => Ok(false),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum ChannelAgent {
+    Snapshot(Box<Agent>),
+    Registered(crate::hosting::AgentBuild),
+    Unavailable,
+}

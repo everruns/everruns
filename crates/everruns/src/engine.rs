@@ -349,6 +349,10 @@ impl Engine {
         Self::builder().build()
     }
 
+    pub(crate) fn permits_snapshot_creation(&self) -> bool {
+        self.inner.hosting.is_none() || self.inner.volatile_default
+    }
+
     /// Create a new engine-owned session from an immutable Agent snapshot.
     pub fn create(&self, agent: Agent) -> Session {
         if self.inner.hosting.is_some() {

@@ -244,3 +244,12 @@ Phase 2 changes no Phase 1 storage decisions except the requirement (already enc
 4. Built-in scorer catalog contents and whether catalog judges count against org budgets.
 5. Message-level user feedback (thumbs up/down), not strictly required, but every platform treats explicit feedback as the highest-signal filter ("score traces where users were unhappy"). Likely a small, high-leverage prerequisite worth its own line item.
 6. Observer versioning: re-score on edit, or only score forward? (Proposal: forward-only + explicit backfill.)
+
+## Framework observation
+
+[OnlineScoring](../../crates/everruns/src/evaluation/online.rs) is an application
+Engine listener using the shared evaluator and an application sink. It is bounded,
+non-blocking with respect to turn execution, and observational. Terminal tool/model
+counts and final message identity must match retained evidence before grading;
+queue loss or overflow cannot silently produce a successful partial grade. Durable
+scoring, historical backfill and host reporting remain the Server subsystem above.

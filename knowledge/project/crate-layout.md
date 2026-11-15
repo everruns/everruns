@@ -103,9 +103,11 @@ codec exception and cannot construct a connection. The unpublished optional
 analytical metastore and retained canonical-log reads. Its exception requires
 the exact crate identity and location, and allows only the normal SQLx edge;
 runtime libraries and workers gain no database access. See
-[trace storage](../operations/trace-storage.md). Embedded hosts (the facade's `local` feature, the serve
-hosts) keep their own schemas and shared query callbacks, but open SQLite handles
-through `everruns::sqlite`, behind the facade's `local` feature. It used to be
+[trace storage](../operations/trace-storage.md). Embedded hosts (the facade's local hosting, trigger outbox and session SQL features, and the serve
+hosts) keep their own schemas and shared query callbacks. SQLite construction remains
+in the facade, behind the owning opt-in feature. Shared SQL authorizer/execution helpers
+live in its [database runtime](../../crates/everruns/src/database/runtime/mod.rs), which
+the Server reuses; vendor integrations acquire no database-driver exception. It used to be
 durable's `sqlite` module; owning it in durable made the facade's `local` feature
 compile the durable engine just to open SQLite. A separate leaf crate for it was
 tried and dropped: about 200 lines of utility code is not worth a published crate,

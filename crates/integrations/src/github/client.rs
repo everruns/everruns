@@ -663,7 +663,8 @@ impl GitHubClient {
             .map_err(|e| format!("Failed to read GitHub API response: {e}"))?;
 
         if !status.is_success() {
-            return Err(format!("GitHub API error ({status}): {body}"));
+            // Error bodies are untrusted and may echo credentials.
+            return Err(format!("GitHub API error ({status})"));
         }
         Ok(body)
     }
@@ -673,7 +674,7 @@ fn parse_json<T>(body: &str) -> Result<T, String>
 where
     T: for<'de> Deserialize<'de>,
 {
-    serde_json::from_str(body).map_err(|e| format!("Invalid JSON from GitHub API: {e}"))
+    serde_json::from_str(body).map_err(|_| "Invalid JSON from GitHub API".to_string())
 }
 
 pub(crate) fn cap_text(text: String, max_bytes: usize) -> CappedText {

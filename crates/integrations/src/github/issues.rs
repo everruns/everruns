@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 
 use crate::github::GitHubActsAs;
 use crate::github::client::{GitHubClient, Issue};
-use crate::github::pull_requests::{github_token, valid_marker};
+use crate::github::pull_requests::valid_marker;
 use crate::github::tools::{is_valid_owner_repo, required_str};
 
 const MAX_ISSUE_PAGES: u32 = 10;
@@ -249,23 +249,38 @@ impl Tool for UpsertGitHubIssueTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let draft = match parse_issue(&arguments) {
-            Ok(draft) => draft,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-        let client =
-            match github_token(context, self.acts_as, &draft.repo, &[("issues", "write")]).await {
-                Ok(token) => crate::github::tools::github_client(token),
-                Err(e) => return e,
-            };
-        match upsert(&client, draft, self.private_only).await {
-            Ok(result) => ToolExecutionResult::success(result),
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
+        upsert_issue(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: self.acts_as,
+            },
+            arguments,
+            self.private_only,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+pub(super) async fn upsert_issue(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+    private_only: bool,
+) -> ToolExecutionResult {
+    let draft = match parse_issue(&arguments) {
+        Ok(draft) => draft,
+        Err(e) => return ToolExecutionResult::tool_error(e),
+    };
+    let client = match api.client(&draft.repo, &[("issues", "write")]).await {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+    match upsert(&client, draft, private_only).await {
+        Ok(result) => ToolExecutionResult::success(result),
+        Err(e) => ToolExecutionResult::tool_error(e),
     }
 }
 

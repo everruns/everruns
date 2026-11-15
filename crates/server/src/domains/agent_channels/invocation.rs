@@ -18,16 +18,11 @@ use crate::execution_metadata;
 use chrono::{DateTime, Duration, Utc};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::InputContentPart;
-use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use uuid::Uuid;
-
-static TEMPLATE_EXPR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}").expect("template regex is valid")
-});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelInvocationSource {
@@ -155,36 +150,7 @@ pub fn hash_a2a_api_key(plaintext: &str) -> String {
     hex::encode(Sha256::digest(plaintext.as_bytes()))
 }
 
-pub(crate) fn template_lookup<'a>(context: &'a Value, path: &str) -> Option<&'a Value> {
-    let mut current = context;
-    for segment in path.split('.') {
-        current = match current {
-            Value::Object(map) => map.get(segment)?,
-            Value::Array(items) => items.get(segment.parse::<usize>().ok()?)?,
-            _ => return None,
-        };
-    }
-    Some(current)
-}
-
-fn template_value_to_string(value: &Value) -> String {
-    match value {
-        Value::Null => String::new(),
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
-    }
-}
-
-pub(crate) fn render_message_template(template: &str, context: &Value) -> String {
-    TEMPLATE_EXPR_RE
-        .replace_all(template, |captures: &regex::Captures<'_>| {
-            let path = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
-            template_lookup(context, path)
-                .map(template_value_to_string)
-                .unwrap_or_default()
-        })
-        .into_owned()
-}
+pub(crate) use everruns_core::triggers::{render_message_template, template_lookup};
 
 fn channel_session_tags(
     ingress: &crate::domains::agent_channels::ingress::IngressContext,

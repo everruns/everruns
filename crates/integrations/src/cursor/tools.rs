@@ -5,7 +5,7 @@ use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
-use tracing::{debug, error};
+use tracing::error;
 
 use crate::cursor::client::{CursorClient, LaunchAgentRequest};
 use crate::cursor::{CURSOR_API_BASE_ENV, CURSOR_API_KEY_SECRET, CURSOR_CONNECTION_PROVIDER};
@@ -23,8 +23,12 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
             .await
         {
             Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
-            Ok(_) => {}
-            Err(e) => debug!("Cursor connection resolver failed: {e}"),
+            Ok(None) => {}
+            Ok(Some(_)) | Err(_) => {
+                return Err(ToolExecutionResult::tool_error(
+                    "Could not acquire Cursor credentials",
+                ));
+            }
         }
     }
 

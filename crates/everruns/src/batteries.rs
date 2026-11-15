@@ -49,6 +49,42 @@ pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> 
     {
         registry.register(everruns_capabilities::capabilities::AgentHandoffCapability);
     }
+    #[cfg(feature = "sql-database")]
+    if !registry.has("session_sql_database") {
+        registry.register(everruns_capabilities::capabilities::SessionSqlDatabaseCapability);
+    }
+    #[cfg(feature = "knowledge")]
+    if !registry.has("knowledge") {
+        registry.register(everruns_capabilities::capabilities::KnowledgeCapability);
+    }
+    #[cfg(feature = "slack-actions")]
+    if !registry.has("slack") {
+        registry.register(everruns_capabilities::capabilities::SlackCapability);
+    }
+    #[cfg(feature = "cursor")]
+    if !registry.has("cursor") {
+        registry.register(everruns_integrations::cursor::CursorCapability);
+    }
+    #[cfg(feature = "browserless")]
+    if !registry.has("browserless") {
+        registry.register(everruns_integrations::browserless::BrowserlessCapability);
+    }
+    #[cfg(feature = "browserless")]
+    {
+        if !registry.has("computer_use") {
+            registry.register(
+                everruns_integrations::browserless::computer::BrowserlessComputerUseCapability,
+            );
+        }
+        if !registry.has("browser_use") {
+            registry
+                .register(everruns_integrations::browserless::browser_use::BrowserUseCapability);
+        }
+    }
+    #[cfg(feature = "e2b")]
+    if !registry.has("e2b") {
+        registry.register(everruns_integrations::e2b::E2BCapability);
+    }
     register_selected_integrations(&mut registry);
     registry
 }

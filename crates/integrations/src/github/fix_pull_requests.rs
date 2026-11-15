@@ -22,7 +22,6 @@ use serde_json::{Value, json};
 
 use crate::github::GitHubActsAs;
 use crate::github::client::GitHubClient;
-use crate::github::pull_requests::github_token;
 use crate::github::tools::{is_valid_owner_repo, required_str};
 
 const MAX_BODY_BYTES: usize = 60_000;
@@ -196,29 +195,42 @@ impl Tool for CreateGitHubPullRequestTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let pull = match parse_pull(&arguments) {
-            Ok(pull) => pull,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-        let client = match github_token(
-            context,
-            self.acts_as,
-            &pull.repo,
-            &[("pull_requests", "write"), ("contents", "read")],
+        create_pull_request(
+            &super::operation::HostedGitHubApi {
+                context,
+                acts_as: self.acts_as,
+            },
+            arguments,
         )
         .await
-        {
-            Ok(token) => crate::github::tools::github_client(token),
-            Err(e) => return e,
-        };
-        match open(&client, pull).await {
-            Ok(result) => ToolExecutionResult::success(result),
-            Err(e) => ToolExecutionResult::tool_error(e),
-        }
     }
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+pub(super) async fn create_pull_request(
+    api: &dyn super::operation::GitHubApi,
+    arguments: Value,
+) -> ToolExecutionResult {
+    let pull = match parse_pull(&arguments) {
+        Ok(pull) => pull,
+        Err(e) => return ToolExecutionResult::tool_error(e),
+    };
+    let client = match api
+        .client(
+            &pull.repo,
+            &[("pull_requests", "write"), ("contents", "read")],
+        )
+        .await
+    {
+        Ok(client) => client,
+        Err(e) => return e,
+    };
+    match open(&client, pull).await {
+        Ok(result) => ToolExecutionResult::success(result),
+        Err(e) => ToolExecutionResult::tool_error(e),
     }
 }
 

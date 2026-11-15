@@ -1,8 +1,13 @@
 ---
 title: Browserless
 description: Headless browser automation through Browserless for screenshots, DOM reading, scraping, page interaction, and persistent sessions for login-protected pages.
-appliesTo: [platform, cloud]
+appliesTo: [framework, platform, cloud]
 ---
+
+## Framework
+
+Enable the `browserless` Cargo feature and bind application-owned services with `.browserless(credentials)`. See [Framework services](/framework/native-services/) for credentials, persistence and a complete real-model example. The remaining setup sections describe the hosted Platform.
+
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><rect x="2.5" y="4" width="19" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 8.5h19" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="5.6" cy="6.25" r=".75" fill="currentColor"/><circle cx="7.8" cy="6.25" r=".75" fill="currentColor"/></svg>
 

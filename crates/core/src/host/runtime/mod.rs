@@ -531,6 +531,13 @@ impl InProcessRuntimeBuilder {
             file_store = Arc::new(mounted);
         }
 
+        if !backends.file_mounts.is_empty() {
+            let mut mounted = crate::mount_fs::MountFs::new(file_store);
+            for (point, backend, root) in &backends.file_mounts {
+                mounted = mounted.with_mount(point, backend.clone(), root);
+            }
+            file_store = Arc::new(mounted);
+        }
         if let Some((provider, model_id)) = self.default_provider.take() {
             let provider_key = provider.id().clone();
             // This convenience adapts into the canonical provider path.

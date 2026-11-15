@@ -77,6 +77,15 @@ harness = false
 test = true
 
 [features]
+evaluation = ["dep:futures", "dep:thiserror"]
+triggers = ["dep:rusqlite", "dep:thiserror", "dep:everruns-integrations", "everruns-integrations/event-webhooks", "dep:hmac", "dep:sha2", "dep:hex"]
+native-services = ["dep:anyhow"]
+cursor = ["native-services", "dep:everruns-integrations", "everruns-integrations/cursor"]
+browserless = ["native-services", "dep:everruns-integrations", "everruns-integrations/browserless"]
+e2b = ["native-services", "dep:everruns-integrations", "everruns-integrations/e2b"]
+knowledge = ["filesystem", "native-services", "dep:anyhow", "capabilities", "dep:everruns-capabilities"]
+slack-actions = ["capabilities", "native-services", "dep:everruns-capabilities", "dep:everruns-integrations", "everruns-integrations/slack-channel"]
+sql-database = ["native-services", "dep:everruns-capabilities", "dep:rusqlite", "dep:chrono", "dep:thiserror"]
 # Opt-in, native test harness for downstream SessionHosting implementations.
 hosting-conformance = ["builtins"]
 # Default features stay offline: the facade includes the contained session
@@ -129,6 +138,8 @@ images = ["everruns-core/direct-egress", "dep:everruns-integrations", "everruns-
 # between the command and the filesystem. Opt-in because it is the one target
 # that contains nothing; the contract types compile without it.
 host-compute = ["everruns-core/process"]
+github = ["capabilities", "dep:everruns-integrations", "everruns-integrations/github"]
+mcp-auth = ["mcp", "dep:thiserror", "dep:url"]
 mcp = ["everruns-core/mcp", "everruns-core/direct-egress", "dep:anyhow"]
 # Enable local-process (stdio) MCP servers, using `everruns-core/mcp-stdio`.
 mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
@@ -224,6 +235,10 @@ otel = ["everruns-core/otel"]
 braintrust = ["everruns-core/braintrust"]
 
 [dependencies]
+url = { version = "2", optional = true }
+hmac = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 everruns-integrations = { workspace = true, optional = true, default-features = false }
 
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
@@ -262,7 +277,7 @@ schemars = { workspace = true, optional = true }
 serde.workspace = true
 # SQLite for the `local` feature. `everruns::sqlite` owns connection opening
 # for the facade and serve hosts.
-rusqlite = { version = "0.41.1", features = ["bundled", "backup"], optional = true }
+rusqlite = { version = "0.41.1", features = ["bundled", "backup", "hooks"], optional = true }
 # Envelope encryption of session secrets in the native SQLite authority
 # (EVE-1298), the same AES-256-GCM scheme and key format the platform uses.
 aes-gcm = { workspace = true, optional = true }
@@ -282,6 +297,7 @@ everruns-core = { workspace = true, default-features = false, features = ["host"
 everruns-llmsim.workspace = true
 
 [dev-dependencies]
+axum.workspace = true
 chrono.workspace = true
 # Verifies existing embedding callbacks keep their SQLite query type identity.
 rusqlite = { version = "0.41.1", features = ["bundled"] }
@@ -481,3 +497,35 @@ required-features = ["utility-llm"]
 [[example]]
 name = "direct_cloudflare_extractions"
 required-features = ["cloudflare"]
+
+[[example]]
+name = "github_review"
+required-features = ["github", "openai"]
+
+[[example]]
+name = "service_data"
+required-features = ["openai", "sql-database", "knowledge"]
+[[example]]
+name = "slack_actions"
+required-features = ["openai", "slack-actions"]
+[[example]]
+name = "service_credentials"
+required-features = ["openai", "cursor", "browserless", "e2b"]
+[[example]]
+name = "service_evaluation"
+required-features = ["openai", "evaluation"]
+
+[[example]]
+name = "mcp_oauth"
+required-features = ["openai", "mcp-auth"]
+
+[[example]]
+name = "service_triggers"
+required-features = ["openai", "local", "triggers"]
+
+[[example]]
+name = "slack_channel"
+required-features = ["openai", "channels"]
+[[example]]
+name = "named_members"
+required-features = ["openai", "local"]

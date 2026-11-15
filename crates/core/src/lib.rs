@@ -666,3 +666,18 @@ pub mod a2a;
 /// Shared voice loop for voice channels.
 #[cfg(feature = "voice")]
 pub mod voice;
+
+/// Pure portable session trace projection.
+pub mod session_trace;
+
+/// Shared deterministic evaluation rules.
+pub mod evaluation;
+
+/// Shared event-trigger policy.
+pub mod triggers;
+
+/// Shared GitHub trigger normalization.
+pub mod triggers_github;
+
+/// Shared model-backed grader prompt and parsing.
+pub mod evaluation_judge;

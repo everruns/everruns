@@ -277,3 +277,16 @@ message services.
 - serve: [`crates/serve/src/channels.rs`](../../crates/serve/src/channels.rs)
 - Framework: [`crates/everruns/src/channels.rs`](../../crates/everruns/src/channels.rs)
 - Earlier model and Slack rules: [Messaging Integrations](messaging-integrations.md), [Slack Bot Integration](slack-integration.md)
+
+## Framework Slack affordances
+
+The [shared Slack driver](../../crates/integrations/src/slack_channel/mod.rs)
+offers explicit pane streaming/status/title, progress, one-use requester-bound
+approval cards, bounded thread backfill and application-owned participation.
+Vendor stream and surface operations are shared with Server. Framework's
+[Engine session port](../../crates/everruns/src/channels.rs) seeds imported history
+without extra turns and applies cancellation to the bound session. Latest platform
+title/view state belongs to an application ConversationStore; view data enters the
+next input as untrusted reference context. Platform events cannot change executable
+agent configuration. Slack bindings are always thread-scoped. See the
+[public guide](../../docs/framework/slack-services.md) for explicit lifetime limits.

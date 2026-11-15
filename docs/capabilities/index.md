@@ -139,7 +139,7 @@ External-service capabilities and blueprint-backed workflows.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [GitHub](/capabilities/github/) | `github` | 6 (7 with `allow_pull_requests`) |
+| [GitHub](/capabilities/github/) | `github` | Platform: 6–7; [Framework](/framework/github/): 5–9 |
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Repositories](/capabilities/repositories/) | `repositories` | 3 (4 with a writable repository) |
 | [Slack](/capabilities/slack/) | `slack` | 4 |

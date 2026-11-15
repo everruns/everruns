@@ -42,6 +42,8 @@ impl McpCredential {
 ///
 /// Providers receive only this — never a host's connection-resolver internals.
 pub struct McpAuthRequest<'a> {
+    /// Exact HTTP endpoint, absent for local-process servers.
+    pub server_url: Option<&'a str>,
     pub server_name: &'a str,
     pub auth_mode: McpServerAuthMode,
     pub oauth_provider_id: Option<&'a str>,
@@ -119,6 +121,7 @@ mod tests {
         let cred = provider
             .authorization(&McpAuthRequest {
                 server_name: "docs",
+                server_url: Some("https://docs.example/mcp"),
                 auth_mode: McpServerAuthMode::ApiKey,
                 oauth_provider_id: None,
             })
@@ -134,6 +137,7 @@ mod tests {
         let cred = provider
             .authorization(&McpAuthRequest {
                 server_name: "other",
+                server_url: Some("https://other.example/mcp"),
                 auth_mode: McpServerAuthMode::ApiKey,
                 oauth_provider_id: None,
             })

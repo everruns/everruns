@@ -109,3 +109,13 @@ work:
 runs a launch coordinator with two threads that write their drafts to a shared
 workspace. `--offline` runs it with a deterministic simulated model; without
 it, the example uses OpenAI.
+
+## Named members with separate behavior
+
+`AgentBuilder::member` composes a named agent with its own instructions, model and capabilities. Foreground delegation waits for its result; background delegation uses the Engine's task services. Members remain separate sessions under the same host.
+
+The [named members example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/named_members.rs) uses a real lead model and a lighter reviewer model:
+
+```bash
+cargo run -p everruns --features openai,local --example named_members
+```

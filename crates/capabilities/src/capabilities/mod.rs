@@ -387,3 +387,6 @@ mod tests {
         }
     }
 }
+
+/// Unified collection retrieval and browsing capability.
+pub use knowledge::KnowledgeCapability;

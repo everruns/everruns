@@ -240,6 +240,7 @@ opt-in.
 | `chatgpt` | `ChatGpt` with host-owned authentication; OAuth helpers through `everruns::drivers::chatgpt` |
 | `codex` | `Codex` with host-owned authentication; legacy driver through `everruns::drivers::codex` |
 | `bedrock` | AWS Bedrock provider configuration: static keys, or the AWS default credential chain for IAM roles |
+| `github` | [GitHub tools](https://everruns.com/docs/framework/github/), application-owned credentials and opt-in writes |
 | `typesafe` | TypeSafe decisions provider and the `jev` capability |
 | `bashkit` | Sandboxed shell execution |
 | `web-fetch` | HTTP content fetching |
@@ -330,3 +331,5 @@ Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/
 ### Provider-native batch requests (alpha)
 
 `everruns::batch::Batch` submits independent completions through Anthropic Message Batches, returns a serializable credential-free ticket, and lets another process poll, collect or cancel. Enable `anthropic`; application code owns persistence and scheduling. See [Batch Model Requests](https://everruns.com/docs/framework/batch-model-requests/) and the runnable `batch_classification` and `batch_eval` examples.
+
+Application-owned GitHub/MCP credentials, Slack actions and advanced channels, Cursor/Browserless/E2B, persistent SQL, knowledge retrieval, triggers, traces and evaluations are described in [Application services](https://everruns.com/docs/framework/service-integrations/). Each integration is an explicit Cargo opt-in.
