@@ -23,7 +23,8 @@ impl EgressService for RotatingEgress {
                     .unwrap()
             )
         );
-        assert!(request.pinned_addrs.is_some());
+        // This endpoint is an IP literal: no DNS answer list is needed.
+        assert!(request.dns_pinning_required);
         self.calls.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(StdDuration::from_millis(20)).await;
         Ok(EgressResponse { status: 200, headers: Default::default(), body: br#"{"access_token":"shared-access","refresh_token":"shared-rotation","expires_in":3600}"#.to_vec() })
