@@ -329,7 +329,7 @@ fn agent_run_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoi
         protocol_version,
         "agent_run",
         "Run Agent",
-        "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /api/v1/sessions/{session_id}/sse for real-time events.",
+        "Create a new session and send the first message to an agent. Returns the session ID and message ID. Use session_get_status to poll for the agent's response, or connect to the SSE stream at /api/v1/sessions/{session_id}/sse for real-time events. To show the session UI, call session_open with the returned session_id.",
         object_schema(
             vec![
                 id_property(
@@ -426,7 +426,7 @@ fn session_send_message_tool(
         protocol_version,
         "session_send_message",
         "Send Session Message",
-        "Send a follow-up message to an existing session. The agent will process the message and generate a response. Use session_get_status to poll for completion, or connect to the SSE stream.",
+        "Send a follow-up message to an existing session. The agent will process the message and generate a response. Use session_get_status to poll for completion, or connect to the SSE stream. To show the session UI, call session_open with this session_id.",
         object_schema(
             vec![
                 id_property("session_id", "Session ID (format: session_{32-hex})."),
@@ -482,7 +482,7 @@ fn session_get_status_tool(
         protocol_version,
         "session_get_status",
         "Get Session Status",
-        "Get the current status of a session and its recent events. Returns the session status (started/active/idle), the latest agent message if available, and recent events. Use this to poll for agent responses after sending a message.",
+        "Get the current status of a session and its recent events. Returns the session status (started/active/idle), the latest agent message if available, and recent events. Use this to poll for agent responses after sending a message. Call session_open separately when the user needs to inspect or interact with the session UI.",
         object_schema(
             vec![
                 id_property("session_id", "Session ID (format: session_{32-hex})."),
@@ -983,7 +983,7 @@ fn workspace_tools(version: &str, org: &str) -> Vec<McpEndpointToolDefinition> {
             "session_open",
             "Open Session",
             "session_id",
-            "Open the full Everruns session UI, including Trace, Approvals, Work, Events, Files and Cost.",
+            "Render the full Everruns session UI, including Trace, Approvals, Work, Events, Files and Cost. Call agent_run or obtain a session_id first; data tools do not open UI. Use only when the user needs to inspect or interact with a session.",
         ),
     ] {
         tools.push(tool(

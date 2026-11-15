@@ -109,25 +109,25 @@ the extension keep getting plain tool results.
 
 ### In ChatGPT and Codex
 
-`/mcp` is an [MCP App](https://github.com/modelcontextprotocol/ext-apps). Hosts
-that support app rendering and embedded frames can show Agent, Harness, Capability
-and Knowledge cards, the full organization Home, and the full Session workspace.
-Session includes Trace, Approvals, Work, Events, Files and Cost, using the same
-components as Everruns in your browser.
-
-Ask your client to show an entity, open Everruns Home, or open a session. The
-entrypoints are the card tools, `everruns_home`, and `session_open`; conversation
-tools also link their results to the Session view. Entity titles open Everruns,
-while Session tabs navigate within the embedded workspace. Hosts that advertise
-fullscreen can expand the view.
+`/mcp` serves [MCP Apps](https://github.com/modelcontextprotocol/ext-apps): hosts
+that render them, including ChatGPT, Codex and Claude, can open entity cards,
+the organization Home, and the full Session workspace with Trace, Approvals,
+Work, Events, Files and Cost. Ask to open a session and the client calls
+`session_open` with its ID. Running an agent, sending a message and checking
+status return data without opening another view.
 
 The views use your connected MCP account and selected organization, without a
 second browser sign-in. Read-only tokens retain read-only access. Self-hosted
-deployments must serve the configured frontend URL so the shared UI can load.
-Files use the MCP connection, and downloads require host download support.
-HTML has a static preview;
-PDF and interactive HTML previews, along with credential entry, open in Everruns
-through the host. Hosts without app rendering still receive structured data and text.
+deployments must serve the configured frontend URL, and the host must support
+embedded frames. Entity titles open Everruns while Session tabs navigate inside
+the workspace. Files use the MCP connection, and downloads require host download
+support. HTML has a static preview; PDF and interactive HTML previews, along with
+credential entry, open in Everruns through the host.
+
+Repeated results for the same workspace preserve drafts and the selected tab.
+Theme and fullscreen changes keep the workspace mounted. If the initial host
+connection times out, choose **Retry connection**. Hosts that do not render
+apps retain structured results and text through the same tools.
 
 ### Session events (experimental)
 

@@ -28,3 +28,9 @@ The views use your MCP account and organization without a separate browser
 sign-in. Read-only credentials keep read-only access. Hosts that support
 fullscreen can expand the workspace; other clients retain structured results
 and text. See [MCP Apps](/features/mcp/#in-chatgpt-and-codex).
+
+## Update 2026-11-15
+
+Session UI now opens explicitly through `session_open`; data tools no longer
+mount another view. See [MCP workspace reliability](/changelog/2026-11-15-mcp-workspace-reliability/)
+for draft preservation and connection recovery.

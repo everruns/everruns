@@ -40,12 +40,27 @@ export function McpAppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const restore = installWorkspaceTransport();
     let generation = 0;
+    let active: WorkspaceInit | null = null;
+    let bootstrapFailed = false;
     const disconnect = connectWorkspace((value) => {
-      const current = ++generation;
+      const organizationChanged = !active || active.organization_id !== value.organization_id;
+      const viewChanged =
+        organizationChanged ||
+        active?.view.kind !== value.view.kind ||
+        active?.view.id !== value.view.id;
+      active = value;
       // Entry navigation belongs to the persistent provider. Catch-all page
       // instances remount on tab changes and must not reopen the initial view.
-      router.replace(workspacePath(value.view));
+      // Repeated render results must also preserve the selected tab and drafts.
+      if (viewChanged) router.replace(workspacePath(value.view));
       setInit(value);
+      if (!organizationChanged && !bootstrapFailed) {
+        // Refresh authoritative data without clearing mounted forms or drafts.
+        void queryClient.invalidateQueries();
+        return;
+      }
+      bootstrapFailed = false;
+      const current = ++generation;
       setError(undefined);
       setBootstrap(null);
       queryClient.clear();
@@ -56,7 +71,10 @@ export function McpAppProvider({ children }: { children: ReactNode }) {
           setBootstrap(data);
         })
         .catch((error: Error) => {
-          if (current === generation) setError(error.message);
+          if (current === generation) {
+            bootstrapFailed = true;
+            setError(error.message);
+          }
         });
     }, setHostTheme);
     return () => {
@@ -104,7 +122,7 @@ export function McpAppProvider({ children }: { children: ReactNode }) {
     <ThemeContext
       value={{ mode: hostTheme ?? theme.mode, theme: hostTheme ?? theme.theme, setMode: () => {} }}
     >
-      <WorkspaceContext value={init}>
+      <WorkspaceContext key={org.public_id} value={init}>
         <AuthContext value={auth}>
           <OrgContext
             value={{
