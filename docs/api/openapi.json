@@ -10776,8 +10776,8 @@
         "tags": [
           "durable"
         ],
-        "summary": "List data plane v2 cells with their newest report and history",
-        "description": "List data plane v2 cells with their newest report and history. Requires platform-user access.",
+        "summary": "List cells with their newest report and history",
+        "description": "List cells with their newest report and history. Requires platform-user access.",
         "operationId": "get_fleet_monitoring_cells",
         "parameters": [
           {

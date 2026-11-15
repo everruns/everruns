@@ -971,7 +971,7 @@ fn cell_bucket(r: &TimelineCellBucketRow) -> MonitoringCellBucket {
     }
 }
 
-/// List data plane v2 cells with their newest report and history. Requires platform-user access.
+/// List cells with their newest report and history. Requires platform-user access.
 #[utoipa::path(get, path = "/v1/durable/monitoring/cells", tag = "durable", params(TimelineQuery),
     responses((status = 200, description = "Cells and their history", body = MonitoringCells),
         (status = 400, description = "Invalid range", body = ErrorResponse),

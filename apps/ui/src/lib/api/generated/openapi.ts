@@ -2740,8 +2740,8 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List data plane v2 cells with their newest report and history
-     * @description List data plane v2 cells with their newest report and history. Requires platform-user access.
+     * List cells with their newest report and history
+     * @description List cells with their newest report and history. Requires platform-user access.
      */
     get: operations["get_fleet_monitoring_cells"];
     put?: never;
