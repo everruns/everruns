@@ -4031,6 +4031,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-code-mode-mcp-agent"
+version = "0.1.0"
+dependencies = [
+ "everruns",
+ "everruns-example-demo",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-coding"
 version = "0.52.0"
 dependencies = [

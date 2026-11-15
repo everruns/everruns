@@ -364,6 +364,7 @@ export default defineConfig({
                     { label: "Application Services", slug: "framework/service-integrations" },
                     { label: "GitHub Tools", slug: "framework/github" },
                     { label: "MCP Authentication", slug: "framework/mcp-authentication" },
+                    { label: "Code Mode with MCP", slug: "framework/code-mode" },
                     { label: "Slack Services", slug: "framework/slack-services" },
                     { label: "Native Services", slug: "framework/native-services" },
                     { label: "Data Services", slug: "framework/data-services" },

@@ -49,6 +49,7 @@ members = [
     "examples/framework-cli-host",
     "examples/attached-cli",
     "examples/bashkit-repo-agent",
+    "examples/code-mode-mcp-agent",
     "examples/host-shell-agent",
     "examples/foreman-agent",
     "examples/coordinator-agent",

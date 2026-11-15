@@ -13,6 +13,7 @@ repository: these Cargo packages depend on local workspace crates.
 | [Research](research-agent/) | Search and fetch primary sources | `cargo run -p everruns-research-agent` |
 | [Incident Commander](incident-commander-agent/) | Investigate evidence and persist a safe update | `cargo run -p everruns-incident-commander-agent` |
 | [Bashkit Repo](bashkit-repo-agent/) | Modify and verify a repository through a sandboxed shell | `cargo run -p everruns-bashkit-repo-agent` |
+| [Code Mode MCP](code-mode-mcp-agent/) | Call a 1,000-tool MCP server from Bashkit scripts, with none of its schemas in the prompt | `cargo run -p everruns-code-mode-mcp-agent` |
 | [Poppy Personal Agent](poppy-personal-agent/) | Ask a company's agent for the person over the Personal Agent Protocol | `cargo run -p everruns-poppy-personal-agent -- <company-domain>` |
 | [Attached CLI](attached-cli/) | Drive a running session from a second terminal: list, attach, send, cancel | `cargo run -p everruns-attached-cli -- host` |
 | [Foreman](foreman-agent/) | Supervise a coding agent — a session, Codex, or yolop — with a decision service | `cargo run -p everruns-foreman-agent --bin foreman -- demo` |

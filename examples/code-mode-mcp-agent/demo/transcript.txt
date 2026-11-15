@@ -1,0 +1,132 @@
+everruns · code mode over a huge MCP server
+────────────────────────────────────────────────────────────────────────────────────────────────────────
+       model openai/gpt-6.1-sol
+  mcp server acme — 1000 tools, 355 KiB of tool schemas
+capabilities bashkit_shell + tools_in_shell (mode: cli)
+Question:
+REQUEST
+  Which EU customers have overdue invoices? Give the three with the largest total overdue amount, in doll…
+
+· calling the model
+
+❯ bash
+  tools search customers invoices overdue
+  exit 0
+  │ tools acme billing-list-invoices  List invoices in billing (invoicing and payments).
+  │ tools acme crm-list-customers  List customers in crm (customer relationships).
+  │
+  │ Run `<line> --help` for a tool's input.
+
+· calling the model
+
+❯ bash
+  tools acme billing-list-invoices --help; tools acme crm-list-customers --help
+  exit 0
+  │ tools acme billing-list-invoices '{"cursor?":<string>,"customer_id?":<string>,"limit?":<integer>,"statu…
+  │
+  │ List invoices in billing (invoicing and pay
+  │
+  │ [... 720 bytes omitted ...]
+  │
+  … 32 more line(s)
+
+· calling the model
+
+❯ bash
+  tools acme billing-list-invoices --help
+  exit 0
+  │ tools acme billing-list-invoices '{"cursor?":<string>,"customer_id?":<string>,"limit?":<integer>,"statu…
+  │
+  │ List invoices in billing (invoicing and payments). Returns {"items": [...], "next_cursor": string or nu…
+  │
+  │ Input schema:
+  │ {
+  … 30 more line(s)
+
+· calling the model
+
+❯ bash
+  set -e
+  fetch_all() {
+   local op="$1" base="$2" cursor='' page all='[]' args
+   while :; do
+    args=$(jq -cn --argjson base "$base" --arg cursor "$cursor" '$base + {limit:500} + (if $cursor == "" …
+    page=$(tools acme "$op" "$args" | jq '.result | fromjson')
+    all=$(jq -cn --argjson a "$all" --argjson p "$page" '$a + $p.items')
+    cursor=$(printf '%s' "$page" | jq -r '.next_cursor // empty')
+    [[ -n "$cursor" ]] || break
+   done
+   printf '%s' "$all"
+  }
+  customers=$(fetch_all crm-list-customers '{"region":"EU"}')
+  invoices=$(fetch_all billing-list-invoices '{"status":"overdue"}')
+  jq -n --argjson customers "$customers" --argjson invoices "$invoices" '{customer_count:($customers|leng…
+  ↳ tools acme crm-list-customers {"limit":500,"region":"EU"}
+  ↳ tools acme billing-list-invoices {"limit":500,"status":"overdue"}
+  exit 0
+  │ {
+  │   "customer_count": 9,
+  │   "invoice_count": 57,
+  │   "customer_sample": {
+  │     "id": "cus_1000",
+  │     "name": "Northwind Logistics",
+  … 20 more line(s)
+
+· calling the model
+
+❯ bash
+  set -e
+  fetch_all() {
+   local op="$1" base="$2" cursor='' page all='[]' args
+   while :; do
+    args=$(jq -cn --argjson base "$base" --arg cursor "$cursor" '$base + {limit:500} + (if $cursor == "" …
+    page=$(tools acme "$op" "$args" | jq '.result | fromjson')
+    all=$(jq -cn --argjson a "$all" --argjson p "$page" '$a + $p.items')
+    cursor=$(printf '%s' "$page" | jq -r '.next_cursor // empty')
+    [[ -n "$cursor" ]] || break
+   done
+   printf '%s' "$all"
+  }
+  customers=$(fetch_all crm-list-customers '{"region":"EU"}')
+  invoices=$(fetch_all billing-list-invoices '{"status":"overdue"}')
+  jq -n --argjson customers "$customers" --argjson invoices "$invoices" '[$customers[] as $c | [$invoices…
+  ↳ tools acme crm-list-customers {"limit":500,"region":"EU"}
+  ↳ tools acme billing-list-invoices {"limit":500,"status":"overdue"}
+  exit 0
+  │ [
+  │   {
+  │     "customer": "Tidewater Foods",
+  │     "total_overdue_usd": 13287
+  │   },
+  │   {
+  … 8 more line(s)
+
+· calling the model
+
+SUMMARY
+  The three EU customers with the largest total overdue invoice amounts are:
+
+  | Customer | Total overdue (USD) |
+  |---|---:|
+  | Tidewater Foods | $13,287 |
+  | Saffron Logistics | $12,240 |
+  | Juniper Logistics | $9,593 |
+
+6 iterations · 5 tool calls
+
+WHAT THE MODEL CARRIED
+       tools read_file, write_file, edit_file, bash
+     schemas 4 KiB per request (all 1000 MCP tools natively: 355 KiB)
+      prompt 3526 input tokens at most
+
+MCP TOOLS CALLED FROM SCRIPTS
+    2 × mcp_acme__billing_list_invoices
+    2 × mcp_acme__crm_list_customers
+
+CHECKS
+  ✓ no MCP tool in the model's tool list
+  ✓ the model called no MCP tool directly
+  ✓ 4 MCP calls ran inside Bashkit scripts
+  ✓ answer matches totals computed from the server's data
+
+Completed: answer verified against the MCP server

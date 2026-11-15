@@ -1,0 +1,21 @@
+# Code mode over a 1,000-tool MCP server: the agent reaches the server's tools
+# from the sandboxed Bashkit shell through `tools_in_shell`, so none of their
+# schemas enter the prompt. The MCP server is this same binary, re-executed
+# with `--mcp-server`.
+
+[package]
+name = "everruns-code-mode-mcp-agent"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+publish = false
+description = "Code mode over a huge MCP server with Bashkit and Tools in Shell"
+
+[dependencies]
+everruns = { path = "../../crates/everruns", features = ["bashkit", "mcp-stdio", "openai", "openrouter"] }
+everruns-example-demo = { path = "../demo-support" }
+serde_json = "1.0"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true
