@@ -7,9 +7,12 @@ Give an agent GitHub tools with `everruns::github::GitHub`. The capability
 uses the same GitHub operations as the Platform, with credentials your
 application supplies. It requires no Everruns server or database.
 
+Until these APIs are included in the next crate release, use the repository’s
+`main` branch or run the examples from a source checkout:
+
 ```toml
 [dependencies]
-everruns = { version = "0.52", features = ["github", "openai"] }
+everruns = { git = "https://github.com/everruns/everruns", branch = "main", features = ["github", "openai"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 

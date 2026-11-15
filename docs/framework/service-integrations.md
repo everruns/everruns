@@ -3,7 +3,7 @@ title: Application services
 description: Compose GitHub, authenticated MCP, Slack, data services, native tools, triggers, traces, and evaluations without an Everruns server.
 ---
 
-Framework applications can bind their own credentials, persistence, and retrieval services to the same operations the Server runs. Enable only the Cargo features you use. Credentials stay in application-owned values and never enter an agent's serialized configuration.
+Framework applications can bind their own credentials, persistence, and retrieval services to the same operations the Server runs. The new APIs on this page are available from the repository’s `main` branch until the next crate release; run the linked examples from a source checkout or use the Git dependency shown in the [GitHub guide](/framework/github/). Enable only the Cargo features you use. Credentials stay in application-owned values and never enter an agent's serialized configuration.
 
 | Priority | Feature | Framework API | Feature flag / guide |
 | --- | --- | --- | --- |
