@@ -39,7 +39,22 @@ use crate::types::NodeId;
 /// snapshot. Receipts only answer retries and waiters of recent turns, so
 /// older ones are dropped: a client that retries an admission more than this
 /// many turns later gets a new turn instead of the old receipt.
-const KEEP_TURNS: usize = 256;
+const KEEP_TURNS: usize = 32;
+
+/// Turns whose outcome receipt and terminal event are kept.
+///
+/// Decision: those two carry the turn's whole response (about 4 KB of JSON a
+/// turn with the llmsim mix, four to five times that as parsed values), and
+/// the log already holds it. At 256 turns they were nine tenths of the cell
+/// state: the 2026-11-15 EKS run reached 0.5 MB per session after ten turns
+/// and its nodes ran out of memory near 10 000 sessions each. Only the
+/// executor of a turn retries its terminal write, and it does so within the
+/// turn, and a new holder only looks for the outcome of the session's last
+/// turn (`checkpoint` recomputes a missing one), so the last turn is enough.
+/// Kept at 4 the two were still half of the state; the admission receipts
+/// above stay longer because a client may retry a message after several
+/// turns ran.
+const KEEP_OUTCOMES: usize = 1;
 
 /// The process running the session now.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -190,7 +205,8 @@ impl Authority {
             .and_then(|key| key.parse::<TurnId>().ok())
         {
             self.finalizing.remove(&turn);
-            if !self.records.contains_key(key) {
+            // A late retry of an outcome already pruned is not a new turn.
+            if !self.records.contains_key(key) && !self.finished.iter().any(|(t, _)| *t == turn) {
                 self.outcomes += 1;
                 let input = self
                     .terminal
@@ -201,31 +217,47 @@ impl Authority {
         }
     }
 
-    /// Drop receipts of turns older than the newest [`KEEP_TURNS`].
+    /// Drop receipts of turns older than the newest [`KEEP_TURNS`], and the
+    /// outcome and terminal event of turns older than [`KEEP_OUTCOMES`].
     fn prune(&mut self) {
+        if let Some(index) = self.finished.len().checked_sub(KEEP_OUTCOMES + 1)
+            && let Some((turn, _)) = self.finished.get(index).copied()
+        {
+            self.drop_outcome(turn, false);
+        }
         while self.finished.len() > KEEP_TURNS {
             let Some((turn, input)) = self.finished.pop_front() else {
                 break;
             };
-            self.terminal.remove(&turn);
-            self.records.remove(&format!("outcome/{turn}"));
-            self.records.remove(&format!("gate_failure/{turn}"));
-            let failures = format!("failure/{turn}/");
-            let keys: Vec<String> = self
-                .records
-                .range(failures.clone()..)
-                .take_while(|(k, _)| k.starts_with(&failures))
-                .map(|(k, _)| k.clone())
-                .collect();
-            for key in keys {
-                self.records.remove(&key);
-            }
+            self.drop_outcome(turn, true);
             if let Some(input) = input {
                 self.records.remove(&format!("turn_for/{input}"));
                 self.records.remove(&format!("assignment/{input}"));
                 self.commands.remove(&input.to_string());
                 self.target_cancels.remove(&input);
             }
+        }
+    }
+
+    /// Drop a finished turn's outcome receipt, failure records and terminal
+    /// event (see [`KEEP_OUTCOMES`]). Runs after every applied command, so
+    /// unless `always` it stops early once the turn has neither left.
+    fn drop_outcome(&mut self, turn: TurnId, always: bool) {
+        let terminal = self.terminal.remove(&turn).is_some();
+        let outcome = self.records.remove(&format!("outcome/{turn}")).is_some();
+        if !(always || terminal || outcome) {
+            return;
+        }
+        self.records.remove(&format!("gate_failure/{turn}"));
+        let failures = format!("failure/{turn}/");
+        let keys: Vec<String> = self
+            .records
+            .range(failures.clone()..)
+            .take_while(|(k, _)| k.starts_with(&failures))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in keys {
+            self.records.remove(&key);
         }
     }
 }
@@ -381,7 +413,11 @@ impl crate::state::SessionState {
             has_history: a.has_history,
             admitted: input.is_some_and(|input| a.commands.contains_key(&input.to_string())),
             assignment,
-            terminal: assignment.is_some_and(|turn| a.terminal.contains_key(&turn)),
+            // A finished turn older than KEEP_OUTCOMES has no terminal
+            // event left, only its place in `finished`.
+            terminal: assignment.is_some_and(|turn| {
+                a.terminal.contains_key(&turn) || a.finished.iter().any(|(t, _)| *t == turn)
+            }),
             rejected: input
                 .is_some_and(|input| a.records.contains_key(&format!("rejected/{input}"))),
             // No branch facts: this authority refuses branch selection.
@@ -731,4 +767,76 @@ pub fn is_terminal(data: &EventData) -> bool {
             | EventData::TurnCancelled(_)
             | EventData::TurnSealed(_)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use everruns_contracts::typed_id::SessionId;
+    use everruns_core::events::{EventContext, TurnCompletedData};
+
+    /// One finished turn as the authority sees it: admitted, its terminal
+    /// event journaled, its outcome committed.
+    fn finish(a: &mut Authority, session: SessionId) -> (TurnId, MessageId) {
+        let (turn, input) = (TurnId::new(), MessageId::new());
+        a.records.insert(format!("assignment/{input}"), json!({}));
+        a.records.insert(format!("turn_for/{input}"), json!(turn));
+        let context = EventContext {
+            turn_id: Some(turn),
+            input_message_id: Some(input),
+            ..Default::default()
+        };
+        let event = Event::new(
+            session,
+            context,
+            TurnCompletedData {
+                turn_id: turn,
+                ..Default::default()
+            },
+        );
+        a.terminal.insert(turn, event);
+        let key = format!("outcome/{turn}");
+        let outcome = json!({"response": "x".repeat(4096)});
+        a.note_commit(&key, &outcome);
+        a.records.insert(key, outcome);
+        a.prune();
+        (turn, input)
+    }
+
+    #[test]
+    fn only_the_last_turn_keeps_its_outcome_and_admissions_stay_longer() {
+        let session = SessionId::new();
+        let mut a = Authority::default();
+        let turns: Vec<_> = (0..KEEP_TURNS + 8)
+            .map(|_| finish(&mut a, session))
+            .collect();
+        let (last, _) = turns[turns.len() - 1];
+        assert!(a.records.contains_key(&format!("outcome/{last}")));
+        assert!(a.terminal.contains_key(&last));
+        let outcomes = a
+            .records
+            .keys()
+            .filter(|k| k.starts_with("outcome/"))
+            .count();
+        assert_eq!((outcomes, a.terminal.len()), (KEEP_OUTCOMES, KEEP_OUTCOMES));
+        // The newest KEEP_TURNS admissions still answer a retry; older ones are gone.
+        let (_, kept) = turns[turns.len() - KEEP_TURNS];
+        let (_, dropped) = turns[turns.len() - KEEP_TURNS - 1];
+        assert!(a.records.contains_key(&format!("assignment/{kept}")));
+        assert!(!a.records.contains_key(&format!("assignment/{dropped}")));
+        assert_eq!(a.finished.len(), KEEP_TURNS);
+        assert_eq!(a.outcomes, turns.len() as u64);
+    }
+
+    #[test]
+    fn a_late_retry_of_a_pruned_outcome_is_not_a_new_turn() {
+        let session = SessionId::new();
+        let mut a = Authority::default();
+        let (old, _) = finish(&mut a, session);
+        finish(&mut a, session);
+        let key = format!("outcome/{old}");
+        assert!(!a.records.contains_key(&key));
+        a.note_commit(&key, &json!({}));
+        assert_eq!((a.outcomes, a.finished.len()), (2, 2));
+    }
 }
