@@ -3,13 +3,13 @@
 //! Measures whether a model finds and calls a tool it cannot see, through the
 //! shell's `tools --help` and `tools search`, and how many calls that costs.
 //! Each case runs an in-process Framework agent with `bashkit_shell` and
-//! `tools_in_shell` over a small fake registry (see `registry.rs`), so a run
+//! `shell_code_mode` over a small fake registry (see `registry.rs`), so a run
 //! needs one model key and nothing else.
 //!
 //! ```bash
 //! EVERRUNS_EVAL_TARGETS=openrouter/openai/gpt-5.5 \
-//!   doppler run --command './target/debug/tools_in_shell --run'
-//! mira --bin tools_in_shell run
+//!   doppler run --command './target/debug/shell_code_mode --run'
+//! mira --bin shell_code_mode run
 //! ```
 
 // The friction classifier is the platform-capability study's, included by
@@ -28,7 +28,7 @@ use crate::friction::FrictionRun;
 use crate::scorers::{
     expected_calls, forbidden_calls, response_matches, tool_budget, tools_friction,
 };
-use crate::subject::ToolsInShellSubject;
+use crate::subject::ShellCodeModeSubject;
 
 const DATASET: &str = include_str!("../dataset.jsonl");
 
@@ -67,14 +67,14 @@ fn trials() -> usize {
 }
 
 #[eval]
-fn tools_in_shell() -> Eval {
+fn shell_code_mode() -> Eval {
     let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
-    Eval::new("tools_in_shell")
+    Eval::new("shell_code_mode")
         .describe("Find and call hidden tools through the shell's `tools` command")
         .dataset(dataset)
         .targets(targets())
         .trials(trials())
-        .subject(ToolsInShellSubject)
+        .subject(ShellCodeModeSubject)
         .scorer(succeeded())
         .scorer(expected_calls())
         .scorer(forbidden_calls())
@@ -336,6 +336,6 @@ mod tests {
 
     #[test]
     fn study_builds() {
-        assert_eq!(tools_in_shell().name, "tools_in_shell");
+        assert_eq!(shell_code_mode().name, "shell_code_mode");
     }
 }

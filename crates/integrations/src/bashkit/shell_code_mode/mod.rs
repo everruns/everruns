@@ -2,7 +2,7 @@
 //! shell, so a single script can call several tools, pipe one result into the
 //! next with `jq`, and return only what the model needs.
 //!
-//! See the Tools in Shell capability documentation for the user-facing contract.
+//! See the Shell Code Mode capability documentation for the user-facing contract.
 //!
 //! Decisions:
 //!
@@ -63,7 +63,17 @@ use serde_json::{Value, json};
 
 pub use builtin::ToolsBuiltin;
 
-pub const TOOLS_IN_SHELL_CAPABILITY_ID: &str = "tools_in_shell";
+pub const SHELL_CODE_MODE_CAPABILITY_ID: &str = "shell_code_mode";
+
+/// The capability's ID before it was renamed. Agent records saved with it keep
+/// working: the registry resolves it to [`SHELL_CODE_MODE_CAPABILITY_ID`], so no
+/// stored config needs rewriting.
+pub const LEGACY_SHELL_CODE_MODE_CAPABILITY_ID: &str = "tools_in_shell";
+
+/// Whether `id` names this capability, by its current or legacy ID.
+pub fn is_shell_code_mode_id(id: &str) -> bool {
+    id == SHELL_CODE_MODE_CAPABILITY_ID || id == LEGACY_SHELL_CODE_MODE_CAPABILITY_ID
+}
 
 /// The shell command, and the name of the hidden marker tool that turns it on.
 pub const TOOLS_COMMAND: &str = "tools";
@@ -92,7 +102,7 @@ over a series of separate tool calls.";
 /// Capability plugins this module contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
     feature_flag: None,
-    factory: || Box::new(ToolsInShellCapability),
+    factory: || Box::new(ShellCodeModeCapability),
 }];
 
 /// Whether a tool is eligible for the `tools` command adapter.
@@ -149,16 +159,20 @@ fn installs(context: &ToolContext) -> bool {
 }
 
 /// Capability that puts the agent's tools behind one shell command.
-pub struct ToolsInShellCapability;
+pub struct ShellCodeModeCapability;
 
 #[async_trait]
-impl Capability for ToolsInShellCapability {
+impl Capability for ShellCodeModeCapability {
     fn id(&self) -> &str {
-        TOOLS_IN_SHELL_CAPABILITY_ID
+        SHELL_CODE_MODE_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {
-        "Tools in Shell"
+        "Shell Code Mode"
+    }
+
+    fn aliases(&self) -> Vec<&'static str> {
+        vec![LEGACY_SHELL_CODE_MODE_CAPABILITY_ID]
     }
 
     fn description(&self) -> &str {
@@ -203,7 +217,7 @@ one turn instead of a chain of tool calls.
     ) -> Option<String> {
         if surface_mode(config) == ToolSurfaceMode::Hybrid {
             Some(format!(
-                "<capability id=\"{TOOLS_IN_SHELL_CAPABILITY_ID}\">\n\
+                "<capability id=\"{SHELL_CODE_MODE_CAPABILITY_ID}\">\n\
                  Native tool calls and the shell `tools` command can reach the same operations. \
                  Use native calls for one-off structured work; use `tools` inside `bash` to batch \
                  calls, filter results with `jq`, and return only what you need. Search shell \

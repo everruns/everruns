@@ -577,7 +577,7 @@ pub struct ToolHints {
     pub cpu_bound: Option<bool>,
 
     /// Tool must stay a direct tool call and never runs from inside a shell
-    /// script (`tools_in_shell`): it pauses or shapes the turn, or its result
+    /// script (`shell_code_mode`): it pauses or shapes the turn, or its result
     /// only makes sense to the model directly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stays_direct: Option<bool>,

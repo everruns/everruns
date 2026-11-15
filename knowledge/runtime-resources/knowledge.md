@@ -225,7 +225,7 @@ cursors and revision-bearing citations. The host extension implements this spell
 supplies the authorized collection resolver, not vendor credentials to scripts.
 The typed search tool, shell command and automatic retrieval call one service.
 Use the existing [command tree](../execution/command-tree.md) and
-[tools in shell](../execution/tools-in-shell.md) adapters rather than independent
+[tools in shell](../execution/shell-code-mode.md) adapters rather than independent
 authorization or retrieval implementations.
 
 ## Progressive disclosure, including automatic retrieval

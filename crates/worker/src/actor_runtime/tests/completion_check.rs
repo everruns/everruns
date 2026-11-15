@@ -460,3 +460,92 @@ async fn a_crash_during_the_review_completes_the_turn_without_checking_again() {
     assert_eq!(fixture.count("turn.completed").await, 1);
     fixture.assert_idle();
 }
+
+/// Tools ran, then the turn ended with nothing said: the gate already calls
+/// that unfinished, so it continues without a review call, and the
+/// continuation's answer is reviewed as usual.
+#[tokio::test]
+async fn an_empty_final_after_tools_continues_without_a_review() {
+    let fixture = Fixture::with_setup(
+        LlmSimConfig::scripted(vec![
+            tool("read_inbox"),
+            say(""),
+            tool("send_email"),
+            say("Review submitted."),
+            verdict("achieved", "The review was submitted."),
+        ]),
+        unattended(),
+    )
+    .await;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Review the pull request.").await;
+
+    assert_eq!(run_until_idle(&worker).await, 1);
+
+    assert_eq!(fixture.tool_calls(), vec!["read_inbox", "send_email"]);
+    assert_eq!(
+        fixture.review_calls(),
+        1,
+        "only the real answer is reviewed"
+    );
+    let checks = fixture.checks().await;
+    assert_eq!(
+        actions(&checks),
+        vec![
+            (
+                Some(CompletionVerdict::InProgress),
+                CompletionCheckAction::Continued,
+                1
+            ),
+            (
+                Some(CompletionVerdict::Achieved),
+                CompletionCheckAction::Finished,
+                1
+            ),
+        ]
+    );
+    assert_eq!(checks[0].reason, "The turn stopped without a final answer.");
+    let continuations = fixture.continuations().await;
+    assert_eq!(continuations.len(), 1);
+    assert_eq!(checks[0].continuation_message_id, Some(continuations[0].0));
+    assert_eq!(fixture.count("turn.started").await, 1);
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    assert_eq!(fixture.answers().await, vec!["", "Review submitted."]);
+    fixture.assert_idle();
+}
+
+/// The same stop with the continuation budget spent finishes the turn and
+/// records why, still without a review call.
+#[tokio::test]
+async fn an_empty_final_with_the_budget_spent_finishes() {
+    let fixture = Fixture::with_setup(
+        LlmSimConfig::scripted(vec![tool("read_inbox"), say("")]),
+        Setup {
+            continuation_limits: Some(ContinuationLimits {
+                max_turns: 0,
+                max_tokens: 1_000_000,
+                max_elapsed_secs: 600,
+            }),
+            ..unattended()
+        },
+    )
+    .await;
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Review the pull request.").await;
+
+    assert_eq!(run_until_idle(&worker).await, 1);
+
+    assert_eq!(fixture.model_calls(), 2);
+    assert_eq!(fixture.review_calls(), 0);
+    assert_eq!(
+        actions(&fixture.checks().await),
+        vec![(
+            Some(CompletionVerdict::InProgress),
+            CompletionCheckAction::BudgetExhausted,
+            0
+        )]
+    );
+    assert!(fixture.continuations().await.is_empty());
+    assert_eq!(fixture.count("turn.completed").await, 1);
+    fixture.assert_idle();
+}

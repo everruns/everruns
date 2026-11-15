@@ -4,6 +4,7 @@
 
 - [MCP Apps](ui/mcp-apps.md): separate data tools from explicit session rendering, preserve drafts and navigation on repeated entry results, version shell resources, and bound bridge lifecycles with connection recovery.
 - [Isolated Sandboxes (Kubernetes)](integrations/kubernetes-sandbox.md): new managed target run by the deployment itself, one pod per sandbox with the provider-neutral sandbox guest, VM isolation by runtime class, NetworkPolicy egress (domain allowlists refused), published sandbox images and a Dev Container Feature; the X11 desktop session is shared with E2B.
+- [Shell Code Mode](execution/shell-code-mode.md): rename the Tools in Shell capability to Shell Code Mode (`shell_code_mode`). `tools_in_shell` stays a registry alias, so saved agents keep working without a migration.
 - [Framework application API](framework/application-api.md): promote application-owned integration credentials, MCP OAuth, Slack affordances, durable triggers, local SQL/knowledge, named memory, and shared trace/evaluation logic with real-model examples and Engine acceptance tests.
 - [Session SQL](runtime-resources/session-sqldb.md): share the authorizer/executor while retaining separate host persistence; local quotas use cross-process locking.
 
@@ -1141,7 +1142,7 @@
   in Shell study measures finding hidden tools through `tools --help` and
   `tools search`, counted the same way. See
   [Command tree](execution/command-tree.md) and
-  [Tools in Shell](execution/tools-in-shell.md#discovery-eval).
+  [Tools in Shell](execution/shell-code-mode.md#discovery-eval).
 
 * **Connection, MCP grant and session secret worker operations are internal
   commands.** The eight connection-token RPCs and the four session secret
@@ -1326,7 +1327,7 @@
   the agent writes a new one; it replaces tool search (an agent check flags
   both together). Saved scripts are agent-owned tools, and triggers run them
   without a model.
-  See [Tools in Shell](execution/tools-in-shell.md).
+  See [Tools in Shell](execution/shell-code-mode.md).
 
 ## 2026-10-07
 

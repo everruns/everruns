@@ -138,7 +138,7 @@ successful refresh.
 
 The same registered operation can be exposed as a native function, through the
 session's `tools` command, or through both surfaces. Configure
-[`tools_in_shell`](/capabilities/tools-in-shell/) with `mode: "cli"` for the
+[`shell_code_mode`](/capabilities/shell-code-mode/) with `mode: "cli"` for the
 shell surface (the default), or `mode: "hybrid"` to retain native calls
 alongside the CLI. Hybrid mode alone keeps native schemas eager; to progressively
 reveal bounded native schemas, also enable bounded
@@ -148,7 +148,7 @@ reveal bounded native schemas, also enable bounded
 {
   "capabilities": [
     { "ref": "tool_search", "config": { "bounded": true } },
-    { "ref": "tools_in_shell", "config": { "mode": "hybrid" } }
+    { "ref": "shell_code_mode", "config": { "mode": "hybrid" } }
   ]
 }
 ```

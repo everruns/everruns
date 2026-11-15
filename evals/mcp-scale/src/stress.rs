@@ -1,5 +1,5 @@
 //! Offline retrieval benchmark against the same ToolSearchIndex used by core
-//! and the Tools in Shell adapter. Timings are synthetic and profile-specific.
+//! and the Shell Code Mode adapter. Timings are synthetic and profile-specific.
 
 use std::io;
 use std::process::Command;

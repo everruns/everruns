@@ -207,7 +207,7 @@ impl MessageService {
     /// origin is reserved metadata a client cannot set, so it is added after
     /// the client's keys are cleaned. A trigger that targets a saved script also
     /// carries the script-run marker, so its turn runs the script instead of
-    /// the model (Tools in Shell D9).
+    /// the model (Shell Code Mode D9).
     pub async fn create_with_origin(
         &self,
         ctx: CreateMessageContext,

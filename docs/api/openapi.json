@@ -79561,7 +79561,7 @@
               "boolean",
               "null"
             ],
-            "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`tools_in_shell`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly."
+            "description": "Tool must stay a direct tool call and never runs from inside a shell\nscript (`shell_code_mode`): it pauses or shapes the turn, or its result\nonly makes sense to the model directly."
           },
           "supports_background": {
             "type": [
@@ -79574,7 +79574,7 @@
       },
       "ToolNestedCallData": {
         "type": "object",
-        "description": "Data for the `tool.nested_call` event (Tools in Shell).\n\nA shell script called one of the agent's tools through the `tools` command,\ninside the `bash` call named by `parent_tool_call_id`. Informational: the\nmodel did not make this call, so there is no matching `tool.started` /\n`tool.completed` or tool-result message; the `bash` result carries what the\nscript printed.",
+        "description": "Data for the `tool.nested_call` event (Shell Code Mode).\n\nA shell script called one of the agent's tools through the `tools` command,\ninside the `bash` call named by `parent_tool_call_id`. Informational: the\nmodel did not make this call, so there is no matching `tool.started` /\n`tool.completed` or tool-result message; the `bash` result carries what the\nscript printed.",
         "required": [
           "parent_tool_call_id",
           "call_id",

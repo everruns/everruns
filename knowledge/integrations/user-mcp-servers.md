@@ -242,7 +242,7 @@ User servers multiply the number of servers a turn might touch, and each
   [tool-change and replay contract](../execution/cache-stable-tool-changes.md).
   Incremental additions and fallback wire holds depend on the actual driver and
   endpoint; native schema additions or redefinitions can rewrite the tools array.
-  The [CLI surface](../execution/tools-in-shell.md) keeps its model-facing schema
+  The [CLI surface](../execution/shell-code-mode.md) keeps its model-facing schema
   and inventory-independent instructions stable during deferred loading. Current
   attachment and authorization still govern every execution, including held wire
   definitions and replayed history.

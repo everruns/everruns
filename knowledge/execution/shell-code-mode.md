@@ -1,7 +1,7 @@
 ---
 type: Decision
-title: "Tools in Shell"
-description: "Implemented tools_in_shell capability: eligible tools are callable through the Bashkit shell, with CLI-only and hybrid native-plus-CLI modes."
+title: "Shell Code Mode"
+description: "Implemented shell_code_mode capability: eligible tools are callable through the Bashkit shell, with CLI-only and hybrid native-plus-CLI modes."
 tags:
   - everruns
   - execution
@@ -9,17 +9,21 @@ tags:
   - mcp
 ---
 
-# Tools in Shell
+# Shell Code Mode
 
 > Status: **Implemented** in
-> `crates/integrations/src/bashkit/tools_in_shell/`. Inspired by
+> `crates/integrations/src/bashkit/shell_code_mode/`. Inspired by
 > [Executor](https://executor.sh) (one `execute` tool over a searchable tool
 > catalog) and its v2 "apps" (agent-written tools that run on a schedule).
 > Choices made with the requester are recorded under [Decisions](#decisions).
+>
+> Renamed from Tools in Shell (`tools_in_shell`) on 2026-11-15, because "code
+> mode" is the name the industry uses for this pattern. The old ID is a
+> registry alias, so saved agent records need no migration.
 
 ## Summary
 
-An agent with the `tools_in_shell` capability can reach eligible built-in, MCP,
+An agent with the `shell_code_mode` capability can reach eligible built-in, MCP,
 and integration operations through the shell. In the default `cli` mode those
 operations use the shell instead of separate model calls; `hybrid` keeps both
 routes available:
@@ -61,13 +65,13 @@ builtins that call registered tools
 The [Lua code mode](lua-execution.md) proved the pattern (one script, many
 tool calls, a third fewer calls than bash on its eval) but would add a second
 interpreter as the primary path. It stays an experiment and gets no further
-investment; if `tools_in_shell` wins its eval, Lua code mode is removed.
+investment; if `shell_code_mode` wins its eval, Lua code mode is removed.
 
 ## Decisions
 
-### D1. One capability, `tools_in_shell`, per agent
+### D1. One capability, `shell_code_mode`, per agent
 
-Turned on per agent like any capability ("Tools in Shell"); it depends on
+Turned on per agent like any capability ("Shell Code Mode"); it depends on
 `bashkit_shell` and installs one command, `tools`. `mode` defaults to `cli`;
 `mode: "hybrid"` also exposes eligible operations as native tools. Turning it
 on does two things:
@@ -112,10 +116,10 @@ allows native search capabilities alongside the CLI route. Hybrid mode alone
 keeps native schemas eager; bounded native discovery requires
 `tool_search` configured with `bounded: true`.
 
-`tools_in_shell` in CLI mode supersedes tool search; an agent should not have
+`shell_code_mode` in CLI mode supersedes tool search; an agent should not have
 both unless it uses hybrid mode:
 
-- **In CLI mode, `tools_in_shell` wins.** Eligible tools are absent from the
+- **In CLI mode, `shell_code_mode` wins.** Eligible tools are absent from the
   model's native list, and `tools search` provides CLI discovery. In hybrid
   mode, an explicitly configured bounded `tool_search` can reveal optional
   native schemas while shell search discovers the same authorized registry.
@@ -124,9 +128,9 @@ both unless it uses hybrid mode:
 
 - **The agent checks report it.** A built-in deterministic rule in
   [Agent Checks](../evaluation/agent-checks.md), `capabilities.superseded`,
-  flags an agent that has `tools_in_shell` together with a tool search
+  flags an agent that has `shell_code_mode` together with a tool search
   capability (which some presets add by default) as a `suggestion` in the
-  `cost` category: "Tool Search does nothing while Tools in Shell is on;
+  `cost` category: "Tool Search does nothing while Shell Code Mode is on;
   remove it." Like every agent check it is advisory and never blocks saving.
 - **Both follow one declaration.** A capability lists what it replaces in
   `Capability::supersedes`; capability collection skips those, and the agent
@@ -255,7 +259,7 @@ when it first appears, "does this tool change or delete anything outside the
 session?", and the answer is cached per tool and schema. It is not called per
 script, and it can only make a tool more cautious: it never removes an approval
 an admin or the tool itself asked for. Files the script writes stay in the
-session workspace and need no approval. As built (`tools_in_shell/ratings.rs`): only a
+session workspace and need no approval. As built (`shell_code_mode/ratings.rs`): only a
 tool with an `Auto` policy and none of the readonly, destructive, idempotent
 or open-world hints is rated, by the context's decision service, lazily at its
 first call or early-stop preview; a "yes" adds `destructive` to the definition
@@ -332,7 +336,7 @@ work and calls `request_approval` before critical actions. With the shell the
 unit is the script: the agent asks before running a script with critical
 steps. `tools plan` takes a script and prints the calls analysis can see, with
 each one's risk, without running anything, so the agent can describe the
-script accurately. As built (`tools_in_shell/plan.rs`), it reads the script
+script accurately. As built (`shell_code_mode/plan.rs`), it reads the script
 with the same analysis and asks the pre-tool chain the same `preview` question
 as the early stop, so a call it marks `needs_approval` is the call that would
 hold the script; a call whose input is built at run time is judged on the tool
@@ -414,7 +418,7 @@ publishing or copying apps between people. Storage per app is covered by
 ## Discovery eval
 
 Whether a model finds a tool it cannot see is measured, not assumed, by the
-[Tools in Shell study](../../evals/tools-in-shell/README.md): a Framework agent
+[Shell Code Mode study](../../evals/shell-code-mode/README.md): a Framework agent
 with the shipped capability over a small fake registry, offline apart from a
 model key. Its cases cover finding a tool by need and by source, choosing
 between two similar tools, passing a JSON object with an enum and an array,

@@ -26,8 +26,8 @@ use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-/// The question Tools in Shell ratings ask
-/// (`crates/integrations/src/bashkit/tools_in_shell/ratings.rs`), so both
+/// The question Shell Code Mode ratings ask
+/// (`crates/integrations/src/bashkit/shell_code_mode/ratings.rs`), so both
 /// paths judge a tool the same way.
 const QUESTION: &str = "Does calling this tool change, create, send or delete anything outside \
                         the caller's own session, such as records, messages, files or settings \

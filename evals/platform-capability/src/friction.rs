@@ -22,7 +22,7 @@
 //! - **Text, not exit codes.** Bare groups exit non-zero yet are help, and a
 //!   real command can fail for reasons help cannot fix. A rejection is the
 //!   tree's own wording in the output, so it is classified from that.
-//! - **Shared, not restated.** The tools-in-shell study includes this file by
+//! - **Shared, not restated.** The shell-code-mode study includes this file by
 //!   path, so both studies count calls the same way. It depends only on
 //!   `serde_json` and `regex`, not on a Mira version.
 

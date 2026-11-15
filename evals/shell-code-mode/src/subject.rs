@@ -1,5 +1,5 @@
 //! A Mira `Subject` that runs each case through an in-process Framework agent
-//! with the shell and Tools in Shell, over the fake registry.
+//! with the shell and Shell Code Mode, over the fake registry.
 //!
 //! Everything between the model and the fake tools is the shipped code: the
 //! capability's prompt addition, the hook that hides the registry from the
@@ -31,10 +31,10 @@ company's tools rather than from memory, and keep answers short.";
 /// does not burn a key.
 const MAX_ITERATIONS: usize = 12;
 
-pub struct ToolsInShellSubject;
+pub struct ShellCodeModeSubject;
 
 #[async_trait::async_trait]
-impl Subject for ToolsInShellSubject {
+impl Subject for ShellCodeModeSubject {
     async fn run(&self, sample: &Sample, cx: &RunCx) -> Transcript {
         let started = Instant::now();
         let provider = match provider(&cx.target) {
@@ -62,13 +62,13 @@ pub fn build_session(
     log: &CallLog,
 ) -> Result<Session, String> {
     let mut builder = Agent::builder()
-        .name(format!("tools-in-shell-eval-{}", sample.id))
+        .name(format!("shell-code-mode-eval-{}", sample.id))
         .instructions(INSTRUCTIONS)
         .provider(provider)
         .model(target.model.clone())
         .max_iterations(MAX_ITERATIONS)
         .capability("bashkit_shell")
-        .capability("tools_in_shell");
+        .capability("shell_code_mode");
     for tool in registry::tools(log) {
         builder = builder.tool(tool);
     }

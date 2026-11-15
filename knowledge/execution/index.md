@@ -35,7 +35,7 @@
 * [fetchkit](fetchkit.md) - fetchkit library powering the `web_fetch` capability.
 * [Secure web_fetch Credentials Implementation Request](web-fetch-credentials-request.md) - Handoff for shared bound credentials, response capture, and durable consent in web_fetch.
 * [Toolkit Library Contract](toolkit-library-contract.md) - Convention for external toolkit libraries.
-* [Tools in Shell](tools-in-shell.md) - An agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
+* [Shell Code Mode](shell-code-mode.md) - An agent's tools as a JSON-in, JSON-out `tools` shell command, plus saved scripts.
 * [Command Tree Specification](command-tree.md) - The `everruns <noun> <verb>` surface shared by scripted MCP, session shells, and Framework hosts.
 * [Change Reasons and Manager Context](change-reasons-and-manager-context.md) - Every entity change records who, through what and why in a generic history with revisions and restore, which replaced agent versions, and each managed entity carries manager-only notes its own runtime never sees.
 * [Bashkit Requirements for Custom FileSystem Adapters](bashkit-requirements.md) - Bash sandbox capabilities and requirements.

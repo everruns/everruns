@@ -83,7 +83,7 @@ Schedule create requests accept `trigger_type: "schedule"`, `cron_expression`, `
 ## Run a saved script
 
 A schedule or webhook trigger can run one of the Agent's
-[saved scripts](/capabilities/tools-in-shell/#saved-scripts) instead of asking
+[saved scripts](/capabilities/shell-code-mode/#saved-scripts) instead of asking
 the model. Set `script` on the trigger:
 
 ```json
@@ -99,7 +99,7 @@ the model. Set `script` on the trigger:
   the turn runs `tools scripts triage-prs` with the input on stdin. No model
   call is made.
 - The run appears in the session as one `bash` tool call, with its result.
-- The Agent needs [Tools in Shell](/capabilities/tools-in-shell/). The script
+- The Agent needs [Shell Code Mode](/capabilities/shell-code-mode/). The script
   must exist when the trigger is saved.
 - No one is there to answer an approval. A call that needs approval stops the
   script, and the stop is recorded in the result.
@@ -165,7 +165,9 @@ A trigger or schedule session has nobody watching it, so a turn that ends on
 (`completion_check: "unattended"`), when such a turn used tools and is about to
 finish, the agent's own model reviews whether the request was done. If the work
 is still in progress, an automatic continuation is added to the same turn and
-the agent carries on. It is labeled as automatic, never as the person's words,
+the agent carries on. A turn that stops with no final answer at all (it ran
+tools and then said nothing, or hit its output limit) continues the same way,
+without a review. It is labeled as automatic, never as the person's words,
 and is bounded per input in turns, tokens and time.
 
 Set it on the agent:

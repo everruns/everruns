@@ -66,6 +66,6 @@ scope.
 
 ## Source Contract
 
-[Tools in Shell](../../../execution/tools-in-shell.md), [Native and CLI Tool
+[Shell Code Mode](../../../execution/shell-code-mode.md), [Native and CLI Tool
 Surfaces](../../../execution/tool-surfaces.md), and [Large MCP
 Catalogs](../../../execution/large-mcp-catalogs.md).

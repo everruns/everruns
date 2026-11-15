@@ -718,7 +718,7 @@ pub trait Capability: Send + Sync {
     ///
     /// A superseded capability contributes nothing (tools, hooks, prompt,
     /// provider configuration) while this one is applied, and the agent
-    /// checks report it as redundant. `tools_in_shell` supersedes tool search:
+    /// checks report it as redundant. `shell_code_mode` supersedes tool search:
     /// the tools it would defer are no longer in the model's tool list.
     ///
     /// By default, returns an empty vector (supersedes nothing).

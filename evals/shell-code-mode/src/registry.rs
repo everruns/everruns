@@ -8,7 +8,7 @@
 //! (`find-contact`, not `get-contact`), and a tool with a strict input schema.
 //!
 //! Every handler records the call in a [`CallLog`], because a call made from a
-//! script is not its own tool event (Tools in Shell D5): the log is the only
+//! script is not its own tool event (Shell Code Mode D5): the log is the only
 //! record of which tools ran and with what input.
 
 use std::sync::{Arc, Mutex};

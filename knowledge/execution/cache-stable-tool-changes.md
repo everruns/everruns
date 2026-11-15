@@ -189,7 +189,7 @@ Context is rebuilt on every reasoning step (`crates/core/src/runtime_context.rs`
 | Host tools that come and go (`report_result` with child tasks, coordinator and worker tools, MCP resource tools) | `crates/capabilities/src/host_extension.rs`, `crates/core/src/host/host/reason_surface.rs` | recomputed each step |
 | AG-UI frontend tools replaced per run (order-sensitive compare) | `crates/server/src/channels/ag_ui/mod.rs` | session record |
 | Capability switched on or off in a session (yolop `/ext`, in-process overlay), agent or harness edits, a model override that changes `auto_tool_search` resolution | `crates/core/src/host/runtime/mod.rs` | session and agent records |
-| `tools_in_shell` and Lua code mode rewrite the `bash` / `lua` description with the hidden-tool catalogue | `crates/integrations/src/bashkit/tools_in_shell/`, `lua/code_mode.rs` | recomputed each step |
+| `shell_code_mode` and Lua code mode rewrite the `bash` / `lua` description with the hidden-tool catalogue | `crates/integrations/src/bashkit/shell_code_mode/`, `lua/code_mode.rs` | recomputed each step |
 | Hosted Claude search switches on when the count crosses the threshold, which reshapes `tools` | `crates/drivers/drivers/src/anthropic/driver.rs` | recomputed each step |
 
 Not affected: native hosted search once a session's tool set is fixed, because
@@ -421,7 +421,7 @@ Each step is one PR and leaves `main` working.
    rather than redefinitions.
 5. **Sources move onto the comparison**: generic `tool_search` (drop the
    in-memory registry), deferred MCP, ARD, capability switches, AG-UI, host
-   tools, `tools_in_shell` catalogue. A failed MCP fetch keeps the last
+   tools, `shell_code_mode` catalogue. A failed MCP fetch keeps the last
    declared definitions. Done for `tool_search`: the in-memory registry is
    gone; context assembly reads reveals from stored `tool_search` results and
    keeps deferral on once a recorded tool list holds a stub, so reveals

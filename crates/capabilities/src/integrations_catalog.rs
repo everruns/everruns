@@ -86,7 +86,7 @@ pub const CATALOG: &[CatalogEntry] = &[
     },
     CatalogEntry {
         crate_name: "everruns-integrations::bashkit",
-        capabilities: everruns_integrations::bashkit::tools_in_shell::CAPABILITY_PLUGINS,
+        capabilities: everruns_integrations::bashkit::shell_code_mode::CAPABILITY_PLUGINS,
         connectors: &[],
         feature_flags: &[],
     },

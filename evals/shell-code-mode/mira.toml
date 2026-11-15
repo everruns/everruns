@@ -1,9 +1,9 @@
-# Mira host config for the tools-in-shell study. Picked up by the `mira` CLI
+# Mira host config for the shell-code-mode study. Picked up by the `mira` CLI
 # when run from this directory.
 
 # `mira run` with no --bin/--launcher uses this. NOTE: top-level keys must
 # appear before the first [section] header, or TOML nests them under it.
-default_launcher = "tools_in_shell"
+default_launcher = "shell_code_mode"
 
 [results]
 dir = "./results"
@@ -11,8 +11,8 @@ dir = "./results"
 [environment]
 enabled = true
 
-[launchers.tools_in_shell]
-bin = "tools_in_shell"
+[launchers.shell_code_mode]
+bin = "shell_code_mode"
 
 # Two cases: discovery from a plain-language need, and choosing between two
 # similar tools. `mira run --preset smoke`.
