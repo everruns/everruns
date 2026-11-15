@@ -829,6 +829,7 @@ impl ChatDriver for LlmSimDriver {
             completion_tokens,
             total_tokens: prompt_tokens + completion_tokens,
             completion_tokens_details: None,
+            prompt_tokens_details: None,
         };
 
         let chunk_stream = TokenStreamBuilder::new(&model_name, &response_text)

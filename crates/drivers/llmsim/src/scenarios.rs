@@ -8,8 +8,8 @@
 //!   replies since the marked user message, so thousands of concurrent
 //!   sessions share one driver with no cursor, and any worker or restart
 //!   plays the same step.
-//! - The built-in set is llmsim's starter library, copied into `scenarios/`
-//!   because the published crate does not expose it. Timing comes from
+//! - The built-in set is llmsim's starter library (`ScenarioSet::builtin()`),
+//!   so new or retuned scenarios arrive with an llmsim bump. Timing comes from
 //!   production observations (first token 0.8 to 1.3 s, about 65 tokens/s).
 //!   `luna-agent`, `sol-agent` and `muse-agent` play the same tool-using turn
 //!   at timings measured on 2026-10-28 (Luna: first token 2.9 s, 108 tokens/s;
@@ -42,40 +42,7 @@ use llmsim::scenario::{
 use llmsim::scenario_stream::{Pacing, word_tokens};
 use llmsim::{SimError, SimTurn};
 
-const BUILTIN: &[&str] = &[
-    include_str!("../scenarios/broken-stream.json"),
-    include_str!("../scenarios/chat-short.json"),
-    include_str!("../scenarios/file-research.json"),
-    include_str!("../scenarios/console-file-research.json"),
-    include_str!("../scenarios/flaky-429.json"),
-    include_str!("../scenarios/long-answer.json"),
-    include_str!("../scenarios/long-tool.json"),
-    include_str!("../scenarios/luna-agent.json"),
-    include_str!("../scenarios/muse-agent.json"),
-    include_str!("../scenarios/parallel-tools.json"),
-    include_str!("../scenarios/research-3-tools.json"),
-    include_str!("../scenarios/slow-first-token.json"),
-    include_str!("../scenarios/sol-agent.json"),
-    include_str!("../scenarios/stream-stall.json"),
-    include_str!("../scenarios/thinking.json"),
-];
-
-// Invalid or duplicate entries are skipped here; a test keeps every built-in
-// scenario loadable.
-static BUILTIN_SET: LazyLock<ScenarioSet> = LazyLock::new(|| {
-    let mut set = ScenarioSet::new();
-    for file in BUILTIN
-        .iter()
-        .filter_map(|json| ScenarioSet::from_json(json).ok())
-    {
-        for name in file.names() {
-            if let Some(scenario) = file.get(&name) {
-                let _ = set.insert(scenario.clone());
-            }
-        }
-    }
-    set
-});
+static BUILTIN_SET: LazyLock<ScenarioSet> = LazyLock::new(ScenarioSet::builtin);
 
 /// Names of the built-in scenarios a marker can select.
 pub fn builtin_scenario_names() -> Vec<String> {
@@ -511,9 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn every_builtin_file_loads() {
-        // A file that fails to parse is skipped at load, so count them here.
-        assert_eq!(builtin_scenario_names().len(), BUILTIN.len());
+    fn builtin_set_has_the_agent_scenarios() {
         for name in ["luna-agent", "sol-agent", "muse-agent", "long-tool"] {
             assert!(builtin_scenario_names().iter().any(|n| n == name), "{name}");
         }

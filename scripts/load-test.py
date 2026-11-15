@@ -4,8 +4,8 @@
 Each session sends sequential user messages; each message carries an llmsim
 scenario marker (`[[llmsim:<name>]]`) drawn from a weighted mix, so the
 simulated model plays a realistic conversation (tool rounds, long answers,
-reasoning, slow first tokens) with no per-model setup. Built-in scenarios are
-listed in `crates/drivers/llmsim/scenarios/`; see
+reasoning, slow first tokens) with no per-model setup. Built-in scenarios come
+from llmsim's `ScenarioSet::builtin()` (its `examples/scenarios/`); see
 `knowledge/operations/load-testing.md` for how runs are read.
 
     pip install httpx
