@@ -8,7 +8,7 @@ products: [platform, framework, cloud]
 release: "0.49.0"
 surfaces: [agent]
 links:
-  docs: [/features/large-mcp-catalogs/, /capabilities/tool-search/, /capabilities/tools-in-shell/]
+  docs: [/features/large-mcp-catalogs/, /capabilities/tool-search/, /capabilities/shell-code-mode/]
 ---
 
 Everruns discovers every MCP catalog page and searches server/tool descriptions
@@ -40,7 +40,7 @@ other servers stay pending, and search, help, and calls remain within the
 current turn's visible scope. Root/server help stays within 64 entries and
 12 KiB with explicit omission guidance. Exact operation searches avoid padding
 results with incidental matches. See [Large MCP catalogs and tool surfaces](/features/large-mcp-catalogs/),
-[Tool Search](/capabilities/tool-search/), and [Tools in Shell](/capabilities/tools-in-shell/).
+[Tool Search](/capabilities/tool-search/), and [Tools in Shell](/capabilities/shell-code-mode/).
 
 ## Update 2026-10-24
 

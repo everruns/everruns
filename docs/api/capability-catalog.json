@@ -1591,6 +1591,25 @@
       ]
     },
     {
+      "category": "Execution",
+      "dependencies": [
+        "bashkit_shell"
+      ],
+      "docs_slug": "shell-code-mode",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "shell_code_mode",
+      "name": "Shell Code Mode",
+      "status": "available",
+      "tools": [
+        "tools"
+      ]
+    },
+    {
       "category": "Core",
       "dependencies": [
         "session_file_system"
@@ -1780,25 +1799,6 @@
       "status": "available",
       "tools": [
         "tool_search"
-      ]
-    },
-    {
-      "category": "Execution",
-      "dependencies": [
-        "bashkit_shell"
-      ],
-      "docs_slug": "tools-in-shell",
-      "feature_flag": null,
-      "features": [],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "tools_in_shell",
-      "name": "Tools in Shell",
-      "status": "available",
-      "tools": [
-        "tools"
       ]
     },
     {

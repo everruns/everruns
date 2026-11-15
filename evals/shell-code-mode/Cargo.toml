@@ -6,7 +6,7 @@
 [workspace]
 
 [package]
-name = "everruns-tools-in-shell-evals"
+name = "everruns-shell-code-mode-evals"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.94.0"
@@ -14,12 +14,12 @@ description = "Mira eval study: whether a model finds and calls tools through th
 publish = false
 
 [[bin]]
-name = "tools_in_shell"
+name = "shell_code_mode"
 path = "src/main.rs"
 
 [dependencies]
 mira-eval = "0.4"
-# `bashkit` registers both the shell and the Tools in Shell capability, so the
+# `bashkit` registers both the shell and the Shell Code Mode capability, so the
 # agent gets the shipped builtin, prompt addition and tool-hiding hook.
 everruns = { path = "../../crates/everruns", features = ["bashkit"] }
 everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai", "openrouter"] }

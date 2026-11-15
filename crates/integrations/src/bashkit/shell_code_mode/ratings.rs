@@ -133,7 +133,7 @@ async fn rating(context: &ToolContext, definition: &ToolDefinition) -> Option<bo
         "input_schema": definition.parameters_for_model(),
     }))
     .ask("changes", DecisionQuestion::noul(QUESTION))
-    .with_metadata("purpose", "tools_in_shell.tool_rating");
+    .with_metadata("purpose", "shell_code_mode.tool_rating");
     let changes = match service.evaluate(request).await {
         Ok(outcome) => outcome
             .get("changes")

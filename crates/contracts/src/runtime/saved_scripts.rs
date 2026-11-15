@@ -1,5 +1,5 @@
 //! Saved scripts: shell scripts an agent owns and calls from its shell as
-//! `tools scripts <name>` (Tools in Shell D8).
+//! `tools scripts <name>` (Shell Code Mode D8).
 //!
 //! Decision: the host binds the store to the session's agent before the turn
 //! starts, so a script is always listed and saved for the agent whose turn it

@@ -21,7 +21,7 @@ registry operation and execution policy.
 
 Status: **implemented in contracts/core/integrations**. The typed plan lives in
 `everruns-contracts`; capability prompt/definition hooks and `ToolContext` read
-the effective plan. `tools_in_shell` chooses CLI by default or hybrid with
+the effective plan. `shell_code_mode` chooses CLI by default or hybrid with
 `mode: "hybrid"`. Bounded native search is an explicit `tool_search` opt-in.
 Yolop has not adopted the new core surface plan; its integration remains future
 work described below.
@@ -152,8 +152,8 @@ turn-control tools retain the native calls they require.
 | Profile | Model receives | Use |
 |---|---|---|
 | Native | Native operations; generic schemas are bounded only when `tool_search` uses `bounded: true` | Structured calls or hosts without a session shell |
-| CLI | `tools_in_shell` default; eligible operations use the shell `tools` command, with `keep_visible` available on both routes | Loops, pipelines and filtering large intermediate data |
-| Hybrid | `tools_in_shell` with `mode: "hybrid"`; eligible operations use both routes. Native schemas stay eager unless bounded `tool_search` is explicitly enabled. | Native calls for one operation and CLI composition over the same operations |
+| CLI | `shell_code_mode` default; eligible operations use the shell `tools` command, with `keep_visible` available on both routes | Loops, pipelines and filtering large intermediate data |
+| Hybrid | `shell_code_mode` with `mode: "hybrid"`; eligible operations use both routes. Native schemas stay eager unless bounded `tool_search` is explicitly enabled. | Native calls for one operation and CLI composition over the same operations |
 
 Yolop has not adopted this plan. If it adopts it later, it can keep
 read/edit/navigation and its shell entry point native, and make large MCP
@@ -188,8 +188,8 @@ entry points; hiding a definition is not an execution guard.
 
 The CLI adapter records nested operations as `tool.nested_call` beneath the
 shell call rather than as separate native `tool.started`/`tool.completed`
-events. Its [timeline](../../crates/integrations/src/bashkit/tools_in_shell/timeline.rs)
-truncates input, and its [run report](../../crates/integrations/src/bashkit/tools_in_shell/run.rs)
+events. Its [timeline](../../crates/integrations/src/bashkit/shell_code_mode/timeline.rs)
+truncates input, and its [run report](../../crates/integrations/src/bashkit/shell_code_mode/run.rs)
 counts read-only calls and retains bounded mutation previews. This is the
 observable CLI audit shape; it is not a one-to-one native tool-event replay
 contract.
@@ -213,7 +213,7 @@ The surface plan must preserve these invariants:
   and qualified provider injection. New CLI help appears as a tool result.
   Schema additions or redefinitions alter the active projection; provider
   fallback behavior may require a full tool-list rewrite.
-- **Capability instructions.** `tools_in_shell` contributes mode-specific
+- **Capability instructions.** `shell_code_mode` contributes mode-specific
   guidance. Changes to prompt instructions use the existing prompt/tool-change
   path and may change provider cache behavior; no cache hit is promised.
 - **Endpoint qualification.** Drivers use inline changes only when their
@@ -246,7 +246,7 @@ not itself prove a cache hit.
 ## Implementation and remaining verification
 
 The shared plan, mode selection and per-operation route projection are
-implemented in contracts/core/integrations. In `cli` mode, Tools in Shell
+implemented in contracts/core/integrations. In `cli` mode, Shell Code Mode
 supersedes generic and hosted tool-search capabilities. In `hybrid` mode, it
 does not; eligible operations are available natively and through the CLI.
 Hybrid mode alone keeps native schemas eager. When bounded `tool_search` is
@@ -323,6 +323,6 @@ do not establish first-party inline-cache behavior or a winning default surface.
 
 - [Capabilities](capabilities.md)
 - [Large MCP Catalogs](large-mcp-catalogs.md)
-- [Tools in Shell](tools-in-shell.md)
+- [Shell Code Mode](shell-code-mode.md)
 - [Cache Stable Tool Changes](cache-stable-tool-changes.md)
 - [Command Tree](command-tree.md)

@@ -8,7 +8,7 @@ products: [platform, cloud, cli]
 surfaces: [api, cli, agent]
 release: "0.46.0"
 links:
-  docs: [/capabilities/tools-in-shell/#saved-scripts, /features/agent-triggers/]
+  docs: [/capabilities/shell-code-mode/#saved-scripts, /features/agent-triggers/]
   prs: [everruns/everruns#4390, everruns/everruns#4400, everruns/everruns#4403, everruns/everruns#4423]
 ---
 
@@ -35,5 +35,5 @@ A schedule or webhook trigger can run a script without asking the model:
 Input strings are templates over the event, so a webhook payload reaches the
 script.
 
-See [Saved scripts](/capabilities/tools-in-shell/#saved-scripts),
+See [Saved scripts](/capabilities/shell-code-mode/#saved-scripts),
 [Agent triggers](/features/agent-triggers/) and [#4390](https://github.com/everruns/everruns/pull/4390), [#4400](https://github.com/everruns/everruns/pull/4400), [#4403](https://github.com/everruns/everruns/pull/4403), [#4423](https://github.com/everruns/everruns/pull/4423).

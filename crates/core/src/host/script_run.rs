@@ -1,4 +1,4 @@
-//! Script runs (Tools in Shell D9): a turn that runs one saved script with no
+//! Script runs (Shell Code Mode D9): a turn that runs one saved script with no
 //! model call.
 //!
 //! Decisions:
@@ -74,7 +74,7 @@ impl ScriptRunDriver {
             if !config.tools.iter().any(|tool| tool.name() == "bash") {
                 return Step::Finish(format!(
                     "Saved script `{}` did not run: this agent has no bash tool. \
-                     Enable Tools in Shell to run saved scripts.",
+                     Enable Shell Code Mode to run saved scripts.",
                     self.run.script
                 ));
             }

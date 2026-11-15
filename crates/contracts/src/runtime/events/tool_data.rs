@@ -643,7 +643,7 @@ pub struct HostedToolCallData {
     pub summary: Option<String>,
 }
 
-/// Data for the `tool.nested_call` event (Tools in Shell).
+/// Data for the `tool.nested_call` event (Shell Code Mode).
 ///
 /// A shell script called one of the agent's tools through the `tools` command,
 /// inside the `bash` call named by `parent_tool_call_id`. Informational: the

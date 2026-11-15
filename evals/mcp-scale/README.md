@@ -1,6 +1,6 @@
 # MCP scale study
 
-This is a Mira study of actual Everruns Framework behavior. Its subject attaches Rust fixture servers with `McpServer::stdio`, then runs the current working-tree Framework and its canonical MCP discovery, bounded `tool_search`, and Tools in Shell implementation. The fixture speaks newline-delimited MCP JSON-RPC, paginates `tools/list`, dispatches `tools/call`, and persists isolated ticket and deployment state in per-trial fixture files across MCP process launches. No independent search algorithm or gateway stands between Framework and the fixture.
+This is a Mira study of actual Everruns Framework behavior. Its subject attaches Rust fixture servers with `McpServer::stdio`, then runs the current working-tree Framework and its canonical MCP discovery, bounded `tool_search`, and Shell Code Mode implementation. The fixture speaks newline-delimited MCP JSON-RPC, paginates `tools/list`, dispatches `tools/call`, and persists isolated ticket and deployment state in per-trial fixture files across MCP process launches. No independent search algorithm or gateway stands between Framework and the fixture.
 
 The study varies total catalog size (50, 600, 2,000, 10,000), server count (one or ten), and call surface (native, CLI, hybrid). Cases include an ordinary read, a server-description-only disambiguation, an explicitly read-only request, and a staged rollback that must be verified while production remains unchanged. Scores use Framework tool events and returned fixture state. A successful final response by itself does not pass.
 

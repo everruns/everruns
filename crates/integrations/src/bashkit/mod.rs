@@ -25,7 +25,7 @@ mod credential_egress;
 mod egress_transport;
 pub mod hook_dispatch;
 mod http;
-pub mod tools_in_shell;
+pub mod shell_code_mode;
 mod workspace;
 
 use crate::bashkit::background::{
@@ -423,7 +423,7 @@ impl Tool for BashTool {
         };
         let builder = install_cli_tree(builder, context);
         let mut bash = builder.cpython().build();
-        if let Some(held) = tools_in_shell::preflight(context, bash.analyze(command).ok()).await {
+        if let Some(held) = shell_code_mode::preflight(context, bash.analyze(command).ok()).await {
             return ToolExecutionResult::success(held);
         }
 
@@ -525,7 +525,7 @@ impl Tool for BashTool {
                     raw_output,
                 } = payload;
                 ToolExecutionResult::success_with_raw_output(
-                    tools_in_shell::finish_run(
+                    shell_code_mode::finish_run(
                         context,
                         json!({"stdout": stdout, "stderr": stderr, "exit_code": exit_code,
                             "success": success, "truncated": truncated, "total_lines": total_lines}),

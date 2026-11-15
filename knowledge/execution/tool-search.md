@@ -162,7 +162,7 @@ The native active-schema budgets apply only to optional disclosed schemas; they
 do not cap the eager native set. In hybrid mode, eligible operations are also
 available through `tools`, which can search, show help and invoke them by
 canonical JSON arguments. See [Native and CLI Tool Surfaces](tool-surfaces.md)
-and [Tools in Shell](tools-in-shell.md).
+and [Shell Code Mode](shell-code-mode.md).
 
 ## Progressive disclosure and replay
 
@@ -192,16 +192,16 @@ not permitted in bounded mode; see
 [`evals/tool-search-reveal`](../../evals/tool-search-reveal/README.md) for its
 model-specific qualification.
 
-## Relationship to Tools in Shell
+## Relationship to Shell Code Mode
 
-`tools_in_shell` defaults to `mode: "cli"`, which supersedes tool-search
+`shell_code_mode` defaults to `mode: "cli"`, which supersedes tool-search
 capabilities and exposes eligible operations through the `tools` command. In
 `mode: "hybrid"`, it does not supersede `tool_search`: eligible operations are
 available through both routes. Hybrid mode alone leaves native schemas eager;
 bounded `tool_search` must be explicitly enabled with `bounded: true` to defer
 optional schemas under its configured limits. Owner-required eager schemas
 remain visible. The same operation registry and current policy back each route.
-See [Tools in Shell](tools-in-shell.md).
+See [Shell Code Mode](shell-code-mode.md).
 
 ## Implementation references
 

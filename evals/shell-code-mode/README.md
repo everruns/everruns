@@ -1,7 +1,7 @@
-# Tools in Shell eval
+# Shell Code Mode eval
 
 A [Mira](https://github.com/everruns/mira) study of whether a model finds and
-calls a tool it cannot see. With the `tools_in_shell` capability the agent's
+calls a tool it cannot see. With the `shell_code_mode` capability the agent's
 tools leave its tool list and become one shell command, `tools`; the only ways
 to find one are `tools --help`, a source's help, and `tools search`. The
 capability pays off only if models find tools about as fast as they did with
@@ -11,7 +11,7 @@ assumed.
 ## What runs
 
 Each case builds an in-process Framework agent with `bashkit_shell` and
-`tools_in_shell` over a small fake registry ([`src/registry.rs`](src/registry.rs)):
+`shell_code_mode` over a small fake registry ([`src/registry.rs`](src/registry.rs)):
 three MCP-style sources (`crm`, `tickets`, `calendar`) and two top-level tools,
 plus the Framework's own built-in tools, which go behind `tools` too.
 Everything between the model and the fake tools is the shipped code: the
@@ -59,8 +59,8 @@ read. The same tuning loop applies (the `tune-cli-help` agent skill), with the
 ```bash
 export EVERRUNS_EVAL_TARGETS=openrouter/openai/gpt-5.5,openrouter/z-ai/glm-5.2
 export EVERRUNS_EVAL_TRIALS=3
-doppler run --command './target/debug/tools_in_shell --run --friction-report friction.jsonl'
-mira --bin tools_in_shell run --preset smoke
+doppler run --command './target/debug/shell_code_mode --run --friction-report friction.jsonl'
+mira --bin shell_code_mode run --preset smoke
 ```
 
 Targets are `anthropic/<model>`, `openai/<model>` or
@@ -87,4 +87,4 @@ registry tools, the scorers' matching rules, and the classifier against the
 builtin's real envelopes, and drives one scripted run through the whole stack
 with a simulated model: help, search, a wrong name, a refused input, then the
 right call, with the friction count and the call log both checked.
-`.github/workflows/tools-in-shell-evals.yml` runs them in CI.
+`.github/workflows/shell-code-mode-evals.yml` runs them in CI.

@@ -48,7 +48,10 @@ async fn run(interactive: bool) -> Result<(), Box<dyn std::error::Error>> {
             native_bytes / 1024
         ),
     );
-    demo::field("capabilities", "bashkit_shell + tools_in_shell (mode: cli)");
+    demo::field(
+        "capabilities",
+        "bashkit_shell + shell_code_mode (mode: cli)",
+    );
 
     let question = if interactive {
         read_question()?

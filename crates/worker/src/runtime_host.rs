@@ -685,31 +685,32 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 None,
             );
         }
-        // The Tools in Shell capability: its rating setting and saved scripts.
-        let tools_in_shell = resolved_capabilities.iter().find(|capability| {
-            capability.capability_id()
-                == everruns_integrations::bashkit::tools_in_shell::TOOLS_IN_SHELL_CAPABILITY_ID
+        // The Shell Code Mode capability: its rating setting and saved scripts.
+        let shell_code_mode = resolved_capabilities.iter().find(|capability| {
+            everruns_integrations::bashkit::shell_code_mode::is_shell_code_mode_id(
+                capability.capability_id(),
+            )
         });
         // Off only when the agent turned it off; the shell reads the mark, not
         // the config, so a host without the capability config keeps ratings on.
-        if tools_in_shell.is_some_and(|capability| {
-            !everruns_integrations::bashkit::tools_in_shell::rate_unlabeled_tools(
+        if shell_code_mode.is_some_and(|capability| {
+            !everruns_integrations::bashkit::shell_code_mode::rate_unlabeled_tools(
                 capability.config_value(),
             )
         }) {
             extensions.insert(Arc::new(
-                everruns_integrations::bashkit::tools_in_shell::UnlabeledToolRatingsOff,
+                everruns_integrations::bashkit::shell_code_mode::UnlabeledToolRatingsOff,
             ));
         }
         // Unbound here; the act rebinds it to the turn so a save runs as that
         // turn's management user (`PlatformExecutionScope::bind`, TM-TOOL-067).
-        let saved_scripts = tools_in_shell.and_then(|capability| {
+        let saved_scripts = shell_code_mode.and_then(|capability| {
             self.adapters
                 .saved_script_store(org_id, session_id)
                 .map(
                     |store| everruns_contracts::runtime::saved_scripts::SavedScripts {
                         store,
-                        can_save: everruns_integrations::bashkit::tools_in_shell::manage_scripts(
+                        can_save: everruns_integrations::bashkit::shell_code_mode::manage_scripts(
                             capability.config_value(),
                         ),
                     },

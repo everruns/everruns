@@ -18,7 +18,7 @@ Verify native, CLI, and hybrid access discover and execute the same registered M
 ## Preconditions
 
 - Canonical DB-backed stack with a real LLM, controlled 600-tool MCP fixture, and a harmless read operation with nested JSON input and a deterministic result.
-- Create equivalent disposable agents for native `tool_search`, `tools_in_shell` `mode: "cli"`, and combined bounded search plus `tools_in_shell` `mode: "hybrid"`.
+- Create equivalent disposable agents for native `tool_search`, `shell_code_mode` `mode: "cli"`, and combined bounded search plus `shell_code_mode` `mode: "hybrid"`.
 - Record each agent/session ID, actor, fixture revision, starting event cursor, and expected canonical server/tool identity. Keep the retrieval policy and task identical across runs.
 
 ## Test Data
@@ -26,8 +26,8 @@ Verify native, CLI, and hybrid access discover and execute the same registered M
 | Surface | Configuration | Required route evidence |
 | --- | --- | --- |
 | Native | bounded `tool_search` | Search reveal followed by native operation call |
-| CLI | `tools_in_shell` with `mode: "cli"` | `tools search`, help/schema lookup, and `tools` invocation |
-| Hybrid | bounded `tool_search` plus `tools_in_shell` with `mode: "hybrid"` | One native invocation and one CLI nested invocation |
+| CLI | `shell_code_mode` with `mode: "cli"` | `tools search`, help/schema lookup, and `tools` invocation |
+| Hybrid | bounded `tool_search` plus `shell_code_mode` with `mode: "hybrid"` | One native invocation and one CLI nested invocation |
 
 ## Steps
 
@@ -45,4 +45,4 @@ Verify native, CLI, and hybrid access discover and execute the same registered M
 
 ## Source Contract
 
-[Native and CLI Tool Surfaces](../../../execution/tool-surfaces.md), [Large MCP Catalogs](../../../execution/large-mcp-catalogs.md), and [Tools in Shell](../../../../docs/capabilities/tools-in-shell.md).
+[Native and CLI Tool Surfaces](../../../execution/tool-surfaces.md), [Large MCP Catalogs](../../../execution/large-mcp-catalogs.md), and [Shell Code Mode](../../../../docs/capabilities/shell-code-mode.md).

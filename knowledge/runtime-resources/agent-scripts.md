@@ -13,7 +13,7 @@ tags:
 An **agent script** (user-facing name: *saved script*) is a shell script an
 agent owns: a name, a one-line description, an optional input schema, and the
 body. It is the storage half of
-[tools in shell](../execution/tools-in-shell.md) section D8; how a script is
+[tools in shell](../execution/shell-code-mode.md) section D8; how a script is
 called, saved from the shell, and permissioned lives there. This concept covers
 only the resource.
 

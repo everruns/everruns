@@ -33006,7 +33006,7 @@ export interface components {
       side_effect_class?: components["schemas"]["SideEffectClass"] | null;
       /**
        * @description Tool must stay a direct tool call and never runs from inside a shell
-       *     script (`tools_in_shell`): it pauses or shapes the turn, or its result
+       *     script (`shell_code_mode`): it pauses or shapes the turn, or its result
        *     only makes sense to the model directly.
        */
       stays_direct?: boolean | null;
@@ -33018,7 +33018,7 @@ export interface components {
       supports_background?: boolean | null;
     };
     /**
-     * @description Data for the `tool.nested_call` event (Tools in Shell).
+     * @description Data for the `tool.nested_call` event (Shell Code Mode).
      *
      *     A shell script called one of the agent's tools through the `tools` command,
      *     inside the `bash` call named by `parent_tool_call_id`. Informational: the

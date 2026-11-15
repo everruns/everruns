@@ -92,7 +92,7 @@ as complete. Empty matches offer a bounded list of authorized server sources,
 not every tool name.
 
 The implemented `ToolSurfacePlan` resolves `native`, `cli`, or `hybrid` routes
-and native disclosure (`eager` or `deferred`) per operation. `tools_in_shell`
+and native disclosure (`eager` or `deferred`) per operation. `shell_code_mode`
 uses `mode: "cli"` by default; `mode: "hybrid"` leaves eligible operations on
 the CLI and exposes them natively as well. Hybrid mode alone keeps their native
 schemas eager; explicitly enabling `tool_search` with `bounded: true` defers
@@ -138,7 +138,7 @@ schema redefinition is sent incrementally or requires a tool-list rewrite.
 | Codex client-owned Code Mode | The pinned [surface planner](https://github.com/openai/codex/blob/8c076942cb70fba8e5c4732c23f1faabc4aed484/codex-rs/core/src/tools/spec_plan.rs) resolves per-tool direct/deferred and code-mode exposure. Its [executor](https://github.com/openai/codex/blob/8c076942cb70fba8e5c4732c23f1faabc4aed484/codex-rs/core/src/tools/code_mode/execute_handler.rs) runs JavaScript over enabled tool definitions and dispatches nested calls through Codex runtimes. Availability depends on mode/features/model. | This is the closer analogue to client-owned orchestration over Cloudflare's individual tools. Everruns now reuses its CLI execution surface for this role; source support is not a task-accuracy benchmark. |
 | OpenAI hosted or client-executed search | [Responses API documentation](https://developers.openai.com/api/docs/guides/tools-tool-search) offers both mechanisms, deferred namespaces and incremental tool disclosure. Its separate Agents API has automatic MCP discovery rules. OpenAI reports 47% fewer total tokens at equal accuracy on a 250-task MCP Atlas comparison using 36 servers in the [GPT-5.4 announcement](https://openai.com/index/introducing-gpt-5-4/). | Retain native projection where the actual driver and endpoint pass conformance tests. The vendor result supports the approach, not an expected saving for every model or workload. |
 | Anthropic search and programmatic calling | [Advanced tool use](https://www.anthropic.com/engineering/advanced-tool-use) combines deferred schemas with BM25/regex or custom search. [Programmatic calling](https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling) composes calls and filters intermediate results in an execution environment. | Discovery reduces schema context; orchestration separately reduces round trips and result volume. Qualify each independently. |
-| Code Mode | Cloudflare's [Code Mode MCP](https://blog.cloudflare.com/code-mode-mcp/) exposes search and code execution over an API with thousands of operations. Its token figures are engineering claims rather than a controlled task-accuracy comparison. | Everruns uses its existing Tools in Shell adapter and shared registry. Keep per-operation policy and auditing under programmatic execution. |
+| Code Mode | Cloudflare's [Code Mode MCP](https://blog.cloudflare.com/code-mode-mcp/) exposes search and code execution over an API with thousands of operations. Its token figures are engineering claims rather than a controlled task-accuracy comparison. | Everruns uses its existing Shell Code Mode adapter and shared registry. Keep per-operation policy and auditing under programmatic execution. |
 | Individual MCP operations with client-owned surfaces | Cloudflare's [documented `codemode=false` option](https://github.com/cloudflare/mcp/blob/d5d326e5d4dd09af4af1f2ea9926df2a991582c2/README.md#disable-code-mode) already exposes roughly 2,500 endpoint tools. OpenAI's [search guide](https://developers.openai.com/api/docs/guides/tools-tool-search) places newly discovered schemas at the end of context to preserve caching. | Consume individual tools without exposing all schemas up front. Everruns owns native/CLI surface policy; remote Code Mode is optional. The exact motivating OpenAI tweet has not been independently located. |
 | Hybrid retrieval | [SCOUT](https://arxiv.org/abs/2608.23992), a 2026 preprint, describes BM25 plus dense retrieval combined by reciprocal rank fusion for an enterprise MCP gateway. | A credible next arm when lexical recall is insufficient. Its deployment claims do not establish our task success or justify an embedding service before measurement. |
 | Protocol scalability | MCP [tools specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) provides cursor pagination and catalog-change notifications. | Pagination makes enumeration complete. It does not select relevant tools or reduce model context by itself. |
@@ -349,7 +349,7 @@ operations are covered by deterministic discovery/cache/search limits tests;
 the paid model qualification covers up to 2,000.
 
 Regression verification includes 1,357 core and 1,263 contracts unit tests,
-56 Tools in Shell tests, 38 Lua tests, 54 MCP transport tests, five host
+56 Shell Code Mode tests, 38 Lua tests, 54 MCP transport tests, five host
 lifecycle tests, and the Gemini serialized-wire removal test. The Rust/Mira
 runner has six deterministic scorer and infrastructure-classification tests.
 Final-source focused hosted-path regressions passed 168 server MCP tests, 64
@@ -373,7 +373,7 @@ fixtures, and result files for reproducibility.
 
 Use the same tasks, catalogs, credentials, budgets and model versions across
 eager schemas, current generic stubs, native search, bounded selection/dispatch,
-Tools in Shell and hybrid surfaces. Separate invocation-surface comparisons
+Shell Code Mode and hybrid surfaces. Separate invocation-surface comparisons
 with shared retrieval from hosted/client search comparisons. Include 50, 600,
 2,000 and 5,000 tools; compare one large
 server with 10 and 50 server topologies, with duplicate tool names across
@@ -424,7 +424,7 @@ comparison, production memory use, or causal cache savings.
    and cursor checks, the weighted discovery cache, server-aware search index,
    bounded native disclosure, and manual stress cases.
 2. **Done in Everruns:** canonical operation registry projections and the
-   resolved surface plan. Bounded search and `tools_in_shell` hybrid mode remain
+   resolved surface plan. Bounded search and `shell_code_mode` hybrid mode remain
    explicit opt-ins; existing `native` and CLI profiles keep their defaults.
 3. **Synthetic qualification complete:** all 54 Muse trials passed across
    native, CLI and hybrid surfaces. Realistic baseline comparisons, paid
@@ -454,6 +454,6 @@ adds cost without fixing incomplete enumeration or authorization.
 - [Native and CLI Tool Surfaces](tool-surfaces.md)
 - [Tool Search](tool-search.md)
 - [Cache Stable Tool Changes](cache-stable-tool-changes.md)
-- [Tools in Shell](tools-in-shell.md)
+- [Shell Code Mode](shell-code-mode.md)
 - [Runtime MCP](../integrations/runtime-mcp.md)
 - [User MCP Servers](../integrations/user-mcp-servers.md)
