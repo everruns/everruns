@@ -627,7 +627,11 @@ impl Node {
             }
             let mut sessions = Vec::new();
             let (bytes, events) = self.shared.resident();
-            let budget = self.cfg.memory_budget;
+            let budget = crate::sm::event_allowance(
+                self.cfg.memory_budget,
+                crate::api::rss_mb() << 20,
+                bytes,
+            );
             if bytes > budget {
                 let per_event = (bytes / events.max(1) as u64).max(1);
                 let mut to_free = bytes.saturating_sub(budget * 8 / 10) / per_event;

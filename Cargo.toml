@@ -130,6 +130,7 @@ fs2 = "0.4"
 
 # Global allocator for binaries (sharded, low-fragmentation; MIT-licensed)
 mimalloc = "0.1"
+tikv-jemallocator = "0.6"
 
 # HTTP framework
 axum = { version = "0.8", features = ["macros"] }

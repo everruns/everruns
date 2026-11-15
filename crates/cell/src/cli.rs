@@ -54,7 +54,9 @@ enum Mode {
         /// `file:///dir`.
         #[arg(long, env = "CELL_STORE")]
         store: String,
-        /// Unload idle sessions when resident events pass this many MiB.
+        /// Memory this node may use, in MiB: past it, idle sessions' events
+        /// are unloaded (everything the process holds counts, see
+        /// `event_allowance`). Leave headroom below the container limit.
         #[arg(long, env = "CELL_MEMORY_BUDGET_MB", default_value = "1024")]
         memory_budget_mb: u64,
         /// Also unload sessions idle this many seconds (0: only under pressure).

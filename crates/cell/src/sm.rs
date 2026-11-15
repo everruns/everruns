@@ -530,6 +530,22 @@ pub struct StateMachine {
 /// slack the JSON does not).
 const HEAP_PER_JSON_BYTE: u64 = 3;
 
+/// Bytes of events a node may keep resident: its memory budget less what
+/// the rest of the process holds (`rss` minus the `resident` estimate).
+///
+/// Decision: the budget caps the whole process, not only the events. The
+/// estimate covers parsed events, while a node also holds every session's
+/// metadata and receipts, the Raft log, snapshot copies and the allocator's
+/// slack. Counting events alone, the 2026-11-15 EKS run sat at four times its
+/// 3 GB budget and the kernel killed nodes at their 12 GiB limit. A floor of
+/// an eighth keeps the node serving when the rest alone passes the budget:
+/// a node that unloads everything still answers from the object store.
+pub(crate) fn event_allowance(budget: u64, rss: u64, resident: u64) -> u64 {
+    budget
+        .saturating_sub(rss.saturating_sub(resident))
+        .max(budget / 8)
+}
+
 /// Compact a session's trailing segments once it has this many.
 const COMPACT_AT: usize = 16;
 
@@ -803,5 +819,23 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
             meta,
             snapshot: Box::new(Cursor::new(data)),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::event_allowance;
+
+    const GB: u64 = 1 << 30;
+
+    #[test]
+    fn the_budget_counts_what_the_process_holds_besides_events() {
+        // Unknown size (not Linux): events get the whole budget.
+        assert_eq!(event_allowance(8 * GB, 0, 0), 8 * GB);
+        // 3 GB of other state leaves 5 GB for events, however many are in.
+        assert_eq!(event_allowance(8 * GB, 4 * GB, GB), 5 * GB);
+        assert_eq!(event_allowance(8 * GB, 7 * GB, 4 * GB), 5 * GB);
+        // The rest alone past the budget: an eighth, never nothing.
+        assert_eq!(event_allowance(8 * GB, 12 * GB, GB), GB);
     }
 }
