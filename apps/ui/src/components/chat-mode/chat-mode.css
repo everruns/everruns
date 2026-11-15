@@ -17,6 +17,66 @@
 .chat-mode-shell[data-layout="beside"] {
   grid-template-columns: 0px var(--chat-width) 7px minmax(0, 1fr) var(--nav-width);
 }
+/* Classic with Chat docked on the right: sidebar | page | splitter | Chat. */
+.chat-mode-shell[data-layout="classic-docked"] {
+  grid-template-columns: 240px minmax(0, 1fr) 7px var(--chat-width) 0px;
+}
+.chat-mode-shell[data-layout="classic-docked"] .chat-mode-page {
+  grid-column: 2;
+}
+.chat-mode-shell[data-layout="classic-docked"] .chat-mode-splitter {
+  grid-column: 3;
+}
+.chat-mode-shell[data-layout="classic-docked"] .chat-mode-conversation {
+  grid-column: 4;
+}
+/* Classic with floating Chat: the grid stays Classic and Chat is a card over
+   the page, anchored bottom-right and sized by the shell's --float-* values. */
+.chat-mode-conversation[data-inline="floating"] {
+  position: fixed;
+  z-index: 40;
+  right: var(--float-right);
+  bottom: var(--float-bottom);
+  width: var(--float-width);
+  height: var(--float-height);
+  border: 1px solid hsl(var(--border));
+  box-shadow:
+    0 18px 50px -12px rgb(0 0 0 / 0.28),
+    0 4px 12px -4px rgb(0 0 0 / 0.12);
+}
+.chat-mode-float-move {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: hsl(var(--muted-foreground));
+  cursor: grab;
+  touch-action: none;
+}
+.chat-mode-float-move:active {
+  cursor: grabbing;
+}
+.chat-mode-float-move:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+}
+.chat-mode-float-resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.chat-mode-launcher {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
+  gap: 8px;
+  box-shadow: 0 12px 30px -10px rgb(0 0 0 / 0.4);
+}
 .chat-mode-shell[data-layout="chat"] {
   grid-template-columns: 0px minmax(0, 1fr) 0px 0px var(--nav-width);
 }

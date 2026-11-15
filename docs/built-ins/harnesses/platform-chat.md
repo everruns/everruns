@@ -35,14 +35,18 @@ The app has two layouts, and you pick one under **Layout** in the profile menu o
 **Profile**. The choice is saved to your account, so it follows you to every
 device, browser and organization.
 
-- **Classic** (the default) keeps the left sidebar. Main chat and side chats open
-  full screen, and **Command-J** (**Ctrl-J** on Windows and Linux) toggles
-  full-screen chat.
+- **Classic** (the default) keeps the left sidebar. Under **Chat in Classic** you
+  choose how Chat opens: **Full screen** (the default) replaces the page;
+  **Floating** shows a card over the page that you can move by its grip and
+  resize from its top-left corner; **Docked** puts Chat in a column on the right
+  of the page with a divider you can drag. **Command-J** (**Ctrl-J** on Windows
+  and Linux) shows or hides Chat, and **Command-Shift-J** goes full screen.
 - **Chat first** keeps the conversation on the left of every page, with
   navigation in a rail on the right edge. The rail's » opens the full sidebar,
   and system pages and Settings sit under one menu.
 
-In Chat first, the conversation can see the page next to it. Drag the visible divider
+In Chat first, and with floating or docked Chat in Classic, the conversation
+can see the page next to it. Drag the visible divider
 between them to resize, or double-click it to reset. Links in Chat's replies open
 in the page pane, so the conversation stays put. **Main chat ▾** in the
 conversation header switches between Main chat and side chats; opening a thread

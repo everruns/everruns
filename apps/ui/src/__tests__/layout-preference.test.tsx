@@ -1,7 +1,12 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { parseAppLayout, useLayoutPreference } from "@/hooks/use-layout-preference";
+import {
+  parseAppLayout,
+  parseClassicChat,
+  useClassicChatPreference,
+  useLayoutPreference,
+} from "@/hooks/use-layout-preference";
 import { LayoutSettings } from "@/components/settings/layout-settings";
 
 jest.mock("@/providers/locale-provider", () => ({
@@ -87,5 +92,44 @@ describe("layout preference", () => {
     });
     await waitFor(() => expect(chatFirst).toHaveAttribute("aria-checked", "true"));
     expect(setUserPreference).toHaveBeenCalledWith("ui.layout", "chat_first");
+  });
+
+  it("keeps only known Classic chat options, full screen otherwise", () => {
+    expect(parseClassicChat("floating")).toBe("floating");
+    expect(parseClassicChat("docked")).toBe("docked");
+    expect(parseClassicChat("full_screen")).toBe("full_screen");
+    expect(parseClassicChat(undefined)).toBe("full_screen");
+    expect(parseClassicChat("sidebar")).toBe("full_screen");
+  });
+
+  it("reads Classic chat from its own server-side preference", async () => {
+    getUserPreference.mockImplementation(async (key: string) =>
+      key === "ui.classic_chat" ? { key, value: "docked", updated_at: "" } : null,
+    );
+    const { result } = renderHook(() => useClassicChatPreference(), { wrapper });
+    await waitFor(() => expect(result.current.classicChat).toBe("docked"));
+    expect(window.localStorage.getItem("everruns.ui.classic_chat")).toBe("docked");
+  });
+
+  it("saves floating Chat from Profile and switches the layout to Classic", async () => {
+    getUserPreference.mockImplementation(async (key: string) =>
+      key === "ui.layout" ? { key, value: "chat_first", updated_at: "" } : null,
+    );
+    render(<LayoutSettings />, { wrapper });
+    const group = await screen.findByRole("radiogroup", { name: "Chat in Classic" });
+    // Chat first is stored, so the Classic options say when they apply.
+    expect(await screen.findByText("Applies when the layout is Classic.")).toBeInTheDocument();
+    const floating = screen.getByRole("radio", { name: /^Floating/ });
+    expect(group).toContainElement(floating);
+    expect(screen.getByRole("radio", { name: /^Full screen/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await act(async () => {
+      fireEvent.click(floating);
+    });
+    await waitFor(() => expect(floating).toHaveAttribute("aria-checked", "true"));
+    expect(setUserPreference).toHaveBeenCalledWith("ui.classic_chat", "floating");
+    expect(setUserPreference).toHaveBeenCalledWith("ui.layout", "classic");
   });
 });

@@ -108,6 +108,8 @@ const STARTUP_API_ALLOWLIST = new Set([
   "/api/v1/user/preferences/ui.early_access_banner.dismissed",
   // The personal layout preference (Chat first or Classic) shapes the shell.
   "/api/v1/user/preferences/ui.layout",
+  // How Chat opens in Classic (full screen, floating or docked) shapes it too.
+  "/api/v1/user/preferences/ui.classic_chat",
   "/api/v1/durable/config",
   // The sidebar's Overview entry counts the items waiting on Overview, so it
   // reads the same sources as that page on every route.

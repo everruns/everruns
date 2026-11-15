@@ -41,8 +41,16 @@ tags: [ui, test-case, agents, platform-chat]
    and side chats; the rail and splitter are gone. Command/Ctrl-J toggles full-screen chat.
    Reload `/` in Classic: it lands on full-screen Main chat. The setting is the same on
    Profile → Appearance and after signing in on another device.
-9. At 390 px, both layouts show one pane at a time with the mobile navigation drawer.
-10. Repeat key steps in dark mode.
+9. In Classic, set **Chat in Classic** to **Floating** (Profile → Appearance or the profile
+   menu). On an Agent, **Chat ⌘J** opens a card over the page; drag its grip, resize it from
+   the top-left corner, reload: position and size are kept. The page under it stays usable.
+   Ask for a page edit: the draft is marked on the page and saved with the page's buttons.
+   Cmd/Ctrl-J hides and shows it; Cmd/Ctrl-Shift-J goes full screen and back.
+10. Switch to **Docked** from the card header: Chat moves to a right column with a visible
+   divider; drag and arrow keys resize it, and the page keeps at least 480 px. Sign in on
+   another browser: the same Classic chat option applies.
+11. At 390 px, both layouts show one pane at a time with the mobile navigation drawer.
+12. Repeat key steps in dark mode.
 
 ## Expected result
 

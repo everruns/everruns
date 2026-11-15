@@ -108,6 +108,12 @@ const setLayout = jest.fn();
 jest.mock("@/hooks/use-layout-preference", () => ({
   ...jest.requireActual("@/hooks/use-layout-preference"),
   useLayoutPreference: () => ({ layout: "chat_first", ready: true, setLayout, saving: false }),
+  useClassicChatPreference: () => ({
+    classicChat: "full_screen",
+    ready: true,
+    setClassicChat: jest.fn(),
+    saving: false,
+  }),
 }));
 
 jest.mock("@/components/home/use-home-attention", () => ({

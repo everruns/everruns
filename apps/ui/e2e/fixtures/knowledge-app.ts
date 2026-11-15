@@ -93,7 +93,11 @@ const TREES: Record<string, Record<string, unknown[]>> = {
 
 export async function mockKnowledgeApi(
   page: Page,
-  options: { role?: "owner" | "admin" | "member"; layout?: "chat_first" | "classic" } = {},
+  options: {
+    role?: "owner" | "admin" | "member";
+    layout?: "chat_first" | "classic";
+    classicChat?: "full_screen" | "floating" | "docked";
+  } = {},
 ) {
   const model = {
     id: "model_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -107,15 +111,25 @@ export async function mockKnowledgeApi(
     capabilities: [],
     service: "chat",
   };
+  const preferences: Record<string, unknown> = {
+    "ui.layout": options.layout ?? "chat_first",
+    "ui.classic_chat": options.classicChat ?? "full_screen",
+  };
   await page.route("**/api/v1/**", async (route) => {
     const url = new URL(route.request().url());
     const pathname = url.pathname;
     let json: unknown = { data: [], has_more: false, total: 0 };
 
-    if (pathname === "/api/v1/user/preferences/ui.layout") {
+    if (pathname.startsWith("/api/v1/user/preferences/")) {
       // These specs cover Chat beside the page, an explicit choice since Classic
-      // became the default.
-      json = { key: "ui.layout", value: options.layout ?? "chat_first", updated_at: "" };
+      // became the default. A PUT is kept, as the server would.
+      const key = decodeURIComponent(pathname.slice("/api/v1/user/preferences/".length));
+      if (route.request().method() === "PUT")
+        preferences[key] = route.request().postDataJSON().value;
+      json =
+        key in preferences
+          ? { key, value: preferences[key], updated_at: "" }
+          : { key, value: null, updated_at: "" };
     } else if (pathname === "/api/v1/auth/config") {
       json = {
         mode: "none",

@@ -59,8 +59,21 @@ value is mirrored to the device only so a reload paints the right layout before
 the server answers; the server value wins.
 
 - **Classic** (default since 2026-11-15): the sidebar on the left and the page
-  filling the rest. Main chat and side chats stay in the sidebar and open full
-  screen at `/chats`.
+  filling the rest. Main chat and side chats stay in the sidebar. How Chat opens
+  is a second preference, `ui.classic_chat` (decided 2026-11-15):
+  - **Full screen** (default): Chat replaces the page at `/chats`.
+  - **Floating**: a card over the page, anchored bottom-right, that can be moved
+    (header grip, or arrow keys on it) and resized (top-left corner). Position
+    and size are kept on the device. When hidden, a **Chat ⌘J** button reopens it.
+  - **Docked**: a column on the right of the page with the same visible divider
+    as Chat first; the page narrows instead of being covered.
+
+  Floating and docked Chat are page-aware like Chat first: the conversation sees
+  the page, drafts are marked on the page and saved or discarded with the page's
+  own buttons, and threads open in the page pane. Whether the card or column is
+  open is kept per browser tab, not as a history step. The header switches
+  between floating and docked (saving the preference), goes full screen, or
+  hides Chat. Below 768 px both behave as full screen.
 - **Chat first** (opt-in): the conversation on the left, the current page on the
   right, and a navigation rail on the right edge.
 
@@ -103,8 +116,9 @@ open/closed split, no `?chat=open` parameter and no in-memory "thread replaces
 page" state.
 
 Keys: in Chat first, Cmd/Ctrl-J focuses the composer and Cmd/Ctrl-Shift-J
-switches between full screen and the last page. In Classic, Cmd/Ctrl-J toggles
-full-screen chat.
+switches between full screen and the last page. In Classic, Cmd/Ctrl-J shows or
+hides floating or docked Chat (or toggles full-screen chat when that is the
+choice), and Cmd/Ctrl-Shift-J switches between full screen and the last page.
 
 An organization switch destroys the shell's state. The mounted conversation
 settles already-owned page tool requests even after the page changes: the same

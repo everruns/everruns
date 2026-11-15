@@ -1,7 +1,11 @@
 import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
-import { ChatModeShell, clampChatWidth } from "@/components/chat-mode/chat-mode-shell";
+import {
+  ChatModeShell,
+  clampChatWidth,
+  clampFloatingBox,
+} from "@/components/chat-mode/chat-mode-shell";
 import { defaultNavigationSections, type NavigationSection } from "@/lib/navigation";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
 
@@ -91,8 +95,15 @@ jest.mock("@/components/layout/sidebar", () => ({
   MobileSidebar: () => null,
 }));
 let mockLayout: "chat_first" | "classic" = "chat_first";
+let mockClassicChat: "full_screen" | "floating" | "docked" = "full_screen";
+const mockSetClassicChat = jest.fn();
 jest.mock("@/hooks/use-layout-preference", () => ({
   useLayoutPreference: () => ({ layout: mockLayout, ready: true, setLayout: jest.fn() }),
+  useClassicChatPreference: () => ({
+    classicChat: mockClassicChat,
+    ready: true,
+    setClassicChat: mockSetClassicChat,
+  }),
 }));
 jest.mock("@/providers/auth-provider", () => ({
   useAuth: () => ({
@@ -137,6 +148,7 @@ beforeEach(() => {
   mockOrg = "org_1";
   mockHasRole = true;
   mockLayout = "chat_first";
+  mockClassicChat = "full_screen";
   window.localStorage.clear();
   window.sessionStorage.clear();
   jest.clearAllMocks();
@@ -357,5 +369,79 @@ describe("classic layout", () => {
     render(shell(<p>History list</p>));
     expect(screen.getByText("History list")).toBeInTheDocument();
     expect(screen.queryByTestId("workspace")).not.toBeInTheDocument();
+  });
+});
+
+describe("classic layout with floating or docked Chat", () => {
+  beforeEach(() => {
+    mockLayout = "classic";
+  });
+
+  it("opens floating Chat over the page from the Chat button and hides it again", () => {
+    mockClassicChat = "floating";
+    render(shell(<ModeProbe />));
+    const layout = () => screen.getByText("Classic sidebar").closest("[data-layout]");
+    expect(layout()).toHaveAttribute("data-layout", "classic");
+    fireEvent.click(screen.getByRole("button", { name: "Show chat" }));
+    expect(layout()).toHaveAttribute("data-layout", "classic-floating");
+    const chat = screen.getByRole("region", { name: "Platform Chat" });
+    expect(chat).toHaveAttribute("data-inline", "floating");
+    expect(screen.getByTestId("workspace")).toHaveAttribute("data-page-aware", "true");
+    expect(screen.getByRole("button", { name: "Move chat" })).toBeInTheDocument();
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Hide chat" }));
+    expect(layout()).toHaveAttribute("data-layout", "classic");
+    expect(screen.getByRole("button", { name: "Show chat" })).toBeInTheDocument();
+  });
+
+  it("toggles docked Chat with Cmd/Ctrl-J and keeps Cmd/Ctrl-Shift-J for full screen", () => {
+    mockClassicChat = "docked";
+    render(shell(<ModeProbe />));
+    const layout = () => screen.getByText("Classic sidebar").closest("[data-layout]");
+    fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+    expect(layout()).toHaveAttribute("data-layout", "classic-docked");
+    expect(screen.getByRole("separator", { name: "Resize chat" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "j", ctrlKey: true });
+    expect(layout()).toHaveAttribute("data-layout", "classic");
+    fireEvent.keyDown(window, { key: "j", ctrlKey: true, shiftKey: true });
+    expect(mockPush).toHaveBeenLastCalledWith("/chats");
+  });
+
+  it("opens side chats and page actions inline instead of full screen", () => {
+    mockClassicChat = "docked";
+    render(shell(<ModeProbe />));
+    fireEvent.click(screen.getByText("Open side chat"));
+    expect(screen.getByRole("region", { name: "Platform Chat" })).toHaveAttribute(
+      "data-inline",
+      "docked",
+    );
+    expect(screen.getByLabelText("Active chat")).toHaveTextContent("side_1");
+    expect(mockPush).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Float" }));
+    expect(mockSetClassicChat).toHaveBeenCalledWith("floating");
+  });
+
+  it("returns from full screen with Chat still beside the page", () => {
+    mockClassicChat = "floating";
+    mockPathname = "/chats";
+    render(shell());
+    fireEvent.click(screen.getByRole("button", { name: /Show beside page/ }));
+    expect(mockPush).toHaveBeenLastCalledWith("/home");
+    expect(window.sessionStorage.getItem("everruns.classic-chat-open")).toBe("1");
+  });
+
+  it("keeps the floating card on screen and at least its minimum size", () => {
+    const viewport = { width: 1440, height: 900 };
+    expect(
+      clampFloatingBox({ right: -50, bottom: 5000, width: 100, height: 50 }, viewport),
+    ).toEqual({ right: 16, bottom: 900 - 360 - 16, width: 340, height: 360 });
+    expect(
+      clampFloatingBox({ right: 24, bottom: 24, width: 5000, height: 5000 }, viewport),
+    ).toEqual({ right: 16, bottom: 16, width: 1440 - 32, height: 900 - 32 });
+  });
+
+  it("leaves the docked page its minimum after the sidebar", () => {
+    expect(clampChatWidth(2000, 1440, 240)).toBe(1440 - 480 - 240);
   });
 });

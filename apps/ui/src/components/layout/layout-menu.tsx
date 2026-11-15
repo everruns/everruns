@@ -6,19 +6,27 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
-import { Columns2, PanelLeft } from "lucide-react";
+import { Columns2, Maximize2, PanelLeft, PanelRight, PictureInPicture2 } from "lucide-react";
 import {
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
-import { parseAppLayout, useLayoutPreference } from "@/hooks/use-layout-preference";
+import {
+  parseAppLayout,
+  parseClassicChat,
+  useClassicChatPreference,
+  useLayoutPreference,
+} from "@/hooks/use-layout-preference";
 
 export function LayoutMenuSub() {
   const ui = useUiTranslations();
   const { layout, setLayout } = useLayoutPreference();
+  const { classicChat, setClassicChat } = useClassicChatPreference();
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>
@@ -39,6 +47,29 @@ export function LayoutMenuSub() {
             {ui("Classic")}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        {layout === "classic" && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuRadioGroup
+              value={classicChat}
+              onValueChange={(next) => setClassicChat(parseClassicChat(next))}
+            >
+              <DropdownMenuLabel>{ui("Chat in Classic")}</DropdownMenuLabel>
+              <DropdownMenuRadioItem value="full_screen">
+                <Maximize2 className="icon-sharp h-4 w-4" />
+                {ui("Full screen")}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="floating">
+                <PictureInPicture2 className="icon-sharp h-4 w-4" />
+                {ui("Floating")}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="docked">
+                <PanelRight className="icon-sharp h-4 w-4" />
+                {ui("Docked")}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </>
+        )}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );
