@@ -32,10 +32,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     let store = MemoryTokenStore::default();
     store.save("service", &tokens).await?;
-    let agent=Agent::builder().instructions("Use the attached MCP server's tools to answer the request. Never ask for credentials in chat.")
- .model(Model::new("gpt-6.1-sol",OpenAI::from_env()?))
- .mcp_server(McpServer::http("service",&args[0]))
- .mcp_auth(McpAuth::new().oauth("service",&args[0],store)).build()?;
+    let agent = Agent::builder()
+        .instructions(concat!(
+            "Use the attached MCP server's tools to answer the request. ",
+            "Never ask for credentials in chat.",
+        ))
+        .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+        .mcp_server(McpServer::http("service", &args[0]))
+        .mcp_auth(McpAuth::new().oauth("service", &args[0], store))
+        .build()?;
     let turn = Engine::new()
         .create(agent)
         .run("Discover the available tools, use a safe read-only one, and summarize its result.")

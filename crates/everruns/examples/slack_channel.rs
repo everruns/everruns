@@ -15,7 +15,15 @@ use everruns::{
 };
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let agent=Agent::builder().instructions("Help the person in this Slack conversation. Be concise. For actions needing consent, ask with request_approval, then stop and wait for their response.").model(Model::new("gpt-6.1-sol",OpenAI::from_env()?)).capability("soft_approval").build()?;
+    let agent = Agent::builder()
+        .instructions(concat!(
+            "Help the person in this Slack conversation. Be concise. ",
+            "For actions needing consent, ask with request_approval, ",
+            "then stop and wait for their response.",
+        ))
+        .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+        .capability("soft_approval")
+        .build()?;
     let engine = Engine::new();
     let slack = Slack::new(
         std::env::var("SLACK_BOT_TOKEN")?,
