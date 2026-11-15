@@ -32,9 +32,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_core::connection_services::{DecisionModelBinding, SystemDecisionModel};
-use everruns_core::message::TextAnnotation;
 #[cfg(test)]
-use everruns_core::message::VerificationStatus;
+use everruns_core::message::{TextAnnotation, VerificationStatus};
 use everruns_core::{DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionsService};
 use serde_json::json;
 use uuid::Uuid;
@@ -544,8 +543,6 @@ fn binary(pass: bool, reason: String) -> Score {
 }
 
 use everruns_core::evaluation::score_citation_faithful;
-#[cfg(test)]
-use everruns_core::evaluation::score_json_schema;
 pub use everruns_core::evaluation::score_rule;
 // ============================================
 // Citations

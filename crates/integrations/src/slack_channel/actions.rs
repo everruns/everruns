@@ -4,6 +4,7 @@ use super::web_api::{SlackApiError, parse_retry_after, slack_api_call};
 use everruns_contracts::slack_action::{SlackActionError, SlackActionOutcome};
 use serde_json::{Value, json};
 use tracing::warn;
+// THREAT[TM-DOS-031]: validate at the vendor seam as well as in model-facing tool arguments.
 const MAX_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 pub fn action_error(error: SlackApiError) -> SlackActionError {
     match error {

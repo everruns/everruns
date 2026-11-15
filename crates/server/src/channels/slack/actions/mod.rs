@@ -29,6 +29,8 @@ use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
 };
 use everruns_contracts::typed_id::SessionId;
+#[cfg(test)]
+use serde_json::Value;
 use serde_json::json;
 use tracing::{debug, warn};
 
@@ -45,13 +47,6 @@ pub(crate) use post_message::slack_target as signed_slack_target;
 /// Routing-tag prefix archival Slack sessions carry, from before sessions
 /// had a channel FK.
 const SLACK_CHANNEL_TAG_PREFIX: &str = "slack:channel:";
-
-/// Ceiling on an upload's byte count.
-///
-/// THREAT[TM-DOS-031]: the capability caps the model-chosen argument before it
-/// crosses the seam, but this side must not trust that a caller did — a second
-/// implementation of the seam, or a replayed request, would not. Kept equal to
-/// the capability's cap so a legitimate call never hits only one of them.
 
 /// Performs Slack actions as one session's own channel bot.
 ///

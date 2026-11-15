@@ -1191,8 +1191,9 @@ fn map_ws_connect_error(e: tokio_tungstenite::tungstenite::Error) -> String {
                  browserless_scrape, browserless_interact) instead."
             );
         }
+        return format!("CDP WebSocket connection failed (HTTP {status})");
     }
-    format!("CDP WebSocket connection failed: {e}")
+    "CDP WebSocket connection failed".into()
 }
 
 /// Connect to a WebSocket endpoint, routing through an HTTP CONNECT proxy if

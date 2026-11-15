@@ -73,7 +73,7 @@ async fn validate_token(
         .get(format!("{api_base}/active?token={credential}"))
         .send()
         .await
-        .map_err(|e| format!("Failed to reach Browserless API: {e}"))?;
+        .map_err(|e| format!("Failed to reach Browserless API: {}", e.without_url()))?;
 
     match response.status().as_u16() {
         // Browserless v2 /active returns 204 No Content; v1 returned 200.
@@ -122,7 +122,7 @@ async fn validate_token(
             }
         }
         Err(e) => {
-            warn!("CDP probe failed during validation: {e}");
+            warn!(error = %e.without_url(), "CDP probe failed during validation");
         }
     }
 
