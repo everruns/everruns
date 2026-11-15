@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import { useState } from "react";
 import { McpAppProvider } from "../provider";
 import { connectWorkspace, workspaceRequest, type WorkspaceInit } from "../transport";
@@ -47,6 +47,14 @@ it("preserves drafts and the selected tab on repeated entry results and host con
   const entry = { view: { kind: "session", id: "session_one" }, organization_id: "org_one" };
   await act(async () => initialize(entry));
   fireEvent.change(screen.getByLabelText("Answer"), { target: { value: "Use staging" } });
+  const key = ["session", "session_one"];
+  client.setQueryData(key, "Before");
+  const snapshot = new QueryObserver(client, {
+    queryKey: key,
+    queryFn: async () => "After",
+    staleTime: Infinity,
+  });
+  const unsubscribe = snapshot.subscribe(() => {});
   // A needless second bootstrap would remain pending and unmount the draft.
   jest.mocked(workspaceRequest).mockImplementation(() => new Promise(() => {}));
   await act(async () => {
@@ -57,6 +65,8 @@ it("preserves drafts and the selected tab on repeated entry results and host con
   expect(router.replace).toHaveBeenCalledTimes(1);
   expect(workspaceRequest).toHaveBeenCalledTimes(1);
   expect(clear).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(snapshot.getCurrentResult().data).toBe("After"));
+  unsubscribe();
 
   jest.mocked(workspaceRequest).mockResolvedValueOnce({
     user: { id: "user_one" },

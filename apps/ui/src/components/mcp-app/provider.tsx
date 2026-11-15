@@ -54,7 +54,11 @@ export function McpAppProvider({ children }: { children: ReactNode }) {
       // Repeated render results must also preserve the selected tab and drafts.
       if (viewChanged) router.replace(workspacePath(value.view));
       setInit(value);
-      if (!organizationChanged && !bootstrapFailed) return;
+      if (!organizationChanged && !bootstrapFailed) {
+        // Refresh authoritative data without clearing mounted forms or drafts.
+        void queryClient.invalidateQueries();
+        return;
+      }
       bootstrapFailed = false;
       const current = ++generation;
       setError(undefined);

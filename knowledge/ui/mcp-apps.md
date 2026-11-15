@@ -93,8 +93,8 @@ entry result rather than accepting a child-selected organization. An app bridge
 call may echo that already resolved organization, including with a PAT; selecting
 a different organization retains the normal PAT override prohibition.
 
-Repeated entry results for the same view preserve the selected tab, drafts and
-query cache. A new view in the same organization reuses the authenticated
+Repeated entry results refresh active data queries while preserving the selected
+tab, drafts and cached presentation. A new view in the same organization reuses the authenticated
 bootstrap; changing organization clears its cache and remounts presentation
 state. Theme and display-mode updates do not navigate or remount the workspace.
 

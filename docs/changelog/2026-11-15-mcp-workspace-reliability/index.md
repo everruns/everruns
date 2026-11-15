@@ -17,7 +17,7 @@ Ask your connected client to open a session when you want its interface:
 Run the Research Assistant, check its progress, then open its session.
 ```
 
-Repeated workspace results preserve drafts and the selected tab, including
+Repeated workspace results refresh data and preserve drafts and the selected tab, including
 through theme and fullscreen changes. Switching organizations clears the
 previous workspace state. If the host connection times out while opening,
 choose **Retry connection**. Pending requests are cleaned up when the view
