@@ -7,8 +7,11 @@ import { queryKeys } from "@/lib/query-keys";
 
 /**
  * App layout is a personal choice (knowledge/ui/chat-mode.md):
+ * - `classic` (default): the left navigation sidebar; Chat opens full screen.
  * - `chat_first`: Main chat on the left, the page on the right, navigation in a right rail.
- * - `classic`: the left navigation sidebar; Chat opens full screen.
+ *
+ * Classic is the default (decided 2026-11-15): Chat first is opt-in until it
+ * matures. Only an explicit `chat_first` choice selects it.
  *
  * Stored server-side so it follows the person across devices and organizations.
  * The last value is mirrored to localStorage so a reload renders the chosen
@@ -20,7 +23,7 @@ export const LAYOUT_PREFERENCE_KEY = "ui.layout";
 const LOCAL_KEY = "everruns.ui.layout";
 
 export function parseAppLayout(value: unknown): AppLayout {
-  return value === "classic" ? "classic" : "chat_first";
+  return value === "chat_first" ? "chat_first" : "classic";
 }
 
 function readLocal(): AppLayout | undefined {
@@ -51,7 +54,7 @@ export function useLayoutPreference() {
   useEffect(() => {
     if (stored) writeLocal(stored);
   }, [stored]);
-  const layout: AppLayout = stored ?? local ?? "chat_first";
+  const layout: AppLayout = stored ?? local ?? "classic";
 
   const setLayout = useCallback(
     (next: AppLayout) => {

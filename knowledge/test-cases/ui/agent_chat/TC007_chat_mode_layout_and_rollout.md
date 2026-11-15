@@ -14,9 +14,12 @@ tags: [ui, test-case, agents, platform-chat]
 
 ## Steps
 
-1. Sign in with the default layout and open `/`. The app lands on Overview with Main chat
-   on the left and the navigation rail on the right.
-2. Hover the divider between chat and page: a thin line appears. Drag it, double-click it
+1. Sign in as a person who never picked a layout and open `/`: Classic is the default and
+   lands on full-screen Main chat. Switch the profile menu's layout to **Chat first** and
+   open `/`: the app lands on Overview with Main chat on the left and the navigation rail on
+   the right.
+2. The divider between chat and page is visible without hovering: a bordered gutter with a
+   grip. Hover it: the line and grip turn primary. Drag it, double-click it
    and use the arrow keys after focusing it. The chat stays at least 360 px and the page at
    least 480 px. Reload: the width is kept. Drag the chat to the right edge: `/chats` opens.
 3. In the rail, hover and keyboard-focus icons: tooltips name each page. Overview shows its
@@ -43,7 +46,8 @@ tags: [ui, test-case, agents, platform-chat]
 
 ## Expected result
 
-- The layout follows the person, not the organization; Chat first is the default.
+- The layout follows the person, not the organization; Classic is the default and a choice
+  survives sign-out, other browsers and other devices.
 - No width transitions; nothing remounts when moving between layouts.
 - Every change is a browser history step except switching chats beside the page.
 - Drawers affect only the page pane; hidden navigation does not retain keyboard focus.

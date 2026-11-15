@@ -53,13 +53,20 @@ channels in the sidebar.
 
 The layout is a personal preference, stored as the user preference `ui.layout`
 ([`use-layout-preference.ts`](../../apps/ui/src/hooks/use-layout-preference.ts))
-so it follows the person across devices and organizations (decided 2026-11-11).
-It is set in Profile → Appearance and in the profile menu.
+so it follows the person across devices, browsers and organizations (decided
+2026-11-11). It is set in Profile → Appearance and in the profile menu. The last
+value is mirrored to the device only so a reload paints the right layout before
+the server answers; the server value wins.
 
-- **Chat first** (default): the conversation on the left, the current page on the
+- **Classic** (default since 2026-11-15): the sidebar on the left and the page
+  filling the rest. Main chat and side chats stay in the sidebar and open full
+  screen at `/chats`.
+- **Chat first** (opt-in): the conversation on the left, the current page on the
   right, and a navigation rail on the right edge.
-- **Classic**: the sidebar on the left and the page filling the rest, as before.
-  Main chat and side chats stay in the sidebar and open full screen at `/chats`.
+
+Chat first was the default from 2026-11-11 to 2026-11-15. It went back to opt-in
+until it matures; only a stored `chat_first` selects it, so people who never
+chose land in Classic.
 
 The app layout owns one long-lived
 [`ChatModeShell`](../../apps/ui/src/components/chat-mode/chat-mode-shell.tsx)
@@ -72,8 +79,9 @@ always mounted, so nothing animates open or closed.
 
 - Arriving at the app (`/`) lands on [Overview](org-home.md) with Main chat
   beside it. Classic lands on full-screen Main chat.
-- **Splitter.** The divider between conversation and page is invisible until
-  hovered or focused. Dragging resizes (chat at least 360 px, page at least
+- **Splitter.** The divider between conversation and page is always visible: a
+  bordered gutter with a grip, which turns primary when hovered, focused or
+  dragged (an invisible divider made Chat and the page read as one surface). Dragging resizes (chat at least 360 px, page at least
   480 px), double-click resets, arrow keys step it, and dragging the chat to the
   right edge goes full screen. The width is kept on the device.
 - **Main chat ▾** in the conversation header
