@@ -5,7 +5,7 @@ use sha2::Sha256;
 pub struct GitHubRequest<'a> {
     /// X-GitHub-Event.
     pub event: &'a str,
-    /// X-GitHub-Delivery.
+    /// X-GitHub-Delivery, retained as informational metadata (not covered by GitHub's signature).
     pub delivery: &'a str,
     /// X-Hub-Signature-256.
     pub signature: &'a str,
@@ -55,12 +55,17 @@ pub fn github(
         .map(|r| json!(r.to_ascii_lowercase()))
         .unwrap_or(Value::Null);
     let subject = everruns_core::triggers_github::subject(&github);
+    github["delivery_id"] = json!(delivery.delivery_id);
     let kind = everruns_core::triggers_github::event_key(
         &delivery.event,
         delivery.payload["action"].as_str(),
     );
     Ok(Some(Event {
-        id: delivery.delivery_id,
+        // THREAT[TM-FW-005]: the delivery header is unsigned; replay identity must bind signed bytes.
+        id: format!(
+            "body:{}",
+            hex::encode(<Sha256 as sha2::Digest>::digest(request.body))
+        ),
         source: "github".into(),
         kind,
         subject,

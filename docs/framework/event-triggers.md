@@ -36,7 +36,7 @@ Call `recover()` at application startup and from your scheduling loop. It retrie
 
 `Event` accepts already authenticated application events. Never construct it directly from a public webhook without authentication.
 
-`github(secret, GitHubRequest, own_bot)` verifies `X-Hub-Signature-256` over the exact body before parsing, suppresses the selected bot's own events, and shares GitHub/CI context normalization with Server. Restrict subscribed event types and repositories in the ingress/filter configuration. GitHub signatures do not include timestamps; durable delivery IDs provide replay protection.
+`github(secret, GitHubRequest, own_bot)` verifies `X-Hub-Signature-256` over the exact body before parsing, suppresses the selected bot's own events, and shares GitHub/CI context normalization with Server. Restrict subscribed event types and repositories in the ingress/filter configuration. GitHub signatures cover the body, without a timestamp or delivery header. The adapter derives replay identity from the verified body, so changing the unsigned delivery header cannot bypass deduplication. Identical signed bodies are treated as the same event. The header remains informational `github.delivery_id` metadata; event/repository routing must also validate the expected payload shape.
 
 `mcp(secret, McpRequest)` uses the shared Standard Webhooks verifier, enforces the timestamp window and expected live subscription, then builds MCP template context. The application owns subscribe/renew/unsubscribe calls and passes only the active subscription identity. Oversized bodies and invalid signatures are rejected before dispatch.
 

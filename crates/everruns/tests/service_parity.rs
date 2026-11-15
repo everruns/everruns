@@ -538,6 +538,23 @@ fn source_adapters_verify_raw_bytes_before_normalization() {
     assert_eq!(event.subject.as_deref(), Some("Acme/App#7"));
     assert_eq!(event.kind, "pull_request.opened");
     assert_eq!(event.context["github"]["repository_key"], "acme/app");
+    let replay = github(
+        "secret",
+        GitHubRequest {
+            event: "pull_request",
+            delivery: "replaced-unsigned-header",
+            signature: &signature,
+            body,
+        },
+        None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(event.id, replay.id);
+    assert_eq!(
+        replay.context["github"]["delivery_id"],
+        "replaced-unsigned-header"
+    );
     assert!(
         github(
             "wrong",
