@@ -7,7 +7,7 @@
 
 mod support;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use everruns_cell::restore::FENCE_GAP;
 use serde_json::json;
@@ -45,6 +45,36 @@ fn completed(events: &[serde_json::Value]) -> usize {
         .iter()
         .filter(|t| **t == "turn.completed")
         .count()
+}
+
+/// Event reads rotate across replicas, unlike the committed restore write.
+/// Wait for the expected history and return that same sample: another GET
+/// could hit a follower that has not applied the restore (or next turn) yet.
+async fn completed_events(
+    fleet: &Fleet,
+    session: &str,
+    turns: usize,
+    input_id: Option<&str>,
+) -> Vec<serde_json::Value> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let events = fleet.events(session).await;
+        let has_input = input_id.is_none_or(|id| {
+            events
+                .iter()
+                .any(|event| event["data"]["message"]["id"].as_str() == Some(id))
+        });
+        if completed(&events) == turns && has_input {
+            return events;
+        }
+        fleet.check();
+        assert!(
+            Instant::now() < deadline,
+            "{session} did not reach {turns} completed turns: {:?}",
+            types(&events)
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -163,18 +193,23 @@ async fn a_one_org_restore_takes_back_only_that_org() {
     for session in &sessions {
         fleet.turns(session, 2).await;
     }
-    // Every cell's leader ships each second; let turn 2 reach the store
-    // wherever the fleet moved the sessions.
+    // Wait for both sessions' completed second turns in the store. A cell
+    // with neither session need not advance its clock past the restore point,
+    // and an unrelated later command does not prove the turns were shipped.
     let store = fleet.store();
     fleet
         .until("turn 2 shipped", || async {
-            let mut shipped = true;
+            let mut shipped = [false; 2];
             for cell in [0, 1] {
-                shipped &= everruns_cell::restore::state_at(&store, cell, None)
-                    .await
-                    .is_ok_and(|r| r.state.clock_ms > point);
+                if let Ok(restored) = everruns_cell::restore::state_at(&store, cell, None).await {
+                    for (i, session) in sessions.iter().enumerate() {
+                        shipped[i] |= restored.state.sessions.iter().any(|(id, state)| {
+                            id.to_string() == *session && state.turns_completed() == 2
+                        });
+                    }
+                }
             }
-            shipped
+            shipped.into_iter().all(|done| done)
         })
         .await;
 
@@ -203,7 +238,7 @@ async fn a_one_org_restore_takes_back_only_that_org() {
             completed(&fleet.events(restored).await) == 1
         })
         .await;
-    let other = fleet.events(untouched).await;
+    let other = completed_events(&fleet, untouched, 2, None).await;
     assert_eq!(
         completed(&other),
         2,
@@ -213,9 +248,11 @@ async fn a_one_org_restore_takes_back_only_that_org() {
 
     // The restored session carries on from the point; the executor that
     // ran its second turn drops what it remembered past the point.
-    fleet.say(restored, "after the restore").await;
+    let input = fleet.say(restored, "after the restore").await;
     fleet.turns(restored, 2).await;
-    let events = fleet.events(restored).await;
+    // A stale pre-restore replica also has two completed turns. Require the
+    // new input in this same history so that old branch cannot satisfy the wait.
+    let events = completed_events(&fleet, restored, 2, Some(input["id"].as_str().unwrap())).await;
     assert_eq!(completed(&events), 2, "{:?}", types(&events));
     let leftover: Vec<&serde_json::Value> = events
         .iter()
