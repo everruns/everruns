@@ -20,20 +20,20 @@ REQUEST
 · calling the model
 
 ❯ bash
-  tools acme billing-list-invoices --help; tools acme crm-list-customers --help
+  tools acme billing-list-invoices --help; tools acme crm-list-customers --help; tools search exchange
   exit 0
   │ tools acme billing-list-invoices '{"cursor?":<string>,"customer_id?":<string>,"limit?":<integer>,"statu…
   │
   │ List invoices in billing (invoicing and pay
   │
-  │ [... 720 bytes omitted ...]
+  │ [... 829 bytes omitted ...]
   │
-  … 32 more line(s)
+  … 33 more line(s)
 
 · calling the model
 
 ❯ bash
-  tools acme billing-list-invoices --help
+  tools acme billing-list-invoices --help; tools acme crm-list-customers --help
   exit 0
   │ tools acme billing-list-invoices '{"cursor?":<string>,"customer_id?":<string>,"limit?":<integer>,"statu…
   │
@@ -41,40 +41,54 @@ REQUEST
   │
   │ Input schema:
   │ {
-  … 30 more line(s)
+  … 62 more line(s)
+
+· calling the model
+
+❯ bash
+  set -euo pipefail
+  customers='[]'; cursor=''
+  while :; do
+   args=$(jq -nc --arg c "$cursor" '{region:"EU",limit:500}+ (if $c=="" then {} else {cursor:$c} end)')
+   page=$(tools acme crm-list-customers "$args")
+   customers=$(jq -nc --argjson a "$customers" --argjson p "$page" '$a+$p.items')
+   cursor=$(jq -r '.next_cursor // empty' <<< "$page")
+   [[ -n "$cursor" ]] || break
+  done
+  invoices='[]'; cursor=''
+  while :; do
+   args=$(jq -nc --arg c "$cursor" '{status:"overdue",limit:500}+ (if $c=="" then {} else {cursor:$c} end…
+   page=$(tools acme billing-list-invoices "$args")
+   invoices=$(jq -nc --argjson a "$invoices" --argjson p "$page" '$a+$p.items')
+   cursor=$(jq -r '.next_cursor // empty' <<< "$page")
+   [[ -n "$cursor" ]] || break
+  done
+  jq -nc --argjson c "$customers" --argjson i "$invoices" '{customers:$c,invoices:$i}'
+  ↳ tools acme crm-list-customers {"limit":500,"region":"EU"}
+  ↳ tools acme billing-list-invoices {"limit":500,"status":"overdue"}
+  exit 0
+  │ {"customers":[{"id":"cus_1000","name":"Northwind Logistics","region":"EU","tier":"plus"},{"id":"cus_100…
 
 · calling the model
 
 ❯ bash
   set -euo pipefail
   fetch_all() {
-   local op="$1" base="$2" cursor='' page items='[]'
+   local operation="$1" base="$2" all='[]' cursor='' page args
    while :; do
-    page=$(tools acme "$op" "$(jq -cn --argjson base "$base" --arg cursor "$cursor" '$base + (if $cursor …
-    items=$(jq -cn --argjson items "$items" --argjson page "$page" '$items + $page.items')
+    args=$(jq -nc --argjson b "$base" --arg c "$cursor" '$b + (if $c=="" then {} else {cursor:$c} end)')
+    page=$(tools acme "$operation" "$args")
+    all=$(jq -nc --argjson a "$all" --argjson p "$page" '$a+$p.items')
     cursor=$(jq -r '.next_cursor // empty' <<< "$page")
     [[ -n "$cursor" ]] || break
    done
-   printf '%s' "$items"
+   printf '%s' "$all"
   }
   customers=$(fetch_all crm-list-customers '{"region":"EU","limit":500}')
   invoices=$(fetch_all billing-list-invoices '{"status":"overdue","limit":500}')
-  jq -n --argjson customers "$customers" --argjson invoices "$invoices" '{customer_sample: $customers[0],…
+  jq -n --argjson c "$customers" --argjson i "$invoices" '[$c[] | . as $customer | [$i[] | select(.custom…
   ↳ tools acme crm-list-customers {"limit":500,"region":"EU"}
   ↳ tools acme billing-list-invoices {"limit":500,"status":"overdue"}
-  exit 0
-  │ {
-  │   "customer_sample": {
-  │     "id": "cus_1000",
-  │     "name": "Northwind Logistics",
-  │     "region": "EU",
-  │     "tier": "plus"
-  … 179 more line(s)
-
-· calling the model
-
-❯ bash
-  jq -n '[{customer:"Tidewater Foods",total_overdue_usd:([6853,257,3025,3152]|add)},{customer:"Saffron Lo…
   exit 0
   │ [
   │   {
@@ -87,7 +101,7 @@ REQUEST
 · calling the model
 
 SUMMARY
-  The three EU customers with the largest total overdue invoice amounts are:
+  The three EU customers with the largest total overdue invoices are:
 
   | Customer | Total overdue (USD) |
   |---|---:|
@@ -95,23 +109,21 @@ SUMMARY
   | Saffron Logistics | $12,240 |
   | Juniper Logistics | $9,593 |
 
-  Totals include invoices marked **overdue** in billing.
-
 6 iterations · 5 tool calls
 
 WHAT THE MODEL CARRIED
        tools read_file, write_file, edit_file, bash
      schemas 4 KiB per request (all 1000 MCP tools natively: 355 KiB)
-      prompt 4768 input tokens at most
+      prompt 6042 input tokens at most
 
 MCP TOOLS CALLED FROM SCRIPTS
-    1 × mcp_acme__billing_list_invoices
-    1 × mcp_acme__crm_list_customers
+    2 × mcp_acme__billing_list_invoices
+    2 × mcp_acme__crm_list_customers
 
 CHECKS
   ✓ no MCP tool in the model's tool list
   ✓ the model called no MCP tool directly
-  ✓ 2 MCP calls ran inside Bashkit scripts
+  ✓ 4 MCP calls ran inside Bashkit scripts
   ✓ answer matches totals computed from the server's data
 
 Completed: answer verified against the MCP server

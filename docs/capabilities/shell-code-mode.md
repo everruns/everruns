@@ -78,7 +78,8 @@ JSON. `--flag` alone is `true`. A value is read as JSON unless the tool's schema
 says the key is a string, so `number=7` is a number and `repo=42` stays text.
 
 **Output** is the tool's result on stdout: a text result as is, anything else
-as JSON. Images a tool returns are saved under `tool-images/` in the working
+as JSON. An MCP server's text reply is printed as that text, so a server that
+answers in JSON pipes straight into `jq`. Images a tool returns are saved under `tool-images/` in the working
 directory, and stderr names the files.
 
 **Errors** are one JSON line on stderr with exit code 1, so a script can branch

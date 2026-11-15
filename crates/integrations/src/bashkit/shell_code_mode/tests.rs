@@ -808,3 +808,52 @@ fn legacy_tools_in_shell_id_resolves_to_shell_code_mode() {
     assert!(is_shell_code_mode_id("shell_code_mode"));
     assert!(!is_shell_code_mode_id("bashkit_shell"));
 }
+
+/// Answers like an MCP server's text-only reply after the core mapping:
+/// `{"result": "<text>"}`.
+struct TextTool(&'static str);
+
+#[async_trait]
+impl Tool for TextTool {
+    fn name(&self) -> &str {
+        self.0
+    }
+    fn description(&self) -> &str {
+        "Return a JSON document as text."
+    }
+    fn parameters_schema(&self) -> Value {
+        json!({"type": "object", "properties": {}})
+    }
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::Success(json!({"result": "{\"items\":[1,2],\"next_cursor\":null}"}))
+    }
+}
+
+#[tokio::test]
+async fn mcp_text_result_prints_the_document_not_the_wrapper() {
+    let (mut context, _) = crate::bashkit::tests::create_context_with_mock_store();
+    let mut registry = ToolRegistry::new();
+    registry.register(TextTool("mcp_acme__list_items"));
+    registry.register(TextTool("local_items"));
+    registry.register(ToolsMarkerTool);
+    install_cli_surface(&mut context, &registry);
+    context.tool_registry = Some(Arc::new(registry));
+    context.tool_call_id = Some("call_outer".to_string());
+    let context = context.with_nested_tool_policy(Arc::new(Policy::default()));
+
+    let output = run(
+        r#"tools acme list-items '{}' | jq -c '.items | add'"#,
+        &context,
+    )
+    .await;
+    assert_eq!(output["exit_code"], 0, "{output}");
+    assert_eq!(
+        output["stdout"], "3\n",
+        "an MCP text reply is its own document"
+    );
+
+    // A non-MCP tool's object is its own shape, so it prints unchanged.
+    let output = run(r#"tools local-items '{}' | jq -r 'keys[0]'"#, &context).await;
+    assert_eq!(output["exit_code"], 0, "{output}");
+    assert_eq!(output["stdout"], "result\n");
+}

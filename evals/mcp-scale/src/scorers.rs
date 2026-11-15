@@ -85,6 +85,33 @@ pub fn state_verified() -> Box<dyn Scorer> {
                         && production_preserved_after
                         && no_wrong_mutation
                 }
+                "sla_breach_ranking" => {
+                    let ranking = crate::fixture::sla_breach_ranking();
+                    let breached: Vec<String> = crate::fixture::fleet_tickets()
+                        .into_iter()
+                        .filter(|t| {
+                            t["status"] == "open"
+                                && t["priority"] == "P1"
+                                && t["sla_breached"] == true
+                                && ranking[..3]
+                                    .iter()
+                                    .any(|(service, _)| t["service"] == *service)
+                        })
+                        .filter_map(|t| t["ticket_id"].as_str().map(str::to_owned))
+                        .collect();
+                    let listed = completed
+                        .iter()
+                        .any(|(name, _, _)| name.ends_with("__list_tickets"));
+                    // Every counted breach was read, not guessed.
+                    let all_read = breached.iter().all(|id| {
+                        completed.iter().any(|(name, args, _)| {
+                            name.ends_with("__get_ticket") && args.contains(id.as_str())
+                        })
+                    });
+                    listed
+                        && all_read
+                        && ranking_answered(&transcript.final_response, &ranking[..3])
+                }
                 _ => false,
             };
             if task == "readonly_ticket"
@@ -140,6 +167,29 @@ pub fn tool_evidence() -> Box<dyn Scorer> {
             }
         },
     )
+}
+
+/// The answer names the top services in order, each with its count.
+fn ranking_answered(response: &str, top: &[(String, usize)]) -> bool {
+    let lower = response.to_ascii_lowercase();
+    let mut from = 0;
+    for (service, count) in top {
+        let Some(at) = lower[from..].find(service.as_str()) else {
+            return false;
+        };
+        let at = from + at;
+        // The count follows the name on the same line or table row.
+        let line_end = lower[at..].find('\n').map_or(lower.len(), |end| at + end);
+        let line = &lower[at + service.len()..line_end];
+        let has_count = line
+            .split(|c: char| !c.is_ascii_digit())
+            .any(|number| number == count.to_string());
+        if !has_count {
+            return false;
+        }
+        from = line_end.min(lower.len());
+    }
+    true
 }
 
 fn completed_calls(events: &[Value]) -> Vec<(String, String, String)> {
@@ -324,6 +374,31 @@ mod tests {
             .score(&sample, &rollback_transcript(true, true))
             .await;
         assert!(!score.pass);
+    }
+
+    #[test]
+    fn ranking_answer_needs_order_and_counts() {
+        let top = [
+            ("storage".to_string(), 8),
+            ("search".to_string(), 7),
+            ("checkout".to_string(), 3),
+        ];
+        assert!(ranking_answered(
+            "| Service | Breached |\n|---|---|\n| storage | 8 |\n| search | 7 |\n| checkout | 3 |",
+            &top
+        ));
+        assert!(ranking_answered(
+            "1. Storage: 8\n2. Search: 7\n3. Checkout: 3",
+            &top
+        ));
+        assert!(!ranking_answered(
+            "1. Search: 7\n2. Storage: 8\n3. Checkout: 3",
+            &top
+        ));
+        assert!(!ranking_answered(
+            "1. Storage: 8\n2. Search: 6\n3. Checkout: 3",
+            &top
+        ));
     }
 
     #[tokio::test]

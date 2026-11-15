@@ -59,6 +59,7 @@ fn catalog_with_core(size: usize, include_core: bool) -> Vec<Value> {
                 "Find operational tickets by matching text.",
                 object(json!({"query":string("Search terms.", &[])}), &["query"]),
             ),
+            list_tickets_tool(),
             tool(
                 "list_deployments",
                 "Find deployments by service, environment, and status. Use this first to identify the exact deployment before inspection or change.",
@@ -1224,6 +1225,9 @@ fn call(state: &mut Value, name: &str, args: &Value) -> Value {
         "get_ticket" if args["ticket_id"] == "OPS-8421" && state["server_id"] == "telemetry" => {
             state["ticket"].clone()
         }
+        "get_ticket" | "list_tickets" if state["server_id"] == "telemetry" => {
+            fleet_call(name, args)
+        }
         "get_ticket" => json!({"error":"ticket OPS-8421 is not present on this server"}),
         "list_deployments" if args["service"] == "billing-api" => {
             let entries = [&state["staging"], &state["production"]]
@@ -1287,6 +1291,8 @@ fn call(state: &mut Value, name: &str, args: &Value) -> Value {
         }
     }
 }
+
+include!("fleet.rs"); // many-call task data, shared with the HTTP fixture binary
 
 fn deployment<'a>(state: &'a Value, id: &str) -> Option<&'a Value> {
     [&state["staging"], &state["production"]]

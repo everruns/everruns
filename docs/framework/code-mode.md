@@ -75,18 +75,19 @@ size and discovery.
 
 ## What the model writes
 
-In a run of the example, after `tools search customers invoices` and the two
-operations' `--help`, the model wrote this script. It is copied unedited from
-that run; the two MCP calls below it ran inside the shell:
+In a run of the example, after `tools search invoices customers`, the two
+operations' `--help` and one script that sampled the data, the model wrote this
+script. It is copied unedited from that run; the two MCP calls below it ran
+inside the shell:
 
 ```bash
-set -e
+set -euo pipefail
 fetch_all() {
- local op="$1" base="$2" cursor='' page all='[]' args
+ local op="$1" base="$2" cursor='' page args all='[]'
  while :; do
-  args=$(jq -cn --argjson b "$base" --arg c "$cursor" '$b + {limit:500} + (if $c == "" then {} else {cursor:$c} end)')
-  page=$(tools acme "$op" "$args" | jq '.result | fromjson')
-  all=$(jq -cn --argjson a "$all" --argjson p "$page" '$a + $p.items')
+  args=$(jq -cn --argjson base "$base" --arg cursor "$cursor" '$base + {limit:500} + (if $cursor == "" then {} else {cursor:$cursor} end)')
+  page=$(tools acme "$op" "$args")
+  all=$(jq -cn --argjson all "$all" --argjson page "$page" '$all + $page.items')
   cursor=$(jq -r '.next_cursor // empty' <<< "$page")
   [[ -n "$cursor" ]] || break
  done
@@ -94,7 +95,7 @@ fetch_all() {
 }
 customers=$(fetch_all crm-list-customers '{"region":"EU"}')
 invoices=$(fetch_all billing-list-invoices '{"status":"overdue"}')
-jq -n --argjson c "$customers" --argjson i "$invoices" '[$c[] | . as $customer | [$i[] | select(.customer_id==$customer.id)] as $invoices | select($invoices|length>0) | {customer:.name,total_overdue_usd:($invoices|map(.amount_usd)|add)}] | sort_by(-.total_overdue_usd) | .[:3]'
+jq -n --argjson customers "$customers" --argjson invoices "$invoices" '[ $customers[] as $c | [$invoices[] | select(.customer_id == $c.id)] as $overdue | select(($overdue|length)>0) | {customer:$c.name,total_overdue_usd:($overdue|map(.amount_usd)|add)} ] | sort_by(-.total_overdue_usd) | .[:3]'
 ```
 
 ```text
@@ -102,9 +103,8 @@ jq -n --argjson c "$customers" --argjson i "$invoices" '[$c[] | . as $customer |
 ↳ tools acme billing-list-invoices {"limit":500,"status":"overdue"}
 ```
 
-A `tools` call prints the MCP result as `{"result": "<text>"}`. When a server
-returns JSON as text, as most do, tell the model to read it with
-`jq '.result | fromjson'`, as the example's instructions do.
+A `tools` call prints the tool's JSON reply as is, so a script pipes it straight
+into `jq`. When an MCP server answers in text, the text is printed unchanged.
 
 ## Watch the calls
 

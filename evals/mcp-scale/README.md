@@ -190,10 +190,43 @@ an algorithmic regression. They exclude model latency and MCP process/network
 startup. Ten-thousand-tool evidence remains offline stress, without a live
 model accuracy claim.
 
+## Many-call follow-up (2026-11-15)
+
+The earlier cases need one to four MCP operations, so they mostly measure
+discovery. `sla-breach-ranking` needs many: list open P1 tickets (three pages of
+20) and read each one with `get_ticket`, because only the detail says whether a
+ticket breached its SLA, then rank services. That is about 45 operations. The
+scorer requires the correct top three with counts in order, at least one
+`list_tickets` call, and a `get_ticket` read of every breach it counts, so a
+guessed answer fails. This run also includes the fix that prints an MCP text
+reply as its JSON document in the shell rather than `{"result": "<text>"}`.
+
+Three trials per surface, 2,000 tools on one server, all 18 trials passed.
+Averages per trial ([Muse trace](results/many-call-2026-11-15-live.jsonl.gz),
+[GPT-6.1 Sol trace](results/many-call-2026-11-15-sol-live.jsonl.gz)):
+
+| Model | Surface | Model calls | MCP calls | Accumulated input | Peak input | Output | Cost | Time |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| GPT-6.1 Sol | Bounded native | 7.0 | 46.0 | 26,078 | 7,231 | 1,365 | $0.0396 | 23.0 s |
+| GPT-6.1 Sol | CLI | 7.3 | 51.3 | 20,164 | 4,479 | 633 | $0.0191 | 22.3 s |
+| GPT-6.1 Sol | Hybrid | 8.3 | 48.0 | 39,514 | 9,298 | 644 | $0.0459 | 23.0 s |
+| Muse 1.3 Contributor | Bounded native | 10.3 | 46.0 | 56,208 | 10,868 | 4,192 | $0.0021 | 35.8 s |
+| Muse 1.3 Contributor | CLI | 11.0 | 82.0 | 51,443 | 7,940 | 2,700 | $0.0016 | 42.5 s |
+| Muse 1.3 Contributor | Hybrid | 9.7 | 56.7 | 62,770 | 11,855 | 2,646 | $0.0020 | 38.2 s |
+
+With GPT-6.1 Sol, CLI used 23% less accumulated input, 38% less peak input and
+54% less output than bounded native, at 52% of the cost and the same time.
+Native stays competitive on model calls because both models batch parallel
+`get_ticket` calls in one turn, so the saving comes from results that stay in
+the shell rather than from fewer round trips. Muse 1.3 wrote less efficient
+scripts (it re-ran listing and detail loops, hence 82 MCP calls) and gained
+8% on input and 27% on cost while taking longer. Three trials per cell do not
+establish a stable ranking.
+
 ## What gets measured
 
 - **Tool evidence** requires at least one completed MCP operation in the Framework transcript.
-- **State verification** reads the ticket result or validates the staged rollback result and preservation of the healthy production deployment. The read-only case fails if a mutating operation was called.
+- **State verification** reads the ticket result, validates the staged rollback result and preservation of the healthy production deployment, or, for the many-call ranking, checks the answer against the fixture's data and that every counted breach was read. The read-only case fails if a mutating operation was called.
 - Mira records model usage, elapsed time, iterations, and all raw Framework events for comparison across `native`, `cli`, and `hybrid`.
 - The `description_only` case asks for “geothermal drilling telemetry,” a phrase found in the configured `telemetry` server description and absent from operation names. In ten-server trials, peer servers expose the same `get_ticket` operation name but cannot return the requested ticket, so the description must select the correct server.
 

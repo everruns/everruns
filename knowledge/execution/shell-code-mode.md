@@ -162,7 +162,10 @@ side and do not share a parser.
 
 ### D3. Output is JSON on stdout, errors on stderr
 
-Success: exit code 0 and the tool's result as JSON on stdout. Failure: a
+Success: exit code 0 and the tool's result as JSON on stdout. An MCP text-only result, which the core maps to
+`{"result": "<text>"}` for direct calls, is unwrapped to its text, so a JSON
+server's reply is the document itself (fixed 2026-11-15; models used to need
+`jq '.result | fromjson'`). Failure: a
 non-zero exit code and `{"error":{"code","message","retryable"}}` on stderr,
 so `set -e`, `||` and `jq` behave. Files and images are written to the
 workspace and their path printed; binary data never goes to stdout.
@@ -412,6 +415,12 @@ publishing or copying apps between people. Storage per app is covered by
 - The canonical Rust/Mira synthetic qualification is complete; see
   [Large MCP Catalogs](large-mcp-catalogs.md#canonical-rust-mira-study) for its
   matrix and interpretation.
+- The many-call case (2026-11-15, about 45 operations per answer; see the
+  [MCP scale study](../../evals/mcp-scale/README.md#many-call-follow-up-2026-11-15))
+  is where code mode pays: with GPT-6.1 Sol, CLI used 23% less input and cost
+  52% of bounded native at equal time and pass rate. On one to four operation
+  tasks bounded native stays cheaper, because models batch parallel native
+  calls and the shell adds discovery turns.
 - Every nested call is visible in the session events and audit log.
 - No tool is reachable through `tools` that the agent could not call directly.
 
