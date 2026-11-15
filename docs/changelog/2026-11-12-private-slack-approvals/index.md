@@ -5,6 +5,7 @@ date: 2026-11-12
 kind: feature
 significance: minor
 products: [platform]
+release: "0.53.0"
 surfaces: [ui, api]
 links:
   docs: [/capabilities/slack/#approvals]

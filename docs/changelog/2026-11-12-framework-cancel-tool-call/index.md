@@ -5,6 +5,7 @@ date: 2026-11-12
 kind: feature
 significance: minor
 products: [framework]
+release: "0.53.0"
 surfaces: [code]
 links:
   docs: [/framework/events-and-cancellation/#cancel-one-tool-call]

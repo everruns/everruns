@@ -5,6 +5,7 @@ date: 2026-11-15
 kind: fix
 significance: notable
 products: [platform, cloud]
+release: "0.53.0"
 surfaces: [ui, agent]
 links:
   docs: [/features/mcp/]
