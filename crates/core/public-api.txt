@@ -489,6 +489,7 @@ everruns_core::triggers	module
 everruns_core::triggers::change_miss	function
 everruns_core::triggers::filter_miss	function
 everruns_core::triggers::render_message_template	function
+everruns_core::triggers::render_message_template_bounded	function
 everruns_core::triggers::template_lookup	function
 everruns_core::triggers_github	module
 everruns_core::triggers_github::GitHubDelivery	struct

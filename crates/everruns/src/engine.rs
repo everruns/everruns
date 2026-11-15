@@ -349,6 +349,7 @@ impl Engine {
         Self::builder().build()
     }
 
+    #[cfg(feature = "channels")]
     pub(crate) fn permits_snapshot_creation(&self) -> bool {
         self.inner.hosting.is_none() || self.inner.volatile_default
     }

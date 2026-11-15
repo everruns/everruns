@@ -108,7 +108,11 @@ pub fn mcp(secret: &str, request: McpRequest<'_>) -> Result<Event, Error> {
     let context = json!({"mcp":{"server":request.server,"event":request.event,"event_id":body.get("eventId"),"timestamp":body.get("timestamp"),"subscription_id":request.subscription,"delivery_id":id},"payload":body.get("data").cloned().unwrap_or(Value::Null)});
     let subject = request
         .subject
-        .map(|template| render_message_template(template, &context));
+        .map(|template| {
+            render_message_template_bounded(template, &context, 512)
+                .ok_or_else(|| Error("Rendered MCP subject exceeds limit".into()))
+        })
+        .transpose()?;
     Ok(Event {
         id: id.into(),
         source: "mcp_event".into(),

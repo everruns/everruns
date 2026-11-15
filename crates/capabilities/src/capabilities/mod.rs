@@ -310,6 +310,9 @@ pub fn hosted_capability_registry() -> everruns_core::capabilities::CapabilityRe
     hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::from_env())
 }
 
+/// Unified collection retrieval and browsing capability.
+pub use knowledge::KnowledgeCapability;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,6 +390,3 @@ mod tests {
         }
     }
 }
-
-/// Unified collection retrieval and browsing capability.
-pub use knowledge::KnowledgeCapability;

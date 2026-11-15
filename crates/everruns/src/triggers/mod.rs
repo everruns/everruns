@@ -9,7 +9,9 @@ pub use everruns_contracts::runtime::triggers::{
     TriggerChangesOnly as ChangesOnly, TriggerEventFilter as Filter,
     TriggerFilterCondition as Condition,
 };
-use everruns_core::triggers::{change_miss, filter_miss, render_message_template, template_lookup};
+use everruns_core::triggers::{
+    change_miss, filter_miss, render_message_template_bounded, template_lookup,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Arc};
@@ -266,13 +268,15 @@ impl Dispatcher {
                 key: key.clone(),
                 session: SessionId::from_uuid(uuid::Uuid::new_v5(&namespace, route.as_bytes())),
                 input: MessageId::from_uuid(uuid::Uuid::new_v5(&namespace, key.as_bytes())),
-                message: render_message_template(&self.trigger.message, &event.context),
+                message: render_message_template_bounded(
+                    &self.trigger.message,
+                    &event.context,
+                    64 * 1024,
+                )
+                .ok_or_else(|| Error("Rendered trigger message exceeds limit".into()))?,
                 admitted: false,
                 filtered: None,
             };
-            if delivery.message.len() > 64 * 1024 {
-                return Err(Error("Rendered trigger message exceeds limit".into()));
-            }
             state.deliveries.push(delivery.clone());
             while state.deliveries.len() > 2000 {
                 if let Some(i) = state.deliveries.iter().position(|d| d.admitted) {

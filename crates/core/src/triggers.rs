@@ -44,6 +44,61 @@ pub fn render_message_template(template: &str, context: &Value) -> String {
         .into_owned()
 }
 
+/// Render a template while bounding allocation, returning `None` if output exceeds `max_bytes`.
+pub fn render_message_template_bounded(
+    template: &str,
+    context: &Value,
+    max_bytes: usize,
+) -> Option<String> {
+    let mut output = String::new();
+    let mut end = 0;
+    for captures in TEMPLATE_EXPR_RE.captures_iter(template) {
+        let matched = captures.get(0)?;
+        let literal = &template[end..matched.start()];
+        let replacement = template_lookup(context, captures.get(1)?.as_str())
+            .map(template_value_to_string)
+            .unwrap_or_default();
+        if output
+            .len()
+            .saturating_add(literal.len())
+            .saturating_add(replacement.len())
+            > max_bytes
+        {
+            return None;
+        }
+        output.push_str(literal);
+        output.push_str(&replacement);
+        end = matched.end();
+    }
+    if output.len().saturating_add(template.len() - end) > max_bytes {
+        return None;
+    }
+    output.push_str(&template[end..]);
+    Some(output)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bounded_templates_match_shared_rendering_and_reject_amplification() {
+        let context = serde_json::json!({"payload": {"text": "é".repeat(1000)}});
+        let template = "Before {{ payload.text }} {{missing}} after";
+        assert_eq!(
+            super::render_message_template_bounded(template, &context, 4096),
+            Some(super::render_message_template(template, &context)),
+        );
+        assert!(
+            super::render_message_template_bounded(
+                &"{{payload.text}}".repeat(10000),
+                &context,
+                4096,
+            )
+            .is_none()
+        );
+        assert!(super::render_message_template_bounded("plain", &context, 4).is_none());
+    }
+}
+
 /// Explain an absent, first or repeated subject value; None indicates a change.
 pub fn change_miss(path: &str, value: Option<&Value>, previous: Option<&Value>) -> Option<String> {
     let Some(value) = value else {
