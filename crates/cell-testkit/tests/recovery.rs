@@ -196,7 +196,13 @@ async fn a_one_org_restore_takes_back_only_that_org() {
         report.missing.is_empty() && report.refused.is_empty(),
         "{report:?}"
     );
-    assert_eq!(completed(&fleet.events(restored).await), 1);
+    // The restore is committed through each cell's log; a read served by a
+    // node that has not applied it yet still shows turn 2. Wait for it.
+    fleet
+        .until("the restored session is back at the point", || async {
+            completed(&fleet.events(restored).await) == 1
+        })
+        .await;
     let other = fleet.events(untouched).await;
     assert_eq!(
         completed(&other),
