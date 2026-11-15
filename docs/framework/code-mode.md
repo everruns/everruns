@@ -36,6 +36,7 @@ serde_json = "1"
 use everruns::{Agent, BashkitShell, CapabilityRef, Engine, McpServer, OpenAI};
 use serde_json::json;
 
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
     .name("acme-analyst")
     .instructions(
@@ -58,6 +59,8 @@ let turn = session
     .run("Which EU customers have overdue invoices? Give the top three by amount.")
     .await?;
 println!("{}", turn.response);
+# Ok(())
+# }
 ```
 
 `mode: "cli"` removes every eligible tool from the model's tool list and makes
@@ -110,6 +113,7 @@ input, and a status. The model's own `bash` calls stay ordinary `tool.started`
 and `tool.completed` events, so a host can tell the two apart:
 
 ```rust
+# async fn watch(session: everruns::Session) -> Result<(), Box<dyn std::error::Error>> {
 let mut events = session.events();
 // ... run the turn ...
 while let Some(event) = events.try_recv()? {
@@ -118,6 +122,8 @@ while let Some(event) = events.try_recv()? {
         println!("{} {}", data["command"], data["input_preview"]);
     }
 }
+# Ok(())
+# }
 ```
 
 ## Run the example
