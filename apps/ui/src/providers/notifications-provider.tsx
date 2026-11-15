@@ -23,6 +23,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useMountEffect } from "@/hooks/use-mount-effect";
 import { useAuth } from "@/providers/auth-provider";
+import { OrgSwitchNotice } from "@/components/layout/org-switch-notice";
 import { useNotifications } from "@/hooks/use-notifications";
 import { markNotificationViewed, getNotificationsSseUrl } from "@/lib/api/notifications";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
@@ -403,6 +404,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   return (
     <NotificationsContext.Provider value={contextValue}>
       {children}
+      <OrgSwitchNotice notify={notify} />
       {toastQueue.length > 0 && (
         <div className="pointer-events-none fixed right-4 top-4 z-50 flex w-80 flex-col gap-2">
           {toastQueue.map((toast) => (

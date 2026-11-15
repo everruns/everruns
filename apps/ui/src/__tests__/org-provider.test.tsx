@@ -126,6 +126,24 @@ describe("OrgProvider", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ refetchType: "none" });
   });
 
+  it("announces a switch made to stay on the page, not a user's own switch", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    const { result } = renderHook(() => useOrg(), { wrapper });
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id));
+
+    act(() => result.current.setCurrentOrg(SECOND_ORG));
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id));
+    expect(result.current.autoSwitch).toBeNull();
+
+    act(() => result.current.setCurrentOrg(DEFAULT_ORG, { stayOnPage: true }));
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id));
+    expect(result.current.autoSwitch).toMatchObject({
+      from: { public_id: SECOND_ORG.public_id },
+      to: { public_id: DEFAULT_ORG.public_id },
+    });
+  });
+
   it("does not refetch the previous org's queries on switch", async () => {
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
     mockAuthLoading = false;
@@ -401,6 +419,25 @@ describe("OrgProvider landing on an entity link", () => {
     expect(committed).not.toContain(DEFAULT_ORG.public_id);
     expect(mockPush).not.toHaveBeenCalled();
     expect(storageMap.get("everruns_current_org")).toBe(SECOND_ORG.public_id);
+    // The switch is published for the shell to announce, with the way back.
+    expect(result.current.autoSwitch).toMatchObject({
+      id: 1,
+      from: { public_id: DEFAULT_ORG.public_id },
+      to: { public_id: SECOND_ORG.public_id },
+    });
+  });
+
+  it("announces nothing when the link is in the org already selected", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    mockInitialOrgId = SECOND_ORG.public_id;
+    mockPathname.mockReturnValue(`/sessions/${SESSION}`);
+    mockResolveOrg.mockResolvedValue({ org_id: SECOND_ORG.public_id, org_name: "Second Org" });
+
+    const { result } = renderHook(() => useOrg(), { wrapper });
+
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id));
+    expect(result.current.autoSwitch).toBeNull();
   });
 
   it("skips the cookie sync when the cookie already names the owning org", async () => {

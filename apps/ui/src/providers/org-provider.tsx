@@ -16,6 +16,9 @@
 //   owning org) and tripped the edge rate limit. Resolution is bounded by a
 //   timeout; on any failure the stored org is used and the in-page fallback
 //   (hooks/use-resource-org-fallback.ts) still recovers.
+// Decision: Every switch the app makes on the user's behalf to open a page is
+//   published as `autoSwitch`, and the shell announces it (OrgSwitchNotice) with a
+//   way back. A silent switch made another org's data look like a cross-tenant leak.
 
 import {
   createContext,
@@ -114,6 +117,15 @@ export interface SetCurrentOrgOptions {
   stayOnPage?: boolean;
 }
 
+/** A switch the app made by itself to open a page in the org that owns it. */
+export interface AutoOrgSwitch {
+  /** Increments per switch, so each one is announced once. */
+  id: number;
+  /** The org the user was in, when it is still one of theirs. */
+  from: OrganizationMembership | null;
+  to: OrganizationMembership;
+}
+
 export interface OrgContextValue {
   /** Currently selected organization */
   currentOrg: OrganizationMembership | null;
@@ -127,6 +139,8 @@ export interface OrgContextValue {
   isLoading: boolean;
   /** True while an org switch is in progress (cookie sync pending) */
   isSwitching: boolean;
+  /** The last switch the app made by itself to open a page, if any. */
+  autoSwitch?: AutoOrgSwitch | null;
 }
 
 export const OrgContext = createContext<OrgContextValue | undefined>(undefined);
@@ -155,6 +169,14 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
   }, []);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
+  const [autoSwitch, setAutoSwitch] = useState<AutoOrgSwitch | null>(null);
+  const announceSwitch = useCallback(
+    (from: OrganizationMembership | null | undefined, to: OrganizationMembership) => {
+      if (from?.public_id === to.public_id) return;
+      setAutoSwitch((prev) => ({ id: (prev?.id ?? 0) + 1, from: from ?? null, to }));
+    },
+    [],
+  );
   // Track explicit org selection to prevent useEffect from resetting it
   // before the organizations list catches up (e.g. after creating a new org).
   const explicitOrgRef = useRef<string | null>(null);
@@ -199,8 +221,15 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
       ? organizations.find((org) => org.public_id === landingOrgId)
       : undefined;
     if (landingOrg) {
+      // The org this load would have used without the link: the one to announce
+      // leaving, and to offer going back to.
+      const storedOrgId = localStorage.getItem(ORG_STORAGE_KEY);
+      const previousOrg = organizations.find(
+        (org) => org.public_id === (initialOrgId ?? storedOrgId),
+      );
       const commit = () => {
         setCurrentOrgState(landingOrg);
+        announceSwitch(previousOrg, landingOrg);
         localStorage.setItem(ORG_STORAGE_KEY, landingOrg.public_id);
         // The cookie already names this org; the init sync below has nothing to do.
         didInitSyncRef.current = true;
@@ -249,7 +278,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
     }
 
     setIsInitialized(true);
-  }, [authLoading, organizations, isInitialized, initialOrgId, landingOrgId]);
+  }, [authLoading, organizations, isInitialized, initialOrgId, landingOrgId, announceSwitch]);
 
   // Update current org when organizations change (e.g., after login)
   useEffect(() => {
@@ -314,6 +343,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
       const switchId = ++switchCounterRef.current;
       setIsSwitching(true);
       const stayOnPage = options?.stayOnPage === true;
+      const previousOrg = currentOrg;
 
       // Await server cookie before committing client state
       switchOrgApi(org.public_id)
@@ -333,6 +363,8 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
           // Redirect entity detail pages to their list page to avoid 404,
           // unless the caller has opted out (e.g. cross-org resource
           // resolver, where the detail URL is valid in the new org).
+          // Staying on the page means the app switched to open it: announce it.
+          if (stayOnPage) announceSwitch(previousOrg, org);
           if (!stayOnPage) {
             const listPath = getEntityListPath(pathname);
             if (listPath) {
@@ -353,7 +385,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
           }
         });
     },
-    [currentOrg?.public_id, queryClient, pathname, router],
+    [currentOrg, queryClient, pathname, router, announceSwitch],
   );
 
   const hasRole = useCallback(
@@ -371,6 +403,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
     hasRole,
     isLoading: authLoading || !isInitialized,
     isSwitching,
+    autoSwitch,
   };
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
