@@ -402,6 +402,7 @@ async fn service_grant_authorize_call_refresh_and_revoke_uses_shared_postgres() 
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("authorization-code".to_string()),
             state: Some(oauth_state),
             error: None,

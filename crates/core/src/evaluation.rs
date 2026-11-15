@@ -39,6 +39,19 @@ fn binary(pass: bool, reason: String) -> Score {
         reason,
     }
 }
+
+/// Grade file contents after the host has resolved its own evidence or file store.
+pub fn score_file_contains(path: &str, text: &str, content: Option<&str>) -> Score {
+    let pass = content.is_some_and(|content| content.contains(text));
+    binary(
+        pass,
+        if pass {
+            format!("File '{path}' contains '{text}'")
+        } else {
+            format!("File '{path}' does not contain '{text}' or not found")
+        },
+    )
+}
 /// Grade the pure rules. `None` for scorers that need more than the trace.
 pub fn score_rule(scorer: &Scorer, input: &GradeInput<'_>) -> Option<Score> {
     let answer = input.final_answer;

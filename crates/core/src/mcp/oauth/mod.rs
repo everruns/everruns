@@ -1,9 +1,8 @@
 //! OAuth for remote MCP servers: the login handshake and the auth provider
 //! that keeps its tokens fresh.
 //!
-//! The protocol steps are [`protocol`] (moved out of `everruns-core` in
-//! EVE-879 — MCP login/refresh is their only consumer). What is MCP-specific
-//! lives in this module:
+//! The shared protocol steps are [`protocol`]. MCP-specific login preparation
+//! and application token-store integration live in this module:
 //!
 //! - **Discovery starts at the server, not at an issuer.** An MCP server
 //!   publishes protected-resource metadata (RFC 9728) naming the authorization
@@ -21,8 +20,8 @@
 //!
 //! Persistence is a [`McpTokenStore`]: the control plane writes encrypted rows,
 //! a CLI writes a file. [`OAuthAuthProvider`] reads through it on every request
-//! and refreshes inside the store's lock, so a token is renewed once rather
-//! than once per concurrent tool call.
+//! and serializes refreshes within this provider, so concurrent tool calls do
+//! not replay the same rotating token. Hosts coordinate other processes or replicas.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -36,7 +35,8 @@ pub mod protocol;
 pub use protocol::{
     AuthorizationServerMetadata, AuthorizeParams, ClientRegistration, DEFAULT_REFRESH_SKEW_SECONDS,
     OAuthClient, OAuthError, PkcePair, ProtectedResourceMetadata, RegisteredClient, TokenSet,
-    authorize_url, random_state, validate_callback_issuer, validate_client_metadata_url,
+    authorize_url, random_state, validate_callback_issuer, validate_callback_state,
+    validate_client_metadata_url,
 };
 
 use crate::mcp::auth::{McpAuthProvider, McpAuthRequest, McpCredential};
@@ -204,10 +204,7 @@ pub async fn prepare_login_with_options(
     // THREAT[TM-MCP-008]: protected-resource metadata is attacker-controlled;
     // bind its audience to the endpoint before involving the authorization server.
     validate_oauth_resource(&resource, server_url)?;
-    let issuer = protected
-        .as_ref()
-        .and_then(|metadata| metadata.authorization_servers.first().cloned())
-        .unwrap_or_else(|| origin_of(server_url));
+    let issuer = protocol::authorization_server_issuer(protected.as_ref(), server_url)?;
 
     let metadata = oauth
         .discover_authorization_server(&issuer)
@@ -226,7 +223,7 @@ pub async fn prepare_login_with_options(
         (None, _) => {
             let endpoint = metadata.registration_endpoint.clone().ok_or_else(|| {
                 anyhow!(
-                    "MCP server at {server_url} needs a client_id: its authorization server \
+                    "MCP server needs a client_id: its authorization server \
                      offers no dynamic registration endpoint and no supported client metadata \
                      URL is configured; configure a client or host a Client ID Metadata Document"
                 )
@@ -283,9 +280,7 @@ pub async fn complete_login(
     returned_state: &str,
     returned_issuer: Option<&str>,
 ) -> Result<TokenSet> {
-    if returned_state != prepared.state {
-        return Err(anyhow!("authorization response state does not match"));
-    }
+    validate_callback_state(&prepared.state, returned_state)?;
     validate_callback_issuer(&prepared.issuer, returned_issuer)?;
 
     let oauth = OAuthClient::new(egress, EgressRequestKind::Mcp);
@@ -375,22 +370,6 @@ impl<S: McpTokenStore> McpAuthProvider for OAuthAuthProvider<S> {
         Ok(Some(McpCredential::authorization(
             renewed.authorization_value(),
         )))
-    }
-}
-
-/// Scheme + host + port of `url`, used as the fallback issuer.
-fn origin_of(url: &str) -> String {
-    match url::Url::parse(url) {
-        Ok(parsed) => format!(
-            "{}://{}{}",
-            parsed.scheme(),
-            parsed.host_str().unwrap_or_default(),
-            parsed
-                .port()
-                .map(|port| format!(":{port}"))
-                .unwrap_or_default()
-        ),
-        Err(_) => url.to_string(),
     }
 }
 
@@ -511,7 +490,7 @@ mod tests {
                 (
                     "https://mcp.example.com/.well-known/oauth-authorization-server",
                     200,
-                    AS_METADATA,
+                    &AS_METADATA.replacen("https://auth.example.com", "https://mcp.example.com", 1),
                 ),
                 (
                     "https://auth.example.com/token",
@@ -986,7 +965,7 @@ mod tests {
         let egress = FakeEgress::with(vec![(
             "https://mcp.example.com/.well-known/oauth-authorization-server",
             200,
-            AS_METADATA,
+            &AS_METADATA.replacen("https://auth.example.com", "https://mcp.example.com", 1),
         )]);
         let prepared = prepare_login(
             egress.as_ref(),
@@ -1013,7 +992,7 @@ mod tests {
         let egress = FakeEgress::with(vec![(
             "https://mcp.example.com/.well-known/oauth-authorization-server",
             200,
-            AS_METADATA,
+            &AS_METADATA.replacen("https://auth.example.com", "https://mcp.example.com", 1),
         )]);
         let prepared = prepare_login(
             egress.as_ref(),

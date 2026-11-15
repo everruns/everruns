@@ -151,6 +151,7 @@ async fn provider_refusal_at_callback_returns_with_provider_refused() {
         jar,
         Path(provider.clone()),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: None,
             state: Some(pending.state),
             error: Some("access_denied".to_string()),

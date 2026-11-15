@@ -649,6 +649,34 @@ fn source_adapters_verify_raw_bytes_before_normalization() {
 }
 #[cfg(feature = "evaluation")]
 #[tokio::test]
+async fn file_scoring_uses_shared_explanations_and_requires_retained_evidence() {
+    use everruns::evaluation::{Evaluator, Evidence, Scorer};
+    let evaluator = Evaluator::new(vec![Scorer::FileContains {
+        path: "report.txt".into(),
+        text: "ready".into(),
+        weight: 1.0,
+    }])
+    .unwrap();
+    let mut evidence = Evidence::default();
+    evidence
+        .files
+        .insert("report.txt".into(), "Result: ready".into());
+    let scores = evaluator.score(&evidence).await.unwrap();
+    assert!(scores[0].pass);
+    assert_eq!(scores[0].reason, "File 'report.txt' contains 'ready'");
+    evidence.files.clear();
+    assert!(
+        evaluator
+            .score(&evidence)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("File evidence unavailable")
+    );
+}
+
+#[cfg(feature = "evaluation")]
+#[tokio::test]
 async fn evaluation_file_evidence_shares_the_total_retention_budget() {
     use everruns::evaluation::{Evaluator, Evidence, Scorer};
     let evaluator = Evaluator::new(vec![Scorer::Contains {

@@ -3,7 +3,7 @@ title: MCP authentication
 description: Bind application credentials or an OAuth token store to an exact MCP endpoint, with shared PKCE login and token refresh.
 ---
 
-Enable `mcp-auth` to use `everruns::mcp::auth`. The MCP transport, OAuth discovery, PKCE exchange, resource/issuer checks, refresh and token rotation are shared with Server. Your application owns login navigation, the callback route, and secret storage.
+Enable `mcp-auth` to use `everruns::mcp::auth`. The MCP transport, OAuth discovery, PKCE exchange, resource/issuer checks, refresh and token rotation are shared with Server. Your application owns login navigation, the callback route, and secret storage. Server uses the same protocol client with its organization-scoped network policy, encrypted records and cross-replica refresh locks; these host adapters remain separate. See the [implementation-sharing matrix](/framework/service-integrations/#shared-implementations-and-host-boundaries).
 
 ## Bearer credentials
 
@@ -41,3 +41,7 @@ cargo run -p everruns --features mcp-auth,openai --example mcp_oauth -- \
 ```
 
 Treat login/callback URLs as credentials. Do not place them in logs, chat messages, or analytics.
+
+Discovery tries the MCP endpoint's path-specific protected-resource document, then the origin's root document. Authorization-server discovery supports issuer paths and OpenID fallbacks, and rejects an advertised issuer that differs from the selected issuer. Callback issuer mismatches are rejected before code exchange. Shared HTTP client errors expose recognized OAuth codes such as `invalid_grant`, while provider descriptions, response bodies and transport URLs are omitted.
+
+Server presets with manually configured OAuth endpoints must also configure the issuer when the provider returns callback `iss`. Automatic discovery records it. A callback issuer without a trusted configured or discovered issuer is rejected; signing in again without correcting the preset cannot establish that trust. Providers that omit `iss` remain supported.

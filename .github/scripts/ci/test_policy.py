@@ -333,7 +333,8 @@ class Policy(unittest.TestCase):
 
     def test_mcp_credential_changes_run_the_grpc_identity_contract(self):
         for path in [
-            'crates/core/src/mcp/oauth/protocol.rs',
+            'crates/core/src/mcp/oauth/protocol/mod.rs',
+            'crates/core/src/mcp/oauth/protocol/tests.rs',
             'crates/server/src/oauth_client.rs',
             'crates/server/src/storage/connection_resolver/mod.rs',
             'crates/server/src/api/user_connections/mcp_callback/mod.rs',

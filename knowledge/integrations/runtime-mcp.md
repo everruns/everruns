@@ -158,12 +158,20 @@ trait McpAuthProvider {
 - The **runtime/coding-CLI** provides simpler implementations: a static
   bearer/header provider, an env-var provider, and `OAuthAuthProvider`.
 
-The OAuth half is shared inside the MCP module. `everruns_core::mcp::oauth::protocol`
+The OAuth half is shared inside the MCP module, including the Server browser
+connection and token-refresh adapters. Hosts retain callback routing, scope and
+registration-authentication policy, encrypted persistence and refresh locks.
+[Cross-host contracts](../../crates/server/src/api/user_connections/tests/shared_oauth_contract.rs)
+exercise discovery through stored grants; [replica contracts](../../crates/server/src/storage/connection_resolver/tests/shared_protocol.rs)
+exercise the real shared exchange inside the Server lock. `everruns_core::mcp::oauth::protocol`
 (extracted in EVE-879, now selected by core’s `mcp` feature) owns the
 protocol steps, RFC 9728 protected-resource discovery, RFC 8414/OpenID
 authorization-server metadata, RFC 7591 dynamic registration, PKCE, code
 exchange, refresh, and RFC 9207 issuer validation, with no browser, no
-listener, and no storage. `everruns_core::mcp::oauth` binds them to MCP: discovery
+listener, and no storage. Discovery preserves the protected-resource root fallback
+and issuer-path OpenID/legacy fallbacks, stops on non-404 failures, and rejects
+mismatched issuer metadata. Arbitrary provider error text and egress URLs never
+enter protocol error diagnostics; only fixed error classifications survive. `everruns_core::mcp::oauth` binds them to MCP: discovery
 starts at the *server* (its metadata names the issuer; absent that, its origin
 is the issuer), the token is bound to the server with a `resource` indicator
 (RFC 8707), and `prepare_login`/`complete_login` split the flow so the host

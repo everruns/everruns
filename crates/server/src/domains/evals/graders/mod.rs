@@ -321,23 +321,17 @@ impl Graders {
     }
 
     async fn file_contains(&self, session_id: Uuid, path: &str, text: &str) -> Score {
-        let pass = match self.db.get_session_file(session_id, path).await {
-            Ok(Some(file)) => file
-                .content
-                .as_deref()
-                .and_then(|bytes| std::str::from_utf8(bytes).ok())
-                .is_some_and(|content| content.contains(text)),
-            _ => false,
-        };
-        Score {
-            pass,
-            value: if pass { 1.0 } else { 0.0 },
-            reason: if pass {
-                format!("File '{path}' contains '{text}'")
-            } else {
-                format!("File '{path}' does not contain '{text}' or not found")
-            },
-        }
+        let file = self
+            .db
+            .get_session_file(session_id, path)
+            .await
+            .ok()
+            .flatten();
+        let content = file
+            .as_ref()
+            .and_then(|file| file.content.as_deref())
+            .and_then(|bytes| std::str::from_utf8(bytes).ok());
+        everruns_core::evaluation::score_file_contains(path, text, content)
     }
 
     async fn run_judge(

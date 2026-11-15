@@ -235,15 +235,7 @@ impl Evaluator {
                             .files
                             .get(path)
                             .ok_or_else(|| Error(format!("File evidence unavailable: {path}")))?;
-                        let pass = file.contains(text);
-                        Score {
-                            pass,
-                            value: if pass { 1.0 } else { 0.0 },
-                            reason: format!(
-                                "File {path}: expected text {}",
-                                if pass { "found" } else { "missing" }
-                            ),
-                        }
+                        everruns_core::evaluation::score_file_contains(path, text, Some(file))
                     }
                     Scorer::Judge {
                         rubric,

@@ -57,6 +57,7 @@ async fn connect(
         jar,
         Path(provider),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state),
             error: None,
@@ -134,6 +135,7 @@ async fn a_chat_only_session_connect_lists_nothing() {
         jar,
         Path(provider),
         Query(OAuthCallbackQuery {
+            iss: None,
             code: Some("code".to_string()),
             state: Some(pending.state),
             error: None,

@@ -2,15 +2,12 @@
 
 use crate::kernel_imports::{
     EgressRequest, EgressRequestKind, EgressResponse, EgressService, ScopedEgressService,
-    contracts::url_validation::validate_safe_url,
     contracts::url_validation::validate_url_dns_pinned,
 };
 use async_trait::async_trait;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-
-use crate::api::common::sanitized_bad_gateway;
 
 /// The refresh secret and its original audience travel in one encrypted value.
 /// Plain legacy refresh tokens cannot prove a binding and require reauthorization.
@@ -59,18 +56,9 @@ impl McpRefreshGrant {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct OAuthTokenResponse {
-    pub access_token: String,
-    #[serde(default)]
-    pub refresh_token: Option<String>,
-    #[serde(default)]
-    pub expires_in: Option<i64>,
-    #[serde(default)]
-    pub scope: Option<String>,
-}
+pub(crate) use everruns_core::mcp::oauth::protocol::TokenResponse as OAuthTokenResponse;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct OAuthRefreshRequest {
     pub token_endpoint: String,
     pub client_id: String,
@@ -150,24 +138,74 @@ pub(crate) fn org_scoped_egress(
     ))
 }
 
+/// Server-only network policy: reject private destinations and pin the validated DNS result.
+/// Protocol request construction and parsing live in core.
+pub(crate) struct ServerOAuthEgress<'a>(pub &'a dyn EgressService);
+
+#[async_trait]
+impl EgressService for ServerOAuthEgress<'_> {
+    async fn send(&self, request: EgressRequest) -> everruns_core::EgressResult<EgressResponse> {
+        // THREAT[TM-TOOL-018]: every discovery, registration and token request is pinned.
+        let (parsed, addresses) = validate_url_dns_pinned(&request.url)
+            .await
+            .map_err(|_| everruns_core::EgressError::InvalidRequest("blocked OAuth URL".into()))?;
+        let request = if addresses.is_empty() {
+            request.require_dns_pinning()
+        } else {
+            request.pinned_addrs(parsed.host_str().unwrap_or_default(), addresses)
+        };
+        self.0.send(request).await
+    }
+    async fn send_stream(
+        &self,
+        _: EgressRequest,
+    ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+        Err(everruns_core::EgressError::InvalidRequest(
+            "OAuth does not stream".into(),
+        ))
+    }
+}
+
+/// Translate safe protocol classifications into the Server's browser error contract.
+pub(crate) fn oauth_error(error: everruns_core::mcp::oauth::OAuthError) -> (StatusCode, String) {
+    use everruns_core::mcp::oauth::OAuthError;
+    let status = match &error {
+        OAuthError::Egress { message, .. } if message == "blocked_by_network_policy" => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                OAUTH_BLOCKED_BY_NETWORK_POLICY.into(),
+            );
+        }
+        OAuthError::InsecureUrl { .. } => StatusCode::BAD_REQUEST,
+        OAuthError::Egress { message, .. } if message == "blocked_url" => StatusCode::BAD_REQUEST,
+        OAuthError::Http {
+            what: "code exchange",
+            ..
+        } => StatusCode::BAD_REQUEST,
+        _ => StatusCode::BAD_GATEWAY,
+    };
+    (status, error.to_string())
+}
+
 pub(crate) async fn exchange_oauth_code(
     egress: &dyn EgressService,
     request: OAuthCodeExchangeRequest<'_>,
 ) -> Result<OAuthTokenResponse, (StatusCode, String)> {
-    let mut params = vec![
-        ("grant_type", "authorization_code".to_string()),
-        ("client_id", request.client_id.to_string()),
-        ("redirect_uri", request.redirect_uri.to_string()),
-        ("code", request.code.to_string()),
-        ("code_verifier", request.code_verifier.to_string()),
-    ];
-    if let Some(secret) = request.client_secret {
-        params.push(("client_secret", secret.to_string()));
-    }
-    if let Some(resource) = request.resource {
-        params.push(("resource", resource.to_string()));
-    }
-    exchange_oauth_token(egress, request.token_endpoint, params).await
+    let guarded = ServerOAuthEgress(egress);
+    everruns_core::mcp::oauth::OAuthClient::new(&guarded, EgressRequestKind::Mcp)
+        .exchange_code_response(
+            request.token_endpoint,
+            &everruns_core::mcp::oauth::RegisteredClient {
+                client_id: request.client_id.into(),
+                client_secret: request.client_secret.map(str::to_owned),
+            },
+            request.code,
+            request.code_verifier,
+            request.redirect_uri,
+            request.resource,
+        )
+        .await
+        .map_err(oauth_error)
 }
 
 async fn exchange_oauth_refresh_token(
@@ -178,240 +216,42 @@ async fn exchange_oauth_refresh_token(
     refresh_token: &str,
     resource: Option<&str>,
 ) -> Result<OAuthTokenResponse, OAuthRefreshError> {
-    let mut params = vec![
-        ("grant_type", "refresh_token".to_string()),
-        ("client_id", client_id.to_string()),
-        ("refresh_token", refresh_token.to_string()),
-    ];
-    if let Some(secret) = client_secret {
-        params.push(("client_secret", secret.to_string()));
-    }
-    if let Some(resource) = resource {
-        params.push(("resource", resource.to_string()));
-    }
-    validate_safe_url(token_endpoint)
-        .map_err(|_| OAuthRefreshError::Failed(StatusCode::BAD_REQUEST))?;
-    let body = serde_urlencoded::to_string(&params)
-        .map_err(|_| OAuthRefreshError::Failed(StatusCode::BAD_GATEWAY))?
-        .into_bytes();
-    let response = send_oauth_request(
-        egress,
-        "POST",
-        token_endpoint,
-        &[(
-            "Content-Type",
-            "application/x-www-form-urlencoded".to_string(),
-        )],
-        body,
-    )
-    .await
-    .map_err(|(status, _)| OAuthRefreshError::Failed(status))?;
-    if !(200..300).contains(&response.status) {
-        tracing::warn!(
-            status = response.status,
-            body_len = response.body.len(),
-            "OAuth external service rejected refresh request"
-        );
-        let invalid_grant = serde_json::from_slice::<serde_json::Value>(&response.body)
-            .ok()
-            .and_then(|body| {
-                body.get("error")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_owned)
-            })
-            .is_some_and(|error| error == "invalid_grant");
-        return Err(if invalid_grant {
-            OAuthRefreshError::InvalidGrant
-        } else {
-            OAuthRefreshError::Failed(StatusCode::BAD_GATEWAY)
-        });
-    }
-    serde_json::from_slice(&response.body)
-        .map_err(|_| OAuthRefreshError::Failed(StatusCode::BAD_GATEWAY))
-}
-
-async fn exchange_oauth_token(
-    egress: &dyn EgressService,
-    token_endpoint: &str,
-    params: Vec<(&str, String)>,
-) -> Result<OAuthTokenResponse, (StatusCode, String)> {
-    validate_safe_url(token_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Token endpoint blocked: {e}"),
+    use everruns_core::mcp::oauth::{OAuthClient, OAuthError, RegisteredClient};
+    let resource = resource
+        .filter(|r| !r.is_empty())
+        .ok_or(OAuthRefreshError::Failed(StatusCode::BAD_REQUEST))?;
+    let guarded = ServerOAuthEgress(egress);
+    OAuthClient::new(&guarded, EgressRequestKind::Mcp)
+        .refresh_response(
+            token_endpoint,
+            &RegisteredClient {
+                client_id: client_id.into(),
+                client_secret: client_secret.map(str::to_owned),
+            },
+            refresh_token,
+            resource,
         )
-    })?;
-    let body = serde_urlencoded::to_string(&params)
-        .map_err(|e| sanitized_bad_gateway("OAuth token body", &e))?
-        .into_bytes();
-    let response = send_oauth_request(
-        egress,
-        "POST",
-        token_endpoint,
-        &[(
-            "Content-Type",
-            "application/x-www-form-urlencoded".to_string(),
-        )],
-        body,
-    )
-    .await?;
-    if !(200..300).contains(&response.status) {
-        #[derive(Deserialize)]
-        struct OAuthErrorResponse {
-            error: String,
-            #[serde(default)]
-            error_description: Option<String>,
-        }
-
-        tracing::warn!(
-            status = response.status,
-            body_len = response.body.len(),
-            "OAuth external service rejected token request"
-        );
-        let message = serde_json::from_slice::<OAuthErrorResponse>(&response.body)
-            .ok()
-            .map(|response| {
-                let error = sanitized_oauth_error_text(&response.error);
-                match response
-                    .error_description
-                    .as_deref()
-                    .map(sanitized_oauth_error_text)
-                    .filter(|description| !description.is_empty())
-                {
-                    Some(description) => {
-                        format!("OAuth token request was refused: {error} ({description})")
-                    }
-                    None => format!("OAuth token request was refused: {error}"),
-                }
-            })
-            .unwrap_or_else(|| "OAuth token request was refused".to_string());
-        return Err((StatusCode::BAD_REQUEST, message));
-    }
-    serde_json::from_slice(&response.body)
-        .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
-}
-
-fn sanitized_oauth_error_text(value: &str) -> String {
-    value
-        .chars()
-        .filter(|character| !character.is_control())
-        .take(256)
-        .collect()
-}
-
-/// Send an OAuth request through the host egress boundary with DNS pinning.
-pub(crate) async fn egress_oauth_json<T: serde::de::DeserializeOwned>(
-    egress: &dyn EgressService,
-    method: &str,
-    url: &str,
-    headers: &[(&str, String)],
-    body: Vec<u8>,
-) -> Result<T, (StatusCode, String)> {
-    let response = send_oauth_request(egress, method, url, headers, body).await?;
-    oauth_json_response(url, response)
-}
-
-/// GET an OAuth discovery document through [`egress_oauth_json`]'s boundary.
-///
-/// `Ok(None)` means the document is not published there (HTTP 404), so the
-/// caller tries its next well-known location; any other failure is final.
-pub(crate) async fn egress_oauth_discovery_json<T: serde::de::DeserializeOwned>(
-    egress: &dyn EgressService,
-    url: &str,
-) -> Result<Option<T>, (StatusCode, String)> {
-    let response = send_oauth_request(egress, "GET", url, &[], Vec::new()).await?;
-    if response.status == 404 {
-        tracing::debug!(
-            host = %host_of(url),
-            "OAuth discovery document not published at this location"
-        );
-        return Ok(None);
-    }
-    oauth_json_response(url, response).map(Some)
-}
-
-fn oauth_json_response<T: serde::de::DeserializeOwned>(
-    url: &str,
-    response: EgressResponse,
-) -> Result<T, (StatusCode, String)> {
-    if !(200..300).contains(&response.status) {
-        // Debug, not warn: every caller returns this error into its own
-        // result (connect redirect, connection check) and logs it there. Only
-        // the host is logged; paths and queries can carry tenant ids or keys.
-        tracing::debug!(
-            host = %host_of(url),
-            status = response.status,
-            body_len = response.body.len(),
-            "OAuth external service rejected request"
-        );
-        return Err((StatusCode::BAD_GATEWAY, "Bad gateway".to_string()));
-    }
-
-    serde_json::from_slice(&response.body)
-        .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
-}
-
-/// The host of `url` for logs, never its path, query or credentials.
-fn host_of(url: &str) -> String {
-    url::Url::parse(url)
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_owned))
-        .unwrap_or_default()
-}
-
-async fn send_oauth_request(
-    egress: &dyn EgressService,
-    method: &str,
-    url: &str,
-    headers: &[(&str, String)],
-    body: Vec<u8>,
-) -> Result<EgressResponse, (StatusCode, String)> {
-    // THREAT[TM-TOOL-018]: bind the outbound connection to the IPs validated
-    // for this request, including token refreshes of long-lived credentials.
-    let (parsed, pinned_addrs) = validate_url_dns_pinned(url)
         .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Blocked URL: {e}")))?;
-    let host = parsed.host_str().unwrap_or("").to_string();
-
-    let mut request = EgressRequest::new(method, url, EgressRequestKind::Mcp);
-    for (name, value) in headers {
-        request = request.header(*name, value.clone());
-    }
-    if !body.is_empty() {
-        request = request.body(body);
-    }
-    request = if pinned_addrs.is_empty() {
-        request.require_dns_pinning()
-    } else {
-        request.pinned_addrs(host, pinned_addrs)
-    };
-
-    let response = egress.send(request).await.map_err(|e| match e {
-        everruns_core::EgressError::NetworkAccessDenied { url } => {
-            // The host stays in the server log: the browser only learns that
-            // the policy refused it (`connect_error=blocked_by_network_policy`).
-            tracing::warn!(
-                host = %host_of(&url),
-                "OAuth request blocked by network access policy"
-            );
-            // 502, not 4xx: the caller's request is valid; the gateway refused
-            // to forward it upstream. The message names the policy so the JSON
-            // variants are actionable instead of a bare "Bad gateway".
-            (
-                StatusCode::BAD_GATEWAY,
-                OAUTH_BLOCKED_BY_NETWORK_POLICY.to_string(),
-            )
-        }
-        other => sanitized_bad_gateway("OAuth external service", &other),
-    })?;
-
-    Ok(response)
+        .map_err(|error| match &error {
+            OAuthError::Http { body, .. } if body == "invalid_grant" => {
+                OAuthRefreshError::InvalidGrant
+            }
+            _ => OAuthRefreshError::Failed(oauth_error(error).0),
+        })
 }
 
 /// Error message for an OAuth request the egress network policy refused.
 /// Browser OAuth handlers match on it to choose `blocked_by_network_policy`.
 pub(crate) const OAUTH_BLOCKED_BY_NETWORK_POLICY: &str =
     "The sign-in service's host is not on the organization's allowed network list";
+
+impl std::fmt::Debug for OAuthRefreshRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthRefreshRequest")
+            .field("credentials", &"[REDACTED]")
+            .finish_non_exhaustive()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -472,7 +312,7 @@ mod tests {
             "client",
             None,
             "refresh",
-            None,
+            Some("https://8.8.8.8/mcp"),
         )
         .await
         .unwrap_err();
@@ -515,7 +355,7 @@ mod tests {
                 client_id: "client".to_string(),
                 client_secret: None,
                 refresh_token: "refresh".to_string(),
-                resource: None,
+                resource: Some("https://8.8.8.8/mcp".into()),
                 org_id: 7,
             })
             .await

@@ -558,9 +558,17 @@ access at the filesystem boundary, independently of host file permissions.
 
 [MCP authentication](../../crates/everruns/src/mcp/auth.rs) retains credentials
 outside configuration and binds them to both logical name and exact HTTP endpoint
-on every operation, including after a live attachment change. OAuth login and token
-refresh remain the shared core implementation; secret-store durability and writer
-coordination belong to the application.
+on every operation, including after a live attachment change. OAuth discovery, registration, PKCE, authorization parameters, callback validation,
+code exchange and token refresh have one [protocol implementation](../../crates/core/src/mcp/oauth/protocol/mod.rs).
+The [Server adapter](../../crates/server/src/oauth_client.rs) retains tenant-scoped
+egress, public-destination DNS pinning, encrypted persistence and cross-replica locking.
+The Framework retains its application-owned token store and exact endpoint binding;
+secret-store durability and writer coordination belong to the application.
+The [cross-host contracts](../../crates/server/src/api/user_connections/tests/shared_oauth_contract.rs)
+and [replica refresh test](../../crates/server/src/storage/connection_resolver/tests/shared_protocol.rs)
+qualify this boundary. The [sharing matrix](../../docs/framework/service-integrations.md#shared-implementations-and-host-boundaries)
+distinguishes the shared execution for priorities 1–4 from host-specific storage,
+retrieval, authorization and lifecycle policy.
 
 [Trigger dispatch](../../crates/everruns/src/triggers/mod.rs) freezes input/session
 identities in an atomic outbox before Engine admission. Recovery reuses those

@@ -22,3 +22,7 @@ let evaluator = Evaluator::new(vec![
 ```
 
 [Evaluation and traces](/framework/evaluation-and-traces/) includes a runnable real-model example. Results retain evidence and session identities for debugging. Online grading reports incomplete evidence and bounded-retention failures instead of silently grading partial data; applications supply their result sink.
+
+## Update 2026-11-15
+
+File-content scoring now uses the same predicate and score explanation in Server and Framework. Each host still loads its own evidence and decides how unavailable files are reported.

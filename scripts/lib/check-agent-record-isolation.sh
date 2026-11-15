@@ -57,7 +57,7 @@ RECORD_TYPES="${RECORD_TYPES}|SessionSandboxConfig|SessionSandboxInitConfig|Sess
 if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum|trait) (${RECORD_TYPES})[[:space:]{<(]" \
   crates/core --include='*.rs' 2>/dev/null \
   | grep -v -E '^crates/core/src/host/workspace.rs:[0-9]+:pub struct Workspace \{' \
-  | grep -v -E '^crates/core/src/mcp/oauth/protocol.rs:[0-9]+:pub (struct|enum) (OAuthClient|OAuthError|TokenSet|PkcePair|ProtectedResourceMetadata|AuthorizationServerMetadata|RegisteredClient|ClientRegistration)[[:space:]<{]'); then
+  | grep -v -E '^crates/core/src/mcp/oauth/protocol/mod\.rs:[0-9]+:pub (struct|enum) (OAuthClient|OAuthError|TokenSet|PkcePair|ProtectedResourceMetadata|AuthorizationServerMetadata|RegisteredClient|ClientRegistration)[[:space:]<{]'); then
   echo "Kernel crates must not declare stored platform record types or moved connector/OAuth/email infrastructure (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880):"
   echo "$matches"
   FAILED=1
