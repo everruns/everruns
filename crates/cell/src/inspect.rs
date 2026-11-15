@@ -58,6 +58,13 @@ pub struct CellReport {
     pub queued_inputs: usize,
     pub feed_pending: usize,
     pub rss_mb: u64,
+    /// Of `rss_mb`: the estimate of resident events, and the Raft log
+    /// entries held in memory until a snapshot purges them. The rest is
+    /// session metadata, buffers and allocator slack.
+    #[serde(default)]
+    pub resident_mb: u64,
+    #[serde(default)]
+    pub log_mb: u64,
     pub moves_total: usize,
     pub moves: Vec<MoveView>,
 }
@@ -123,6 +130,9 @@ pub struct TailEvent {
 
 /// `GET /cell/inspect`.
 pub(crate) async fn cell(State(node): State<Arc<Node>>) -> Json<CellReport> {
+    // Before the state lock: `resident` takes it too.
+    let resident_mb = node.shared.resident().0 >> 20;
+    let log_mb = node.wal.held_bytes() >> 20;
     let state = node.shared.state.read();
     let mut moves: Vec<MoveView> = state
         .sessions
@@ -156,6 +166,8 @@ pub(crate) async fn cell(State(node): State<Arc<Node>>) -> Json<CellReport> {
         queued_inputs: state.sessions.values().map(|s| s.queued()).sum(),
         feed_pending: state.feed.records.len(),
         rss_mb: crate::api::rss_mb(),
+        resident_mb,
+        log_mb,
         moves_total,
         moves,
     })
@@ -385,10 +397,12 @@ pub fn render_cells(reports: &BTreeMap<CellId, Vec<(NodeId, Option<CellReport>)>
         for (node, report) in nodes {
             match report {
                 Some(r) => out.push_str(&format!(
-                    "  node {node}: applied {} ({} behind), {} MB\n",
+                    "  node {node}: applied {} ({} behind), {} MB ({} MB events, {} MB log)\n",
                     r.applied,
                     lead.map_or(0, |l| l.applied.saturating_sub(r.applied)),
-                    r.rss_mb
+                    r.rss_mb,
+                    r.resident_mb,
+                    r.log_mb
                 )),
                 None => out.push_str(&format!("  node {node}: NO ANSWER\n")),
             }

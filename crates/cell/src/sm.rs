@@ -364,6 +364,21 @@ impl Shared {
         freed
     }
 
+    /// Drop every resident event the object store already holds: an idle
+    /// session's whole history (`unload`), a busy one's before what its
+    /// next turn reads (`trim`). Returns the events freed. Readers page
+    /// them back as they do after the budget unloads them.
+    pub fn shed_stored(&self) -> usize {
+        let sessions: Vec<SessionId> = self.state.read().sessions.keys().copied().collect();
+        sessions
+            .into_iter()
+            .map(|id| match self.unload(id) {
+                0 => self.trim(id),
+                freed => freed,
+            })
+            .sum()
+    }
+
     /// Resident sessions, most resident events first.
     pub fn largest_resident(&self) -> Vec<(SessionId, usize)> {
         let state = self.state.read();
@@ -796,11 +811,28 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
         snapshot: Box<Cursor<Vec<u8>>>,
     ) -> Result<(), StorageError> {
         let data = snapshot.into_inner();
+        // Decision: shed what the object store holds before parsing the
+        // new state next to the old one. A node that rejoins after a kill
+        // holds the state it restored and replayed when its leader's
+        // snapshot arrives; on EKS (run 43747035567) that was 6 GB at 14 000
+        // sessions, and parsing the 25 000-session state beside it ran the
+        // node out of its 12 GiB five times in a row. Shedding is what the
+        // memory budget does under pressure, so readers page events back as
+        // usual. The old state is dropped after the swap, outside the lock.
+        let freed = self.shared.shed_stored();
         let mut state: CellState = serde_json::from_slice(&data).map_err(sm_err)?;
         state.resolve_definitions();
         let applied = state.last_applied.map(|id| id.index).unwrap_or(0);
         let sessions: Vec<_> = state.sessions.keys().copied().collect();
-        *self.shared.state.write() = state;
+        tracing::info!(
+            bytes = data.len(),
+            sessions = sessions.len(),
+            applied,
+            freed,
+            "installing a snapshot"
+        );
+        let old = std::mem::replace(&mut *self.shared.state.write(), state);
+        drop(old);
         self.shared.applied.send_replace(applied);
         for session in sessions {
             self.shared.publish(Change::Session(session));
@@ -827,6 +859,64 @@ mod tests {
     use super::event_allowance;
 
     const GB: u64 = 1 << 30;
+
+    /// Before a snapshot install: everything the store holds goes, an
+    /// unstored tail stays (no other copy exists), and a busy session keeps
+    /// what its next turn reads.
+    #[test]
+    fn shedding_drops_only_stored_events() {
+        use crate::state::{CellState, SessionState};
+        use crate::store::{SegRef, Store};
+        use everruns_contracts::typed_id::SessionId;
+        use everruns_core::events::{EventContext, SessionActivatedData};
+
+        fn session(id: SessionId, events: i32, stored: i32) -> SessionState {
+            let events: Vec<_> = (1..=events)
+                .map(|seq| {
+                    let mut event = everruns_core::events::Event::new(
+                        id,
+                        EventContext::default(),
+                        SessionActivatedData {
+                            turn_id: everruns_contracts::typed_id::TurnId::new(),
+                            input_message_id: everruns_contracts::typed_id::MessageId::new(),
+                        },
+                    );
+                    event.sequence = Some(seq);
+                    event
+                })
+                .collect();
+            let mut s = SessionState {
+                events,
+                ..Default::default()
+            };
+            if stored > 0 {
+                s.segments.push(SegRef {
+                    from: 1,
+                    to: stored,
+                    branch: 0,
+                });
+            }
+            s
+        }
+        let shared = super::Shared::new(Store::open("memory://").unwrap(), 0);
+        let (stored, tail) = (SessionId::new(), SessionId::new());
+        {
+            let mut state: parking_lot::RwLockWriteGuard<'_, CellState> = shared.state.write();
+            state.sessions.insert(stored, session(stored, 5, 5));
+            state.sessions.insert(tail, session(tail, 5, 3));
+        }
+        // All of the first; the stored 1..=3 of the second.
+        assert_eq!(shared.shed_stored(), 5 + 3);
+        let state = shared.state.read();
+        assert!(state.sessions[&stored].events.is_empty());
+        assert_eq!(state.sessions[&stored].last_sequence(), Some(5));
+        let kept: Vec<_> = state.sessions[&tail]
+            .events
+            .iter()
+            .map(|e| e.sequence)
+            .collect();
+        assert_eq!(kept, [Some(4), Some(5)], "the unstored tail stays");
+    }
 
     #[test]
     fn the_budget_counts_what_the_process_holds_besides_events() {
