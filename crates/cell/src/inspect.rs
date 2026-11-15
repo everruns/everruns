@@ -87,10 +87,30 @@ pub struct SessionReport {
     pub turn_running: bool,
     pub inbox: usize,
     pub holder: Option<crate::authority::Holder>,
+    /// Why the session is or is not handed to an executor (`schedule`).
+    #[serde(default)]
+    pub work: WorkReport,
     /// Events only in the object store, and segments holding them.
     pub offloaded: i32,
     pub segments: usize,
     pub tail: Vec<TailEvent>,
+}
+
+/// The authority's scheduling state: a turn that never finishes shows here
+/// why nothing runs it (not owed, suspended, a holder that never expires).
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct WorkReport {
+    pub owed: bool,
+    pub runnable: bool,
+    pub suspended: bool,
+    pub wake_at: Option<i64>,
+    pub attempts: u32,
+    pub fence: u64,
+    pub open: Option<String>,
+    pub inbox: i64,
+    pub consumed: i64,
+    pub finalizing: usize,
+    pub now_ms: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -161,6 +181,23 @@ pub(crate) async fn session(
         turn_running: s.turn_running(),
         inbox: s.queued(),
         holder: s.authority.holder.clone(),
+        work: {
+            let a = &s.authority;
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            WorkReport {
+                owed: a.owed(now_ms),
+                runnable: a.runnable,
+                suspended: a.suspended,
+                wake_at: a.wake_at,
+                attempts: a.attempts,
+                fence: a.fence,
+                open: a.open.map(|t| t.to_string()),
+                inbox: a.inbox,
+                consumed: a.consumed,
+                finalizing: a.finalizing.len(),
+                now_ms,
+            }
+        },
         offloaded: s.offloaded,
         segments: s.segments.len(),
         tail: s
@@ -446,6 +483,20 @@ pub fn render_session(
         )),
         None => out.push_str("  not claimed\n"),
     }
+    let w = &r.work;
+    out.push_str(&format!(
+        "  owed {}, runnable {}, suspended {}, wake at {}, attempts {}, open turn {}, inbox {} consumed {}, finalizing {} (now {})\n",
+        w.owed,
+        w.runnable,
+        w.suspended,
+        w.wake_at.map_or("-".to_string(), |t| t.to_string()),
+        w.attempts,
+        w.open.as_deref().unwrap_or("-"),
+        w.inbox,
+        w.consumed,
+        w.finalizing,
+        w.now_ms
+    ));
     out.push_str(&format!(
         "  events 1..={} only in the store ({} segments)\n",
         r.offloaded, r.segments

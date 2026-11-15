@@ -352,6 +352,7 @@ async fn run_turns(
             .await?;
         admits.push(at.elapsed().as_micros());
         progress.running.fetch_add(1, Ordering::Relaxed);
+        progress.waiting.lock().insert(id.to_string(), (turn, at));
         let waited = async {
             loop {
                 let view = client
@@ -360,10 +361,17 @@ async fn run_turns(
                 if view["turns_completed"].as_u64().unwrap_or(0) >= turn {
                     return anyhow::Ok(());
                 }
+                if at.elapsed() >= TURN_LIMIT {
+                    anyhow::bail!(
+                        "{id} turn {turn} did not finish in {}s",
+                        TURN_LIMIT.as_secs()
+                    );
+                }
             }
         }
         .await;
         progress.running.fetch_sub(1, Ordering::Relaxed);
+        progress.waiting.lock().remove(id);
         waited?;
         progress.turns.fetch_add(1, Ordering::Relaxed);
         turn_latency.push(at.elapsed().as_micros());
@@ -379,6 +387,34 @@ struct Progress {
     /// SSE events read by sessions holding their stream (`--stream`).
     streamed: AtomicUsize,
     stream_errors: AtomicUsize,
+    /// Turns sent and not yet finished: session -> (turn, sent at).
+    waiting: parking_lot::Mutex<HashMap<String, (u64, Instant)>>,
+}
+
+/// A turn waiting longer than this is named in the progress output.
+///
+/// Decision: load run 43713374157 ended with one turn that never finished
+/// and a driver that waited on it for good, without saying which; the run
+/// kept no executor logs, so the session could not be traced afterwards.
+/// Naming it while the fleet still runs lets the run inspect it.
+const STALLED: Duration = Duration::from_secs(600);
+
+/// A turn not finished after this counts as an error, so one lost turn
+/// cannot hold a run open for good (run 4's slowest finished turn took
+/// 20 minutes behind its backlog).
+const TURN_LIMIT: Duration = Duration::from_secs(3600);
+
+/// Turns waiting longer than [`STALLED`], oldest first: (session, turn, secs).
+fn stalled(progress: &Progress) -> Vec<(String, u64, u64)> {
+    let mut out: Vec<(String, u64, u64)> = progress
+        .waiting
+        .lock()
+        .iter()
+        .filter(|(_, (_, at))| at.elapsed() >= STALLED)
+        .map(|(id, (turn, at))| (id.clone(), *turn, at.elapsed().as_secs()))
+        .collect();
+    out.sort_by(|a, b| b.2.cmp(&a.2));
+    out
 }
 
 /// Print progress every 10 s to stderr, for long runs.
@@ -398,6 +434,9 @@ fn report_progress(progress: Arc<Progress>, started: Instant) -> tokio::task::Jo
                 turns,
                 (turns - last) as f64 / 10.0,
             );
+            for (id, turn, secs) in stalled(&progress).into_iter().take(5) {
+                eprintln!("stalled {id} turn {turn} waiting {secs}s");
+            }
             last = turns;
         }
     })
@@ -547,6 +586,10 @@ async fn load(
         "streaming_sessions": (0..ids.len()).filter(|i| streams(*i, stream_share)).count(),
         "streamed_events": progress.streamed.load(Ordering::Relaxed),
         "stream_errors": progress.stream_errors.load(Ordering::Relaxed),
+        "stalled": stalled(&progress)
+            .into_iter()
+            .map(|(id, turn, secs)| json!({ "session": id, "turn": turn, "waiting_secs": secs }))
+            .collect::<Vec<_>>(),
         "turns_completed": latencies.len(),
         "errors": errors.len(),
         "first_errors": errors.iter().take(5).collect::<Vec<_>>(),
