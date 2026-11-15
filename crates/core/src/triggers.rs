@@ -77,28 +77,6 @@ pub fn render_message_template_bounded(
     Some(output)
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn bounded_templates_match_shared_rendering_and_reject_amplification() {
-        let context = serde_json::json!({"payload": {"text": "é".repeat(1000)}});
-        let template = "Before {{ payload.text }} {{missing}} after";
-        assert_eq!(
-            super::render_message_template_bounded(template, &context, 4096),
-            Some(super::render_message_template(template, &context)),
-        );
-        assert!(
-            super::render_message_template_bounded(
-                &"{{payload.text}}".repeat(10000),
-                &context,
-                4096,
-            )
-            .is_none()
-        );
-        assert!(super::render_message_template_bounded("plain", &context, 4).is_none());
-    }
-}
-
 /// Explain an absent, first or repeated subject value; None indicates a change.
 pub fn change_miss(path: &str, value: Option<&Value>, previous: Option<&Value>) -> Option<String> {
     let Some(value) = value else {
@@ -165,4 +143,26 @@ fn truncate(value: &str, max: usize) -> String {
         end -= 1;
     }
     value[..end].to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn bounded_templates_match_shared_rendering_and_reject_amplification() {
+        let context = serde_json::json!({"payload": {"text": "é".repeat(1000)}});
+        let template = "Before {{ payload.text }} {{missing}} after";
+        assert_eq!(
+            super::render_message_template_bounded(template, &context, 4096),
+            Some(super::render_message_template(template, &context)),
+        );
+        assert!(
+            super::render_message_template_bounded(
+                &"{{payload.text}}".repeat(10000),
+                &context,
+                4096,
+            )
+            .is_none()
+        );
+        assert!(super::render_message_template_bounded("plain", &context, 4).is_none());
+    }
 }
