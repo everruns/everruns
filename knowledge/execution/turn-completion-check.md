@@ -36,16 +36,21 @@ would finish the turn:
 
 1. The cheap gate (`turn_completion::gate_turn`, see
    [Tool Execution](tool-execution.md#turn-completion-gate)) decides the
-   clear-cut cases. Only `Evaluate` (tool-using work with a candidate answer)
-   goes further. Questions, length stops and live background work never
-   continue. One exception: under `always`, a plain answer that ran no tools
+   clear-cut cases. `Evaluate` (tool-using work with a candidate answer) goes
+   on to the review. Questions and live background work never continue. A turn
+   the gate itself calls unfinished (`InProgress`: an empty final, typically
+   after tools ran, or the output limit) skips the review: it is an
+   `in_progress` verdict already, and continues on the same path and budget
+   with a short platform reason. Reasons that only took notes (an explicit
+   agent's commentary, a credit check ending quietly) are not continued, and
+   the iteration cap never reaches the check. Under `always`, a plain answer that ran no tools
    is reviewed too. A coding agent that says "Running the tests now" and stops
    has made the same unkept promise without a tool call (yolop's own check
    caught these before it moved to the engine). The reason step carries the
    setting (`ReasonResult::review_tool_free_answers`), so agents on `off` or
    `unattended` still finish a tool-free answer without loading the session.
 2. The setting and the session origin decide whether the check applies.
-3. A review call runs on the session's own model through the normal provider
+3. Unless the gate already decided `in_progress`, a review call runs on the session's own model through the normal provider
    path (purpose `completion_review`, 45 s timeout). Its verdict is `achieved`,
    `in_progress` or `blocked`.
 4. `in_progress` within budget appends a continuation input to the same turn,
@@ -99,5 +104,6 @@ The check event is written before the continuation input. On resume:
 `crates/worker/src/actor_runtime/tests/completion_check.rs` drives the session
 actor with llmsim: continuation then tool call, completed turn not continued,
 setting and origin matrix, budget exhaustion, agent limits with the restarting
-window, and both crash points. `crates/everruns/tests/facade/completion_check.rs`
+window, an empty final continued without a review (and stopped by an exhausted
+budget), and both crash points. `crates/everruns/tests/facade/completion_check.rs`
 covers the embedder setting.

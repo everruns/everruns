@@ -71,6 +71,12 @@ history; that is the cost of not holding a worker.
   queued and adds no second one.
 - A resume cancels queued checks, so a later check cannot resume the same
   wait again.
+- A check is recognized by its input's schedule origin, so every host that
+  fires schedules writes it (`SessionSchedule::fire_origin`; the server's
+  scheduler and local hosting alike). A check never counts its own row, named
+  by that origin: local hosting marks a row fired only after its turn, so the
+  running check's row still looks queued, and taking it for the next check
+  would end the wait after one check.
 - The shrunk retry is not recorded as state: a replayed reason asks with the
   original ceiling, is refused, and shrinks again.
 
@@ -82,4 +88,5 @@ balance first; the marker grants nothing else.
 `crates/worker/src/actor_runtime/tests/credit_shortfall.rs` drives the session
 actor with llmsim behind a refusing, balance-scripted model: smaller retry,
 wait below 4,096 tokens, checks that resume once, no balance API, a wait that
-runs out, and a worker restart during a check.
+runs out, a worker restart during a check, and a check whose row is still
+queued while it runs.

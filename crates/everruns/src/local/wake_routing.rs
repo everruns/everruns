@@ -230,12 +230,13 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
         session_id: SessionId,
         content: &str,
         occurrence: everruns_contracts::typed_id::MessageId,
+        origin: &everruns_contracts::message_origin::MessageOrigin,
     ) -> Result<()> {
         let Some(_delivery) = self.routes.deliver_or_claim(session_id, content) else {
             return Ok(());
         };
         self.inner
-            .deliver_occurrence(session_id, content, occurrence)
+            .deliver_occurrence(session_id, content, occurrence, origin)
             .await
     }
 

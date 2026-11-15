@@ -127,6 +127,24 @@ impl Schedules {
     }
 }
 
+impl Schedules {
+    /// The one check waiting to fire, left queued while it runs, as local
+    /// hosting leaves it: its delivery is completed only after the turn.
+    fn due(&self) -> SessionSchedule {
+        let queued = self.queued();
+        assert_eq!(queued.len(), 1, "one queued check at a time");
+        queued[0].clone()
+    }
+
+    /// Complete a delivered check, as local hosting does after its turn.
+    fn complete(&self, id: ScheduleId) {
+        let mut rows = self.0.lock().unwrap();
+        let row = rows.iter_mut().find(|row| row.id == id).unwrap();
+        row.enabled = false;
+        row.trigger_count += 1;
+    }
+}
+
 async fn fixture(schedules: &Arc<Schedules>) -> Fixture {
     let store: Arc<dyn SessionScheduleStore> = schedules.clone();
     Fixture::with_setup(
@@ -441,6 +459,65 @@ async fn a_worker_restart_during_the_wait_does_not_resume_twice() {
         .filter(|action| *action == CreditShortfallAction::Resumed)
         .count();
     assert_eq!(resumed, 1);
+    assert!(schedules.queued().is_empty());
+    fixture.assert_idle();
+}
+
+/// A host that marks a check's row fired only after its turn (local hosting)
+/// runs the check while that row still looks queued. The check does not take
+/// its own row for the next check: it schedules the next one, in the same
+/// wait, and a later check resumes the work.
+#[tokio::test]
+async fn a_check_whose_row_is_still_queued_schedules_the_next() {
+    let schedules = Arc::new(Schedules::default());
+    let fixture = fixture(&schedules).await;
+    fixture.refuse(refusal(283));
+    let (worker, _) = fixture.worker("w1");
+    fixture.send("Review the pull request.").await;
+    run_until_idle(&worker).await;
+    fixture.balances(&[Some(CreditStatus::Exhausted), Some(CreditStatus::Available)]);
+
+    // First check: still out.
+    let first = schedules.due();
+    fixture.fire(&first).await;
+    run_until_idle(&worker).await;
+    assert_eq!(fixture.model_calls(), 1, "a check spends no tokens");
+    let next: Vec<_> = schedules
+        .queued()
+        .into_iter()
+        .filter(|row| row.id != first.id)
+        .collect();
+    assert_eq!(next.len(), 1, "the next check is queued");
+    schedules.complete(first.id);
+
+    let events = fixture.credit_events().await;
+    let actions: Vec<_> = events.iter().map(|data| data.action).collect();
+    assert_eq!(
+        actions,
+        vec![
+            CreditShortfallAction::WaitStarted,
+            CreditShortfallAction::StillWaiting,
+        ]
+    );
+    assert_eq!(events[1].wait_until, events[0].wait_until, "one wait");
+    assert_eq!(events[1].next_check_at, next[0].scheduled_at);
+
+    // Second check: back. The work resumes, and the running check's own row
+    // is left for its host to complete.
+    let second = schedules.due();
+    fixture.fire(&second).await;
+    run_until_idle(&worker).await;
+    assert_eq!(schedules.queued().len(), 1, "only the running check's row");
+    schedules.complete(second.id);
+
+    assert_eq!(
+        fixture.answers().await.last().map(String::as_str),
+        Some("Review submitted.")
+    );
+    assert_eq!(
+        fixture.credit_actions().await.last(),
+        Some(&CreditShortfallAction::Resumed)
+    );
     assert!(schedules.queued().is_empty());
     fixture.assert_idle();
 }

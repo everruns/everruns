@@ -20,12 +20,18 @@
 //!   ambiguous answer ([`GateDecision::Evaluate`]: tools ran and the turn ends
 //!   on text) loads the session to read the agent's setting, and only an
 //!   enabled setting pays for the review call. Conclusive cases (a question
-//!   back, a token or iteration ceiling, background work still running) never
-//!   continue: those are the person's, the cap's, or the task's to resolve.
-//!   The one exception is a tool-free answer of an agent set to `always`: a
-//!   coding agent that says "Running the tests now" and stops has made the
-//!   same unkept promise without a tool call, so it is reviewed too. The
+//!   back, background work still running) never continue: those are the
+//!   person's or the task's to resolve. A tool-free answer of an agent set to
+//!   `always` is reviewed too: a coding agent that says "Running the tests
+//!   now" and stops has made the same unkept promise without a tool call. The
 //!   reason step carries that setting, so other agents pay nothing extra.
+//! - A turn the gate itself calls unfinished (`Conclusive(InProgress)`: an
+//!   empty final after tools ran, or the output limit) is not reviewed: it is
+//!   an `in_progress` verdict already, so it continues on the same path and
+//!   budget, under the same setting, unless background work is pending.
+//!   Working notes are excluded: an explicit agent's text is commentary and a
+//!   credit check ends quietly on purpose. The iteration cap never reaches the
+//!   check (the loop only checks a turn that could continue).
 //! - The review runs on the session's own model through the same provider
 //!   path a turn uses ([`StoreCommandHost`] completion, purpose
 //!   `completion_review`, bounded by [`REVIEW_TIMEOUT`]). A failed or
@@ -121,7 +127,11 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
     let tool_free_answer = reason_result.review_tool_free_answers
         && summary.tool_calls_count == 0
         && gate == GateDecision::Conclusive(CompletionState::Achieved);
-    if gate != GateDecision::Evaluate && !tool_free_answer {
+    // A turn the gate already calls unfinished needs no review: it continues
+    // as an `in_progress` verdict would. Working notes (an explicit agent's
+    // commentary, a credit check ending quietly) say nothing by design.
+    let stopped = stopped_reason(gate, &summary, reason_result);
+    if gate != GateDecision::Evaluate && !tool_free_answer && stopped.is_none() {
         return Ok(None);
     }
     let resolved = adapter.load_resolved_turn(org_id, session_id).await?;
@@ -158,8 +168,17 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
             tokens_now.saturating_sub(spent.tokens_before.unwrap_or(tokens_now)),
             (now - window_started_at).to_std().unwrap_or_default(),
         );
-    let host = command_host(adapter, org_id, session_id);
-    let review = review(&host, messages, candidate).await;
+    let review = match stopped {
+        Some(reason) => Ok((CompletionVerdict::InProgress, reason.to_string())),
+        None => {
+            review(
+                &command_host(adapter, org_id, session_id),
+                messages,
+                candidate,
+            )
+            .await
+        }
+    };
 
     let (verdict, reason) = match review {
         Ok(verdict) => verdict,
@@ -244,6 +263,23 @@ pub(crate) async fn check_finishing_turn<A: RuntimeHostAdapter>(
         .await?;
     tracing::info!(%session_id, %turn_id, continuation = turns, "Completion check continued an unfinished turn");
     Ok(Some(continuation_id))
+}
+
+/// Why a turn the gate calls unfinished stopped (`Conclusive(InProgress)`),
+/// or `None` when it is not one or the reason step only took notes.
+fn stopped_reason(
+    gate: GateDecision,
+    summary: &TurnSummary<'_>,
+    reason_result: &ReasonResult,
+) -> Option<&'static str> {
+    if gate != GateDecision::Conclusive(CompletionState::InProgress) || reason_result.commentary {
+        return None;
+    }
+    Some(match summary.stop_reason {
+        TurnStopReason::MaxTokens => "The turn hit its output limit before a final answer.",
+        TurnStopReason::MaxTurnRequests => "The turn hit its request limit before a final answer.",
+        _ => "The turn stopped without a final answer.",
+    })
 }
 
 async fn emit_check<A: RuntimeHostAdapter>(

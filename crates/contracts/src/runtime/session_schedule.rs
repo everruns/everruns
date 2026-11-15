@@ -622,6 +622,28 @@ impl SessionSchedule {
             ScheduleType::OneShot
         }
     }
+
+    /// Who wrote the message a fire injects: this schedule, with which run
+    /// this is, the run limit, the end and the stop condition for a recurring
+    /// one (knowledge/execution/message-origin.md). Those travel as data: the
+    /// Chat and trace show them, and the model reads them in the origin header
+    /// line instead of a duplicated text footer. Read from the schedule as
+    /// fired, `trigger_count` counting this fire. Every host that fires a
+    /// schedule writes it, since the engine keys on it (a credit check is only
+    /// recognized under a schedule origin).
+    pub fn fire_origin(&self) -> crate::message_origin::MessageOrigin {
+        use crate::message_origin::{MessageOrigin, MessageOriginRun};
+        let origin = MessageOrigin::schedule(self.id.to_string(), &self.description);
+        if self.cron_expression.is_none() {
+            return origin;
+        }
+        origin.with_run(MessageOriginRun {
+            number: Some(u64::from(self.trigger_count)),
+            limit: self.max_runs.map(u64::from),
+            ends_at: self.ends_at.map(|end| end.to_rfc3339()),
+            stop_when: self.stop_when.clone(),
+        })
+    }
 }
 
 #[cfg(test)]

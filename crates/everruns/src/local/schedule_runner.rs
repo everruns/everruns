@@ -202,10 +202,12 @@ impl LocalScheduleRunner {
         runner_id: &str,
     ) -> everruns_contracts::error::Result<()> {
         let schedule = &claim.schedule;
+        let origin = fire_origin(schedule);
         let delivery = self.session_runner.deliver_occurrence(
             schedule.session_id,
             &schedule.description,
             occurrence_message_id(schedule),
+            &origin,
         );
         tokio::pin!(delivery);
         let heartbeat_interval = (self.config.claim_timeout / 3).max(Duration::from_millis(1));
@@ -226,6 +228,18 @@ impl LocalScheduleRunner {
             }
         }
     }
+}
+
+/// The origin of the occurrence a claim delivers, the one the server's
+/// scheduler writes. The claim holds the schedule as it was before this fire
+/// (`complete_delivery` advances it after the turn), so the run number counts
+/// this fire here, as it does on the server.
+pub(crate) fn fire_origin(
+    schedule: &everruns_core::session_schedule::SessionSchedule,
+) -> everruns_contracts::message_origin::MessageOrigin {
+    let mut fired = schedule.clone();
+    fired.trigger_count = fired.trigger_count.saturating_add(1);
+    fired.fire_origin()
 }
 
 /// Namespace of schedule occurrence admission identities.
@@ -297,5 +311,38 @@ impl LocalScheduleRunnerHandle {
 impl Drop for LocalScheduleRunnerHandle {
     fn drop(&mut self) {
         let _ = self.shutdown_tx.send(true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use everruns_contracts::message_origin::MessageOriginKind;
+    use everruns_contracts::runtime::session_services::SessionScheduleStore;
+
+    /// A recurring schedule's origin numbers the run being delivered, as the
+    /// server's does after it marks the row fired.
+    #[tokio::test]
+    async fn a_recurring_fire_origin_counts_this_run() {
+        let db = super::super::SqliteDb::open_in_memory().unwrap();
+        let owner = everruns_contracts::typed_id::PrincipalId::from_seed(1);
+        let store = LocalScheduleStore::new(db, 1, owner).unwrap();
+        let session = everruns_contracts::typed_id::SessionId::new();
+        let schedule = store
+            .create_schedule(
+                session,
+                "Hourly check.".into(),
+                Some("0 * * * *".into()),
+                None,
+                "UTC".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(schedule.trigger_count, 0);
+
+        let origin = fire_origin(&schedule);
+        assert_eq!(origin.kind, MessageOriginKind::Schedule);
+        assert_eq!(origin.source_id, Some(schedule.id.to_string()));
+        assert_eq!(origin.run.and_then(|run| run.number), Some(1));
     }
 }

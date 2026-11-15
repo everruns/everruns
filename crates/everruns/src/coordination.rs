@@ -364,6 +364,45 @@ impl EngineSessionRunner {
             tracing::debug!(%thread, %error, "coordination: thread turn settle failed");
         }
     }
+
+    /// Run one input as a turn of `session_id`, settling its coordinator's
+    /// thread record around it.
+    async fn run_input(&self, session_id: SessionId, input: InputMessage) -> Result<()> {
+        // A cut-over session belongs to its authority, which delivers its
+        // schedules and wakes itself (EVE-1298).
+        if self.cutover.load_cutover(session_id).await?.is_some() {
+            return Err(AgentLoopError::tool(
+                "the session moved to a coherent session authority; the legacy lane does not deliver to it",
+            ));
+        }
+        let engine = self.owner(session_id)?;
+        let session = engine
+            .resume(session_id)
+            .await
+            .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+        let coordinator = self
+            .sessions
+            .get_session(session_id)
+            .await?
+            .and_then(|record| record.parent_session_id);
+        self.settle(coordinator, session_id, ThreadTurn::Started)
+            .await;
+        let result = session.run(input).await;
+        let turn = match &result {
+            Ok(turn) if turn.success => ThreadTurn::Completed,
+            Ok(turn) if turn.stop_reason == TurnStopReason::Cancelled => ThreadTurn::Cancelled,
+            _ => ThreadTurn::Failed,
+        };
+        self.settle(coordinator, session_id, turn).await;
+        match result {
+            Ok(turn) if turn.success => Ok(()),
+            Ok(turn) => Err(AgentLoopError::tool(format!(
+                "thread turn failed: {}",
+                turn.error.unwrap_or_default()
+            ))),
+            Err(error) => Err(AgentLoopError::tool(error.to_string())),
+        }
+    }
 }
 
 #[async_trait]
@@ -441,42 +480,25 @@ impl LocalSessionRunner for EngineSessionRunner {
         content: &str,
         causes: &crate::CausalContext,
     ) -> Result<()> {
-        // A cut-over session belongs to its authority, which delivers its
-        // schedules and wakes itself (EVE-1298).
-        if self.cutover.load_cutover(session_id).await?.is_some() {
-            return Err(AgentLoopError::tool(
-                "the session moved to a coherent session authority; the legacy lane does not deliver to it",
-            ));
-        }
-        let engine = self.owner(session_id)?;
-        let session = engine
-            .resume(session_id)
-            .await
-            .map_err(|error| AgentLoopError::tool(error.to_string()))?;
-        let coordinator = self
-            .sessions
-            .get_session(session_id)
-            .await?
-            .and_then(|record| record.parent_session_id);
-        self.settle(coordinator, session_id, ThreadTurn::Started)
-            .await;
-        let result = session
-            .run(InputMessage::user(content).with_causal_context(causes))
-            .await;
-        let turn = match &result {
-            Ok(turn) if turn.success => ThreadTurn::Completed,
-            Ok(turn) if turn.stop_reason == TurnStopReason::Cancelled => ThreadTurn::Cancelled,
-            _ => ThreadTurn::Failed,
-        };
-        self.settle(coordinator, session_id, turn).await;
-        match result {
-            Ok(turn) if turn.success => Ok(()),
-            Ok(turn) => Err(AgentLoopError::tool(format!(
-                "thread turn failed: {}",
-                turn.error.unwrap_or_default()
-            ))),
-            Err(error) => Err(AgentLoopError::tool(error.to_string())),
-        }
+        self.run_input(
+            session_id,
+            InputMessage::user(content).with_causal_context(causes),
+        )
+        .await
+    }
+
+    /// No durable admissions here: the occurrence runs as an ordinary turn,
+    /// under the schedule origin the engine recognizes scheduled turns by.
+    async fn deliver_occurrence(
+        &self,
+        session_id: SessionId,
+        content: &str,
+        _occurrence: everruns_contracts::typed_id::MessageId,
+        origin: &everruns_contracts::message_origin::MessageOrigin,
+    ) -> Result<()> {
+        let mut input = InputMessage::user(content);
+        origin.write(&mut input.metadata);
+        self.run_input(session_id, input).await
     }
 
     async fn list_sessions(

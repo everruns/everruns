@@ -98,11 +98,16 @@ pub trait LocalSessionRunner: Send + Sync {
     /// reopens the original receipt and outcome instead of running the turn
     /// again, and return `Ok` once that admission has a committed outcome.
     /// Runners without them deliver it as an ordinary message.
+    ///
+    /// `origin` is the schedule origin the server's scheduler writes too
+    /// (`SessionSchedule::fire_origin`); runners that admit metadata store it
+    /// on the input, since the engine recognizes scheduled turns by it.
     async fn deliver_occurrence(
         &self,
         session_id: SessionId,
         content: &str,
         _occurrence: everruns_contracts::typed_id::MessageId,
+        _origin: &everruns_contracts::message_origin::MessageOrigin,
     ) -> Result<()> {
         self.send_message(session_id, content).await
     }
