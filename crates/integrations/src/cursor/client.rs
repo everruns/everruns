@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_error_is_returned() {
+    async fn api_error_retains_status_without_upstream_body() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v0/agents/bc_missing"))
@@ -336,7 +336,7 @@ mod tests {
         let client = CursorClient::with_base_url("test".into(), mock_server.uri());
         let err = client.get_agent("bc_missing").await.unwrap_err();
         assert!(err.contains("404"));
-        assert!(err.contains("not_found"));
+        assert!(!err.contains("not_found"));
     }
 
     #[tokio::test]
