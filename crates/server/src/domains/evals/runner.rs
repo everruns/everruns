@@ -71,6 +71,9 @@ pub struct EvalRunContext {
     /// Durable queue for case tasks, set once the server's store exists.
     /// Unset means local execution (dev mode, tests).
     pub queue: OnceLock<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    /// Built-in harness used when neither the target, its agent, nor the
+    /// org settings name one.
+    pub fallback_harness_name: Option<String>,
 }
 
 /// One case result to execute: the payload of an `eval_case` task.
@@ -562,9 +565,28 @@ async fn execute_case_inner(
                     .ok_or_else(|| anyhow::anyhow!("harness '{name}' not found"))?;
                 h.id.uuid()
             } else {
-                return Err(
-                    anyhow::anyhow!("eval target must specify harness_id or harness_name").into(),
-                );
+                // No harness on the target: resolve it the way session
+                // creation does (agent harness -> org default -> built-in),
+                // which is what the target contract and the UI's
+                // "Use org default" promise (EVE-1348).
+                let agent_harness_id = match agent_id {
+                    Some(aid) => ctx
+                        .db
+                        .get_agent(org_id, *aid)
+                        .await?
+                        .filter(|row| row.harness_source != "organization_default")
+                        .map(|row| row.harness_id),
+                    None => None,
+                };
+                crate::domains::sessions::queries::resolve_session_harness_id(
+                    &ctx.db,
+                    org_id,
+                    None,
+                    agent_harness_id,
+                    ctx.fallback_harness_name.as_deref(),
+                )
+                .await?
+                .uuid()
             };
             (
                 hid,
