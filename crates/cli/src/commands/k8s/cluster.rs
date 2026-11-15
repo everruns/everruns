@@ -73,6 +73,49 @@ impl Target {
         s
     }
 
+    /// Whether the cluster answers, with kubectl's reason when it does not.
+    /// A short timeout: a stopped local cluster refuses at once, a gone cloud
+    /// endpoint can hang for a long time.
+    pub fn reachable(&self) -> std::result::Result<(), String> {
+        let out = self
+            .kubectl()
+            .args(["version", "--output", "json", "--request-timeout", "10s"])
+            .output()
+            .map_err(|e| format!("could not run kubectl: {e}"))?;
+        if out.status.success() {
+            return Ok(());
+        }
+        // stdout holds the client version, which says nothing about why.
+        let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(if err.is_empty() {
+            output_text(&out)
+        } else {
+            err
+        })
+    }
+
+    /// GET `path` on the server's own Service through the Kubernetes API's
+    /// service proxy, so it works without a port-forward or an ingress. An
+    /// answer that is not 2xx comes back as kubectl's error.
+    pub fn server_get(&self, path: &str) -> std::result::Result<Value, String> {
+        let url = format!(
+            "/api/v1/namespaces/{}/services/{}-server:http/proxy{path}",
+            self.namespace,
+            self.fullname()
+        );
+        let out = self
+            .kubectl()
+            .args(["get", "--raw", &url, "--request-timeout", "5s"])
+            .output()
+            .map_err(|e| format!("could not run kubectl: {e}"))?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr);
+            let last = err.lines().rev().find(|l| !l.trim().is_empty());
+            return Err(last.unwrap_or("no answer").trim().to_string());
+        }
+        Ok(serde_json::from_slice(&out.stdout).unwrap_or_default())
+    }
+
     /// The values the release was installed with, or `None` when there is
     /// no release yet.
     pub fn release_values(&self) -> Result<Option<Value>> {

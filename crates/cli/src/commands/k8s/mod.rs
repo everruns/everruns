@@ -46,7 +46,8 @@ pub enum K8sCommand {
     /// Install Everruns into the current Kubernetes cluster, or repair it. Safe to run again
     Up(Box<UpArgs>),
 
-    /// Show the install: where it is, its pods, and which CLI profile points at it
+    /// Show the install: where it is, whether its server is healthy, its pods, and which CLI
+    /// profile points at it
     Status(InstanceArgs),
 
     /// Show the pods' logs
@@ -201,6 +202,12 @@ pub struct DestroyArgs {
     /// Keep the namespace even when nothing else is left in it
     #[arg(long)]
     pub keep_namespace: bool,
+
+    /// Leave the cluster alone and remove only what this machine keeps: the
+    /// install record, database backups and CLI profile. For an install
+    /// whose cluster is gone.
+    #[arg(long, conflicts_with = "keep_namespace")]
+    pub local_only: bool,
 
     /// Do not ask for the install name (for scripts)
     #[arg(long, short = 'y')]
@@ -767,6 +774,37 @@ async fn health(url: &str) -> Result<String> {
     Ok(body["version"].as_str().unwrap_or("").to_string())
 }
 
+/// The server's `/health` (liveness) and `/health/ready` (database answers,
+/// schema migrated) in one line, and whether that line is good news.
+fn describe_health(
+    live: &std::result::Result<Value, String>,
+    ready: &std::result::Result<Value, String>,
+) -> (bool, String) {
+    let live = match live {
+        Ok(v) => v,
+        Err(e) => return (false, format!("server not answering ({e})")),
+    };
+    let version = live["version"].as_str().unwrap_or("?");
+    if let Err(e) = ready {
+        return (
+            false,
+            format!(
+                "server {version} up but not ready: database unreachable or not migrated ({e})"
+            ),
+        );
+    }
+    match live["status"].as_str() {
+        Some("degraded") => (
+            false,
+            format!(
+                "degraded, server {version}: live session events polled from PostgreSQL (events {})",
+                live["event_delivery"].as_str().unwrap_or("?")
+            ),
+        ),
+        _ => (true, format!("healthy, server {version}")),
+    }
+}
+
 fn ask_yes(asker: Asker, question: &str, flag: &str) -> Result<bool> {
     if asker.yes {
         ui::ok(format!("{question} {}", ui::dim(format!("yes ({flag})"))));
@@ -890,6 +928,11 @@ async fn status(args: &InstanceArgs) -> Result<()> {
         return Ok(());
     };
     let target = record.target();
+    if let Err(reason) = target.reachable() {
+        ui::warn(format!("Cluster {} does not answer.", target.context));
+        ui::detail(reason);
+        bail!("cluster {} does not answer", target.context);
+    }
     let values = target.release_values()?;
     ui::banner(
         "k8s status",
@@ -909,6 +952,18 @@ async fn status(args: &InstanceArgs) -> Result<()> {
     if let Some(v) = target.deployed_chart_version() {
         ui::stderr_field("Chart", v);
     }
+    let (healthy, health_line) = describe_health(
+        &target.server_get("/health"),
+        &target.server_get("/health/ready"),
+    );
+    ui::stderr_field(
+        "Health",
+        if healthy {
+            ui::good(&health_line).to_string()
+        } else {
+            ui::bad(&health_line).to_string()
+        },
+    );
     let public = Known(&values).public_url().map(str::to_string);
     match &public {
         Some(url) => match health(url).await {
@@ -1266,6 +1321,29 @@ mod tests {
     struct Cli {
         #[command(subcommand)]
         command: K8sCommand,
+    }
+
+    #[test]
+    fn health_reads_liveness_and_readiness() {
+        let live = Ok(serde_json::json!({"status": "ok", "version": "0.52.0"}));
+        let ready = Ok(serde_json::json!({"status": "ready"}));
+        assert_eq!(
+            describe_health(&live, &ready),
+            (true, "healthy, server 0.52.0".to_string())
+        );
+        let (good, line) = describe_health(&live, &Err("ServiceUnavailable".into()));
+        assert!(!good && line.contains("not ready"), "{line}");
+        let degraded = Ok(
+            serde_json::json!({"status": "degraded", "version": "0.52.0",
+                                             "event_delivery": "polling"}),
+        );
+        let (good, line) = describe_health(&degraded, &ready);
+        assert!(!good && line.starts_with("degraded"), "{line}");
+        let (good, line) = describe_health(&Err("no endpoints available".into()), &ready);
+        assert!(
+            !good && line.contains("not answering (no endpoints available)"),
+            "{line}"
+        );
     }
 
     #[test]

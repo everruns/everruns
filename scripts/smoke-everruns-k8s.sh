@@ -96,6 +96,7 @@ up || fail "up after --set failed"
 step "Status"
 "$BIN" k8s status --name "$NAME" 2>&1 | tee "$TMP/status.log"
 grep -q "$NAME-everruns-server" "$TMP/status.log" || fail "status lists no server pod"
+grep -q "healthy, server" "$TMP/status.log" || fail "status shows no healthy server"
 
 step "Doctor on the install"
 # The system doctor may flag what a smoke install lacks (no provider key); the
