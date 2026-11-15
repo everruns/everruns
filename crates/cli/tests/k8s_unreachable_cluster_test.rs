@@ -1,6 +1,6 @@
 #![cfg(target_os = "linux")]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! `everruns k8s destroy` and `status` for an install whose cluster does not answer, run as
+//! `everruns k8s destroy`, `status` and `health` for an install whose cluster does not answer, run as
 //! the built binary with stand-in `kubectl` and `helm` scripts
 //! (`EVERRUNS_KUBECTL`, `EVERRUNS_HELM`) and a throwaway home.
 
@@ -157,7 +157,7 @@ fn local_only_and_keep_namespace_do_not_mix() {
 }
 
 #[test]
-fn status_says_the_cluster_does_not_answer() {
+fn status_and_health_say_the_cluster_does_not_answer() {
     let machine = Machine::with_stopped_cluster();
     let (out, text) = machine.k8s(&["status"]);
     assert!(!out.status.success(), "{text}");

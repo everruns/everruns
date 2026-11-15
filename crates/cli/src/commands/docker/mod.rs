@@ -58,6 +58,9 @@ pub enum DockerCommand {
     /// Check that Docker is ready, and run the system doctor on a running instance
     Doctor(InstanceArgs),
 
+    /// Run the server's health checks (the system doctor, as on System > Health)
+    Health(InstanceArgs),
+
     /// Move the instance to this CLI's version (or --image-tag), backing up the database first
     Upgrade(UpgradeArgs),
 
@@ -286,6 +289,7 @@ pub async fn run(command: DockerCommand) -> Result<()> {
         } => logs(&instance, service.as_deref(), no_follow),
         DockerCommand::Open(args) => open(&args),
         DockerCommand::Doctor(args) => doctor(&args),
+        DockerCommand::Health(args) => health_checks(&args),
         DockerCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
         DockerCommand::Destroy(args) => destroy(&args),
     }
@@ -1045,6 +1049,25 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Only the server's own checks: `doctor` without the Docker and port checks.
+fn health_checks(args: &InstanceArgs) -> Result<()> {
+    let Some((inst, _)) = existing(args)? else {
+        not_set_up(args);
+        return Ok(());
+    };
+    let docker = checks::program();
+    if !running_services(&docker, &inst)
+        .iter()
+        .any(|s| s == "server")
+    {
+        bail!(
+            "the server is not running; {} starts it",
+            ui::cmd(format!("everruns docker up{}", name_flag(&args.name)))
+        );
+    }
+    system_doctor(&docker, &inst)
 }
 
 /// With the instance running, Docker being ready says little about Everruns

@@ -105,6 +105,10 @@ step "Doctor on the install"
 cat "$TMP/doctor.log"
 grep -q "Permissions can install" "$TMP/doctor.log" || fail "doctor did not check the cluster"
 grep -q "could not run in the server pod" "$TMP/doctor.log" && fail "the system doctor did not run in the server pod"
+"$BIN" k8s health --name "$NAME" >"$TMP/health.log" 2>&1 || true
+cat "$TMP/health.log"
+grep -q "Permissions can install" "$TMP/health.log" && fail "health ran the cluster checks"
+grep -q "could not run in the server pod" "$TMP/health.log" && fail "health did not run the system doctor in the server pod"
 
 step "Uninstall keeps the data; up brings it back"
 "$BIN" k8s uninstall --name "$NAME" || fail "uninstall failed"

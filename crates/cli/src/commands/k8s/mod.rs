@@ -72,6 +72,9 @@ pub enum K8sCommand {
     /// Check the tools and the cluster, and run the system doctor on the server
     Doctor(InstanceArgs),
 
+    /// Run the server's health checks (the system doctor, as on System > Health)
+    Health(InstanceArgs),
+
     /// Print the admin password the chart generated
     Password(InstanceArgs),
 
@@ -226,6 +229,7 @@ pub async fn run(command: K8sCommand) -> Result<()> {
         K8sCommand::Open(args) => open(&args).await,
         K8sCommand::PortForward(args) => port_forward(&args).await,
         K8sCommand::Doctor(args) => doctor(&args),
+        K8sCommand::Health(args) => health_checks(&args),
         K8sCommand::Password(args) => password(&args),
         K8sCommand::Upgrade(args) => Box::pin(upgrade(args)).await,
         K8sCommand::Uninstall(args) => uninstall(&args),
@@ -928,11 +932,7 @@ async fn status(args: &InstanceArgs) -> Result<()> {
         return Ok(());
     };
     let target = record.target();
-    if let Err(reason) = target.reachable() {
-        ui::warn(format!("Cluster {} does not answer.", target.context));
-        ui::detail(reason);
-        bail!("cluster {} does not answer", target.context);
-    }
+    require_reachable(&target)?;
     let values = target.release_values()?;
     ui::banner(
         "k8s status",
@@ -1159,6 +1159,34 @@ fn doctor(args: &InstanceArgs) -> Result<()> {
         bail!("the cluster is not ready; fix the problems above");
     }
     system_doctor(&target)
+}
+
+/// Only the server's own checks: `doctor` without the tool and cluster checks.
+fn health_checks(args: &InstanceArgs) -> Result<()> {
+    let Some((inst, record)) = existing(args)? else {
+        return Ok(());
+    };
+    let target = record.target();
+    require_reachable(&target)?;
+    if target.release_values()?.is_none() {
+        bail!(
+            "'{}' is not installed; `everruns k8s up{}` installs it",
+            inst.name,
+            inst.name_flag()
+        );
+    }
+    system_doctor(&target)
+}
+
+/// Stop with the cluster's own reason when it does not answer, instead of
+/// the first kubectl or helm call failing with it.
+fn require_reachable(target: &Target) -> Result<()> {
+    if let Err(reason) = target.reachable() {
+        ui::warn(format!("Cluster {} does not answer.", target.context));
+        ui::detail(reason);
+        bail!("cluster {} does not answer", target.context);
+    }
+    Ok(())
 }
 
 /// The server's own doctor, run inside its pod so it sees what the server sees.

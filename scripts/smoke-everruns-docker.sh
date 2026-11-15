@@ -46,6 +46,13 @@ step "CLI is signed in to the local instance"
 "$BIN" whoami | grep -q "smoke@example.com" || fail "whoami is not the local admin"
 "$BIN" agents list -o json >/dev/null || fail "agents list failed"
 
+step "Health runs the system doctor in the server container"
+# The doctor may flag what a smoke instance lacks (no provider key); it must run.
+"$BIN" docker health --name "$NAME" >"$TMP/health.log" 2>&1 || true
+cat "$TMP/health.log"
+grep -q "could not run in the server container" "$TMP/health.log" && fail "health did not run the system doctor"
+grep -q "server is not running" "$TMP/health.log" && fail "health did not find the server"
+
 step "Second run changes nothing"
 env_before="$(sha256sum "$XDG_DATA_HOME/everruns/docker/$NAME/.env")"
 started="$(date +%s)"

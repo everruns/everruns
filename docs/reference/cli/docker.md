@@ -18,6 +18,7 @@ Run Everruns on this machine with Docker.
 | [`docker logs`](#docker-logs) | Show the containers' logs. |
 | [`docker open`](#docker-open) | Open the local UI in the browser. |
 | [`docker doctor`](#docker-doctor) | Check that Docker is ready, and run the system doctor on a running instance. |
+| [`docker health`](#docker-health) | Run the server's health checks (the system doctor, as on System > Health) |
 | [`docker upgrade`](#docker-upgrade) | Move the instance to this CLI's version (or --image-tag), backing up the database first. |
 | [`docker destroy`](#docker-destroy) | Delete the instance and everything it made: containers, database, settings. |
 
@@ -103,6 +104,19 @@ Check that Docker is ready, and run the system doctor on a running instance.
 
 ```bash
 everruns docker doctor [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Instance name, for more than one local Everruns. |
+
+
+## docker health
+
+Run the server's health checks (the system doctor, as on System > Health)
+
+```bash
+everruns docker health [OPTIONS]
 ```
 
 | Flag | Description |
