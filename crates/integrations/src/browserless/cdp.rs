@@ -1193,7 +1193,7 @@ fn map_ws_connect_error(e: tokio_tungstenite::tungstenite::Error) -> String {
         }
         return format!("CDP WebSocket connection failed (HTTP {status})");
     }
-    "CDP WebSocket connection failed".into()
+    "CDP WebSocket connection failed: transport error".into()
 }
 
 /// Connect to a WebSocket endpoint, routing through an HTTP CONNECT proxy if
