@@ -227,6 +227,7 @@ impl Node {
             .max_by(|a, b| a.cpu_cores.total_cmp(&b.cpu_cores));
         let report = NodeReport {
             minute_unix_ms: minute,
+            at_unix_ms: now_ms(),
             term: self.raft.metrics().borrow().current_term,
             leader: self.cfg.node_id.to_string(),
             nodes: members.len().max(1) as u32,

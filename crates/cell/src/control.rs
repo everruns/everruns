@@ -433,6 +433,11 @@ impl Orgs {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct NodeReport {
     pub minute_unix_ms: i64,
+    /// When the leader measured, the record's own time. Decision: not the
+    /// minute it describes, which is a minute older and would read as feed
+    /// lag on the control plane.
+    #[serde(default)]
+    pub at_unix_ms: i64,
     pub term: u64,
     pub leader: String,
     pub nodes: u32,
@@ -579,7 +584,7 @@ impl Feed {
                 })
                 .collect(),
         };
-        self.push(index, "", measured.minute_unix_ms, record);
+        self.push(index, "", measured.at_unix_ms, record);
     }
 
     /// `session` recorded a turn's outcome: its summary for the tenant.
@@ -923,6 +928,7 @@ mod tests {
         ];
         let measured = NodeReport {
             minute_unix_ms: 60_000,
+            at_unix_ms: 125_000,
             term: 4,
             leader: "n1".into(),
             nodes: 3,
@@ -934,7 +940,7 @@ mod tests {
         let record = &feed.records[0];
         assert_eq!(
             (record.index, record.org_id.as_str(), record.at_unix_ms),
-            (9, "", 60_000)
+            (9, "", 125_000)
         );
         let Record::Health {
             sessions,
