@@ -19,4 +19,5 @@ often spent a turn finding that out. The call now prints the reply itself:
 tools acme billing-list-invoices '{"status":"overdue"}' | jq '.items | length'
 ```
 
-Direct MCP tool calls the model makes are unchanged.
+Direct MCP tool calls the model makes are unchanged. [Code Mode with MCP](/framework/code-mode/)
+shows a full script against a 1,000-tool server.
