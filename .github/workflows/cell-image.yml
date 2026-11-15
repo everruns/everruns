@@ -54,7 +54,7 @@ jobs:
       - name: Install build tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git pkg-config clang
+          apt-get install -y --no-install-recommends git pkg-config clang make
           rm -rf /var/lib/apt/lists/*
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
