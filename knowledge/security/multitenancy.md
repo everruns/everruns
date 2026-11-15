@@ -172,7 +172,17 @@ public-ID prefix in `crates/server/src/domains/org_resolver.rs`. The registry is
 the source of truth for current supported prefixes. Do not keep a copied list
 here.
 
-The UI handles a detail-page not-found response by:
+A page load that opens a detail route resolves the owning organization before
+the first organization commit and starts there, so nothing loads in the
+previously selected organization first. Starting in the stored organization and
+switching after the 404 loaded the whole app twice and tripped the edge rate
+limit. Resolution is time-boxed; on failure the stored organization is used and
+the fallback below still recovers. An organization switch marks cached queries
+stale without refetching them: the org-scoped cache identity already makes every
+mounted query fetch once in the new organization. Queries do not retry 4xx
+responses.
+
+For in-app navigation, the UI handles a detail-page not-found response by:
 
 1. checking the membership-gated resolver;
 2. switching to the returned membership without navigating away;

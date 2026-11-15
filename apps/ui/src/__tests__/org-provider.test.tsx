@@ -1,7 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { OrgProvider, useOrg } from "@/providers/org-provider";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
+import { OrgProvider, entityIdFromPath, useOrg } from "@/providers/org-provider";
 import { getActiveOrgId, setActiveOrgId } from "@/lib/api/active-org";
 import type { OrganizationMembership } from "@/lib/api/types";
 
@@ -17,6 +17,12 @@ jest.mock("next/navigation", () => ({
 const mockSwitchOrg = jest.fn().mockResolvedValue(undefined);
 jest.mock("@/lib/api/users", () => ({
   switchOrg: (...args: unknown[]) => mockSwitchOrg(...args),
+}));
+
+// Mock the cross-org resolver — null unless a test names an owning org
+const mockResolveOrg = jest.fn().mockResolvedValue(null);
+jest.mock("@/lib/api/resolver", () => ({
+  resolveOrgForResource: (...args: unknown[]) => mockResolveOrg(...args),
 }));
 
 // Mock auth provider — mutable so we can change the user mid-test
@@ -38,6 +44,7 @@ beforeEach(() => {
   jest.spyOn(Storage.prototype, "removeItem").mockImplementation((key) => storageMap.delete(key));
   mockPush.mockClear();
   mockSwitchOrg.mockClear().mockResolvedValue(undefined);
+  mockResolveOrg.mockReset().mockResolvedValue(null);
   mockPathname.mockReturnValue("/dashboard");
   mockInitialOrgId = null;
 });
@@ -116,7 +123,35 @@ describe("OrgProvider", () => {
     });
     expect(storageMap.get("everruns_current_org")).toBe(SECOND_ORG.public_id);
     expect(mockSwitchOrg).toHaveBeenCalledWith(SECOND_ORG.public_id);
-    expect(invalidateSpy).toHaveBeenCalled();
+    expect(invalidateSpy).toHaveBeenCalledWith({ refetchType: "none" });
+  });
+
+  it("does not refetch the previous org's queries on switch", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    const { result } = renderHook(() => useOrg(), { wrapper });
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id));
+
+    // An active query in the first org: the switch must not re-send it.
+    const fetches: string[] = [];
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["agents", "list"],
+      queryFn: async () => {
+        fetches.push(getActiveOrgId() ?? "none");
+        return [];
+      },
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await waitFor(() => expect(fetches).toEqual([DEFAULT_ORG.public_id]));
+
+    act(() => {
+      result.current.setCurrentOrg(SECOND_ORG);
+    });
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(fetches).toEqual([DEFAULT_ORG.public_id]);
+    unsubscribe();
   });
 
   it("rolls back on failed org switch", async () => {
@@ -324,11 +359,107 @@ it("refreshes the active organization's name and role without switching or reset
   await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id));
   mockSwitchOrg.mockClear();
   const invalidate = jest.spyOn(queryClient, "invalidateQueries");
-  mockUser = { organizations: [{ ...DEFAULT_ORG, name: "Northstar Studio", role: "member" }] };
+  mockUser = {
+    organizations: [{ ...DEFAULT_ORG, name: "Northstar Studio", role: "member" }],
+  };
   rerender();
   await waitFor(() => expect(result.current.currentOrg?.name).toBe("Northstar Studio"));
   expect(result.current.hasRole("admin")).toBe(false);
   expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id);
   expect(mockSwitchOrg).not.toHaveBeenCalled();
   expect(invalidate).not.toHaveBeenCalled();
+});
+
+describe("OrgProvider landing on an entity link", () => {
+  const SESSION = "session_01a1e096dc55722795cb947ff66ddff9";
+
+  it("starts in the entity's owning org, never in the stored one", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    mockInitialOrgId = DEFAULT_ORG.public_id;
+    mockPathname.mockReturnValue(`/sessions/${SESSION}/trace`);
+    mockResolveOrg.mockResolvedValue({
+      org_id: SECOND_ORG.public_id,
+      org_name: "Second Org",
+    });
+    const committed: (string | undefined)[] = [];
+
+    const { result } = renderHook(
+      () => {
+        const value = useOrg();
+        committed.push(value.currentOrg?.public_id);
+        return value;
+      },
+      { wrapper },
+    );
+
+    expect(result.current.isLoading).toBe(true);
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id));
+    expect(mockResolveOrg).toHaveBeenCalledWith(SESSION);
+    // The cookie is moved before the commit, and nothing ever ran in the stored org.
+    expect(mockSwitchOrg).toHaveBeenCalledWith(SECOND_ORG.public_id);
+    expect(committed).not.toContain(DEFAULT_ORG.public_id);
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(storageMap.get("everruns_current_org")).toBe(SECOND_ORG.public_id);
+  });
+
+  it("skips the cookie sync when the cookie already names the owning org", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    mockInitialOrgId = SECOND_ORG.public_id;
+    mockPathname.mockReturnValue(`/sessions/${SESSION}`);
+    mockResolveOrg.mockResolvedValue({
+      org_id: SECOND_ORG.public_id,
+      org_name: "Second Org",
+    });
+
+    const { result } = renderHook(() => useOrg(), { wrapper });
+
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id));
+    expect(mockSwitchOrg).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the stored org when the owner is not one of the user's orgs", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    mockInitialOrgId = DEFAULT_ORG.public_id;
+    mockPathname.mockReturnValue(`/sessions/${SESSION}`);
+    mockResolveOrg.mockResolvedValue({
+      org_id: "org_someone_else",
+      org_name: "Other",
+    });
+
+    const { result } = renderHook(() => useOrg(), { wrapper });
+
+    await waitFor(() => expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id));
+    expect(mockSwitchOrg).not.toHaveBeenCalled();
+  });
+
+  it("does not resolve anything off entity routes", async () => {
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+    mockPathname.mockReturnValue("/sessions");
+
+    const { result } = renderHook(() => useOrg(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(mockResolveOrg).not.toHaveBeenCalled();
+  });
+});
+
+describe("entityIdFromPath", () => {
+  it("reads the prefixed id of an entity route", () => {
+    expect(entityIdFromPath("/sessions/session_01a1e096dc55722795cb947ff66ddff9/trace")).toBe(
+      "session_01a1e096dc55722795cb947ff66ddff9",
+    );
+    expect(entityIdFromPath("/agents/agent_0123456789abcdef0123456789abcdef")).toBe(
+      "agent_0123456789abcdef0123456789abcdef",
+    );
+  });
+
+  it("ignores list pages and non-id segments", () => {
+    expect(entityIdFromPath("/sessions")).toBeNull();
+    expect(entityIdFromPath("/agents/new")).toBeNull();
+    expect(entityIdFromPath("/dashboard")).toBeNull();
+  });
 });
