@@ -280,3 +280,25 @@ mode.
 | `keep_visible` | string array | `[]` | Tools the model can still call directly. They stay callable from the shell too. |
 | `manage_scripts` | boolean | `false` | Let the agent save scripts with `tools scripts save`. |
 | `rate_unlabeled_tools` | boolean | `true` | Ask the decision service whether a tool that declares nothing about its risk changes things, and ask for approval before it if so. Off: such tools run without asking in Tool Approval's `normal` mode. |
+
+## In the Framework
+
+A Rust host turns the capability on with the agent builder, next to
+`bashkit_shell` (the `bashkit` feature) and its MCP servers:
+
+```rust
+let agent = Agent::builder()
+    .capability("bashkit_shell")
+    .capability(CapabilityRef::new("tools_in_shell").config(json!({"mode": "cli"})))
+    .mcp_server(McpServer::stdio("acme", "acme-mcp-server"))
+    // provider, model, instructions...
+    .build()?;
+```
+
+The [`code_mode_mcp`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/code_mode_mcp.rs)
+example attaches a 1,000-tool MCP server this way and answers a question that
+joins two of its services in one script. Run it with `OPENAI_API_KEY` set:
+
+```bash
+cargo run -p everruns --features openai,mcp-stdio,bashkit --example code_mode_mcp
+```

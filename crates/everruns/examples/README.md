@@ -18,6 +18,7 @@ otherwise, and requires `OPENAI_API_KEY`. `agent_decisions` also requires
 | [`session_work.rs`](session_work.rs) | Session-owned work, leased delivery, and completion wakes | `cargo run -p everruns --features openai --example session_work` |
 | [`ask_user.rs`](ask_user.rs) | Structured questions answered by a host responder, and the unattended defaults path | `cargo run -p everruns --features openai --example ask_user` |
 | [`mcp_resources.rs`](mcp_resources.rs) | An agent that lists and reads an MCP server's resources (the MCP reference server over stdio, needs Node.js) | `cargo run -p everruns --features openai,mcp-stdio --example mcp_resources` |
+| [`code_mode_mcp.rs`](code_mode_mcp.rs) | Code mode over a 1,000-tool MCP server: `tools_in_shell` keeps the schemas out of the prompt and the agent calls the tools from Bashkit scripts, joining results with `jq` | `cargo run -p everruns --features openai,mcp-stdio,bashkit --example code_mode_mcp` |
 | [`session_history.rs`](session_history.rs) | Durable local resume and bounded, event-derived history pages | `cargo run -p everruns --features local,openai --example session_history` |
 | [`engine_sessions.rs`](engine_sessions.rs) | Concrete Engine ownership, isolated sessions, and engine-scoped resume | `cargo run -p everruns --features openai --example engine_sessions` |
 | [`workspace_heads.rs`](workspace_heads.rs) | Isolated Git-worktree heads, Environments, and durable session binding | `cargo run -p everruns --features local,openai --example workspace_heads -- /path/to/repo /path/to/state` |

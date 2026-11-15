@@ -28,6 +28,7 @@ DEFAULT_EXAMPLES=(
   lifecycle_hooks:macros,openai
   advanced_capability:capabilities,openai
   lua_code_mode_agent:lua,openai
+  code_mode_mcp:openai,mcp-stdio,bashkit
   real_disk_file_system_tools:filesystem,openai
   in_process_runtime:openai
 )
