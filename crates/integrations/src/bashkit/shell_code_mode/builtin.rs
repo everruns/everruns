@@ -678,6 +678,11 @@ fn schema_problem(entry: &Entry, arguments: &Value) -> Option<String> {
 /// JSON on stdout for success; the error envelope on stderr for failure. A
 /// string result is the tool's own text and is printed as is, so `jq` sees
 /// the document the tool returned rather than a quoted string.
+///
+/// MCP text results reach here wrapped as `{"result": "<text>"}` (see
+/// `everruns_core::mcp::map_tool_call_result`, which keeps that shape for the
+/// model's direct calls). The shell unwraps it, so a JSON server's reply is
+/// the JSON document itself and scripts need no `jq '.result | fromjson'`.
 async fn render(
     entry: &Entry,
     result: ToolResult,
@@ -697,7 +702,13 @@ async fn render(
     if let Some(message) = result.error {
         return error(code::TOOL_ERROR, message, false);
     }
-    let mut out = match result.result.unwrap_or(Value::Null) {
+    let value = result.result.unwrap_or(Value::Null);
+    let value = if entry.source.is_some() {
+        unwrap_mcp_text(value)
+    } else {
+        value
+    };
+    let mut out = match value {
         Value::String(text) => text,
         other => other.to_string(),
     };
@@ -710,6 +721,18 @@ async fn render(
         exec.stderr = note.into();
     }
     exec
+}
+
+/// The text of an MCP text-only result, or the value unchanged.
+fn unwrap_mcp_text(value: Value) -> Value {
+    match value {
+        Value::Object(mut map)
+            if map.len() == 1 && map.get("result").is_some_and(Value::is_string) =>
+        {
+            map.remove("result").unwrap_or(Value::Null)
+        }
+        other => other,
+    }
 }
 
 /// Images are written next to the script's working directory and named on
