@@ -1,15 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MonitoringTimelineView } from "@/components/monitoring/timeline";
-import {
-  selectionTotals,
-  timelineRows,
-  change,
-} from "@/components/monitoring/timeline-model";
-import {
-  getMonitoringTimeline,
-  getMonitoringTimelineWindow,
-} from "@/lib/api/monitoring";
+import { selectionTotals, timelineRows, change } from "@/components/monitoring/timeline-model";
+import { getMonitoringTimeline, getMonitoringTimelineWindow } from "@/lib/api/monitoring";
 import type { MonitoringTimeline, TimelineBucket } from "@/lib/api/types";
 
 // jsdom has no ResizeObserver; charts render empty at zero size, which is fine here.
@@ -28,10 +21,7 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-function bucket(
-  start: string,
-  extra: Partial<TimelineBucket> = {},
-): TimelineBucket {
+function bucket(start: string, extra: Partial<TimelineBucket> = {}): TimelineBucket {
   return {
     start,
     sampled: true,
@@ -236,9 +226,7 @@ describe("MonitoringTimelineView", () => {
     const kpis = await screen.findByTestId("timeline-kpis");
     expect(kpis).toHaveTextContent("Peak parallel sessions30");
     expect(kpis).toHaveTextContent("Open sessions42");
-    expect(
-      screen.queryByRole("group", { name: "Execution path" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Execution path" })).not.toBeInTheDocument();
     expect(kpis).toHaveTextContent("+30% vs previous period");
     expect(kpis).toHaveTextContent("5.1%");
     expect(kpis).toHaveTextContent("9.8s");
@@ -263,8 +251,6 @@ describe("MonitoringTimelineView", () => {
     expect(kpis).toHaveTextContent("on cells");
     expect(kpis).toHaveTextContent("Most waiting on cells");
     expect(kpis).not.toHaveTextContent("Longest wait for a worker");
-    expect(
-      screen.queryByRole("group", { name: "Execution path" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Execution path" })).not.toBeInTheDocument();
   });
 });

@@ -1,26 +1,13 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MonitoringPage } from "@/components/monitoring/monitoring-page";
 import { ExecutionFlow } from "@/components/monitoring/execution-flow";
 import { WorkerGrid, groupWorkers } from "@/components/monitoring/worker-grid";
 import { ActorDetail } from "@/components/monitoring/actors";
-import {
-  appendHistory,
-  historyPoint,
-  replaySnapshot,
-} from "@/components/monitoring/model";
+import { appendHistory, historyPoint, replaySnapshot } from "@/components/monitoring/model";
 import { getMonitoring } from "@/lib/api/monitoring";
 import { ApiError } from "@/lib/api/client";
-import type {
-  MonitoringSnapshot,
-  MonitoringActorDetail,
-} from "@/lib/api/types";
+import type { MonitoringSnapshot, MonitoringActorDetail } from "@/lib/api/types";
 
 let mockEnabled = true;
 let mockPlatform = true;
@@ -53,10 +40,7 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-function snapshot(
-  at = "2026-10-14T12:00:00Z",
-  actors = 50000,
-): MonitoringSnapshot {
+function snapshot(at = "2026-10-14T12:00:00Z", actors = 50000): MonitoringSnapshot {
   return {
     generated_at: at,
     scope: "fleet",
@@ -115,9 +99,7 @@ test("overview population does not create one rendered row per execution", () =>
   );
   expect(container.querySelectorAll('g[role="button"]')).toHaveLength(5);
   expect(container.querySelectorAll("*").length).toBeLessThan(150);
-  expect(
-    screen.getByRole("button", { name: "Model: 48000 sessions" }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Model: 48000 sessions" })).toBeInTheDocument();
 });
 
 test("worker grouping keeps ownership distinct from capacity and bounds graphical nodes", () => {
@@ -147,10 +129,7 @@ test("worker grouping keeps ownership distinct from capacity and bounds graphica
 test("history is compact, bounded, and does not attach current workers to old observations", () => {
   let history: ReturnType<typeof historyPoint>[] = [];
   for (let i = 0; i < 1000; i++)
-    history = appendHistory(
-      history,
-      historyPoint(snapshot(new Date(i * 1000).toISOString(), i)),
-    );
+    history = appendHistory(history, historyPoint(snapshot(new Date(i * 1000).toISOString(), i)));
   expect(history).toHaveLength(900);
   expect(appendHistory(history, history.at(-1)!)).toBe(history);
   const live = snapshot();
@@ -160,9 +139,7 @@ test("history is compact, bounded, and does not attach current workers to old ob
   expect(replay.ownership).toEqual([]);
   expect(replay.lease_events).toEqual(history[0].leaseEvents);
   expect(replay.organizations).toBe(history[0].organizations);
-  expect(replay.phases[0].oldest_ms).toBe(
-    history[0].phaseOldest[replay.phases[0].phase],
-  );
+  expect(replay.phases[0].oldest_ms).toBe(history[0].phaseOldest[replay.phases[0].phase]);
 });
 
 test("organization adoption and platform authorization prevent fetching gated monitoring", () => {
@@ -187,9 +164,7 @@ test("an organization sees only the execution path it runs on", async () => {
   mockDataPlane = true;
   render(app("organization").element);
   await screen.findByText("50,000 active sessions");
-  expect(
-    screen.queryByRole("tab", { name: "Workers" }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Workers" })).not.toBeInTheDocument();
   expect(screen.queryByRole("tab", { name: "Actors" })).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "Timeline" })).toBeInTheDocument();
 });
@@ -200,10 +175,7 @@ test("pause freezes the viewed population while live collection continues", asyn
   await screen.findByText("50,000 active sessions");
   fireEvent.click(screen.getByRole("button", { name: "Pause" }));
   await act(async () => {
-    client.setQueryData(
-      ["monitoring", "fleet", "org_a"],
-      snapshot("2026-10-14T12:00:01Z", 12345),
-    );
+    client.setQueryData(["monitoring", "fleet", "org_a"], snapshot("2026-10-14T12:00:01Z", 12345));
   });
   expect(screen.getByText("50,000 active sessions")).toBeInTheDocument();
   expect(screen.queryByText("12,345 active sessions")).not.toBeInTheDocument();
@@ -216,21 +188,14 @@ test("replay disables live ownership tabs and an org switch discards the old obs
   const rendered = render(element);
   await screen.findByText("50,000 active sessions");
   await act(async () => {
-    client.setQueryData(
-      ["monitoring", "fleet", "org_a"],
-      snapshot("2026-10-14T12:00:01Z", 12345),
-    );
+    client.setQueryData(["monitoring", "fleet", "org_a"], snapshot("2026-10-14T12:00:01Z", 12345));
   });
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Replay" })).not.toBeDisabled(),
-  );
+  await waitFor(() => expect(screen.getByRole("button", { name: "Replay" })).not.toBeDisabled());
   fireEvent.click(screen.getByRole("button", { name: "Replay" }));
   expect(screen.getByRole("tab", { name: "Workers" })).toBeDisabled();
   expect(screen.getByText("50,000 active sessions")).toBeInTheDocument();
   mockOrg = "org_b";
-  (getMonitoring as jest.Mock).mockResolvedValue(
-    snapshot("2026-10-14T12:00:02Z", 99),
-  );
+  (getMonitoring as jest.Mock).mockResolvedValue(snapshot("2026-10-14T12:00:02Z", 99));
   rendered.rerender(
     <QueryClientProvider client={client}>
       <MonitoringPage scope="fleet" />
@@ -253,9 +218,7 @@ test("an authorization failure hides previously cached fleet data", async () => 
       queryKey: ["monitoring", "fleet", "org_a"],
     });
   });
-  await waitFor(() =>
-    expect(screen.getByText("Monitoring is unavailable")).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.getByText("Monitoring is unavailable")).toBeInTheDocument());
   expect(screen.queryByText("50,000 active sessions")).not.toBeInTheDocument();
 });
 
@@ -287,22 +250,10 @@ test("lease expiry is distinguished from observed loss and a stale countdown", (
     steps: [],
   };
   const rendered = render(
-    <ActorDetail
-      detail={detail}
-      serverNow={Date.parse(at) + 1000}
-      stale={false}
-    />,
+    <ActorDetail detail={detail} serverNow={Date.parse(at) + 1000} stale={false} />,
   );
-  expect(
-    screen.getByText("Expiry deadline passed; awaiting observation"),
-  ).toBeInTheDocument();
-  rendered.rerender(
-    <ActorDetail
-      detail={detail}
-      serverNow={Date.parse(at) + 1000}
-      stale={true}
-    />,
-  );
+  expect(screen.getByText("Expiry deadline passed; awaiting observation")).toBeInTheDocument();
+  rendered.rerender(<ActorDetail detail={detail} serverNow={Date.parse(at) + 1000} stale={true} />);
   expect(screen.getByText("Snapshot stale")).toBeInTheDocument();
   expect(screen.getByText("held")).toBeInTheDocument();
 });
