@@ -295,10 +295,6 @@ let agent = Agent::builder()
     .build()?;
 ```
 
-The [`code_mode_mcp`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/code_mode_mcp.rs)
-example attaches a 1,000-tool MCP server this way and answers a question that
-joins two of its services in one script. Run it with `OPENAI_API_KEY` set:
-
-```bash
-cargo run -p everruns --features openai,mcp-stdio,bashkit --example code_mode_mcp
-```
+[Code Mode with MCP](/framework/code-mode/) walks through a Framework agent
+that answers a question over a 1,000-tool MCP server this way, with a recorded
+demo of the scripts it wrote and the tools they called.

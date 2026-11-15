@@ -9,7 +9,7 @@
 use everruns::{Session, SessionEventKind, Turn};
 
 use crate::safe_label;
-use crate::style::{BLUE, BOLD, CYAN, GREEN, MAGENTA, RED, WIDTH, YELLOW, clip, paint};
+use crate::style::{BLUE, BOLD, CYAN, GREEN, MAGENTA, RED, WIDTH, YELLOW, clip, clip_to, paint};
 
 pub use crate::style::{DIM, PLAIN};
 
@@ -97,8 +97,32 @@ fn shell_result(text: &str) {
     }
 }
 
+/// One tool a script called from inside the shell (`tools <source> <op>`).
+fn nested_call(data: &serde_json::Value) {
+    let command = data["command"].as_str().unwrap_or_default();
+    let input = data["input_preview"].as_str().unwrap_or_default();
+    let status = data["status"].as_str().unwrap_or_default();
+    let mark = if status == "completed" {
+        paint(GREEN, "↳")
+    } else {
+        paint(RED, &format!("↳ {status}"))
+    };
+    let line = format!("{} {}", safe_label(command), input.replace('\n', " "));
+    println!("  {mark} {}", paint(YELLOW, &clip_to(&line, WIDTH - 4)));
+}
+
 /// Send `request` and print every shell command the agent runs while it works.
 pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::error::Error>> {
+    run_showing(session, request, MAX_SCRIPT_LINES).await
+}
+
+/// [`run`], keeping up to `script_lines` lines of each script, for demos
+/// where the script itself is the point.
+pub async fn run_showing(
+    session: &Session,
+    request: &str,
+    script_lines: usize,
+) -> Result<Turn, Box<dyn std::error::Error>> {
     section("REQUEST");
     body(request, PLAIN);
     let mut events = session.events();
@@ -117,7 +141,7 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
                     .map(str::to_string)
                     .unwrap_or_else(|| arguments.to_string());
                 section(&format!("❯ {}", safe_label(tool_name)));
-                body_capped(&script, BLUE, "", MAX_SCRIPT_LINES);
+                body_capped(&script, BLUE, "", script_lines);
             }
             SessionEventKind::ToolCompleted {
                 tool_name, success, ..
@@ -149,6 +173,11 @@ pub async fn run(session: &Session, request: &str) -> Result<Turn, Box<dyn std::
                     );
                     body_capped(&text, RED, "", MAX_OUTPUT_LINES);
                 }
+            }
+            _ if event.event_type() == "tool.nested_call" => {
+                // A tool the script called through `tools_in_shell`: the model
+                // never saw this call, so show it under the script that made it.
+                nested_call(&event.canonical_json()["data"]);
             }
             _ => {}
         }

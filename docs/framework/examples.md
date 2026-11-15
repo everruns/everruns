@@ -38,6 +38,7 @@ See [file-based agents](/how-to/define-agents-as-files/) for loading, importing 
 | Example | Provider and model | What it does |
 | --- | --- | --- |
 | [Bashkit Repo Agent](/framework/examples/bashkit-repo-agent/) | OpenAI `gpt-6.1-sol` | Cuts a release in a real repository with the sandboxed Bashkit shell as its only tool, then verifies the result on disk. |
+| [Code Mode MCP Agent](/framework/code-mode/) | OpenAI `gpt-6.1-sol` (or through OpenRouter) | Answers a question over a 1,000-tool MCP server by calling its tools from Bashkit scripts, with none of their schemas in the prompt. |
 | [Host Shell Agent](/framework/examples/host-shell-agent/) | OpenAI `gpt-6.1-sol` | Fixes a failing Rust test suite by compiling and running it through real processes inside a kernel-enforced boundary. |
 | [Foreman](/framework/examples/foreman-agent/) | TypeSafe `jev-latest` over an Everruns session, Codex, or yolop | Supervises a live coding session with nine decision questions per reading, and stops, verifies, or finishes it from a deterministic policy. |
 

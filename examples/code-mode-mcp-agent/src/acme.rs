@@ -1,33 +1,18 @@
-//! Code mode over a huge MCP server: 1,000 tools, one `bash` tool in the prompt.
+//! The Acme MCP server: a synthetic company API with 1,000 tools.
 //!
-//! Attaching a large MCP server natively puts every tool schema into every
-//! model request. This example attaches a synthetic company API with 1,000
-//! tools (25 services, 8 entities each, 5 verbs per entity) and turns on
-//! `tools_in_shell` in CLI mode. The MCP tools leave the model's tool list;
-//! the agent reaches them from the Bashkit sandbox through the `tools`
-//! command instead: `tools search` to find operations, `--help` for one
-//! signature, then a script that calls many tools, joins the results with
-//! `jq`, and prints only the answer. The intermediate payloads never enter the
-//! conversation.
-//!
-//! The MCP server is this same binary, re-executed with `--mcp-server`, so the
-//! example needs nothing outside the repository. Its answer is checked against
-//! the server's data.
-//!
-//! ```text
-//! cargo run -p everruns --features openai,mcp-stdio,bashkit --example code_mode_mcp
-//! ```
-//!
-//! Uses `gpt-6.1-sol` and `OPENAI_API_KEY`. Add the `openrouter` feature and
-//! set `OPENROUTER_API_KEY` to run the same model through OpenRouter.
+//! 25 services, 8 entities each, 5 verbs per entity. It speaks
+//! newline-delimited JSON-RPC over stdio, pages `tools/list` 100 tools at a
+//! time, and labels every tool with MCP read-only or destructive hints. Only
+//! the billing and CRM list/get tools carry data; every other tool answers with
+//! an empty but plausible payload, and every write is refused.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
-use everruns::{Agent, CapabilityRef, Engine, McpServer, OpenAI};
 use serde_json::{Value, json};
 
-const SERVER: &str = "acme";
+/// The name the agent knows this server by.
+pub const SERVER: &str = "acme";
 
 /// Services with their own four entities; every service also has the four
 /// shared ones below. 25 services x 8 entities x 5 verbs = 1,000 tools.
@@ -161,165 +146,19 @@ const SERVICES: [(&str, &str, [&str; 4]); 25] = [
 const SHARED_ENTITIES: [&str; 4] = ["notes", "tags", "audit_events", "webhooks"];
 const VERBS: [&str; 5] = ["list", "get", "create", "update", "delete"];
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if std::env::args().nth(1).as_deref() == Some("--mcp-server") {
-        return Ok(serve_mcp()?);
-    }
-    tokio::runtime::Runtime::new()?.block_on(run_agent())
-}
-
-async fn run_agent() -> Result<(), Box<dyn std::error::Error>> {
-    let catalog = catalog();
-    let native_bytes = serde_json::to_vec(&catalog)?.len();
-    println!(
-        "MCP server `{SERVER}`: {} tools, {} KiB of tool schemas if attached natively",
-        catalog.len(),
-        native_bytes / 1024
-    );
-
-    let server = McpServer::stdio(SERVER, std::env::current_exe()?.to_string_lossy())
-        .arg("--mcp-server")
-        .description("Acme Corp internal APIs: CRM, billing, inventory, HR and 21 more services");
-
-    let (provider, model) = model()?;
-    let agent = Agent::builder()
-        .name("acme-analyst")
-        .instructions(
-            "You answer questions about Acme Corp from its internal APIs. The APIs are \
-             available only inside the shell, through the `tools` command: find \
-             operations with `tools search`, read one with `--help`, then do the work in \
-             a script that calls the tools and filters the results with jq. Print only \
-             what you need. Never guess figures. Reply briefly.",
-        )
-        .provider(provider)
-        .model(model)
-        .max_iterations(12)
-        .capability("bashkit_shell")
-        // CLI mode: eligible tools leave the native tool list and are callable
-        // only through `tools` in the shell. `rate_unlabeled_tools: false`
-        // keeps the decision service out; this server labels every tool with
-        // MCP read-only/destructive hints.
-        .capability(
-            CapabilityRef::new("tools_in_shell")
-                .config(json!({"mode": "cli", "rate_unlabeled_tools": false})),
-        )
-        .mcp_server(server)
-        .build()?;
-
-    let session = Engine::new().create(agent);
-    let mut events = session.events();
-    let question = "Which customers in the EU region have overdue invoices? Give the three \
-                    with the largest total overdue amount, with each total in dollars.";
-    println!("\nuser: {question}");
-    let turn = session.run(question).await?;
-    if !turn.success {
-        return Err(format!("turn failed: {}", turn.error.unwrap_or_default()).into());
-    }
-    println!("\nagent: {}\n", turn.response.trim());
-
-    // What the model saw and did, from the session's canonical events.
-    let mut direct_calls: BTreeMap<String, usize> = BTreeMap::new();
-    let mut nested_calls: BTreeMap<String, usize> = BTreeMap::new();
-    let mut peak_tool_bytes = 0;
-    let mut peak_input_tokens = 0;
-    let mut model_tools: Vec<String> = Vec::new();
-    while let Some(event) = events.try_recv()? {
-        let canonical = event.canonical_json();
-        let data = &canonical["data"];
-        match event.event_type() {
-            "tool.completed" => {
-                let name = data["tool_name"].as_str().unwrap_or_default();
-                *direct_calls.entry(name.to_owned()).or_default() += 1;
-            }
-            "tool.nested_call" if data["status"] == "completed" => {
-                let name = data["tool_name"].as_str().unwrap_or_default();
-                *nested_calls.entry(name.to_owned()).or_default() += 1;
-            }
-            "llm.generation" => {
-                if let Some(tools) = data.pointer("/request_body/tools") {
-                    peak_tool_bytes = peak_tool_bytes.max(tools.to_string().len());
-                    model_tools = tools
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(|tool| {
-                            tool["name"]
-                                .as_str()
-                                .or_else(|| tool.pointer("/function/name").and_then(Value::as_str))
-                                .map(str::to_owned)
-                        })
-                        .collect();
-                }
-                if let Some(usage) = data.pointer("/metadata/usage") {
-                    let input = ["input_tokens", "cache_read_tokens", "cache_creation_tokens"]
-                        .iter()
-                        .filter_map(|key| usage[*key].as_u64())
-                        .sum::<u64>();
-                    peak_input_tokens = peak_input_tokens.max(input);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    println!("tools in the model request: {model_tools:?}");
-    if peak_tool_bytes > 0 {
-        println!(
-            "tool schemas per request: {} KiB (native would be {} KiB)",
-            peak_tool_bytes.div_ceil(1024),
-            native_bytes / 1024
-        );
-    }
-    if peak_input_tokens > 0 {
-        println!("largest prompt: {peak_input_tokens} input tokens");
-    }
-    println!("tools the model called directly: {direct_calls:?}");
-    println!(
-        "MCP tools called from scripts: {} calls {nested_calls:?}",
-        nested_calls.values().sum::<usize>()
-    );
-
-    // The MCP tools never reached the model as native tools...
-    if direct_calls.keys().any(|name| name.starts_with("mcp_")) {
-        return Err("the model called an MCP tool directly instead of from the shell".into());
-    }
-    if nested_calls.is_empty() {
-        return Err("no MCP tool was called from the shell".into());
-    }
-    // ...and the answer matches the server's data.
-    let expected = top_overdue_eu_customers(3);
-    let normalized = turn.response.replace(',', "");
-    for (name, total) in &expected {
-        if !turn.response.contains(name.as_str()) || !normalized.contains(&total.to_string()) {
-            return Err(
-                format!("answer is missing {name} (${total}); expected {expected:?}").into(),
-            );
-        }
-    }
-    println!("\nanswer verified against the server's data: {expected:?}");
-    Ok(())
-}
-
-/// `gpt-6.1-sol` from OpenAI. Built with the `openrouter` feature and with
-/// `OPENROUTER_API_KEY` set, the same model through OpenRouter instead.
-fn model() -> Result<(everruns::Provider, &'static str), Box<dyn std::error::Error>> {
-    #[cfg(feature = "openrouter")]
-    if std::env::var_os("OPENROUTER_API_KEY").is_some() {
-        let openrouter = everruns::providers::openrouter::OpenRouter::from_env()?;
-        return Ok((openrouter.into(), "openai/gpt-6.1-sol"));
-    }
-    Ok((OpenAI::from_env()?.into(), "gpt-6.1-sol"))
-}
-
 // ---------------------------------------------------------------------------
 // The MCP server: newline-delimited JSON-RPC over stdio, paginated tools/list.
 // ---------------------------------------------------------------------------
 
-fn serve_mcp() -> io::Result<()> {
+/// Serve over this process's stdin and stdout until stdin closes.
+pub fn serve() -> io::Result<()> {
+    serve_on(io::stdin().lock(), io::BufWriter::new(io::stdout().lock()))
+}
+
+fn serve_on(input: impl BufRead, mut output: impl Write) -> io::Result<()> {
     let tools = catalog();
     let data = Dataset::generate();
-    let mut stdout = io::BufWriter::new(io::stdout().lock());
-    for line in io::stdin().lock().lines() {
+    for line in input.lines() {
         let Ok(request) = serde_json::from_str::<Value>(&line?) else {
             continue;
         };
@@ -327,12 +166,12 @@ fn serve_mcp() -> io::Result<()> {
             continue; // notifications need no reply
         };
         let params = &request["params"];
-        let reply = match request["method"].as_str().unwrap_or_default() {
-            "initialize" => json!({"result": {
+        let result = match request["method"].as_str().unwrap_or_default() {
+            "initialize" => json!({
                 "protocolVersion": "2025-06-18",
                 "capabilities": {"tools": {"listChanged": false}},
                 "serverInfo": {"name": "acme-internal-apis", "version": "1.0.0"},
-            }}),
+            }),
             "tools/list" => {
                 const PAGE: usize = 100;
                 let start = params["cursor"]
@@ -342,32 +181,40 @@ fn serve_mcp() -> io::Result<()> {
                     .min(tools.len());
                 let end = (start + PAGE).min(tools.len());
                 let next = (end < tools.len()).then(|| end.to_string());
-                json!({"result": {"tools": &tools[start..end], "nextCursor": next}})
+                json!({"tools": &tools[start..end], "nextCursor": next})
             }
             "tools/call" => {
                 let name = params["name"].as_str().unwrap_or_default();
-                let output = data.call(name, &params["arguments"]);
-                let is_error = output.get("error").is_some();
-                json!({"result": {
-                    "content": [{"type": "text", "text": output.to_string()}],
+                let reply = data.call(name, &params["arguments"]);
+                let is_error = reply.get("error").is_some();
+                json!({
+                    "content": [{"type": "text", "text": reply.to_string()}],
                     "isError": is_error,
-                }})
+                })
             }
-            _ => json!({"error": {"code": -32601, "message": "Method not found"}}),
+            _ => {
+                let error = json!({"code": -32601, "message": "Method not found"});
+                writeln!(
+                    output,
+                    "{}",
+                    json!({"jsonrpc": "2.0", "id": id, "error": error})
+                )?;
+                output.flush()?;
+                continue;
+            }
         };
-        let mut message = json!({"jsonrpc": "2.0", "id": id});
-        message
-            .as_object_mut()
-            .expect("object")
-            .extend(reply.as_object().expect("object").clone());
-        writeln!(stdout, "{message}")?;
-        stdout.flush()?;
+        writeln!(
+            output,
+            "{}",
+            json!({"jsonrpc": "2.0", "id": id, "result": result})
+        )?;
+        output.flush()?;
     }
     Ok(())
 }
 
 /// Every tool definition the server publishes.
-fn catalog() -> Vec<Value> {
+pub fn catalog() -> Vec<Value> {
     let mut tools = Vec::with_capacity(1_000);
     for (service, area, own) in SERVICES {
         for entity in own.iter().chain(SHARED_ENTITIES.iter()) {
@@ -387,7 +234,9 @@ fn tool(service: &str, area: &str, entity: &str, verb: &str) -> Value {
     let fields = json!({"type": "object", "description": format!("Fields of the {one}."), "additionalProperties": true});
     let (description, properties, required): (String, Value, Vec<&str>) = match verb {
         "list" => (
-            format!("List {noun} in {service} ({area}). Supports filters and paging."),
+            format!(
+                "List {noun} in {service} ({area}). Returns {{\"items\": [...], \"next_cursor\": string or null, \"total\": number}}."
+            ),
             list_filters(service, entity),
             vec![],
         ),
@@ -581,7 +430,7 @@ fn page(items: &[&Value], args: &Value) -> Value {
 
 /// The answer, computed straight from the data: EU customers by total
 /// overdue amount, largest first.
-fn top_overdue_eu_customers(n: usize) -> Vec<(String, u64)> {
+pub fn top_overdue_eu_customers(n: usize) -> Vec<(String, u64)> {
     let data = Dataset::generate();
     let eu: HashMap<&str, &str> = data
         .customers
@@ -607,4 +456,91 @@ fn top_overdue_eu_customers(n: usize) -> Vec<(String, u64)> {
     ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     ranked.truncate(n);
     ranked
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn exchange(requests: &[Value]) -> Vec<Value> {
+        let input: String = requests.iter().map(|r| format!("{r}\n")).collect();
+        let mut output = Vec::new();
+        serve_on(input.as_bytes(), &mut output).unwrap();
+        String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn catalog_has_a_thousand_unique_labelled_tools() {
+        let tools = catalog();
+        assert_eq!(tools.len(), 1_000);
+        let names: std::collections::HashSet<_> = tools
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names.len(), 1_000);
+        assert!(names.contains("billing_list_invoices"));
+        assert!(names.contains("crm_get_customer"));
+        assert!(
+            tools
+                .iter()
+                .all(|tool| tool["annotations"]["readOnlyHint"].is_boolean())
+        );
+    }
+
+    #[test]
+    fn tools_list_pages_through_the_whole_catalog() {
+        let mut cursor = Value::Null;
+        let mut seen = 0;
+        for page in 1.. {
+            let replies = exchange(&[
+                json!({"jsonrpc": "2.0", "id": page, "method": "tools/list", "params": {"cursor": cursor}}),
+            ]);
+            seen += replies[0]["result"]["tools"].as_array().unwrap().len();
+            cursor = replies[0]["result"]["nextCursor"].clone();
+            if cursor.is_null() {
+                break;
+            }
+        }
+        assert_eq!(seen, 1_000);
+    }
+
+    #[test]
+    fn notifications_get_no_reply_and_unknown_methods_an_error() {
+        let replies = exchange(&[
+            json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+            json!({"jsonrpc": "2.0", "id": 1, "method": "resources/list"}),
+        ]);
+        assert_eq!(replies.len(), 1);
+        assert_eq!(replies[0]["error"]["code"], -32601);
+    }
+
+    #[test]
+    fn invoice_filters_and_writes_behave_like_the_answer_assumes() {
+        let replies = exchange(&[
+            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "billing_list_invoices", "arguments": {"status": "overdue", "limit": 500}}}),
+            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "crm_delete_customer", "arguments": {"id": "cus_1000"}}}),
+        ]);
+        let text = replies[0]["result"]["content"][0]["text"].as_str().unwrap();
+        let page: Value = serde_json::from_str(text).unwrap();
+        let invoices = page["items"].as_array().unwrap();
+        assert!(!invoices.is_empty());
+        assert!(
+            invoices
+                .iter()
+                .all(|invoice| invoice["status"] == "overdue")
+        );
+        assert_eq!(replies[1]["result"]["isError"], true);
+    }
+
+    #[test]
+    fn expected_answer_is_stable_and_ranked() {
+        let top = top_overdue_eu_customers(3);
+        assert_eq!(top.len(), 3);
+        assert!(top[0].1 >= top[1].1 && top[1].1 >= top[2].1);
+        assert_eq!(top, top_overdue_eu_customers(3));
+    }
 }
