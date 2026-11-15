@@ -13,11 +13,12 @@ Run Everruns in a Kubernetes cluster with the Helm chart.
 | Command | What it does |
 |---|---|
 | [`k8s up`](#k8s-up) | Install Everruns into the current Kubernetes cluster, or repair it. |
-| [`k8s status`](#k8s-status) | Show the install: where it is, its pods, and which CLI profile points at it. |
+| [`k8s status`](#k8s-status) | Show the install: where it is, whether its server is healthy, its pods, and which CLI profile points at it. |
 | [`k8s logs`](#k8s-logs) | Show the pods' logs. |
 | [`k8s open`](#k8s-open) | Open the UI in the browser (through a port-forward when there is no public URL) |
 | [`k8s port-forward`](#k8s-port-forward) | Keep a port-forward open so the CLI and browser reach an install without a public URL. |
 | [`k8s doctor`](#k8s-doctor) | Check the tools and the cluster, and run the system doctor on the server. |
+| [`k8s health`](#k8s-health) | Run the server's health checks (the system doctor, as on System > Health) |
 | [`k8s password`](#k8s-password) | Print the admin password the chart generated. |
 | [`k8s upgrade`](#k8s-upgrade) | Move the install to this CLI's chart version (or --chart-version), backing up a bundled database first. |
 | [`k8s uninstall`](#k8s-uninstall) | Remove the workloads. |
@@ -56,7 +57,7 @@ everruns k8s up [OPTIONS]
 
 ## k8s status
 
-Show the install: where it is, its pods, and which CLI profile points at it.
+Show the install: where it is, whether its server is healthy, its pods, and which CLI profile points at it.
 
 ```bash
 everruns k8s status [OPTIONS]
@@ -121,6 +122,19 @@ everruns k8s doctor [OPTIONS]
 | `--name <NAME>` | Install name, also the Helm release name. |
 
 
+## k8s health
+
+Run the server's health checks (the system doctor, as on System > Health)
+
+```bash
+everruns k8s health [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Install name, also the Helm release name. |
+
+
 ## k8s password
 
 Print the admin password the chart generated.
@@ -176,5 +190,6 @@ everruns k8s destroy [OPTIONS]
 |---|---|
 | `--name <NAME>` | Install name, also the Helm release name. |
 | `--keep-namespace` | Keep the namespace even when nothing else is left in it. |
+| `--local-only` | Leave the cluster alone and remove only what this machine keeps: the install record, database backups and CLI profile. For an install whose cluster is gone. |
 | `-y`, `--yes` | Do not ask for the install name (for scripts) |
 

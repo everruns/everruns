@@ -8,6 +8,12 @@
 //!   are never deleted.
 //! - Objects still labeled with this release (pods that are terminating) do
 //!   not count as something else.
+//! - The cluster is asked before the person is. What this machine keeps
+//!   (the install record from `up`) says where the install was put, not that
+//!   the cluster still answers. A stopped cluster stops the command with
+//!   nothing deleted; `--local-only` forgets an install whose cluster is gone
+//!   for good, and never runs on its own, because deleting the local backups
+//!   of a cluster that is only stopped would lose them.
 
 use std::io::IsTerminal;
 
@@ -15,7 +21,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
 use super::cluster::Target;
-use super::{DestroyArgs, existing};
+use super::{DestroyArgs, Instance, existing};
 use crate::commands::docker;
 use crate::ui;
 
@@ -28,38 +34,71 @@ pub(super) fn destroy(args: &DestroyArgs) -> Result<()> {
         return Ok(());
     };
     let target = record.target();
-    let namespace_too = !args.keep_namespace && deletable_namespace(&target.namespace);
-    if !args.yes {
-        if !std::io::stdin().is_terminal() {
-            bail!(
-                "no terminal to ask on; pass --yes to delete '{}'",
-                inst.name
-            );
-        }
-        ui::warn(format!(
-            "This deletes Everruns '{}' in {}/{}: its workloads, the generated secrets with the \
-             encryption key, the bundled database and its backups on this machine, and CLI profile '{}'.",
-            inst.name,
-            target.context,
-            target.namespace,
-            inst.profile()
-        ));
-        if namespace_too {
-            ui::detail(format!(
-                "Namespace {} goes too if nothing else is in it.",
-                target.namespace
-            ));
-        }
-        let typed: String = dialoguer::Input::with_theme(ui::theme())
-            .with_prompt(format!("Type '{}' to delete it", inst.name))
-            .interact_text()
-            .context("Failed to read the answer")?;
-        if typed.trim() != inst.name {
-            bail!("not deleted");
-        }
+    let kept_here = kept_on_this_machine(&inst);
+
+    if args.local_only {
+        ask_name(
+            args,
+            &inst,
+            format!(
+                "This removes what this machine keeps for Everruns '{}': {kept_here}. Nothing in \
+                 {}/{} is touched; if the install still runs there, it keeps running.",
+                inst.name, target.context, target.namespace
+            ),
+            None,
+        )?;
+        forget_locally(&inst)?;
+        ui::ok(format!("Forgot '{}' on this machine.", inst.name));
+        return Ok(());
     }
 
-    if target.release_values()?.is_some() {
+    // The record on this machine only says where `up` put the install, not
+    // that the cluster still exists or answers. Ask the cluster before asking
+    // the person, so a stopped or deleted cluster is reported as that rather
+    // than as a confirmed delete that then fails halfway.
+    if let Err(reason) = target.reachable() {
+        ui::warn(format!(
+            "Cluster {} does not answer, so nothing was deleted.",
+            target.context
+        ));
+        ui::detail(reason);
+        ui::detail(format!(
+            "Start the cluster and run this again. If the cluster is gone for good, {} removes \
+             only what this machine keeps: {kept_here}.",
+            ui::cmd(format!(
+                "everruns k8s destroy{} --local-only",
+                inst.name_flag()
+            ))
+        ));
+        bail!("cluster {} does not answer", target.context);
+    }
+    let installed = target.release_values()?.is_some();
+    let namespace_too = !args.keep_namespace && deletable_namespace(&target.namespace);
+    let mut details = Vec::new();
+    if !installed {
+        details.push(format!(
+            "Release {} is no longer installed there; its leftover secrets and volumes go.",
+            target.release
+        ));
+    }
+    if namespace_too {
+        details.push(format!(
+            "Namespace {} goes too if nothing else is in it.",
+            target.namespace
+        ));
+    }
+    ask_name(
+        args,
+        &inst,
+        format!(
+            "This deletes Everruns '{}' in {}/{}: its workloads, the generated secrets with the \
+             encryption key, the bundled database, and on this machine {kept_here}.",
+            inst.name, target.context, target.namespace
+        ),
+        Some(&details),
+    )?;
+
+    if installed {
         let spinner = ui::Spinner::start(format!("Uninstalling release {}", target.release));
         let out = target
             .helm()
@@ -115,14 +154,69 @@ pub(super) fn destroy(args: &DestroyArgs) -> Result<()> {
         ui::note(format!("Kept namespace {}.", target.namespace));
     }
 
+    forget_locally(&inst)?;
+    ui::ok(format!("Destroyed '{}'.", inst.name));
+    Ok(())
+}
+
+/// Ask for the install name unless `--yes`, after saying what goes.
+fn ask_name(
+    args: &DestroyArgs,
+    inst: &Instance,
+    warning: String,
+    details: Option<&[String]>,
+) -> Result<()> {
+    if args.yes {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        bail!(
+            "no terminal to ask on; pass --yes to delete '{}'",
+            inst.name
+        );
+    }
+    ui::warn(warning);
+    for line in details.unwrap_or_default() {
+        ui::detail(line);
+    }
+    let typed: String = dialoguer::Input::with_theme(ui::theme())
+        .with_prompt(format!("Type '{}' to delete it", inst.name))
+        .interact_text()
+        .context("Failed to read the answer")?;
+    if typed.trim() != inst.name {
+        bail!("not deleted");
+    }
+    Ok(())
+}
+
+/// What this machine keeps for an install, in words: the CLI profile and
+/// the folder with the install record and database backups.
+fn kept_on_this_machine(inst: &Instance) -> String {
+    let backups = std::fs::read_dir(inst.dir.join("backups"))
+        .map(|dir| dir.filter_map(Result::ok).count())
+        .unwrap_or(0);
+    let backups = match backups {
+        0 => String::new(),
+        1 => " and 1 database backup".to_string(),
+        n => format!(" and {n} database backups"),
+    };
+    format!(
+        "CLI profile '{}' and {} (the install record{backups})",
+        inst.profile(),
+        inst.dir.display()
+    )
+}
+
+/// Remove the CLI profile and the install folder.
+fn forget_locally(inst: &Instance) -> Result<()> {
     if docker::forget_profile(&inst.profile())? {
         ui::ok(format!("Removed CLI profile '{}'", inst.profile()));
     }
     if inst.dir.exists() {
         std::fs::remove_dir_all(&inst.dir)
             .with_context(|| format!("Failed to remove {}", inst.dir.display()))?;
+        ui::ok(format!("Removed {}", inst.dir.display()));
     }
-    ui::ok(format!("Destroyed '{}'.", inst.name));
     Ok(())
 }
 

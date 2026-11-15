@@ -106,6 +106,7 @@ credential-bindings list	--context-revision --owner-id --reason --scope! --usage
 credential-bindings revoke	--context-revision --id! --reason --revision!
 docker destroy	--name --yes/-y
 docker doctor	--name
+docker health	--name
 docker logs	--name --no-follow <service>
 docker open	--name
 docker status	--name
@@ -193,8 +194,9 @@ history restore	--context-revision --entity-ref --expected-revision --fields... 
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason
-k8s destroy	--keep-namespace --name --yes/-y
+k8s destroy	--keep-namespace --local-only --name --yes/-y
 k8s doctor	--name
+k8s health	--name
 k8s logs	--name --no-follow <component>
 k8s open	--name
 k8s password	--name
