@@ -755,14 +755,20 @@ impl SessionSandboxProvider for KubernetesSandboxProvider {
             .list(&params)
             .await
             .map_err(|err| SandboxAdminError::Provider(err.to_string()))?;
+        // Deletion is asynchronous: a deleted volume claim stays listed, with
+        // a deletion timestamp, until its pod is gone. A sandbox being torn
+        // down is no longer owned, so the orphan scan neither reports nor
+        // deletes it twice.
         let running: std::collections::HashSet<String> = pods
             .items
             .iter()
+            .filter(|pod| pod.metadata.deletion_timestamp.is_none())
             .filter_map(|pod| pod.metadata.name.clone())
             .collect();
         Ok(claims
             .items
             .into_iter()
+            .filter(|claim| claim.metadata.deletion_timestamp.is_none())
             .filter_map(|claim| {
                 let labels = claim.metadata.labels.clone().unwrap_or_default();
                 let name = labels.get(LABEL_SANDBOX)?.clone();

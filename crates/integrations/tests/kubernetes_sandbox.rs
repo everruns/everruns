@@ -598,4 +598,17 @@ async fn the_orphan_scan_lists_stops_and_deletes_by_label() {
         .await
         .unwrap();
     assert_eq!(f.provider.list_owned("", &labels).await.unwrap().len(), 1);
+
+    // A claim Kubernetes is still tearing down (deletion timestamp set, held
+    // by its finalizer) is no longer owned.
+    {
+        let mut objects = f.cluster.state.objects.lock().unwrap();
+        let claim = objects
+            .iter_mut()
+            .find(|((kind, _), _)| kind == "persistentvolumeclaims")
+            .map(|(_, claim)| claim)
+            .expect("the paused sandbox keeps its claim");
+        claim["metadata"]["deletionTimestamp"] = json!("2026-11-15T00:00:00Z");
+    }
+    assert!(f.provider.list_owned("", &labels).await.unwrap().is_empty());
 }
