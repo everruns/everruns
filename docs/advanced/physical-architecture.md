@@ -56,7 +56,17 @@ Live session events (what a chat streams over SSE) are pushed from the instance 
 
 Run more than one control-plane instance only with NATS, and set `EXPECTED_INSTANCES` so an instance started without NATS falls back to polling instead of in-memory delivery. The system doctor flags a problem when several instances run and any of them uses in-memory delivery, because clients on one instance would miss events published through another.
 
-The NATS event stream is memory-backed and retains at most one hour of events, evicting oldest messages when its byte limit is reached. Set `NATS_EVENT_STREAM_MAX_BYTES` to a positive byte count to choose the limit for newly created streams; the default is 1 GiB. Size it below both the broker's JetStream memory budget and its container memory limit, leaving room for consumers, connections, and broker overhead. Existing streams are not rewritten by this setting; coordinate a stream or broker restart with all servers configured consistently. Memory-backed ephemeral deltas do not survive a broker restart, while durable events can be replayed from PostgreSQL.
+If `NATS_URL` is configured but startup connection attempts fail, the server retries
+in the background every 30 seconds (each attempt is bounded to 20 seconds), while
+continuing to serve through PostgreSQL polling. Once connected, it cycles existing
+polling SSE streams with a `disconnecting` notice. Clients reconnect with their
+last durable cursor, subscribe before replay, and deduplicate overlapping durable
+events. `/health` and the system doctor then report `nats` instead of `polling`.
+Deployments without `NATS_URL` remain on their selected fallback.
+
+Live session delivery uses Core NATS pub/sub, not a retained JetStream event stream.
+Durable events are replayed from PostgreSQL. Token deltas remain best-effort,
+including during reconnects; completed messages remain in durable session history.
 
 NATS also carries task notifications: `task.available.{activity_type}` subjects replace PG `NOTIFY` for worker wakeup, dropping notification latency from about 30 ms to about 1 ms. Only the control plane connects to NATS; workers talk to the server via gRPC.
 

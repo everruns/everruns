@@ -59,6 +59,7 @@ pub struct AppState {
     task_broadcaster: Option<Arc<crate::live_updates::task_notifications::TaskBroadcaster>>,
     /// Event delivery backend name for health endpoint
     event_delivery_backend: String,
+    event_delivery: Option<crate::live_updates::event_delivery::EventDelivery>,
 }
 
 impl_auth_state!(AppState);
@@ -107,7 +108,17 @@ impl AppState {
             auth,
             task_broadcaster,
             event_delivery_backend,
+            event_delivery: None,
         }
+    }
+
+    /// Track backend recovery instead of keeping only the startup backend name.
+    pub fn with_event_delivery(
+        mut self,
+        delivery: crate::live_updates::event_delivery::EventDelivery,
+    ) -> Self {
+        self.event_delivery = Some(delivery);
+        self
     }
 
     /// Get a reference to the metrics collector (for Prometheus bridge).
@@ -997,7 +1008,13 @@ pub async fn get_health(
     })?;
 
     Ok(Json(
-        HealthResponse::from(health).with_event_delivery(state.event_delivery_backend.clone()),
+        HealthResponse::from(health).with_event_delivery(
+            state
+                .event_delivery
+                .as_ref()
+                .map(|delivery| delivery.backend_name().to_string())
+                .unwrap_or_else(|| state.event_delivery_backend.clone()),
+        ),
     ))
 }
 

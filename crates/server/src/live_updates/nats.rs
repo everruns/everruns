@@ -22,10 +22,10 @@
 // cause behind "Failed to connect to NATS".
 //
 // Decision: the first connection is retried a few times with backoff before
-// giving up. Callers fall back to in-memory event delivery and PG NOTIFY and
-// never retry NATS for the life of the process, so one refused connect while
-// NATS restarts alongside the control plane pinned the instance to the
-// fallback until its next restart (Sentry EVERRUNS-4). The retry is bounded
+// returning an error. Event delivery keeps serving through PostgreSQL polling
+// and retries in the background; other callers retain their own fallback policy.
+// A refused connect during coordinated startup must not permanently pin event
+// delivery to polling (Sentry EVERRUNS-4). Each connection attempt is bounded
 // rather than async-nats' `retry_on_initial_connect`, which would hide a
 // misconfigured `NATS_URL` behind a client that never connects.
 
