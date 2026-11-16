@@ -1306,3 +1306,16 @@ mod tests;
 fn session_scoped_id(session: SessionId, purpose: &[u8]) -> uuid::Uuid {
     uuid::Uuid::new_v5(&session.uuid(), purpose)
 }
+
+#[cfg(feature = "personal-browser")]
+impl Agent {
+    pub(crate) fn declared_client_tools(
+        &self,
+    ) -> Vec<everruns_contracts::tool_types::ToolDefinition> {
+        self.client_tools
+            .iter()
+            .cloned()
+            .map(everruns_contracts::tool_types::ToolDefinition::ClientSide)
+            .collect()
+    }
+}

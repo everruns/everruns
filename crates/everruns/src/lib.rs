@@ -640,13 +640,6 @@ pub mod browser {
     };
 }
 
-/// Session-owned upstream Browse process primitives for trusted hosts.
-/// This does not install/pair an extension or register a model-facing tool.
-/// Hosts must bridge handoff results to their durable, authenticated client-tool
-/// workflow and treat process loss as interrupted, never as human approval.
+/// Durable session-scoped personal browser tools and host coordinator.
 #[cfg(feature = "personal-browser")]
-pub mod personal_browser {
-    pub use everruns_integrations::personal_browser::{
-        BrowseError, BrowseProcessConfig, BrowseState, BrowseSupervisor, HandoffOutcome,
-    };
-}
+pub mod personal_browser;

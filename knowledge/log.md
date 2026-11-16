@@ -2,6 +2,8 @@
 
 ## 2026-11-16
 
+- Added authority-backed personal-browser dispatch and session-only coordinator tools; documented atomic completion, interrupted-action non-replay, and the upstream single-user shared lent-tab trust boundary. Extension UI qualification remains separate.
+
 - Added partial personal Browse supervisor primitives and documented the still-required durable host bridge and extension UI; verified isolated direct-browser TLS and full Yolop runtime behavior locally.
 
 - [Host-owned browser sessions](integrations/browser-sessions.md): separate browser action semantics from transport, target ownership and network authority; preserve hosted Browserless egress controls.

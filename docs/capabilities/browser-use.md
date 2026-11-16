@@ -87,39 +87,44 @@ personal-browser tab lending or human handoff. Reconnecting the transport does
 not prove that an interrupted click or submission failed: inspect the page and
 reconcile the result rather than blindly repeating it.
 
-## Personal-browser host primitives (experimental)
+## Personal-browser coordinator (experimental)
 
 The separate Framework `personal-browser` feature exposes
-`everruns::personal_browser::BrowseSupervisor` for a host-managed, pinned
-[OpenCode Browse](https://github.com/anomalyco/browse) executable. It retains one
-initialized stdio process per session, with owner checks, bounded messages and
-requests, cancellation cleanup and typed upstream handoff outcomes.
+`everruns::personal_browser::PersonalBrowserCoordinator`, backed by a persistent
+[OpenCode Browse](https://github.com/anomalyco/browse) process per session.
+The trusted host supplies a pinned executable, authorizes the destination
+session and enables its tools with `enable_session`. Extension installation,
+pairing and lending remain explicit upstream browser-side operations. Transport
+readiness alone does not mean the extension is paired.
 
-This is **not** a ready-made personal-browser capability: it does not install or
-pair the extension, register model tools, provide a Yolop pairing UI, or persist
-a durable handoff bridge. Extension tab lending and revocation still apply.
-The direct-CDP capability above deliberately does not attach personal profiles.
+The coordinator exposes `personal_browser_status`, `personal_browser_tabs`,
+`personal_browser_handoff`, and narrow navigation, snapshot, ref-based click,
+fill, press, scroll and screenshot tools. It does not expose arbitrary JavaScript,
+selectors, file uploads, filesystem output or upstream administrative tools.
+The host must run `run_pending` outside the agent execution worker when calls
+arrive and after restart, and schedule another pass at `next_check_at_ms` when a
+live peer owns a claim. Call `close_session` during host cleanup. Prefer
+session-only `enable_session` over declaring tools on an Agent shared by children.
 
-```rust
-use everruns::personal_browser::{BrowseProcessConfig, BrowseSupervisor};
+Authority-backed dispatch claims bind the exact session, turn, call, arguments,
+worker and resolution ID before sending any browser action. A lost claim reply,
+process death or expired worker is interrupted/unknown, not permission to replay
+an action. Completion and durable tool resolution are recorded atomically.
+Only upstream's continued handoff outcome is successful; stopping, timeout and
+closed-tab outcomes remain distinct failures. Re-observe the page after handoff.
+The pinned extension's handoff card has **Continue**, not a Cancel button.
 
-// `session` is the Framework session owned by this authenticated host request.
-let owner = session.session_id().uuid();
-let browse = BrowseSupervisor::start(
-    owner,
-    BrowseProcessConfig::new("/absolute/path/to/verified/browse"),
-).await?;
-let tools = browse.list_tools(owner).await?;
-// Host controls routing and explicit tool exposure; no model-supplied process config.
-browse.close().await;
-```
+Personal mode is a **single-user trust domain**, not hostile-tenant isolation.
+Upstream process ownership separates agent-created tabs, but user-lent tabs are
+shared with connected agents in the same Browse profile. Session opt-in does not
+strengthen that upstream lending boundary. Use separate profiles/trust domains
+or the isolated direct-CDP backend where this sharing is inappropriate.
 
-A host may bridge the supervisor's `handoff` future to existing Framework durable
-client-tool waits and `resolve_tools`, but must persist its own dispatch/result
-state and authenticate the destination session. Process loss, cancellation or
-an ambiguous mutation is interrupted/unknown, never implicit human approval or
-permission to replay. Supervisor protocol tests alone do not verify extension
-pairing, personal tab isolation or the complete human interaction.
+No extension is installed and no personal profile is opened automatically.
+Hosts must protect pairing credentials, authenticate session routing, bound
+process counts and enforce their own tool-approval policy. Neither protocol
+fixtures nor durable authority tests establish actual extension pairing or human
+UX; those require a disposable-profile end-to-end test.
 
 ## Tools
 

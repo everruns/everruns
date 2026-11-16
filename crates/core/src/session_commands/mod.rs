@@ -9,8 +9,10 @@ mod approval_outcome;
 pub use approval_outcome::ApprovalOutcome;
 mod causal;
 mod configuration;
+mod dispatch;
 pub mod history;
 mod resolution;
+pub use dispatch::*;
 #[cfg(test)]
 mod tests;
 pub use approval::ApprovalCommit;
@@ -81,6 +83,56 @@ pub enum SessionCommand {
         turn: TurnId,
         approvals: Vec<ApprovalCommit>,
         results: Vec<ToolCompletedData>,
+    },
+    /// Atomically reserve an exact pending external client call. Never reassigns.
+    BeginClientDispatch {
+        /// Stable command UUID (completion/interruption use the retained resolution UUID).
+        id: String,
+        /// Exact requesting turn.
+        turn: TurnId,
+        /// Canonical pending call, including exact name and arguments.
+        call: ToolCall,
+        /// Authenticated host worker incarnation; never inferred from model input.
+        owner: uuid::Uuid,
+        /// Separate stable terminal-resolution UUID retained before dispatch.
+        resolution_id: uuid::Uuid,
+        /// Future authority-clock deadline, at most one hour away.
+        deadline_ms: i64,
+    },
+    /// Commit the verified terminal result and resolve its exact wait atomically.
+    CompleteClientDispatch {
+        /// Stable command UUID (completion/interruption use the retained resolution UUID).
+        id: String,
+        /// Exact requesting turn.
+        turn: TurnId,
+        /// Canonical pending tool call ID.
+        call_id: String,
+        /// Authenticated host worker incarnation; never inferred from model input.
+        owner: uuid::Uuid,
+        /// Claim UUID returned by begin; rejects stale or conflicting owners.
+        fence: uuid::Uuid,
+        /// Verified tool result for the exact pending call.
+        result: Box<ToolCompletedData>,
+    },
+    /// Retire a claim as unknown outcome, without ever authorizing redispatch.
+    InterruptClientDispatch {
+        /// Stable command UUID (completion/interruption use the retained resolution UUID).
+        id: String,
+        /// Exact requesting turn.
+        turn: TurnId,
+        /// Canonical pending tool call ID.
+        call_id: String,
+        /// Authenticated host worker incarnation; never inferred from model input.
+        owner: uuid::Uuid,
+        /// Claim UUID returned by begin; rejects stale or conflicting owners.
+        fence: uuid::Uuid,
+    },
+    /// Read a retained claim without creating receipts or activation obligations.
+    InspectClientDispatch {
+        /// Exact requesting turn.
+        turn: TurnId,
+        /// Canonical pending tool call ID.
+        call_id: String,
     },
     Cancel {
         id: String,
@@ -160,6 +212,12 @@ pub struct CommandView {
     /// Branch facts, captured only by authorities that support selection.
     #[serde(default)]
     pub history: Option<history::HistoryView>,
+    /// Adapters opt in only after capturing dispatch records under their transaction.
+    #[serde(default)]
+    pub dispatch_supported: bool,
+    /// Claim records captured under the same authority transaction.
+    #[serde(default)]
+    pub dispatches: Vec<ClientDispatchRecord>,
 }
 
 impl CommandView {
@@ -186,6 +244,8 @@ impl CommandView {
             terminal: false,
             rejected: false,
             history: None,
+            dispatch_supported: false,
+            dispatches: Vec::new(),
         }
     }
 }
@@ -252,7 +312,11 @@ impl SessionCommand {
     /// Lookup before validating deadlines; an accepted retry returns its original reply.
     pub fn key(&self) -> Option<String> {
         Some(match self {
-            Self::Create { .. } => return None,
+            Self::Create { .. } | Self::InspectClientDispatch { .. } => return None,
+            Self::BeginClientDispatch { id, .. } => format!("client_dispatch:{id}"),
+            Self::CompleteClientDispatch { id, .. } | Self::InterruptClientDispatch { id, .. } => {
+                format!("client_dispatch_resolution:{id}")
+            }
             Self::RetryExecution { id, .. } => format!("execution_retry:{id}"),
             Self::Admit { message, .. } => message.id.to_string(),
             Self::Configure { id, .. } => format!("configuration:{id}"),
@@ -268,6 +332,12 @@ impl SessionCommand {
     }
     pub fn fingerprint(&self) -> Value {
         match self {
+            Self::BeginClientDispatch { .. }
+            | Self::CompleteClientDispatch { .. }
+            | Self::InterruptClientDispatch { .. }
+            | Self::InspectClientDispatch { .. } => {
+                json!(self)
+            }
             Self::Create { binding } => binding.clone(),
             Self::RetryExecution { binding, .. } => binding.clone(),
             Self::Admit {
@@ -369,7 +439,10 @@ pub fn prepare(
         replay: false,
     };
     let identity = match &command {
-        SessionCommand::Configure { id, .. }
+        SessionCommand::BeginClientDispatch { id, .. }
+        | SessionCommand::CompleteClientDispatch { id, .. }
+        | SessionCommand::InterruptClientDispatch { id, .. }
+        | SessionCommand::Configure { id, .. }
         | SessionCommand::RetryExecution { id, .. }
         | SessionCommand::Seed { id, .. }
         | SessionCommand::Approve { id, .. }
@@ -394,8 +467,8 @@ pub fn prepare(
     if !matches!(command, SessionCommand::Create { .. }) && view.binding.is_none() {
         return Err(AgentLoopError::SessionNotFound(view.session).into());
     }
-    if let Some(previous) = view.previous {
-        let mut fingerprint = previous.fingerprint;
+    if let Some(previous) = &view.previous {
+        let mut fingerprint = previous.fingerprint.clone();
         if matches!(command, SessionCommand::Admit { .. }) {
             // Normalize old retained receipts too; journals predating this
             // feature may already contain arbitrary metadata at this key.
@@ -406,7 +479,12 @@ pub fn prepare(
                 "command identity reused with different input",
             ));
         }
-        plan.reply = previous.value;
+        plan.reply = previous.value.clone();
+        // Freshness is delivery metadata, not part of the immutable business
+        // receipt: retrying a lost claim response must never authorize replay.
+        if matches!(command, SessionCommand::BeginClientDispatch { .. }) {
+            plan.reply["fresh"] = json!(false);
+        }
         plan.replay = true;
         return Ok(plan);
     }
@@ -416,6 +494,12 @@ pub fn prepare(
     let now = UtcTimestamp::from_timestamp_millis(view.now_ms)
         .ok_or_else(|| invalid("invalid authority clock"))?;
     match command {
+        command @ (SessionCommand::BeginClientDispatch { .. }
+        | SessionCommand::CompleteClientDispatch { .. }
+        | SessionCommand::InterruptClientDispatch { .. }
+        | SessionCommand::InspectClientDispatch { .. }) => {
+            dispatch::prepare_dispatch(command, &view, &mut plan, now)?;
+        }
         SessionCommand::RetryExecution { binding, .. } => {
             // THREAT[TM-DURABLE-012]: this is a retry of restored trusted code,
             // never a build migration or a way around uncertain external effects.
@@ -732,6 +816,15 @@ pub fn prepare(
                         .name
                         .clone();
                 }
+            }
+            if results.iter().any(|result| {
+                view.dispatches
+                    .iter()
+                    .any(|record| record.turn == turn && record.call.id == result.tool_call_id)
+            }) {
+                return Err(CommandError::Conflict(
+                    "claimed client tool requires dispatch completion",
+                ));
             }
             if !results.is_empty() {
                 validate_tool_resolutions(&results, &view.pending, now)?;

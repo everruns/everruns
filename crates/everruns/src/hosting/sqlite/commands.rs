@@ -16,7 +16,9 @@ impl SqliteHosting {
             } else {None};
             let input=if let SessionCommand::Cancel{input,..}=&command {Some(*input)}else{None};
             let assignment=input.map(|input|object::<super::super::TurnAssignment>(tx,session,"framework",&format!("assignment/{input}"))).transpose()?.flatten().map(|a|a.turn_id);
-            let view=CommandView {
+            let dispatches = command.client_dispatch_keys(state.open.map(|(turn,_)|turn), &state.pending).into_iter()
+                .map(|key|object(tx,session,"framework",&key)).collect::<Result<Vec<Option<session_commands::ClientDispatchRecord>>>>()?.into_iter().flatten().collect();
+            let view=CommandView { dispatch_supported:true, dispatches,
                 session,now_ms:now() as i64,binding:state.binding.as_ref().map(|b|json!(b)),head:state.head,
                 execution_active:state.holder.is_some() && state.expires>now(),suspended:state.suspended,
                 suspension_reason:object::<Value>(tx,session,"framework","suspension")?.and_then(|v|v["reason"].as_str().map(str::to_owned)),

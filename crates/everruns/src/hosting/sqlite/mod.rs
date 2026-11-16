@@ -889,3 +889,6 @@ impl SessionHosting for SqliteHosting {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod dispatch_tests;

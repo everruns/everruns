@@ -81,7 +81,7 @@ evaluation = ["dep:futures", "dep:thiserror"]
 triggers = ["dep:rusqlite", "dep:thiserror", "dep:everruns-integrations", "everruns-integrations/event-webhooks", "dep:hmac", "dep:sha2", "dep:hex"]
 native-services = ["dep:anyhow"]
 cursor = ["native-services", "dep:everruns-integrations", "everruns-integrations/cursor"]
-personal-browser = ["dep:everruns-integrations", "everruns-integrations/personal-browser"]
+personal-browser = ["dep:url", "dep:everruns-integrations", "everruns-integrations/personal-browser"]
 direct-browser = ["native-services", "dep:everruns-integrations", "everruns-integrations/browserless"]
 browserless = ["native-services", "dep:everruns-integrations", "everruns-integrations/browserless"]
 e2b = ["native-services", "dep:everruns-integrations", "everruns-integrations/e2b"]
@@ -299,6 +299,7 @@ everruns-core = { workspace = true, default-features = false, features = ["host"
 everruns-llmsim.workspace = true
 
 [dev-dependencies]
+jsonschema = { version = "0.60.1", default-features = false }
 axum.workspace = true
 chrono.workspace = true
 # Verifies existing embedding callbacks keep their SQLite query type identity.
