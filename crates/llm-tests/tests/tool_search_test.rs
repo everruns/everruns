@@ -831,10 +831,11 @@ async fn test_openai_tool_reveal_keeps_prompt_cache(#[case] config: ProviderMode
 }
 
 /// Runs the reveal scenario once and returns the loop and the cache read of
-/// the first call that carried the revealed tool.
+/// the first call that carried the revealed tool, or `None` for the cache read
+/// when the model answered without revealing one.
 async fn tool_reveal_cache_read(
     config: &ProviderModelConfig,
-) -> Option<(InMemoryAgenticLoop, u32)> {
+) -> Option<(InMemoryAgenticLoop, Option<u32>)> {
     let system_prompt = long_cacheable_system_prompt();
     let (runner, result) = live_turn(config, "What is 21 + 21?", |model| {
         let system_prompt = system_prompt.clone();
@@ -884,7 +885,7 @@ async fn tool_reveal_cache_read(
 
     // Skip the first call: it starts the baseline. Any later call that
     // carries a reveal is the one whose cache the old layout lost.
-    let after_reveal = generations
+    let cache_read = generations
         .iter()
         .skip(1)
         .find(|data| {
@@ -893,13 +894,14 @@ async fn tool_reveal_cache_read(
                 .as_ref()
                 .is_some_and(|c| !c.added.is_empty() || !c.redefined.is_empty())
         })
-        .expect("a call after tool_search should carry the revealed tool");
-    let cache_read = after_reveal
-        .metadata
-        .usage
-        .as_ref()
-        .and_then(|usage| usage.cache_read_tokens)
-        .unwrap_or(0);
+        .map(|after_reveal| {
+            after_reveal
+                .metadata
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.cache_read_tokens)
+                .unwrap_or(0)
+        });
     Some((runner, cache_read))
 }
 
@@ -907,21 +909,36 @@ async fn assert_tool_reveal_keeps_prompt_cache(config: ProviderModelConfig) {
     // Provider prompt caching is best-effort: OpenAI routes by prefix hash and
     // can land a request on a machine without the entry (nightly 2026-11-11 saw
     // gpt-6-luna read 0 once, then 5049 on the next call). A layout regression
-    // misses on every attempt, so one retry keeps the signal without the flake.
-    const ATTEMPTS: usize = 2;
+    // misses on every attempt, so retrying keeps the signal without the flake.
+    // The model can also answer "21 + 21" itself without calling tool_search
+    // (Opus 5 on the 0.53.0 release gate, 2026-11-16): that attempt says
+    // nothing about the cache layout, so it is re-sampled too.
+    const ATTEMPTS: usize = 3;
     let mut last = None;
     for attempt in 1..=ATTEMPTS {
         let Some((runner, cache_read)) = tool_reveal_cache_read(&config).await else {
             return;
         };
-        if cache_read >= 4096 || attempt == ATTEMPTS {
-            last = Some((runner, cache_read));
-            break;
+        match cache_read {
+            Some(read) if read >= 4096 || attempt == ATTEMPTS => {
+                last = Some((runner, read));
+                break;
+            }
+            Some(read) => eprintln!(
+                "{}: attempt {attempt} read {read} cached tokens after the reveal; retrying",
+                config.label()
+            ),
+            None if attempt == ATTEMPTS => {
+                panic!(
+                    "{}: no call after tool_search carried the revealed tool in {ATTEMPTS} attempts",
+                    config.label()
+                )
+            }
+            None => eprintln!(
+                "{}: attempt {attempt} answered without revealing a tool; retrying",
+                config.label()
+            ),
         }
-        eprintln!(
-            "{}: attempt {attempt} read {cache_read} cached tokens after the reveal; retrying",
-            config.label()
-        );
     }
     let (runner, cache_read) = last.expect("at least one attempt ran");
     assert!(
