@@ -7,7 +7,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Creates a fresh key in your {label} account and replaces the current one. The old key keeps working until you revoke it in {label}.":
     "在你的 {label} 账户中创建新密钥并替换当前密钥。旧密钥在你于 {label} 中撤销之前仍然有效。",
   "Approve access in {label}. It creates a key for this provider, and Everruns stores it encrypted. Revoke it any time in your {label} account.":
-    "在 {label} 中批准访问。{label} 会为此提供商创建一个密钥，Everruns 会加密保存。你可以随时在 {label} 账户中撤销它。",
+    "在 {label} 中批准访问。系统会为此提供商创建一个密钥，Everruns 会加密保存。你可以随时在 {label} 账户中撤销它。",
   "You leave Everruns for a moment and come back here when you approve.":
     "你会暂时离开 Everruns，批准后返回此处。",
   "Paste a different API key": "粘贴其他 API 密钥",

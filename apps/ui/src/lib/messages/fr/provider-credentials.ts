@@ -7,7 +7,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Creates a fresh key in your {label} account and replaces the current one. The old key keeps working until you revoke it in {label}.":
     "Crée une nouvelle clé dans votre compte {label} et remplace l'actuelle. L'ancienne clé reste valide jusqu'à ce que vous la révoquiez dans {label}.",
   "Approve access in {label}. It creates a key for this provider, and Everruns stores it encrypted. Revoke it any time in your {label} account.":
-    "Autorisez l'accès dans {label}. {label} crée une clé pour ce fournisseur, qu'Everruns stocke chiffrée. Vous pouvez la révoquer à tout moment dans votre compte {label}.",
+    "Autorisez l'accès dans {label}. Une clé est créée pour ce fournisseur, et Everruns la stocke chiffrée. Vous pouvez la révoquer à tout moment dans votre compte {label}.",
   "You leave Everruns for a moment and come back here when you approve.":
     "Vous quittez Everruns un instant et revenez ici après avoir autorisé l'accès.",
   "Paste a different API key": "Coller une autre clé API",
