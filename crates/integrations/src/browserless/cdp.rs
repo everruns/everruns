@@ -12,6 +12,8 @@
 //!   [`BrowserEgress`]. A background reader answers paused requests while commands wait,
 //!   so a page keeps loading during waits and long commands.
 
+mod host_owned;
+
 use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
 use futures_util::{SinkExt, StreamExt};
@@ -82,6 +84,7 @@ pub struct CdpSession {
     page_target_id: String,
     page_session_id: String,
     browser_context_id: String,
+    guarded: bool,
 }
 
 impl Drop for CdpSession {
@@ -120,29 +123,32 @@ impl CdpSession {
     }
 
     async fn open_socket(ws_url: &str, egress: Option<Arc<BrowserEgress>>) -> Result<Self, String> {
-        // THREAT[TM-TOOL-017]: Redact token from log output to avoid leaking credentials
-        let redacted = if let Some(idx) = ws_url.find("token=") {
-            format!("{}token=<REDACTED>", &ws_url[..idx])
-        } else {
-            ws_url.to_string()
-        };
-        debug!("CDP connecting to {redacted}");
+        Self::open_socket_with_headers(ws_url, egress, &[]).await
+    }
+
+    async fn open_socket_with_headers(
+        ws_url: &str,
+        egress: Option<Arc<BrowserEgress>>,
+        headers: &[(String, String)],
+    ) -> Result<Self, String> {
+        // Endpoint paths, query strings and headers may all contain credentials.
+        debug!("CDP connecting to configured endpoint");
+        let guarded = egress.is_some();
 
         // Force HTTP/1.1 ALPN — WebSocket upgrade (RFC 6455) requires HTTP/1.1.
         // Without this, rustls may negotiate h2, and the proxy in front of
         // Browserless converts the upgrade into a plain GET, returning 400.
         let connector = build_http11_tls_connector()?;
 
-        let (ws_stream, _response) =
-            tokio::time::timeout(CDP_CONNECT_TIMEOUT, connect_with_proxy(ws_url, connector))
-                .await
-                .map_err(|_| {
-                    format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})")
-                })?
-                .map_err(|e| {
-                    debug!("CDP WebSocket connection error for {redacted}: {e}");
-                    e
-                })?;
+        let (ws_stream, _response) = tokio::time::timeout(
+            CDP_CONNECT_TIMEOUT,
+            connect_with_proxy(ws_url, connector, headers),
+        )
+        .await
+        .map_err(|_| format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})"))?
+        .inspect_err(|_| {
+            debug!("CDP WebSocket connection failed");
+        })?;
 
         let (sink, source) = ws_stream.split();
         let sink: SharedSink = Arc::new(tokio::sync::Mutex::new(sink));
@@ -168,6 +174,7 @@ impl CdpSession {
             page_target_id: String::new(),
             page_session_id: String::new(),
             browser_context_id: String::new(),
+            guarded,
         })
     }
 
@@ -458,15 +465,16 @@ impl CdpSession {
             std::mem::replace(&mut self.page_target_id, target_id.to_string()),
             std::mem::replace(&mut self.page_session_id, session_id),
         );
-        if let Err(error) = self
-            .send_page_command(
-                "Fetch.enable",
-                json!({
-                    "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
-                    "handleAuthRequests": false
-                }),
-            )
-            .await
+        if self.guarded
+            && let Err(error) = self
+                .send_page_command(
+                    "Fetch.enable",
+                    json!({
+                        "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
+                        "handleAuthRequests": false
+                    }),
+                )
+                .await
         {
             (self.page_target_id, self.page_session_id) = previous;
             return Err(format!("Could not arm the browser network guard: {error}"));
@@ -1201,10 +1209,20 @@ fn map_ws_connect_error(e: tokio_tungstenite::tungstenite::Error) -> String {
 async fn connect_with_proxy(
     ws_url: &str,
     connector: Connector,
+    headers: &[(String, String)],
 ) -> Result<(WsStream, Response<Option<Vec<u8>>>), String> {
-    let request = ws_url
+    let mut request = ws_url
         .into_client_request()
-        .map_err(|e| format!("Invalid WebSocket URL: {e}"))?;
+        .map_err(|_| "Invalid WebSocket URL".to_string())?;
+    for (name, value) in headers {
+        request.headers_mut().insert(
+            name.parse::<tokio_tungstenite::tungstenite::http::HeaderName>()
+                .map_err(|_| "Invalid CDP header name".to_string())?,
+            value
+                .parse()
+                .map_err(|_| "Invalid CDP header value".to_string())?,
+        );
+    }
     let uri = request.uri().clone();
     let host = uri
         .host()
@@ -1226,7 +1244,7 @@ async fn connect_with_proxy(
             .map_err(map_ws_connect_error);
     }
 
-    connect_async_tls_with_config(ws_url, None, false, Some(connector))
+    connect_async_tls_with_config(request, None, false, Some(connector))
         .await
         .map_err(map_ws_connect_error)
 }

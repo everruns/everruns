@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Experimental host primitives for a persistent, session-owned OpenCode Browse process, with bounded requests and typed handoff outcomes. Extension pairing UI and the durable host bridge are not included.
+- Opt-in host-owned Chromium browser sessions for Framework applications, with isolated session contexts, authenticated local or TLS remote CDP connections, and a repeatable local/container acceptance harness. Browser networking remains the sandbox host's responsibility.
+
 ## [0.53.1] - 2026-11-16
 
 Changelog: https://everruns.com/docs/changelog/2026-11-16-everruns-0-53-1/

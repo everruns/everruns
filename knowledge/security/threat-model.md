@@ -2231,3 +2231,24 @@ See [Native Extraction Services](../operations/extractions-service.md).
 
 See [Framework application boundaries](../framework/application-api.md) and the
 [acceptance tests](../../crates/everruns/tests/service_parity.rs).
+
+## Host-owned browser boundary
+
+| ID | Threat | Mitigation |
+| --- | --- | --- |
+| TM-BROWSER-001 | A model supplies a CDP endpoint or credentials, or transport errors leak credentials | Endpoint and headers are trusted host-only configuration, never tool arguments. Config Debug and connection errors are redacted. Remote endpoints require TLS; plaintext is limited to literal loopback. The host must authenticate its endpoint and protect its configuration. |
+| TM-BROWSER-002 | Sessions share cookies, tabs or a personal default profile | Create a dedicated Chromium browser context per session, retain context ownership in the host, filter/validate targets by context, serialize actions per session and dispose only owned contexts. Browser contexts are logical isolation, not an OS or mutually hostile-tenant security boundary. |
+| TM-BROWSER-003 | Browser requests reach host/sandbox private services | Explicit BrowserOwned mode assigns all navigation, subresource and WebSocket egress to the browser host. The hosted Browserless interceptor is not silently reused or weakened. Host sandbox/firewall policy is required; allowing sandbox localhost is intentional. |
+| TM-BROWSER-004 | Reconnect silently replays a mutation or resumes with stale ownership | A persisted marker detects a lost in-memory context owner and refuses replacement. Do not blindly replay an interrupted click/submission; reconcile its outcome. Browser lifetime and session-end cleanup are host responsibilities. This backend does not provide personal-profile lending or durable human approval. |
+
+See [browser session design](../integrations/browser-sessions.md) and
+[acceptance harness](../../scripts/browser-acceptance/README.md). Loopback/container
+acceptance is not evidence of production TLS, remote-provider or hostile-tenant isolation.
+
+## Personal browser supervisor boundary
+
+| ID | Threat | Mitigation |
+| --- | --- | --- |
+| TM-BROWSER-005 | Process pooling or forged metadata borrows another personal browser owner | Trusted host starts one persistent upstream MCP process per full session UUID, checks owner on every tool/handoff call and never accepts caller MCP metadata. Extension lending and authenticated host routing remain necessary; this is not tenant isolation by itself. |
+| TM-BROWSER-006 | Malformed/oversized subprocess output, credentials in logs, or ambiguous cancellation | Bound frames, requests, queue and timeout; inherit only required environment names, redact configuration/errors, discard subprocess stderr, terminate/reap on cancellation/protocol loss without restart/replay. Host caps total process count and supplies a verified executable. Page data remains sensitive to the session. |
+| TM-BROWSER-007 | Fake approval substitutes for human browser continuation | Typed handoff results come from the upstream protocol, not page text or a generic approval. The durable authenticated host bridge is not yet implemented; process loss must be interrupted/unknown and never successful continuation. |

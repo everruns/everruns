@@ -117,3 +117,5 @@ same configuration as `computer_use`.
 - On Daytona, every action goes through the sandbox's Computer Use API, so
   typed text and key names reach the desktop as data and never pass through a
   shell, and `zoom` returns the region at its own size.
+
+Browser keyboard contract: `ctrl+a` and `meta+a` (`cmd+a` / `super+a`) mean **Select All** across local and remote browser operating systems. These two shortcuts send an explicit browser editing command. Other key chords retain their literal modifier/key semantics.

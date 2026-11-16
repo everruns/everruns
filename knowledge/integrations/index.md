@@ -1,5 +1,7 @@
 # MCP, integrations, and apps
 
+* [Host-owned browser sessions](browser-sessions.md) - Shared browser actions, isolated contexts, host-owned transport and browser-side network authority.
+
 * [Slack Response Policy](slack-response-policy.md) - Decide whether an agent should participate before starting a turn.
 
 * [MCP (Model Context Protocol) Specification](mcp.md) - MCP server endpoint, OAuth 2.1 authentication, protocol, security.
@@ -45,3 +47,5 @@
 * [Model Router Specification](model-router.md) - Model Routers.
 
 * [Work Chat Channels](work-chat.md) - Published consumer work experiences and qualified interface modes.
+
+* [Personal browser pairing and handoff (proposed)](personal-browser.md) - Persistent per-session Browse ownership and durable handoff design; not implemented.

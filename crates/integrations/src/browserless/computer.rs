@@ -424,6 +424,12 @@ impl CdpDisplay {
             "nativeVirtualKeyCode": key.virtual_key,
             "modifiers": modifiers
         });
+        // CDP synthetic shortcuts do not run native edit commands on macOS.
+        // The tool's Ctrl+A / Meta+A contract is OS-neutral Select All, including
+        // remote browsers whose platform differs from the executor's platform.
+        if select_all_command(kind, &key.code, modifiers) {
+            params["commands"] = json!(["selectAll"]);
+        }
         if let Some(text) = text {
             params["text"] = json!(text);
             params["unmodifiedText"] = json!(text);
@@ -433,6 +439,10 @@ impl CdpDisplay {
             .await
             .map(|_| ())
     }
+}
+
+fn select_all_command(kind: &str, code: &str, modifiers: u8) -> bool {
+    kind == "keyDown" && code == "KeyA" && matches!(modifiers, 2 | 4)
 }
 
 /// CDP modifier bitmask: Alt=1, Ctrl=2, Meta=4, Shift=8.
