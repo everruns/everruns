@@ -199,7 +199,6 @@ Authority tests and protocol fixtures cover failure/retry boundaries separately
 from real-extension UX. Record actual end-to-end results before claiming full
 pairing, lending, revocation or human-interaction qualification.
 
-
 ## Disposable extension qualification status
 
 The checked-in [extension harness](../../scripts/browser-acceptance/EXTENSION_E2E.md)
