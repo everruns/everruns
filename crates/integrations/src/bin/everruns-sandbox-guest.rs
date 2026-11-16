@@ -8,9 +8,19 @@
 //! With arguments after `--`, the guest also starts that command (the image's
 //! own entrypoint) and keeps serving while it runs.
 
+#[cfg(unix)]
 use everruns_contracts::sandbox_guest::GUEST_PORT;
+#[cfg(unix)]
 use everruns_integrations::sandbox_guest::server::{config_from_env, router};
 
+// The guest runs inside a Linux sandbox; see `sandbox_guest::server`.
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("everruns-sandbox-guest runs only on Unix");
+    std::process::exit(2);
+}
+
+#[cfg(unix)]
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
