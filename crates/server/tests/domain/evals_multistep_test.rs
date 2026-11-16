@@ -213,3 +213,52 @@ async fn try_once_runs_only_the_selected_case() {
     );
     assert!(results[0]["session_id"].is_null(), "{done}");
 }
+
+/// EVE-1348: a session target with no harness resolves it the way session
+/// creation does instead of erroring every case before it starts.
+#[tokio::test]
+async fn run_without_target_harness_uses_default_harness() {
+    let server = TestServer::in_memory().await;
+    let eval: Value = server
+        .post(
+            "/v1/evals",
+            json!({"name": "org default harness", "target": {"type": "session"}}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let eval_id = eval["id"].as_str().unwrap();
+    server
+        .post(
+            &format!("/v1/evals/{eval_id}/cases"),
+            json!({
+                "name": "scripted",
+                "conversation": [{"content": "hello"}],
+                "scorers": [],
+                "timeout_seconds": 1,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let run: Value = server
+        .post(&format!("/v1/evals/{eval_id}/runs"), json!({}))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let path = format!("/v1/evals/{eval_id}/runs/{}", run["id"].as_str().unwrap());
+    let mut done = Value::Null;
+    for _ in 0..80 {
+        done = server.get(&path).await.assert_status(StatusCode::OK).json();
+        if done["status"] != "running" && done["status"] != "pending" {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    let results = done["results"].as_array().unwrap();
+    assert_eq!(results.len(), 1, "{done}");
+    let error = results[0]["error_message"].as_str().unwrap_or_default();
+    assert!(!error.contains("harness"), "{done}");
+    // The case got as far as a session on the resolved harness.
+    assert!(results[0]["session_id"].is_string(), "{done}");
+}

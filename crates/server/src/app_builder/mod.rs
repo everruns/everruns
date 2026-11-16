@@ -801,6 +801,11 @@ impl ServerAppBuilder {
                 provider_resolver.clone(),
             ),
             queue: Default::default(),
+            fallback_harness_name: crate::domains::harnesses::record::harness_for_role(
+                &built_in_harnesses,
+                crate::domains::harnesses::record::BuiltInHarnessRole::Default,
+            )
+            .map(|h| h.name.clone()),
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
             .with_run_context(eval_run_ctx.clone());
