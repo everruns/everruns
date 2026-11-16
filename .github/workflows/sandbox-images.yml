@@ -148,15 +148,16 @@ jobs:
           rustup target add "$target"
           cargo build --locked --release -p everruns-integrations --features sandbox-guest \
             --bin everruns-sandbox-guest --target "$target"
-          mkdir -p out
-          cp "target/$target/release/everruns-sandbox-guest" out/
+          # docker/sandbox/Dockerfile copies bin/<TARGETARCH>/everruns-sandbox-guest.
+          mkdir -p "out/$ARCH"
+          cp "target/$target/release/everruns-sandbox-guest" "out/$ARCH/"
 
       # Names differ from docker-publish's `bin-*` artifacts: a called
       # workflow shares the caller's artifact namespace.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sandbox-guest-${{ matrix.arch }}
-          path: out/everruns-sandbox-guest
+          path: out/
           retention-days: 1
 
   # Built natively per architecture: the images install toolchains with apt
