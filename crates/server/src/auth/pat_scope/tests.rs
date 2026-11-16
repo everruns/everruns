@@ -93,6 +93,7 @@ fn monitoring_preserves_scoped_token_denial() {
         "/v1/durable/monitoring/actors",
         "/v1/durable/monitoring/actors/{session_id}",
         "/v1/durable/monitoring/cells",
+        "/v1/durable/monitoring/cells/{cell}/detail",
     ] {
         let access = classify(&Method::GET, path).unwrap();
         assert_eq!(access, RouteAccess::Never);

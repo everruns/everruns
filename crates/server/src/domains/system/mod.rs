@@ -4,6 +4,7 @@ use everruns_core::{Policy, Rule};
 
 pub mod commands;
 pub mod doctor;
+pub mod monitoring_detail;
 pub mod queries;
 pub mod types;
 

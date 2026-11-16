@@ -85,6 +85,20 @@ load, CPU and memory, and turns over the range. Cells need no metrics database:
 the reports travel the cell's existing feed and are kept with the rest of the
 history.
 
+For a closer look, point the server at a Prometheus-compatible store
+(VictoriaMetrics or Prometheus) that scrapes the cells' `/metrics`:
+
+```bash
+MONITORING_DETAIL=prometheus
+MONITORING_DETAIL_URL=http://victoriametrics:8428
+```
+
+The selected cell then also shows its last hour by node, every 10 seconds:
+turns running and memory. The address is read from the environment only. Without
+it, or when the store does not answer, the tab says why and keeps the minute
+history. **System → Health** reports whether the minute history is still being
+recorded and whether the detail store answers.
+
 History from before recording started is rebuilt from turn records and drawn in
 grey: it has running turns and outcomes, but no phase split, queue, or worker
 load. Samples are taken every 10 seconds, so a spike shorter than that can be

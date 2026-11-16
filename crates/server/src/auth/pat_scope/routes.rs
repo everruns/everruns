@@ -400,6 +400,7 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("GET", "/v1/durable/monitoring/timeline", Never),
     ("GET", "/v1/durable/monitoring/timeline/window", Never),
     ("GET", "/v1/durable/monitoring/cells", Never),
+    ("GET", "/v1/durable/monitoring/cells/{cell}/detail", Never),
     ("GET", "/v1/durable/schedules", Read),
     ("POST", "/v1/durable/schedules", Write),
     ("DELETE", "/v1/durable/schedules/{schedule_id}", Write),

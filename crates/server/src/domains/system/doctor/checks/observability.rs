@@ -2,10 +2,77 @@ use super::Findings;
 use crate::domains::system::doctor::{
     CheckArea, CheckStatus, DoctorCheck, SystemDoctor, last_metrics_scrape,
 };
-use chrono::Utc;
+use crate::domains::system::monitoring_detail::{self, DetailConfig};
+use chrono::{DateTime, Utc};
 use std::time::Duration;
 
 const AREA: CheckArea = CheckArea::Observability;
+
+/// The timeline sampler records a minute every minute; ten without one is a
+/// stopped sampler, not a slow one.
+const HISTORY_SILENCE: chrono::TimeDelta = chrono::TimeDelta::minutes(10);
+
+/// Monitoring's minute history in PostgreSQL.
+fn history_check(
+    (oldest, newest): (Option<DateTime<Utc>>, Option<DateTime<Utc>>),
+    now: DateTime<Utc>,
+) -> DoctorCheck {
+    let check = DoctorCheck::new(
+        AREA,
+        "observability.monitoring_history",
+        "Monitoring history",
+    );
+    match (oldest, newest) {
+        (Some(_), Some(newest)) if now - newest > HISTORY_SILENCE => check
+            .warning(format!(
+                "Monitoring history stopped at {}.",
+                newest.format("%Y-%m-%d %H:%M UTC")
+            ))
+            .why("The Timeline shows a gap from then on, so load and errors go unrecorded.")
+            .fix("Check the monitoring-timeline background job in the server logs."),
+        (Some(oldest), Some(_)) => check.ok(format!(
+            "Recorded every minute since {}, kept permanently.",
+            oldest.format("%Y-%m-%d")
+        )),
+        _ => check.info(
+            "No Monitoring history yet: the server records one row a minute once it has run a minute.",
+        ),
+    }
+}
+
+async fn detail_probe(config: &DetailConfig) -> Option<Result<(), String>> {
+    match config {
+        DetailConfig::Prometheus { url } => Some(monitoring_detail::probe(url).await),
+        _ => None,
+    }
+}
+
+/// The optional 10-second detail store.
+fn detail_check(config: &DetailConfig, probe: Option<Result<(), String>>) -> DoctorCheck {
+    let check = DoctorCheck::new(AREA, "observability.monitoring_detail", "Monitoring detail");
+    let host = config.display_host().unwrap_or_default();
+    match (config, probe) {
+        (DetailConfig::Off, _) => check.info(
+            "Monitoring keeps one-minute history in PostgreSQL. To add 10-second cell detail, \
+             set MONITORING_DETAIL=prometheus and MONITORING_DETAIL_URL to VictoriaMetrics or \
+             Prometheus.",
+        ),
+        (DetailConfig::Invalid(why), _) => check
+            .warning(format!("Monitoring detail is misconfigured: {why}."))
+            .why("The Cells tab shows minute history only.")
+            .fix("Set MONITORING_DETAIL=prometheus with an http(s) MONITORING_DETAIL_URL, or unset both."),
+        (DetailConfig::Prometheus { .. }, Some(Ok(()))) => {
+            check.ok(format!("Reads 10-second cell detail from {host}."))
+        }
+        (DetailConfig::Prometheus { .. }, probe) => check
+            .warning(format!(
+                "{host} did not answer: {}.",
+                probe.and_then(Result::err).unwrap_or_else(|| "not probed".into())
+            ))
+            .why("The Cells tab shows minute history only, without per-node detail.")
+            .fix("Check that the store is up and that MONITORING_DETAIL_URL points at its query API."),
+    }
+}
 
 /// Prometheus scrapes every 15 to 60 seconds; five minutes of silence means
 /// nothing is scraping.
@@ -67,6 +134,30 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
              your tracing backend.",
         )
     });
+
+    let (extent, cells, probe) = tokio::join!(
+        doctor.db.monitoring_history_extent(),
+        doctor.db.monitoring_cells_latest(),
+        detail_probe(DetailConfig::from_env()),
+    );
+    let now = Utc::now();
+    if let Ok(extent) = extent {
+        found.check(history_check(extent, now));
+    }
+    if let Ok(cells) = cells {
+        let reporting = cells
+            .iter()
+            .filter(|c| now - c.minute <= chrono::TimeDelta::minutes(3))
+            .count();
+        if reporting > 0 {
+            found.fact(super::plural(
+                reporting,
+                "cell reporting",
+                "cells reporting",
+            ));
+        }
+    }
+    found.check(detail_check(DetailConfig::from_env(), probe));
 
     found.check(detection_check(doctor));
     found.check(classifier_check(doctor));
@@ -215,4 +306,38 @@ fn inspector_check(doctor: &SystemDoctor) -> DoctorCheck {
         "The last sweep wrote up {} findings.",
         sweep.written
     ))
+}
+
+#[cfg(test)]
+mod monitoring_tests {
+    use super::*;
+    use crate::domains::system::doctor::CheckStatus;
+
+    #[test]
+    fn history_is_ok_while_minutes_arrive_and_warns_when_they_stop() {
+        let now = Utc::now();
+        let day = chrono::TimeDelta::days(1);
+        assert_eq!(history_check((None, None), now).status, CheckStatus::Info);
+        let live = history_check((Some(now - day), Some(now)), now);
+        assert_eq!(live.status, CheckStatus::Ok);
+        let stopped = history_check((Some(now - day), Some(now - HISTORY_SILENCE * 2)), now);
+        assert_eq!(stopped.status, CheckStatus::Warning);
+    }
+
+    #[test]
+    fn detail_is_optional_and_a_dead_store_warns() {
+        assert_eq!(
+            detail_check(&DetailConfig::Off, None).status,
+            CheckStatus::Info
+        );
+        let bad = DetailConfig::Invalid("MONITORING_DETAIL_URL is not set".into());
+        assert_eq!(detail_check(&bad, None).status, CheckStatus::Warning);
+        let vm = DetailConfig::Prometheus {
+            url: "http://vm:8428".into(),
+        };
+        assert_eq!(detail_check(&vm, Some(Ok(()))).status, CheckStatus::Ok);
+        let down = detail_check(&vm, Some(Err("connection refused".into())));
+        assert_eq!(down.status, CheckStatus::Warning);
+        assert!(down.summary.contains("http://vm:8428"), "{}", down.summary);
+    }
 }

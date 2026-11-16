@@ -123,6 +123,11 @@ services:
       SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV: ${SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV:-false}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Optional 10-second cell detail in Monitoring, read from a Prometheus-compatible
+      # store. With the `metrics` profile: MONITORING_DETAIL=prometheus and
+      # MONITORING_DETAIL_URL=http://victoriametrics:8428. Minute history needs neither.
+      MONITORING_DETAIL: ${MONITORING_DETAIL:-}
+      MONITORING_DETAIL_URL: ${MONITORING_DETAIL_URL:-}
       AUTH_MODE: ${AUTH_MODE:-admin}
       # Public origin people and webhooks reach (https://agents.example.com).
       # Empty means http://localhost:9300.

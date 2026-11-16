@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MonitoringCellsView } from "@/components/monitoring/cells";
-import { getMonitoringCells } from "@/lib/api/monitoring";
+import { MonitoringCellsView, nodeRows } from "@/components/monitoring/cells";
+import { getMonitoringCellDetail, getMonitoringCells } from "@/lib/api/monitoring";
 import type { MonitoringCell } from "@/lib/api/types";
 
 global.ResizeObserver = class {
@@ -10,7 +10,25 @@ global.ResizeObserver = class {
   disconnect() {}
 };
 
-jest.mock("@/lib/api/monitoring", () => ({ getMonitoringCells: jest.fn() }));
+jest.mock("@/lib/api/monitoring", () => ({
+  getMonitoringCells: jest.fn(),
+  getMonitoringCellDetail: jest.fn(),
+}));
+
+const unavailable = {
+  cell: "cell-a",
+  available: false,
+  reason: "No detail store is configured (MONITORING_DETAIL).",
+  source: null,
+  step_seconds: 10,
+  from: "2026-11-15T19:00:00Z",
+  to: "2026-11-15T20:00:00Z",
+  nodes: [],
+};
+
+beforeEach(() => {
+  jest.mocked(getMonitoringCellDetail).mockResolvedValue(unavailable);
+});
 
 function cell(name: string, extra: Partial<MonitoringCell> = {}): MonitoringCell {
   return {
@@ -76,5 +94,55 @@ describe("MonitoringCellsView", () => {
     });
     renderView();
     expect(await screen.findByText("No cells have reported")).toBeInTheDocument();
+  });
+
+  it("says why a cell has no 10-second detail, and shows it by node when it does", async () => {
+    jest.mocked(getMonitoringCells).mockResolvedValue({
+      generated_at: "2026-11-15T20:00:00Z",
+      from: "2026-11-15T14:00:00Z",
+      to: "2026-11-15T20:00:00Z",
+      bucket_seconds: 60,
+      cells: [cell("cell-a")],
+    });
+    const view = renderView();
+    expect(await screen.findByTestId("cell-detail-unavailable")).toHaveTextContent(
+      "MONITORING_DETAIL",
+    );
+    view.unmount();
+    jest.mocked(getMonitoringCellDetail).mockResolvedValue({
+      ...unavailable,
+      available: true,
+      reason: null,
+      source: "http://victoriametrics:8428",
+      nodes: [
+        {
+          node: "1",
+          points: [
+            { t: "2026-11-15T19:59:50Z", running: 3, rss_bytes: 1024, queued: 0, admit_p99_ms: 9 },
+            { t: "2026-11-15T20:00:00Z", running: 4, rss_bytes: 2048, queued: 0, admit_p99_ms: 9 },
+          ],
+        },
+      ],
+    });
+    renderView();
+    expect(await screen.findByText(/from http:\/\/victoriametrics:8428/)).toBeInTheDocument();
+    expect(getMonitoringCellDetail).toHaveBeenCalledWith("cell-a");
+  });
+});
+
+describe("nodeRows", () => {
+  it("puts each node in its own column, one row per time", () => {
+    const rows = nodeRows(
+      {
+        ...unavailable,
+        available: true,
+        nodes: [
+          { node: "1", points: [{ t: "2026-11-15T20:00:00Z", running: 3 }] },
+          { node: "2", points: [{ t: "2026-11-15T20:00:00Z", running: 5 }] },
+        ],
+      },
+      (p) => p.running,
+    );
+    expect(rows).toEqual([{ t: Date.parse("2026-11-15T20:00:00Z"), n1: 3, n2: 5 }]);
   });
 });
