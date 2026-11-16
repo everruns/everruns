@@ -38,6 +38,7 @@ pub mod credentials;
 pub mod data_plane;
 pub mod dispatch;
 pub mod durable;
+mod durable_health;
 pub mod evals;
 pub mod events;
 pub mod external_agents;

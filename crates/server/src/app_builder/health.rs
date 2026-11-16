@@ -28,8 +28,7 @@ pub(super) struct HealthResponse {
 pub(super) struct HealthState {
     pub(super) auth_mode: String,
     pub(super) db: Arc<StorageBackend>,
-    event_delivery: &'static str,
-    degraded: bool,
+    event_delivery: EventDelivery,
 }
 
 impl HealthState {
@@ -41,8 +40,7 @@ impl HealthState {
         Self {
             auth_mode: format!("{:?}", auth_config.mode),
             db: db.clone(),
-            event_delivery: event_delivery.backend_name(),
-            degraded: event_delivery.is_degraded(),
+            event_delivery: event_delivery.clone(),
         }
     }
 }
@@ -113,11 +111,16 @@ pub(super) fn routes(state: HealthState) -> axum::Router {
 /// `GET /health`: liveness plus the build version, auth mode and event
 /// delivery backend.
 async fn endpoint(State(state): State<HealthState>) -> Json<HealthResponse> {
+    let event_delivery = state.event_delivery.backend_name();
     Json(HealthResponse {
-        status: if state.degraded { "degraded" } else { "ok" },
+        status: if event_delivery == "polling" {
+            "degraded"
+        } else {
+            "ok"
+        },
         version: env!("CARGO_PKG_VERSION"),
         auth_mode: state.auth_mode.clone(),
-        event_delivery: state.event_delivery,
+        event_delivery,
     })
 }
 

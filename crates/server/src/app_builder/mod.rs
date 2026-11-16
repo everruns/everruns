@@ -897,7 +897,8 @@ impl ServerAppBuilder {
             auth_state.clone(),
             task_broadcaster.clone(),
             event_delivery.backend_name().to_string(),
-        );
+        )
+        .with_event_delivery(event_delivery.clone());
         durable_state.spawn_metrics_sampler();
         // Bridge durable MetricsCollector gauges to Prometheus
         if prometheus_handle.is_some() {

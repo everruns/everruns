@@ -727,9 +727,13 @@ pub(crate) async fn session_event_sse(
                             Some((stream::iter(sse_events), state))
                         }
                         Woke::Pushed(None) => {
-                            // Subscription closed — end stream
-                            tracing::warn!(session_id = %session_id, "SSE: EventDelivery subscription closed");
-                            None
+                            // A recovered startup backend retires polling subscriptions.
+                            // Tell clients to reconnect and replay their durable cursor.
+                            tracing::debug!(session_id = %session_id, "SSE: EventDelivery subscription closed; cycling");
+                            Some((stream::iter(vec![]), StreamState {
+                                phase: StreamPhase::SendDisconnecting,
+                                ..state
+                            }))
                         }
                         Woke::Quiet => {
                             let sse_events = catch_up_from_pg(&event_service, session_id, &mut state.push, &state.filter_types, &state.exclude_types, &render, retry_duration).await;
