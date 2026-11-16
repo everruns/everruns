@@ -39,6 +39,9 @@ pub struct NodeConfig {
     pub store: crate::store::Store,
     /// Unload idle sessions when resident events exceed this many bytes.
     pub memory_budget: u64,
+    /// Memory pressure is measured against this many bytes (0: the
+    /// container's limit, see `pressure::limit_bytes`).
+    pub memory_limit: u64,
     /// Also unload sessions idle this long (`None`: only under pressure).
     pub unload_idle: Option<Duration>,
     /// How long a claim lives without renewal.
@@ -171,6 +174,8 @@ pub struct Node {
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
     /// Credits from executors outside the cell (`ExecutorMode::Pull`).
     pub dispatch: crate::dispatch::Dispatch,
+    /// How close the cell's nodes are to their memory limits.
+    pub pressure: crate::pressure::Pressure,
     /// Tenants that may not start turns, polled from the directory.
     pub tenants: crate::tenants::TenantView,
     pub(crate) control: crate::node_control::ControlLink,
@@ -262,6 +267,10 @@ impl Node {
                 members: parking_lot::RwLock::new(cfg.members.clone()),
                 dispatch: Default::default(),
                 control: Default::default(),
+                pressure: crate::pressure::Pressure::new(crate::pressure::limit_bytes(
+                    cfg.memory_limit >> 20,
+                    cfg.memory_budget,
+                )),
                 cfg,
             }
         });
@@ -306,6 +315,7 @@ impl Node {
         tokio::spawn(self.clone().scheduler_loop());
         tokio::spawn(self.clone().liveness_loop());
         tokio::spawn(self.clone().unload_loop());
+        tokio::spawn(self.clone().pressure_loop());
         tokio::spawn(self.clone().register_loop());
         tokio::spawn(self.clone().rebalance_loop());
         tokio::spawn(self.clone().control_loop());
@@ -347,9 +357,19 @@ impl Node {
             let mut plan: Vec<(&str, CellId, CellId, u64)> = Vec::new();
             // Draining cells empty out first, busy and idle sessions alike,
             // spread over the cells that take sessions, least loaded first.
-            let mut targets: Vec<(CellId, f64)> =
-                loads.iter().map(|(c, l)| (*c, l.score())).collect();
+            let mut targets: Vec<(CellId, f64)> = loads
+                .iter()
+                .filter(|(_, l)| !l.closed)
+                .map(|(c, l)| (*c, l.score()))
+                .collect();
             targets.sort_by(|a, b| a.1.total_cmp(&b.1));
+            // A cell short of memory (`pressure.rs`) moves idle sessions to
+            // the least loaded cell that is not.
+            if let Some((cold, _)) = targets.first() {
+                for (&cell, load) in loads.iter().filter(|(_, l)| l.closed && l.sessions > 0) {
+                    plan.push(("idle", cell, *cold, 32u64.saturating_sub(load.moving)));
+                }
+            }
             if !targets.is_empty() {
                 for (&cell, load) in all
                     .iter()
@@ -847,10 +867,8 @@ impl Node {
         let mut backoff = Duration::from_millis(10);
         loop {
             let attempt = if self.is_leader() {
-                if self.shipper.behind() && admits(&command) {
-                    // Shipping is behind its bound: new work waits (callers
-                    // retry a frozen session) so the loss window holds.
-                    return Ok((Response::Frozen, 0));
+                if let Some(refused) = self.refusal(&command) {
+                    return Ok((refused, 0));
                 }
                 match self.batcher.submit(command.clone()).await {
                     Ok((response, index)) if index > 0 && crate::ship::ships_first(&command) => {
@@ -1462,18 +1480,5 @@ fn release_free_pages() {
     // SAFETY: malloc_trim only releases free heap pages.
     unsafe {
         libc::malloc_trim(0);
-    }
-}
-
-/// Whether `command` admits new work (a new session or new input), which
-/// waits while log shipping is behind. Work already admitted keeps going.
-fn admits(command: &Command) -> bool {
-    use everruns::hosting::spi::session_commands::SessionCommand;
-    match command {
-        Command::Host { command, .. } => matches!(
-            command,
-            SessionCommand::Create { .. } | SessionCommand::Admit { .. }
-        ),
-        _ => false,
     }
 }

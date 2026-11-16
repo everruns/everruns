@@ -50,6 +50,7 @@ pub mod node;
 pub mod node_control;
 mod node_restore;
 pub mod org_token;
+pub mod pressure;
 pub mod prof;
 pub mod prom;
 pub mod providers;

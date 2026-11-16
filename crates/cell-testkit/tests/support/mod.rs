@@ -154,6 +154,9 @@ impl Fleet {
                     data_dir: fleet.dir.path().join(format!("node-{cell}-{node}")),
                     store: fleet.store(),
                     memory_budget: 1 << 30,
+                    // Every node shares the test process: measure against
+                    // no real limit unless a test sets one.
+                    memory_limit: 1 << 40,
                     unload_idle: None,
                     claim_ttl: Duration::from_secs(2),
                     max_turns_per_node: 64,
@@ -302,6 +305,35 @@ impl Fleet {
         if let Some(rt) = self.executors.get_mut(&n).and_then(|(_, rt)| rt.take()) {
             rt.shutdown_background();
         }
+    }
+
+    /// Restart a node with its memory pressure measured against `bytes`.
+    pub fn restart_with_memory_limit(&mut self, cell: u32, node: u64, bytes: u64) {
+        self.kill_node(cell, node);
+        if let Some(cfg) = self.configs.get_mut(&(cell, node)) {
+            cfg.memory_limit = bytes;
+        }
+        self.start_node(cell, node);
+    }
+
+    /// POST without retrying: the status, the `Retry-After` header and the
+    /// body (JSON, or the text as a string).
+    pub async fn post_once(&self, path: &str, body: Value) -> (u16, Option<String>, Value) {
+        let response = self
+            .http
+            .post(format!("{}{path}", self.base()))
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        let status = response.status().as_u16();
+        let retry = response
+            .headers()
+            .get("retry-after")
+            .map(|v| v.to_str().unwrap().to_string());
+        let text = response.text().await.unwrap_or_default();
+        let body = serde_json::from_str(&text).unwrap_or(Value::String(text));
+        (status, retry, body)
     }
 
     pub fn kill_node(&mut self, cell: u32, node: u64) {

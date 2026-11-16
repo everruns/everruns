@@ -6,7 +6,8 @@
 //! reaches a turn on an executor; a killed executor's turn finishes on
 //! another; a turn survives its cell's leader dying; live deltas reach SSE
 //! from an executor; the workspace survives executors and a move; an
-//! executor runs a session again after it moved cells.
+//! executor runs a session again after it moved cells; a cell short of
+//! memory sheds new work while admitted turns finish.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -250,4 +251,73 @@ async fn approved(agent: &str, tool: &str) {
     });
     assert!(ran, "{tool} ran once approved: {:?}", types(&events));
     assert_eq!(answers(&events), vec!["Changed, as approved.".to_string()]);
+}
+
+/// A cell whose node is near its memory limit refuses new input and new
+/// sessions with 429 and a retry hint, lets the turn it already admitted
+/// finish, gets no new sessions from the gateway, and takes work again once
+/// memory frees.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cell_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let session = fleet.create_in("slow", 1).await;
+    fleet.say(&session, "go").await;
+    // Cell 1's only node now measures itself against 1 MiB: shedding.
+    fleet.restart_with_memory_limit(1, 1, 1 << 20);
+    fleet.leader(1).await;
+    let say = |text: &str| json!({ "text": text });
+    let messages = format!("/v1/sessions/{session}/messages");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let (status, retry, body) = loop {
+        let reply = fleet.post_once(&messages, say("more")).await;
+        if reply.0 == 429 || Instant::now() > deadline {
+            break reply;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+    assert_eq!(status, 429, "{body}");
+    assert_eq!(
+        retry.as_deref(),
+        Some("2"),
+        "the refusal says when to retry"
+    );
+    // The turn admitted before still finishes, and nothing else ran.
+    fleet.turns(&session, 1).await;
+    // New sessions: the gateway places them elsewhere, and one asked for
+    // in cell 1 is refused.
+    let definition = everruns_cell_testkit::definition("worker").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let created = fleet
+            .post("/v1/sessions", json!({ "agent": definition }))
+            .await;
+        if created["cell"] == 0 {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "still placed in cell 1: {created}"
+        );
+    }
+    let (status, _, body) = fleet
+        .post_once("/v1/sessions", json!({ "agent": definition, "cell": 1 }))
+        .await;
+    assert_eq!(status, 429, "{body}");
+    let metrics = reqwest::get(format!("http://{}/metrics", fleet.addrs(1)[0].1))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let level = metrics
+        .lines()
+        .find(|l| l.starts_with("cell_overload_level{"))
+        .unwrap_or_default();
+    assert!(level.ends_with(" 2"), "shedding: {level}");
+    // Memory frees: the cell takes work again.
+    fleet.restart_with_memory_limit(1, 1, 1 << 40);
+    fleet.leader(1).await;
+    fleet.say(&session, "again").await;
+    fleet.turns(&session, 2).await;
 }

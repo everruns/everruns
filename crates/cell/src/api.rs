@@ -43,6 +43,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/snapshot", post(trigger_snapshot))
         .route("/cell/registry", get(registry))
         .route("/cell/load", get(load))
+        .route("/cell/pressure", get(crate::pressure::reading))
         .route("/cell/tools", get(tools))
         .route("/cell/movable", get(movable))
         .route("/cell/members", get(members).post(add_member))
@@ -355,6 +356,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         "Process resident set size.",
         (rss_mb() << 20) as f64,
     );
+    crate::pressure::write_metrics(&node.pressure, &mut w);
     let wal = node.wal.stats();
     w.counter("cell_wal_fsyncs_total", "WAL fsyncs.", wal.fsyncs as f64);
     w.counter(
@@ -477,6 +479,12 @@ pub struct CellLoad {
     pub queued: u64,
     /// Sessions frozen for a move out of this cell.
     pub moving: u64,
+    /// The worst of the cell's nodes' memory use, in permille of its limit.
+    #[serde(default)]
+    pub pressure: u64,
+    /// Short of memory: place no new sessions here (see `pressure.rs`).
+    #[serde(default)]
+    pub closed: bool,
 }
 
 /// A running turn that wrote nothing for this long is waiting (on a slow
@@ -522,7 +530,10 @@ async fn tools(State(node): State<Arc<Node>>) -> Json<Vec<serde_json::Value>> {
 }
 
 async fn load(State(node): State<Arc<Node>>) -> Json<CellLoad> {
-    Json(cell_load(&node.shared.state.read()))
+    let mut load = cell_load(&node.shared.state.read());
+    load.pressure = node.pressure.cell_permille();
+    load.closed = node.pressure.level() >= crate::pressure::Level::Full;
+    Json(load)
 }
 
 #[derive(Deserialize)]
@@ -978,6 +989,10 @@ pub enum CellReply {
     },
     /// Frozen for a move: retry shortly.
     Frozen,
+    /// Short of memory: no new work now, retry after this long.
+    Busy {
+        retry_after_ms: u64,
+    },
     NotFound,
     Refused {
         reason: String,
@@ -995,6 +1010,13 @@ pub(crate) fn reply_of(error: impl std::fmt::Display) -> CellReply {
     }
     if text.contains(crate::hosting::FROZEN) {
         return CellReply::Frozen;
+    }
+    if let Some(at) = text.find(crate::hosting::BUSY) {
+        let rest = &text[at + crate::hosting::BUSY.len()..];
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        return CellReply::Busy {
+            retry_after_ms: digits.parse().unwrap_or(crate::pressure::RETRY_AFTER_MS),
+        };
     }
     if text.contains("not found") || text.contains("NotFound") {
         return CellReply::NotFound;

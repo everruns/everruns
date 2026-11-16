@@ -376,6 +376,12 @@ pub enum Response {
     Moved {
         cell: CellId,
     },
+    /// The cell is short of memory and takes no new work now; retry after
+    /// this long (see `pressure.rs`). Never applied: the leader answers it
+    /// before proposing.
+    Busy {
+        retry_after_ms: u64,
+    },
     /// The command does not apply in the session's current state.
     Rejected {
         reason: String,

@@ -68,6 +68,15 @@ enum Mode {
         /// streaming next to the turns. Turns still finish through `wait`.
         #[arg(long, default_value = "0")]
         stream: f64,
+        /// With `--rate`: bursts on top of the arrivals, `secs:sessions`
+        /// comma-separated (`600:5000` starts 5 000 sessions at once ten
+        /// minutes in).
+        #[arg(long, default_value = "")]
+        bursts: String,
+        /// Pad every message to at least this many bytes: long histories
+        /// and big inputs instead of one-line turns.
+        #[arg(long, default_value = "0")]
+        message_bytes: usize,
     },
     /// Print a test agent's definition (what a client sends to create a
     /// session running it).
@@ -90,7 +99,19 @@ struct Client {
     gateways: Vec<String>,
     next: AtomicUsize,
     persistent: bool,
+    /// Requests a cell refused for being short of memory (429).
+    shed: AtomicUsize,
+    /// Pad messages to this many bytes (`--message-bytes`).
+    message_bytes: usize,
 }
+
+/// How long a request keeps retrying refusals for load (429).
+///
+/// Decision: a 429 is the fleet shedding load on purpose, not a failure:
+/// the driver waits as asked and sends the same request again (message ids
+/// make that safe), the way a well-behaved client does. Only a fleet that
+/// sheds for this long fails the request.
+const SHED_DEADLINE: Duration = Duration::from_secs(1800);
 
 impl Client {
     fn base(&self) -> &str {
@@ -98,7 +119,8 @@ impl Client {
     }
 
     async fn send(&self, method: &str, path: &str, body: Option<&Value>) -> anyhow::Result<Value> {
-        let deadline = Instant::now() + Duration::from_secs(if self.persistent { 600 } else { 60 });
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(if self.persistent { 600 } else { 60 });
         loop {
             let url = format!("{}{path}", self.base());
             let request = match (method, body) {
@@ -108,6 +130,20 @@ impl Client {
             match request.timeout(Duration::from_secs(60)).send().await {
                 Ok(response) if response.status().is_success() => {
                     return Ok(response.json().await?);
+                }
+                Ok(response)
+                    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+                        && started.elapsed() < SHED_DEADLINE =>
+                {
+                    self.shed.fetch_add(1, Ordering::Relaxed);
+                    let secs = response
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|v| v.to_str().ok()?.parse::<f64>().ok())
+                        .unwrap_or(2.0);
+                    // Jitter, so refused callers do not all come back at once.
+                    let wait = secs * (1.0 + rand::random::<f64>());
+                    tokio::time::sleep(Duration::from_secs_f64(wait)).await;
                 }
                 Ok(response) if !self.persistent || Instant::now() > deadline => {
                     let status = response.status();
@@ -125,13 +161,37 @@ impl Client {
     }
 }
 
-/// The message for `turn`: a scenario marker makes the sim agent play it.
-fn text(scenario: &str, turn: u64) -> String {
-    if scenario.is_empty() {
+/// The message for `turn`: a scenario marker makes the sim agent play it,
+/// padded to `bytes` (`--message-bytes`).
+fn text(scenario: &str, turn: u64, bytes: usize) -> String {
+    let mut text = if scenario.is_empty() {
         format!("turn {turn}")
     } else {
         format!("[[llmsim:{scenario}]] turn {turn}")
+    };
+    if text.len() < bytes {
+        text.push(' ');
+        let words = "lorem ipsum dolor sit amet ".repeat(bytes / 27 + 1);
+        text.push_str(&words[..bytes - text.len()]);
     }
+    text
+}
+
+/// `secs:sessions,...` (`--bursts`), in time order.
+fn burst_list(arg: &str) -> anyhow::Result<Vec<(f64, usize)>> {
+    let mut out = arg
+        .split(',')
+        .filter(|b| !b.trim().is_empty())
+        .map(|b| {
+            let (at, n) = b
+                .trim()
+                .split_once(':')
+                .ok_or_else(|| anyhow::anyhow!("burst {b}: want secs:sessions"))?;
+            anyhow::Ok((at.parse::<f64>()?, n.parse::<usize>()?))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    Ok(out)
 }
 
 /// One session's admit and turn latencies, and its scenario.
@@ -171,6 +231,8 @@ async fn main() -> anyhow::Result<()> {
             duration,
             think,
             stream,
+            bursts,
+            message_bytes,
         } => {
             let shape = Shape {
                 sessions,
@@ -180,6 +242,8 @@ async fn main() -> anyhow::Result<()> {
                 duration,
                 think,
                 stream,
+                bursts: burst_list(&bursts)?,
+                message_bytes,
             };
             load(
                 gateways,
@@ -221,6 +285,8 @@ fn client(gateways: &str, persistent: bool) -> Arc<Client> {
         gateways: gateways.split(',').map(|s| s.trim().to_string()).collect(),
         next: AtomicUsize::new(0),
         persistent,
+        shed: AtomicUsize::new(0),
+        message_bytes: 0,
     })
 }
 
@@ -262,6 +328,8 @@ struct Shape {
     duration: f64,
     think: f64,
     stream: f64,
+    bursts: Vec<(f64, usize)>,
+    message_bytes: usize,
 }
 
 /// An exponential sample with this mean, capped at five means (a person
@@ -347,7 +415,10 @@ async fn run_turns(
             .send(
                 "POST",
                 &format!("/v1/sessions/{id}/messages"),
-                Some(&json!({ "text": text(scenario, turn), "id": message_id })),
+                Some(&json!({
+                    "text": text(scenario, turn, client.message_bytes),
+                    "id": message_id
+                })),
             )
             .await?;
         admits.push(at.elapsed().as_micros());
@@ -418,7 +489,11 @@ fn stalled(progress: &Progress) -> Vec<(String, u64, u64)> {
 }
 
 /// Print progress every 10 s to stderr, for long runs.
-fn report_progress(progress: Arc<Progress>, started: Instant) -> tokio::task::JoinHandle<()> {
+fn report_progress(
+    progress: Arc<Progress>,
+    client: Arc<Client>,
+    started: Instant,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(10));
         tick.tick().await;
@@ -427,12 +502,13 @@ fn report_progress(progress: Arc<Progress>, started: Instant) -> tokio::task::Jo
             tick.tick().await;
             let turns = progress.turns.load(Ordering::Relaxed);
             eprintln!(
-                "{:>6.0}s  sessions {:>6}  turns running {:>5}  turns done {:>7}  ({:.1}/s)",
+                "{:>6.0}s  sessions {:>6}  turns running {:>5}  turns done {:>7}  ({:.1}/s)  shed {}",
                 started.elapsed().as_secs_f64(),
                 progress.sessions.load(Ordering::Relaxed),
                 progress.running.load(Ordering::Relaxed),
                 turns,
                 (turns - last) as f64 / 10.0,
+                client.shed.load(Ordering::Relaxed),
             );
             for (id, turn, secs) in stalled(&progress).into_iter().take(5) {
                 eprintln!("stalled {id} turn {turn} waiting {secs}s");
@@ -450,7 +526,10 @@ async fn load(
     persistent: bool,
     scenarios: Vec<String>,
 ) -> anyhow::Result<()> {
-    let client = client(&gateways, persistent);
+    let mut client = client(&gateways, persistent);
+    if let Some(c) = Arc::get_mut(&mut client) {
+        c.message_bytes = shape.message_bytes;
+    }
     // The client owns the agent: every session carries its definition.
     let agent: Value = match agent.strip_prefix('@') {
         Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
@@ -473,6 +552,8 @@ async fn load(
         duration,
         think,
         stream: stream_share,
+        bursts,
+        message_bytes: _,
     } = shape;
 
     let started;
@@ -483,24 +564,35 @@ async fn load(
         // Open loop: sessions arrive on their own clock, whether or not the
         // fleet keeps up, the way users do.
         started = Instant::now();
-        let ticker = report_progress(progress.clone(), started);
+        let ticker = report_progress(progress.clone(), client.clone(), started);
         let mut tasks = tokio::task::JoinSet::new();
         let mut created = Vec::new();
         let mut i = 0;
+        let mut bursts = bursts.into_iter().peekable();
         while started.elapsed().as_secs_f64() < duration && (sessions == 0 || i < sessions) {
             tokio::time::sleep(exponential(1.0 / rate)).await;
-            let (client, agent, progress) = (client.clone(), agent.clone(), progress.clone());
-            let scenario = scenario_for(i);
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            created.push(rx);
-            tasks.spawn(async move {
-                let id = create(&client, &agent).await;
-                let _ = tx.send(id.as_ref().ok().cloned());
-                progress.sessions.fetch_add(1, Ordering::Relaxed);
-                let streaming = streams(i, stream_share);
-                drive_session(client, id?, turns, scenario, think, streaming, progress).await
-            });
-            i += 1;
+            // One arrival, plus every burst now due.
+            let mut arriving = 1;
+            while let Some((_, n)) =
+                bursts.next_if(|(at, _)| *at <= started.elapsed().as_secs_f64())
+            {
+                eprintln!("burst: {n} sessions at once");
+                arriving += n;
+            }
+            for _ in 0..arriving {
+                let (client, agent, progress) = (client.clone(), agent.clone(), progress.clone());
+                let scenario = scenario_for(i);
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                created.push(rx);
+                tasks.spawn(async move {
+                    let id = create(&client, &agent).await;
+                    let _ = tx.send(id.as_ref().ok().cloned());
+                    progress.sessions.fetch_add(1, Ordering::Relaxed);
+                    let streaming = streams(i, stream_share);
+                    drive_session(client, id?, turns, scenario, think, streaming, progress).await
+                });
+                i += 1;
+            }
         }
         create_secs = started.elapsed().as_secs_f64();
         results = tasks.join_all().await;
@@ -533,7 +625,7 @@ async fn load(
         }
         progress.sessions.store(ids.len(), Ordering::Relaxed);
         started = Instant::now();
-        let ticker = report_progress(progress.clone(), started);
+        let ticker = report_progress(progress.clone(), client.clone(), started);
         results = stream::iter(ids.clone().into_iter().enumerate())
             .map(|(i, id)| {
                 drive_session(
@@ -591,6 +683,7 @@ async fn load(
             .map(|(id, turn, secs)| json!({ "session": id, "turn": turn, "waiting_secs": secs }))
             .collect::<Vec<_>>(),
         "turns_completed": latencies.len(),
+        "shed": client.shed.load(Ordering::Relaxed),
         "errors": errors.len(),
         "first_errors": errors.iter().take(5).collect::<Vec<_>>(),
         "create_secs": create_secs,
