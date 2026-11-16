@@ -87,9 +87,7 @@ impl Node {
         loop {
             tick.tick().await;
             let leading = self.is_leader();
-            self.shared
-                .leading
-                .store(leading, std::sync::atomic::Ordering::Relaxed);
+            self.shared.set_leading(leading);
             if !leading {
                 self.shipper.reset();
                 continue;

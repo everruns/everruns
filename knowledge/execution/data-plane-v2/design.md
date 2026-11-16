@@ -1098,9 +1098,11 @@ the storage decision below requires. What it checks and what it found:
   a frozen session and retry) while shipping is more than 5 s behind.
   Restore rebuilds a cell from the newest archived snapshot plus the
   shipped log after it, and refuses a log with a hole. Only the leader
-  copies its snapshots to the store, one copy in flight at a time: in EKS
-  run 43827766384 every replica's copy went out, the upload used up the
-  NAT's burst, and S3 timeouts stopped shipping in every cell at once.
+  copies its snapshots to the store (its current one as it starts
+  leading, so a log gap its snapshot purged is covered), one upload at a
+  time with only the newest waiting: in EKS run 43827766384 every
+  replica's copy went out, the upload used up the NAT's burst, and S3
+  timeouts stopped shipping in every cell at once.
   The cell simulation
   now ships while the faults run, then loses every node at once and
   restores from the store: on all 12 seeds every acknowledged write the
