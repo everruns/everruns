@@ -79,4 +79,6 @@ export const messages: Readonly<Record<string, string>> = {
   "{value0} sessions": "{value0} сесій",
   "{value0} turns": "{value0} ходів",
   "{value0}-minute buckets": "інтервали по {value0} хв",
+  "Session history and failures within the selected organization.":
+    "Історія сесій і збої у вибраній організації.",
 };

@@ -64,9 +64,10 @@ On the platform view, when sessions run on data plane v2 cells, the charts
 include them, and an **All / Workers / Cells** switch shows one execution path
 at a time. Workers are sampled every 10 seconds; each cell reports once a
 minute, so cell lines move in one-minute steps. An organization sees only the
-path it runs on: on a data plane, its sessions on cells, without the Workers
-and Actors tabs or worker waits; otherwise the worker view, without cells. It
-never sees the cells themselves, which are shared.
+path it runs on: on a data plane, its sessions on cells, opening on Timeline
+without the Execution, Workers and Actors tabs or worker waits, which all read
+worker leases; otherwise the worker view, without cells. It never sees the
+cells themselves, which are shared.
 
 The platform view adds worker capacity on the working chart, a **Fleet** chart
 (server replicas, workers, cells, and cell nodes), the busiest cell node's CPU

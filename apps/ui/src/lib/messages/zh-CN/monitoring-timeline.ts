@@ -79,4 +79,5 @@ export const messages: Readonly<Record<string, string>> = {
   "{value0} sessions": "{value0} 个会话",
   "{value0} turns": "{value0} 个轮次",
   "{value0}-minute buckets": "{value0} 分钟区间",
+  "Session history and failures within the selected organization.": "所选组织内的会话历史和失败。",
 };

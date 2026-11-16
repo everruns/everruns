@@ -166,7 +166,9 @@ test("an organization sees only the execution path it runs on", async () => {
   await screen.findByText("50,000 active sessions");
   expect(screen.queryByRole("tab", { name: "Workers" })).not.toBeInTheDocument();
   expect(screen.queryByRole("tab", { name: "Actors" })).not.toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "Timeline" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Execution" })).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("button", { name: "Replay" })).not.toBeInTheDocument();
 });
 
 test("pause freezes the viewed population while live collection continues", async () => {

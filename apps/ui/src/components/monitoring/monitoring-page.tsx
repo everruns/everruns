@@ -115,20 +115,22 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   const ui = useUiTranslations();
   const flags = useFeatureFlagsState();
   // Decision: an organization sees only the execution path it runs on. On a
-  // data plane (cells) the worker and actor views would always be empty, and
-  // off it the cell parts would be; the platform view keeps both.
+  // data plane (cells) the live execution, worker and actor views read actor
+  // leases and would always be empty, and off it the cell parts would be; the
+  // platform view keeps both.
   const path: Plane | undefined =
     scope === "fleet" ? undefined : flags.flags.data_plane ? "cells" : "workers";
   const hidden = new Set([
     ...(scope === "fleet" ? [] : ["cells"]),
-    ...(path === "cells" ? ["workers", "actors"] : []),
+    ...(path === "cells" ? ["execution", "workers", "actors"] : []),
   ]);
+  const defaultTab = hidden.has("execution") ? "timeline" : "execution";
   // `?tab=timeline` lets Home link straight to the history it summarises.
   const requestedTab = useSearchParams().get("tab");
   const [tab, setTab] = useState(
     requestedTab && MONITORING_TABS.includes(requestedTab) && !hidden.has(requestedTab)
       ? requestedTab
-      : "execution",
+      : defaultTab,
   );
   const [view, setView] = useState("flow");
   const [groupSize, setGroupSize] = useState(8);
@@ -297,7 +299,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         description={
           scope === "fleet"
             ? ui("Live execution and worker ownership across all organizations.")
-            : ui("Live execution and actor leases within the selected organization.")
+            : path === "cells"
+              ? ui("Session history and failures within the selected organization.")
+              : ui("Live execution and actor leases within the selected organization.")
         }
         meta={
           data && (
@@ -335,19 +339,21 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
               {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
               {paused ? ui("Live") : ui("Pause")}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={history.length < 2}
-              onClick={() => {
-                setReplay(history[0]);
-                setFrozen(null);
-                setTab("execution");
-              }}
-            >
-              <RotateCcw className="size-3.5" />
-              {ui("Replay")}
-            </Button>
+            {!hidden.has("execution") && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={history.length < 2}
+                onClick={() => {
+                  setReplay(history[0]);
+                  setFrozen(null);
+                  setTab("execution");
+                }}
+              >
+                <RotateCcw className="size-3.5" />
+                {ui("Replay")}
+              </Button>
+            )}
           </div>
         }
       />
@@ -357,7 +363,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           onValueChange={setTab}
           aria-label={ui("Monitoring sections")}
           items={[
-            { value: "execution", label: ui("Execution") },
+            ...(hidden.has("execution") ? [] : [{ value: "execution", label: ui("Execution") }]),
             { value: "timeline", label: ui("Timeline") },
             // Cells are shared by organizations: platform view only.
             ...(scope === "fleet" ? [{ value: "cells", label: ui("Cells") }] : []),
