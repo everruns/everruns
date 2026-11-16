@@ -412,6 +412,11 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         (rss_mb() << 20) as f64,
     );
     crate::pressure::write_metrics(&node.pressure, &mut w);
+    w.gauge(
+        "cell_catching_up",
+        "1 while this follower is far behind its leader and steps aside (no elections, no session requests).",
+        f64::from(u8::from(node.catchup.behind())),
+    );
     let wal = node.wal.stats();
     w.counter("cell_wal_fsyncs_total", "WAL fsyncs.", wal.fsyncs as f64);
     w.counter(

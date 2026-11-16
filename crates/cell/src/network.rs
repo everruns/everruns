@@ -1,6 +1,7 @@
 //! Raft RPC between the nodes of a cell, over HTTP: JSON bodies, except a
 //! snapshot chunk's bytes, which travel raw (see [`SnapshotChunk`]).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use openraft::BasicNode;
@@ -15,6 +16,7 @@ use openraft::raft::{
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::catchup::CatchUp;
 use crate::types::{NodeId, Raft, TypeConfig};
 
 /// Most bytes of log entries one append carries.
@@ -272,14 +274,19 @@ impl Isolation {
     }
 
     /// Serve Raft on `listener` on Raft's threads.
-    pub fn serve(&self, listener: std::net::TcpListener, raft: Raft) -> anyhow::Result<()> {
+    pub fn serve(
+        &self,
+        listener: std::net::TcpListener,
+        raft: Raft,
+        catchup: Arc<CatchUp>,
+    ) -> anyhow::Result<()> {
         let Some(runtime) = &self.runtime else {
             anyhow::bail!("raft shares the node's listener");
         };
         let _entered = runtime.enter();
         let listener = tokio::net::TcpListener::from_std(listener)?;
         runtime.spawn(async move {
-            if let Err(error) = axum::serve(listener, router(raft)).await {
+            if let Err(error) = axum::serve(listener, router(raft, catchup)).await {
                 tracing::error!(%error, "raft listener stopped");
             }
         });
@@ -295,33 +302,47 @@ impl Drop for Isolation {
     }
 }
 
-/// Raft's routes. Their state is the Raft handle alone, so a listener on
-/// Raft's own threads holds nothing that keeps the node alive.
-pub fn router(raft: Raft) -> axum::Router {
+/// Raft's routes. Their state is the Raft handle and what this node heard
+/// from its leader (`catchup.rs`), so a listener on Raft's own threads holds
+/// nothing that keeps the node alive.
+pub fn router(raft: Raft, catchup: Arc<CatchUp>) -> axum::Router {
     use axum::routing::post;
     axum::Router::new()
         .route("/raft/append", post(append))
         .route("/raft/vote", post(vote))
         .route("/raft/snapshot", post(snapshot))
-        .with_state(raft)
+        // Decision: no body limit. A snapshot chunk is 16 MB and an append
+        // of 256 entries can be as large; axum's default 2 MB refused them.
+        // Moving these routes off the client router (#5440) dropped the
+        // layer that lifted it, so a follower that fell behind could never
+        // take a snapshot again: it stayed 25 000 entries behind for 70
+        // minutes in EKS run 43803384547 (`prove_rejoin_under_load.py`).
+        // The cell's network is trusted.
+        .layer(axum::extract::DefaultBodyLimit::disable())
+        .with_state((raft, catchup))
 }
 
+type RaftState = axum::extract::State<(Raft, Arc<CatchUp>)>;
+
 async fn append(
-    axum::extract::State(raft): axum::extract::State<Raft>,
+    axum::extract::State((raft, catchup)): RaftState,
     axum::Json(rpc): axum::Json<AppendEntriesRequest<TypeConfig>>,
 ) -> impl axum::response::IntoResponse {
+    if let Some(commit) = rpc.leader_commit {
+        catchup.heard(commit.index);
+    }
     axum::Json(raft.append_entries(rpc).await)
 }
 
 async fn vote(
-    axum::extract::State(raft): axum::extract::State<Raft>,
+    axum::extract::State((raft, _)): RaftState,
     axum::Json(rpc): axum::Json<VoteRequest<NodeId>>,
 ) -> impl axum::response::IntoResponse {
     axum::Json(raft.vote(rpc).await)
 }
 
 async fn snapshot(
-    axum::extract::State(raft): axum::extract::State<Raft>,
+    axum::extract::State((raft, catchup)): RaftState,
     headers: axum::http::HeaderMap,
     data: axum::body::Bytes,
 ) -> Result<impl axum::response::IntoResponse, (axum::http::StatusCode, String)> {
@@ -335,6 +356,9 @@ async fn snapshot(
                 "missing snapshot chunk header".into(),
             )
         })?;
+    if let Some(last) = chunk.meta.last_log_id {
+        catchup.heard(last.index);
+    }
     let rpc = InstallSnapshotRequest::<TypeConfig> {
         vote: chunk.vote,
         meta: chunk.meta,

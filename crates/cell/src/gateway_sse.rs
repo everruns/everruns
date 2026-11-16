@@ -144,6 +144,9 @@ async fn connect(
                     again = true;
                     break;
                 }
+                // A member catching up, or one that has not seen the
+                // session yet (`catchup::guard`): the next one streams it.
+                StatusCode::MISDIRECTED_REQUEST => continue,
                 status => {
                     let text = reply.text().await.unwrap_or_default();
                     return Err((status, text));
