@@ -99,13 +99,16 @@ jobs:
       # must answer. The harness refuses that topology at startup.
       - name: Start NATS with JetStream
         run: |
-          docker run -d --name chaos-nats -p 43322:4222 \
+          # Let Docker reserve a free loopback port, not a fixed ephemeral-range port.
+          docker run -d --name chaos-nats -p 127.0.0.1::4222 \
             mirror.gcr.io/library/nats:2-alpine --jetstream
           for _ in $(seq 30); do
             docker logs chaos-nats 2>&1 | grep -q 'Server is ready' && break
             sleep 1
           done
           docker logs chaos-nats 2>&1 | grep 'Starting JetStream'
+          address=$(docker port chaos-nats 4222/tcp)
+          echo "NATS_URL=nats://${address}" >> "$GITHUB_ENV"
 
       - name: Install fast linker and psql
         timeout-minutes: 5
@@ -137,6 +140,7 @@ jobs:
             --server-bin target/release/everruns-server \
             --worker-bin target/release/everruns-worker \
             --database-url "$DATABASE_URL" \
+            --nats-url "$NATS_URL" \
             --sessions "$SESSIONS" \
             --run-dir "$RUNNER_TEMP/chaos-run" \
             $CHAOS_FLAG
