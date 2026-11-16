@@ -316,11 +316,12 @@ export function nodeRows(
   detail: MonitoringCellDetail,
   pick: (p: MonitoringCellDetail["nodes"][number]["points"][number]) => number | null | undefined,
 ) {
-  const rows = new Map<number, Record<string, number | null> & { t: number }>();
+  type Row = Record<string, number | null> & { t: number };
+  const rows = new Map<number, Row>();
   for (const n of detail.nodes) {
     for (const p of n.points) {
       const t = Date.parse(p.t);
-      const row = rows.get(t) ?? { t };
+      const row: Row = rows.get(t) ?? { t };
       row[`n${n.node}`] = pick(p) ?? null;
       rows.set(t, row);
     }
