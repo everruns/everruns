@@ -15,7 +15,7 @@ use openraft::raft::{
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::types::{NodeId, TypeConfig};
+use crate::types::{NodeId, Raft, TypeConfig};
 
 /// Most bytes of log entries one append carries.
 const APPEND_BUDGET_BYTES: usize = 256 * 1024;
@@ -44,6 +44,9 @@ pub struct SnapshotChunk {
 #[derive(Clone)]
 pub struct Network {
     http: reqwest::Client,
+    /// Peers serve Raft on their address's port plus this (0: the same
+    /// listener as everything else). See [`Isolation`].
+    port_offset: u16,
 }
 
 impl Network {
@@ -51,7 +54,7 @@ impl Network {
         clippy::expect_used,
         reason = "a client with no TLS config only fails to build when the TLS backend cannot start, and a node is useless without one"
     )]
-    pub fn new() -> Self {
+    pub fn new(port_offset: u16) -> Self {
         Self {
             http: reqwest::Client::builder()
                 .no_proxy() // fleet traffic is direct, whatever the system proxy says
@@ -59,13 +62,22 @@ impl Network {
                 .tcp_nodelay(true)
                 .build()
                 .expect("http client"),
+            port_offset,
         }
     }
 }
 
-impl Default for Network {
-    fn default() -> Self {
-        Self::new()
+/// Where a member serves Raft: its address, with `offset` added to the port.
+pub fn raft_addr(addr: &str, offset: u16) -> String {
+    if offset == 0 {
+        return addr.to_string();
+    }
+    match addr.rsplit_once(':') {
+        Some((host, port)) => match port.parse::<u16>() {
+            Ok(port) => format!("{host}:{}", port.saturating_add(offset)),
+            Err(_) => addr.to_string(),
+        },
+        None => addr.to_string(),
     }
 }
 
@@ -82,7 +94,7 @@ impl RaftNetworkFactory<TypeConfig> for Network {
         Peer {
             http: self.http.clone(),
             target,
-            addr: node.addr.clone(),
+            addr: raft_addr(&node.addr, self.port_offset),
         }
     }
 }
@@ -205,5 +217,143 @@ impl RaftNetwork<TypeConfig> for Peer {
         option: RPCOption,
     ) -> Result<VoteResponse<NodeId>, RPCError<NodeId, BasicNode, RaftError<NodeId>>> {
         self.call("vote", &rpc, option.hard_ttl()).await
+    }
+}
+
+/// How many threads a node with its own Raft listener gives Raft.
+const RAFT_THREADS: usize = 2;
+
+/// Raft on its own listener and threads.
+///
+/// Decision: Raft traffic does not share a node's HTTP listener and Tokio
+/// threads with client traffic. openraft gives a follower one heartbeat
+/// interval to take an append, and two seconds at most to answer a vote.
+/// In EKS run 43774871232, on a 48-vCPU host running flat out, those
+/// requests waited in the same queues as tens of thousands of client
+/// requests and missed their deadlines: three cells stopped committing for
+/// about 20 minutes each, with elections every few seconds, while client
+/// requests piled up until nodes ran out of memory. Raft's own threads and
+/// listener answer in milliseconds whatever the client load, and the
+/// operating system schedules them like any other thread.
+///
+/// The threads belong to the node: dropping it stops them, as a lost node
+/// would.
+pub struct Isolation {
+    runtime: Option<tokio::runtime::Runtime>,
+}
+
+impl Isolation {
+    /// Threads for a node whose Raft listens at `offset` above its port;
+    /// none when `offset` is 0 (Raft shares the caller's).
+    pub fn new(offset: u16) -> anyhow::Result<Self> {
+        let runtime = (offset > 0)
+            .then(|| {
+                tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(RAFT_THREADS)
+                    .thread_name("cell-raft")
+                    .enable_all()
+                    .build()
+            })
+            .transpose()?;
+        Ok(Self { runtime })
+    }
+
+    /// Run `future` on Raft's threads (the caller's when shared). Raft's
+    /// tasks run where it is created.
+    pub async fn run<F>(&self, future: F) -> anyhow::Result<F::Output>
+    where
+        F: std::future::Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match &self.runtime {
+            Some(runtime) => Ok(runtime.spawn(future).await?),
+            None => Ok(future.await),
+        }
+    }
+
+    /// Serve Raft on `listener` on Raft's threads.
+    pub fn serve(&self, listener: std::net::TcpListener, raft: Raft) -> anyhow::Result<()> {
+        let Some(runtime) = &self.runtime else {
+            anyhow::bail!("raft shares the node's listener");
+        };
+        let _entered = runtime.enter();
+        let listener = tokio::net::TcpListener::from_std(listener)?;
+        runtime.spawn(async move {
+            if let Err(error) = axum::serve(listener, router(raft)).await {
+                tracing::error!(%error, "raft listener stopped");
+            }
+        });
+        Ok(())
+    }
+}
+
+impl Drop for Isolation {
+    fn drop(&mut self) {
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_background();
+        }
+    }
+}
+
+/// Raft's routes. Their state is the Raft handle alone, so a listener on
+/// Raft's own threads holds nothing that keeps the node alive.
+pub fn router(raft: Raft) -> axum::Router {
+    use axum::routing::post;
+    axum::Router::new()
+        .route("/raft/append", post(append))
+        .route("/raft/vote", post(vote))
+        .route("/raft/snapshot", post(snapshot))
+        .with_state(raft)
+}
+
+async fn append(
+    axum::extract::State(raft): axum::extract::State<Raft>,
+    axum::Json(rpc): axum::Json<AppendEntriesRequest<TypeConfig>>,
+) -> impl axum::response::IntoResponse {
+    axum::Json(raft.append_entries(rpc).await)
+}
+
+async fn vote(
+    axum::extract::State(raft): axum::extract::State<Raft>,
+    axum::Json(rpc): axum::Json<VoteRequest<NodeId>>,
+) -> impl axum::response::IntoResponse {
+    axum::Json(raft.vote(rpc).await)
+}
+
+async fn snapshot(
+    axum::extract::State(raft): axum::extract::State<Raft>,
+    headers: axum::http::HeaderMap,
+    data: axum::body::Bytes,
+) -> Result<impl axum::response::IntoResponse, (axum::http::StatusCode, String)> {
+    let chunk: SnapshotChunk = headers
+        .get(SNAPSHOT_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| serde_json::from_str(value).ok())
+        .ok_or_else(|| {
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                "missing snapshot chunk header".into(),
+            )
+        })?;
+    let rpc = InstallSnapshotRequest::<TypeConfig> {
+        vote: chunk.vote,
+        meta: chunk.meta,
+        offset: chunk.offset,
+        data: data.to_vec(),
+        done: chunk.done,
+    };
+    Ok(axum::Json(raft.install_snapshot(rpc).await))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::raft_addr;
+
+    #[test]
+    fn raft_listens_at_an_offset_from_the_node_port() {
+        assert_eq!(raft_addr("cell0-1.cell0:7000", 1), "cell0-1.cell0:7001");
+        assert_eq!(raft_addr("127.0.0.1:7101", 1000), "127.0.0.1:8101");
+        assert_eq!(raft_addr("127.0.0.1:7101", 0), "127.0.0.1:7101");
+        assert_eq!(raft_addr("no-port", 5), "no-port");
     }
 }

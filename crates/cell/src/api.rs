@@ -1,5 +1,5 @@
-//! A node's HTTP surface: Raft RPC, the internal cell API the gateway uses,
-//! and a per-node event stream.
+//! A node's HTTP surface: the internal cell API the gateway uses and a
+//! per-node event stream. Raft RPC is `network::router`.
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -14,7 +14,6 @@ use axum::{Json, Router};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::Event;
 use futures::Stream;
-use openraft::raft::{AppendEntriesRequest, InstallSnapshotRequest, VoteRequest};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::StreamExt;
@@ -22,14 +21,11 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::node::{Node, Proposed};
 use crate::state::{CellId, Change, Command, Placement, Response, SessionState};
-use crate::types::{NodeId, TypeConfig};
+use crate::types::NodeId;
 
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
         .route("/health", get(|| async { "ok" }))
-        .route("/raft/append", post(raft_append))
-        .route("/raft/vote", post(raft_vote))
-        .route("/raft/snapshot", post(raft_snapshot))
         .route("/cell/propose", post(propose))
         .route("/cell/activate/{session}", post(activate))
         .route("/cell/stats", get(stats))
@@ -66,45 +62,6 @@ pub fn router(node: Arc<Node>) -> Router {
         // trusted network.
         .layer(axum::extract::DefaultBodyLimit::disable())
         .with_state(node)
-}
-
-async fn raft_append(
-    State(node): State<Arc<Node>>,
-    Json(rpc): Json<AppendEntriesRequest<TypeConfig>>,
-) -> impl IntoResponse {
-    Json(node.raft.append_entries(rpc).await)
-}
-
-async fn raft_vote(
-    State(node): State<Arc<Node>>,
-    Json(rpc): Json<VoteRequest<NodeId>>,
-) -> impl IntoResponse {
-    Json(node.raft.vote(rpc).await)
-}
-
-async fn raft_snapshot(
-    State(node): State<Arc<Node>>,
-    headers: axum::http::HeaderMap,
-    data: axum::body::Bytes,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let chunk: crate::network::SnapshotChunk = headers
-        .get(crate::network::SNAPSHOT_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| serde_json::from_str(value).ok())
-        .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                "missing snapshot chunk header".into(),
-            )
-        })?;
-    let rpc = InstallSnapshotRequest::<TypeConfig> {
-        vote: chunk.vote,
-        meta: chunk.meta,
-        offset: chunk.offset,
-        data: data.to_vec(),
-        done: chunk.done,
-    };
-    Ok(Json(node.raft.install_snapshot(rpc).await))
 }
 
 async fn propose(
@@ -618,7 +575,7 @@ async fn tools(State(node): State<Arc<Node>>) -> Json<Vec<serde_json::Value>> {
 async fn load(State(node): State<Arc<Node>>) -> Json<CellLoad> {
     let mut load = cell_load(&node.shared.state.read());
     load.pressure = node.pressure.cell_permille();
-    load.closed = node.pressure.level() >= crate::pressure::Level::Full;
+    load.closed = node.pressure.effective() >= crate::pressure::Level::Full;
     Json(load)
 }
 

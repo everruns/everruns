@@ -63,6 +63,21 @@ there and the rebalancer evens out the rest) or give the nodes more memory. Lowe
 budget does not help: with too little room for events, every turn pages history from the object
 store and throughput collapses (SaaS load run 43755911240).
 
+## A cell that stops committing
+
+A leader with entries it has not applied, and whose applied index has not moved for 5 s, sheds
+like a cell short of memory: 429 with `Retry-After` for new sessions and new input, no new
+placements, `cell_commit_stalled` 1 and `cell_overload_level` 2 on that node, a WARN when it
+starts and stops. Without that, every request waits out its proposal deadline, clients retry, and
+the waiting requests fill the nodes' memory (SaaS load run 43774871232: three cells stalled about
+20 minutes each, and three nodes were killed).
+
+The usual cause is Raft missing its deadlines on a host that is short of CPU: openraft gives an
+append one heartbeat interval (300 ms) and a vote 1.5 s. Nodes serve Raft on their own listener
+and threads (`--raft-port-offset`, deployed as port 7001 beside 7000; every member of a cell must
+use the same offset), so client load does not delay it. A stall that lasts means the host is
+oversubscribed: give the cells more CPU or move cells to another host.
+
 ## Leader loss
 
 What happens by itself: a cell of three keeps working with two. The survivors elect a leader

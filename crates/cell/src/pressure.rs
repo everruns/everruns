@@ -26,6 +26,15 @@
 //! asks its peers every second; a peer that does not answer for 5 s (down,
 //! or not started) does not count.
 //!
+//! A cell whose leader stops committing sheds the same way. Decision: in
+//! EKS run 43774871232 three cells stopped committing for about 20 minutes
+//! each (replication kept missing its deadline, see `network::Isolation`).
+//! Every request waited out its 15 s proposal deadline, clients retried, and
+//! the waiting requests filled the nodes' memory until they were killed. A
+//! leader whose log has entries it has not applied, and whose applied index
+//! has not moved for [`STALL_AFTER`], refuses new sessions and input with
+//! the same retry hint until it commits again.
+//!
 //! Work already admitted is never refused: claims, appends, outcomes and
 //! moves all go through. Shedding new input bounds how far the log grows
 //! while a node is short of memory, which also bounds what a rejoining
@@ -33,7 +42,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use axum::Json;
@@ -53,6 +62,9 @@ const SHED_CLEAR: u64 = 880;
 
 /// A peer reading older than this does not count.
 const PEER_STALE: Duration = Duration::from_secs(5);
+/// A leader whose applied index has not moved this long while it has
+/// entries to apply has stalled.
+pub const STALL_AFTER: Duration = Duration::from_secs(5);
 
 /// How long a refused caller should wait before trying again. Long enough
 /// for a few unload rounds and for running turns to finish; short enough
@@ -118,6 +130,9 @@ pub struct Pressure {
     own: AtomicU64,
     peers: Mutex<BTreeMap<NodeId, (u64, Instant)>>,
     level: AtomicU8,
+    /// The leader's applied index when it last moved, and when.
+    progress: Mutex<(u64, Instant)>,
+    stalled: AtomicBool,
     /// Refusals since start, by what was refused.
     pub shed_sessions: AtomicU64,
     pub shed_inputs: AtomicU64,
@@ -130,6 +145,8 @@ impl Pressure {
             own: AtomicU64::new(0),
             peers: Mutex::default(),
             level: AtomicU8::new(0),
+            progress: Mutex::new((0, Instant::now())),
+            stalled: AtomicBool::new(false),
             shed_sessions: AtomicU64::new(0),
             shed_inputs: AtomicU64::new(0),
         }
@@ -176,9 +193,38 @@ impl Pressure {
         Level::from_u8(self.level.load(Ordering::Relaxed))
     }
 
+    /// Record Raft's progress: whether this node leads, its last log index
+    /// and its applied index. Returns whether the cell has stalled.
+    pub fn record_progress(&self, leader: bool, last_log: u64, applied: u64) -> bool {
+        self.record_progress_at(leader, last_log, applied, Instant::now())
+    }
+
+    fn record_progress_at(&self, leader: bool, last_log: u64, applied: u64, now: Instant) -> bool {
+        let mut progress = self.progress.lock();
+        if !leader || applied >= last_log || applied != progress.0 {
+            *progress = (applied, now);
+        }
+        let stalled = now.duration_since(progress.1) >= STALL_AFTER;
+        self.stalled.store(stalled, Ordering::Relaxed);
+        stalled
+    }
+
+    pub fn stalled(&self) -> bool {
+        self.stalled.load(Ordering::Relaxed)
+    }
+
+    /// The level the cell acts on: shedding while stalled.
+    pub fn effective(&self) -> Level {
+        if self.stalled() {
+            Level::Shedding
+        } else {
+            self.level()
+        }
+    }
+
     /// Whether the cell refuses `work` now; counts the refusal.
     pub fn refuses(&self, work: Work) -> bool {
-        let refused = self.level() == Level::Shedding;
+        let refused = self.effective() == Level::Shedding;
         if refused {
             match work {
                 Work::Session => &self.shed_sessions,
@@ -222,9 +268,26 @@ impl Node {
     pub(crate) async fn pressure_loop(self: Arc<Self>) {
         let mut tick = tokio::time::interval(Duration::from_secs(1));
         let mut was = Level::Ok;
+        let mut was_stalled = false;
         loop {
             tick.tick().await;
             self.pressure.record_own(crate::api::rss_mb() << 20);
+            let stalled = {
+                let metrics = self.raft.metrics().borrow().clone();
+                self.pressure.record_progress(
+                    metrics.state == openraft::ServerState::Leader,
+                    metrics.last_log_index.unwrap_or(0),
+                    metrics.last_applied.map_or(0, |id| id.index),
+                )
+            };
+            if stalled != was_stalled {
+                tracing::warn!(
+                    cell = self.cfg.cell,
+                    stalled,
+                    "cell commit progress changed"
+                );
+                was_stalled = stalled;
+            }
             let peers: Vec<(NodeId, String)> = self
                 .members()
                 .into_iter()
@@ -283,7 +346,12 @@ pub fn write_metrics(p: &Pressure, w: &mut crate::prom::Writer) {
     w.gauge(
         "cell_overload_level",
         "0: taking work, 1: full (no new sessions placed here), 2: shedding (new sessions and input refused).",
-        p.level() as u8 as f64,
+        p.effective() as u8 as f64,
+    );
+    w.gauge(
+        "cell_commit_stalled",
+        "1 while this node leads and has not applied an entry for 5 s with entries to apply.",
+        f64::from(u8::from(p.stalled())),
     );
     w.counter(
         "cell_shed_sessions_total",
@@ -327,6 +395,28 @@ pub fn limit_bytes(configured_mb: u64, budget: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_leader_that_stops_applying_sheds_until_it_applies_again() {
+        let p = Pressure::new(1 << 30);
+        let t0 = Instant::now();
+        let at = |secs| t0 + Duration::from_secs(secs);
+        assert!(!p.record_progress_at(true, 110, 100, at(0)));
+        assert!(!p.record_progress_at(true, 120, 100, at(4)), "not yet");
+        assert!(p.record_progress_at(true, 130, 100, at(5)));
+        assert_eq!(p.effective(), Level::Shedding);
+        assert!(p.refuses(Work::Input));
+        assert_eq!(p.shed_inputs.load(Ordering::Relaxed), 1);
+        assert!(
+            !p.record_progress_at(true, 130, 101, at(6)),
+            "applied moved"
+        );
+        assert_eq!(p.effective(), Level::Ok);
+        assert!(!p.refuses(Work::Session));
+        // Nothing to apply, or not the leader: never stalled.
+        assert!(!p.record_progress_at(true, 101, 101, at(20)));
+        assert!(!p.record_progress_at(false, 200, 101, at(40)));
+    }
 
     #[test]
     fn levels_have_hysteresis() {
