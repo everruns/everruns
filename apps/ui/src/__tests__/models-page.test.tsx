@@ -8,12 +8,14 @@ import type { ModelWithProvider } from "@/lib/api/types";
 
 const mockUseSearchParams = jest.fn();
 const mockRouterReplace = jest.fn();
+const mockRouter = { push: jest.fn(), replace: mockRouterReplace };
 let mockPathname = "/models";
 
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
   useSearchParams: () => mockUseSearchParams(),
-  useRouter: () => ({ push: jest.fn(), replace: mockRouterReplace }),
+  // Stable, like Next.js's router: effects that depend on it rerun only on change.
+  useRouter: () => mockRouter,
 }));
 
 jest.mock("next/link", () => ({
@@ -162,6 +164,16 @@ describe("ModelsPage", () => {
     render(<ModelsPage />, { wrapper });
     // The Providers tab, not the model list with its status filter.
     expect(screen.queryByRole("button", { name: /^Enabled/ })).not.toBeInTheDocument();
+  });
+
+  it("explains a provider sign-in that did not finish and clears it from the URL", () => {
+    mockPathname = "/models/providers";
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("connect_error=expired"));
+    render(<ModelsPage />, { wrapper });
+    expect(
+      screen.getByText(/sign-in expired or was started in another browser/),
+    ).toBeInTheDocument();
+    expect(mockRouterReplace).toHaveBeenCalledWith("/models/providers", { scroll: false });
   });
 
   it("keeps filters as query params on the tab's path", () => {

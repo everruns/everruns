@@ -8,6 +8,7 @@ export type ConnectErrorCode =
   | "blocked_by_network_policy"
   | "provider_unreachable"
   | "provider_refused"
+  | "expired"
   | "failed";
 
 export function connectErrorMessage(code: string | null | undefined): string {
@@ -18,6 +19,8 @@ export function connectErrorMessage(code: string | null | undefined): string {
       return "Couldn't reach the server's sign-in service. Try again later.";
     case "provider_refused":
       return "The provider declined the sign-in.";
+    case "expired":
+      return "The sign-in expired or was started in another browser. Start it again.";
     default:
       return "Couldn't connect. Try again.";
   }

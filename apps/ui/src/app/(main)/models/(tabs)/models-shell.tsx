@@ -48,6 +48,7 @@ import {
   useSetModelsEnabled,
 } from "@/hooks/use-providers";
 import { ApiError } from "@/lib/api/client";
+import { connectErrorMessage } from "@/lib/connect-error";
 import { updateModel } from "@/lib/api/providers";
 import type { DriverId, ModelWithProvider, Provider } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
@@ -126,11 +127,15 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
     router.replace(`${tabPath(tab)}${params.size ? `?${params}` : ""}`, { scroll: false });
   };
 
-  // Back from a provider's sign-in page (`?connected=<driver>`).
+  // Back from a provider's sign-in page (`?connected=<driver>`, or
+  // `?connect_error=<code>` when the sign-in did not finish).
   const connected = searchParams.get("connected");
+  const connectError = searchParams.get("connect_error");
   useEffect(() => {
-    if (!connected) return;
-    if (connected !== "chatgpt") {
+    if (!connected && !connectError) return;
+    if (connectError) {
+      setNotice({ kind: "error", text: connectErrorMessage(connectError) });
+    } else if (connected && connected !== "chatgpt") {
       setNotice({
         kind: "success",
         text: `${getProviderLabel(connected as DriverId)} connected. Review its models from the provider card.`,
@@ -138,8 +143,9 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
     }
     const params = new URLSearchParams(searchParams.toString());
     params.delete("connected");
+    params.delete("connect_error");
     router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
-  }, [connected, pathname, router, searchParams]);
+  }, [connected, connectError, pathname, router, searchParams]);
 
   const counts = useMemo(
     () => ({ models: models.length, providers: providers.length }),
