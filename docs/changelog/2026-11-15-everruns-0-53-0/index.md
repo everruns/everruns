@@ -46,5 +46,8 @@ release: "0.53.0"
 - [MCP workspaces preserve drafts and recover connections](/changelog/2026-11-15-mcp-workspace-reliability/)
 - [Tools in Shell is now Shell Code Mode](/changelog/2026-11-15-shell-code-mode/)
 - [Shell Code Mode prints MCP replies as plain JSON](/changelog/2026-11-15-shell-code-mode-mcp-json/)
+- [Monitoring Timeline: sessions, agents, cells and errors on one axis](/changelog/2026-11-16-monitoring-timeline/)
+- [New Slack channels join the room as a teammate](/changelog/2026-11-16-slack-channel-defaults/)
+- [Live event delivery recovers from startup fallback](/changelog/2026-11-16-startup-event-delivery-recovery/)
 
 [GitHub release](https://github.com/everruns/everruns/releases/tag/v0.53.0) · [Full release notes](https://github.com/everruns/everruns/blob/v0.53.0/CHANGELOG.md#0530---2026-11-15)
