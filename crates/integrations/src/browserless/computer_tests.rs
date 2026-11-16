@@ -230,6 +230,10 @@ async fn fills_and_submits_a_form_on_a_real_browser() {
         ))
         .await
         .unwrap();
+    assert_eq!(
+        eval(&mut display, "document.querySelector('#email').value").await,
+        json!("ada@example.com")
+    );
     // ctrl+a selects rather than typing "a"; retyping replaces the selection.
     display
         .perform(&action(json!({"action": "key", "text": "ctrl+a"})))
@@ -395,4 +399,19 @@ async fn button_down_up_hold_key_and_zoom_on_a_real_browser() {
 
     display.into_session().disconnect().await;
     let _ = browser.child.kill().await;
+}
+
+#[test]
+fn select_all_is_explicit_and_does_not_rewrite_other_chords() {
+    assert!(select_all_command("keyDown", "KeyA", 2));
+    assert!(select_all_command("keyDown", "KeyA", 4));
+    for (kind, code, modifiers) in [
+        ("keyUp", "KeyA", 2),
+        ("keyDown", "KeyB", 2),
+        ("keyDown", "KeyA", 0),
+        ("keyDown", "KeyA", 10),
+        ("keyDown", "KeyA", 6),
+    ] {
+        assert!(!select_all_command(kind, code, modifiers));
+    }
 }

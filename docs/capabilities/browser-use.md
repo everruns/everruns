@@ -178,3 +178,5 @@ later ones are not run; each answers that an earlier action failed.
 
 Browser use is available on every deployment. Add the `browser_use` capability
 to an agent and connect your own Browserless account.
+
+Browser keyboard contract: `ctrl+a` and `meta+a` (`cmd+a` / `super+a`) mean **Select All** across local and remote browser operating systems. These two shortcuts send an explicit browser editing command. Other key chords retain their literal modifier/key semantics.
