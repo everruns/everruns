@@ -5,6 +5,7 @@ date: 2026-11-16
 kind: improvement
 significance: minor
 products: [platform, cloud]
+release: "0.53.0"
 surfaces: [ui, api, cli]
 links:
   docs: [/how-to/publish-to-slack/, /capabilities/slack/]

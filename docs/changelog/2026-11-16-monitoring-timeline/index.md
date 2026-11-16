@@ -5,6 +5,7 @@ date: 2026-11-16
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.53.0"
 surfaces: [ui, api, operations]
 links:
   docs: [/observability/monitoring/, /sre/environment-variables/]

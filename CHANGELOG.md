@@ -27,6 +27,14 @@ Changelog: https://everruns.com/docs/changelog/2026-11-15-everruns-0-53-0/
 
 ### What's Changed
 
+- fix(server): recover NATS after startup polling fallback ([#5439](https://github.com/everruns/everruns/pull/5439)) by [@chaliy](https://github.com/chaliy)
+- feat(monitoring): optional 10-second cell detail and changelog entry ([#5437](https://github.com/everruns/everruns/pull/5437)) by [@chaliy](https://github.com/chaliy)
+- test(llm): re-sample the tool-reveal cache check when the model skips tool_search ([#5438](https://github.com/everruns/everruns/pull/5438)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): finish OpenRouter sign-in without a live session cookie ([#5434](https://github.com/everruns/everruns/pull/5434)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): default new channels to per-channel sessions and relevant replies ([#5435](https://github.com/everruns/everruns/pull/5435)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): finish local Socket Mode installs in Slack instead of OAuth ([#5433](https://github.com/everruns/everruns/pull/5433)) by [@chaliy](https://github.com/chaliy)
+- feat(monitoring): fleet timeline with cells, sessions and agents ([#5419](https://github.com/everruns/everruns/pull/5419)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): allocate a free port for chaos NATS ([#5432](https://github.com/everruns/everruns/pull/5432)) by [@chaliy](https://github.com/chaliy)
 - feat(github): let an agent merge its pull request ([#5430](https://github.com/everruns/everruns/pull/5430)) by [@chaliy](https://github.com/chaliy)
 - feat(sandboxes): platform gate for isolated sandbox runs ([#5428](https://github.com/everruns/everruns/pull/5428)) by [@chaliy](https://github.com/chaliy)
 - feat(cell): shed new work when a cell runs short of memory ([#5431](https://github.com/everruns/everruns/pull/5431)) by [@chaliy](https://github.com/chaliy)
@@ -95,7 +103,7 @@ Changelog: https://everruns.com/docs/changelog/2026-11-15-everruns-0-53-0/
 
 ### Crate Releases
 
-All published crates ship at the platform version 0.53.0.
+All published crates ship at the platform version 0.53.0. The crates were published from the release commit (a2cc6e5); #5419, #5432, #5433, #5434, #5435, #5437, #5438 and #5439 ship in the v0.53.0 server, worker, images and CLI binaries only.
 
 ## [0.52.0] - 2026-11-11
 

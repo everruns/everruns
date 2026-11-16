@@ -5,6 +5,7 @@ date: 2026-11-16
 kind: fix
 significance: minor
 products: [platform]
+release: "0.53.0"
 surfaces: [api, ui]
 links:
   docs: [/advanced/physical-architecture/]
