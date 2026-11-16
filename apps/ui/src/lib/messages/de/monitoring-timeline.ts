@@ -80,4 +80,6 @@ export const messages: Readonly<Record<string, string>> = {
   "{value0} sessions": "{value0} Sitzungen",
   "{value0} turns": "{value0} Turns",
   "{value0}-minute buckets": "{value0}-Minuten-Intervalle",
+  "Session history and failures within the selected organization.":
+    "Sitzungsverlauf und Fehler in der ausgewählten Organisation.",
 };
