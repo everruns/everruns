@@ -30,10 +30,16 @@ pub struct CallRecord {
     pub elapsed_ms: u64,
     pub response_id: Option<String>,
     pub response_model: Option<String>,
+    pub total_tokens: Option<u32>,
+    pub service_tier: Option<String>,
+    /// Non-cached input; cache buckets are additive.
     pub prompt_tokens: Option<u32>,
     pub completion_tokens: Option<u32>,
     pub cache_read_tokens: Option<u32>,
     pub cache_creation_tokens: Option<u32>,
+    pub cache_creation_1h_tokens: Option<u32>,
+    pub cache_creation_12h_tokens: Option<u32>,
+    /// Subset of completion tokens, not an extra billable bucket.
     pub reasoning_tokens: Option<u32>,
     pub provider_cost_usd: Option<f64>,
 }
@@ -101,10 +107,14 @@ impl ObservedChatDriver {
             elapsed_ms: 0,
             response_id: None,
             response_model: None,
+            total_tokens: None,
+            service_tier: None,
             prompt_tokens: None,
             completion_tokens: None,
             cache_read_tokens: None,
             cache_creation_tokens: None,
+            cache_creation_1h_tokens: None,
+            cache_creation_12h_tokens: None,
             reasoning_tokens: None,
             provider_cost_usd: None,
         };
@@ -153,10 +163,14 @@ impl CallGuard {
             self.record.retries = m.retry_metadata.as_ref().map(|r| r.attempts);
             self.record.response_id = m.response_id.clone();
             self.record.response_model = m.response_model.clone();
+            self.record.total_tokens = m.total_tokens;
+            self.record.service_tier = m.service_tier.clone();
             self.record.prompt_tokens = m.prompt_tokens;
             self.record.completion_tokens = m.completion_tokens;
             self.record.cache_read_tokens = m.cache_read_tokens;
             self.record.cache_creation_tokens = m.cache_creation_tokens;
+            self.record.cache_creation_1h_tokens = m.cache_creation_1h_tokens;
+            self.record.cache_creation_12h_tokens = m.cache_creation_12h_tokens;
             self.record.reasoning_tokens = m.reasoning_tokens;
             self.record.provider_cost_usd = m
                 .provider_cost_usd
