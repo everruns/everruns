@@ -5,6 +5,7 @@ date: 2026-11-13
 kind: feature
 significance: notable
 products: [framework, platform]
+release: "0.53.0"
 surfaces: [code, api, ui]
 links:
   docs: [/framework/extractions/]

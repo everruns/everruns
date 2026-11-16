@@ -5,6 +5,7 @@ date: 2026-11-12
 kind: feature
 significance: notable
 products: [platform, cloud]
+release: "0.53.0"
 surfaces: [ui, api, operations]
 links:
   docs: [/observability/destinations/]

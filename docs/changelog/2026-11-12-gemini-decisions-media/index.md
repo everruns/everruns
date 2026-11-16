@@ -5,6 +5,7 @@ date: 2026-11-12
 kind: improvement
 significance: notable
 products: [platform, cloud, framework]
+release: "0.53.0"
 surfaces: [agent, code, operations]
 links:
   docs: [/integrations/typesafe/]

@@ -5,6 +5,7 @@ date: 2026-11-15
 kind: fix
 significance: minor
 products: [platform, cloud, framework]
+release: "0.53.0"
 surfaces: [agent, code]
 links:
   docs: [/capabilities/shell-code-mode/, /framework/code-mode/]

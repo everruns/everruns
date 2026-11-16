@@ -5,6 +5,7 @@ date: 2026-11-15
 kind: feature
 significance: notable
 products: [framework]
+release: "0.53.0"
 surfaces: [code]
 links:
   docs: [/framework/evaluation-and-traces/]

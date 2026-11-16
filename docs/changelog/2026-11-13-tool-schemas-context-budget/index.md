@@ -5,6 +5,7 @@ date: 2026-11-13
 kind: fix
 significance: minor
 products: [framework, platform]
+release: "0.53.0"
 surfaces: [agent]
 links:
   docs: [/advanced/compaction/]

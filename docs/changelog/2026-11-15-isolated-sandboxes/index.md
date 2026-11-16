@@ -5,6 +5,7 @@ date: 2026-11-15
 kind: feature
 significance: notable
 products: [platform]
+release: "0.53.0"
 surfaces: [ui, api, operations]
 links:
   docs: [/features/isolated-sandboxes/, /getting-started/kubernetes/]

@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-11-15
+
+Changelog: https://everruns.com/docs/changelog/2026-11-15-everruns-0-53-0/
+
+### Highlights
+
+- **Isolated sandboxes on your own cluster** - A self-hosted Everruns runs agent sandboxes itself: one pod per sandbox on the deployment's own Kubernetes cluster, with its own kernel under AWS Nitro Sandboxes, gVisor or Kata, egress enforced by NetworkPolicy, pause and resume that keep the workspace, and a desktop image, with no sandbox provider account ([changelog](https://everruns.com/docs/changelog/2026-11-15-isolated-sandboxes/), [#5417](https://github.com/everruns/everruns/pull/5417)).
+- **Native tracing to Langfuse and LangSmith** - Send agent traces to Langfuse and LangSmith with organization defaults, per-agent routing, encrypted credentials and explicit content capture ([changelog](https://everruns.com/docs/changelog/2026-11-12-native-tracing-destinations/), [#5394](https://github.com/everruns/everruns/pull/5394)).
+- **Framework application services** - Framework agents extract typed fields without an agent loop, connect to GitHub, MCP and Slack with application credentials, project traces and run evaluations, route event triggers, keep session SQL and memory, drive E2B sandboxes, and can cancel one running tool call without ending the turn ([changelog](https://everruns.com/docs/changelog/2026-11-13-native-extractions/), [changelog](https://everruns.com/docs/changelog/2026-11-15-framework-authenticated-integrations/), [changelog](https://everruns.com/docs/changelog/2026-11-15-framework-evaluation-trace-projection/), [changelog](https://everruns.com/docs/changelog/2026-11-15-framework-session-data-services/), [#5397](https://github.com/everruns/everruns/pull/5397), [#5408](https://github.com/everruns/everruns/pull/5408), [#5384](https://github.com/everruns/everruns/pull/5384)).
+- **Gemini Decision 1** - Google's decision model answers typed decisions under a Gemini or OpenRouter provider, reads attached images, audio, video and PDFs, and can answer a deployment's guardrail checks ([changelog](https://everruns.com/docs/changelog/2026-11-12-gemini-decision-1/), [changelog](https://everruns.com/docs/changelog/2026-11-12-gemini-decisions-media/), [#5371](https://github.com/everruns/everruns/pull/5371), [#5373](https://github.com/everruns/everruns/pull/5373)).
+- **Classic layout with floating or docked Chat** - Classic is the default layout again, and its Chat can float over the page or dock beside it while still seeing the page ([changelog](https://everruns.com/docs/changelog/2026-11-15-classic-floating-docked-chat/), [#5402](https://github.com/everruns/everruns/pull/5402), [#5403](https://github.com/everruns/everruns/pull/5403)).
+- **Shell Code Mode** - Tools in Shell is now Shell Code Mode, MCP replies print as plain JSON for `jq`, and a new example drives a 1,000-tool MCP server from one script ([changelog](https://everruns.com/docs/changelog/2026-11-15-shell-code-mode/), [changelog](https://everruns.com/docs/changelog/2026-11-15-shell-code-mode-mcp-json/), [#5415](https://github.com/everruns/everruns/pull/5415), [#5418](https://github.com/everruns/everruns/pull/5418), [#5412](https://github.com/everruns/everruns/pull/5412)).
+- **Work toward 75,000 agents continues** - Sessions on the cell-based data plane now run end to end through the edge, cells recover from losing their storage node, and production-shaped load runs on EKS ([#5364](https://github.com/everruns/everruns/pull/5364), [#5375](https://github.com/everruns/everruns/pull/5375), [#5385](https://github.com/everruns/everruns/pull/5385)).
+
+### Upgrade Notes
+
+- Browserless, Modal and MCP Events no longer need feature flags; observers and evals keep organization opt-in. Agent changes always require a reason, with no warning-only opt-out. The Sprites sandbox integration is removed: close Sprites resources in the provider account and move agents to another sandbox provider before upgrading ([changelog](https://everruns.com/docs/changelog/2026-11-12-built-in-integrations/), [#5380](https://github.com/everruns/everruns/pull/5380)).
+
+### What's Changed
+
+- fix(cli): k8s destroy checks the cluster first; add k8s/docker health ([#5424](https://github.com/everruns/everruns/pull/5424)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): share OAuth protocol across hosts ([#5420](https://github.com/everruns/everruns/pull/5420)) by [@chaliy](https://github.com/chaliy)
+- test(cell): wait for restored history across replicas ([#5425](https://github.com/everruns/everruns/pull/5425)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): say when a link switched you to another org, with a way back ([#5426](https://github.com/everruns/everruns/pull/5426)) by [@chaliy](https://github.com/chaliy)
+- test(cell): wait for a one-org restore to apply before reading ([#5423](https://github.com/everruns/everruns/pull/5423)) by [@chaliy](https://github.com/chaliy)
+- fix(cell): free stored history before installing a snapshot ([#5421](https://github.com/everruns/everruns/pull/5421)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): open cross-org links in the owning org without reloading the app twice ([#5422](https://github.com/everruns/everruns/pull/5422)) by [@chaliy](https://github.com/chaliy)
+- feat(sandboxes): isolated sandboxes as pods on the deployment's own cluster ([#5417](https://github.com/everruns/everruns/pull/5417)) by [@chaliy](https://github.com/chaliy)
+- fix(shell-code-mode): print MCP text replies as JSON and measure many-call tasks ([#5418](https://github.com/everruns/everruns/pull/5418)) by [@chaliy](https://github.com/chaliy)
+- fix(core): continue stopped turns and keep local credit waits going ([#5416](https://github.com/everruns/everruns/pull/5416)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): rename Tools in Shell to Shell Code Mode ([#5415](https://github.com/everruns/everruns/pull/5415)) by [@chaliy](https://github.com/chaliy)
+- docs(examples): promote code mode to a full example with a recorded demo ([#5412](https://github.com/everruns/everruns/pull/5412)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): preserve workspace state and separate UI rendering ([#5413](https://github.com/everruns/everruns/pull/5413)) by [@chaliy](https://github.com/chaliy)
+- chore(llmsim): move to llmsim 0.8.0 and its built-in scenarios ([#5393](https://github.com/everruns/everruns/pull/5393)) by [@chaliy](https://github.com/chaliy)
+- fix(cell): ignore an old cell's reply after a session moves ([#5414](https://github.com/everruns/everruns/pull/5414)) by [@chaliy](https://github.com/chaliy)
+- feat(cell): name stalled turns in load runs and show why a session waits ([#5411](https://github.com/everruns/everruns/pull/5411)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): install make for the cell image build ([#5410](https://github.com/everruns/everruns/pull/5410)) by [@chaliy](https://github.com/chaliy)
+- fix(cell): a node's memory budget caps the whole process ([#5409](https://github.com/everruns/everruns/pull/5409)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): add standalone application services ([#5408](https://github.com/everruns/everruns/pull/5408)) by [@chaliy](https://github.com/chaliy)
+- test(cell): gate debug streaming latency on batching, not burst ([#5407](https://github.com/everruns/everruns/pull/5407)) by [@chaliy](https://github.com/chaliy)
+- fix(cell): keep only the last turn's response receipts in memory ([#5405](https://github.com/everruns/everruns/pull/5405)) by [@chaliy](https://github.com/chaliy)
+- docs(examples): add code mode example over a 1,000-tool MCP server ([#5404](https://github.com/everruns/everruns/pull/5404)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): floating and docked Chat in the Classic layout ([#5403](https://github.com/everruns/everruns/pull/5403)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): make Classic the default layout and show the chat divider ([#5402](https://github.com/everruns/everruns/pull/5402)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): allocate the chaos postgres host port ([#5401](https://github.com/everruns/everruns/pull/5401)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump astro from 7.4.5 to 7.4.7 in /apps/docs ([#5400](https://github.com/everruns/everruns/pull/5400)) by [@chaliy](https://github.com/chaliy)
+- feat(extractions): add native typed extraction services ([#5397](https://github.com/everruns/everruns/pull/5397)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): explain explicit yolop worktree choice ([#5398](https://github.com/everruns/everruns/pull/5398)) by [@chaliy](https://github.com/chaliy)
+- perf(tasks): suppress unchanged task list polls ([#5396](https://github.com/everruns/everruns/pull/5396)) by [@chaliy](https://github.com/chaliy)
+- fix(compaction): budget model-visible tool schemas ([#5395](https://github.com/everruns/everruns/pull/5395)) by [@chaliy](https://github.com/chaliy)
+- feat(tracing): add native Langfuse and LangSmith destinations ([#5394](https://github.com/everruns/everruns/pull/5394)) by [@chaliy](https://github.com/chaliy)
+- refactor(slack): remove frozen App reads from channel actions ([#5372](https://github.com/everruns/everruns/pull/5372)) by [@chaliy](https://github.com/chaliy)
+- feat(core): cancel one running tool call without cancelling its turn ([#5384](https://github.com/everruns/everruns/pull/5384)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): patch transitive hono, glob and minimatch advisories ([#5392](https://github.com/everruns/everruns/pull/5392)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump hono from 4.13.14 to 4.13.18 in /apps/chat-ui in the npm_and_yarn group across 1 directory ([#5388](https://github.com/everruns/everruns/pull/5388)) by [@dependabot[bot]](https://github.com/dependabot[bot])
+- test(ui): allow cold harness page compilation ([#5390](https://github.com/everruns/everruns/pull/5390)) by [@chaliy](https://github.com/chaliy)
+- test(server): align catalog and agent-context fixtures ([#5389](https://github.com/everruns/everruns/pull/5389)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): load the complete capability catalog ([#5386](https://github.com/everruns/everruns/pull/5386)) by [@chaliy](https://github.com/chaliy)
+- test(a2ui): align prompt contract with canonical wire version ([#5387](https://github.com/everruns/everruns/pull/5387)) by [@chaliy](https://github.com/chaliy)
+- feat(cell): data plane v2 step 10: inspector, SLO gauges, runbooks, cell image, production-shaped load ([#5385](https://github.com/everruns/everruns/pull/5385)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): accept canonical A2UI 1.0 wire versions ([#5383](https://github.com/everruns/everruns/pull/5383)) by [@chaliy](https://github.com/chaliy)
+- feat(flags): make integrations and agent reasons built in ([#5380](https://github.com/everruns/everruns/pull/5380)) by [@chaliy](https://github.com/chaliy)
+- feat(core): always-check reviews answers that ran no tools ([#5382](https://github.com/everruns/everruns/pull/5382)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): stabilize checks and authoritative cell tenant lookup ([#5381](https://github.com/everruns/everruns/pull/5381)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): Yolop speaks ACP v2 ([#5378](https://github.com/everruns/everruns/pull/5378)) by [@chaliy](https://github.com/chaliy)
+- docs(changelog): runnable Gemini Decision 1 example with real output ([#5379](https://github.com/everruns/everruns/pull/5379)) by [@chaliy](https://github.com/chaliy)
+- feat(slack): add requester-only private approval cards ([#5374](https://github.com/everruns/everruns/pull/5374)) by [@chaliy](https://github.com/chaliy)
+- docs: fit prompts and diagrams to the page, add Framework integrations page ([#5377](https://github.com/everruns/everruns/pull/5377)) by [@chaliy](https://github.com/chaliy)
+- chore(docs): page-view-only Google tag, sharper crate metadata ([#5376](https://github.com/everruns/everruns/pull/5376)) by [@chaliy](https://github.com/chaliy)
+- feat(cell): disaster recovery for data plane v2 (step 9) ([#5375](https://github.com/everruns/everruns/pull/5375)) by [@chaliy](https://github.com/chaliy)
+- feat(decisions): Gemini decisions read media; deployment gemini driver ([#5373](https://github.com/everruns/everruns/pull/5373)) by [@chaliy](https://github.com/chaliy)
+- feat(decisions): serve Gemini Decision 1 through the Gemini provider ([#5371](https://github.com/everruns/everruns/pull/5371)) by [@chaliy](https://github.com/chaliy)
+- test(cell): read a session's epoch from one view ([#5370](https://github.com/everruns/everruns/pull/5370)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): name why a dispatched revision is refused ([#5362](https://github.com/everruns/everruns/pull/5362)) by [@chaliy](https://github.com/chaliy)
+- fix(cell): race-free test fleet ports, withdraw abandoned pulls ([#5369](https://github.com/everruns/everruns/pull/5369)) by [@chaliy](https://github.com/chaliy)
+- fix(engine): fail the Engine claim on a busy database ([#5368](https://github.com/everruns/everruns/pull/5368)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): connect LlmSim in the Compose quickstart smoke ([#5363](https://github.com/everruns/everruns/pull/5363)) by [@chaliy](https://github.com/chaliy)
+- feat(cell): data plane v2 step 8, v2 sessions end to end through the edge ([#5364](https://github.com/everruns/everruns/pull/5364)) by [@chaliy](https://github.com/chaliy)
+- test(e2b): wait longer for a cleared egress proxy, report E2B state ([#5365](https://github.com/everruns/everruns/pull/5365)) by [@chaliy](https://github.com/chaliy)
+- ci: give the S3 blob backend job room for a cold cache ([#5366](https://github.com/everruns/everruns/pull/5366)) by [@chaliy](https://github.com/chaliy)
+- test(llm): retry a live turn whose request never reached the provider ([#5367](https://github.com/everruns/everruns/pull/5367)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.53.0.
+
 ## [0.52.0] - 2026-11-11
 
 Changelog: https://everruns.com/docs/changelog/2026-11-11-everruns-0-52-0/

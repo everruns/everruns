@@ -5,6 +5,7 @@ date: 2026-11-13
 kind: improvement
 significance: minor
 products: [framework, platform, cloud]
+release: "0.53.0"
 surfaces: [agent]
 links:
   docs: [/capabilities/sub-agents/]
