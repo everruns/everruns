@@ -43,6 +43,7 @@ pub use serde_json;
 pub mod background_call;
 /// Provider-native offline model request contracts.
 pub mod batch;
+pub mod call_ledger;
 pub mod compact;
 pub mod credential_provider;
 pub mod credential_schema;
