@@ -30,6 +30,7 @@ pub use state::AppState;
 // - Multi-org: org-scoped tools accept optional `organization_id` to override the default org
 
 mod apps;
+mod browser_page;
 mod caching;
 pub(crate) mod cards;
 pub(crate) mod discovery;
@@ -374,7 +375,7 @@ impl FromRequestParts<AppState> for McpResolvedOrg {
 pub fn routes(state: AppState) -> Router {
     let metadata_url = state.resource_metadata_url.clone();
     let router = Router::new()
-        .route("/mcp", post(handle_mcp))
+        .route("/mcp", post(handle_mcp).get(browser_page::handle_get))
         .with_state(state);
     match metadata_url
         .as_deref()
