@@ -342,7 +342,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let websocket_stream: Option<crate::stream_reconnect::SseStream> = None;
 
         let first_connect = match (reattached, websocket_stream) {
-            (Some((stream, _)), _) | (None, Some(stream)) => Ok((stream, RetryMetadata::default())),
+            (Some((stream, _)), _) | (None, Some(stream)) => {
+                Ok((stream, RetryMetadata::default(), None))
+            }
             (None, None) => {
                 self.connect_response(
                     endpoint,
@@ -370,7 +372,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             }
             other => other,
         };
-        let (event_stream, retry_metadata) = match first_connect {
+        let (event_stream, retry_metadata, provider_request_id) = match first_connect {
             Ok(connected) => connected,
             Err(error)
                 if request.previous_response_id.is_some()
@@ -922,6 +924,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let argument_tools = config.tools.clone();
         let converted_stream: LlmResponseStream = Box::pin(converted_stream.map(move |event| {
             event.map(|mut event| {
+                if let LlmStreamEvent::Done(metadata) = &mut event {
+                    metadata.provider_request_id = provider_request_id.clone();
+                }
                 if let LlmStreamEvent::ToolCalls(calls) = &mut event {
                     crate::tool_schema_compat::restore_strict_openai_tool_calls(
                         &argument_tools,

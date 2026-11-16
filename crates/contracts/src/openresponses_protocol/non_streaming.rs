@@ -4,7 +4,7 @@
 //! error handling stay shared. These are in-process frames: no SSE is received
 //! from or sent to the provider on this path.
 use super::*;
-use crate::stream_reconnect::{SseStream, connect_sse_with_reconnect};
+use crate::stream_reconnect::{SseStream, connect_sse_with_request_id, provider_request_id};
 
 impl OpenResponsesProtocolChatDriver {
     pub(super) async fn connect_response(
@@ -14,9 +14,9 @@ impl OpenResponsesProtocolChatDriver {
         body: &Value,
         headers: &HeaderMap,
         config: &LlmCallConfig,
-    ) -> Result<(SseStream, RetryMetadata)> {
+    ) -> Result<(SseStream, RetryMetadata, Option<String>)> {
         if body.get("stream") != Some(&Value::Bool(false)) {
-            return connect_sse_with_reconnect(
+            return connect_sse_with_request_id(
                 &self.retry_config,
                 "OpenResponsesProtocolDriver",
                 |attempts| {
@@ -28,6 +28,7 @@ impl OpenResponsesProtocolChatDriver {
         let (response, retries) = self
             .send_responses_request(endpoint, api_url, body, headers, config, 0)
             .await?;
+        let request_id = provider_request_id(response.headers());
         // A truncated JSON body is a failed call, never an empty successful
         // completion. Do not replay a POST after it may have run hosted tools.
         let resource: Value = response.json().await.map_err(|error| {
@@ -46,6 +47,7 @@ impl OpenResponsesProtocolChatDriver {
                 })
             }))),
             retries,
+            request_id,
         ))
     }
 }

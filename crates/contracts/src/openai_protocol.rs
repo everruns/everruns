@@ -36,7 +36,7 @@ use crate::openai_message_convert::convert_messages;
 use crate::openai_types::*;
 use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
-use crate::stream_reconnect::connect_sse_with_reconnect;
+use crate::stream_reconnect::connect_sse_with_request_id;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::user_facing_error::{is_provider_quota_message, is_usage_limit_message};
 
@@ -251,7 +251,7 @@ impl OpenAIProtocolChatDriver {
     /// header-phase retry loop (transient send failures, 429, and 5xx), and
     /// return the raw response plus its retry metadata.
     ///
-    /// Invoked once per reconnect attempt by [`connect_sse_with_reconnect`]. It
+    /// Invoked once per reconnect attempt by [`connect_sse_with_request_id`]. It
     /// re-sends the identical request and consumes no body bytes, so retrying it
     /// is idempotent. The classifier preserves OpenAI's terminal classification
     /// and error messages exactly.
@@ -509,6 +509,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 0,
             )
             .await?;
+        let request_id = crate::stream_reconnect::provider_request_id(response.headers());
         let body: OpenAiChatCompletionResponse = response.json().await.map_err(|error| {
             AgentLoopError::llm_kind(
                 crate::llm_error::LlmErrorKind::MalformedResponse,
@@ -518,6 +519,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let mut response = self.decode_completion(body, config)?;
         response.metadata.retry_metadata = retry_metadata.had_retries().then_some(retry_metadata);
         response.metadata.request_body = captured_request;
+        response.metadata.provider_request_id = request_id;
         Ok(response)
     }
 
@@ -585,8 +587,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // decoding response body" flake). Header-phase retries (429/5xx and
         // transient send failures) are handled inside the per-attempt send;
         // this adds the body-phase reconnect the official SDKs get for free.
-        let (event_stream, retry_metadata) =
-            connect_sse_with_reconnect(&self.retry_config, "OpenAIProtocolDriver", |attempts| {
+        let (event_stream, retry_metadata, provider_request_id) =
+            connect_sse_with_request_id(&self.retry_config, "OpenAIProtocolDriver", |attempts| {
                 self.send_chat_completion_request(
                     endpoint,
                     &api_url,
@@ -642,6 +644,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                     let finish_reason = Arc::clone(&finish_reason);
                     let accumulated_reasoning = Arc::clone(&accumulated_reasoning);
                     let response_id = Arc::clone(&response_id);
+                    let provider_request_id = provider_request_id.clone();
                     let retry_metadata_for_done = shared_retry_metadata.clone();
                     let captured_request = Arc::clone(&captured_request);
 
@@ -734,6 +737,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
                                     response_id: resp_id,
+                                    provider_request_id,
                                     request_body: (*captured_request).clone(),
                                     ..Default::default()
                                 },
