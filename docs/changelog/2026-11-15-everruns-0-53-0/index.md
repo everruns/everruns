@@ -42,6 +42,7 @@ release: "0.53.0"
 - [Framework event triggers and native services](/changelog/2026-11-15-framework-events-native-services/)
 - [Framework session data and sandbox tools](/changelog/2026-11-15-framework-session-data-services/)
 - [Run agent sandboxes as their own VMs on your Kubernetes cluster](/changelog/2026-11-15-isolated-sandboxes/)
+- [Agents can merge their own GitHub pull requests](/changelog/2026-11-15-agents-merge-pull-requests/)
 - [MCP workspaces preserve drafts and recover connections](/changelog/2026-11-15-mcp-workspace-reliability/)
 - [Tools in Shell is now Shell Code Mode](/changelog/2026-11-15-shell-code-mode/)
 - [Shell Code Mode prints MCP replies as plain JSON](/changelog/2026-11-15-shell-code-mode-mcp-json/)
