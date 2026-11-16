@@ -27,7 +27,7 @@ Signature-Input: sig=("@authority");created=1735689600;expires=1735689900;
                   tag="web-bot-auth"
 ```
 
-The receiving server reconstructs the same signature base from the request, fetches the sender's public key, and verifies the signature. Replay attacks are prevented by the `created`/`expires` window and random `nonce`.
+The receiving server reconstructs the same signature base from the request, fetches the sender's public key, and verifies the signature. Replay protection requires the receiver to enforce the `created`/`expires` window and reject reused nonces within that window. A signature and random `nonce` alone do not prevent replay.
 
 ### Web Bot Auth
 

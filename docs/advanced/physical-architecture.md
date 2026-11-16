@@ -1,6 +1,6 @@
 ---
 title: Physical Architecture
-description: The physical components that make up an Everruns deployment, control plane, workers, PostgreSQL, NATS JetStream, Valkey, and the reverse proxy, and how they fit together.
+description: The physical components that make up an Everruns deployment, control plane, workers, PostgreSQL, NATS, Valkey, and the reverse proxy, and how they fit together.
 sidebar:
   order: 25
 ---
@@ -17,7 +17,7 @@ The [getting-started architecture](/explanation/architecture/) page describes th
 | Control plane (server) | REST API, SSE event streams, gRPC server for workers, owns all state | Yes | 9301 (HTTP), 9001 (gRPC) |
 | Worker pool | Stateless executors of the agentic loop: each leases a session and runs its whole turn | Yes | – (outbound only) |
 | PostgreSQL 17 | Durable storage for agents, sessions, events, durable task queue | Yes | 5432 |
-| NATS JetStream | Live session events across control-plane instances, task notifications | Optional for one control-plane instance, required for more | 4222 |
+| NATS | Live session events across control-plane instances, task notifications | Optional for one control-plane instance, required for more | 4222 |
 | Valkey | Distributed sliding-window rate limiting across control-plane instances | Optional | 6379 |
 | Management UI | Operator interface for agent and provider configuration | Optional | – (served by proxy) |
 | Tenant egress proxy | Gives tenant outbound traffic its own address, per-org limits and usage counts | Optional | 4750 (proxy), 4751 (health) |
@@ -26,7 +26,7 @@ Workers never talk to PostgreSQL, NATS, or Valkey directly. Every read and write
 
 ## PostgreSQL, the only required stateful component
 
-PostgreSQL is the single source of truth for everything Everruns persists. There is no in-memory cache that needs warming, no secondary store that needs syncing, and no analytics database to keep consistent. If you back up PostgreSQL, you back up the entire system.
+PostgreSQL holds the Platform's authoritative metadata and session history. With the default `STORAGE_BLOB_BACKEND=db`, file and image bytes also live there. With `STORAGE_BLOB_BACKEND=s3`, bytes live in the configured object store, so recovery needs both the database and that store. Preserve the deployment's encryption keys separately; a database backup alone cannot recover encrypted secrets. See [Object storage](/sre/environment-variables/#object-storage-s3-compatible-blob-backend).
 
 What lives in PostgreSQL:
 
@@ -44,15 +44,15 @@ Operational requirements:
 
 See [`docs/sre/environment-variables.md`](/sre/environment-variables/) for the full list of database-related variables.
 
-## NATS JetStream, required for more than one control-plane instance
+## NATS, required for more than one control-plane instance
 
 Live session events (what a chat streams over SSE) are pushed from the instance that published them to the instances serving the clients. NATS carries that push between instances. How a control-plane instance delivers them depends on its setup, and `/health` reports the choice as `event_delivery`:
 
 | Setup | `event_delivery` | Behavior |
 |-------|------------------|----------|
-| `NATS_URL` set and reachable | `nats` | Events reach every instance. Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through NATS, which keeps nothing. Durable events still persist to PG, so SSE reconnection via `since_id` keeps working. |
+| `NATS_URL` set and reachable | `nats` | Events reach every instance. Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, and voice transcript deltas) skip PostgreSQL and use Core NATS pub/sub without retained replay. Durable events still persist to PG, so SSE reconnection via `since_id` keeps working. |
 | One instance, no `NATS_URL` | `in_memory` | Events are pushed inside the one process. Every event, deltas included, is also written to PG. Correct for a single control-plane instance only. |
-| `NATS_URL` set but unreachable at startup, or `EXPECTED_INSTANCES` above 1 with no `NATS_URL` | `polling` | Each open stream polls PostgreSQL for new events (100 ms while busy, backing off to 1 s while quiet). Every event is written to PG. Streams stay correct across instances, at the cost of extra queries and latency. `/health` reports `status: degraded`, and the system doctor shows a warning. |
+| `NATS_URL` awaiting startup recovery, or `EXPECTED_INSTANCES` above 1 with no `NATS_URL` | `polling` | Each open stream polls PostgreSQL for new events (100 ms while busy, backing off to 1 s while quiet). Every event is written to PG. Streams stay correct across instances, at the cost of extra queries and latency. `/health` reports `status: degraded`, and the system doctor shows a warning. |
 
 Run more than one control-plane instance only with NATS, and set `EXPECTED_INSTANCES` so an instance started without NATS falls back to polling instead of in-memory delivery. The system doctor flags a problem when several instances run and any of them uses in-memory delivery, because clients on one instance would miss events published through another.
 
@@ -65,7 +65,7 @@ events. `/health` and the system doctor then report `nats` instead of `polling`.
 Deployments without `NATS_URL` remain on their selected fallback.
 
 Live session delivery uses Core NATS pub/sub, not a retained JetStream event stream.
-Durable events are replayed from PostgreSQL. Token deltas remain best-effort,
+Durable events are replayed from PostgreSQL and carry a persisted sequence/cursor. Events delivered ephemerally through NATS do not carry a durable sequence and must not advance the reconnect cursor. Token deltas remain best-effort,
 including during reconnects; completed messages remain in durable session history.
 
 NATS also carries task notifications: `task.available.{activity_type}` subjects replace PG `NOTIFY` for worker wakeup, dropping notification latency from about 30 ms to about 1 ms. Only the control plane connects to NATS; workers talk to the server via gRPC.
@@ -92,7 +92,7 @@ Workers are the most operationally boring component in the deployment. They have
 - No NATS or Valkey access
 - No durable local state
 
-They claim a task from the control plane over gRPC, fetch the turn context in a single batched call, run the agentic loop (LLM calls, tool execution), and stream events back. If a worker crashes mid-task, the heartbeat stops, the control plane reclaims the task after 30 seconds, and another worker picks it up. Add workers for throughput; remove them to save cost.
+For agent turns, workers lease a session from the control plane over gRPC and drive its whole reason–act loop, appending events through the control plane. If a worker dies, its session lease expires (10 seconds by default) and another worker reconstructs the unfinished turn from the event log. Fenced writes reject a displaced holder; external requests already in flight still require the tool's recovery policy and idempotency. Background activities use a separate durable task queue and stale-task reaper. Add workers for throughput; remove them to save cost.
 
 See [Worker authentication](/sre/runbooks/durable-mode-setup/) for the `WORKER_GRPC_AUTH_TOKEN` and optional mTLS setup that secures this internal channel.
 

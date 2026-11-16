@@ -5,20 +5,34 @@ description: "Ship a Framework app as a binary or container: persistent storage 
 
 A Framework app is your own Rust binary. The `everruns` crate needs no
 database, message broker, or Everruns server, so deploying it is deploying that
-binary: build it, give it provider credentials, and, if sessions must outlive
-the process, give it a directory that persists.
+binary: build it and give it provider credentials. If sessions must outlive
+the process, select durable session hosting and preserve its storage and
+registered Agent builds. A persistent directory alone is not an independent
+recovery mechanism.
 
 ## Choose where state lives
 
 | Engine setup | State | Deploy with |
 |---|---|---|
 | `Engine::new()` | In memory, lost when the process exits | Any binary or container. Nothing to persist |
-| An agent built with `.local(LocalConfig::new(dir))` | Crash-durable events, session catalog, and SQLite task and schedule state under `dir`; agent files under `dir/workspace` unless `.workspace(path)` sets another root | A volume that survives restarts and redeploys |
+| Engine with `hosting::SqliteHosting` | Transactional session authority, canonical events, admission receipts and wakeup obligations | Persistent SQLite storage, retained Agent builds and Environment factories, and a running native supervisor |
+| An agent built with legacy `.local(LocalConfig::new(dir))` | Local events, session catalog, and SQLite task and schedule state under `dir`; agent files under `dir/workspace` unless `.workspace(path)` sets another root | A persistent volume and application-driven reattachment and recovery |
 
-`LocalConfig` needs the `local` feature. [Sessions](/framework/sessions/#persistence)
-covers the full trade-off.
+`SqliteHosting` and `LocalConfig` need the `local` feature. New durable services
+should select `SqliteHosting` on `Engine::builder()`, register immutable
+`AgentBuild` identities and start `SqliteHosting::supervise` at startup,
+independently of incoming requests. Workspace files, compute and secrets need
+explicit services with their own persistence guarantees. See
+[session hosting](/framework/hosting/) and
+[Sessions](/framework/sessions/#persistence) for the recovery boundaries.
 
-For a deployment that keeps local state:
+### Existing LocalConfig deployments
+
+`AgentBuilder::local` is deprecated. The following guidance and example apply
+to that legacy lane; use [legacy session cutover](/framework/sessions/#moving-legacy-sessions-to-sqlitehosting)
+to move existing sessions to coherent Engine hosting.
+
+For a legacy deployment that keeps local state:
 
 - **One process per data directory.** The local profile is built for one
   embedded process at a time. Do not point two replicas or two containers at
@@ -63,7 +77,7 @@ your application already resolves the key itself, pass it with
 `OpenAI::new(key)`. On AWS, `Bedrock::default_chain()` uses the instance or
 task role, so no key is stored at all.
 
-A minimal service entry point:
+A legacy `LocalConfig` service entry point:
 
 ```rust
 use std::time::Duration;
@@ -130,7 +144,9 @@ docker run --rm \
   my-agent
 ```
 
-A container without `LocalConfig` needs no volume.
+A volatile Engine needs no state volume. A container using `SqliteHosting`,
+`LocalConfig` or persistent workspace services needs storage that survives
+replacement.
 
 ## When to use serve instead
 
@@ -152,10 +168,12 @@ to the SQLite file named by `DATABASE_URL`, else to `SERVE_DATA_DIR`, else to
 `.serve/` in the working directory, or, with `start --store s3://bucket/prefix`,
 to a bucket that a daemon on another machine can take over (see
 [Keep the data in a bucket](/framework/serve/#keep-the-data-in-a-bucket)). Its
-wire API has no authentication, so run
-it behind a host that authenticates requests. Amazon Bedrock AgentCore is the
-one supported deployment target; see
-[Serve on AgentCore](/framework/serve-agentcore/).
+wire API is unauthenticated by default. Configure
+[serve authentication](/framework/serve/#authentication) or place it behind an
+authenticating host before exposing it. See
+[Serve on AgentCore](/framework/serve-agentcore/) for Amazon Bedrock AgentCore;
+the [celld adapter](/framework/serve-celld/) is a separate source-only reference,
+not a published deployment integration.
 
 Keep a plain Framework binary when the agent is embedded in an application
 that already owns its API, authentication, and storage.

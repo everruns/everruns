@@ -28,7 +28,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`reason.thinking.started`](#reasonthinkingstarted) | Model thinking started. |
 | [`reason.thinking.delta`](#reasonthinkingdelta) | Streaming chunk of model thinking. |
 | [`reason.thinking.completed`](#reasonthinkingcompleted) | Model thinking finished. |
-| [`reason.item`](#reasonitem) | Provider reasoning artifact (opaque or encrypted items plus safe summary text). |
+| [`reason.item`](#reasonitem) | Provider reasoning item identity and safe summary text; opaque replay payloads are excluded. |
 | [`act.started`](#actstarted) | Tool execution phase began. |
 | [`act.completed`](#actcompleted) | Tool execution phase finished. |
 | [`tool.started`](#toolstarted) | A tool call began. |

@@ -81,7 +81,7 @@ You can configure:
 
 ### Aggressive Trim
 
-Last resort. Drops the oldest messages to fit within the token budget. The system prompt and the most recent messages are always preserved. This is lossy, dropped messages cannot be recovered unless Infinity Context is enabled.
+Last resort. Drops the oldest messages to fit within the token budget. The system prompt and the most recent messages are always preserved. This is lossy for the model's active prompt, not a deletion of stored session events. Persisted history remains available through the event API; Infinity Context additionally gives the agent `query_history` to retrieve it.
 
 ## Worker Harness Defaults
 

@@ -11,11 +11,11 @@ An "agent" is a loop, not a function call. This page explains the loop Everruns 
 
 ![Agentic Loop](../images/concepts/agentic-loop.svg)
 
-Each **turn** is one iteration of:
+Each **turn** runs a bounded cycle:
 
-1. **Reason.** Send the full conversation history (system prompt + messages + previous tool results) to the LLM. The model either produces text or requests tool calls.
+1. **Reason.** Build the model context from the system prompt, conversation history and tool results, applying context limits and compaction when needed, then call the LLM. The model either produces text or requests tool calls.
 2. **Act.** If the model requested tool calls, execute them in parallel. The results become new messages in the conversation.
-3. **Loop.** If there were tool calls, go back to step 1. If the model produced a final text response, the turn completes.
+3. **Loop.** If there were tool calls, go back to step 1. A response without tool calls can finish the turn, unless pending input or a configured completion check continues it.
 
 A turn is capped at **500 iterations** by default. That cap exists for one reason: a misbehaving prompt can drive the model into an infinite tool-calling spiral, and an unbounded loop costs real money in tokens. The cap is `max_iterations`, set on the agent and overridable per session (session overrides agent, agent overrides the default).
 
@@ -27,7 +27,7 @@ This means tool implementations cannot assume ordering between calls within a si
 
 ## Execution phases
 
-When an assistant message includes tool calls, the model hasn't given a final answer yet, it's just narrating its plan. When the message has no tool calls, that's the final answer.
+When an assistant message includes tool calls, the model hasn't given a final answer yet, it's just narrating its plan. A message without tool calls is a candidate final answer; pending steering or a completion check can still continue the turn.
 
 Everruns labels each assistant message with an **execution phase**: `Commentary` (intermediate, before/between tool calls) or `FinalAnswer` (completed response). Two consumers care:
 
@@ -38,25 +38,27 @@ Phases are derived from message state (presence of tool calls) and stored on the
 
 ## Turn lifecycle
 
-Every turn emits these events in order:
+A normal turn follows this lifecycle (waiting, budget and recovery events can appear between these steps):
 
 ```
 turn.started
   reason.started → reason.completed (one LLM call)
   act.started    → act.completed   (zero or more tool calls)
   ... (repeat reason/act until the model produces a final answer or max iterations) ...
-turn.completed | turn.failed | turn.cancelled
+turn.completed | turn.failed | turn.cancelled | turn.sealed
 ```
 
 Streaming text and tool calls produce `output.message.delta` and `tool.started` / `tool.completed` events in between. The full event catalog is in the [Event Reference](/event-reference/).
 
-## Why turns are durable, not in-memory
+## How the Platform resumes a turn
 
-A naïve implementation of the loop would hold all turn state in worker memory. Everruns doesn't, because a worker crash mid-turn would lose work the user already paid for.
+The Platform runs each session as a **leased actor**, not as a queue of separate reason and tool tasks. Sending a message stores it and marks its session runnable in one PostgreSQL transaction. A worker leases the session and drives the whole reason–act loop, recording the outcomes needed for recovery in its event log.
 
-Instead each step (reason, each tool call) is a separate durable task. The worker persists state after every step. If a worker crashes between steps, the control plane detects the missed heartbeat and re-queues the next task on a different worker. From the application's perspective: a brief delay, then the stream continues. No retry button required.
+If the worker dies, its lease expires and another worker folds the recorded turn history to continue. Recorded model responses and tool results are reused. An unfinished tool call is retried only when its declared side-effect class permits it or it never started; otherwise its outcome is recorded as interrupted and unknown. Recovery does not make an external side effect exactly-once.
 
-This trade-off, paying for a database write on every step, is what makes Everruns a *durable* agentic harness rather than a thin LLM wrapper. See [Durable execution](/explanation/durable-execution/).
+Lease fencing rejects writes from a displaced holder. It cannot undo an external request already in flight. A turn waiting for a human approval, question answer or client-side tool releases its worker until a result makes the session runnable again.
+
+The embeddable Framework shares the execution loop, but durability depends on its hosting profile: an in-memory Engine does not survive process exit. See [Durable execution](/explanation/durable-execution/) and [Framework Architecture](/framework/architecture/) for the recovery boundaries.
 
 ## What happens when the loop "gets stuck"
 

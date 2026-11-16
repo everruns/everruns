@@ -479,12 +479,12 @@ fn add_human_intent_to_schema(schema: &mut Value) {
 
 /// How many times a tool call may safely be executed given the same inputs.
 ///
-/// Used by the durable Act activity (EVE-530) to decide what to do when a
-/// prior execution attempt left a `running` claim in `durable_tool_results`:
+/// Used during turn recovery when the journal records a tool start without a
+/// completed result:
 ///
-/// * `Pure` / `Idempotent` — the running claim is stale; re-execute freely.
-/// * `AtMostOnce` — never re-execute from a stale running claim; settle it
-///   as `interrupted` and surface an uncertain result to the model instead.
+/// * `Pure` / `Idempotent` — safe to re-execute with the same inputs.
+/// * `AtMostOnce` — do not repeat an execution with an unknown outcome; settle
+///   it as `interrupted` and surface the uncertainty to the model instead.
 ///
 /// When unset (`None`), the conservative default is `AtMostOnce`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -495,8 +495,9 @@ pub enum SideEffectClass {
     /// Idempotent side effects; safe to re-execute with the same arguments
     /// (e.g. create-or-update, PUT-style writes).
     Idempotent,
-    /// Exactly-once semantics required; must not be re-executed from a stale
-    /// running claim (e.g. charge a card, send an email, open a PR).
+    /// Must not be repeated after a started execution has an unknown outcome
+    /// (e.g. charge a card, send an email, open a PR). This does not guarantee
+    /// that the external effect happened or that its result was recorded.
     #[default]
     AtMostOnce,
 }
@@ -613,11 +614,11 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration_noun: Option<String>,
 
-    /// Replay-safety class used by the durable Act activity (EVE-530).
+    /// Replay-safety class used when recovering an unfinished tool call.
     ///
-    /// Controls what happens when a worker reclaims a stale `running` claim:
-    /// `Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are
-    /// settled as `interrupted` to prevent double side-effects.
+    /// When the journal records a start but no completed result,
+    /// `Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are
+    /// settled as `interrupted` to avoid repeating an uncertain external effect.
     ///
     /// `None` is treated conservatively as `AtMostOnce`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

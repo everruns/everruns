@@ -5,7 +5,7 @@ description: Admin container tools for checking database migration status, rotat
 
 The admin container provides tools for key rotation, migration status checks, and other administrative tasks in production environments.
 
-> **Note**: Migrations are **auto-applied on server startup**. The admin container's `migrate` command is primarily for checking status or running migrations separately in special cases.
+> **Note**: Migrations are **auto-applied on server startup**. Use `migrate-info` to inspect migration status. The `migrate` command applies pending migrations and changes the database.
 
 ## Building
 

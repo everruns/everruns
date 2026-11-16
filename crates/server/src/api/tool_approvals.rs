@@ -435,7 +435,7 @@ pub(crate) fn validate_decisions(
     ),
     request_body = SubmitToolApprovalsRequest,
     responses(
-        (status = 200, description = "Decisions recorded and workflow resumed", body = SubmitToolApprovalsResponse),
+        (status = 200, description = "Decisions recorded and turn made runnable", body = SubmitToolApprovalsResponse),
         (status = 400, description = "Invalid session ID or decisions"),
         (status = 403, description = "Caller may not manage this session"),
         (status = 404, description = "Session or pending approval request not found"),

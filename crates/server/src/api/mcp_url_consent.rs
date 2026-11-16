@@ -103,7 +103,7 @@ struct PendingElicitation {
     ),
     request_body = ElicitationConsentRequest,
     responses(
-        (status = 200, description = "Decision recorded and workflow resumed", body = ElicitationConsentResponse),
+        (status = 200, description = "Decision recorded and turn made runnable", body = ElicitationConsentResponse),
         (status = 400, description = "Invalid session ID or request"),
         (status = 403, description = "Caller may not manage this session"),
         (status = 404, description = "Session or pending elicitation not found"),

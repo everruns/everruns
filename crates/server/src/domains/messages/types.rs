@@ -113,7 +113,7 @@ pub struct Message {
 /// Input message for creating a user message
 ///
 /// Only user messages can be created via the API.
-/// Agent messages are created internally by the workflow.
+/// Agent messages are created internally by the turn runtime.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[schema(example = json!({"role": "user", "content": [{"type": "text", "text": "Why is the build failing on main?"}]}))]
 pub struct InputMessage {

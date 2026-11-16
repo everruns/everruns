@@ -18,8 +18,10 @@ Facts about other projects were checked against their own documentation in July
   `everruns` crate runs agents inside your own binary. The platform adds a
   control plane, stateless workers, a remote API and a web console on your own
   PostgreSQL. There is no paid edition and no feature held back.
-- **Durable by default.** Every step of a turn is stored, so sessions survive
-  restarts, deploys and lost workers, with no wall-clock ceiling. See
+- **Durable Platform execution.** The Platform resumes turns from persisted
+  session history after worker loss, with explicit handling of uncertain tool
+  outcomes. The embedded Framework defaults to volatile memory; choose durable
+  hosting when it must recover across process exit. See
   [Durable execution](/explanation/durable-execution/).
 - **Provider neutral.** OpenAI, Anthropic, Gemini, Bedrock, OpenRouter and
   others, plus your own driver. See [Providers](/providers/).

@@ -684,7 +684,7 @@ pub struct ToolNestedCallData {
 /// Data for tool.call_requested event
 ///
 /// Emitted when the agent needs client-side tool calls executed.
-/// The workflow pauses until the client submits results via the API.
+/// The turn parks until the client submits results via the API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolCallRequestedData {

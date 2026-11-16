@@ -786,10 +786,10 @@ pub async fn unarchive_session(
 ///
 /// Cancels the currently running turn in the session. If no turn is running,
 /// this is a no-op and returns success (idempotent). When a turn is active:
-/// 1. Cancel the underlying workflow execution
-/// 2. Emit a turn.cancelled event
-/// 3. Insert an agent message indicating the turn was cancelled
-/// 4. Set the session status back to idle
+/// Cancellation targets the current turn, not later input. A live lease holder
+/// records the terminal events after observing the request; if no holder is
+/// running the turn, the control plane records cancellation and idles the session.
+/// Cancellation cannot undo external effects that already happened.
 #[utoipa::path(
     post,
     path = "/v1/sessions/{session_id}/cancel",

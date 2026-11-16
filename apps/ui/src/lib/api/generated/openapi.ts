@@ -7747,10 +7747,10 @@ export interface paths {
      * Cancel current turn
      * @description Cancels the currently running turn in the session. If no turn is running,
      *     this is a no-op and returns success (idempotent). When a turn is active:
-     *     1. Cancel the underlying workflow execution
-     *     2. Emit a turn.cancelled event
-     *     3. Insert an agent message indicating the turn was cancelled
-     *     4. Set the session status back to idle
+     *     Cancellation targets the current turn, not later input. A live lease holder
+     *     records the terminal events after observing the request; if no holder is
+     *     running the turn, the control plane records cancellation and idles the session.
+     *     Cancellation cannot undo external effects that already happened.
      */
     post: operations["cancel_turn"];
     delete?: never;
@@ -8146,7 +8146,7 @@ export interface paths {
     /** List messages (PRIMARY data) */
     get: operations["list_messages"];
     put?: never;
-    /** Create message (user message triggers workflow) */
+    /** Create message (user message makes the session runnable) */
     post: operations["create_message"];
     delete?: never;
     options?: never;
@@ -8681,7 +8681,7 @@ export interface paths {
     put?: never;
     /**
      * Submit client-side tool results
-     * @description Accepts tool results executed by the client and resumes the agent workflow.
+     * @description Accepts tool results executed by the client and resumes the agent turn.
      *     Session must be in `waiting_for_tool_results` status.
      */
     post: operations["submit_tool_results"];
@@ -16233,12 +16233,12 @@ export interface components {
     EnqueueTaskRequest: {
       /**
        * @description Activity type (determines which worker handles this task)
-       * @example session.run
+       * @example leased_resource_cleanup
        */
       activity_type: string;
       /**
        * @description Task input payload (activity-specific JSON; any shape — object, array, string, etc.).
-       *     Example for `session.run`: `{"session_id": "session_01933b5a00007000800000000000001"}`.
+       *     Example for `leased_resource_cleanup`: `{"batch_size": 25, "stale_after_seconds": 300, "retry_after_seconds": 60}`.
        */
       input: unknown;
       options?: components["schemas"]["EnqueueTaskOptions"] | null;
@@ -19834,7 +19834,7 @@ export interface components {
      * @description Input message for creating a user message
      *
      *     Only user messages can be created via the API.
-     *     Agent messages are created internally by the workflow.
+     *     Agent messages are created internally by the turn runtime.
      * @example {
      *       "content": [
      *         {
@@ -22736,7 +22736,7 @@ export interface components {
       offset?: number | null;
       /**
        * @description Filter by target type ("workflow" or "activity")
-       * @example workflow
+       * @example activity
        */
       target_type?: string | null;
     };
@@ -30387,10 +30387,12 @@ export interface components {
      * @description Target for a schedule - either a workflow or activity
      * @example {
      *       "input": {
-     *         "session_id": "session_01933b5a00007000800000000000001"
+     *         "batch_size": 25,
+     *         "retry_after_seconds": 60,
+     *         "stale_after_seconds": 300
      *       },
-     *       "name": "session.run",
-     *       "type": "workflow"
+     *       "name": "leased_resource_cleanup",
+     *       "type": "activity"
      *     }
      */
     ScheduleTarget: {
@@ -30398,12 +30400,12 @@ export interface components {
       input?: unknown;
       /**
        * @description Workflow type name or activity type name
-       * @example session.run
+       * @example leased_resource_cleanup
        */
       name: string;
       /**
        * @description Target type: "workflow" or "activity"
-       * @example workflow
+       * @example activity
        */
       type: string;
     };
@@ -30411,17 +30413,17 @@ export interface components {
     ScheduleTargetResponse: {
       /**
        * @description Input JSON payload passed to the workflow/activity on each fire.
-       *     Example: `{"session_id": "session_01933b5a000070008000000000000001"}`.
+       *     Example: `{"batch_size": 25, "stale_after_seconds": 300, "retry_after_seconds": 60}`.
        */
       input: Record<string, unknown>;
       /**
        * @description Human-readable name. Safe to render in user-facing messages.
-       * @example session.run
+       * @example leased_resource_cleanup
        */
       name: string;
       /**
        * @description Target type discriminator (`workflow` or `activity`).
-       * @example workflow
+       * @example activity
        */
       type: string;
     };
@@ -32045,12 +32047,12 @@ export interface components {
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
      *
-     *     Used by the durable Act activity (EVE-530) to decide what to do when a
-     *     prior execution attempt left a `running` claim in `durable_tool_results`:
+     *     Used during turn recovery when the journal records a tool start without a
+     *     completed result:
      *
-     *     * `Pure` / `Idempotent` — the running claim is stale; re-execute freely.
-     *     * `AtMostOnce` — never re-execute from a stale running claim; settle it
-     *       as `interrupted` and surface an uncertain result to the model instead.
+     *     * `Pure` / `Idempotent` — safe to re-execute with the same inputs.
+     *     * `AtMostOnce` — do not repeat an execution with an unknown outcome; settle
+     *       it as `interrupted` and surface the uncertainty to the model instead.
      *
      *     When unset (`None`), the conservative default is `AtMostOnce`.
      * @enum {string}
@@ -33330,7 +33332,7 @@ export interface components {
      * @description Data for tool.call_requested event
      *
      *     Emitted when the agent needs client-side tool calls executed.
-     *     The workflow pauses until the client submits results via the API.
+     *     The turn parks until the client submits results via the API.
      */
     ToolCallRequestedData: {
       /** @description Human-readable headline after the requested batch completes */
@@ -58591,7 +58593,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Decision recorded and workflow resumed */
+      /** @description Decision recorded and turn made runnable */
       200: {
         headers: {
           [name: string]: unknown;
@@ -59193,7 +59195,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Answer recorded and workflow resumed */
+      /** @description Answer recorded and turn made runnable */
       200: {
         headers: {
           [name: string]: unknown;
@@ -60036,7 +60038,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Decisions recorded and workflow resumed */
+      /** @description Decisions recorded and turn made runnable */
       200: {
         headers: {
           [name: string]: unknown;
@@ -60098,7 +60100,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Tool results accepted and workflow resumed */
+      /** @description Tool results accepted and turn made runnable */
       200: {
         headers: {
           [name: string]: unknown;

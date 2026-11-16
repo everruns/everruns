@@ -29,7 +29,7 @@ Targets resolve in order `EvalRun → EvalCase → Eval → org default harness`
 4. Optional `artifacts` capture named session files.
 5. `scorers` grade the result, returning `0.0`–`1.0` for nuanced pass/fail.
 
-Eval runs are durable workflows: they reuse the same execution engine as production sessions, so a worker restart mid-run does not lose progress.
+With durable storage, each case/trial result runs as a durable task in the control plane's eval pool. After a crash, another replica reclaims the task and resumes the same case session from its recorded progress. The session's agent turns use the same leased-actor runtime as production sessions. The in-memory fallback runs local tasks instead; a restart loses in-flight cases.
 
 ## Multistep cases
 

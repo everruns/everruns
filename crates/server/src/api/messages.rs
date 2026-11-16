@@ -252,7 +252,7 @@ async fn wait_for_turn(
         }
     }
 }
-/// POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow)
+/// POST /v1/sessions/{session_id}/messages - Create message (user message makes the session runnable)
 #[utoipa::path(
     post,
     path = "/v1/sessions/{session_id}/messages",
