@@ -70,6 +70,8 @@ struct Inner {
     purged: Option<LogId>,
     vote: Option<Vote>,
     committed: Option<LogId>,
+    /// When `committed` was last written to [`COMMITTED_FILE`].
+    committed_saved: Option<std::time::Instant>,
     pending: Vec<Ack>,
     /// Size at which the active segment rolls ([`SEGMENT_BYTES`]).
     segment_bytes: u64,
@@ -158,6 +160,10 @@ impl Ack {
         }
     }
 }
+
+/// The last committed index, written at most once a second and not
+/// fsynced (`Wal::save_committed`).
+const COMMITTED_FILE: &str = "committed.json";
 
 const REWRITE_TMP: &str = "rewrite.tmp";
 const REWRITE_READY: &str = "rewrite.ready";
@@ -274,6 +280,7 @@ impl Wal {
         if let Some(purged) = meta.purged {
             entries.retain(|index, _| *index > purged.index);
         }
+        let committed = restart_committed(&dir, meta.committed, &entries);
         if segments.is_empty() {
             let first = meta.purged.map(|p| p.index + 1).unwrap_or(0);
             segments.push(Segment {
@@ -305,7 +312,8 @@ impl Wal {
                 written: tail_len,
                 purged: meta.purged,
                 vote: meta.vote,
-                committed: meta.committed,
+                committed,
+                committed_saved: None,
                 pending: Vec::new(),
                 segment_bytes: SEGMENT_BYTES,
                 stats: WalStats::default(),
@@ -401,6 +409,43 @@ impl Wal {
                 }
             }
         });
+    }
+}
+
+fn write_committed(dir: &Path, committed: LogId) -> io::Result<()> {
+    let tmp = dir.join("committed.json.tmp");
+    fs::write(&tmp, serde_json::to_vec(&committed)?)?;
+    fs::rename(&tmp, dir.join(COMMITTED_FILE))
+}
+
+/// The commit index to restart with: the newer of the fsynced meta's and
+/// the one [`COMMITTED_FILE`] holds, never past the last entry this log
+/// holds (an unsynced index can be ahead of what reached the disk), and
+/// with the term of the entry held at that index.
+fn restart_committed(
+    dir: &Path,
+    meta: Option<LogId>,
+    entries: &BTreeMap<u64, Entry>,
+) -> Option<LogId> {
+    let written: Option<LogId> = fs::read(dir.join(COMMITTED_FILE))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let wanted = match (meta, written) {
+        (Some(a), Some(b)) => Some(if b.index > a.index { b } else { a }),
+        (a, b) => a.or(b),
+    }?;
+    if Some(wanted) == meta {
+        return meta;
+    }
+    // The newer index came from the unsynced file: use it only as far as
+    // this log reaches, with the term of the entry it names.
+    let index = entries
+        .keys()
+        .next_back()
+        .map_or(wanted.index, |last| wanted.index.min(*last));
+    match entries.get(&index) {
+        Some(entry) => Some(entry.log_id),
+        None => meta,
     }
 }
 
@@ -534,7 +579,31 @@ impl RaftLogStorage<TypeConfig> for Wal {
     async fn save_committed(&mut self, committed: Option<LogId>) -> Result<(), StorageError> {
         // Not fsynced on every commit: the state machine rebuilds from the
         // snapshot plus the log, and Raft re-learns the commit index.
-        self.inner.lock().committed = committed;
+        //
+        // Decision: but it is written down, at most once a second and
+        // without fsync. A node that restarts with a stale commit index
+        // applies its own log only when its leader's commit reaches it, and
+        // Raft then reads and applies the whole range in one batch. On EKS
+        // (runs 43747035567 and 43942107229) that was some 18 000 entries
+        // on top of the restored state, and the node was killed out of
+        // memory five times before it caught up. With the index on disk,
+        // Raft re-applies the log at startup 64 entries at a time. A lost
+        // write only makes the index older, which is the old behaviour.
+        let write = {
+            let mut inner = self.inner.lock();
+            inner.committed = committed;
+            let due = inner
+                .committed_saved
+                .is_none_or(|at| at.elapsed() >= std::time::Duration::from_secs(1));
+            if due {
+                inner.committed_saved = Some(std::time::Instant::now());
+            }
+            due.then(|| inner.dir.clone())
+        };
+        if let (Some(dir), Some(committed)) = (write, committed) {
+            // Best effort: the index is a hint, so a failed write is not an error.
+            let _ = write_committed(&dir, committed);
+        }
         Ok(())
     }
 

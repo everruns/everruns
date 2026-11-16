@@ -29,6 +29,7 @@ pub mod batch;
 pub mod catchup;
 pub mod cli;
 pub mod cluster;
+pub mod container;
 pub mod control;
 pub mod dispatch;
 pub mod dp;

@@ -1660,6 +1660,35 @@ on one machine and two executors of 64 slots for 200 sessions at once, so
 turns queued; that is a local box, not the budget, which the EKS run
 measures.
 
+### Step 10 on EKS (2026-11-16)
+
+Runs of the SaaS `Data plane load` workflow: 72 000 agents, ten turns
+each, on a 48 vCPU NodePool, with a cell node and a quarter of the
+executors killed after the ramp ("chaos").
+
+| Run | Result | Cause | Fix |
+| --- | --- | --- | --- |
+| 8 | Three healthy nodes killed out of memory | Raft shared the API's listener and threads on a saturated host; heartbeats timed out, elections stormed and whole cells stopped committing for about 20 min while requests piled up | Raft on its own listener and threads, slower heartbeat and election timeouts, a leader that cannot commit for 5 s sheds (#5440) |
+| 9 | 6 790 errors | The killed follower never caught up: the Raft router kept axum's 2 MB body limit, which refused 16 MB snapshot chunks, and its stale state answered "not found" | Body limit lifted; a follower far behind steps aside and refuses session requests until it catches up (`catchup.rs`, #5447) |
+| 10 | 31 399 errors | Every replica uploaded its own snapshot copies through a NAT instance whose burst ran out; S3 writes timed out in every cell at once and ship lag refused all work | Only the leader uploads snapshot copies (#5448); S3 through a VPC endpoint (SaaS) |
+| 11 | 720 770 turns, **0 errors**, 208 turns/s, ship lag max 2.7 s | The killed node was still killed out of memory five times while it rejoined | Below |
+
+**Rejoin memory.** A node kept its Raft commit index in memory only. On
+restart it re-applied nothing at startup; its log was applied only when
+the leader's commit reached it, and openraft reads and applies that whole
+range in one batch, on top of the state restored from the snapshot. A
+local repro (three nodes, 1.5 GB budget, follower down 15 s under load)
+put the restarted follower at 2.9 GB against the leader's 2.1 GB. The
+commit index is now written beside the log at most once a second, without
+fsync (`Wal::save_committed`), so openraft re-applies the log at startup
+64 entries at a time; a lost or early write is cut back to the log that
+reached the disk. The same repro then peaks the restarted follower at
+2.1 GB, under the leader's 2.3 GB, and it catches up in 9 s.
+
+Load runs also sample every cell, executor and driver pod's CPU and
+memory, and its machine's, with `cell-testnode usage` (`container.rs`),
+since the cluster runs no metrics server.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
