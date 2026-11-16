@@ -25,18 +25,22 @@ This guide deploys an Agent as a Slack bot through an Agent-owned channel. For S
 
 | Strategy | Behaviour | Use when |
 |---|---|---|
-| `per_thread` (default) | Each Slack thread is its own session | Support bots, Q&A, each thread is a separate conversation |
-| `per_channel` | One session per channel | Persistent channel assistant, context shared across the channel |
+| `per_channel` (default) | One session per channel | A teammate in the room, context shared across the channel |
+| `per_thread` | Each Slack thread is its own session | Support bots, Q&A, each thread is a separate conversation |
 | `per_user` | One session per user | Personal assistant, each user has their own ongoing chat |
 
 ## Choose when the agent responds
 
 The Slack endpoint editor shows a **Response policy** selector:
 
-- **All messages** preserves the existing behavior and is the default.
+- **Relevant messages** is the default for new channels. It responds to direct messages,
+  explicit `@mentions`, and clear requests within the agent's purpose, including contextual
+  thread follow-ups. Unrelated and uncertain messages stay silent.
 - **Mentions only** responds to direct messages and explicit `@mentions`.
-- **Relevant messages** also responds to clear requests within the agent's purpose,
-  including contextual thread follow-ups. Unrelated and uncertain messages stay silent.
+- **All messages** answers every message the bot can see.
+
+Channels created before these defaults keep the settings they were saved with: a channel that
+never chose a session strategy or response policy still runs `per_thread` with **All messages**.
 
 Relevant messages works best with a decision model. By default that is the deployment's Decisions
 service: for Jev, set `UTILITY_TYPESAFE_API_KEY` and select `UTILITY_DECISION_DRIVER=typesafe`.
@@ -56,8 +60,8 @@ message silent, without posting an acknowledgement or running the agent.
 The Agent's **Communication** setting controls what an accepted turn posts to
 Slack: a Direct Agent posts its replies, and an Explicit Agent posts only what it
 sends with `send_message`. See [Explicit communication](/features/explicit-communication/).
-Response policy controls whether that turn starts. Select **All messages** to restore the previous
-behavior.
+Response policy controls whether that turn starts. Select **All messages** to have the agent
+answer everything it sees.
 
 ## Publish and Connect
 

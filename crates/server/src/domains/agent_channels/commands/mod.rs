@@ -214,6 +214,9 @@ impl Command for CreateAgentChannel {
         // arbitrary managed app for deletion via forged install metadata.
         if self.req.channel_type == ChannelType::Slack {
             merge_preserved_secret_fields(ChannelType::Slack, &mut config, &json!({}));
+            crate::domains::agent_channels::record::slack_channel::apply_new_slack_channel_defaults(
+                &mut config,
+            );
         }
         let config = normalize_and_validate_channel_config(self.req.channel_type.clone(), config)?;
         let prepared = super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)?;

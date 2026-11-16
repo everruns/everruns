@@ -575,6 +575,52 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
     assert!(create("not_a_policy").run(&ctx).await.is_err());
 }
 
+/// New Slack channels start as a teammate in the room: one session per Slack
+/// channel, answering only relevant messages. An explicit choice wins, and a
+/// stored config that never set the fields still reads as before.
+#[tokio::test]
+async fn new_slack_channels_default_to_per_channel_relevant_messages() {
+    let db = Arc::new(StorageBackend::test_database());
+    let agent_id = seed_agent(&db).await;
+    let ctx = test_ctx(db);
+    let create = |config: serde_json::Value| CreateAgentChannel {
+        agent_id: agent_id.clone(),
+        req: CreateAgentChannelRequest {
+            channel_type: ChannelType::Slack,
+            channel_config: config,
+            enabled: true,
+        },
+    };
+
+    let defaulted = create(json!({})).run(&ctx).await.unwrap();
+    assert_eq!(defaulted.channel_config["session_strategy"], "per_channel");
+    assert_eq!(
+        defaulted.channel_config["response_policy"],
+        "relevant_messages"
+    );
+
+    let explicit = create(json!({
+        "session_strategy": "per_thread",
+        "response_policy": "all_messages",
+    }))
+    .run(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(explicit.channel_config["session_strategy"], "per_thread");
+    assert_eq!(explicit.channel_config["response_policy"], "all_messages");
+
+    let legacy: crate::domains::agent_channels::record::slack_channel::SlackChannelConfig =
+        serde_json::from_value(json!({})).unwrap();
+    assert_eq!(
+        legacy.session_strategy,
+        crate::domains::agent_channels::record::SessionBinding::Thread
+    );
+    assert_eq!(
+        legacy.response_policy,
+        crate::domains::agent_channels::record::slack_channel::SlackResponsePolicy::AllMessages
+    );
+}
+
 async fn agent_capability_ids(ctx: &Ctx, agent_id: &str) -> Vec<String> {
     let agent = ctx
         .db

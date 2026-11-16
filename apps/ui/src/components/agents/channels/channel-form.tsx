@@ -192,8 +192,9 @@ export function getDefaultChannelFormState(
     slackAppId: "",
     slackAgentSurfaceEnabled: false,
     slackPrivateApprovals: false,
-    slackSessionStrategy: "per_thread",
-    slackResponsePolicy: "all_messages",
+    // New-channel defaults; editing keeps the legacy read defaults below.
+    slackSessionStrategy: "per_channel",
+    slackResponsePolicy: "relevant_messages",
     scheduleCronExpression: "0 0 * * * * *",
     scheduleTimezone: "UTC",
     invocationSessionMode: "shared_session",

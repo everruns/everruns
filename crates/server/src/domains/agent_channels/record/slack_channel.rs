@@ -15,7 +15,11 @@ use super::{SessionBinding, default_ag_ui_generic_tool_text, is_default_ag_ui_ge
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SlackResponsePolicy {
-    /// Preserve the existing behavior for endpoints that have not opted in.
+    /// Every message in a joined channel starts a turn.
+    ///
+    /// Still the read default, so a stored config written before the field
+    /// existed keeps answering everything. New channels get
+    /// [`apply_new_slack_channel_defaults`] instead.
     #[default]
     AllMessages,
     /// Only explicit mentions and direct messages.
@@ -116,6 +120,32 @@ pub struct SlackChannelConfig {
         skip_serializing_if = "is_default_ag_ui_generic_tool_text"
     )]
     pub generic_tool_text: String,
+}
+
+/// Defaults written into a Slack channel's config when it is created.
+///
+/// Decision: new Slack channels share one session per Slack channel and answer
+/// only relevant messages (mentions, DMs, and clear requests within the
+/// agent's purpose). That is how an agent behaves as a teammate in a room
+/// rather than a bot that opens a fresh session for every thread and replies
+/// to every line. The serde defaults on [`SlackChannelConfig`] stay
+/// `per_thread` / `all_messages` on purpose: they also decide how stored
+/// configs that never set these fields are read, and changing them would
+/// silently change every existing channel. Writing the new values explicitly
+/// at creation keeps existing records as they are.
+pub(crate) fn apply_new_slack_channel_defaults(config: &mut serde_json::Value) {
+    if config.is_null() {
+        *config = serde_json::Value::Object(Default::default());
+    }
+    let Some(object) = config.as_object_mut() else {
+        return;
+    };
+    object
+        .entry("session_strategy")
+        .or_insert_with(|| serde_json::json!(SessionBinding::Conversation));
+    object
+        .entry("response_policy")
+        .or_insert_with(|| serde_json::json!(SlackResponsePolicy::RelevantMessages));
 }
 
 /// OAuth consent must request the same bot scopes the manifest declares.
