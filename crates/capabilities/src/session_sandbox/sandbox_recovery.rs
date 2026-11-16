@@ -92,11 +92,23 @@ pub(super) async fn resume_if_needed(
         emit_lifecycle_event(context, state, &previous_instance_id, false).await;
     }
     state.instance = provider.resume(context, config, &state.instance).await?;
+    // A provider may answer a resume with a different physical sandbox: the
+    // old one was deleted while paused, which a stored `Paused` status cannot
+    // know. Unless the provider restored the workspace into it, the new one is
+    // empty, so it gets the starter files and the init commands again.
+    let replaced = state.instance.external_id != previous_instance_id;
+    if replaced && state.instance.metadata["recovered"] != true {
+        state.init_completed_at = None;
+        super::workspace_seed::mark_pending(&mut state.instance);
+    }
     state.status = SessionSandboxStatus::Running;
     state.last_init_error = None;
     state.updated_at = now_rfc3339();
     save_session_sandbox_state(context, state).await?;
-    if lost {
+    if replaced && !lost {
+        emit_lifecycle_event(context, state, &previous_instance_id, false).await;
+    }
+    if lost || replaced {
         emit_lifecycle_event(context, state, &previous_instance_id, true).await;
     }
     Ok(())
@@ -111,7 +123,12 @@ mod tests {
     use everruns_core::events::{Event, EventRequest, SANDBOX_INSTANCE_LOST, SANDBOX_RECOVERED};
 
     use super::*;
-    use crate::session_sandbox::SessionSandboxInstance;
+    use crate::session_sandbox::tests::{
+        MemorySecrets, reset_test_provider_state, test_config_with_init, test_instance,
+        test_provider_state,
+    };
+    use crate::session_sandbox::{SessionSandboxInstance, ensure_session_sandbox_running};
+    use serde_json::json;
 
     #[derive(Default)]
     struct RecordingEmitter(Mutex<Vec<EventRequest>>);
@@ -161,5 +178,86 @@ mod tests {
         assert_eq!(data.previous_instance_id, "physical-old");
         assert_eq!(data.current_instance_id.as_deref(), Some("physical-new"));
         assert!(data.process_state_lost);
+    }
+
+    #[tokio::test]
+    async fn ensure_running_replaces_provider_instance_when_remote_status_is_lost() {
+        let external_id = "sb_lost";
+        reset_test_provider_state(external_id, SessionSandboxStatus::Lost);
+
+        let storage = Arc::new(MemorySecrets::default());
+        let context = ToolContext::with_storage_store(
+            everruns_contracts::typed_id::SessionId::new(),
+            storage,
+        );
+        let mut state = SessionSandboxState {
+            sandbox: None,
+            provider: "core-test-session-sandbox".to_string(),
+            status: SessionSandboxStatus::Running,
+            instance: test_instance(external_id),
+            init_completed_at: Some(now_rfc3339()),
+            last_init_error: None,
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        };
+        save_session_sandbox_state(&context, &mut state)
+            .await
+            .unwrap();
+
+        let resolved = ensure_session_sandbox_running(&context, &test_config_with_init(vec![]))
+            .await
+            .unwrap();
+
+        let provider_state = test_provider_state(external_id);
+        assert_eq!(provider_state.resume_calls, 1);
+        assert_eq!(resolved.status, SessionSandboxStatus::Running);
+        assert_eq!(resolved.instance.metadata, json!({ "resumed": true }));
+    }
+
+    #[tokio::test]
+    async fn ensure_running_initializes_a_sandbox_that_replaced_a_deleted_one() {
+        let external_id = "sb_gone_paused";
+        reset_test_provider_state(external_id, SessionSandboxStatus::Paused);
+        reset_test_provider_state("sb_new_paused", SessionSandboxStatus::Running);
+
+        let storage = Arc::new(MemorySecrets::default());
+        let context = ToolContext::with_storage_store(
+            everruns_contracts::typed_id::SessionId::new(),
+            storage,
+        );
+        let mut state = SessionSandboxState {
+            sandbox: None,
+            provider: "core-test-session-sandbox".to_string(),
+            // Stored as paused: nothing asks the provider whether it survived.
+            status: SessionSandboxStatus::Paused,
+            instance: test_instance(external_id),
+            init_completed_at: Some(now_rfc3339()),
+            last_init_error: None,
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        };
+        save_session_sandbox_state(&context, &mut state)
+            .await
+            .unwrap();
+
+        let config = test_config_with_init(vec!["echo ready"]);
+        let resolved = ensure_session_sandbox_running(&context, &config)
+            .await
+            .unwrap();
+
+        assert_eq!(resolved.instance.external_id, "sb_new_paused");
+        assert_eq!(resolved.status, SessionSandboxStatus::Running);
+        assert_eq!(
+            test_provider_state("sb_new_paused").exec_commands,
+            vec!["echo ready"],
+            "the empty replacement is initialized again"
+        );
+        assert!(resolved.init_completed_at.is_some());
+
+        // The same sandbox, resumed in place, keeps its init.
+        ensure_session_sandbox_running(&context, &config)
+            .await
+            .unwrap();
+        assert_eq!(test_provider_state("sb_new_paused").exec_commands.len(), 1);
     }
 }

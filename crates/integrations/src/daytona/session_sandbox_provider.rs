@@ -262,17 +262,6 @@ fn is_gone_state(state: &str) -> bool {
     state.eq_ignore_ascii_case("destroying") || state.eq_ignore_ascii_case("destroyed")
 }
 
-async fn sandbox_is_lost(
-    client: &DaytonaClient,
-    sandbox_id: &str,
-) -> Result<bool, ToolExecutionResult> {
-    match client.get_sandbox(sandbox_id).await {
-        Ok(info) => Ok(is_gone_state(&info.state)),
-        Err(err) if is_not_found(&err) => Ok(true),
-        Err(err) => Err(ToolExecutionResult::tool_error(err)),
-    }
-}
-
 fn is_transition_state(state: &str) -> bool {
     matches!(state, "starting" | "stopping")
 }
@@ -306,21 +295,25 @@ async fn wait_for_sandbox_state(
     )))
 }
 
+/// Start the sandbox and wait for it. `None` when it no longer exists, which
+/// the caller answers by replacing it.
 async fn ensure_sandbox_started(
     client: &DaytonaClient,
     sandbox_id: &str,
-) -> Result<SandboxInfo, ToolExecutionResult> {
+) -> Result<Option<SandboxInfo>, ToolExecutionResult> {
     let mut last_state = None;
 
     for _ in 0..DAYTONA_STATE_POLL_ATTEMPTS {
-        let info = client
-            .get_sandbox(sandbox_id)
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
+        let info = match client.get_sandbox(sandbox_id).await {
+            Ok(info) if is_gone_state(&info.state) => return Ok(None),
+            Ok(info) => info,
+            Err(err) if is_not_found(&err) => return Ok(None),
+            Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+        };
         last_state = Some(info.state.clone());
 
         if info.state == "started" {
-            return Ok(info);
+            return Ok(Some(info));
         }
         if is_transition_state(&info.state) {
             tokio::time::sleep(DAYTONA_STATE_POLL_INTERVAL).await;
@@ -710,55 +703,27 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
         let api_key = get_managed_api_key(context, &config.credential).await?;
         let client = build_client(api_key, config);
-        let Some(recovery) = recovery_binding(&context.session_id(), instance)? else {
-            let info = ensure_sandbox_started(&client, &instance.external_id).await?;
-            start_configured_desktop(&client, config, &instance.external_id).await?;
-            network::apply_to_running(
-                &client,
-                &instance.external_id,
-                &network::egress_rules(context, config)?,
-            )
-            .await?;
-            let workspace_path = instance
-                .workspace_path
-                .clone()
-                .unwrap_or_else(|| workspace_path(config));
-            let state = SandboxState {
-                sandbox_id: instance.external_id.clone(),
-                workspace_path: workspace_path.clone(),
-                started_at: chrono::Utc::now().to_rfc3339(),
-            };
-            touch_sandbox_lease_with_credential(
-                context,
-                &state,
-                instance.display_name.clone(),
-                Some(config.credential.clone()),
-            )
-            .await?;
-
-            return Ok(SessionSandboxInstance {
-                external_id: instance.external_id.clone(),
-                display_name: instance.display_name.clone().or(info.name.clone()),
-                workspace_path: Some(workspace_path),
-                provider_state: instance.provider_state.clone(),
-                metadata: json!({ "remote_state": "started" }),
-            });
-        };
-
-        if sandbox_is_lost(&client, &instance.external_id).await? {
+        let recovery = recovery_binding(&context.session_id(), instance)?;
+        // Daytona deletes a stopped sandbox on its own (`autoDeleteInterval`),
+        // so a session that comes back later finds nothing to start. Replace
+        // it either way: with its workspace when a recovery volume holds one,
+        // empty otherwise, and the host seeds and initializes it again.
+        let Some(info) = ensure_sandbox_started(&client, &instance.external_id).await? else {
             let replacement_name = instance
                 .display_name
                 .clone()
                 .unwrap_or_else(|| requested_sandbox_name(context, config));
-            let replacement = create_daytona_instance(
+            let restore = recovery.is_some();
+            let mut replacement = create_daytona_instance(
                 &client,
                 context,
                 config,
                 &replacement_name,
-                Some(recovery),
-                true,
+                recovery,
+                restore,
             )
             .await?;
+            replacement.metadata["replaced"] = json!(instance.external_id);
             if let Err(release_err) = release_sandbox_lease(context, &instance.external_id).await {
                 warn!(
                     sandbox_id = %instance.external_id,
@@ -767,8 +732,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                 );
             }
             return Ok(replacement);
-        }
-        let info = ensure_sandbox_started(&client, &instance.external_id).await?;
+        };
         start_configured_desktop(&client, config, &instance.external_id).await?;
         network::apply_to_running(
             &client,
@@ -913,7 +877,12 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         let client = build_client(api_key, config);
         let recovery = recovery_binding(&context.session_id(), instance)?;
         let delete_instance = if let Some(recovery) = &recovery {
-            if sandbox_is_lost(&client, &instance.external_id).await? {
+            if ensure_sandbox_started(&client, &instance.external_id)
+                .await?
+                .is_some()
+            {
+                instance.clone()
+            } else {
                 let replacement_name = instance
                     .display_name
                     .clone()
@@ -927,9 +896,6 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                     false,
                 )
                 .await?
-            } else {
-                ensure_sandbox_started(&client, &instance.external_id).await?;
-                instance.clone()
             }
         } else {
             instance.clone()

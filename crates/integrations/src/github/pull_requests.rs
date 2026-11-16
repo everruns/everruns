@@ -378,6 +378,7 @@ pub(super) async fn get_pull_request(
         "state": pull.state,
         "draft": pull.draft,
         "merged": pull.merged,
+        "mergeable_state": pull.mergeable_state,
         "url": pull.html_url,
         "base": { "ref": pull.base.name, "sha": pull.base.sha },
         "head": { "ref": pull.head.name, "sha": pull.head.sha },

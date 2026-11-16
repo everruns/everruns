@@ -55,6 +55,7 @@ pub struct GitHub {
     api: Arc<ApplicationGitHubApi>,
     writes: bool,
     pull_requests: bool,
+    merge: bool,
     private_issues_only: bool,
 }
 
@@ -82,6 +83,7 @@ impl GitHub {
             }),
             writes: false,
             pull_requests: false,
+            merge: false,
             private_issues_only: false,
         }
     }
@@ -97,6 +99,14 @@ impl GitHub {
     /// Offer PR creation as well. Requires `allow_writes(true)`; drafts are the default.
     pub fn allow_pull_requests(mut self, allow: bool) -> Self {
         self.pull_requests = allow;
+        self
+    }
+
+    /// Offer marking a pull request ready and merging it. Requires
+    /// `allow_writes(true)`. GitHub must report the pull request ready to
+    /// merge, and only the commit the agent names is merged.
+    pub fn allow_merge(mut self, allow: bool) -> Self {
+        self.merge = allow;
         self
     }
 
@@ -123,6 +133,7 @@ impl fmt::Debug for GitHub {
         f.debug_struct("GitHub")
             .field("allow_writes", &self.writes)
             .field("allow_pull_requests", &self.pull_requests)
+            .field("allow_merge", &self.merge)
             .field("private_issues_only", &self.private_issues_only)
             .finish_non_exhaustive()
     }
@@ -204,6 +215,16 @@ impl IntoCapability for GitHub {
                     super::fix_pull_requests::CreateGitHubPullRequestTool::default()
                 );
             }
+            if self.merge {
+                add!(
+                    MarkReady,
+                    super::merge_pull_requests::MarkGitHubPullRequestReadyTool::default()
+                );
+                add!(
+                    MergePull,
+                    super::merge_pull_requests::MergeGitHubPullRequestTool::default()
+                );
+            }
         }
         definition.into()
     }
@@ -282,6 +303,16 @@ operation!(
     super::fix_pull_requests::CreateGitHubPullRequestTool::default(),
     super::fix_pull_requests::create_pull_request
 );
+operation!(
+    MarkReady,
+    super::merge_pull_requests::MarkGitHubPullRequestReadyTool::default(),
+    super::merge_pull_requests::mark_ready
+);
+operation!(
+    MergePull,
+    super::merge_pull_requests::MergeGitHubPullRequestTool::default(),
+    super::merge_pull_requests::merge_pull_request
+);
 
 struct Adapter<I> {
     api: Arc<ApplicationGitHubApi>,
@@ -342,12 +373,13 @@ mod tests {
         let definition = GitHub::new("secret")
             .allow_writes(true)
             .allow_pull_requests(true)
+            .allow_merge(true)
             .into_capability()
             .into_parts()
             .definition
             .unwrap();
-        let mut hosted =
-            super::super::GitHubCapability.tools_with_config(&json!({"allow_pull_requests":true}));
+        let mut hosted = super::super::GitHubCapability
+            .tools_with_config(&json!({"allow_pull_requests":true, "allow_merge":true}));
         hosted.retain(|tool| tool.name() != "github_checkout_pull_request");
         hosted.extend([
             Box::new(super::super::tools::SearchGitHubCodeTool) as Box<dyn Tool>,

@@ -194,6 +194,12 @@ Cases the list did not name, which the model also has to carry:
   `service` use asking `issues: write`.
 - **Fix pull requests from a sandbox**: sandbox repository with write access
   plus `create_github_pull_request`; the one place `contents: write` is needed.
+- **An agent that ships its own pull request**: `allow_merge` adds
+  `mark_github_pull_request_ready` and `merge_github_pull_request`. Off by
+  default and in every built-in harness, because merging is the one tool here
+  that changes a protected branch. GitHub's `mergeable_state` decides, not the
+  model: only `clean` merges, only at the head commit the agent named, with no
+  override. Merging asks `contents: write`.
 - **Public repositories**: no identity at all; uses that only read public
   repositories skip resolution, as `git_fetch` already does.
 - **Plugin marketplaces and git sources fetched from GitHub**

@@ -7,7 +7,8 @@ use serde_json::json;
 
 #[test]
 fn catalog_tools_narrate_all_phases_without_exposing_bodies() {
-    let mut tools = GitHubCapability.tools_with_config(&json!({"allow_pull_requests":true}));
+    let mut tools = GitHubCapability
+        .tools_with_config(&json!({"allow_pull_requests":true, "allow_merge":true}));
     tools.extend(GitHubScoutCapability.tools());
     assert!(!tools.is_empty());
     for tool in tools {
