@@ -191,12 +191,9 @@ impl BrowseSupervisor {
                     result = Err(BrowseError::ProtocolError);
                 }
                 id += 1;
-                let fatal = matches!(
-                    result,
-                    Err(BrowseError::Interrupted | BrowseError::ProtocolError)
-                );
-                let _ = reply.send(result);
-                if fatal {
+                // A receiver can close after exchange wins select but before
+                // delivery. Unknown observation must stop queued mutations too.
+                if !deliver_completed(reply, result) {
                     break BrowseState::Interrupted;
                 }
             };
@@ -375,13 +372,7 @@ async fn exchange(
             return Err(BrowseError::ProtocolError);
         }
         if value["id"].as_u64() == Some(id) {
-            if value.get("error").is_some() {
-                return Err(BrowseError::RemoteError);
-            }
-            return value
-                .get("result")
-                .cloned()
-                .ok_or(BrowseError::ProtocolError);
+            return response_result(&value);
         }
         // This client advertises no server-initiated request capabilities.
         if value.get("id").is_some() {
@@ -393,7 +384,26 @@ async fn exchange(
 #[cfg(test)]
 mod tests;
 
+// True means the actor may dispatch another queued request. Delivery failure is
+// terminal even when the subprocess completed successfully: the caller cancelled
+// or disappeared, so it cannot safely observe the mutation outcome.
+fn deliver_completed(
+    reply: oneshot::Sender<Result<Value, BrowseError>>,
+    result: Result<Value, BrowseError>,
+) -> bool {
+    let fatal = matches!(
+        result,
+        Err(BrowseError::Interrupted | BrowseError::ProtocolError)
+    );
+    reply.send(result).is_ok() && !fatal
+}
+
 fn parse_handoff(result: &Value, tab: u64) -> Result<HandoffOutcome, BrowseError> {
+    let is_error = match result.get("isError") {
+        None | Some(Value::Bool(false)) => false,
+        Some(Value::Bool(true)) => true,
+        _ => return Err(BrowseError::ProtocolError),
+    };
     for block in result["content"]
         .as_array()
         .ok_or(BrowseError::ProtocolError)?
@@ -411,12 +421,27 @@ fn parse_handoff(result: &Value, tab: u64) -> Result<HandoffOutcome, BrowseError
             continue;
         }
         return match value["outcome"].as_str() {
-            Some("continued") if result["isError"] != true => Ok(HandoffOutcome::Continued),
-            Some("cancelled") => Ok(HandoffOutcome::Cancelled),
-            Some("timeout") => Ok(HandoffOutcome::TimedOut),
-            Some("closed") => Ok(HandoffOutcome::TabClosed),
+            Some("continued") if !is_error => Ok(HandoffOutcome::Continued),
+            Some("cancelled") if is_error => Ok(HandoffOutcome::Cancelled),
+            Some("timeout") if is_error => Ok(HandoffOutcome::TimedOut),
+            Some("closed") if is_error => Ok(HandoffOutcome::TabClosed),
             _ => Err(BrowseError::ProtocolError),
         };
     }
     Err(BrowseError::ProtocolError)
+}
+
+// A malformed JSON-RPC envelope is not an ordinary remote tool error: treating
+// it as recoverable could dispatch a mutation after an ambiguous response.
+fn response_result(value: &Value) -> Result<Value, BrowseError> {
+    match (value.get("result"), value.get("error")) {
+        (Some(result), None) => Ok(result.clone()),
+        (None, Some(Value::Object(error)))
+            if error.get("code").and_then(Value::as_i64).is_some()
+                && error.get("message").and_then(Value::as_str).is_some() =>
+        {
+            Err(BrowseError::RemoteError)
+        }
+        _ => Err(BrowseError::ProtocolError),
+    }
 }

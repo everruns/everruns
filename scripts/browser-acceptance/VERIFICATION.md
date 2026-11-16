@@ -54,3 +54,8 @@ No release, deployment, push or merge is implied by these results.
   handoff schema passed after requesting the supported plain tool surface.
   Smoke used isolated temporary profiles, autostart disabled and a unique
   loopback port. It did not install/pair an extension or exercise human handoff.
+
+- Independent supervisor review tightened cancelled-response delivery and
+  malformed handoff/JSON-RPC envelopes. Final revision: 11/11 tests executed,
+  no skips, including required real pinned Browse discovery. No automatic
+  replay or successful continuation is inferred from malformed responses.

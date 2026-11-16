@@ -261,3 +261,79 @@ async fn personal_browser_real_upstream_discovery() {
     assert!(tools.iter().any(|tool| tool["name"] == "status"));
     session.close().await;
 }
+
+#[test]
+fn personal_browser_completed_response_cancellation_race_is_terminal() {
+    let (reply, receiver) = oneshot::channel();
+    // Deterministically simulate exchange winning select, followed by caller
+    // cancellation before delivery. The actor's dispatch gate must close.
+    let completed = Ok(json!({"mutation":"completed"}));
+    drop(receiver);
+    assert!(!deliver_completed(reply, completed));
+
+    let (reply, mut receiver) = oneshot::channel();
+    assert!(deliver_completed(reply, Ok(json!({"ok":true}))));
+    assert_eq!(receiver.try_recv().unwrap().unwrap(), json!({"ok":true}));
+
+    let (reply, mut receiver) = oneshot::channel();
+    assert!(!deliver_completed(reply, Err(BrowseError::ProtocolError)));
+    assert_eq!(
+        receiver.try_recv().unwrap(),
+        Err(BrowseError::ProtocolError)
+    );
+}
+
+#[test]
+fn personal_browser_handoff_error_flag_requires_boolean() {
+    for outcome in ["continued", "cancelled", "timeout", "closed"] {
+        for malformed in [Value::Null, json!("true"), json!(0), json!({}), json!([])] {
+            let result = json!({"content":[{"type":"text", "text":json!({"tab":42,"outcome":outcome}).to_string()}], "isError":malformed});
+            assert_eq!(parse_handoff(&result, 42), Err(BrowseError::ProtocolError));
+        }
+    }
+    let mut result = json!({"content":[{"type":"text", "text":json!({"tab":42,"outcome":"continued"}).to_string()}]});
+    assert_eq!(parse_handoff(&result, 42), Ok(HandoffOutcome::Continued));
+    result["isError"] = json!(false);
+    assert_eq!(parse_handoff(&result, 42), Ok(HandoffOutcome::Continued));
+    result["isError"] = json!(true);
+    assert_eq!(parse_handoff(&result, 42), Err(BrowseError::ProtocolError));
+}
+
+#[test]
+fn personal_browser_rpc_error_envelope_must_be_valid_and_exclusive() {
+    for response in [
+        json!({"result":{},"error":{"code":-1,"message":"secret"}}),
+        json!({"result":{},"error":null}),
+        json!({"error":null}),
+        json!({"error":"secret"}),
+        json!({"error":{"code":"-1","message":"secret"}}),
+        json!({"error":{"code":-1,"message":null}}),
+        json!({"error":{"message":"secret"}}),
+        json!({}),
+    ] {
+        assert_eq!(response_result(&response), Err(BrowseError::ProtocolError));
+    }
+    assert_eq!(
+        response_result(
+            &json!({"error":{"code":-32601,"message":"secret","data":{"token":"secret"}}})
+        ),
+        Err(BrowseError::RemoteError)
+    );
+    assert_eq!(response_result(&json!({"result":null})), Ok(Value::Null));
+}
+
+#[test]
+fn personal_browser_handoff_noncontinued_flags_match_pinned_protocol() {
+    for (outcome, expected) in [
+        ("cancelled", HandoffOutcome::Cancelled),
+        ("timeout", HandoffOutcome::TimedOut),
+        ("closed", HandoffOutcome::TabClosed),
+    ] {
+        let mut result = json!({"content":[{"type":"text","text":json!({"tab":42,"outcome":outcome}).to_string()}]});
+        assert_eq!(parse_handoff(&result, 42), Err(BrowseError::ProtocolError));
+        result["isError"] = json!(false);
+        assert_eq!(parse_handoff(&result, 42), Err(BrowseError::ProtocolError));
+        result["isError"] = json!(true);
+        assert_eq!(parse_handoff(&result, 42), Ok(expected));
+    }
+}
