@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { slackInstallNextUrl } from "@/components/agents/channels/slack-install";
 import {
   SlackConnectionChoice,
   SlackSecretField,
@@ -39,5 +40,17 @@ describe("Slack Socket Mode settings", () => {
     rerender(<SlackSecretField {...props} connection="request_url" />);
     expect(screen.getByLabelText("Signing secret")).toBeInTheDocument();
     expect(screen.queryByLabelText("App-level token")).not.toBeInTheDocument();
+  });
+
+  it("returns to the channel when Slack cannot redirect back", () => {
+    expect(
+      slackInstallNextUrl({ authorize_url: "https://slack.com/oauth/v2/authorize?x" }, "/c"),
+    ).toBe("https://slack.com/oauth/v2/authorize?x");
+    expect(
+      slackInstallNextUrl(
+        { install_page_url: "https://api.slack.com/apps/A1/install-on-team" },
+        "/c",
+      ),
+    ).toBe("/c?slack_install=finish");
   });
 });

@@ -17,8 +17,9 @@ messages over it, so an instance on a laptop, behind a home router or a
 firewall, answers in Slack with no tunnel and no `PUBLIC_APP_URL`.
 
 New channels pick Socket Mode when the Everruns page is not on public HTTPS.
-Create the app from the channel's manifest, generate an app-level token with
-`connections:write` in Slack, and paste it beside the bot token. The channel
+**Add to Slack** creates the agent's app; Slack only returns to HTTPS
+addresses, so you then install it from its Slack page, generate an app-level
+token with `connections:write`, and paste both tokens into the channel. The channel
 shows **Connected** once Slack accepts the connection, and reconnects on its own
 after a restart. Over the API it is two fields of the channel config:
 

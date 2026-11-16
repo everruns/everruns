@@ -553,6 +553,93 @@ describe("Slack channel first run", () => {
     expect(beginSlackInstall).toHaveBeenCalledWith("appchan_123", "T1");
   });
 
+  it("finishes a Socket Mode install in Slack when Slack cannot redirect back", async () => {
+    (beginSlackInstall as jest.Mock).mockResolvedValue({
+      install_page_url: "https://api.slack.com/apps/A1/install-on-team",
+    });
+    await renderNewChannelPage();
+    fireEvent.click(screen.getByRole("button", { name: /Slack/ }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Create channel" }));
+    });
+    expect(beginSlackInstall).toHaveBeenCalledWith("appchan_123", "T1");
+    expect(push).toHaveBeenCalledWith(
+      "/agents/agent_123/channels/appchan_123?slack_install=finish",
+    );
+  });
+
+  it("guides a created Socket Mode app through installing in Slack and pasting tokens", () => {
+    const channelWith = (config: Record<string, unknown>) => ({
+      ...slackChannel(),
+      channel_config: {
+        connection: "socket_mode",
+        slack_app_id: "A0123",
+        slack_app_provisioned: true,
+        signing_secret_configured: true,
+        ...config,
+      },
+    });
+    const pending = channelWith({});
+    const queryClient = new QueryClient();
+    const { unmount } = render(
+      <QueryClientProvider client={queryClient}>
+        <ChannelForm
+          state={getDefaultChannelFormState("slack", pending)}
+          onChange={jest.fn()}
+          mode="edit"
+          channelId="appchan_123"
+          channel={pending}
+          slackInstallCapability={mockSlackCapability}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("Finish in Slack")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Install the app to your workspace" })).toHaveAttribute(
+      "href",
+      "https://api.slack.com/apps/A0123/install-on-team",
+    );
+    // OAuth consent would end on Slack's redirect_uri error, so it is not offered.
+    expect(screen.queryByRole("button", { name: "Add to Slack" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Paste tokens" }));
+    expect(screen.getByLabelText("App-level token")).toBeVisible();
+    expect(screen.getByLabelText("Bot token")).toBeVisible();
+    unmount();
+
+    const done = channelWith({ bot_token_configured: true, app_token_configured: true });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChannelForm
+          state={getDefaultChannelFormState("slack", done)}
+          onChange={jest.fn()}
+          mode="edit"
+          channelId="appchan_123"
+          channel={done}
+          slackInstallCapability={mockSlackCapability}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByText("Finish in Slack")).not.toBeInTheDocument();
+  });
+
+  it("offers Add to Slack for a Socket Mode channel that has no app yet", () => {
+    render(
+      <ChannelForm
+        state={{
+          ...getDefaultChannelFormState("slack"),
+          slackConnection: "socket_mode",
+          slackInstallTeamId: "T1",
+        }}
+        onChange={jest.fn()}
+        mode="edit"
+        channelId="appchan_123"
+        slackInstallCapability={mockSlackCapability}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Add to Slack" })).toBeInTheDocument();
+    expect(screen.getByText(/install it from Slack and paste two tokens/)).toBeVisible();
+  });
+
   it("does not hijack manually entered credentials", async () => {
     await renderNewChannelPage();
     fireEvent.click(screen.getByRole("button", { name: /Slack/ }));

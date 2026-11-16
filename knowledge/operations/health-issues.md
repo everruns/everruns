@@ -180,7 +180,7 @@ Source owns concrete shapes and commands:
   [fix card](../../apps/ui/src/components/health/health-fixer.tsx),
   [several-issue walk-through](../../apps/ui/src/components/health/health-fix-queue.tsx).
 - [Slack manifest](../../crates/server/src/channels/slack/events/manifest.rs),
-  [install flow](../../crates/server/src/channels/slack/install.rs),
+  [install flow](../../crates/server/src/channels/slack/install/mod.rs),
   [provisioning](../../crates/server/src/channels/slack/provisioning/mod.rs),
   [typed runtime errors](../../crates/server/src/channels/slack/actions/mod.rs).
 - [Domain tests](../../crates/server/src/domains/health_issues/tests.rs),

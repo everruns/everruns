@@ -12,7 +12,7 @@ import { slackAppUrl } from "@/components/slack/slack-workspaces";
 import { SlackWorkspaceName } from "./slack-install";
 import { isPublicHttpsUrl } from "@/lib/public-origin";
 import { useUiTranslations } from "@/providers/locale-provider";
-import type { SlackConnection } from "@/lib/api/types";
+import type { AgentChannel, SlackConnection } from "@/lib/api/types";
 
 /** Socket Mode unless this page is served from a public HTTPS address. */
 export function defaultSlackConnection(): SlackConnection {
@@ -184,6 +184,74 @@ export function SlackInstalledCard({
         <Slack className="size-4" />
         {ui("Open in Slack")}
       </a>
+    </div>
+  );
+}
+
+/**
+ * Socket Mode on a page Slack cannot send the browser back to. Slack accepts only HTTPS redirect
+ * URLs, so Add to Slack creates the app and the operator installs it from Slack's own page.
+ */
+export function finishesInSlack(connection: SlackConnection): boolean {
+  return connection === "socket_mode" && defaultSlackConnection() === "socket_mode";
+}
+
+/** Add to Slack's description: one consent screen, or create-then-finish-in-Slack. */
+export function addToSlackHint(connection: SlackConnection): string {
+  return finishesInSlack(connection)
+    ? "Creates this agent's own Slack app in the workspace above. Slack only returns to HTTPS addresses, so you then install it from Slack and paste two tokens here."
+    : "Creates this agent's own Slack app in the workspace above and opens Slack to approve it. The signing secret, bot token and workspace ID are filled in for you.";
+}
+
+/**
+ * The app exists but Slack cannot redirect back here: install it from Slack and paste the two
+ * tokens. Hidden once both are saved.
+ */
+export function SlackFinishInSlack({
+  channel,
+  onConfigure,
+}: {
+  channel?: AgentChannel;
+  onConfigure: () => void;
+}) {
+  const ui = useUiTranslations();
+  const config = (channel?.channel_config ?? {}) as Record<string, unknown>;
+  const appId = typeof config.slack_app_id === "string" ? config.slack_app_id : "";
+  if (!appId || (config.bot_token_configured && config.app_token_configured)) return null;
+  const app = `https://api.slack.com/apps/${encodeURIComponent(appId)}`;
+  return (
+    <div className="space-y-3 border p-4">
+      <div className="space-y-1">
+        <p className="text-sm font-medium">{ui("Finish in Slack")}</p>
+        <p className="text-xs text-muted-foreground">
+          {ui(
+            "This agent's Slack app is created. Slack only returns to HTTPS addresses, so finish the install there:",
+          )}
+        </p>
+      </div>
+      <ol className="list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+        <li>
+          <a className="underline" href={`${app}/install-on-team`} target="_blank" rel="noreferrer">
+            {ui("Install the app to your workspace")}
+          </a>{" "}
+          {ui("and copy its Bot User OAuth Token (xoxb-…).")}
+        </li>
+        <li>
+          {ui("In")}{" "}
+          <a className="underline" href={`${app}/general`} target="_blank" rel="noreferrer">
+            {ui("Basic Information")}
+          </a>
+          {ui(", generate an App-Level Token with the connections:write scope (xapp-…).")}
+        </li>
+        <li>{ui("Paste both below and save.")}</li>
+      </ol>
+      <button
+        type="button"
+        className={buttonVariants({ variant: "outline", size: "sm" })}
+        onClick={onConfigure}
+      >
+        {ui("Paste tokens")}
+      </button>
     </div>
   );
 }

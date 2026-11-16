@@ -135,9 +135,15 @@ export async function revokeAgentKey(
   return response.data;
 }
 
+/** Exactly one field is set. */
 export interface BeginSlackInstallResult {
   /** Send the operator here; Slack shows one consent screen, then redirects back. */
-  authorize_url: string;
+  authorize_url?: string;
+  /**
+   * Set instead when Slack cannot redirect back (Socket Mode without public HTTPS): the app's own
+   * install page in Slack. The operator installs it there and pastes the bot and app-level tokens.
+   */
+  install_page_url?: string;
 }
 
 export interface SlackInstallCapability {
@@ -186,8 +192,8 @@ export async function connectSlackWorkspace(refreshToken: string): Promise<Slack
  * Start connecting a workspace by Slack consent through the deployment's manager app. Admin only.
  * Slack returns the browser to Settings > Slack workspaces with `slack_connect=ok|failed`.
  */
-export async function beginSlackManagerConnect(): Promise<BeginSlackInstallResult> {
-  const response = await api.post<BeginSlackInstallResult>("/v1/slack/workspaces/oauth");
+export async function beginSlackManagerConnect(): Promise<{ authorize_url: string }> {
+  const response = await api.post<{ authorize_url: string }>("/v1/slack/workspaces/oauth");
   return response.data;
 }
 

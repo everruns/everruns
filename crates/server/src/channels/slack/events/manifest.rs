@@ -101,9 +101,7 @@ pub(crate) async fn manifest_yaml_for_channel(
         &starters,
     );
     if socket_mode {
-        // Slack's install consent needs an HTTPS redirect; without a public
-        // address the app is installed from its own Slack page instead.
-        let keep_redirect = state.api_base_url.starts_with("https://");
+        let keep_redirect = slack_oauth_redirect_available(&state.api_base_url, true);
         return Ok(socket_mode_manifest(&manifest_yaml, keep_redirect));
     }
 
@@ -142,6 +140,19 @@ pub(crate) fn socket_mode_manifest(yaml: &str, keep_redirect: bool) -> String {
         out.push('\n');
     }
     out
+}
+
+/// Whether this channel's Slack app declares an OAuth redirect, and so whether
+/// Slack's consent screen can send the operator back to Everruns.
+///
+/// Slack accepts only HTTPS redirect URLs (`http://localhost` included is
+/// refused), so a Socket Mode app on a plain-HTTP deployment, a laptop, has
+/// none. Such an app is installed from its own page in Slack and its tokens
+/// are pasted; sending the operator to `/oauth/v2/authorize` instead ends on
+/// Slack's "redirect_uri did not match any configured URIs". Request URL apps
+/// keep the redirect: they need public HTTPS to receive events anyway.
+pub(crate) fn slack_oauth_redirect_available(api_base_url: &str, socket_mode: bool) -> bool {
+    !socket_mode || api_base_url.starts_with("https://")
 }
 
 /// This server's Slack webhook endpoint for one channel.
