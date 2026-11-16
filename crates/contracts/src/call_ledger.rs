@@ -359,13 +359,15 @@ mod tests {
             _: Vec<Message>,
             _: &LlmCallConfig,
         ) -> Result<LlmResponseStream> {
-            let mut metadata = LlmCompletionMetadata::default();
-            metadata.prompt_tokens = Some(12);
-            metadata.completion_tokens = Some(7);
-            metadata.response_id = Some("resp_test".into());
-            metadata.provider_request_id = Some("req_test".into());
-            metadata.response_model = Some("served-model".into());
-            metadata.request_body = Some(serde_json::json!({"secret": "must-not-record"}));
+            let metadata = LlmCompletionMetadata {
+                prompt_tokens: Some(12),
+                completion_tokens: Some(7),
+                response_id: Some("resp_test".into()),
+                provider_request_id: Some("req_test".into()),
+                response_model: Some("served-model".into()),
+                request_body: Some(serde_json::json!({"secret": "must-not-record"})),
+                ..Default::default()
+            };
             Ok(Box::pin(futures::stream::iter([
                 Ok(LlmStreamEvent::TextDelta("private answer".into())),
                 Ok(LlmStreamEvent::Done(Box::new(metadata))),

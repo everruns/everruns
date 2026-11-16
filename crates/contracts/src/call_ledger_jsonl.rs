@@ -79,9 +79,11 @@ mod tests {
             _: Vec<Message>,
             _: &LlmCallConfig,
         ) -> crate::error::Result<LlmResponseStream> {
-            let mut metadata = LlmCompletionMetadata::default();
-            metadata.prompt_tokens = Some(11);
-            metadata.provider_request_id = Some("req_mock".into());
+            let metadata = LlmCompletionMetadata {
+                prompt_tokens: Some(11),
+                provider_request_id: Some("req_mock".into()),
+                ..Default::default()
+            };
             Ok(Box::pin(futures::stream::iter([Ok(LlmStreamEvent::Done(
                 Box::new(metadata),
             ))])))
