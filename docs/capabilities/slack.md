@@ -46,7 +46,13 @@ Slack offers no API to create an app-level token, so Socket Mode always takes on
 2. Under **Basic Information** > **App-Level Tokens**, select **Generate Token and Scopes**, add the `connections:write` scope, and generate it.
 3. Paste the token into the channel's **App-level token** field and save.
 
-The channel shows **Connected** once Slack accepts the connection. Each API server keeps one connection per channel (Slack hands each message to one of them) and reconnects on its own after a restart or a network drop. **Add to Slack** finishes on a Slack redirect, which needs a public HTTPS address; without one, use **Create Slack app** under **Configure manually** and paste the bot token too.
+The channel shows **Connected** once Slack accepts the connection. Each API server keeps one connection per channel (Slack hands each message to one of them) and reconnects on its own after a restart or a network drop.
+
+On a public HTTPS address, **Add to Slack** fills in the bot token through Slack's approval screen. Without one, Slack cannot send you back (it accepts only HTTPS redirect URLs, `http://localhost` included), so **Add to Slack** creates the app and the channel shows **Finish in Slack**:
+
+1. Select **Install the app to your workspace**, approve it in Slack, and copy the **Bot User OAuth Token** (`xoxb-...`).
+2. Generate the app-level token as above.
+3. Select **Paste tokens**, paste both, and save.
 
 ## Connect a Slack Workspace
 

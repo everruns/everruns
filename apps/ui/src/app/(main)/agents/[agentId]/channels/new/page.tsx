@@ -39,6 +39,7 @@ import { ChannelIcon } from "@/components/agents/channels/channel-icon";
 import { getChannelTypeDisplayName } from "@/lib/channel-display";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { beginSlackInstall } from "@/lib/api/agent-channels";
+import { slackInstallNextUrl } from "@/components/agents/channels/slack-install";
 
 export default function NewAgentChannelPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { displayLocale } = useDisplayLocale();
@@ -128,7 +129,9 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
         }
         title={
           chosen
-            ? ui("New {value0}", { value0: getChannelTypeDisplayName(formState.kind) })
+            ? ui("New {value0}", {
+                value0: getChannelTypeDisplayName(formState.kind),
+              })
             : ui("New channel")
         }
         description={
@@ -208,11 +211,12 @@ export default function NewAgentChannelPage({ params }: { params: Promise<{ agen
                     return;
                   }
                   try {
-                    const { authorize_url } = await beginSlackInstall(
+                    const result = await beginSlackInstall(
                       channel.id,
                       formState.slackInstallTeamId || null,
                     );
-                    window.location.href = authorize_url;
+                    if (result.authorize_url) window.location.href = result.authorize_url;
+                    else router.push(slackInstallNextUrl(result, endpointHref));
                   } catch (caught) {
                     const reason =
                       caught instanceof Error

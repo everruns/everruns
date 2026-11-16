@@ -436,6 +436,8 @@ async fn sync_models(ctx: &Ctx, row: &HealthIssueRow) -> Result<(), CommandError
     }
 }
 
+use crate::channels::slack::install::ReconsentStart;
+
 async fn slack_fix(
     ctx: &Ctx,
     row: &HealthIssueRow,
@@ -453,7 +455,7 @@ async fn slack_fix(
         SlackOrigin::Everruns => {
             // The public API base the app's OAuth redirect names; the REST
             // and MCP states set it from the auth config.
-            let url = crate::channels::slack::install::begin_reconsent(
+            let start = crate::channels::slack::install::begin_reconsent(
                 &ctx.db,
                 ctx.encryption.as_ref(),
                 provisioner.as_ref(),
@@ -464,7 +466,11 @@ async fn slack_fix(
             )
             .await
             .map_err(reconsent_error)?;
-            Ok((Some(url), true))
+            Ok(match start {
+                ReconsentStart::Consent(url) => (Some(url), true),
+                // Socket Mode without public HTTPS: Slack cannot redirect back.
+                ReconsentStart::InstallPage(url) => (Some(url), false),
+            })
         }
         SlackOrigin::ByHand => {
             let app_id = slack_app_id(slack_api, &slack.config.bot_token)

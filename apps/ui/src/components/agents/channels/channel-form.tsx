@@ -623,11 +623,9 @@ export function ChannelForm({
   const ui = useUiTranslations();
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
-  // One-click install ends on Slack's HTTPS redirect, which Socket Mode setups usually lack.
-  const slackInstallAvailable =
-    slackInstallCapability?.connected === true &&
-    (state.slackConnection === "request_url" ||
-      SocketMode.defaultSlackConnection() === "request_url");
+  // Without public HTTPS, Socket Mode's Add to Slack creates the app; the install ends in Slack.
+  const slackInstallAvailable = slackInstallCapability?.connected === true;
+  const slackFinishInSlack = SocketMode.finishesInSlack(state.slackConnection);
   const slackFormId = useId();
   const [manualSlackOpen, setManualSlackOpen] = useState(false);
   const openManualSlack = useCallback(() => setManualSlackOpen(true), []);
@@ -1310,14 +1308,13 @@ export function ChannelForm({
                 channelId &&
                 slackInstallAvailable &&
                 slackCanAdd &&
+                !(slackFinishInSlack && state.slackAppId) &&
                 !slackInstall.unavailable && (
                   <div className="space-y-3 border p-4">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">{ui("Add to Slack")}</p>
                       <p className="text-xs text-muted-foreground">
-                        {ui(
-                          "Creates this agent's own Slack app in the workspace above and opens Slack to approve it. The signing secret, bot token and workspace ID are filled in for you.",
-                        )}
+                        {ui(SocketMode.addToSlackHint(state.slackConnection))}
                       </p>
                     </div>
                     <Button
@@ -1340,6 +1337,9 @@ export function ChannelForm({
                     )}
                   </div>
                 )}
+              {slackInstallUnfinished && slackFinishInSlack && (
+                <SocketMode.SlackFinishInSlack channel={channel} onConfigure={openManualSlack} />
+              )}
               {!slackLive && mode === "new" && slackInstallAvailable && (
                 <p className="text-xs text-muted-foreground">
                   {ui(

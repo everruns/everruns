@@ -330,6 +330,134 @@ async fn exercise_install(server: test_harness::TestServer) {
         .assert_status(axum::http::StatusCode::NOT_FOUND);
 }
 
+/// Records the manifest Slack would receive.
+struct RecordingProvisioner(std::sync::Mutex<Vec<String>>);
+
+#[async_trait]
+impl SlackAppProvisioner for RecordingProvisioner {
+    async fn create_app(
+        &self,
+        org: i64,
+        team: Option<&str>,
+        manifest: &str,
+    ) -> SlackProvisioningResult<SlackAppCredentials> {
+        self.0.lock().unwrap().push(manifest.to_string());
+        Provisioner.create_app(org, team, manifest).await
+    }
+    async fn update_permissions(
+        &self,
+        org: i64,
+        team: Option<&str>,
+        app: &str,
+        scopes: &[&str],
+    ) -> SlackProvisioningResult<()> {
+        Provisioner.update_permissions(org, team, app, scopes).await
+    }
+    async fn delete_app(&self, _: i64, _: Option<&str>, _: &str) -> SlackProvisioningResult<()> {
+        Ok(())
+    }
+    async fn connection_status(
+        &self,
+        org: i64,
+    ) -> SlackProvisioningResult<SlackProvisioningConnectionStatus> {
+        Provisioner.connection_status(org).await
+    }
+}
+
+/// A Socket Mode agent on a laptop (`http://localhost`): Slack refuses
+/// non-HTTPS redirect URLs, so the app is created without one and the
+/// operator is sent to the app's install page, never to OAuth consent that
+/// would end on "redirect_uri did not match any configured URIs".
+#[tokio::test]
+async fn socket_mode_without_https_installs_from_the_slack_app_page() {
+    let server = test_harness::TestServer::in_memory().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({"name":format!("slack-local-{}", uuid::Uuid::now_v7().simple()), "system_prompt":"Test"}),
+        )
+        .await
+        .assert_status(axum::http::StatusCode::CREATED)
+        .json();
+    let endpoint: Value = server
+        .post(
+            &format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap()),
+            json!({"channel_type":"slack", "channel_config":{"connection":"socket_mode"}}),
+        )
+        .await
+        .assert_status(axum::http::StatusCode::CREATED)
+        .json();
+    let id = endpoint["id"].as_str().unwrap();
+
+    let config = auth::AuthConfig::default();
+    let backend = auth::BuiltinAuthBackend::new(
+        config.clone(),
+        server.db.clone(),
+        Arc::new(everruns_server::oss_host_composition_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        )),
+    );
+    let auth = auth::AuthState::new(config, Arc::new(backend)).with_db(server.db.clone());
+    let slack = everruns_server::channels::slack::events::SlackState::new(
+        server.db.clone(),
+        server.encryption.clone(),
+        server.runner.clone(),
+        everruns_server::EventDelivery::in_memory(),
+        "http://localhost:9300/api".into(),
+    );
+    let provisioner = Arc::new(RecordingProvisioner(Default::default()));
+    let state = everruns_server::channels::slack::install::SlackInstallState::new(
+        slack,
+        auth,
+        "http://localhost:9300/".into(),
+        SlackProvisioningSetup {
+            provisioner: Some(provisioner.clone()),
+            connection_manager: None,
+        },
+    );
+    let router = everruns_server::channels::slack::install::routes(state);
+    let begin = || {
+        Request::builder()
+            .method("POST")
+            .uri(format!("/v1/channels/{id}/slack/install"))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"team_id":"T1"}"#))
+            .unwrap()
+    };
+
+    for _ in 0..2 {
+        let response = router.clone().oneshot(begin()).await.unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert!(body.get("authorize_url").is_none(), "{body}");
+        assert_eq!(
+            body["install_page_url"],
+            "https://api.slack.com/apps/A1/install-on-team"
+        );
+    }
+    // The retry reused the app rather than creating a second one.
+    let manifests = provisioner.0.lock().unwrap().clone();
+    assert_eq!(manifests.len(), 1);
+    assert!(manifests[0].contains("socket_mode_enabled: true"));
+    assert!(!manifests[0].contains("redirect_urls"));
+    assert!(!manifests[0].contains("http://localhost"));
+
+    let (_, stored) =
+        api::channel_ingress::resolve_channel(&server.db, server.encryption.as_ref(), id)
+            .await
+            .unwrap()
+            .unwrap();
+    let config: everruns_server::domains::agent_channels::record::slack_channel::SlackChannelConfig =
+        serde_json::from_value(stored.channel_config).unwrap();
+    assert_eq!(config.signing_secret, "g1");
+    let app = config.provisioned_app.unwrap();
+    assert_eq!(app.app_id, "A1");
+    // No consent screen can return, so no nonce is left to spend.
+    assert!(app.install_state.is_none());
+}
+
 /// Manager callbacks exercise the real router and PostgreSQL ledger, with only
 /// Slack's HTTP exchange stubbed. No OAuth grant or live Slack request is made.
 async fn manager_fixture() -> (axum::Router, test_harness::TestServer, MockServer) {

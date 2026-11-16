@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { beginSlackInstall } from "@/lib/api/agent-channels";
-import type { SlackInstallCapability } from "@/lib/api/agent-channels";
+import type { BeginSlackInstallResult, SlackInstallCapability } from "@/lib/api/agent-channels";
 import { ApiError } from "@/lib/api/client";
 import {
   useInvalidateSlackWorkspaces,
@@ -26,6 +26,14 @@ import {
   ConnectSlackWorkspaceChoice,
   slackWorkspaceLabel,
 } from "@/components/slack/slack-workspaces";
+
+/**
+ * Where the browser goes once the install started: Slack's consent screen, or, when Slack cannot
+ * redirect back, the channel's own page, which then shows the steps to finish in Slack.
+ */
+export function slackInstallNextUrl(result: BeginSlackInstallResult, channelPath: string): string {
+  return result.authorize_url ?? `${channelPath}?slack_install=finish`;
+}
 
 /**
  * Drives the one-click Slack install for an existing channel (EVE-1069).
@@ -45,10 +53,12 @@ export function useSlackInstall(channelId?: string, teamId?: string, onUnavailab
     setPending(true);
     setError(null);
     try {
-      const { authorize_url } = await beginSlackInstall(channelId, teamId || null);
+      const result = await beginSlackInstall(channelId, teamId || null);
       // A full navigation, not a router push: the next hop is Slack's consent
-      // screen, which is outside this app.
-      window.location.href = authorize_url;
+      // screen, which is outside this app. Without one (Socket Mode on a page
+      // Slack cannot return to) reload this channel, which now has its app
+      // and shows how to finish in Slack.
+      window.location.href = slackInstallNextUrl(result, window.location.pathname);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 501) {
         setUnavailable(true);
