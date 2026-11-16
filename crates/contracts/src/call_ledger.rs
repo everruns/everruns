@@ -487,4 +487,65 @@ mod tests {
                 .contains("credential")
         );
     }
+
+    #[tokio::test]
+    async fn directly_registered_runtime_provider_is_observed_too() {
+        let observer = Arc::new(MemoryObserver::default());
+        let mut registry = DriverRegistry::new().with_call_observer(observer.clone());
+        registry
+            .register_provider(crate::runtime_provider::RuntimeProvider::new(
+                "custom", Stub,
+            ))
+            .unwrap();
+        let driver = registry
+            .create_chat_driver(&ProviderConfig::for_provider(
+                "custom",
+                DriverId::external("unused"),
+            ))
+            .unwrap();
+        driver
+            .chat_completion(
+                &ProviderEndpoint::default(),
+                vec![],
+                &LlmCallConfig::new("model"),
+            )
+            .await
+            .unwrap();
+        let records = observer.0.lock().unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].provider, "custom");
+        assert_eq!(records[1].phase, "completed");
+    }
+
+    struct Stalled;
+    #[async_trait]
+    impl ChatDriver for Stalled {
+        async fn chat_completion_stream(
+            &self,
+            _: &ProviderEndpoint,
+            _: Vec<Message>,
+            _: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            std::future::pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelled_connection_is_incomplete_not_a_missing_terminal() {
+        let observer = Arc::new(MemoryObserver::default());
+        let driver = ObservedChatDriver::new("test", Arc::new(Stalled), observer.clone());
+        let config = LlmCallConfig::new("model");
+        let endpoint = ProviderEndpoint::default();
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(1),
+                driver.chat_completion_stream(&endpoint, vec![], &config)
+            )
+            .await
+            .is_err()
+        );
+        let records = observer.0.lock().unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].phase, "incomplete");
+    }
 }
