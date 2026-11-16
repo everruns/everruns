@@ -96,8 +96,23 @@ impl MemoryHosting {
                 .is_some_and(|input| state.records.contains_key(&format!("rejected/{input}"))),
             // No branch facts: the volatile authority refuses branch selection.
             history: None,
+            dispatch_supported: true,
+            dispatches: command
+                .client_dispatch_keys(state.open, &state.pending)
+                .into_iter()
+                .filter_map(|key| state.records.get(&key))
+                .cloned()
+                .map(serde_json::from_value)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(core_error)?,
         };
-        let plan = session_commands::prepare(command, view)?;
+        let dispatch = matches!(
+            command,
+            SessionCommand::BeginClientDispatch { .. }
+                | SessionCommand::CompleteClientDispatch { .. }
+                | SessionCommand::InterruptClientDispatch { .. }
+        );
+        let mut plan = session_commands::prepare(command, view)?;
         if matches!(
             plan.control,
             ControlUpdate::SelectBranch { .. } | ControlUpdate::DropBranch { .. }
@@ -115,6 +130,32 @@ impl MemoryHosting {
         } else {
             None
         };
+        if dispatch {
+            if plan.events.len() > 1
+                || plan.objects.iter().any(|object| object.kind != "framework")
+                || !matches!(plan.control, ControlUpdate::None | ControlUpdate::Resume)
+            {
+                return Err(AgentLoopError::store(
+                    "invalid client dispatch commit shape",
+                ));
+            }
+            let event = plan.events.pop().map(|mut event| {
+                state.human_waits.annotate(&mut event);
+                event
+            });
+            let append = async {
+                match event {
+                    Some(event) => session
+                        .log
+                        .append(event)
+                        .await
+                        .map(Some)
+                        .map_err(core_error),
+                    None => Ok(None),
+                }
+            };
+            return commit_dispatch(&mut state, &session, head, plan, append).await;
+        }
         for object in &plan.objects {
             if object.kind == "value" && object.value.as_str().is_none() {
                 return Err(AgentLoopError::store("invalid shared value write"));
@@ -212,6 +253,47 @@ impl MemoryHosting {
     }
 }
 
+// THREAT[TM-DURABLE-017]: cancellation cannot split terminal state and resolution.
+// Dispatch commits have at most one journal event. Await its fallible append
+// BEFORE mutating authority records; once it returns, all remaining writes are
+// synchronous under the control gate. Cancellation/error before append cannot
+// leave a terminal record without the matching event and receipt.
+async fn commit_dispatch(
+    state: &mut Control,
+    session: &MemorySession,
+    mut head: i32,
+    plan: session_commands::CommandPlan,
+    append: impl std::future::Future<Output = Result<Option<Event>>>,
+) -> Result<Value> {
+    let committed = append.await?;
+    for object in plan.objects {
+        state.records.insert(object.key, object.value);
+    }
+    if let Some(event) = committed {
+        if let EventData::ToolCompleted(result) = &event.data {
+            state.pending.retain(|call| call.id != result.tool_call_id);
+        }
+        state.human_waits.observe(&event);
+        head = event.sequence.unwrap_or(head);
+    }
+    if matches!(plan.control, ControlUpdate::Resume) {
+        state.inbox = i64::from(head);
+        state.resume_generation += 1;
+        state.runnable = true;
+        poke_holder(state, &session.renew_poke);
+    }
+    if let Some(key) = plan.key {
+        state.commands.insert(
+            key,
+            CommandReceipt {
+                fingerprint: plan.fingerprint,
+                value: plan.reply.clone(),
+            },
+        );
+    }
+    Ok(plan.reply)
+}
+
 /// Tell a running holder its inbox moved (`SessionEpoch::pushes_admissions`).
 /// `notify_waiters` stores no permit, so a session with no renewer waiting
 /// does not make its next epoch renew at once; a missed poke only moves the
@@ -221,3 +303,7 @@ fn poke_holder(state: &Control, poke: &tokio::sync::Notify) {
         poke.notify_waiters();
     }
 }
+
+#[cfg(test)]
+#[path = "memory_dispatch_tests.rs"]
+mod dispatch_tests;

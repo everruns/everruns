@@ -422,6 +422,15 @@ impl crate::state::SessionState {
                 .is_some_and(|input| a.records.contains_key(&format!("rejected/{input}"))),
             // No branch facts: this authority refuses branch selection.
             history: None,
+            dispatch_supported: true,
+            dispatches: command
+                .client_dispatch_keys(a.open, &a.pending)
+                .into_iter()
+                .filter_map(|key| a.records.get(&key))
+                .cloned()
+                .map(serde_json::from_value)
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?,
         };
         let plan = session_commands::prepare(command, view).map_err(|e| e.to_string())?;
         if matches!(
@@ -840,3 +849,7 @@ mod tests {
         assert_eq!((a.outcomes, a.finished.len()), (2, 2));
     }
 }
+
+#[cfg(test)]
+#[path = "authority_dispatch_tests.rs"]
+mod dispatch_tests;

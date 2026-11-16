@@ -2252,3 +2252,17 @@ acceptance is not evidence of production TLS, remote-provider or hostile-tenant 
 | TM-BROWSER-005 | Process pooling or forged metadata borrows another personal browser owner | Trusted host starts one persistent upstream MCP process per full session UUID, checks owner on every tool/handoff call and never accepts caller MCP metadata. Extension lending and authenticated host routing remain necessary; this is not tenant isolation by itself. |
 | TM-BROWSER-006 | Malformed/oversized subprocess output, credentials in logs, or ambiguous cancellation | Bound frames, requests, queue and timeout; inherit only required environment names, redact configuration/errors, discard subprocess stderr, terminate/reap on cancellation/protocol loss without restart/replay. Host caps total process count and supplies a verified executable. Page data remains sensitive to the session. |
 | TM-BROWSER-007 | Fake approval substitutes for human browser continuation | Typed handoff results come from the upstream protocol, not page text or a generic approval. The durable authenticated host bridge is not yet implemented; process loss must be interrupted/unknown and never successful continuation. |
+
+## Durable external client dispatch
+
+| ID | Threat | Mitigation |
+| --- | --- | --- |
+| TM-DURABLE-016 | Competing/restarted workers duplicate an external mutation, steal a live claim or finish another session's call | Authority transaction binds the exact pending session/turn/call/name/arguments, claim fence, worker incarnation, unique resolution identity and bounded deadline. Claims are never reassigned; replayed begin cannot authorize dispatch. Wrong/stale completion is rejected, ordinary resolve cannot bypass a claim, and interruption is permitted only by its owner or after the authority deadline. Owner UUIDs are fencing identifiers, not authentication; trusted hosts still authorize session access. |
+| TM-DURABLE-017 | Lost responses or caller cancellation split terminal record, event, receipt and resume state | Shared reducer emits one terminal plan; SQLite and cell commit under their transaction. Memory's new dispatch path appends before mutation, then applies record/pending/control/receipt without another await. Stable completion identity supports retry without duplicate events. Ending a turn can retire a claim without resolving or reviving the ended call. |
+
+The personal-browser coordinator runs outside the agent execution lease, binds
+one supervisor to each explicitly enabled session, preserves unrelated tools,
+checks upstream outcomes and converts lost ownership to interrupted/unknown.
+Neither durable storage nor browser continuation permits replay of an unknown
+mutation. Extension lending and authenticated host UI remain separate authority
+boundaries. See [personal-browser design](../integrations/personal-browser.md).
