@@ -54,6 +54,12 @@ function bucket(start: string, extra: Partial<TimelineBucket> = {}): TimelineBuc
     worker_load_avg: null,
     worker_load_peak: null,
     worker_loads: [],
+    open_sessions: 40,
+    agents: 6,
+    agents_working_avg: 3,
+    agents_working_peak: 4,
+    servers: null,
+    cells: null,
     ...extra,
   };
 }
@@ -77,7 +83,10 @@ function timeline(): MonitoringTimeline {
         oldest_runnable_ms: null,
       }),
       bucket("2026-11-01T05:01:00Z"),
-      bucket("2026-11-01T05:02:00Z", { active_peak: 30, oldest_runnable_ms: 9800 }),
+      bucket("2026-11-01T05:02:00Z", {
+        active_peak: 30,
+        oldest_runnable_ms: 9800,
+      }),
     ],
     summary: {
       peak_active: 30,
@@ -91,6 +100,8 @@ function timeline(): MonitoringTimeline {
       longest_wait_at: "2026-11-01T05:02:00Z",
       cost_usd: 0.75,
       seconds_above_90: null,
+      cells_peak_running: null,
+      cells_elections: null,
     },
     previous: {
       peak_active: 20,
@@ -104,8 +115,12 @@ function timeline(): MonitoringTimeline {
       longest_wait_at: null,
       cost_usd: 1,
       seconds_above_90: null,
+      cells_peak_running: null,
+      cells_elections: null,
     },
     markers: [{ at: "2026-11-01T05:01:30Z", kind: "deploy", label: "0.50.1" }],
+    open_sessions_now: 42,
+    agents_now: 6,
   };
 }
 
@@ -113,7 +128,12 @@ describe("timeline model", () => {
   it("draws rebuilt history as one area without a phase split", () => {
     const rows = timelineRows(timeline().buckets);
     expect(rows[0]).toMatchObject({ rebuilt: 4, model: 0, wait: null });
-    expect(rows[1]).toMatchObject({ rebuilt: 0, model: 5, wait: 1.5, errors: 5 });
+    expect(rows[1]).toMatchObject({
+      rebuilt: 0,
+      model: 5,
+      wait: 1.5,
+      errors: 5,
+    });
   });
 
   it("totals a dragged range from loaded buckets", () => {
@@ -127,6 +147,49 @@ describe("timeline model", () => {
       to: "2026-11-01T05:03:00.000Z",
     });
     expect(t.phases.find((p) => p.key === "model")?.share).toBeCloseTo(0.5);
+  });
+
+  it("stacks cells beside workers and filters by execution path", () => {
+    const cells = {
+      reporting: 2,
+      sessions_avg: 50,
+      sessions_peak: 60,
+      running_avg: 8,
+      running_peak: 10,
+      queued_peak: 1,
+      agents_working_avg: 2,
+      agents_working_peak: 3,
+      turns_completed: 20,
+      turns_failed: 1,
+      turns_cancelled: 0,
+      model_calls: 40,
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd: 0.5,
+      nodes: 6,
+      cpu_peak_pct: 40,
+      memory_peak_pct: 70,
+    };
+    const buckets = [bucket("2026-11-01T05:00:00Z", { cells })];
+    expect(timelineRows(buckets, "all")[0]).toMatchObject({
+      model: 5,
+      on_cells: 8,
+      peak: 22,
+      completed: 56,
+      failed: 3,
+      agents_working: 5,
+      nodes: 6,
+      memory: 70,
+    });
+    expect(timelineRows(buckets, "cells")[0]).toMatchObject({
+      model: 0,
+      on_cells: 8,
+      completed: 20,
+    });
+    expect(timelineRows(buckets, "workers")[0]).toMatchObject({
+      on_cells: 0,
+      completed: 36,
+    });
   });
 
   it("does not compare against an empty previous period", () => {
@@ -143,14 +206,17 @@ describe("MonitoringTimelineView", () => {
       to: "2026-11-01T05:03:00Z",
       busiest: [{ id: "agent_1", name: "Support bot", sessions: 7, turns: 30 }],
       failures: [{ code: "provider_rate_limited", turns: 5 }],
+      failed_tools: [{ code: "web_fetch", turns: 2 }],
     });
   });
 
-  function renderView() {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function renderView(path?: "workers" | "cells") {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     return render(
       <QueryClientProvider client={client}>
-        <MonitoringTimelineView scope="organization" />
+        <MonitoringTimelineView scope="organization" path={path} />
       </QueryClientProvider>,
     );
   }
@@ -159,16 +225,32 @@ describe("MonitoringTimelineView", () => {
     renderView();
     const kpis = await screen.findByTestId("timeline-kpis");
     expect(kpis).toHaveTextContent("Peak parallel sessions30");
+    expect(kpis).toHaveTextContent("Open sessions42");
+    expect(screen.queryByRole("group", { name: "Execution path" })).not.toBeInTheDocument();
     expect(kpis).toHaveTextContent("+30% vs previous period");
     expect(kpis).toHaveTextContent("5.1%");
     expect(kpis).toHaveTextContent("9.8s");
     expect(await screen.findByText("Support bot")).toBeInTheDocument();
     expect(screen.getByText("provider rate limited")).toBeInTheDocument();
+    expect(screen.getByText("web_fetch")).toBeInTheDocument();
     expect(screen.getByText(/rebuilt from turn records/)).toBeInTheDocument();
-    expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", { range: "24h" });
+    expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", {
+      range: "24h",
+    });
     fireEvent.click(screen.getByRole("button", { name: "7d" }));
     await waitFor(() =>
-      expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", { range: "7d" }),
+      expect(getMonitoringTimeline).toHaveBeenCalledWith("organization", {
+        range: "7d",
+      }),
     );
+  });
+
+  it("an organization on cells counts its cells and drops the worker wait", async () => {
+    renderView("cells");
+    const kpis = await screen.findByTestId("timeline-kpis");
+    expect(kpis).toHaveTextContent("on cells");
+    expect(kpis).toHaveTextContent("Most waiting on cells");
+    expect(kpis).not.toHaveTextContent("Longest wait for a worker");
+    expect(screen.queryByRole("group", { name: "Execution path" })).not.toBeInTheDocument();
   });
 });

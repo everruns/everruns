@@ -449,14 +449,70 @@ pub enum Record {
         #[serde(default)]
         detail: String,
     },
+    /// A cell's minute report for Monitoring (`org_id` empty): its
+    /// population from replicated state, and what its leader measured on
+    /// the nodes. One per cell per minute; the control plane keeps the
+    /// first it stores for a `(source, minute)` (a new leader may send the
+    /// minute again).
     Health {
         sessions: u32,
         running_turns: u32,
         lag_ms: u32,
+        /// Start of the minute reported, UTC milliseconds.
+        #[serde(default)]
+        minute_unix_ms: i64,
+        /// Messages waiting for a turn.
+        #[serde(default)]
+        queued: u32,
+        /// Turns running on a second or later attempt.
+        #[serde(default)]
+        resumed_turns: u32,
+        /// Sessions this cell has handed to another cell, ever.
+        #[serde(default)]
+        forwarded: u64,
+        /// Raft term: a change between minutes is a leader election.
+        #[serde(default)]
+        term: u64,
+        #[serde(default)]
+        leader: String,
+        /// Members, and how many answered the leader this minute.
+        #[serde(default)]
+        nodes: u32,
+        #[serde(default)]
+        nodes_answering: u32,
+        /// The fullest node's resident memory and its limit (0: unknown).
+        #[serde(default)]
+        rss_peak_bytes: u64,
+        #[serde(default)]
+        memory_limit_bytes: u64,
+        /// The busiest node's CPU, in cores, and its limit (0: unknown).
+        #[serde(default)]
+        cpu_peak_cores: f32,
+        #[serde(default)]
+        cpu_limit_cores: f32,
+        /// Worst node's one-minute p99s.
+        #[serde(default)]
+        admit_p99_ms: u32,
+        #[serde(default)]
+        ship_lag_p99_ms: u32,
+        /// Population per tenant.
+        #[serde(default)]
+        orgs: Vec<OrgHealth>,
     },
     /// A record of a type this reader does not know.
     #[serde(other)]
     Unknown,
+}
+
+/// One tenant's population in a cell's minute report.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OrgHealth {
+    pub org_id: String,
+    pub sessions: u32,
+    pub running_turns: u32,
+    pub queued: u32,
+    /// Distinct agents with a running turn.
+    pub agents_working: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -6,6 +6,9 @@
 //! costs land. A durable schedule firing every 10 seconds would create a
 //! durable task per sample; one run per minute keeps that to 1,440 a day.
 //! Short peaks between samples are missed; the turn counters are exact.
+//! Open sessions, defined agents and server replicas are counted once per
+//! run, into the run's first minute: they change slowly, and counting every
+//! session five times a minute would cost more than it shows.
 //!
 //! A second job backfills earlier history a week at a time from turn records,
 //! newest first, until it reaches the first committed turn.
@@ -47,12 +50,22 @@ pub fn sampler_job(db: Arc<StorageBackend>) -> ClusterJob {
                 {
                     warn!(%error, "Monitoring timeline: closing minutes failed");
                 }
+                let mut counted = false;
                 for i in 0..SAMPLES_PER_RUN {
                     if i > 0 {
                         tokio::time::sleep(until_next_boundary(Utc::now())).await;
                     }
-                    if let Err(error) = sample(&db, Utc::now()).await {
+                    let at = Utc::now();
+                    if let Err(error) = sample(&db, at).await {
                         warn!(%error, "Monitoring timeline: sample failed");
+                        continue;
+                    }
+                    // After a sample, so the minute's organization rows exist.
+                    if !counted {
+                        counted = true;
+                        if let Err(error) = db.timeline_record_minute_counts(at).await {
+                            warn!(%error, "Monitoring timeline: counting sessions failed");
+                        }
                     }
                 }
             })

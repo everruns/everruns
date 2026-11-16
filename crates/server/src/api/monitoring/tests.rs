@@ -129,6 +129,7 @@ async fn tenant_admin_cannot_access_any_fleet_route() {
         "/v1/durable/monitoring/actors/session_00000000000000000000000000000001",
         "/v1/durable/monitoring/timeline",
         "/v1/durable/monitoring/timeline/window?from=2026-11-01T00:00:00Z&to=2026-11-01T01:00:00Z",
+        "/v1/durable/monitoring/cells",
     ] {
         assert_eq!(get(app.clone(), uri).await.0, StatusCode::FORBIDDEN);
     }

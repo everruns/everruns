@@ -39,7 +39,17 @@ secondary. Agent names and conversation content are excluded from the overview.
   worker capacity and per-worker load. History is recorded server-side, so it
   exists before the page opens, and is never purged.
 - Timeline drill-down names the busiest agents of the organization's own
-  sessions; the platform view ranks organizations by public ID only.
+  sessions; the platform view ranks organizations by public ID only. It also
+  names the tools whose calls failed most.
+- Timeline covers both execution paths on one time axis: workers (sampled every
+  10 seconds) and data plane v2 cells (one report per cell per minute), plus
+  open sessions, agents, and agents working. Numbers measured differently are
+  shown side by side, never added in the API.
+- Organization scope never shows cell nodes, CPU, memory, or elections: an
+  organization shares cells with others. The platform view and its Cells tab
+  show them: cells and nodes (pods), the fullest node's memory and busiest
+  node's CPU against their limits, admit and shipping p99s, leader changes, and
+  sessions moved between cells.
 
 ## Decisions
 
@@ -70,6 +80,21 @@ and committed events, marked `backfilled` (no phase split, queue, or worker
 data). Reads aggregate minutes into the requested bucket. The sampling and
 read rules live in [the timeline repository](../../crates/server/src/storage/repositories/monitoring/timeline/mod.rs)
 and [the timeline API](../../crates/server/src/api/monitoring/timeline.rs).
+Cells and the rest of the fleet are recorded without a metrics database, so the
+history works on every install
+([fleet history](../../crates/server/src/storage/repositories/monitoring/timeline/fleet.rs)).
+Each cell's Raft leader proposes one report per finished minute; the report is
+built at apply from replicated state plus the leader's node measurements and
+travels the existing data plane feed, so a cell adds one record a minute and no
+new connection. The control plane keeps the first report per cell and minute
+(`monitoring_cell_minutes`) and adds its population to the platform row and the
+rows of organizations with sessions on the cell. Finished turns and model calls
+come from the feed's existing session and usage records, tallied per batch;
+a batch redelivered after a lost acknowledgement can count twice, which
+monitoring accepts. Open sessions and agents are counted once a minute into rows
+that already exist; reads carry the last count forward, so idle organizations
+cost no rows. A cell's Prometheus endpoint no longer labels series by agent:
+series grew with every agent, and per-agent history comes from this record.
 Timeline endpoints follow the other Monitoring endpoints: scoped personal
 access tokens are denied, browser sessions and full-access tokens are not.
 Like the rest of Monitoring, Timeline has no CLI command.

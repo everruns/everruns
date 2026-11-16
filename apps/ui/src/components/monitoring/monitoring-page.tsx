@@ -58,6 +58,8 @@ import { WorkerGrid, groupWorkers } from "./worker-grid";
 import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
 import { MonitoringTimelineView } from "./timeline";
+import type { Plane } from "./timeline-model";
+import { MonitoringCellsView } from "./cells";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const ui = useUiTranslations();
@@ -105,16 +107,28 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   );
 }
 
-const MONITORING_TABS = ["execution", "timeline", "workers", "actors", "metrics"];
+const MONITORING_TABS = ["execution", "timeline", "cells", "workers", "actors", "metrics"];
 
 function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
   const { displayLocale } = useLocale();
 
   const ui = useUiTranslations();
+  const flags = useFeatureFlagsState();
+  // Decision: an organization sees only the execution path it runs on. On a
+  // data plane (cells) the worker and actor views would always be empty, and
+  // off it the cell parts would be; the platform view keeps both.
+  const path: Plane | undefined =
+    scope === "fleet" ? undefined : flags.flags.data_plane ? "cells" : "workers";
+  const hidden = new Set([
+    ...(scope === "fleet" ? [] : ["cells"]),
+    ...(path === "cells" ? ["workers", "actors"] : []),
+  ]);
   // `?tab=timeline` lets Home link straight to the history it summarises.
   const requestedTab = useSearchParams().get("tab");
   const [tab, setTab] = useState(
-    requestedTab && MONITORING_TABS.includes(requestedTab) ? requestedTab : "execution",
+    requestedTab && MONITORING_TABS.includes(requestedTab) && !hidden.has(requestedTab)
+      ? requestedTab
+      : "execution",
   );
   const [view, setView] = useState("flow");
   const [groupSize, setGroupSize] = useState(8);
@@ -183,7 +197,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   });
   useChatPageRows(
     "Monitoring phases",
-    (data?.phases ?? []).map((p) => ({ phase: p.phase, count: p.count, oldest_ms: p.oldest_ms })),
+    (data?.phases ?? []).map((p) => ({
+      phase: p.phase,
+      count: p.count,
+      oldest_ms: p.oldest_ms,
+    })),
     { loading: snapshot.isLoading, error: !!snapshot.error },
   );
   useChatPageRows(
@@ -224,7 +242,11 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
       fence: a.fence,
       runnable_age_ms: a.runnable_age_ms,
     })),
-    { enabled: tab === "actors" && !paused, loading: actors.isLoading, error: !!actors.error },
+    {
+      enabled: tab === "actors" && !paused,
+      loading: actors.isLoading,
+      error: !!actors.error,
+    },
   );
   const terminalError =
     snapshot.error instanceof ApiError && [401, 403, 404].includes(snapshot.error.status);
@@ -337,8 +359,18 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           items={[
             { value: "execution", label: ui("Execution") },
             { value: "timeline", label: ui("Timeline") },
-            { value: "workers", label: ui("Workers"), disabled: !!replay },
-            { value: "actors", label: ui("Actors"), disabled: !!replay },
+            // Cells are shared by organizations: platform view only.
+            ...(scope === "fleet" ? [{ value: "cells", label: ui("Cells") }] : []),
+            ...(hidden.has("workers")
+              ? []
+              : [
+                  {
+                    value: "workers",
+                    label: ui("Workers"),
+                    disabled: !!replay,
+                  },
+                  { value: "actors", label: ui("Actors"), disabled: !!replay },
+                ]),
             { value: "metrics", label: ui("Metrics") },
           ]}
         />
@@ -358,7 +390,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 </Button>
               ))}
             </div>
-          ) : tab === "timeline" ? (
+          ) : tab === "timeline" || tab === "cells" ? (
             <span className="text-xs text-muted-foreground">
               {ui("Recorded history, kept permanently")}
             </span>
@@ -479,7 +511,9 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         </div>
       )}
       {tab === "timeline" ? (
-        <MonitoringTimelineView scope={scope} />
+        <MonitoringTimelineView scope={scope} path={path} />
+      ) : tab === "cells" ? (
+        <MonitoringCellsView />
       ) : !data ? (
         snapshot.error ? (
           <EmptyState

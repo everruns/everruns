@@ -1,6 +1,13 @@
 //! Monitoring → Timeline: recorded minute history aggregated into buckets.
 //! Authorization matches the live snapshot: organization adoption plus
 //! session-read authority, or platform access for the fleet view.
+//!
+//! Decision: worker (v1) and cell (data plane v2) history arrive in one
+//! bucket, side by side: the cell part is `cells`, absent while no cell
+//! reported. The page chooses what to stack; the API never adds numbers
+//! measured differently (sampled every 10 seconds versus reported once a
+//! minute). Node, CPU and memory detail is platform only: an organization
+//! shares cells with others.
 
 use axum::{
     Json,
@@ -15,7 +22,10 @@ use super::{AppState, authorize_org};
 use crate::{
     api::common::{ApiResult, ApiResultExt, ErrorResponse},
     auth::{PlatformUser, ResolvedOrg},
-    storage::{PLATFORM_ORG, TimelineBucketRow, TimelineWorkerBucket, timeline_minute},
+    storage::{
+        PLATFORM_ORG, TimelineBucketRow, TimelineCellBucketRow, TimelineCellsRow, TimelineFleetRow,
+        TimelineWorkerBucket, timeline_minute,
+    },
 };
 
 const MAX_RANGE_DAYS: i64 = 31;
@@ -132,6 +142,73 @@ pub struct TimelineBucket {
     pub worker_load_peak: Option<u64>,
     /// Platform only: per-worker average load.
     pub worker_loads: Vec<TimelineWorkerLoad>,
+    /// Sessions not archived, on any data plane: the newest count in or before the bucket.
+    pub open_sessions: Option<u64>,
+    /// Agents defined, not archived: the newest count in or before the bucket.
+    pub agents: Option<u64>,
+    /// Average distinct agents with an active session on workers.
+    pub agents_working_avg: f64,
+    /// Highest sampled count of such agents.
+    pub agents_working_peak: u64,
+    /// Platform only: server replicas running.
+    pub servers: Option<u64>,
+    /// Data plane v2 cells; absent when no cell reported and no cell turn finished in the bucket.
+    pub cells: Option<TimelineCellsBucket>,
+}
+
+/// What data plane v2 cells reported over a bucket. Population comes from
+/// each cell's one-minute report; counters from the cells' feed.
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
+pub struct TimelineCellsBucket {
+    /// Highest number of cells that reported in one minute.
+    #[schema(example = 12)]
+    pub reporting: u64,
+    /// Average sessions resident on cells.
+    pub sessions_avg: f64,
+    /// Highest per-minute sessions resident on cells.
+    pub sessions_peak: u64,
+    /// Average turns running on cells.
+    pub running_avg: f64,
+    /// Highest per-minute turns running on cells.
+    pub running_peak: u64,
+    /// Highest per-minute messages waiting for a turn on cells.
+    pub queued_peak: u64,
+    /// Average distinct agents with a running turn on cells.
+    pub agents_working_avg: f64,
+    /// Highest per-minute agents with a running turn on cells.
+    pub agents_working_peak: u64,
+    /// Turns completed on cells.
+    pub turns_completed: u64,
+    /// Turns failed on cells.
+    pub turns_failed: u64,
+    /// Turns cancelled on cells.
+    pub turns_cancelled: u64,
+    /// Model calls made on cells.
+    pub model_calls: u64,
+    /// Model input tokens on cells.
+    pub input_tokens: u64,
+    /// Model output tokens on cells.
+    pub output_tokens: u64,
+    /// Model spend on cells in USD.
+    pub cost_usd: f64,
+    /// Platform only: highest total of cell nodes (pods) in one minute.
+    pub nodes: Option<u64>,
+    /// Platform only: lowest total of nodes that answered their leader in one minute.
+    pub nodes_answering: Option<u64>,
+    /// Platform only: the fullest node's memory use as a percentage of its limit.
+    pub memory_peak_pct: Option<f64>,
+    /// Platform only: the busiest node's CPU use as a percentage of its limit.
+    pub cpu_peak_pct: Option<f64>,
+    /// Platform only: worst node's p99 time to admit a turn, in milliseconds.
+    pub admit_p99_ms: Option<u64>,
+    /// Platform only: worst node's p99 log shipping lag, in milliseconds.
+    pub ship_lag_p99_ms: Option<u64>,
+    /// Platform only: leader elections across cells.
+    pub elections: Option<u64>,
+    /// Platform only: sessions moved to another cell.
+    pub moves: Option<u64>,
+    /// Platform only: highest per-minute turns running on a second or later attempt.
+    pub resumed_peak: Option<u64>,
 }
 
 /// Totals over a range, for the summary row and the previous-period comparison.
@@ -159,6 +236,10 @@ pub struct TimelineSummary {
     pub cost_usd: f64,
     /// Platform only: seconds of buckets whose peak load exceeded 90% of capacity.
     pub seconds_above_90: Option<u64>,
+    /// Highest per-minute turns running on cells; null when no cell reported.
+    pub cells_peak_running: Option<u64>,
+    /// Platform only: leader elections across cells; null when no cell reported.
+    pub cells_elections: Option<u64>,
 }
 
 /// Deploy or worker change on the timeline.
@@ -166,10 +247,10 @@ pub struct TimelineSummary {
 pub struct TimelineMarker {
     /// UTC time of the change.
     pub at: DateTime<Utc>,
-    /// deploy, worker_joined, or worker_left (worker changes are platform only).
+    /// deploy, worker_joined, worker_left, or leader_change (all but deploy are platform only).
     #[schema(example = "deploy")]
     pub kind: String,
-    /// Server version for a deploy, worker id otherwise.
+    /// Server version for a deploy, worker id or cell name otherwise.
     #[schema(example = "0.50.1")]
     pub label: String,
 }
@@ -195,8 +276,12 @@ pub struct MonitoringTimeline {
     pub summary: TimelineSummary,
     /// Totals for the same length of time immediately before.
     pub previous: TimelineSummary,
-    /// Deploys and worker changes inside the range.
+    /// Deploys, worker changes and cell leader changes inside the range.
     pub markers: Vec<TimelineMarker>,
+    /// Sessions not archived right now, on any data plane.
+    pub open_sessions_now: u64,
+    /// Agents defined right now.
+    pub agents_now: u64,
 }
 
 /// One agent (organization) or organization (platform) ranked in a window.
@@ -233,6 +318,8 @@ pub struct MonitoringTimelineWindow {
     pub busiest: Vec<TimelineRank>,
     /// Up to 6 failure codes, most frequent first.
     pub failures: Vec<TimelineFailure>,
+    /// Up to 6 tools whose calls failed most often; `code` is the tool name.
+    pub failed_tools: Vec<TimelineFailure>,
 }
 
 type Bad = (StatusCode, Json<ErrorResponse>);
@@ -356,6 +443,12 @@ pub(super) fn bucket(
             worker_load_avg: None,
             worker_load_peak: None,
             worker_loads: vec![],
+            open_sessions: None,
+            agents: None,
+            agents_working_avg: 0.0,
+            agents_working_peak: 0,
+            servers: None,
+            cells: None,
         };
     };
     let s = r.samples;
@@ -410,6 +503,83 @@ pub(super) fn bucket(
                     .collect()
             })
             .unwrap_or_default(),
+        open_sessions: None,
+        agents: None,
+        agents_working_avg: 0.0,
+        agents_working_peak: 0,
+        servers: None,
+        cells: None,
+    }
+}
+
+/// Last known open-session and agent counts, carried across buckets
+/// without a count.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct Carry {
+    pub sessions: Option<i64>,
+    pub agents: Option<i32>,
+}
+
+fn pct(share: Option<f64>) -> Option<f64> {
+    share.map(|v| (v * 1000.0).round() / 10.0)
+}
+
+/// Fold the fleet columns of one bucket into `b`.
+pub(super) fn apply_fleet(
+    b: &mut TimelineBucket,
+    fleet: Option<&TimelineFleetRow>,
+    cells: Option<&TimelineCellsRow>,
+    samples: i64,
+    platform: bool,
+    carry: &mut Carry,
+) {
+    if let Some(f) = fleet {
+        carry.sessions = f.sessions.or(carry.sessions);
+        carry.agents = f.agents.or(carry.agents);
+        b.agents_working_avg = ratio(f.agents_working_sum, samples);
+        b.agents_working_peak = nonneg(f.agents_working_peak.into());
+        if platform {
+            b.servers = f.servers.map(|v| nonneg(v.into()));
+        }
+        let has_cells = f.dp_minutes > 0
+            || f.dp_turns_completed + f.dp_turns_failed + f.dp_turns_cancelled + f.dp_model_calls
+                > 0;
+        if has_cells {
+            let m = f.dp_minutes;
+            b.cells = Some(TimelineCellsBucket {
+                reporting: nonneg(f.dp_reports.into()),
+                sessions_avg: ratio(f.dp_sessions_sum, m),
+                sessions_peak: nonneg(f.dp_sessions_peak),
+                running_avg: ratio(f.dp_running_sum, m),
+                running_peak: nonneg(f.dp_running_peak),
+                queued_peak: nonneg(f.dp_queued_peak),
+                agents_working_avg: ratio(f.dp_agents_working_sum, m),
+                agents_working_peak: nonneg(f.dp_agents_working_peak),
+                turns_completed: nonneg(f.dp_turns_completed),
+                turns_failed: nonneg(f.dp_turns_failed),
+                turns_cancelled: nonneg(f.dp_turns_cancelled),
+                model_calls: nonneg(f.dp_model_calls),
+                input_tokens: nonneg(f.dp_input_tokens),
+                output_tokens: nonneg(f.dp_output_tokens),
+                cost_usd: f.dp_cost_usd.max(0.0),
+                ..Default::default()
+            });
+        }
+    }
+    b.open_sessions = carry.sessions.map(nonneg);
+    b.agents = carry.agents.map(|v| nonneg(v.into()));
+    if let (true, Some(c)) = (platform, cells) {
+        let out = b.cells.get_or_insert_with(Default::default);
+        out.reporting = out.reporting.max(nonneg(c.cells));
+        out.nodes = Some(nonneg(c.nodes));
+        out.nodes_answering = Some(nonneg(c.nodes_answering));
+        out.memory_peak_pct = pct(c.memory_peak);
+        out.cpu_peak_pct = pct(c.cpu_peak);
+        out.admit_p99_ms = c.admit_p99_ms.map(|v| nonneg(v.into()));
+        out.ship_lag_p99_ms = c.ship_lag_p99_ms.map(|v| nonneg(v.into()));
+        out.elections = Some(nonneg(c.elections));
+        out.moves = Some(nonneg(c.moves));
+        out.resumed_peak = Some(nonneg(c.resumed_peak));
     }
 }
 
@@ -449,6 +619,29 @@ pub(super) fn summarize(rows: &[TimelineBucketRow], bucket_secs: i64) -> Timelin
     s
 }
 
+/// Cell totals of a range folded into its summary.
+fn summarize_cells(
+    s: &mut TimelineSummary,
+    fleet: &[TimelineFleetRow],
+    cells: &[TimelineCellsRow],
+) {
+    for f in fleet {
+        let finished = f.dp_turns_completed + f.dp_turns_failed + f.dp_turns_cancelled;
+        s.turns_finished += nonneg(finished);
+        s.turns_failed += nonneg(f.dp_turns_failed);
+        s.cost_usd += f.dp_cost_usd.max(0.0);
+        if f.dp_minutes > 0 {
+            let peak = nonneg(f.dp_running_peak);
+            s.cells_peak_running = Some(s.cells_peak_running.map_or(peak, |p| p.max(peak)));
+        }
+    }
+    if !cells.is_empty() {
+        s.cells_elections = Some(cells.iter().map(|c| nonneg(c.elections)).sum());
+    }
+    s.failure_rate =
+        (s.turns_finished > 0).then(|| s.turns_failed as f64 / s.turns_finished as f64);
+}
+
 async fn timeline(
     state: &AppState,
     org: Option<i64>,
@@ -459,33 +652,68 @@ async fn timeline(
     let key = org.unwrap_or(PLATFORM_ORG);
     let platform = org.is_none();
     let previous_from = from - (to - from);
-    let (rows, previous, markers) = tokio::try_join!(
+    let (rows, previous, mut markers) = tokio::try_join!(
         state.db.timeline_buckets(key, from, to, step),
         state.db.timeline_buckets(key, previous_from, from, step),
         state.db.timeline_markers(platform, from, to),
     )
     .log_internal_error_json("load monitoring timeline")?;
-    let workers = if platform {
+    let (fleet, previous_fleet, seed, (open_now, agents_now)) = tokio::try_join!(
+        state.db.timeline_fleet_buckets(key, from, to, step),
         state
             .db
-            .timeline_worker_buckets(from, to, step)
-            .await
-            .log_internal_error_json("load monitoring timeline workers")?
+            .timeline_fleet_buckets(key, previous_from, from, step),
+        state.db.timeline_counts_before(key, from),
+        state.db.timeline_live_counts(org),
+    )
+    .log_internal_error_json("load monitoring timeline fleet")?;
+    let (workers, cells, previous_cells) = if platform {
+        let (workers, cells, previous_cells, cell_markers) = tokio::try_join!(
+            state.db.timeline_worker_buckets(from, to, step),
+            state.db.timeline_cells_buckets(from, to, step),
+            state.db.timeline_cells_buckets(previous_from, from, step),
+            state.db.timeline_cell_markers(from, to),
+        )
+        .log_internal_error_json("load monitoring timeline workers")?;
+        markers.extend(cell_markers);
+        markers.sort_by_key(|m| m.at);
+        (workers, cells, previous_cells)
     } else {
         Default::default()
     };
     let by_start: std::collections::HashMap<_, _> = rows.iter().map(|r| (r.bucket, r)).collect();
+    let fleet_by: std::collections::HashMap<_, _> = fleet.iter().map(|r| (r.bucket, r)).collect();
+    let cells_by: std::collections::HashMap<_, _> = cells.iter().map(|r| (r.bucket, r)).collect();
+    let mut carry = Carry {
+        sessions: seed.0,
+        agents: seed.1,
+    };
     let mut buckets = Vec::new();
     let mut at = from;
     while at < to {
-        buckets.push(bucket(
-            at,
-            by_start.get(&at).copied(),
-            workers.get(&at),
+        let row = by_start.get(&at).copied();
+        let mut b = bucket(at, row, workers.get(&at), platform);
+        apply_fleet(
+            &mut b,
+            fleet_by.get(&at).copied(),
+            cells_by.get(&at).copied(),
+            row.map_or(0, |r| r.samples),
             platform,
-        ));
+            &mut carry,
+        );
+        buckets.push(b);
         at += Duration::seconds(step);
     }
+    // The newest bucket shows the count right now, which the minute job
+    // records only for organizations with a row that minute.
+    if let Some(last) = buckets.last_mut() {
+        last.open_sessions = Some(nonneg(open_now));
+        last.agents = Some(nonneg(agents_now));
+    }
+    let mut summary = summarize(&rows, step);
+    summarize_cells(&mut summary, &fleet, &cells);
+    let mut previous_summary = summarize(&previous, step);
+    summarize_cells(&mut previous_summary, &previous_fleet, &previous_cells);
     Ok(Json(MonitoringTimeline {
         generated_at: now,
         scope: if platform { "fleet" } else { "organization" }.into(),
@@ -493,8 +721,8 @@ async fn timeline(
         to,
         bucket_seconds: step as u32,
         buckets,
-        summary: summarize(&rows, step),
-        previous: summarize(&previous, step),
+        summary,
+        previous: previous_summary,
         markers: markers
             .into_iter()
             .map(|m| TimelineMarker {
@@ -503,6 +731,8 @@ async fn timeline(
                 label: m.label,
             })
             .collect(),
+        open_sessions_now: nonneg(open_now),
+        agents_now: nonneg(agents_now),
     }))
 }
 
@@ -517,9 +747,10 @@ async fn window(
     if query.to - query.from > Duration::days(MAX_WINDOW_DAYS) {
         return Err(bad("window is limited to 7 days"));
     }
-    let (busiest, failures) = tokio::try_join!(
+    let (busiest, failures, failed_tools) = tokio::try_join!(
         state.db.timeline_busiest(org, query.from, query.to),
         state.db.timeline_failures(org, query.from, query.to),
+        state.db.timeline_failed_tools(org, query.from, query.to),
     )
     .log_internal_error_json("load monitoring timeline window")?;
     Ok(Json(MonitoringTimelineWindow {
@@ -535,6 +766,13 @@ async fn window(
             })
             .collect(),
         failures: failures
+            .into_iter()
+            .map(|r| TimelineFailure {
+                code: r.code,
+                turns: nonneg(r.turns),
+            })
+            .collect(),
+        failed_tools: failed_tools
             .into_iter()
             .map(|r| TimelineFailure {
                 code: r.code,
@@ -596,4 +834,219 @@ pub async fn get_fleet_monitoring_timeline_window(
     Query(query): Query<TimelineWindowQuery>,
 ) -> ApiResult<MonitoringTimelineWindow> {
     window(&state, None, query).await
+}
+
+/// How old a cell's newest report may be before the cell shows as silent.
+const CELL_SILENT_AFTER_SECS: i64 = 180;
+
+/// One cell over one bucket.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MonitoringCellBucket {
+    /// UTC start of the bucket.
+    pub start: DateTime<Utc>,
+    /// Minute reports received in the bucket.
+    pub reports: u64,
+    /// Highest node count.
+    pub nodes: Option<u64>,
+    /// Lowest count of nodes that answered the leader.
+    pub nodes_answering: Option<u64>,
+    /// Highest sessions resident.
+    pub sessions_peak: Option<u64>,
+    /// Highest turns running.
+    pub running_peak: Option<u64>,
+    /// Highest messages waiting for a turn.
+    pub queued_peak: Option<u64>,
+    /// The fullest node's memory use as a percentage of its limit.
+    pub memory_peak_pct: Option<f64>,
+    /// The busiest node's CPU use as a percentage of its limit.
+    pub cpu_peak_pct: Option<f64>,
+    /// Worst node's p99 time to admit a turn, in milliseconds.
+    pub admit_p99_ms: Option<u64>,
+    /// Worst node's p99 log shipping lag, in milliseconds.
+    pub ship_lag_p99_ms: Option<u64>,
+    /// Leader elections.
+    pub elections: u64,
+    /// Sessions moved to another cell.
+    pub moves: u64,
+    /// Turns completed.
+    pub turns_completed: u64,
+    /// Turns failed.
+    pub turns_failed: u64,
+    /// Turns cancelled.
+    pub turns_cancelled: u64,
+}
+
+/// One data plane v2 cell: its newest minute report and its history.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MonitoringCell {
+    /// Cell name.
+    #[schema(example = "cell-07")]
+    pub cell: String,
+    /// Data plane the cell belongs to.
+    #[schema(example = "dp-eks-1")]
+    pub data_plane: String,
+    /// Minute of the newest report.
+    #[schema(example = "2026-11-15T19:59:00Z")]
+    pub reported_at: DateTime<Utc>,
+    /// No report for the last three minutes.
+    #[schema(example = false)]
+    pub silent: bool,
+    /// Leader node at the newest report.
+    #[schema(example = "cell-07-node-2")]
+    pub leader: Option<String>,
+    /// Members.
+    #[schema(example = 3)]
+    pub nodes: u64,
+    /// Members that answered the leader.
+    #[schema(example = 3)]
+    pub nodes_answering: u64,
+    /// Sessions resident.
+    #[schema(example = 2650)]
+    pub sessions: u64,
+    /// Turns running.
+    #[schema(example = 239)]
+    pub running: u64,
+    /// Messages waiting for a turn.
+    #[schema(example = 0)]
+    pub queued: u64,
+    /// Turns running on a second or later attempt.
+    #[schema(example = 1)]
+    pub resumed: u64,
+    /// The fullest node's resident memory, in bytes.
+    #[schema(example = 3221225472_u64)]
+    pub memory_bytes: u64,
+    /// Its memory limit in bytes; null when unknown.
+    #[schema(example = 4294967296_u64)]
+    pub memory_limit_bytes: Option<u64>,
+    /// The busiest node's CPU, in cores.
+    #[schema(example = 1.2)]
+    pub cpu_cores: f64,
+    /// Its CPU limit in cores; null when unknown.
+    #[schema(example = 2.0)]
+    pub cpu_limit_cores: Option<f64>,
+    /// Worst node's p99 time to admit a turn, in milliseconds.
+    #[schema(example = 12)]
+    pub admit_p99_ms: u64,
+    /// Worst node's p99 log shipping lag, in milliseconds.
+    #[schema(example = 380)]
+    pub ship_lag_p99_ms: u64,
+    /// Raft term.
+    #[schema(example = 4)]
+    pub term: u64,
+    /// History over the range, oldest first; buckets without a report are absent.
+    pub buckets: Vec<MonitoringCellBucket>,
+}
+
+/// Data plane v2 cells as their minute reports show them.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MonitoringCells {
+    /// UTC time of this read.
+    #[schema(example = "2026-11-15T20:00:00Z")]
+    pub generated_at: DateTime<Utc>,
+    /// Inclusive UTC start of the history.
+    #[schema(example = "2026-11-15T14:00:00Z")]
+    pub from: DateTime<Utc>,
+    /// Exclusive UTC end.
+    #[schema(example = "2026-11-15T20:00:00Z")]
+    pub to: DateTime<Utc>,
+    /// Bucket size in seconds.
+    #[schema(example = 60)]
+    pub bucket_seconds: u32,
+    /// Cells that reported in the last week, by name.
+    pub cells: Vec<MonitoringCell>,
+}
+
+fn share_pct(used: Option<f64>, limit: Option<f64>) -> Option<f64> {
+    match (used, limit) {
+        (Some(u), Some(l)) if l > 0.0 => pct(Some(u / l)),
+        _ => None,
+    }
+}
+
+fn cell_bucket(r: &TimelineCellBucketRow) -> MonitoringCellBucket {
+    let opt = |v: Option<i64>| v.map(nonneg);
+    let opt32 = |v: Option<i32>| v.map(|v| nonneg(v.into()));
+    MonitoringCellBucket {
+        start: r.bucket,
+        reports: nonneg(r.reports),
+        nodes: opt32(r.nodes),
+        nodes_answering: opt32(r.nodes_answering),
+        sessions_peak: opt(r.sessions_peak),
+        running_peak: opt(r.running_peak),
+        queued_peak: opt(r.queued_peak),
+        memory_peak_pct: share_pct(
+            r.rss_peak_bytes.map(|v| v as f64),
+            r.memory_limit_bytes.map(|v| v as f64),
+        ),
+        cpu_peak_pct: share_pct(
+            r.cpu_peak_cores.map(f64::from),
+            r.cpu_limit_cores.map(f64::from),
+        ),
+        admit_p99_ms: opt32(r.admit_p99_ms),
+        ship_lag_p99_ms: opt32(r.ship_lag_p99_ms),
+        elections: nonneg(r.elections),
+        moves: nonneg(r.moves),
+        turns_completed: nonneg(r.turns_completed),
+        turns_failed: nonneg(r.turns_failed),
+        turns_cancelled: nonneg(r.turns_cancelled),
+    }
+}
+
+/// List cells with their newest report and history. Requires platform-user access.
+#[utoipa::path(get, path = "/v1/durable/monitoring/cells", tag = "durable", params(TimelineQuery),
+    responses((status = 200, description = "Cells and their history", body = MonitoringCells),
+        (status = 400, description = "Invalid range", body = ErrorResponse),
+        (status = 403, description = "Platform access required", body = ErrorResponse)))]
+pub async fn get_fleet_monitoring_cells(
+    _platform: PlatformUser,
+    State(state): State<AppState>,
+    Query(query): Query<TimelineQuery>,
+) -> ApiResult<MonitoringCells> {
+    let now = Utc::now();
+    let (from, to, step) = resolve(&query, now)?;
+    let (latest, history) = tokio::try_join!(
+        state.db.monitoring_cells_latest(),
+        state.db.timeline_cell_buckets(from, to, step),
+    )
+    .log_internal_error_json("load monitoring cells")?;
+    let mut by_cell: std::collections::HashMap<&str, Vec<MonitoringCellBucket>> =
+        std::collections::HashMap::new();
+    for r in &history {
+        by_cell
+            .entry(r.cell.as_str())
+            .or_default()
+            .push(cell_bucket(r));
+    }
+    let limit = |v: Option<f64>| v.filter(|l| *l > 0.0);
+    let cells = latest
+        .iter()
+        .map(|c| MonitoringCell {
+            cell: c.cell.clone(),
+            data_plane: c.data_plane.clone(),
+            reported_at: c.minute,
+            silent: now - c.minute > Duration::seconds(CELL_SILENT_AFTER_SECS),
+            leader: c.leader.clone().filter(|l| !l.is_empty()),
+            nodes: c.nodes.map_or(0, |v| nonneg(v.into())),
+            nodes_answering: c.nodes_answering.map_or(0, |v| nonneg(v.into())),
+            sessions: c.sessions.map_or(0, nonneg),
+            running: c.running.map_or(0, nonneg),
+            queued: c.queued.map_or(0, nonneg),
+            resumed: c.resumed.map_or(0, nonneg),
+            memory_bytes: c.rss_peak_bytes.map_or(0, nonneg),
+            memory_limit_bytes: limit(c.memory_limit_bytes.map(|v| v as f64)).map(|v| v as u64),
+            cpu_cores: c.cpu_peak_cores.map_or(0.0, f64::from),
+            cpu_limit_cores: limit(c.cpu_limit_cores.map(f64::from)),
+            admit_p99_ms: c.admit_p99_ms.map_or(0, |v| nonneg(v.into())),
+            ship_lag_p99_ms: c.ship_lag_p99_ms.map_or(0, |v| nonneg(v.into())),
+            term: c.raft_term.map_or(0, nonneg),
+            buckets: by_cell.remove(c.cell.as_str()).unwrap_or_default(),
+        })
+        .collect();
+    Ok(Json(MonitoringCells {
+        generated_at: now,
+        from,
+        to,
+        bucket_seconds: step as u32,
+        cells,
+    }))
 }

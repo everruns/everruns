@@ -33,6 +33,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/propose", post(propose))
         .route("/cell/activate/{session}", post(activate))
         .route("/cell/stats", get(stats))
+        .route("/cell/usage", get(usage))
         .route("/cell/inspect", get(crate::inspect::cell))
         .route(
             "/cell/sessions/{session}/inspect",
@@ -156,6 +157,103 @@ pub(crate) fn rss_mb() -> u64 {
         .unwrap_or(0)
 }
 
+/// One node's resources and latencies, for its leader's minute report
+/// (`GET /cell/usage`, `node_control::report_minute`).
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct NodeUsage {
+    pub rss_bytes: u64,
+    /// The container's memory limit; 0 when there is none or it is unknown.
+    pub memory_limit_bytes: u64,
+    /// CPU used since the previous reading, in cores.
+    pub cpu_cores: f32,
+    /// The container's CPU limit in cores; 0 when unknown.
+    pub cpu_limit_cores: f32,
+    pub admit_p99_ms: u32,
+    pub ship_lag_p99_ms: u32,
+}
+
+pub(crate) fn node_usage(node: &Node) -> NodeUsage {
+    let (cpu_cores, cpu_limit_cores) = cpu_usage();
+    NodeUsage {
+        rss_bytes: rss_mb() << 20,
+        memory_limit_bytes: memory_limit_bytes(),
+        cpu_cores,
+        cpu_limit_cores,
+        admit_p99_ms: node
+            .gateway
+            .get()
+            .map_or(0, |g| (g.admit_window.p99() * 1000.0).round() as u32),
+        ship_lag_p99_ms: (node.prom.ship_lag_window.p99() * 1000.0).round() as u32,
+    }
+}
+
+async fn usage(State(node): State<Arc<Node>>) -> Json<NodeUsage> {
+    Json(node_usage(&node))
+}
+
+/// The cgroup v2 memory limit (`memory.max`); 0 for `max` or outside one.
+fn memory_limit_bytes() -> u64 {
+    std::fs::read_to_string("/sys/fs/cgroup/memory.max")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// CPU used since the reading before, and the cgroup v2 limit
+/// (`cpu.max`), both in cores; `(0, 0)` outside Linux.
+///
+/// Decision: the rate is measured from a baseline that moves only once it
+/// is 10 seconds old, so a reader polling often (the inspector) still sees
+/// a rate over a useful span rather than over its own short interval.
+/// Clock ticks are taken as 100 a second, Linux's `USER_HZ` everywhere it
+/// matters here.
+fn cpu_usage() -> (f32, f32) {
+    static BASELINE: parking_lot::Mutex<Option<(std::time::Instant, u64, f32)>> =
+        parking_lot::Mutex::new(None);
+    let limit = std::fs::read_to_string("/sys/fs/cgroup/cpu.max")
+        .ok()
+        .and_then(|s| {
+            let mut parts = s.split_whitespace();
+            let quota: f32 = parts.next()?.parse().ok()?;
+            let period: f32 = parts.next()?.parse().ok()?;
+            (period > 0.0).then_some(quota / period)
+        })
+        .unwrap_or(0.0);
+    let Some(ticks) = std::fs::read_to_string("/proc/self/stat")
+        .ok()
+        .and_then(|s| {
+            // Fields after the command name, which may hold spaces: utime and
+            // stime are the 12th and 13th.
+            let rest = &s[s.rfind(')')? + 2..];
+            let fields: Vec<&str> = rest.split_whitespace().collect();
+            Some(fields.get(11)?.parse::<u64>().ok()? + fields.get(12)?.parse::<u64>().ok()?)
+        })
+    else {
+        return (0.0, limit);
+    };
+    let now = std::time::Instant::now();
+    let mut baseline = BASELINE.lock();
+    let cores = match *baseline {
+        Some((at, before, last)) => {
+            let secs = now.duration_since(at).as_secs_f32();
+            let rate = if secs > 0.0 {
+                ticks.saturating_sub(before) as f32 / 100.0 / secs
+            } else {
+                last
+            };
+            if secs >= 10.0 {
+                *baseline = Some((now, ticks, rate));
+            }
+            rate
+        }
+        None => {
+            *baseline = Some((now, ticks, 0.0));
+            0.0
+        }
+    };
+    ((cores * 100.0).round() / 100.0, limit)
+}
+
 async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
     let (sessions, active_turns, queued_inputs, turns_completed, unloaded_sessions) = {
         let state = node.shared.state.read();
@@ -205,17 +303,17 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
     // Per node: what this process did.
     w.counters(
         "cell_turns_executed_total",
-        "Turn executions on this node, by agent and outcome.",
+        "Turn executions on this node, by outcome.",
         &p.turns_executed,
     );
     w.histograms(
         "cell_turn_duration_seconds",
-        "Wall time of turn executions on this node, by agent.",
+        "Wall time of turn executions on this node.",
         &p.turn_seconds,
     );
     w.gauges(
         "cell_turns_running",
-        "Turns executing on this node now, by agent.",
+        "Turns executing on this node now.",
         &p.turns_running,
     );
     w.counters(
@@ -276,7 +374,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         );
         w.counters(
             "cell_sessions_created_total",
-            "Sessions created through this node's gateway, by agent.",
+            "Sessions created through this node's gateway.",
             &gateway.created,
         );
         w.counters(
@@ -374,11 +472,12 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
     // sum over the fleet counts each cell once.
     if leader == Some(node.cfg.node_id) {
         let base = render(&[("cell", &cell)]);
-        let mut by_agent: std::collections::BTreeMap<&str, [u64; 5]> = Default::default();
+        // Totals only: an agent label would grow with the fleet (see
+        // `node::Running`).
+        let mut row = [0u64; 5];
         let (mut unloaded, mut frozen) = (0u64, 0u64);
         let state = node.shared.state.read();
         for s in state.sessions.values() {
-            let row = by_agent.entry(s.agent.as_str()).or_default();
             row[0] += 1;
             row[1] += u64::from(s.turn_running());
             row[2] += s.queued() as u64;
@@ -387,47 +486,34 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
             unloaded += u64::from(s.events.is_empty() && s.offloaded > 0);
             frozen += u64::from(s.placement == Placement::Frozen);
         }
-        let rows = |i: usize| {
-            by_agent
-                .iter()
-                .map(move |(agent, row)| (render(&[("agent", agent)]), row[i] as f64))
-                .collect::<Vec<_>>()
-        };
-        w.family(
-            "cell_sessions",
-            "gauge",
-            "Sessions in the cell, by agent.",
-            &base,
-            rows(0),
-        );
-        w.family(
-            "cell_active_turns",
-            "gauge",
-            "Sessions with a turn claimed (running or about to), by agent.",
-            &base,
-            rows(1),
-        );
-        w.family(
-            "cell_queued_inputs",
-            "gauge",
-            "Messages waiting for a turn, by agent.",
-            &base,
-            rows(2),
-        );
-        w.family(
-            "cell_turns_completed_total",
-            "counter",
-            "Turns completed in the cell's sessions, by agent.",
-            &base,
-            rows(3),
-        );
-        w.family(
-            "cell_resumed_turns",
-            "gauge",
-            "Active turns on a second or later attempt (resumed after a failure).",
-            &base,
-            rows(4),
-        );
+        for (i, (name, kind, help)) in [
+            ("cell_sessions", "gauge", "Sessions in the cell."),
+            (
+                "cell_active_turns",
+                "gauge",
+                "Sessions with a turn claimed (running or about to).",
+            ),
+            (
+                "cell_queued_inputs",
+                "gauge",
+                "Messages waiting for a turn.",
+            ),
+            (
+                "cell_turns_completed_total",
+                "counter",
+                "Turns completed in the cell's sessions.",
+            ),
+            (
+                "cell_resumed_turns",
+                "gauge",
+                "Active turns on a second or later attempt (resumed after a failure).",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            w.sample_raw(name, kind, help, &base, row[i] as f64);
+        }
         w.sample_raw(
             "cell_unloaded_sessions",
             "gauge",

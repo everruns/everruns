@@ -630,7 +630,7 @@ impl Gateway {
         }
         self.cache.lock().insert(session, cell);
         if known.is_none() {
-            self.created.inc(&[("agent", agent.as_str())]);
+            self.created.inc(&[]);
         }
         Ok(json!({ "id": session, "agent": agent, "cell": cell }))
     }

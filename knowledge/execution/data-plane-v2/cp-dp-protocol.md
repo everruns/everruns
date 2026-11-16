@@ -155,7 +155,14 @@ enum Record {
     SecretRefreshed { secret_id: String, revision: u64, ciphertext: Base64, nonce: Base64, data_key_id: String },
     ConfigApplied { version: u64 },
     OrgEvent { kind: String /* budget_exhausted | limit_hit | suspended */, detail: String },
-    Health { sessions: u32, running_turns: u32, lag_ms: u32 },
+    // One per cell per finished minute, no org (org_id ""): proposed by the Raft leader,
+    // population from replicated state, node figures from the leader's poll of members.
+    // The control plane keeps the first per (cell, minute); see operations/monitoring.md.
+    Health { sessions: u32, running_turns: u32, lag_ms: u32, minute_unix_ms: i64, queued: u32,
+             resumed_turns: u32, forwarded: u64, term: u64, leader: String, nodes: u32,
+             nodes_answering: u32, rss_peak_bytes: u64, memory_limit_bytes: u64,
+             cpu_peak_cores: f32, cpu_limit_cores: f32, admit_p99_ms: u32, ship_lag_p99_ms: u32,
+             orgs: Vec<OrgHealth /* org_id, sessions, running_turns, queued, agents_working */> },
 }
 
 struct FeedAck { source: String, incarnation: u64, stored_through: (u64, u32) } // (index, ordinal)

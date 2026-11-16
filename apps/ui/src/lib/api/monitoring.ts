@@ -5,6 +5,7 @@ import type {
   MonitoringActorDetail,
   MonitoringTimeline,
   MonitoringTimelineWindow,
+  MonitoringCells,
 } from "./types";
 
 export type MonitoringScope = "organization" | "fleet";
@@ -63,4 +64,10 @@ export async function getMonitoringTimelineWindow(
   return (
     await api.get<MonitoringTimelineWindow>(`${monitoringBase(scope)}/timeline/window?${params}`)
   ).data;
+}
+
+/** Data plane v2 cells and their history (platform only). */
+export async function getMonitoringCells(range: TimelineRange): Promise<MonitoringCells> {
+  const params = new URLSearchParams({ range });
+  return (await api.get<MonitoringCells>(`/v1/durable/monitoring/cells?${params}`)).data;
 }

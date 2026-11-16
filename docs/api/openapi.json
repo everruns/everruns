@@ -10771,6 +10771,97 @@
         }
       }
     },
+    "/v1/durable/monitoring/cells": {
+      "get": {
+        "tags": [
+          "durable"
+        ],
+        "summary": "List cells with their newest report and history",
+        "description": "List cells with their newest report and history. Requires platform-user access.",
+        "operationId": "get_fleet_monitoring_cells",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "description": "Range ending now: 15m, 1h, 6h, 24h, 7d, or 30d. Ignored when `from` is set. Defaults to 24h.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "24h"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Inclusive UTC start; use with `to` for a custom range of up to 31 days.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Exclusive UTC end; defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "Bucket size in seconds: 60, 300, 900, 3600, 21600, or 86400. Chosen from the range when omitted.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "example": 300
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cells and their history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringCells"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Platform access required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "internal",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/durable/monitoring/timeline": {
       "get": {
         "tags": [
@@ -64278,6 +64369,341 @@
           }
         }
       },
+      "MonitoringCell": {
+        "type": "object",
+        "description": "One data plane v2 cell: its newest minute report and its history.",
+        "required": [
+          "cell",
+          "data_plane",
+          "reported_at",
+          "silent",
+          "nodes",
+          "nodes_answering",
+          "sessions",
+          "running",
+          "queued",
+          "resumed",
+          "memory_bytes",
+          "cpu_cores",
+          "admit_p99_ms",
+          "ship_lag_p99_ms",
+          "term",
+          "buckets"
+        ],
+        "properties": {
+          "admit_p99_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Worst node's p99 time to admit a turn, in milliseconds.",
+            "example": 12,
+            "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringCellBucket"
+            },
+            "description": "History over the range, oldest first; buckets without a report are absent."
+          },
+          "cell": {
+            "type": "string",
+            "description": "Cell name.",
+            "example": "cell-07"
+          },
+          "cpu_cores": {
+            "type": "number",
+            "format": "double",
+            "description": "The busiest node's CPU, in cores.",
+            "example": 1.2
+          },
+          "cpu_limit_cores": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Its CPU limit in cores; null when unknown.",
+            "example": 2
+          },
+          "data_plane": {
+            "type": "string",
+            "description": "Data plane the cell belongs to.",
+            "example": "dp-eks-1"
+          },
+          "leader": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Leader node at the newest report.",
+            "example": "cell-07-node-2"
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The fullest node's resident memory, in bytes.",
+            "example": 3221225472,
+            "minimum": 0
+          },
+          "memory_limit_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Its memory limit in bytes; null when unknown.",
+            "example": 4294967296,
+            "minimum": 0
+          },
+          "nodes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Members.",
+            "example": 3,
+            "minimum": 0
+          },
+          "nodes_answering": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Members that answered the leader.",
+            "example": 3,
+            "minimum": 0
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Messages waiting for a turn.",
+            "example": 0,
+            "minimum": 0
+          },
+          "reported_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Minute of the newest report.",
+            "example": "2026-11-15T19:59:00Z"
+          },
+          "resumed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns running on a second or later attempt.",
+            "example": 1,
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns running.",
+            "example": 239,
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions resident.",
+            "example": 2650,
+            "minimum": 0
+          },
+          "ship_lag_p99_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Worst node's p99 log shipping lag, in milliseconds.",
+            "example": 380,
+            "minimum": 0
+          },
+          "silent": {
+            "type": "boolean",
+            "description": "No report for the last three minutes.",
+            "example": false
+          },
+          "term": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Raft term.",
+            "example": 4,
+            "minimum": 0
+          }
+        }
+      },
+      "MonitoringCellBucket": {
+        "type": "object",
+        "description": "One cell over one bucket.",
+        "required": [
+          "start",
+          "reports",
+          "elections",
+          "moves",
+          "turns_completed",
+          "turns_failed",
+          "turns_cancelled"
+        ],
+        "properties": {
+          "admit_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Worst node's p99 time to admit a turn, in milliseconds.",
+            "minimum": 0
+          },
+          "cpu_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The busiest node's CPU use as a percentage of its limit."
+          },
+          "elections": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Leader elections.",
+            "minimum": 0
+          },
+          "memory_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The fullest node's memory use as a percentage of its limit."
+          },
+          "moves": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions moved to another cell.",
+            "minimum": 0
+          },
+          "nodes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest node count.",
+            "minimum": 0
+          },
+          "nodes_answering": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Lowest count of nodes that answered the leader.",
+            "minimum": 0
+          },
+          "queued_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest messages waiting for a turn.",
+            "minimum": 0
+          },
+          "reports": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Minute reports received in the bucket.",
+            "minimum": 0
+          },
+          "running_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest turns running.",
+            "minimum": 0
+          },
+          "sessions_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest sessions resident.",
+            "minimum": 0
+          },
+          "ship_lag_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Worst node's p99 log shipping lag, in milliseconds.",
+            "minimum": 0
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC start of the bucket."
+          },
+          "turns_cancelled": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns cancelled.",
+            "minimum": 0
+          },
+          "turns_completed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns completed.",
+            "minimum": 0
+          },
+          "turns_failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns failed.",
+            "minimum": 0
+          }
+        }
+      },
+      "MonitoringCells": {
+        "type": "object",
+        "description": "Data plane v2 cells as their minute reports show them.",
+        "required": [
+          "generated_at",
+          "from",
+          "to",
+          "bucket_seconds",
+          "cells"
+        ],
+        "properties": {
+          "bucket_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bucket size in seconds.",
+            "example": 60,
+            "minimum": 0
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringCell"
+            },
+            "description": "Cells that reported in the last week, by name."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive UTC start of the history.",
+            "example": "2026-11-15T14:00:00Z"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC time of this read.",
+            "example": "2026-11-15T20:00:00Z"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive UTC end.",
+            "example": "2026-11-15T20:00:00Z"
+          }
+        }
+      },
       "MonitoringCohort": {
         "type": "object",
         "description": "Bounded execution breakdown for one organization and live lease holder.",
@@ -64645,9 +65071,17 @@
           "buckets",
           "summary",
           "previous",
-          "markers"
+          "markers",
+          "open_sessions_now",
+          "agents_now"
         ],
         "properties": {
+          "agents_now": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Agents defined right now.",
+            "minimum": 0
+          },
           "bucket_seconds": {
             "type": "integer",
             "format": "int32",
@@ -64677,7 +65111,13 @@
             "items": {
               "$ref": "#/components/schemas/TimelineMarker"
             },
-            "description": "Deploys and worker changes inside the range."
+            "description": "Deploys, worker changes and cell leader changes inside the range."
+          },
+          "open_sessions_now": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions not archived right now, on any data plane.",
+            "minimum": 0
           },
           "previous": {
             "$ref": "#/components/schemas/TimelineSummary",
@@ -64706,7 +65146,8 @@
           "from",
           "to",
           "busiest",
-          "failures"
+          "failures",
+          "failed_tools"
         ],
         "properties": {
           "busiest": {
@@ -64715,6 +65156,13 @@
               "$ref": "#/components/schemas/TimelineRank"
             },
             "description": "Up to 5 busiest agents (organization) or organizations (platform)."
+          },
+          "failed_tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineFailure"
+            },
+            "description": "Up to 6 tools whose calls failed most often; `code` is the tool name."
           },
           "failures": {
             "type": "array",
@@ -78412,7 +78860,9 @@
           "input_tokens",
           "output_tokens",
           "cost_usd",
-          "worker_loads"
+          "worker_loads",
+          "agents_working_avg",
+          "agents_working_peak"
         ],
         "properties": {
           "active_avg": {
@@ -78428,9 +78878,40 @@
             "example": 112,
             "minimum": 0
           },
+          "agents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Agents defined, not archived: the newest count in or before the bucket.",
+            "minimum": 0
+          },
+          "agents_working_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average distinct agents with an active session on workers."
+          },
+          "agents_working_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest sampled count of such agents.",
+            "minimum": 0
+          },
           "backfilled": {
             "type": "boolean",
             "description": "Whether this bucket includes history rebuilt from turn records (no phase split or queue data)."
+          },
+          "cells": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimelineCellsBucket",
+                "description": "Data plane v2 cells; absent when no cell reported and no cell turn finished in the bucket."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "cost_usd": {
             "type": "number",
@@ -78485,6 +78966,15 @@
             "description": "Longest wait for a worker lease observed in the bucket, in milliseconds.",
             "minimum": 0
           },
+          "open_sessions": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Sessions not archived, on any data plane: the newest count in or before the bucket.",
+            "minimum": 0
+          },
           "organizations_peak": {
             "type": [
               "integer",
@@ -78514,6 +79004,15 @@
           "sampled": {
             "type": "boolean",
             "description": "Whether population was sampled; false for empty buckets and history rebuilt from turn records."
+          },
+          "servers": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: server replicas running.",
+            "minimum": 0
           },
           "setup_avg": {
             "type": "number",
@@ -78616,6 +79115,195 @@
           }
         }
       },
+      "TimelineCellsBucket": {
+        "type": "object",
+        "description": "What data plane v2 cells reported over a bucket. Population comes from\neach cell's one-minute report; counters from the cells' feed.",
+        "required": [
+          "reporting",
+          "sessions_avg",
+          "sessions_peak",
+          "running_avg",
+          "running_peak",
+          "queued_peak",
+          "agents_working_avg",
+          "agents_working_peak",
+          "turns_completed",
+          "turns_failed",
+          "turns_cancelled",
+          "model_calls",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd"
+        ],
+        "properties": {
+          "admit_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: worst node's p99 time to admit a turn, in milliseconds.",
+            "minimum": 0
+          },
+          "agents_working_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average distinct agents with a running turn on cells."
+          },
+          "agents_working_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute agents with a running turn on cells.",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend on cells in USD."
+          },
+          "cpu_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Platform only: the busiest node's CPU use as a percentage of its limit."
+          },
+          "elections": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: leader elections across cells.",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model input tokens on cells.",
+            "minimum": 0
+          },
+          "memory_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Platform only: the fullest node's memory use as a percentage of its limit."
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model calls made on cells.",
+            "minimum": 0
+          },
+          "moves": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: sessions moved to another cell.",
+            "minimum": 0
+          },
+          "nodes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: highest total of cell nodes (pods) in one minute.",
+            "minimum": 0
+          },
+          "nodes_answering": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: lowest total of nodes that answered their leader in one minute.",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model output tokens on cells.",
+            "minimum": 0
+          },
+          "queued_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute messages waiting for a turn on cells.",
+            "minimum": 0
+          },
+          "reporting": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest number of cells that reported in one minute.",
+            "example": 12,
+            "minimum": 0
+          },
+          "resumed_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: highest per-minute turns running on a second or later attempt.",
+            "minimum": 0
+          },
+          "running_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average turns running on cells."
+          },
+          "running_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute turns running on cells.",
+            "minimum": 0
+          },
+          "sessions_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions resident on cells."
+          },
+          "sessions_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute sessions resident on cells.",
+            "minimum": 0
+          },
+          "ship_lag_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: worst node's p99 log shipping lag, in milliseconds.",
+            "minimum": 0
+          },
+          "turns_cancelled": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns cancelled on cells.",
+            "minimum": 0
+          },
+          "turns_completed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns completed on cells.",
+            "minimum": 0
+          },
+          "turns_failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns failed on cells.",
+            "minimum": 0
+          }
+        }
+      },
       "TimelineFailure": {
         "type": "object",
         "description": "Failed turns of one classified error code.",
@@ -78653,12 +79341,12 @@
           },
           "kind": {
             "type": "string",
-            "description": "deploy, worker_joined, or worker_left (worker changes are platform only).",
+            "description": "deploy, worker_joined, worker_left, or leader_change (all but deploy are platform only).",
             "example": "deploy"
           },
           "label": {
             "type": "string",
-            "description": "Server version for a deploy, worker id otherwise.",
+            "description": "Server version for a deploy, worker id or cell name otherwise.",
             "example": "0.50.1"
           }
         }
@@ -78711,6 +79399,24 @@
           "cost_usd"
         ],
         "properties": {
+          "cells_elections": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: leader elections across cells; null when no cell reported.",
+            "minimum": 0
+          },
+          "cells_peak_running": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest per-minute turns running on cells; null when no cell reported.",
+            "minimum": 0
+          },
           "cost_usd": {
             "type": "number",
             "format": "double",

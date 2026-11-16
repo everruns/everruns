@@ -87,6 +87,9 @@ pub enum Command {
     },
     /// The control plane stored the feed through `(index, ordinal)`.
     FeedAcked { through: (u64, u32) },
+    /// The leader's minute report for Monitoring: its node measurements;
+    /// applying it counts the population and queues the feed record.
+    Report { report: crate::control::NodeReport },
     /// Reserve `session`'s next provider call; the reply is the Engine's
     /// budget reading.
     Reserve { session: SessionId, now_ms: i64 },
@@ -983,6 +986,12 @@ impl CellState {
             }
             Command::FeedAcked { through } => {
                 self.feed.ack(through);
+                Response::Ok
+            }
+            Command::Report { report } => {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                self.feed
+                    .report(index, self.sessions.values(), self.forwarded.len(), &report);
                 Response::Ok
             }
             Command::Reserve { session, now_ms } => {

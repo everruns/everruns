@@ -12,11 +12,15 @@ import type { MonitoringSnapshot, MonitoringActorDetail } from "@/lib/api/types"
 let mockEnabled = true;
 let mockPlatform = true;
 let mockOrg = "org_a";
+let mockDataPlane = false;
 jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: mockOrg } }),
 }));
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlagsState: () => ({ isLoading: false, flags: { monitoring: mockEnabled } }),
+  useFeatureFlagsState: () => ({
+    isLoading: false,
+    flags: { monitoring: mockEnabled, data_plane: mockDataPlane },
+  }),
 }));
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({
@@ -68,7 +72,9 @@ function snapshot(at = "2026-10-14T12:00:00Z", actors = 50000): MonitoringSnapsh
   };
 }
 function app(scope: "organization" | "fleet" = "fleet") {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   return {
     client,
     element: (
@@ -82,6 +88,7 @@ beforeEach(() => {
   mockEnabled = true;
   mockPlatform = true;
   mockOrg = "org_a";
+  mockDataPlane = false;
   jest.clearAllMocks();
   (getMonitoring as jest.Mock).mockResolvedValue(snapshot());
 });
@@ -148,6 +155,20 @@ test("organization adoption and platform authorization prevent fetching gated mo
   expect(getMonitoring).not.toHaveBeenCalled();
 });
 
+test("an organization sees only the execution path it runs on", async () => {
+  const workers = render(app("organization").element);
+  await screen.findByText("50,000 active sessions");
+  expect(screen.getByRole("tab", { name: "Actors" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Cells" })).not.toBeInTheDocument();
+  workers.unmount();
+  mockDataPlane = true;
+  render(app("organization").element);
+  await screen.findByText("50,000 active sessions");
+  expect(screen.queryByRole("tab", { name: "Workers" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Actors" })).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Timeline" })).toBeInTheDocument();
+});
+
 test("pause freezes the viewed population while live collection continues", async () => {
   const { client, element } = app();
   render(element);
@@ -193,7 +214,9 @@ test("an authorization failure hides previously cached fleet data", async () => 
     new ApiError(403, "Forbidden", "Platform access required"),
   );
   await act(async () => {
-    await client.invalidateQueries({ queryKey: ["monitoring", "fleet", "org_a"] });
+    await client.invalidateQueries({
+      queryKey: ["monitoring", "fleet", "org_a"],
+    });
   });
   await waitFor(() => expect(screen.getByText("Monitoring is unavailable")).toBeInTheDocument());
   expect(screen.queryByText("50,000 active sessions")).not.toBeInTheDocument();
