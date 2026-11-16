@@ -7,7 +7,9 @@
 //! another; a turn survives its cell's leader dying; live deltas reach SSE
 //! from an executor; the workspace survives executors and a move; an
 //! executor runs a session again after it moved cells; a cell short of
-//! memory sheds new work while admitted turns finish.
+//! memory sheds new work while admitted turns finish; a cell with Raft on
+//! its own listener and threads fails over like any other; a cell that
+//! stops committing sheds new work and takes it again once it commits.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -91,6 +93,81 @@ async fn a_turn_survives_its_cells_leader_dying() {
     let kinds_events = fleet.events(&session).await;
     let kinds = types(&kinds_events);
     assert!(kinds.contains(&"turn.completed"), "{kinds:?}");
+}
+
+/// The same, with Raft on each node's own listener and threads: killing
+/// the leader's node stops its Raft too, and the cell elects another.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_survives_its_leader_dying_with_raft_on_its_own_threads() {
+    let mut fleet = Fleet::start_isolated().await;
+    fleet.executor(1);
+    let session = fleet.create_in("slow", 0).await;
+    fleet.say(&session, "go").await;
+    fleet.held(&session).await;
+    let leader = fleet.leader(0).await;
+    fleet.kill_node(0, leader);
+    let next = fleet.leader(0).await;
+    assert_ne!(next, leader);
+    fleet.turns(&session, 1).await;
+    let kinds_events = fleet.events(&session).await;
+    let kinds = types(&kinds_events);
+    assert!(kinds.contains(&"turn.completed"), "{kinds:?}");
+}
+
+/// A leader that cannot commit (both followers gone) refuses new input
+/// with 429 and a retry hint instead of holding every request to its
+/// deadline, and takes input again once its followers are back.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cell_that_stops_committing_sheds_new_work_until_it_commits() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let session = fleet.create_in("worker", 0).await;
+    fleet.say(&session, "go").await;
+    fleet.turns(&session, 1).await;
+    let leader = fleet.leader(0).await;
+    let followers: Vec<u64> = (1..=3).filter(|n| *n != leader).collect();
+    for node in &followers {
+        fleet.kill_node(0, *node);
+    }
+    let messages = format!("/v1/sessions/{session}/messages");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let (status, retry, body) = loop {
+        let reply = fleet.post_once(&messages, json!({ "text": "more" })).await;
+        if reply.0 == 429 || Instant::now() > deadline {
+            break reply;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+    assert_eq!(status, 429, "{body}");
+    assert_eq!(
+        retry.as_deref(),
+        Some("2"),
+        "the refusal says when to retry"
+    );
+    let addr = fleet
+        .addrs(0)
+        .into_iter()
+        .find(|(node, _)| *node == leader)
+        .map(|(_, addr)| addr)
+        .unwrap();
+    let metrics = reqwest::get(format!("http://{addr}/metrics"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(
+        metrics
+            .lines()
+            .any(|l| l.starts_with("cell_commit_stalled{") && l.ends_with(" 1")),
+        "the leader reports the stall"
+    );
+    for node in followers {
+        fleet.start_node(0, node);
+    }
+    fleet.leader(0).await;
+    fleet.say(&session, "again").await;
+    fleet.turns(&session, 2).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

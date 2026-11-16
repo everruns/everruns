@@ -42,6 +42,10 @@ pub struct NodeConfig {
     /// Memory pressure is measured against this many bytes (0: the
     /// container's limit, see `pressure::limit_bytes`).
     pub memory_limit: u64,
+    /// Serve Raft on this node's port plus this, on Raft's own threads (0:
+    /// on the node's listener and threads). Every member of a cell must use
+    /// the same offset. See `network::Isolation`.
+    pub raft_port_offset: u16,
     /// Also unload sessions idle this long (`None`: only under pressure).
     pub unload_idle: Option<Duration>,
     /// How long a claim lives without renewal.
@@ -176,6 +180,8 @@ pub struct Node {
     pub dispatch: crate::dispatch::Dispatch,
     /// How close the cell's nodes are to their memory limits.
     pub pressure: crate::pressure::Pressure,
+    /// Raft's own threads, when it has them; dropped with the node.
+    pub raft_threads: crate::network::Isolation,
     /// Tenants that may not start turns, polled from the directory.
     pub tenants: crate::tenants::TenantView,
     pub(crate) control: crate::node_control::ControlLink,
@@ -190,14 +196,21 @@ impl Node {
         let sm = StateMachine::open(cfg.data_dir.join("snapshots"), shared.clone())?;
         let config = Config {
             cluster_name: format!("cell-{}", cfg.cell),
-            // Decision: elections wait 1 to 2 s. At 0.4 to 0.8 s a follower
-            // on a loaded host, catching up by snapshot, timed out between
-            // chunks, called an election and cancelled its own catch-up,
-            // over and over (75k-session run). Failover takes about a
-            // second longer; a cell that can't heal costs far more.
-            heartbeat_interval: 150,
-            election_timeout_min: 1_000,
-            election_timeout_max: 2_000,
+            // Decision: elections wait 1.5 to 3 s. At 0.4 to 0.8 s a
+            // follower on a loaded host, catching up by snapshot, timed out
+            // between chunks, called an election and cancelled its own
+            // catch-up, over and over (75k-session run). Failover takes a
+            // second or two longer; a cell that can't heal costs far more.
+            //
+            // Decision: heartbeats every 300 ms, not 150. openraft gives
+            // every append one heartbeat interval, and an append that misses
+            // it is retried from the same entry: at 150 ms, followers on a
+            // host running flat out missed it again and again and their
+            // cells stopped committing (EKS run 43774871232). New entries do
+            // not wait for a heartbeat, so this costs no commit latency.
+            heartbeat_interval: 300,
+            election_timeout_min: 1_500,
+            election_timeout_max: 3_000,
             // Raw bytes now (see `network::SnapshotChunk`): fewer, larger
             // chunks.
             snapshot_max_chunk_size: 16 << 20,
@@ -223,14 +236,11 @@ impl Node {
             ..Default::default()
         }
         .validate()?;
-        let raft = Raft::new(
-            cfg.node_id,
-            Arc::new(config),
-            Network::new(),
-            wal.clone(),
-            sm,
-        )
-        .await?;
+        let raft_threads = crate::network::Isolation::new(cfg.raft_port_offset)?;
+        let (id, network, log) = (cfg.node_id, Network::new(cfg.raft_port_offset), wal.clone());
+        let raft = raft_threads
+            .run(async move { Raft::new(id, Arc::new(config), network, log, sm).await })
+            .await??;
         let batcher = crate::batch::Batcher::spawn(raft.clone());
         let http = reqwest::Client::builder()
             .no_proxy() // fleet traffic is direct, whatever the system proxy says
@@ -271,6 +281,7 @@ impl Node {
                     cfg.memory_limit >> 20,
                     cfg.memory_budget,
                 )),
+                raft_threads,
                 cfg,
             }
         });

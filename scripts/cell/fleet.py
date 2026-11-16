@@ -85,6 +85,9 @@ def start(cell, node, extra_env=None):
     env = dict(os.environ)
     # Agents that call the runtime's own API (hand-offs) use their node's.
     env["CELL_GATEWAY"] = addr(cell, node)
+    # Raft on its own listener and threads, as deployed: node port + 50
+    # (a cell's nodes use ports base + 100 * cell + 1..49).
+    env.setdefault("CELL_RAFT_PORT_OFFSET", "50")
     env.update(extra_env or {})
     entry = extra().get(str(cell), {}).get(str(node), {})
     args = [binary(), "node", "--topology", entry.get("topology", TOPO),

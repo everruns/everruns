@@ -41,6 +41,7 @@ impl Cell {
             store: Store::open(&format!("file://{}", dir.path().join("store").display())).unwrap(),
             memory_budget: 1 << 30,
             memory_limit: 0,
+            raft_port_offset: 0,
             unload_idle: None,
             claim_ttl: Duration::from_secs(10),
             max_turns_per_node: 64,

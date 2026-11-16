@@ -34,6 +34,7 @@ async fn cell_on(addr: String) -> (Arc<Node>, tempfile::TempDir) {
         store: Store::open("memory://").unwrap(),
         memory_budget: 1 << 30,
         memory_limit: 0,
+        raft_port_offset: 0,
         unload_idle: None,
         claim_ttl: Duration::from_secs(10),
         max_turns_per_node: 64,

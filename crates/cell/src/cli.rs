@@ -64,6 +64,11 @@ enum Mode {
         /// (see `pressure.rs`). 0: the container's limit.
         #[arg(long, env = "CELL_MEMORY_LIMIT_MB", default_value = "0")]
         memory_limit_mb: u64,
+        /// Serve Raft on the node's port plus this, on its own threads, so
+        /// client load cannot hold up replication (0: on the node's
+        /// listener). Every member of a cell must use the same offset.
+        #[arg(long, env = "CELL_RAFT_PORT_OFFSET", default_value = "0")]
+        raft_port_offset: u16,
         /// Also unload sessions idle this many seconds (0: only under pressure).
         #[arg(long, env = "CELL_UNLOAD_IDLE_SECS", default_value = "0")]
         unload_idle_secs: u64,
@@ -247,6 +252,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             store,
             memory_budget_mb,
             memory_limit_mb,
+            raft_port_offset,
             unload_idle_secs,
             claim_ttl_ms,
             max_turns_per_node,
@@ -279,6 +285,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 store: crate::store::Store::open(&store)?,
                 memory_budget: memory_budget_mb * 1024 * 1024,
                 memory_limit: memory_limit_mb << 20,
+                raft_port_offset,
                 unload_idle: (unload_idle_secs > 0).then(|| Duration::from_secs(unload_idle_secs)),
                 claim_ttl: Duration::from_millis(claim_ttl_ms),
                 max_turns_per_node,
@@ -489,7 +496,18 @@ pub async fn serve_node_on(
         }
     }
     let _ = node.gateway.set(gateway.clone());
+    let offset = node.cfg.raft_port_offset;
+    let raft = if offset == 0 {
+        crate::network::router(node.raft.clone())
+    } else {
+        let raft_listen = SocketAddr::new(listen.ip(), listen.port().saturating_add(offset));
+        node.raft_threads
+            .serve(raft_listener(raft_listen)?, node.raft.clone())?;
+        tracing::info!(cell, node = id, %raft_listen, "raft listening");
+        axum::Router::new()
+    };
     let app = crate::api::router(node.clone())
+        .merge(raft)
         .merge(crate::exec_api::router(node.clone()))
         .merge(crate::stream::router(node.clone()))
         .merge(crate::api_session::router(node.clone()))
@@ -506,6 +524,19 @@ pub async fn serve_node_on(
     node.spawn_loops();
     server.await??;
     Ok(())
+}
+
+/// Raft's listener on `addr`, not yet tied to any runtime. Reusing the
+/// address lets a restarted node take its port back at once.
+fn raft_listener(addr: SocketAddr) -> anyhow::Result<std::net::TcpListener> {
+    let socket = if addr.is_ipv4() {
+        tokio::net::TcpSocket::new_v4()?
+    } else {
+        tokio::net::TcpSocket::new_v6()?
+    };
+    socket.set_reuseaddr(true)?;
+    socket.bind(addr)?;
+    Ok(socket.listen(1024)?.into_std()?)
 }
 
 /// How long a draining executor waits for its turns to hand off. Below the

@@ -46,6 +46,25 @@ fn reserve() -> TcpSocket {
     socket
 }
 
+/// A node's port and, with a Raft port offset, its Raft port as well.
+fn reserve_with(offset: u16) -> (TcpSocket, Option<TcpSocket>) {
+    loop {
+        let port = reserve();
+        if offset == 0 {
+            return (port, None);
+        }
+        let mut raft = port.local_addr().unwrap();
+        let Some(raft_port) = raft.port().checked_add(offset) else {
+            continue;
+        };
+        raft.set_port(raft_port);
+        let socket = shareable();
+        if socket.bind(raft).is_ok() {
+            return (port, Some(socket));
+        }
+    }
+}
+
 /// Listen on `listen`, a reserved port. A killed predecessor's listener
 /// closes as its runtime winds down, so wait for it briefly; nobody else
 /// can hold the port.
@@ -82,6 +101,8 @@ pub struct Fleet {
     configs: BTreeMap<(u32, u64), NodeConfig>,
     /// Each node's port, held for the fleet's life (see [`reserve`]).
     ports: BTreeMap<(u32, u64), TcpSocket>,
+    /// Each node's Raft port, when Raft has its own listener.
+    raft_ports: Vec<TcpSocket>,
     /// Why nodes stopped serving on their own; any entry fails the test.
     failed: Arc<Mutex<Vec<String>>>,
 }
@@ -117,18 +138,33 @@ impl Fleet {
     pub async fn start_with_cp(
         control_plane: Option<everruns_cell::node_control::ControlPlane>,
     ) -> Self {
+        Self::start_opts(control_plane, 0).await
+    }
+
+    /// [`start`](Self::start), every node serving Raft on its own listener
+    /// (its port plus one) and threads.
+    pub async fn start_isolated() -> Self {
+        Self::start_opts(None, 1).await
+    }
+
+    async fn start_opts(
+        control_plane: Option<everruns_cell::node_control::ControlPlane>,
+        raft_port_offset: u16,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut topology = Topology {
             directory_cell: 0,
             cells: BTreeMap::new(),
         };
         let mut ports = BTreeMap::new();
+        let mut raft_ports = Vec::new();
         for (cell, size) in [(0u32, 3u64), (1, 1)] {
             let mut members = BTreeMap::new();
             for node in 1..=size {
-                let port = reserve();
+                let (port, raft) = reserve_with(raft_port_offset);
                 members.insert(node, port.local_addr().unwrap().to_string());
                 ports.insert((cell, node), port);
+                raft_ports.extend(raft);
             }
             topology.cells.insert(cell, members);
         }
@@ -142,6 +178,7 @@ impl Fleet {
             http: reqwest::Client::builder().no_proxy().build().unwrap(),
             configs: BTreeMap::new(),
             ports,
+            raft_ports,
             failed: Arc::default(),
             dir,
         };
@@ -157,6 +194,7 @@ impl Fleet {
                     // Every node shares the test process: measure against
                     // no real limit unless a test sets one.
                     memory_limit: 1 << 40,
+                    raft_port_offset,
                     unload_idle: None,
                     claim_ttl: Duration::from_secs(2),
                     max_turns_per_node: 64,
