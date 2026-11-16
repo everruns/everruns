@@ -86,7 +86,11 @@ impl Node {
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tick.tick().await;
-            if !self.is_leader() {
+            let leading = self.is_leader();
+            self.shared
+                .leading
+                .store(leading, std::sync::atomic::Ordering::Relaxed);
+            if !leading {
                 self.shipper.reset();
                 continue;
             }

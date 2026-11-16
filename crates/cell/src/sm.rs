@@ -66,6 +66,11 @@ pub struct Shared {
     pub snapshot_ms: AtomicU64,
     /// When this replica last built a snapshot (or started).
     last_snapshot: parking_lot::Mutex<Instant>,
+    /// Whether this replica leads its cell, as the ship loop last saw it:
+    /// only the leader copies its snapshots to the object store.
+    pub leading: std::sync::atomic::AtomicBool,
+    /// A snapshot copy to the object store is in flight.
+    archiving: Arc<std::sync::atomic::AtomicBool>,
     /// Called with every applied change (the node's Engine hosting hears
     /// commits through it).
     pub on_change: std::sync::OnceLock<ChangeHook>,
@@ -89,6 +94,8 @@ impl Shared {
             event_bytes: AtomicU64::new(4096),
             snapshot_ms: AtomicU64::new(0),
             last_snapshot: parking_lot::Mutex::new(Instant::now()),
+            leading: Default::default(),
+            archiving: Default::default(),
             on_change: std::sync::OnceLock::new(),
         })
     }
@@ -645,8 +652,24 @@ impl StateMachine {
 
     /// Keep a copy of the snapshot in the object store; best effort. It
     /// shares `data` with the caller instead of copying it.
+    ///
+    /// Decision: the leader's copy only, one at a time. Every replica's
+    /// snapshot of a cell is the same state, and restore takes the latest
+    /// copy whoever wrote it, so three copies bought nothing and tripled the
+    /// upload. In EKS run 43827766384 all nine nodes copied a whole cell
+    /// state every few minutes, through a NAT whose burst ran out, and once
+    /// S3 slowed every spawned copy held its snapshot in memory until it
+    /// finished or failed. A copy that finds one in flight skips: the next
+    /// snapshot is newer anyway.
     fn archive(&self, meta: &Meta, data: bytes::Bytes, inc: u64, clock_ms: i64) {
+        if !self.shared.leading.load(Ordering::Relaxed)
+            || self.shared.archiving.swap(true, Ordering::AcqRel)
+        {
+            return;
+        }
+        let in_flight = self.shared.archiving.clone();
         let Ok(header) = snapshot_header(meta) else {
+            in_flight.store(false, Ordering::Release);
             return;
         };
         let store = self.shared.store.clone();
@@ -660,6 +683,7 @@ impl StateMachine {
             {
                 tracing::warn!(%error, "snapshot copy to the object store failed");
             }
+            in_flight.store(false, Ordering::Release);
         });
     }
 
@@ -916,6 +940,44 @@ mod tests {
             .map(|e| e.sequence)
             .collect();
         assert_eq!(kept, [Some(4), Some(5)], "the unstored tail stays");
+    }
+
+    /// Only the leader copies its snapshot to the object store, and a copy
+    /// still in flight makes the next one skip.
+    #[tokio::test]
+    async fn only_the_leader_copies_its_snapshot_once_at_a_time() {
+        use openraft::RaftSnapshotBuilder;
+        use std::sync::atomic::Ordering;
+
+        let store = crate::store::Store::open("memory://").unwrap();
+        let shared = super::Shared::new(store.clone(), 0);
+        let dir = tempfile::tempdir().unwrap();
+        let mut machine = super::StateMachine::open(dir.path(), shared.clone()).unwrap();
+        let copies = || async { store.snapshot_copies(0).await.unwrap().len() };
+
+        machine.build_snapshot().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(copies().await, 0, "a follower keeps its snapshot local");
+
+        shared.leading.store(true, Ordering::Relaxed);
+        shared.archiving.store(true, Ordering::Relaxed);
+        machine.build_snapshot().await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(copies().await, 0, "one copy in flight at a time");
+
+        shared.archiving.store(false, Ordering::Relaxed);
+        machine.build_snapshot().await.unwrap();
+        for _ in 0..100 {
+            if copies().await == 1 && !shared.archiving.load(Ordering::Relaxed) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(copies().await, 1, "the leader copies it");
+        assert!(
+            !shared.archiving.load(Ordering::Relaxed),
+            "and is free again"
+        );
     }
 
     #[test]
