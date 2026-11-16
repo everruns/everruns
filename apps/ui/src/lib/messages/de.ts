@@ -2,6 +2,7 @@ import { messages as extractions } from "./de/extractions";
 import { messages as rooms } from "./de/rooms";
 import { messages as chatLayout } from "./de/chat-layout";
 import { messages as slackSocketMode } from "./de/slack-socket-mode";
+import { messages as providerCredentials } from "./de/provider-credentials";
 import { messages as channelsAndTriggers } from "./de/channels-and-triggers";
 import { messages as sandboxBuilds } from "./de/sandbox-builds";
 import { messages as agentCost } from "./de/agent-cost";
@@ -75,6 +76,7 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   evalCases,
   channelsAndTriggers,
   slackSocketMode,
+  providerCredentials,
   chatLayout,
   extractions,
   rooms,

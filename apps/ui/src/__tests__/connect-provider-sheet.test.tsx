@@ -134,7 +134,7 @@ describe("ConnectProviderSheet", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Anthropic/ }));
     expect(screen.getByLabelText("Name")).toHaveValue("Anthropic");
-    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: "sk-ant-good" } });
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "sk-ant-good" } });
     expect(await screen.findByText(/Key valid/, {}, VERIFY_TIMEOUT)).toBeInTheDocument();
 
     mockModels = [
@@ -179,15 +179,20 @@ describe("ConnectProviderSheet", () => {
 
     fireEvent.change(name, { target: { value: "anthropic" } });
     expect(screen.getByText(/Names must be unique/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: "sk-ant-two" } });
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "sk-ant-two" } });
     expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
   });
 
-  it("creates an OAuth provider without a key before handing off to sign-in", async () => {
+  it("defaults sign-in drivers to sign-in and creates the provider before handing off", async () => {
     renderSheet();
 
     fireEvent.click(screen.getByRole("button", { name: /OpenRouter/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Sign in with OpenRouter" }));
+    expect(screen.getByText("How to connect")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Sign in with OpenRouter/ })).toBeChecked();
+    // The key field belongs to the other option and stays hidden until chosen.
+    expect(screen.queryByLabelText(/^API key/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Continue to OpenRouter/ }));
 
     // The OAuth state binds to a provider id, so the provider is created
     // credential-free before the browser leaves for the authorize endpoint.
@@ -199,5 +204,39 @@ describe("ConnectProviderSheet", () => {
         credentials: undefined,
       }),
     );
+  });
+
+  it("connects a sign-in driver with a pasted key when that option is chosen", async () => {
+    renderSheet();
+
+    fireEvent.click(screen.getByRole("button", { name: /OpenRouter/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Paste an API key/ }));
+    expect(screen.queryByRole("button", { name: /Continue to/ })).not.toBeInTheDocument();
+    const connect = screen.getByRole("button", { name: "Connect" });
+    expect(connect).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "sk-or-good" } });
+    expect(await screen.findByText(/Key valid/, {}, VERIFY_TIMEOUT)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() =>
+      expect(mockCreateProvider).toHaveBeenCalledWith({
+        name: "OpenRouter",
+        provider_type: "openrouter",
+        base_url: undefined,
+        credentials: { api_key: "sk-or-good" },
+      }),
+    );
+  });
+
+  it("shows key-only drivers without a choice and blocks a rejected key", async () => {
+    mockCheckCredentials.mockResolvedValue({ status: "rejected", message: "Invalid key" });
+    renderSheet();
+
+    fireEvent.click(screen.getByRole("button", { name: /Anthropic/ }));
+    expect(screen.queryByText("How to connect")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "sk-ant-bad" } });
+    expect(await screen.findByText(/Key rejected/, {}, VERIFY_TIMEOUT)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
   });
 });
