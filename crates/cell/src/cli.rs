@@ -59,6 +59,11 @@ enum Mode {
         /// `event_allowance`). Leave headroom below the container limit.
         #[arg(long, env = "CELL_MEMORY_BUDGET_MB", default_value = "1024")]
         memory_budget_mb: u64,
+        /// The memory limit this node's memory pressure is measured against,
+        /// in MiB: near it the cell takes no new sessions, then no new input
+        /// (see `pressure.rs`). 0: the container's limit.
+        #[arg(long, env = "CELL_MEMORY_LIMIT_MB", default_value = "0")]
+        memory_limit_mb: u64,
         /// Also unload sessions idle this many seconds (0: only under pressure).
         #[arg(long, env = "CELL_UNLOAD_IDLE_SECS", default_value = "0")]
         unload_idle_secs: u64,
@@ -241,6 +246,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             data,
             store,
             memory_budget_mb,
+            memory_limit_mb,
             unload_idle_secs,
             claim_ttl_ms,
             max_turns_per_node,
@@ -272,6 +278,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 data_dir: data,
                 store: crate::store::Store::open(&store)?,
                 memory_budget: memory_budget_mb * 1024 * 1024,
+                memory_limit: memory_limit_mb << 20,
                 unload_idle: (unload_idle_secs > 0).then(|| Duration::from_secs(unload_idle_secs)),
                 claim_ttl: Duration::from_millis(claim_ttl_ms),
                 max_turns_per_node,

@@ -35,6 +35,35 @@ fn unavailable(error: impl std::fmt::Display) -> ApiError {
     (StatusCode::SERVICE_UNAVAILABLE, error.to_string())
 }
 
+/// A cell short of memory refused new work: the caller retries later
+/// (`retry_after` adds the hint as a header).
+fn busy(cell: CellId, retry_after_ms: u64) -> ApiError {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        format!("cell {cell} is short of memory; retry after {retry_after_ms} ms"),
+    )
+}
+
+/// Every 429 tells the caller when to retry.
+///
+/// Decision: one hint for every refusal (the cell's own, rounded up to
+/// seconds), carried as a header by this layer, so the error type stays a
+/// status and a message.
+async fn retry_after(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    if response.status() == StatusCode::TOO_MANY_REQUESTS {
+        let seconds = crate::pressure::RETRY_AFTER_MS.div_ceil(1000);
+        response
+            .headers_mut()
+            .entry(axum::http::header::RETRY_AFTER)
+            .or_insert_with(|| axum::http::HeaderValue::from(seconds));
+    }
+    response
+}
+
 /// How long a gateway call may take, over every member it tries.
 const CALL_DEADLINE: Duration = Duration::from_secs(45);
 
@@ -281,8 +310,17 @@ impl Gateway {
     /// the next refresh, while two choices spread a burst and still steer
     /// clearly away from full cells. The cached load is bumped on each
     /// placement so one gateway's own burst counts at once.
+    ///
+    /// A cell short of memory (`CellLoad::closed`) gets none while any other
+    /// cell takes them.
     fn place(&self, cells: &[CellId]) -> CellId {
         let mut loads = self.loads.lock();
+        let open: Vec<CellId> = cells
+            .iter()
+            .copied()
+            .filter(|c| !loads.get(c).is_some_and(|l| l.closed))
+            .collect();
+        let cells = if open.is_empty() { cells } else { &open };
         let pick = if cells.len() < 2 {
             cells[0]
         } else {
@@ -578,6 +616,7 @@ impl Gateway {
                 .await?;
             match reply {
                 CellReply::Ok { .. } => break,
+                CellReply::Busy { retry_after_ms } => return Err(busy(cell, retry_after_ms)),
                 CellReply::Frozen | CellReply::NotFound if Instant::now() < deadline => {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
@@ -664,6 +703,12 @@ impl Gateway {
                     ));
                 }
                 CellReply::Refused { reason } => return Err((StatusCode::CONFLICT, reason)),
+                CellReply::Busy { retry_after_ms } => {
+                    if command == "messages" {
+                        self.admitted.inc(&[("status", "shed")]);
+                    }
+                    return Err(busy(cell, retry_after_ms));
+                }
                 other => return Err((StatusCode::CONFLICT, format!("{other:?}"))),
             }
         }
@@ -747,6 +792,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
             gateway.clone(),
             check_org_token,
         ))
+        .layer(axum::middleware::from_fn(retry_after))
         .with_state(gateway.clone())
         .merge(crate::gateway_dp::router(gateway))
 }

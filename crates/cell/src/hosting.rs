@@ -272,11 +272,17 @@ fn missing(state: &crate::state::CellState, session: SessionId) -> AgentLoopErro
 pub const MOVED: &str = "cell: session moved to cell ";
 /// The error a command gets for a session frozen for a move.
 pub const FROZEN: &str = "cell: session frozen for a move";
+/// Prefix of the error new work gets while its cell sheds load, followed by
+/// the retry hint in milliseconds.
+pub const BUSY: &str = "cell: short of memory, retry after ms ";
 
 fn refused(session: SessionId, response: Response) -> AgentLoopError {
     match response {
         Response::Moved { cell } => AgentLoopError::store(format!("{MOVED}{cell}")),
         Response::Frozen => AgentLoopError::store(FROZEN),
+        Response::Busy { retry_after_ms } => {
+            AgentLoopError::store(format!("{BUSY}{retry_after_ms}"))
+        }
         Response::NotFound => AgentLoopError::SessionNotFound(session),
         Response::Rejected { reason } => AgentLoopError::config(reason),
         other => AgentLoopError::store(format!("unexpected reply {other:?}")),

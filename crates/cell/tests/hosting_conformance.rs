@@ -33,6 +33,7 @@ async fn cell_on(addr: String) -> (Arc<Node>, tempfile::TempDir) {
         data_dir: dir.path().to_path_buf(),
         store: Store::open("memory://").unwrap(),
         memory_budget: 1 << 30,
+        memory_limit: 0,
         unload_idle: None,
         claim_ttl: Duration::from_secs(10),
         max_turns_per_node: 64,

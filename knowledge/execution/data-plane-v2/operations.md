@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Operating data plane v2 cells
-description: "Inspecting a cell fleet, the per-cell SLO gauges, and what to do about a lost leader, a stuck move and a drain."
+description: "Inspecting a cell fleet, the per-cell SLO gauges, memory overload, and what to do about a lost leader, a stuck move and a drain."
 tags:
   - execution
   - data-plane-v2
@@ -40,6 +40,28 @@ only gauges can chart the budgets (`prom::Window`):
 | `cell_slo_ship_first_p99_seconds` | How long a ship-first write waited for the object store before it was answered | 100 ms |
 
 A minute with no samples reports 0. The worst minute in a longer period is the gauge's maximum.
+
+## Memory overload
+
+A node past its container's memory limit is killed, and catching up after the restart needs more
+memory still, so a cell takes on less work before that (`pressure.rs`). Each node measures its
+resident set against its limit (`--memory-limit-mb`, else the container's) and asks the cell's
+other members for theirs every second; the worst node decides for the cell:
+
+| Level | At | The cell |
+|---|---|---|
+| full | 85% (clears at 80%) | Gateways place no new sessions there; the rebalancer moves idle sessions to cells that are not full. |
+| shedding | 92% (clears at 88%) | Refuses new sessions and new input: the gateway answers 429 with `Retry-After`. Turns already admitted keep running. |
+
+Unloading events comes first and runs all the time (`memory_budget`); the levels are what happens
+when unloading is not enough. The gauges are `cell_memory_pressure` (share of the limit),
+`cell_overload_level` (0, 1, 2) and the `cell_shed_sessions_total` and `cell_shed_inputs_total`
+counters; a level change is logged at WARN.
+
+A cell that stays shedding has more sessions than its nodes hold: add a cell (new sessions go
+there and the rebalancer evens out the rest) or give the nodes more memory. Lowering the memory
+budget does not help: with too little room for events, every turn pages history from the object
+store and throughput collapses (SaaS load run 43755911240).
 
 ## Leader loss
 
