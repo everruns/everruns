@@ -64395,6 +64395,7 @@
             "type": "integer",
             "format": "int64",
             "description": "Worst node's p99 time to admit a turn, in milliseconds.",
+            "example": 12,
             "minimum": 0
           },
           "buckets": {
@@ -64412,7 +64413,8 @@
           "cpu_cores": {
             "type": "number",
             "format": "double",
-            "description": "The busiest node's CPU, in cores."
+            "description": "The busiest node's CPU, in cores.",
+            "example": 1.2
           },
           "cpu_limit_cores": {
             "type": [
@@ -64420,23 +64422,27 @@
               "null"
             ],
             "format": "double",
-            "description": "Its CPU limit in cores; null when unknown."
+            "description": "Its CPU limit in cores; null when unknown.",
+            "example": 2
           },
           "data_plane": {
             "type": "string",
-            "description": "Data plane the cell belongs to."
+            "description": "Data plane the cell belongs to.",
+            "example": "dp-eks-1"
           },
           "leader": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Leader node at the newest report."
+            "description": "Leader node at the newest report.",
+            "example": "cell-07-node-2"
           },
           "memory_bytes": {
             "type": "integer",
             "format": "int64",
             "description": "The fullest node's resident memory, in bytes.",
+            "example": 3221225472,
             "minimum": 0
           },
           "memory_limit_bytes": {
@@ -64446,63 +64452,74 @@
             ],
             "format": "int64",
             "description": "Its memory limit in bytes; null when unknown.",
+            "example": 4294967296,
             "minimum": 0
           },
           "nodes": {
             "type": "integer",
             "format": "int64",
             "description": "Members.",
+            "example": 3,
             "minimum": 0
           },
           "nodes_answering": {
             "type": "integer",
             "format": "int64",
             "description": "Members that answered the leader.",
+            "example": 3,
             "minimum": 0
           },
           "queued": {
             "type": "integer",
             "format": "int64",
             "description": "Messages waiting for a turn.",
+            "example": 0,
             "minimum": 0
           },
           "reported_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Minute of the newest report."
+            "description": "Minute of the newest report.",
+            "example": "2026-11-15T19:59:00Z"
           },
           "resumed": {
             "type": "integer",
             "format": "int64",
             "description": "Turns running on a second or later attempt.",
+            "example": 1,
             "minimum": 0
           },
           "running": {
             "type": "integer",
             "format": "int64",
             "description": "Turns running.",
+            "example": 239,
             "minimum": 0
           },
           "sessions": {
             "type": "integer",
             "format": "int64",
             "description": "Sessions resident.",
+            "example": 2650,
             "minimum": 0
           },
           "ship_lag_p99_ms": {
             "type": "integer",
             "format": "int64",
             "description": "Worst node's p99 log shipping lag, in milliseconds.",
+            "example": 380,
             "minimum": 0
           },
           "silent": {
             "type": "boolean",
-            "description": "No report for the last three minutes."
+            "description": "No report for the last three minutes.",
+            "example": false
           },
           "term": {
             "type": "integer",
             "format": "int64",
             "description": "Raft term.",
+            "example": 4,
             "minimum": 0
           }
         }
@@ -64657,6 +64674,7 @@
             "type": "integer",
             "format": "int32",
             "description": "Bucket size in seconds.",
+            "example": 60,
             "minimum": 0
           },
           "cells": {
@@ -64669,17 +64687,20 @@
           "from": {
             "type": "string",
             "format": "date-time",
-            "description": "Inclusive UTC start of the history."
+            "description": "Inclusive UTC start of the history.",
+            "example": "2026-11-15T14:00:00Z"
           },
           "generated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "UTC time of this read."
+            "description": "UTC time of this read.",
+            "example": "2026-11-15T20:00:00Z"
           },
           "to": {
             "type": "string",
             "format": "date-time",
-            "description": "Exclusive UTC end."
+            "description": "Exclusive UTC end.",
+            "example": "2026-11-15T20:00:00Z"
           }
         }
       },

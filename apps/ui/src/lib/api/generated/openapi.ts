@@ -24508,6 +24508,7 @@ export interface components {
       /**
        * Format: int64
        * @description Worst node's p99 time to admit a turn, in milliseconds.
+       * @example 12
        */
       admit_p99_ms: number;
       /** @description History over the range, oldest first; buckets without a report are absent. */
@@ -24520,72 +24521,94 @@ export interface components {
       /**
        * Format: double
        * @description The busiest node's CPU, in cores.
+       * @example 1.2
        */
       cpu_cores: number;
       /**
        * Format: double
        * @description Its CPU limit in cores; null when unknown.
+       * @example 2
        */
       cpu_limit_cores?: number | null;
-      /** @description Data plane the cell belongs to. */
+      /**
+       * @description Data plane the cell belongs to.
+       * @example dp-eks-1
+       */
       data_plane: string;
-      /** @description Leader node at the newest report. */
+      /**
+       * @description Leader node at the newest report.
+       * @example cell-07-node-2
+       */
       leader?: string | null;
       /**
        * Format: int64
        * @description The fullest node's resident memory, in bytes.
+       * @example 3221225472
        */
       memory_bytes: number;
       /**
        * Format: int64
        * @description Its memory limit in bytes; null when unknown.
+       * @example 4294967296
        */
       memory_limit_bytes?: number | null;
       /**
        * Format: int64
        * @description Members.
+       * @example 3
        */
       nodes: number;
       /**
        * Format: int64
        * @description Members that answered the leader.
+       * @example 3
        */
       nodes_answering: number;
       /**
        * Format: int64
        * @description Messages waiting for a turn.
+       * @example 0
        */
       queued: number;
       /**
        * Format: date-time
        * @description Minute of the newest report.
+       * @example 2026-11-15T19:59:00Z
        */
       reported_at: string;
       /**
        * Format: int64
        * @description Turns running on a second or later attempt.
+       * @example 1
        */
       resumed: number;
       /**
        * Format: int64
        * @description Turns running.
+       * @example 239
        */
       running: number;
       /**
        * Format: int64
        * @description Sessions resident.
+       * @example 2650
        */
       sessions: number;
       /**
        * Format: int64
        * @description Worst node's p99 log shipping lag, in milliseconds.
+       * @example 380
        */
       ship_lag_p99_ms: number;
-      /** @description No report for the last three minutes. */
+      /**
+       * @description No report for the last three minutes.
+       * @example false
+       */
       silent: boolean;
       /**
        * Format: int64
        * @description Raft term.
+       * @example 4
        */
       term: number;
     };
@@ -24677,6 +24700,7 @@ export interface components {
       /**
        * Format: int32
        * @description Bucket size in seconds.
+       * @example 60
        */
       bucket_seconds: number;
       /** @description Cells that reported in the last week, by name. */
@@ -24684,16 +24708,19 @@ export interface components {
       /**
        * Format: date-time
        * @description Inclusive UTC start of the history.
+       * @example 2026-11-15T14:00:00Z
        */
       from: string;
       /**
        * Format: date-time
        * @description UTC time of this read.
+       * @example 2026-11-15T20:00:00Z
        */
       generated_at: string;
       /**
        * Format: date-time
        * @description Exclusive UTC end.
+       * @example 2026-11-15T20:00:00Z
        */
       to: string;
     };

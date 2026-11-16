@@ -883,38 +883,55 @@ pub struct MonitoringCell {
     #[schema(example = "cell-07")]
     pub cell: String,
     /// Data plane the cell belongs to.
+    #[schema(example = "dp-eks-1")]
     pub data_plane: String,
     /// Minute of the newest report.
+    #[schema(example = "2026-11-15T19:59:00Z")]
     pub reported_at: DateTime<Utc>,
     /// No report for the last three minutes.
+    #[schema(example = false)]
     pub silent: bool,
     /// Leader node at the newest report.
+    #[schema(example = "cell-07-node-2")]
     pub leader: Option<String>,
     /// Members.
+    #[schema(example = 3)]
     pub nodes: u64,
     /// Members that answered the leader.
+    #[schema(example = 3)]
     pub nodes_answering: u64,
     /// Sessions resident.
+    #[schema(example = 2650)]
     pub sessions: u64,
     /// Turns running.
+    #[schema(example = 239)]
     pub running: u64,
     /// Messages waiting for a turn.
+    #[schema(example = 0)]
     pub queued: u64,
     /// Turns running on a second or later attempt.
+    #[schema(example = 1)]
     pub resumed: u64,
     /// The fullest node's resident memory, in bytes.
+    #[schema(example = 3221225472_u64)]
     pub memory_bytes: u64,
     /// Its memory limit in bytes; null when unknown.
+    #[schema(example = 4294967296_u64)]
     pub memory_limit_bytes: Option<u64>,
     /// The busiest node's CPU, in cores.
+    #[schema(example = 1.2)]
     pub cpu_cores: f64,
     /// Its CPU limit in cores; null when unknown.
+    #[schema(example = 2.0)]
     pub cpu_limit_cores: Option<f64>,
     /// Worst node's p99 time to admit a turn, in milliseconds.
+    #[schema(example = 12)]
     pub admit_p99_ms: u64,
     /// Worst node's p99 log shipping lag, in milliseconds.
+    #[schema(example = 380)]
     pub ship_lag_p99_ms: u64,
     /// Raft term.
+    #[schema(example = 4)]
     pub term: u64,
     /// History over the range, oldest first; buckets without a report are absent.
     pub buckets: Vec<MonitoringCellBucket>,
@@ -924,12 +941,16 @@ pub struct MonitoringCell {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MonitoringCells {
     /// UTC time of this read.
+    #[schema(example = "2026-11-15T20:00:00Z")]
     pub generated_at: DateTime<Utc>,
     /// Inclusive UTC start of the history.
+    #[schema(example = "2026-11-15T14:00:00Z")]
     pub from: DateTime<Utc>,
     /// Exclusive UTC end.
+    #[schema(example = "2026-11-15T20:00:00Z")]
     pub to: DateTime<Utc>,
     /// Bucket size in seconds.
+    #[schema(example = 60)]
     pub bucket_seconds: u32,
     /// Cells that reported in the last week, by name.
     pub cells: Vec<MonitoringCell>,
