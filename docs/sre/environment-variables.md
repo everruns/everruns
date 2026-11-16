@@ -622,6 +622,7 @@ workers alike. The Helm chart sets them from `sandboxes.kubernetes`.
 | `KUBERNETES_SANDBOX_NAMESPACE` | unset | Namespace sandbox pods run in. Turns the target on. |
 | `KUBERNETES_SANDBOX_RUNTIME_CLASS` | unset | Runtime class of sandbox pods: `isolated-sandbox` (AWS Nitro Sandboxes on EKS), `gvisor` or `kata`. Unset runs plain containers, which the UI flags as no security boundary. |
 | `KUBERNETES_SANDBOX_IMAGE` | `ghcr.io/everruns/sandbox-dev:v<version>` | Image of templates that name none. |
+| `KUBERNETES_SANDBOX_DESKTOP_IMAGE` | `ghcr.io/everruns/sandbox-desktop:v<version>` | Image of desktop sandboxes whose template names none. |
 | `KUBERNETES_SANDBOX_ALLOWED_IMAGES` | any | Comma-separated image prefixes templates may use. |
 | `KUBERNETES_SANDBOX_STORAGE_CLASS` | cluster default | Storage class of workspace volumes. |
 | `KUBERNETES_SANDBOX_WORKSPACE_SIZE` | `10Gi` | Size of each workspace volume. |

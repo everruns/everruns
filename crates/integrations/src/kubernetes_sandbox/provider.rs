@@ -31,9 +31,7 @@ use super::spec::{
     pod_egress, valid_label_value, workspace_claim_name,
 };
 use super::transport::ApiProxyTransport;
-use super::{
-    KUBERNETES_PROVIDER, LEASE_DURATION_SECONDS, Options, SandboxSize, desktop_image, parse_options,
-};
+use super::{KUBERNETES_PROVIDER, LEASE_DURATION_SECONDS, Options, SandboxSize, parse_options};
 use crate::sandbox_guest::client::{DirectTransport, GuestClient, GuestTransport};
 use crate::x11_desktop::{DesktopExecOutput, DesktopHost, X11DesktopSession};
 
@@ -565,7 +563,7 @@ fn image_for(
 ) -> String {
     match &options.image {
         Some(image) => image.clone(),
-        None if config.desktop().is_some() => desktop_image(),
+        None if config.desktop().is_some() => settings.desktop_image.clone(),
         None => settings.image.clone(),
     }
 }
@@ -1224,6 +1222,38 @@ mod tests {
         assert_eq!(labels["everruns.org_id"], "org_1");
         assert_eq!(labels[LABEL_SANDBOX], "er-sbx-1");
         assert!(!labels.contains_key("bad") && !labels.contains_key("number"));
+    }
+
+    #[test]
+    fn desktops_use_the_deployment_desktop_image_unless_the_template_names_one() {
+        let mut settings = KubernetesSandboxSettings::new("sandboxes");
+        settings.image = "ghcr.io/everruns/sandbox-dev:edge".into();
+        settings.desktop_image = "ghcr.io/everruns/sandbox-desktop:edge".into();
+        let config = |desktop: bool| -> SessionSandboxConfig {
+            serde_json::from_value(json!({
+                "provider": KUBERNETES_PROVIDER,
+                "provider_config": { "desktop": desktop },
+            }))
+            .unwrap()
+        };
+        let mut options = Options {
+            size: SandboxSize::Small,
+            image: None,
+            workspace_path: "/workspace".into(),
+        };
+        assert_eq!(
+            image_for(&options, &config(true), &settings),
+            settings.desktop_image
+        );
+        assert_eq!(
+            image_for(&options, &config(false), &settings),
+            settings.image
+        );
+        options.image = Some("example.com/own:1".into());
+        assert_eq!(
+            image_for(&options, &config(true), &settings),
+            "example.com/own:1"
+        );
     }
 
     #[test]
