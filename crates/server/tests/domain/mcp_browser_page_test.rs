@@ -1,5 +1,7 @@
 //! GET `/mcp`: a browser gets a page, MCP clients keep the transport's 405.
-use super::*;
+use crate::test_harness::{self, TestServer};
+use axum::http::{Method, StatusCode};
+use serde_json::json;
 
 async fn get_mcp(server: &TestServer, accept: Option<&str>) -> test_harness::TestResponse {
     let headers = accept.map(|a| vec![("accept", a)]).unwrap_or_default();
@@ -45,6 +47,14 @@ async fn mcp_client_get_keeps_method_not_allowed() {
 #[tokio::test]
 async fn post_still_speaks_json_rpc() {
     let server = TestServer::in_memory().await;
-    let resp = mcp_request_raw(&server, "ping", json!({}), vec![]).await;
+    let body = json!({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {}});
+    let resp = server
+        .request_raw(
+            Method::POST,
+            "/mcp",
+            vec![("content-type", "application/json")],
+            serde_json::to_vec(&body).unwrap(),
+        )
+        .await;
     assert_eq!(resp.status(), StatusCode::OK);
 }

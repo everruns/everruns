@@ -8,7 +8,6 @@
 //! Requires migrated PostgreSQL through DATABASE_URL.
 
 mod attribution;
-mod browser_page;
 mod capability_mcp_acts_as;
 mod cards;
 mod resources;

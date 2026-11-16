@@ -67,6 +67,7 @@ mod guardrails_integration_test;
 mod llm_model_default_test;
 mod mcp_acts_as_grpc_test;
 mod mcp_apps_test;
+mod mcp_browser_page_test;
 mod mcp_connected_clients_test;
 mod mcp_endpoint_test;
 mod mcp_event_triggers_test;
