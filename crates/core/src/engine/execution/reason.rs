@@ -613,6 +613,7 @@ impl ReasonAtom {
             .with_metadata("harness_id", harness_id.to_string())
             .with_metadata("turn_id", context.turn_id.to_string())
             .with_metadata("exec_id", context.exec_id.to_string())
+            .with_metadata("purpose", "reason")
             .with_metadata("org_id", format!("org_{:032x}", org_id));
         if let Some(agent_id) = agent_id {
             llm_config_builder = llm_config_builder.with_metadata("agent_id", agent_id.to_string());

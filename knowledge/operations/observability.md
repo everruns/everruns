@@ -488,8 +488,11 @@ allowlisted correlation metadata and provider-reported usage. It never copies
 prompts, tool arguments, credentials, endpoint URLs or raw errors. Missing usage
 means unknown, not free; dropped streams have an incomplete terminal state.
 
-This is a source-level hook, not enabled durable storage or invoice
-reconciliation. Hosts own persistence and surface observer write failures.
+The optional [JSONL sink](../../crates/contracts/src/call_ledger_jsonl.rs) creates
+private new files, flushes each record and exposes a sticky storage-failure flag.
+It never retries a paid request because a ledger write failed. Hosts must surface
+that flag and incomplete start/terminal pairs. This source-level facility is not
+automatically enabled in a deployed host and is not invoice reconciliation.
 Registry installation covers drivers obtained from that registry; direct driver
 users must explicitly wrap their driver. Native batch and compaction accounting
 and physical retry attempts remain outside this chat-call hook. Do not sum its

@@ -44,6 +44,8 @@ pub mod background_call;
 /// Provider-native offline model request contracts.
 pub mod batch;
 pub mod call_ledger;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod call_ledger_jsonl;
 pub mod compact;
 pub mod credential_provider;
 pub mod credential_schema;

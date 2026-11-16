@@ -1040,6 +1040,12 @@ pub(super) async fn apply_reactive_compaction(
                     .clone()
                     .unwrap_or_else(|| context.summarization_model_fallback.to_string()),
             );
+            // Auxiliary calls share the current session/run correlation, but
+            // have their own purpose so they cannot disappear into main-turn cost.
+            summary_config.metadata = config.metadata.clone();
+            summary_config
+                .metadata
+                .insert("purpose".into(), "compaction_summary".into());
             summary_config.temperature = Some(0.0);
             summary_config.max_tokens = Some(2000);
 

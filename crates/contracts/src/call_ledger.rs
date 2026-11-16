@@ -28,6 +28,8 @@ pub struct CallRecord {
     pub model: String,
     pub metadata: BTreeMap<String, String>,
     pub elapsed_ms: u64,
+    /// HTTP request ID, distinct from response_id; absent when unavailable.
+    pub provider_request_id: Option<String>,
     pub response_id: Option<String>,
     pub response_model: Option<String>,
     pub total_tokens: Option<u32>,
@@ -105,6 +107,7 @@ impl ObservedChatDriver {
             model: config.model.clone(),
             metadata,
             elapsed_ms: 0,
+            provider_request_id: None,
             response_id: None,
             response_model: None,
             total_tokens: None,
@@ -161,6 +164,7 @@ impl CallGuard {
         self.record.elapsed_ms = self.started.elapsed().as_millis().min(u64::MAX as u128) as u64;
         if let Some(m) = metadata {
             self.record.retries = m.retry_metadata.as_ref().map(|r| r.attempts);
+            self.record.provider_request_id = m.provider_request_id.clone();
             self.record.response_id = m.response_id.clone();
             self.record.response_model = m.response_model.clone();
             self.record.total_tokens = m.total_tokens;
@@ -359,6 +363,7 @@ mod tests {
             metadata.prompt_tokens = Some(12);
             metadata.completion_tokens = Some(7);
             metadata.response_id = Some("resp_test".into());
+            metadata.provider_request_id = Some("req_test".into());
             metadata.response_model = Some("served-model".into());
             metadata.request_body = Some(serde_json::json!({"secret": "must-not-record"}));
             Ok(Box::pin(futures::stream::iter([
@@ -413,6 +418,7 @@ mod tests {
         assert_eq!(records[1].metadata["purpose"], "completion_review");
         assert_eq!(records[1].prompt_tokens, Some(12));
         assert_eq!(records[1].response_id.as_deref(), Some("resp_test"));
+        assert_eq!(records[1].provider_request_id.as_deref(), Some("req_test"));
         assert_eq!(records[1].provider_cost_usd, None);
         let json = serde_json::to_string(&*records).unwrap();
         for forbidden in [
