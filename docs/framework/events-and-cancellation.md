@@ -47,14 +47,18 @@ bounded persisted transcript after live lag or a process restart.
 
 ## Replay durable events
 
-Durable events carry a dense per-session `sequence()` starting at 1.
-`session.events_after(n)` returns every durable event after sequence `n`, and
-it keeps working after `Engine::resume` in a new process when the backend
-persists events (for example `LocalConfig`). `session.events_from(n)` returns
-an `EventStream` that replays that backlog and then continues live. It never
-skips or repeats a durable event. Ephemeral deltas have no sequence and pass
-through live. A client that lagged or reconnected resumes from the last
-sequence it saw:
+Durable events carry an increasing per-session `sequence()` starting at 1.
+`session.events_after(n)` reads a stable snapshot of durable events after
+sequence `n`. On a branch-aware authority such as `SqliteHosting`, it follows
+the active conversation branch, so sequences can have gaps. A backlog above
+100,000 events returns `HistoryError::HistoryTooLarge` rather than an
+unbounded result. Replay works after `Engine::resume` in a new process when
+the hosting profile preserves the session and its events.
+
+`session.events_from(n)` returns an `EventStream` that replays that backlog
+and then continues live, deduplicating events already replayed. Live-stream
+lag is reported explicitly; reconnect to recover from the last sequence
+seen. Ephemeral deltas have no sequence and pass through live only:
 
 ```rust
 # use everruns::{Agent, Engine, Model};

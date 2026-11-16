@@ -29679,7 +29679,7 @@
           "sessions"
         ],
         "summary": "Cancel current turn",
-        "description": "Cancels the currently running turn in the session. If no turn is running,\nthis is a no-op and returns success (idempotent). When a turn is active:\n1. Cancel the underlying workflow execution\n2. Emit a turn.cancelled event\n3. Insert an agent message indicating the turn was cancelled\n4. Set the session status back to idle",
+        "description": "Cancels the currently running turn in the session. If no turn is running,\nthis is a no-op and returns success (idempotent). When a turn is active:\nCancellation targets the current turn, not later input. A live lease holder\nrecords the terminal events after observing the request; if no holder is\nrunning the turn, the control plane records cancellation and idles the session.\nCancellation cannot undo external effects that already happened.",
         "operationId": "cancel_turn",
         "parameters": [
           {
@@ -30946,7 +30946,7 @@
         },
         "responses": {
           "200": {
-            "description": "Decision recorded and workflow resumed",
+            "description": "Decision recorded and turn made runnable",
             "content": {
               "application/json": {
                 "schema": {
@@ -31132,7 +31132,7 @@
         "tags": [
           "messages"
         ],
-        "summary": "Create message (user message triggers workflow)",
+        "summary": "Create message (user message makes the session runnable)",
         "operationId": "create_message",
         "parameters": [
           {
@@ -31681,7 +31681,7 @@
         },
         "responses": {
           "200": {
-            "description": "Answer recorded and workflow resumed",
+            "description": "Answer recorded and turn made runnable",
             "content": {
               "application/json": {
                 "schema": {
@@ -32862,7 +32862,7 @@
         },
         "responses": {
           "200": {
-            "description": "Decisions recorded and workflow resumed",
+            "description": "Decisions recorded and turn made runnable",
             "content": {
               "application/json": {
                 "schema": {
@@ -32901,7 +32901,7 @@
           "sessions"
         ],
         "summary": "Submit client-side tool results",
-        "description": "Accepts tool results executed by the client and resumes the agent workflow.\nSession must be in `waiting_for_tool_results` status.",
+        "description": "Accepts tool results executed by the client and resumes the agent turn.\nSession must be in `waiting_for_tool_results` status.",
         "operationId": "submit_tool_results",
         "parameters": [
           {
@@ -32926,7 +32926,7 @@
         },
         "responses": {
           "200": {
-            "description": "Tool results accepted and workflow resumed",
+            "description": "Tool results accepted and turn made runnable",
             "content": {
               "application/json": {
                 "schema": {
@@ -49201,10 +49201,10 @@
           "activity_type": {
             "type": "string",
             "description": "Activity type (determines which worker handles this task)",
-            "example": "session.run"
+            "example": "leased_resource_cleanup"
           },
           "input": {
-            "description": "Task input payload (activity-specific JSON; any shape — object, array, string, etc.).\nExample for `session.run`: `{\"session_id\": \"session_01933b5a00007000800000000000001\"}`."
+            "description": "Task input payload (activity-specific JSON; any shape — object, array, string, etc.).\nExample for `leased_resource_cleanup`: `{\"batch_size\": 25, \"stale_after_seconds\": 300, \"retry_after_seconds\": 60}`."
           },
           "options": {
             "oneOf": [
@@ -55874,7 +55874,7 @@
       },
       "InputMessage": {
         "type": "object",
-        "description": "Input message for creating a user message\n\nOnly user messages can be created via the API.\nAgent messages are created internally by the workflow.",
+        "description": "Input message for creating a user message\n\nOnly user messages can be created via the API.\nAgent messages are created internally by the turn runtime.",
         "required": [
           "content"
         ],
@@ -61084,7 +61084,7 @@
               "null"
             ],
             "description": "Filter by target type (\"workflow\" or \"activity\")",
-            "example": "workflow"
+            "example": "activity"
           }
         }
       },
@@ -74552,20 +74552,22 @@
           "name": {
             "type": "string",
             "description": "Workflow type name or activity type name",
-            "example": "session.run"
+            "example": "leased_resource_cleanup"
           },
           "type": {
             "type": "string",
             "description": "Target type: \"workflow\" or \"activity\"",
-            "example": "workflow"
+            "example": "activity"
           }
         },
         "example": {
           "input": {
-            "session_id": "session_01933b5a00007000800000000000001"
+            "batch_size": 25,
+            "retry_after_seconds": 60,
+            "stale_after_seconds": 300
           },
-          "name": "session.run",
-          "type": "workflow"
+          "name": "leased_resource_cleanup",
+          "type": "activity"
         }
       },
       "ScheduleTargetResponse": {
@@ -74579,17 +74581,17 @@
         "properties": {
           "input": {
             "type": "object",
-            "description": "Input JSON payload passed to the workflow/activity on each fire.\nExample: `{\"session_id\": \"session_01933b5a000070008000000000000001\"}`."
+            "description": "Input JSON payload passed to the workflow/activity on each fire.\nExample: `{\"batch_size\": 25, \"stale_after_seconds\": 300, \"retry_after_seconds\": 60}`."
           },
           "name": {
             "type": "string",
             "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "session.run"
+            "example": "leased_resource_cleanup"
           },
           "type": {
             "type": "string",
             "description": "Target type discriminator (`workflow` or `activity`).",
-            "example": "workflow"
+            "example": "activity"
           }
         }
       },
@@ -77789,7 +77791,7 @@
       },
       "SideEffectClass": {
         "type": "string",
-        "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+        "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
         "enum": [
           "Pure",
           "Idempotent",
@@ -80034,7 +80036,7 @@
       },
       "ToolCallRequestedData": {
         "type": "object",
-        "description": "Data for tool.call_requested event\n\nEmitted when the agent needs client-side tool calls executed.\nThe workflow pauses until the client submits results via the API.",
+        "description": "Data for tool.call_requested event\n\nEmitted when the agent needs client-side tool calls executed.\nThe turn parks until the client submits results via the API.",
         "required": [
           "tool_calls"
         ],
@@ -80471,7 +80473,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/SideEffectClass",
-                "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                "description": "Replay-safety class used when recovering an unfinished tool call.\n\nWhen the journal records a start but no completed result,\n`Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to avoid repeating an uncertain external effect.\n\n`None` is treated conservatively as `AtMostOnce`."
               },
               {
                 "type": "null"

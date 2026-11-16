@@ -602,7 +602,7 @@ pub fn routes() -> axum::Router<super::tool_results::AppState> {
     ),
     request_body = QuestionAnswersRequest,
     responses(
-        (status = 200, description = "Answer recorded and workflow resumed", body = QuestionAnswersResponse),
+        (status = 200, description = "Answer recorded and turn made runnable", body = QuestionAnswersResponse),
         (status = 400, description = "Invalid session ID, or answers that do not match what was asked"),
         (status = 404, description = "Session or pending question set not found"),
         (status = 409, description = "Session is not waiting for tool results, or the question set was already answered"),

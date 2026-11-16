@@ -90,7 +90,7 @@ The agent's response to one input message: one or more iterations of the loop, e
 - Lifecycle: `turn.started` → reason → act → `turn.completed` (or `turn.failed`).
 - A turn runs at most **500 iterations** by default; set `max_iterations` on the agent or session to change it.
 
-On the Platform each step is a separate durable task, so a turn survives a worker crash. See [The agentic loop](/explanation/agentic-loop/) and [Durable execution](/explanation/durable-execution/).
+On the Platform a worker leases a session and runs its turn from the durable event log. After a worker crash, another worker acquires the expired lease and reconstructs the turn; unfinished tool calls are retried only when their side-effect declarations permit it. See [The agentic loop](/explanation/agentic-loop/) and [Durable execution](/explanation/durable-execution/).
 
 ### Tool
 

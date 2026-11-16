@@ -1235,10 +1235,10 @@ pub async fn list_tasks(
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EnqueueTaskRequest {
     /// Activity type (determines which worker handles this task)
-    #[schema(example = "session.run")]
+    #[schema(example = "leased_resource_cleanup")]
     pub activity_type: String,
     /// Task input payload (activity-specific JSON; any shape — object, array, string, etc.).
-    /// Example for `session.run`: `{"session_id": "session_01933b5a00007000800000000000001"}`.
+    /// Example for `leased_resource_cleanup`: `{"batch_size": 25, "stale_after_seconds": 300, "retry_after_seconds": 60}`.
     pub input: serde_json::Value,
     /// Retry policy options
     #[serde(default)]

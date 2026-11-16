@@ -29,7 +29,7 @@ impl CommandSchema for CreateSchedule {
     method = "POST",
     path = "/v1/durable/schedules",
     policy = super::SCHEDULE_MANAGE,
-    cli = CliRoute::new(&["durable", "schedules"], "create").with_examples(&[CliExample::new("Run a session workflow every night", "everruns durable schedules create --name nightly-triage --cron-expression '0 2 * * *' --timezone UTC --target '{\"type\":\"workflow\",\"name\":\"session.run\",\"input\":{\"session_id\":\"session_01h9\"}}' --reason 'Nightly triage'")]),
+    cli = CliRoute::new(&["durable", "schedules"], "create").with_examples(&[CliExample::new("Run the registered cleanup activity every night", "everruns durable schedules create --name nightly-cleanup --cron-expression '0 2 * * *' --timezone UTC --target '{\"type\":\"activity\",\"name\":\"leased_resource_cleanup\",\"input\":{\"batch_size\":25,\"stale_after_seconds\":300,\"retry_after_seconds\":60}}' --reason 'Nightly cleanup'")]),
 )]
 impl Command for CreateSchedule {
     type Output = ScheduleResponse;

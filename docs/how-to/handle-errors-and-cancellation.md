@@ -50,12 +50,12 @@ await asyncio.sleep(2)
 await client.sessions.cancel(session.id)
 ```
 
-Cancellation emits a `turn.cancelled` event, appends a user message noting the cancellation, and the worker emits a final agent message confirming the work was stopped. The session itself stays open and accepts new messages.
+Cancellation records `turn.cancelled` and a system-origin cancellation message. A live worker records the cancellation; when no worker owns the turn, the control plane records it and settles the session. Do not depend on a final agent message to detect cancellation. The session itself stays open and accepts new messages.
 
-## React to all three terminal states
+## React to terminal states
 
 ```python
-TERMINAL = {"turn.completed", "turn.failed", "turn.cancelled"}
+TERMINAL = {"turn.completed", "turn.failed", "turn.cancelled", "turn.sealed"}
 
 async for event in client.events.stream(session.id):
     if event.type in TERMINAL:
@@ -65,25 +65,58 @@ async for event in client.events.stream(session.id):
         break
 ```
 
+`turn.sealed` means the runtime stopped a turn to prevent repeated no-progress recovery or exhausted work budget; it is not successful completion.
+
 ## Retry a failed turn
 
-Failed turns don't auto-retry from the application's perspective (durable execution retries individual steps inside a turn, not the whole turn). To retry, send the message again:
+Crash recovery resumes an open turn from its journal; it is not a new user message. Some provider failures also schedule automatic recovery, indicated by `auto_retry` or `credit_wait` under `event.data["error_fields"]` (see the table below). Wait for that recovery instead of submitting duplicate work. For a failed turn without automatic recovery, send the message again only after checking whether earlier tools already produced external effects:
+
+Use this example only with an idle session that has a single message writer, and only when repeating the work is safe. `messages.create` returns a message, not an event cursor: retrieve its persisted `input.message` before subscribing. Filtering to durable terminal events also keeps ephemeral delta IDs out of reconnection cursors.
 
 ```python
-async def send_with_retry(client, session_id, content, attempts=2):
-    for attempt in range(attempts):
-        await client.messages.create(session_id, content)
-        async for event in client.events.stream(session_id):
-            if event.type == "turn.completed":
-                return True
-            if event.type == "turn.failed":
-                if attempt == attempts - 1:
-                    return False
-                break
+import asyncio
+from contextlib import aclosing
+
+RETRYABLE = {"provider_rate_limited", "provider_unavailable", "dependency_unavailable"}
+TERMINAL = ["turn.completed", "turn.failed", "turn.cancelled", "turn.sealed"]
+
+async def send_with_retry(client, session_id, content, attempts=2, timeout=120):
+    try:
+        async with asyncio.timeout(timeout):  # Python 3.11+, total wait budget
+            for attempt in range(attempts):
+                message = await client.messages.create(session_id, content)
+                inputs = await client.events.list(
+                    session_id, types=["input.message"], order_desc=True, limit=1
+                )
+                if not inputs or inputs[0].data.get("message", {}).get("id") != message.id:
+                    raise RuntimeError("Session has another writer; inspect before retrying")
+                stream = client.events.stream(
+                    session_id, since_id=inputs[0].id, types=TERMINAL
+                )
+                async with aclosing(stream):
+                    async for event in stream:
+                        if event.type == "turn.completed":
+                            return True
+                        if event.type in {"turn.cancelled", "turn.sealed"}:
+                            return False
+                        if event.type == "turn.failed":
+                            fields = event.data.get("error_fields") or {}
+                            if fields.get("auto_retry") or fields.get("credit_wait"):
+                                continue  # recovery is already scheduled
+                            if event.data.get("error_code") not in RETRYABLE:
+                                return False
+                            if attempt == attempts - 1:
+                                return False
+                            break
+                    else:
+                        return None  # stream ended; outcome unknown, do not resend
+                await asyncio.sleep(2 ** attempt)
+    except TimeoutError:
+        return None  # still running or recovering; inspect, don't submit again
     return False
 ```
 
-Don't retry indefinitely, a turn that fails twice usually fails for a reason (rate limit, malformed prompt, missing capability). Surface to the user.
+`True` means completed, `False` means stopped without successful completion, and `None` means the outcome is unknown. A timeout stops waiting, not the server-side turn or scheduled recovery. Inspect the session before taking further action. Do not retry indefinitely.
 
 ## Common error codes
 

@@ -1,12 +1,12 @@
 // Client-side tool results HTTP routes
 //
 // POST /v1/sessions/{session_id}/tool-results
-// Accepts tool results from the client and resumes the agent workflow.
+// Accepts tool results from the client and resumes the agent turn.
 //
-// Design: When an LLM requests client-side tools, the workflow pauses and
+// Design: When an LLM requests client-side tools, the turn parks and
 // session status becomes "waiting_for_tool_results". The client receives a
 // tool.call_requested event via SSE and submits results here. This endpoint
-// stores tool results as tool.completed events and resumes the workflow.
+// stores tool results as tool.completed events and makes the turn runnable.
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::sessions::SessionService;
@@ -78,7 +78,7 @@ pub fn routes(state: AppState) -> Router {
 
 /// POST /v1/sessions/{session_id}/tool-results - Submit client-side tool results
 ///
-/// Accepts tool results executed by the client and resumes the agent workflow.
+/// Accepts tool results executed by the client and resumes the agent turn.
 /// Session must be in `waiting_for_tool_results` status.
 #[utoipa::path(
     post,
@@ -88,7 +88,7 @@ pub fn routes(state: AppState) -> Router {
     ),
     request_body = SubmitToolResultsRequest,
     responses(
-        (status = 200, description = "Tool results accepted and workflow resumed", body = SubmitToolResultsResponse),
+        (status = 200, description = "Tool results accepted and turn made runnable", body = SubmitToolResultsResponse),
         (status = 400, description = "Invalid session ID or request"),
         (status = 404, description = "Session not found"),
         (status = 409, description = "Session not in waiting_for_tool_results state"),

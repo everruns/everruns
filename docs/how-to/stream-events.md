@@ -28,6 +28,8 @@ async for event in client.events.stream(session.id):
         break
 ```
 
+For a UI, render the `accumulated` text keyed by `message_id` rather than blindly appending `delta`. A provider retry can restart the same message, and the completed message remains authoritative.
+
 ### Tool visibility
 
 To show what the agent is doing while it works, listen for `tool.started` and `tool.completed`:
@@ -46,7 +48,7 @@ async for event in client.events.stream(session.id):
 
 ### Get the full final message
 
-`output.message.completed` carries the complete final message after streaming finishes:
+`output.message.completed` carries a complete assistant message after streaming finishes. A turn can produce several such messages, including commentary and tool calls; `turn.completed` marks the end of the turn:
 
 ```python
 async for event in client.events.stream(session.id):
@@ -68,7 +70,7 @@ async for event in client.events.stream(session.id):
 
 ### Resuming with `since_id`
 
-While a stream is open the SDK manages reconnection internally. You only need `since_id` when restarting your application and resuming from a previously recorded event ID:
+While a stream is open the SDK manages reconnection internally. You only need `since_id` when restarting your application and resuming from a previously recorded durable event ID. With no cursor, the stream is live-only; use a stored input event ID to include responses that arrived before you subscribed:
 
 ```python
 # Persisted somewhere — file, DB, etc.
@@ -76,10 +78,11 @@ last_seen_id = load_cursor()
 
 async for event in client.events.stream(session.id, since_id=last_seen_id):
     handle(event)
-    save_cursor(event.id)  # so the next restart can resume from here
+    if event.sequence is not None:  # only persisted events are replay cursors
+        save_cursor(event.id)
 ```
 
-Inside the loop the SDK already remembers the last ID it yielded and reconnects with it on transient failures, `save_cursor` here is for *application restart* recovery, not per-iteration SDK state.
+The saved cursor is for *application restart* recovery. A JSON payload ID on an ephemeral delta is not a replay cursor. Use an SDK version that tracks durable SSE IDs for internal reconnection; older versions that track every payload ID can resume incorrectly after a delta. A durable-event-only stream avoids that ambiguity.
 
 ## With raw SSE
 
@@ -112,7 +115,7 @@ curl -N "https://your-host/api/v1/sessions/$SESSION_ID/sse?since_id=event_..." \
   -H "Authorization: Bearer $EVERRUNS_API_KEY"
 ```
 
-Event IDs are UUIDv7 and the server orders them by an atomic per-session sequence number. Resumption is gap-free and duplicate-free.
+Event IDs are UUIDv7 and durable events have an atomic per-session sequence number. Resume with the last durable SSE `id:` field to replay stored events, not the JSON payload `id`. Ephemeral frames omit `id:`; keep the previous durable cursor when handling them. Streaming deltas are ephemeral when NATS is enabled and are not part of PostgreSQL replay; use the durable completed-message event to reconcile the full content.
 
 ### Heartbeats
 
@@ -124,7 +127,7 @@ The server sends a heartbeat every 30 seconds as a comment line:
 
 Comments are invisible to SSE event parsers, they don't appear as events. Their only purpose is to keep the TCP connection alive and let your client distinguish "idle" from "dead."
 
-**Client requirement:** treat the connection as stale if no data (event or heartbeat) arrives within 45 seconds. Reconnect with the last received event ID.
+**Client requirement:** treat the connection as stale if no data (event or heartbeat) arrives within 45 seconds. Reconnect with the last durable SSE `id:` value.
 
 ### Connection cycling
 
@@ -135,7 +138,7 @@ event: disconnecting
 data: {"reason":"connection_cycle","retry_ms":100}
 ```
 
-Clients should reconnect immediately using `since_id` of the last event received. No events are dropped during the transition.
+Clients should reconnect immediately using the last durable SSE `id:` value as `since_id`. Stored events are replayed; a missed ephemeral delta is recovered from its corresponding completed event.
 
 ### Browser EventSource
 
@@ -157,7 +160,7 @@ function connect(sessionId, lastEventId) {
   ["input.message", "output.message.delta", "turn.completed"].forEach((t) => {
     es.addEventListener(t, (e) => {
       const data = JSON.parse(e.data);
-      lastEventId = data.id;
+      if (e.lastEventId) lastEventId = e.lastEventId; // SSE cursor, not data.id
       // handle event...
     });
   });

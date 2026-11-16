@@ -260,7 +260,7 @@ need the `scale` profile):
 
 ```bash
 # Scale to 5 workers
-docker compose up -d --scale worker-1=1 --scale worker-2=1 --scale worker-3=3
+docker compose --profile scale up -d --scale worker-1=1 --scale worker-2=1 --scale worker-3=3
 ```
 
 Or modify `docker-compose.yaml` to add more worker services.

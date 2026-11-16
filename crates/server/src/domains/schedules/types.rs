@@ -72,7 +72,7 @@ pub struct ListSchedulesQuery {
     #[schema(example = true)]
     pub enabled: Option<bool>,
     /// Filter by target type ("workflow" or "activity")
-    #[schema(example = "workflow")]
+    #[schema(example = "activity")]
     pub target_type: Option<String>,
     /// Pagination offset
     #[schema(example = 0)]
@@ -299,18 +299,18 @@ impl From<ScheduleStats> for ScheduleStatsResponse {
 
 /// Target for a schedule - either a workflow or activity
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-#[schema(example = json!({"type": "workflow", "name": "session.run", "input": {"session_id": "session_01933b5a00007000800000000000001"}}))]
+#[schema(example = json!({"type": "activity", "name": "leased_resource_cleanup", "input": {"batch_size": 25, "stale_after_seconds": 300, "retry_after_seconds": 60}}))]
 pub struct ScheduleTarget {
     /// Target type: "workflow" or "activity"
     #[serde(rename = "type")]
-    #[schema(example = "workflow")]
+    #[schema(example = "activity")]
     pub target_type: String,
     /// Workflow type name or activity type name
-    #[schema(example = "session.run")]
+    #[schema(example = "leased_resource_cleanup")]
     pub name: String,
     /// Input JSON for the workflow/activity
     #[serde(default)]
-    #[schema(example = json!({"session_id": "session_01933b5a00007000800000000000001"}))]
+    #[schema(example = json!({"batch_size": 25, "stale_after_seconds": 300, "retry_after_seconds": 60}))]
     pub input: serde_json::Value,
 }
 
@@ -319,13 +319,13 @@ pub struct ScheduleTarget {
 pub struct ScheduleTargetResponse {
     /// Target type discriminator (`workflow` or `activity`).
     #[serde(rename = "type")]
-    #[schema(example = "workflow")]
+    #[schema(example = "activity")]
     pub target_type: String,
     /// Human-readable name. Safe to render in user-facing messages.
-    #[schema(example = "session.run")]
+    #[schema(example = "leased_resource_cleanup")]
     pub name: String,
     /// Input JSON payload passed to the workflow/activity on each fire.
-    /// Example: `{"session_id": "session_01933b5a000070008000000000000001"}`.
+    /// Example: `{"batch_size": 25, "stale_after_seconds": 300, "retry_after_seconds": 60}`.
     #[schema(value_type = Object)]
     pub input: serde_json::Value,
 }

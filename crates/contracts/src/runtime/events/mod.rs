@@ -116,12 +116,11 @@ pub const REASON_THINKING_STARTED: &str = "reason.thinking.started";
 pub const REASON_THINKING_DELTA: &str = "reason.thinking.delta";
 pub const REASON_THINKING_COMPLETED: &str = "reason.thinking.completed";
 
-/// Durable record of an opaque assistant reasoning response item.
+/// Durable identity and safe summary of an assistant reasoning response item.
 ///
 /// Distinct from `reason.thinking.*` (user-visible thinking streams). This event
-/// captures provider-supplied opaque/encrypted reasoning artifacts plus safe
-/// summary text and per-item metadata, without persisting plaintext hidden
-/// chain-of-thought.
+/// carries per-item metadata and safe summary text, excluding opaque replay
+/// payloads and plaintext hidden chain-of-thought.
 pub const REASON_ITEM: &str = "reason.item";
 
 // Session events

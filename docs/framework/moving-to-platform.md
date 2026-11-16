@@ -92,8 +92,8 @@ shows the client-side tool loop over the API.
 ## What does not transfer
 
 - **Sessions and history.** There is no session import. A Framework session's
-  event log, whether in memory or under a `LocalConfig` data directory, stays
-  with the Framework app. Platform sessions start fresh; a Platform session can
+  event log, whether in memory, `SqliteHosting` or a legacy `LocalConfig` data
+  directory, stays with the Framework app. Platform sessions start fresh; a Platform session can
   be exported (`GET /v1/sessions/{id}/export`) but not the reverse.
 - **Workspace files.** A local workspace directory is not copied. Put files the
   agent needs at start in `initial_files`.

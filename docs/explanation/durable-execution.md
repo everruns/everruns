@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-The word "durable" in "durable agentic harness engine" means a specific thing: **every step of an agent's execution survives a process restart**. This page explains why that matters, how it works, and what it costs.
+The word "durable" in "durable agentic harness engine" means a specific thing: **recorded execution state survives a process restart, so a turn can recover from its log**. This page explains why that matters, how it works, and what it costs.
 
 ## The problem
 
@@ -35,13 +35,13 @@ When a worker crashes mid-turn, its lease stops being renewed and expires after 
 
 ![Worker crash and takeover: worker A leases the session, renews the lease every few seconds and appends the turn's events, then crashes during a tool call; its lease expires after ten seconds without renewal; worker B leases the session with a higher fence, reads the turn's log tail, resumes the open turn (recorded results stand, the cut-off call is settled or rerun) and releases the session when the turn ends. A turn whose workers keep dying is sealed after a few leases.](../images/concepts/worker-reclaim.svg)
 
-A worker that stalls instead of crashing cannot interfere: each lease has a fence number, and a worker whose lease was taken over stops the turn without writing anything more.
+Each lease has a fence number. The control plane rejects authoritative writes from a holder whose lease expired or was taken over. The displaced worker stops when it observes lease loss; fencing cannot revoke an external request that was already sent.
 
 ## Why a custom engine
 
 The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable execution instead: session leases and the event log for turns, and `everruns-durable`, a generic, published Rust crate (task queue, event log, schedules, retries, dead letter queue, circuit breakers) with no agent concepts, for the background work around them. The reasoning:
 
-1. **Single dependency.** PostgreSQL is the only required stateful infrastructure (Valkey and NATS are optional). Operators don't need to run a second cluster with its own ops story.
+1. **Single dependency.** PostgreSQL is the only required stateful infrastructure for a single control-plane instance. Multiple control-plane instances need NATS for live event delivery; without it they report degraded polling. Valkey is optional. Operators don't need to run a second cluster with its own ops story.
 2. **Co-located with the rest of the platform.** Workflow events and session events live in the same database, in the same transaction when needed. There's no eventual consistency between "what happened" and "what was reported."
 3. **Tight scope.** Everruns runs agentic workflows specifically, limited fan-out, short-to-medium duration, well-understood failure modes. We don't need the full Temporal feature set, and the operational surface area of a tightly-scoped engine is much smaller.
 
@@ -51,24 +51,26 @@ The trade-off: no multi-region replication beyond what PostgreSQL itself offers,
 
 What durable execution gives you:
 
-- **No work lost on crash.** If a worker dies, another worker resumes the turn from its log. A model response already recorded is not requested again, and an answer already recorded is not given twice.
+- **Recorded outcomes survive a crash.** If a worker dies, another worker resumes the turn from its log. A model response already recorded is not requested again, and an answer already recorded is not given twice.
 - **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. A call cut off before its result was recorded runs again only when that is safe: its tool declares it read-only or idempotent, or the call never started. A call that must run at most once does not start until its `tool.started` event is stored, so a call without one never ran. Any other unfinished call is recorded as interrupted and the model is told its outcome is unknown. Each call also carries an idempotency key that stays the same when it runs again, sent to MCP servers in the request's `_meta` as `io.everruns/idempotency-key`, so a server or gateway that honors it can drop the repeat.
-- **One worker per session.** A session's lease keeps two workers from ever running its turn at once.
+- **One authoritative lease holder per session.** Fenced writes prevent a displaced worker from committing turn events. In-flight external effects still require the tool-specific safeguards below.
 - **Authoritative history.** Reloading a session reads back the same persisted message sequence, which makes traces and exports authoritative.
 
 What it doesn't give you:
 
-- **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example by forwarding the call's idempotency key (`ToolContext::idempotency_key`). A tool that declares nothing is never run twice, but a crash after it acted and before its result was recorded leaves its outcome unknown.
-- **Real-time latency guarantees.** Persisting every event adds a few milliseconds per write. For agent workloads (already dominated by LLM latency) this is invisible; for hot-loop workloads it would be costly.
+- **Idempotence of side effects.** A tool that declares itself idempotent is run again after a crash, so if it POSTs to an external API it must make the repeat harmless, for example by forwarding the call's idempotency key (`ToolContext::idempotency_key`). An unfinished tool call with the default at-most-once declaration is not automatically replayed after a recorded start, but a crash after it acted and before its result was recorded leaves its outcome unknown.
+- **Real-time latency guarantees.** Persisting durable events adds storage latency and load; ephemeral streaming deltas can bypass PostgreSQL. LLM latency often dominates a turn, but that does not make storage overhead negligible under every workload.
 
 ## Durability in the Framework
 
-Rust applications that embed the [Framework](/framework/) get durability the
-same way: from the session's event log. With `LocalConfig` the log
-outlives the process, and a turn a restart cut off continues from it: calls
-that are safe to repeat run again, the rest are recorded as interrupted. Each
-session runs as an actor that holds its lease while a turn runs, so processes
-that share a data directory never run one session at once. See [Framework
+Rust applications that embed the [Framework](/framework/) share the execution
+kernel, but must choose a hosting profile that provides the required recovery
+boundary. `Engine::new()` retains sessions only for that Engine's lifetime.
+Native `hosting::SqliteHosting` persists admission and session state; register
+the exact agent builds and environment factories and run its supervisor for
+independent recovery. External hosting supplies its own durable authority and
+activation. Legacy `LocalConfig` storage has a weaker recovery boundary and is
+not equivalent to native durable Engine hosting. See [Framework
 Architecture](/framework/architecture/).
 
 ## When the database becomes the bottleneck

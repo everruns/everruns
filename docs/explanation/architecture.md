@@ -12,7 +12,7 @@ Everruns is **API-first** and **headless**. The web UI is optional, the SDKs are
 A running Everruns deployment is two kinds of process plus PostgreSQL:
 
 - The **control plane** exposes the REST API, owns auth, serves SSE event streams, and persists all state in PostgreSQL.
-- **Workers** execute the agentic loop. They claim durable tasks, call LLMs, run tools, and report results back. They hold no long-lived state, restart any worker at any time and nothing breaks.
+- **Workers** execute the agentic loop. They lease runnable sessions, call LLMs, run tools, and report results through the control plane. Session state is durable rather than worker-local: another worker can recover a turn after lease expiry, subject to the tool recovery rules.
 
 ![Platform Overview](../images/architecture/platform-overview.svg)
 
@@ -24,7 +24,7 @@ You could run the agentic loop in the API server process and avoid the extra hop
 
 1. **LLM calls are long.** A single turn easily spends 10–60 seconds in network I/O. Tying that to the request thread caps API throughput and makes deploys painful.
 2. **Failure isolation.** A misbehaving tool that hangs the worker process should not take down the API. They're separate concerns and they get separate processes.
-3. **Durability.** Workers can crash and the task gets reclaimed by another worker. Tying execution to a request would lose the work the moment the connection drops.
+3. **Durability.** Workers can crash and the session lease can be reclaimed by another worker. Tying execution to a request would lose the work the moment the connection drops.
 
 The control plane and workers talk over gRPC inside your VPC. End users only ever see the REST API.
 
@@ -61,9 +61,9 @@ Everruns is organization-scoped end-to-end:
 
 ## Where the boundaries are
 
-Things the control plane owns: auth, durable task queue, event log, virtual filesystem, key-value storage, capability registry, MCP catalog.
+Things the control plane owns: auth, session actor leases and runnable index, background task queue, event log, virtual filesystem, key-value storage, capability registry, MCP catalog.
 
-Things workers own: nothing persistent. They borrow the database, run their tasks, and report back.
+Things workers own: nothing persistent. They access session state through control-plane gRPC, drive leased turns, and report back; they do not connect to PostgreSQL directly.
 
 Things your application owns: the agent definitions, the prompt design, and the channel-specific glue (Slack apps, webhooks, schedules). The platform is intentionally neutral about *what* you build with it.
 

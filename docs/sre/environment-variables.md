@@ -19,7 +19,7 @@ a working default; each row links to the section that documents it.
 | [`PUBLIC_APP_URL`](#public_app_url), [`AUTH_LOGIN_ORIGIN`](#auth_login_origin), [`API_PREFIX`](#api_prefix), [`CORS_ALLOWED_ORIGINS`](#cors_allowed_origins), [`HTTP_ADDR`](#http_addr) | API | No | `http://localhost:9300`, same-origin login, `/api`, CORS off, `0.0.0.0:9000`. |
 | [`DATABASE_UNPOOLED_URL`](#database_unpooled_url), [`DATABASE_POOL_MAX`](#other-server-variables), [`DATABASE_POOL_MIN`](#other-server-variables) | API | No | Listeners reuse `DATABASE_URL`; pool of 5 to 50 connections. |
 | [`VALKEY_URL`](#valkey_url) | API | No | Rate limits are per instance. |
-| [`NATS_URL`](#nats_url) | API and workers | With more than one control-plane instance | PostgreSQL `NOTIFY` and in-memory broadcast (one instance only). |
+| [`NATS_URL`](#nats_url) | API | With more than one control-plane instance | PostgreSQL `NOTIFY` and in-memory broadcast (one instance only). |
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
 | [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_REQUEST_TIMEOUT_SECS`](#worker_grpc_request_timeout_secs), [`WORKER_ACTOR_STALL_TIMEOUT_SECS`](#worker_actor_stall_timeout_secs), [`WORKER_TOOL_DETACH_AFTER_SECS`](#worker_tool_detach_after_secs), [`WORKER_MAX_RUNNING_TURNS`](#worker_max_running_turns), [`WORKER_MEMORY_LIMIT_MIB`](#worker_memory_limit_mib), [`WORKER_MAX_RUNTIME_LAG_MS`](#worker_max_runtime_lag_ms), [`MAX_DETACHED_TOOL_CALLS`](#max_detached_tool_calls), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`; 120 s per worker call; a stalled session is let go after 5 minutes; turns admitted by memory and runtime lag; a tool call running past 5 minutes parks its turn. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Models > Providers. |
@@ -411,7 +411,7 @@ and credentials differ.
 
 ## NATS_URL
 
-Connection URL for NATS with JetStream, used for push-based event delivery and task notifications.
+Connection URL for Core NATS, used for push-based event delivery and task notifications.
 
 | Property | Value |
 |----------|-------|
@@ -434,11 +434,11 @@ NATS_URL=nats://control:s3cret@nats:4222
 **Notes:**
 - When not set, all events persist to PG, task notifications use PG NOTIFY, and live session events are pushed inside the one process. That covers a single control-plane instance only: with `EXPECTED_INSTANCES` above 1 and no `NATS_URL`, each instance polls PostgreSQL for live events instead and reports `degraded` in `/health`.
 - When set, enables two features:
-  - **Ephemeral event delivery**: delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through NATS JetStream. SSE streams subscribe to NATS instead of polling PG.
+  - **Ephemeral event delivery**: delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, and voice transcript deltas) skip PostgreSQL and flow only through Core NATS. `llm.generation` remains durable in PostgreSQL. SSE streams subscribe to NATS instead of polling PG.
   - **Task notifications**: `task.available.{activity_type}` subjects replace PG NOTIFY for push-based worker notification. Lower latency (~1ms vs ~30ms), supports multi-instance deployments.
-- NATS JetStream must be enabled on the server (`--jetstream` flag)
+- JetStream is not required. Live events use Core NATS without a replay buffer; durable event replay comes from PostgreSQL.
 - Credentials embedded in the URL (`nats://user:password@host`) are sent as user/password auth. Reserved characters in the password (`/`, `@`, `:`, `%`) are accepted as-is, so a generated secret can be pasted unmodified; percent-encoded passwords are decoded and also work
-- If the NATS connection fails at startup, the server logs the connection error, uses PG NOTIFY for task notifications, and polls PostgreSQL for live session events so other instances' events still reach its clients. `/health` reports `status: degraded` with `event_delivery: polling`, and the system doctor warns.
+- If the NATS connection fails at startup, the server logs the connection error, uses PG NOTIFY for task notifications, and polls PostgreSQL for live session events so other instances' events still reach its clients. `/health` reports `status: degraded` with `event_delivery: polling`, and the system doctor warns. The server retries the configured NATS connection in the background; after recovery it switches event delivery back to NATS and closes existing SSE streams so clients reconnect with their durable cursor.
 - Only used by control-plane (server); workers communicate via gRPC and don't need NATS access
 - Default port: 4222 (or `<PORT_PREFIX>22` with `PORT_PREFIX`, for example `27122` for prefix `271`)
 - `just start-all` automatically starts NATS and exports `NATS_URL` if `nats-server` is installed

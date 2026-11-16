@@ -16,10 +16,11 @@ This runbook covers configuring and managing authentication for Everruns.
 Use for local development when authentication isn't needed:
 
 ```bash
+export DEPLOYMENT_GRADE=dev
 export AUTH_MODE=none
 ```
 
-All requests will be allowed with full admin access.
+All requests will be allowed with full admin access. `none` is refused outside the `dev` deployment grade; omitting `AUTH_MODE` does not enable unauthenticated production.
 
 If you later restart the same database with `AUTH_MODE=admin` or `AUTH_MODE=full`,
 startup revokes personal access tokens owned by the seeded anonymous admin user so
@@ -61,7 +62,7 @@ export AUTH_GITHUB_CLIENT_SECRET=your-github-client-secret
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `AUTH_MODE` | No | `none`, `admin`, or `full` (default: `none`) |
+| `AUTH_MODE` | Required outside `dev` grade | `none`, `admin`, `full`, or `external`. Unset resolves to `none`, which is allowed only at `dev` grade. |
 | `PUBLIC_APP_URL` | For OAuth | Public app origin used to derive auth callback URLs |
 | `AUTH_BASE_URL` | No | Override callback base URL when it differs from `PUBLIC_APP_URL` + `API_PREFIX` |
 | `AUTH_LOGIN_ORIGIN` | No | Trusted remote origin hosting `/login`; set identically for server and UI runtimes |

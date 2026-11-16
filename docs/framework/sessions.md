@@ -352,7 +352,9 @@ conversation only: workspace files are not rewound.
 
 ### Local: crash-durable events
 
-For local applications, the feature-gated `LocalConfig` adds a crash-durable
+This is the legacy local-storage lane. New durable applications should use
+`SqliteHosting` and its supervisor, described above. The feature-gated
+`LocalConfig` adds a crash-durable
 event log under the configured application data directory. It also supplies a
 trusted real-disk workspace plus SQLite-backed task and schedule state:
 
@@ -572,7 +574,9 @@ the same lineage.
 
 ### One process runs a session at a time
 
-Each session runs as an actor: its event log is its state, and a turn holds
+The following lease behavior describes the legacy `LocalConfig` actor lane,
+not coherent Engine hosting or Platform workers. In that lane,
+each session runs as an actor: its event log is its state, and a turn holds
 the session's lease while it runs. The lease is taken when a turn starts,
 renewed while it runs (including while it waits on an approval or a
 question), and given up when the turn ends. With the local profile the leases
@@ -580,8 +584,13 @@ live in the profile's SQLite database, so if two processes share a data
 directory, a turn started in one while the other runs the same session fails
 with an error saying the session runs in another process. Between turns no
 process holds a session, so either one can pick it up. A lease lasts 10
-seconds unless renewed, so after a crash the restarted process waits at most
-that long before it resumes a turn the old process was running.
+seconds unless renewed. After a crash, application-driven recovery can
+acquire the session once that lease expires; this is not a ten-second
+end-to-end recovery guarantee or an independent restart supervisor.
+
+Coherent Engine hosting instead uses authority-fenced execution epochs and
+independent activation. A parked approval, question or client-side tool does
+not retain execution. See [session hosting](/framework/hosting/).
 
 ### Platform: distributed durable execution
 

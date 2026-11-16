@@ -20,14 +20,18 @@ Durable execution is PostgreSQL-backed and provides:
 
 - PostgreSQL running and accessible
 - `DATABASE_URL` environment variable set
-- Migrations applied (includes durable tables)
+- Server startup applies the embedded migrations, including session actors and background-task tables
 
 ### 2. Start the API
 
-The durable engine is the only execution engine, so there is no mode to select.
+The Platform uses session actors for agent turns and the durable task queue for background work; there is no legacy workflow mode to select. For a local-only two-process setup, configure a development deployment grade without enabling `DEV_MODE` (which runs workers in-process):
 
 ```bash
 export DATABASE_URL="postgres://postgres:postgres@localhost/everruns"
+export DEPLOYMENT_GRADE=dev
+export AUTH_MODE=none
+export WORKER_GRPC_AUTH_TOKEN="$(openssl rand -hex 32)"
+export SECRETS_ENCRYPTION_KEY="kek-v1:$(openssl rand -base64 32)"
 
 # Start the API server
 cargo run -p everruns-server
@@ -38,12 +42,15 @@ cargo run -p everruns-server
 In a separate terminal:
 
 ```bash
-# Workers only need gRPC address - NO DATABASE_URL required!
+# Workers need the matching gRPC token, but NO DATABASE_URL.
+export WORKER_GRPC_AUTH_TOKEN="<same value as the server>"
 export SERVER_GRPC_ADDRESS="127.0.0.1:9001"
 
 # Start the task worker
 cargo run -p everruns-worker
 ```
+
+For a non-development deployment, configure `AUTH_MODE=admin`, `full`, or `external` and its required settings as described in [Authentication](/sre/runbooks/authentication/). Keep the encryption key stable across restarts.
 
 **Important:** Workers communicate with the control-plane via gRPC and do not
 require direct database access. This improves security and simplifies deployment.
@@ -69,14 +76,19 @@ async fn main() -> anyhow::Result<()> {
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection URL (server only; workers do not need it) | Required |
 | `SERVER_GRPC_ADDRESS` | Server gRPC address (`WORKER_GRPC_ADDRESS` legacy alias) | `127.0.0.1:9001` |
-| `WORKER_GRPC_AUTH_TOKEN` | Bearer token for gRPC auth | Unset (disabled) |
+| `WORKER_GRPC_AUTH_TOKEN` | Same bearer token on server and workers | Required unless `DEV_MODE=true` |
 | `WORKER_ID` | Unique worker identifier | Auto-generated |
 | `MAX_CONCURRENT_TASKS` | Max queued background tasks per worker (session turns do not count) | `50` |
 | `WORKER_MAX_RUNNING_TURNS` | Max session turns per worker (`0` = from the memory limit) | from the memory limit |
 
 ### Database Tables
 
-The durable engine uses these tables (created by migration 002_durable_execution):
+Current embedded migrations create two distinct sets of records. Agent turns use:
+
+- `session_actors` - Runnable state, lease ownership, fencing and inbox cursor
+- `events` - Durable session journal used to reconstruct turns
+
+The generic background-task subsystem also retains:
 
 - `durable_workflow_instances` - Workflow state and metadata
 - `durable_workflow_events` - Event sourcing log
@@ -110,7 +122,9 @@ A session runnable for a long time with no holder means no worker is leasing (wo
 
 ## Monitoring
 
-### Check Active Workflows
+### Check Generic Workflow Records
+
+These are not session turns. Use the `session_actors` query above to inspect running agents.
 
 ```sql
 SELECT id, workflow_type, status, created_at
@@ -146,7 +160,7 @@ WHERE status = 'active';
 
 ## Crash Recovery
 
-The durable execution engine provides automatic crash recovery through:
+Session turns recover through lease expiry and journal reconstruction described above. The heartbeat and stale-task mechanisms below apply to queued background activities, not to each reason/tool step of an agent turn.
 
 ### Worker Heartbeats
 
@@ -181,7 +195,7 @@ WHERE status = 'claimed'
 2. Verify `activity_types` match task types in queue
 3. Check worker heartbeat in `durable_workers` table
 
-### Workflows Stuck in Running
+### Background Tasks Stuck in Running
 
 1. Check for claimed tasks that haven't completed
 2. Look for errors in worker logs
@@ -195,17 +209,12 @@ Tasks moved to DLQ after exhausting retries:
 ```sql
 -- View DLQ entries
 SELECT * FROM durable_dead_letter_queue ORDER BY dead_at DESC;
-
--- Requeue a task
-UPDATE durable_dead_letter_queue SET requeued_at = NOW() WHERE id = '<dlq_id>';
 ```
 
-## Implementation Status
-
-| Phase | Status | Description |
-|-------|--------|-------------|
-| Phase 1-4 | ✅ Complete | Core abstractions, persistence, reliability, worker pool |
-| Phase 6 | 🔄 Planned | Scale Testing (1000+ concurrent workers) |
-| Phase 7 | ✅ Core Complete | gRPC-based worker integration, crash recovery |
+To retry after addressing the cause, use the platform-admin endpoint
+`POST /v1/durable/dlq/{dlq_id}/retry` (under your configured API prefix).
+It creates a new queued task and records the requeue in one transaction.
+Updating `requeued_at` alone does not enqueue any work. Inspect the task's
+external effects before retrying it; a retry can repeat them.
 
 Metrics and tracing are covered under [Observability](/observability/opentelemetry/).

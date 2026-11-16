@@ -67,8 +67,8 @@ everruns durable schedules create [OPTIONS] --cron-expression <cron_expression> 
 Example:
 
 ```bash
-# Run a session workflow every night
-everruns durable schedules create --name nightly-triage --cron-expression '0 2 * * *' --timezone UTC --target '{"type":"workflow","name":"session.run","input":{"session_id":"session_01h9"}}' --reason 'Nightly triage'
+# Run the registered cleanup activity every night
+everruns durable schedules create --name nightly-cleanup --cron-expression '0 2 * * *' --timezone UTC --target '{"type":"activity","name":"leased_resource_cleanup","input":{"batch_size":25,"stale_after_seconds":300,"retry_after_seconds":60}}' --reason 'Nightly cleanup'
 ```
 
 ## durable schedules delete
