@@ -185,10 +185,10 @@ impl BrowseSupervisor {
                     _ = reply.closed() => break BrowseState::Interrupted,
                     result = tokio::time::timeout(timeout, exchange(&mut input, &mut output, id, method, params)) => result.unwrap_or(Err(BrowseError::Interrupted)),
                 };
-                if let (Some(tab), Ok(value)) = (handoff_tab, &result) {
-                    if parse_handoff(value, tab).is_err() {
-                        result = Err(BrowseError::ProtocolError);
-                    }
+                if let (Some(tab), Ok(value)) = (handoff_tab, &result)
+                    && parse_handoff(value, tab).is_err()
+                {
+                    result = Err(BrowseError::ProtocolError);
                 }
                 id += 1;
                 let fatal = matches!(
