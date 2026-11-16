@@ -193,6 +193,11 @@ pub(crate) enum SandboxProxyRoute {
     /// Not configured: sandboxes use their provider's own egress.
     #[default]
     Off,
+    /// No public listener, but the proxy secret is set: credentials are
+    /// minted with an empty address, usable only from inside the
+    /// deployment's network (isolated sandboxes reach the proxy in-cluster).
+    /// Providers outside it, E2B, treat such a credential as no route.
+    Internal { secret: Vec<u8> },
     On {
         address: String,
         tls: bool,
@@ -206,6 +211,7 @@ impl std::fmt::Debug for SandboxProxyRoute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Off => f.write_str("Off"),
+            Self::Internal { .. } => f.write_str("Internal"),
             Self::On { address, tls, .. } => f
                 .debug_struct("On")
                 .field("address", address)
@@ -220,7 +226,8 @@ impl SandboxProxyRoute {
     pub(crate) fn from_env() -> Self {
         let address = std::env::var(SANDBOX_PROXY_ADDRESS_ENV).unwrap_or_default();
         if address.trim().is_empty() {
-            return Self::Off;
+            let secret = std::env::var(EGRESS_PROXY_SECRET_ENV).unwrap_or_default();
+            return Self::internal(secret.into_bytes());
         }
         let tls = std::env::var(SANDBOX_PROXY_TLS_ENV).unwrap_or_default();
         let secret = std::env::var(EGRESS_PROXY_SECRET_ENV).unwrap_or_default();
@@ -229,6 +236,14 @@ impl SandboxProxyRoute {
             tracing::error!(error = %error, "sandbox egress proxy misconfigured; routed sandboxes will not start");
         }
         route
+    }
+
+    /// In-cluster credentials only, when `secret` is long enough to sign them.
+    pub(crate) fn internal(secret: Vec<u8>) -> Self {
+        if secret.len() < MIN_SECRET_LEN {
+            return Self::Off;
+        }
+        Self::Internal { secret }
     }
 
     /// `tls` is the raw setting: empty or `true` means TLS, `false` means none.
@@ -271,8 +286,10 @@ impl SandboxProxyRoute {
         scope: Option<&EgressScope>,
         valid_for: Duration,
     ) -> EgressResult<Option<SandboxProxyCredential>> {
+        let empty = String::new();
         let (address, tls, secret) = match self {
             Self::Off => return Ok(None),
+            Self::Internal { secret } => (&empty, false, secret),
             Self::On {
                 address,
                 tls,
@@ -716,6 +733,16 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        let internal = SandboxProxyRoute::internal(SECRET.to_vec())
+            .credential(Some(&scope), Duration::from_secs(60))
+            .unwrap()
+            .unwrap();
+        assert!(internal.address.is_empty() && !internal.tls);
+        assert!(verify_sandbox_proxy_credential(&internal.password, SECRET, now).is_ok());
+        assert!(matches!(
+            SandboxProxyRoute::internal(b"short".to_vec()),
+            SandboxProxyRoute::Off
+        ));
         let plain = SandboxProxyRoute::new("10.0.0.5:1080", "false", SECRET.to_vec());
         assert!(
             !plain

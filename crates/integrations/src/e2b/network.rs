@@ -121,9 +121,17 @@ pub(crate) fn proxy_credential(
     if matches!(rules.mode, SandboxEgressMode::Blocked) {
         return Ok(None);
     }
-    context.sandbox_proxy_credential(Duration::from_secs(
-        timeout_seconds.saturating_add(CREDENTIAL_SLACK_SECS),
-    ))
+    context
+        .sandbox_proxy_credential(Duration::from_secs(
+            timeout_seconds.saturating_add(CREDENTIAL_SLACK_SECS),
+        ))
+        .map(public_route)
+}
+
+/// E2B runs outside the deployment's network: an in-cluster-only credential
+/// (no public address) is no route, and the sandbox keeps E2B's own network.
+fn public_route(credential: Option<SandboxProxyCredential>) -> Option<SandboxProxyCredential> {
+    credential.filter(|credential| !credential.address.is_empty())
 }
 
 /// The proxy credential for a sandbox a tool creates. `e2b_exec` keeps
@@ -137,6 +145,7 @@ pub(crate) fn tool_proxy_credential(
         return Ok(None);
     }
     SessionSandboxContext::sandbox_proxy_credential(context, Duration::from_secs(2 * 86_400))
+        .map(public_route)
 }
 
 /// Rules for a session sandbox: the template policy the server wrote to
@@ -203,6 +212,20 @@ mod tests {
             mode,
             unenforced_blocks: Vec::new(),
         }
+    }
+
+    #[test]
+    fn in_cluster_credentials_are_no_route_for_e2b() {
+        let credential = |address: &str| SandboxProxyCredential {
+            address: address.into(),
+            tls: true,
+            username: "s1".into(),
+            password: "s1.org.session.9.sig".into(),
+            expires_at: 9,
+        };
+        assert!(public_route(Some(credential(""))).is_none());
+        assert!(public_route(Some(credential("egress.example.com:443"))).is_some());
+        assert!(public_route(None).is_none());
     }
 
     #[test]

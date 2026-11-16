@@ -72916,6 +72916,13 @@
           "max_per_org"
         ],
         "properties": {
+          "billing_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What running a sandbox costs the organization, in plain words;\nabsent when the deployment does not charge for them."
+          },
           "default_image": {
             "type": "string",
             "description": "Image used when a template names none."

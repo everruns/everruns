@@ -2,7 +2,7 @@
 //! The `kubernetes` managed Sandboxes provider end to end against an
 //! in-process Kubernetes API (`mock_kubernetes`) whose pods run the real
 //! sandbox guest: create, exec, files, pause, resume, eviction, replace,
-//! delete, caps, egress and the orphan-scan admin calls.
+//! delete, caps, egress, the platform gate and the orphan-scan admin calls.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -22,6 +22,9 @@ use everruns_contracts::session_sandbox::{
     SessionSandboxLease, SessionSandboxProvider, SessionSandboxState, SessionSandboxStatus,
 };
 use everruns_contracts::typed_id::{OrgId, SessionId};
+use everruns_integrations::kubernetes_sandbox::gate::{
+    PlatformSandboxGate, SandboxGrant, SandboxRun,
+};
 use everruns_integrations::kubernetes_sandbox::{
     EgressRoute, GuestRoute, KubernetesSandboxProvider, KubernetesSandboxSettings,
 };
@@ -611,4 +614,93 @@ async fn the_orphan_scan_lists_stops_and_deletes_by_label() {
         claim["metadata"]["deletionTimestamp"] = json!("2026-11-15T00:00:00Z");
     }
     assert!(f.provider.list_owned("", &labels).await.unwrap().is_empty());
+}
+
+/// Grants one-hour runs to `org`, refuses everyone else, and records what
+/// each grant ran.
+struct RecordingGate {
+    org: String,
+    admitted: std::sync::Mutex<Vec<SandboxRun>>,
+    settled: std::sync::Mutex<Vec<(String, std::time::Duration)>>,
+}
+
+#[async_trait]
+impl PlatformSandboxGate for RecordingGate {
+    async fn admit(&self, run: &SandboxRun) -> Result<SandboxGrant, String> {
+        if run.org_id.as_deref() != Some(self.org.as_str()) {
+            return Err("this organization has no demo credit left".into());
+        }
+        let mut admitted = self.admitted.lock().unwrap();
+        admitted.push(run.clone());
+        Ok(SandboxGrant {
+            id: format!("grant-{}", admitted.len()),
+            lifetime: std::time::Duration::from_secs(3600),
+        })
+    }
+
+    async fn settle(
+        &self,
+        grant: &str,
+        _run: &SandboxRun,
+        ran: std::time::Duration,
+    ) -> Result<(), String> {
+        self.settled.lock().unwrap().push((grant.to_string(), ran));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn the_platform_gate_admits_bounds_and_settles_every_run() {
+    let org = OrgId::new();
+    let gate = Arc::new(RecordingGate {
+        org: org.to_string(),
+        admitted: Default::default(),
+        settled: Default::default(),
+    });
+    let mut f = fixture().await;
+    f.provider = KubernetesSandboxProvider::new(f.cluster.client(), settings(&f.cluster))
+        .with_gate(gate.clone());
+    let (ctx, _) = context(org);
+    let config = f.config(json!({}));
+
+    let instance = f.provider.create(&ctx, &config).await.unwrap();
+    let name = instance.external_id.clone();
+    let pod = f.cluster.state.object("pods", &name).unwrap();
+    assert_eq!(pod["spec"]["activeDeadlineSeconds"], 3600);
+    assert_eq!(
+        pod["metadata"]["annotations"]["everruns.io/sandbox-grant"],
+        "grant-1"
+    );
+    {
+        let admitted = gate.admitted.lock().unwrap();
+        assert_eq!(
+            admitted[0].org_id.as_deref(),
+            Some(org.to_string().as_str())
+        );
+        assert_eq!(admitted[0].size, "small");
+        assert_eq!(admitted[0].sandbox, name);
+    }
+
+    // Pause ends the first run; resume is a second one.
+    let paused = f.provider.pause(&ctx, &config, &instance).await.unwrap();
+    let resumed = f.provider.resume(&ctx, &config, &paused).await.unwrap();
+    f.provider.delete(&ctx, &config, &resumed).await.unwrap();
+    let settled: Vec<String> = gate
+        .settled
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(grant, ran)| {
+            assert!(*ran <= std::time::Duration::from_secs(3600));
+            grant.clone()
+        })
+        .collect();
+    assert_eq!(settled, ["grant-1", "grant-2"]);
+
+    // A refusal is what the agent sees, and nothing is left behind.
+    let (other, _) = context(OrgId::new());
+    let refused = f.provider.create(&other, &config).await.unwrap_err();
+    assert!(error_text(refused).contains("no demo credit left"));
+    assert!(f.cluster.state.names("pods").is_empty());
+    assert!(f.cluster.state.names("persistentvolumeclaims").is_empty());
 }

@@ -3,7 +3,7 @@
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Box, Check, Cpu, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
+import { Box, Check, Cpu, CreditCard, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
 import { useOrganizationConnections, useSandboxTargets, useSandboxTemplates } from "@/hooks";
 import type { OrganizationConnection } from "@/lib/api/organization-connections";
 import { ProviderIcon } from "@/components/connections/provider-icon";
@@ -460,6 +460,18 @@ function TemplateSpecEditor({
                 value0: String(isolation.max_per_org),
               })}
             </p>
+          ) : null}
+          {isolated && isolation?.billing_note ? (
+            <div
+              role="note"
+              className="flex items-start gap-2 border border-info/50 bg-info/10 px-3 py-2.5 text-xs"
+            >
+              <CreditCard className="mt-0.5 size-4 shrink-0 text-info" />
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">{ui("Billed to your organization")}</p>
+                <p className="text-muted-foreground">{isolation.billing_note}</p>
+              </div>
+            </div>
           ) : null}
           {isolated && isolation && !isolation.vm_isolated ? (
             <div

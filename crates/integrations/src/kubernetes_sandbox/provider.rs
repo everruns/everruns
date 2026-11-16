@@ -10,11 +10,11 @@ use everruns_contracts::runtime::sandbox_egress::{
 };
 use everruns_contracts::sandbox_guest::GuestExecRequest;
 use everruns_contracts::session_sandbox::{
-    LABEL_ORG_ID, OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
-    SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
-    SessionSandboxLease, SessionSandboxProvider, SessionSandboxReadFileResponse,
-    SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
-    SessionSandboxWriteFileResponse,
+    LABEL_ORG_ID, LABEL_SESSION_ID, OwnedSandbox, SandboxAdminError, SessionSandboxConfig,
+    SessionSandboxContext, SessionSandboxExecRequest, SessionSandboxExecResponse,
+    SessionSandboxInstance, SessionSandboxLease, SessionSandboxProvider,
+    SessionSandboxReadFileResponse, SessionSandboxState, SessionSandboxStatus,
+    SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
 };
 use everruns_contracts::tools::ToolExecutionResult;
 use k8s_openapi::api::core::v1::{PersistentVolumeClaim, Pod, Secret};
@@ -24,10 +24,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::warn;
 
+use super::gate::{PlatformSandboxGate, SandboxRun, apply_grant, unsettled_run};
 use super::settings::{GuestRoute, KubernetesSandboxSettings};
 use super::spec::{
-    LABEL_SANDBOX, PodEgress, SandboxObjects, TOKEN_KEY, guest_secret_name, pod_egress,
-    valid_label_value, workspace_claim_name,
+    ANNOTATION_SIZE, LABEL_SANDBOX, PodEgress, SandboxObjects, TOKEN_KEY, guest_secret_name,
+    pod_egress, valid_label_value, workspace_claim_name,
 };
 use super::transport::ApiProxyTransport;
 use super::{
@@ -66,6 +67,7 @@ pub fn configured_settings() -> Result<Option<KubernetesSandboxSettings>, String
 struct Backend {
     client: kube::Client,
     settings: Arc<KubernetesSandboxSettings>,
+    gate: Option<Arc<dyn PlatformSandboxGate>>,
 }
 
 static ENV_BACKEND: tokio::sync::OnceCell<Backend> = tokio::sync::OnceCell::const_new();
@@ -83,8 +85,19 @@ impl KubernetesSandboxProvider {
             backend: Some(Backend {
                 client,
                 settings: Arc::new(settings),
+                gate: None,
             }),
         }
+    }
+
+    /// Ask `gate` before every pod start and settle each run with it (see
+    /// [`super::gate`]). The environment-built provider uses the gate
+    /// installed with [`super::gate::install_gate`].
+    pub fn with_gate(mut self, gate: Arc<dyn PlatformSandboxGate>) -> Self {
+        if let Some(backend) = self.backend.as_mut() {
+            backend.gate = Some(gate);
+        }
+        self
     }
 
     pub fn from_environment() -> Self {
@@ -106,6 +119,7 @@ impl KubernetesSandboxProvider {
                 Ok::<_, String>(Backend {
                     client,
                     settings: Arc::new(settings),
+                    gate: super::gate::installed_gate(),
                 })
             })
             .await
@@ -139,6 +153,7 @@ impl Backend {
             grace_period_seconds: Some(0),
             ..DeleteParams::default()
         };
+        self.settle(name).await;
         ignore_missing(self.pods().delete(name, &now).await.map(|_| ()))?;
         ignore_missing(
             self.claims()
@@ -166,7 +181,63 @@ impl Backend {
             grace_period_seconds: Some(10),
             ..DeleteParams::default()
         };
+        self.settle(name).await;
         ignore_missing(self.pods().delete(name, &graceful).await.map(|_| ()))
+    }
+
+    /// Start the sandbox's pod, after the gate (when installed) admits the
+    /// run; the grant bounds the pod's lifetime.
+    async fn start_pod(&self, mut pod: Pod) -> Result<(), String> {
+        let grant = match &self.gate {
+            Some(gate) => {
+                let labels = pod.metadata.labels.clone().unwrap_or_default();
+                let annotations = pod.metadata.annotations.clone().unwrap_or_default();
+                let run = SandboxRun {
+                    run_id: uuid::Uuid::new_v4().simple().to_string(),
+                    sandbox: pod.metadata.name.clone().unwrap_or_default(),
+                    org_id: labels.get(LABEL_ORG_ID).cloned(),
+                    session_id: labels.get(LABEL_SESSION_ID).cloned(),
+                    size: annotations
+                        .get(ANNOTATION_SIZE)
+                        .cloned()
+                        .unwrap_or_default(),
+                };
+                let grant = gate.admit(&run).await?;
+                apply_grant(&mut pod, &run, &grant)?;
+                Some((gate, grant, run))
+            }
+            None => None,
+        };
+        if let Err(err) = self.pods().create(&PostParams::default(), &pod).await {
+            if let Some((gate, grant, run)) = grant
+                && let Err(settle) = gate.settle(&grant.id, &run, Duration::ZERO).await
+            {
+                warn!(sandbox = %run.sandbox, "settling a pod that never started failed: {settle}");
+            }
+            return Err(format!("cannot create the sandbox pod: {err}"));
+        }
+        Ok(())
+    }
+
+    /// Settle the pod's run with the gate before the pod goes. Failures are
+    /// logged: the gate counts an unsettled grant as fully used.
+    async fn settle(&self, name: &str) {
+        let Some(gate) = &self.gate else {
+            return;
+        };
+        let pod = match self.pods().get_opt(name).await {
+            Ok(Some(pod)) => pod,
+            Ok(None) => return,
+            Err(err) => {
+                warn!(sandbox = %name, "cannot read the pod to settle its run: {err}");
+                return;
+            }
+        };
+        if let Some((grant, run, ran)) = unsettled_run(&pod, chrono::Utc::now())
+            && let Err(err) = gate.settle(&grant, &run, ran).await
+        {
+            warn!(sandbox = %name, "settling the sandbox run failed: {err}");
+        }
     }
 
     async fn token(&self, name: &str) -> Result<String, String> {
@@ -637,11 +708,7 @@ impl KubernetesSandboxProvider {
                 .create(&post, &objects.network_policy(&egress)?)
                 .await
                 .map_err(|err| format!("cannot create the network policy: {err}"))?;
-            backend
-                .pods()
-                .create(&post, &objects.pod()?)
-                .await
-                .map_err(|err| format!("cannot create the sandbox pod: {err}"))?;
+            backend.start_pod(objects.pod()?).await?;
             Ok::<_, String>(())
         }
         .await;
@@ -899,8 +966,7 @@ impl SessionSandboxProvider for KubernetesSandboxProvider {
         if pod.is_none() || terminating || matches!(phase.as_deref(), Some("Failed" | "Succeeded"))
         {
             backend
-                .pods()
-                .create(&PostParams::default(), &objects.pod().map_err(tool_error)?)
+                .start_pod(objects.pod().map_err(tool_error)?)
                 .await
                 .map_err(tool_error)?;
         }

@@ -608,7 +608,7 @@ These apply to tenant traffic: requests an agent, capability, MCP server or inte
 | `EVERRUNS_EGRESS_DENY_FEEDS` | unset | Comma-separated threat-intelligence domain lists to refuse: `hagezi-tif-mini` (HaGeZi Threat Intelligence Feeds, mini) or your own `https://` URLs of plain, hosts-file or adblock-style domain lists. A listed domain and its subdomains are refused in every mode and for every org, open egress included, unless the curated allowlist names the host. Fetched at start and every 6 hours; a failed fetch keeps the last list. |
 | `EVERRUNS_EGRESS_PROXY_URL` | unset | Send tenant traffic through a tenant egress proxy, for example `http://egress-proxy:4750`. |
 | `EVERRUNS_EGRESS_PROXY_SECRET` | unset | Shared with the proxy, at least 32 bytes. With a proxy URL and no usable secret, tenant requests fail rather than leave directly. |
-| `EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS` | unset | Public `host:port` of the proxy's SOCKS5 listener. When set, E2B sandboxes send their own outbound TCP through the proxy (E2B's bring-your-own-proxy), under the same checks, caps and per-org counts as tenant traffic. Needs `EVERRUNS_EGRESS_PROXY_SECRET`; if it is missing or short, E2B sandboxes fail to start rather than leave directly. |
+| `EVERRUNS_EGRESS_PROXY_SOCKS_ADDRESS` | unset | Public `host:port` of the proxy's SOCKS5 listener. When set, E2B sandboxes send their own outbound TCP through the proxy (E2B's bring-your-own-proxy), under the same checks, caps and per-org counts as tenant traffic. Needs `EVERRUNS_EGRESS_PROXY_SECRET`; if it is missing or short, E2B sandboxes fail to start rather than leave directly. Isolated sandboxes do not need it: they reach the listener inside the cluster with credentials signed by `EVERRUNS_EGRESS_PROXY_SECRET`. |
 | `EVERRUNS_EGRESS_PROXY_SOCKS_TLS` | `true` | E2B connects to the SOCKS5 address over TLS, so put a TLS terminator with a publicly trusted certificate in front of the listener. Set `false` only when E2B reaches the proxy over a private network: the sandbox credential would otherwise cross the internet in the clear. |
 
 ## Isolated sandboxes
@@ -627,6 +627,7 @@ workers alike. The Helm chart sets them from `sandboxes.kubernetes`.
 | `KUBERNETES_SANDBOX_NODE_SELECTOR`, `KUBERNETES_SANDBOX_TOLERATIONS` | none | JSON node selector and tolerations for sandbox pods. |
 | `KUBERNETES_SANDBOX_SIZES` | `small,medium,large` | Sizes templates may pick. |
 | `KUBERNETES_SANDBOX_MAX_PER_ORG` | `5` | Running sandboxes per organization; paused ones do not count. |
+| `KUBERNETES_SANDBOX_BILLING_NOTE` | unset | What a running sandbox costs the organization, in plain words. Shown where a template picks Isolated sandbox. Leave unset when sandboxes are free. |
 | `KUBERNETES_SANDBOX_EGRESS` | `proxy` with a proxy address, else `none` | Where open-network sandboxes may connect: `proxy`, `direct` (internet, private ranges excluded) or `none`. A wrong value stops the server rather than widen egress. |
 | `KUBERNETES_SANDBOX_EGRESS_PROXY_ADDRESS` | unset | In-cluster `host:port` of the egress proxy's SOCKS5 listener. |
 | `KUBERNETES_SANDBOX_EGRESS_PROXY_POD_LABELS`, `KUBERNETES_SANDBOX_EGRESS_PROXY_NAMESPACE` | required with `proxy` | Labels (`key=value,...`) and namespace of the proxy pods the network policy lets sandboxes reach. |

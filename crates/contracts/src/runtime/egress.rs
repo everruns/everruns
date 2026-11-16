@@ -228,7 +228,9 @@ pub trait EgressService: Send + Sync {
 /// tenant egress proxy (SOCKS5 with username and password).
 #[derive(Clone, PartialEq, Eq)]
 pub struct SandboxProxyCredential {
-    /// Public `host:port` of the proxy's SOCKS5 listener.
+    /// Public `host:port` of the proxy's SOCKS5 listener. Empty when the
+    /// deployment has no public listener: the credential then works only from
+    /// inside its network, and providers outside it must not route with it.
     pub address: String,
     /// Whether the provider must reach `address` over TLS.
     pub tls: bool,

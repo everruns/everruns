@@ -95,6 +95,7 @@ fn kubernetes_target(registered: bool) -> SandboxTargetDescriptor {
                     .collect(),
                 default_image: settings.image.clone(),
                 max_per_org: settings.max_per_org,
+                billing_note: settings.billing_note.clone(),
             }),
         ),
     };

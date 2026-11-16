@@ -61,6 +61,10 @@ pub struct KubernetesSandboxSettings {
     /// Most running sandboxes one organization may hold (paused ones do not
     /// count: they hold no compute).
     pub max_per_org: u32,
+    /// What running a sandbox costs the organization, in plain words, shown
+    /// wherever a template picks this target. `None` when it is free (OSS
+    /// default); a hosted deployment that meters sandboxes sets it.
+    pub billing_note: Option<String>,
     pub egress: EgressRoute,
     pub guest_route: GuestRoute,
     pub guest_port: u16,
@@ -108,6 +112,7 @@ impl KubernetesSandboxSettings {
             tolerations: Vec::new(),
             sizes: SandboxSize::ALL.to_vec(),
             max_per_org: 5,
+            billing_note: None,
             egress: EgressRoute::None,
             guest_route: GuestRoute::PodIp,
             guest_port: everruns_contracts::sandbox_guest::GUEST_PORT,
@@ -168,6 +173,7 @@ impl KubernetesSandboxSettings {
                 .parse()
                 .map_err(|err| format!("KUBERNETES_SANDBOX_MAX_PER_ORG: {err}"))?;
         }
+        settings.billing_note = var("KUBERNETES_SANDBOX_BILLING_NOTE");
         let proxy_address = var("KUBERNETES_SANDBOX_EGRESS_PROXY_ADDRESS");
         settings.egress = match var("KUBERNETES_SANDBOX_EGRESS").as_deref() {
             Some("direct") => EgressRoute::Direct,
