@@ -9,7 +9,9 @@
 //! executor runs a session again after it moved cells; a cell short of
 //! memory sheds new work while admitted turns finish; a cell with Raft on
 //! its own listener and threads fails over like any other; a cell that
-//! stops committing sheds new work and takes it again once it commits.
+//! stops committing sheds new work and takes it again once it commits; only
+//! the leader says a session is missing; Raft's own listener takes large
+//! snapshot chunks.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -168,6 +170,61 @@ async fn a_cell_that_stops_committing_sheds_new_work_until_it_commits() {
     fleet.leader(0).await;
     fleet.say(&session, "again").await;
     fleet.turns(&session, 2).await;
+}
+
+/// Raft's own listener takes bodies past axum's default 2 MB: snapshot
+/// chunks are 16 MB, and a refused chunk left a follower that fell behind
+/// unable to catch up for good (EKS run 43803384547).
+#[tokio::test(flavor = "multi_thread")]
+async fn raft_on_its_own_listener_takes_large_snapshot_chunks() {
+    let fleet = Fleet::start_isolated().await;
+    let (_, addr) = fleet.addrs(0).into_iter().next().unwrap();
+    let raft = everruns_cell::network::raft_addr(&addr, 1);
+    let response = fleet
+        .http
+        .post(format!("http://{raft}/raft/snapshot"))
+        .body(vec![0u8; 3 << 20])
+        .send()
+        .await
+        .unwrap();
+    // Read in full and refused for its missing header, not for its size.
+    assert_eq!(response.status().as_u16(), 400);
+}
+
+/// Only the leader's "not found" is final. A follower answers from its own
+/// copy, and one that rejoined behind (EKS run 43803384547) said "not found"
+/// for sessions created while it was down, failing their first message. A
+/// follower that has not seen a session sends the caller to another member.
+#[tokio::test(flavor = "multi_thread")]
+async fn only_the_leader_says_a_session_is_missing() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let leader = fleet.leader(0).await;
+    let unknown = "session_01a1e29c3fd97657b9d3603032190000";
+    for (node, addr) in fleet.addrs(0) {
+        let response = fleet
+            .http
+            .get(format!("http://{addr}/cell/sessions/{unknown}"))
+            .send()
+            .await
+            .unwrap();
+        let expected = if node == leader { 200 } else { 421 };
+        assert_eq!(response.status().as_u16(), expected, "node {node}");
+    }
+    let (status, _, body) = fleet
+        .post_once(
+            &format!("/v1/sessions/{unknown}/messages"),
+            json!({ "text": "hi" }),
+        )
+        .await;
+    assert_eq!(status, 404, "{body}");
+
+    let follower = (1..=3).find(|n| *n != leader).unwrap();
+    fleet.kill_node(0, follower);
+    let session = fleet.create_in("worker", 0).await;
+    fleet.start_node(0, follower);
+    fleet.say(&session, "go").await;
+    fleet.turns(&session, 1).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

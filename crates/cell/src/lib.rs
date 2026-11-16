@@ -26,6 +26,7 @@ pub mod api;
 pub mod api_session;
 pub mod authority;
 pub mod batch;
+pub mod catchup;
 pub mod cli;
 pub mod cluster;
 pub mod control;

@@ -180,6 +180,8 @@ pub struct Node {
     pub dispatch: crate::dispatch::Dispatch,
     /// How close the cell's nodes are to their memory limits.
     pub pressure: crate::pressure::Pressure,
+    /// Whether this follower is far behind its leader (`catchup.rs`).
+    pub catchup: Arc<crate::catchup::CatchUp>,
     /// Raft's own threads, when it has them; dropped with the node.
     pub raft_threads: crate::network::Isolation,
     /// Tenants that may not start turns, polled from the directory.
@@ -281,6 +283,7 @@ impl Node {
                     cfg.memory_limit >> 20,
                     cfg.memory_budget,
                 )),
+                catchup: Default::default(),
                 raft_threads,
                 cfg,
             }
@@ -327,6 +330,7 @@ impl Node {
         tokio::spawn(self.clone().liveness_loop());
         tokio::spawn(self.clone().unload_loop());
         tokio::spawn(self.clone().pressure_loop());
+        tokio::spawn(self.clone().catchup_loop());
         tokio::spawn(self.clone().register_loop());
         tokio::spawn(self.clone().rebalance_loop());
         tokio::spawn(self.clone().control_loop());

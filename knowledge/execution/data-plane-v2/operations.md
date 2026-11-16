@@ -78,6 +78,30 @@ and threads (`--raft-port-offset`, deployed as port 7001 beside 7000; every memb
 use the same offset), so client load does not delay it. A stall that lasts means the host is
 oversubscribed: give the cells more CPU or move cells to another host.
 
+## A node that rejoins far behind
+
+A follower 2 048 or more committed entries short of what its leader last sent steps aside until
+it is back within 256. While it does, it doesn't call elections, its `/health` answers 503, and it
+answers every session request with 421, so gateways, streams and its peers use another member.
+It keeps voting and taking the leader's entries. `cell_catching_up` is 1 on that node, and a WARN
+marks the start and the end.
+
+Any follower that has not seen a session answers 421 for it, so the gateway asks the next
+member. Only the leader's "not found" is final.
+
+Before this, a node that rejoined after a kill (SaaS load run 43803384547):
+
+- answered "not found" for sessions created while it was down, so 6,790 sessions lost their first
+  message;
+- kept calling elections it couldn't win (term 244 by the end), each one unseating the leader.
+
+It never caught up, because Raft's own listener refused snapshot chunks over 2 MB; it now takes
+any size. `scripts/cell/prove_rejoin_under_load.py` kills a follower under load and checks it
+rejoins with no errors and no elections.
+
+A node that stays at 1 for long is short of CPU or network to catch up. A node that keeps
+returning to it is being killed again before it finishes.
+
 ## Leader loss
 
 What happens by itself: a cell of three keeps working with two. The survivors elect a leader

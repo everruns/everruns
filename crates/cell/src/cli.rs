@@ -498,11 +498,14 @@ pub async fn serve_node_on(
     let _ = node.gateway.set(gateway.clone());
     let offset = node.cfg.raft_port_offset;
     let raft = if offset == 0 {
-        crate::network::router(node.raft.clone())
+        crate::network::router(node.raft.clone(), node.catchup.clone())
     } else {
         let raft_listen = SocketAddr::new(listen.ip(), listen.port().saturating_add(offset));
-        node.raft_threads
-            .serve(raft_listener(raft_listen)?, node.raft.clone())?;
+        node.raft_threads.serve(
+            raft_listener(raft_listen)?,
+            node.raft.clone(),
+            node.catchup.clone(),
+        )?;
         tracing::info!(cell, node = id, %raft_listen, "raft listening");
         axum::Router::new()
     };
@@ -512,7 +515,11 @@ pub async fn serve_node_on(
         .merge(crate::stream::router(node.clone()))
         .merge(crate::api_session::router(node.clone()))
         .merge(crate::gateway_dp::cell_router(node.clone()))
-        .merge(crate::gateway::router(gateway));
+        .merge(crate::gateway::router(gateway))
+        .layer(axum::middleware::from_fn_with_state(
+            node.clone(),
+            crate::catchup::guard,
+        ));
     tracing::info!(cell, node = id, %listen, "node listening");
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
     if !join && let Err(error) = node.bootstrap().await {
