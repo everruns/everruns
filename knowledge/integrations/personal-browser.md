@@ -132,3 +132,39 @@ opened by this library automatically.
 The supervisor itself is not a model capability or durable workflow. Do not
 advertise it as complete personal-browser integration. Its synthetic protocol
 tests do not establish upstream extension pairing, tab-lending or human UX.
+
+## Durable dispatch prerequisite
+
+The existing client-tool wait is durable, but dispatching work to an external
+process is not yet an atomic authority operation. `Engine::session_status`
+returns the open turn and waiting calls together; `resolve_tools` is idempotent
+and turn-bound. Neither claims a pending call before external execution.
+Generic session KV has no atomic claim/CAS, and epoch writes require the agent's
+active execution lease, which a parked external worker should not hold.
+
+A correct bridge needs generic authority-backed client dispatch commands, not a
+browser-specific file journal:
+
+1. Begin dispatch validates the exact pending session/turn/call/name/arguments
+   and atomically records the request fingerprint, worker incarnation/fence,
+   deadline and stable resolution UUID. Only one owner may dispatch.
+2. Complete dispatch validates that claim, rejects stale/conflicting completion,
+   and records terminal outcome plus tool resolution in one authority
+   transaction. Retries retain the same command identity and response.
+3. A lost/expired worker becomes interrupted/unknown, never success or automatic
+   redispatch. Crash after claim but before send conservatively loses an action
+   rather than risk duplicating an unknown mutation.
+
+This belongs in the shared session command reducer and its SQLite, memory and
+cell authority adapters using existing framework objects and receipts. The
+Framework coordinator then declares narrowly selected upstream schemas as
+client tools, binds supervisors by full session ID, dispatches outside the
+agent worker, and reconciles retained terminal results without replay. Do not
+expose upstream administrative/settings tools blindly, or capture one root
+supervisor in an Agent reused by child sessions. Caller-retained IDs with
+`create_registered`, or a session-keyed host registry, solve that binding.
+
+Required qualification includes concurrent claims, lost responses, crashes on
+both sides of dispatch, stale worker completion, wrong session/turn/call,
+duplicate results, restart reconciliation and child-session isolation. This
+authority extension and coordinator are not part of the current supervisor.
