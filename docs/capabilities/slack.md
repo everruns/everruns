@@ -164,7 +164,8 @@ Existing Slack installs that use `/v1/apps/{app_id}/…` URLs continue to work. 
 | `bot_token` | Before use | Bot User OAuth Token (`xoxb-...`) for sending responses. It can be empty while you create the channel. |
 | `channel_id` | No | Restrict the channel to one channel, such as `C0123456789`. |
 | `team_id` | No | Slack workspace ID. |
-| `session_strategy` | No | `per_thread` by default, `per_channel`, or `per_user`. |
+| `session_strategy` | No | `per_channel` for new channels, `per_thread`, or `per_user`. A stored channel that never set it reads as `per_thread`. |
+| `response_policy` | No | `relevant_messages` for new channels, `mentions_only`, or `all_messages`. A stored channel that never set it reads as `all_messages`. |
 | `agent_surface_enabled` | No | `false` by default. Also serve Slack's agent pane; see [Agent Surface](#agent-surface). |
 
 ## Agent Surface
@@ -248,7 +249,7 @@ get these rules in their instructions.
 | `per_channel` | One session serves the channel. | `slack:channel:{channel}` |
 | `per_user` | One session serves each Slack user. | `slack:user:{user}` |
 
-Use `per_thread` for most Slack bots.
+New channels start with `per_channel`, so the agent keeps one conversation per Slack channel. Use `per_thread` when every thread is a separate request, such as a support queue.
 
 ## How It Works
 

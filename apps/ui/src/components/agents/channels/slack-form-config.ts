@@ -11,8 +11,9 @@ export function buildSlackChannelConfig(state: ChannelFormState) {
     agent_surface_enabled: state.slackAgentSurfaceEnabled,
     private_approvals: state.slackPrivateApprovals,
     session_strategy: state.slackSessionStrategy,
-    ...(state.slackResponsePolicy !== "all_messages"
-      ? { response_policy: state.slackResponsePolicy }
-      : {}),
+    // Always sent: the server fills a missing policy with the new-channel
+    // default, so leaving out "All messages" would quietly turn it into
+    // "Relevant messages".
+    response_policy: state.slackResponsePolicy,
   };
 }

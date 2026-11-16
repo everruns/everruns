@@ -147,7 +147,8 @@ internal; they are reached through delegation, not by being mentioned.
 Follow [Publish an agent as a Slack app](/how-to/publish-to-slack/) for the
 mechanics. Two choices matter for a foreman:
 
-- **`session_strategy: per_thread`** (the default). Each Slack thread becomes one
+- **`session_strategy: per_thread`** (new channels default to `per_channel`, so set
+  it explicitly). Each Slack thread becomes one
   foreman session, which is what you want: the thread is the unit of work, and
   the foreman keeps its delegation state for the life of that thread.
 - **Enable the agent surface** (`agent_surface_enabled`) if you want the foreman
