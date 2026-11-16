@@ -572,6 +572,11 @@ Writes that would exceed either limit fail with a clear error before any DB inse
 
 **TM-FS-015/016, Framework Host Workspaces:**
 
+Serve's explicit agent workspace policy caps host adapter and customization grants
+by intersection; host restrictions remain effective. Sandbox selection alone
+retains the read-only default. Per-agent declarations drive both capability
+assembly and workspace binding; the manifest reports their effective selections.
+
 Policy is intentionally split from storage. `WorkspacePolicy` decides which
 model-facing paths are visible or mutable, while the selected provider decides
 how those paths map to storage. This keeps policy portable and provider-extensible

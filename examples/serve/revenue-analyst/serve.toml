@@ -1,10 +1,5 @@
 name = "revenue-analyst"
 
-[sandbox]
-# none | local | bashkit | microvm. The code does not change between them;
-# a host supplies microvm, and dev substitutes bashkit.
-kind = "bashkit"
-
 [secrets]
 # Beyond the ones connections and channels declare themselves.
 required = []

@@ -5,6 +5,7 @@ use serve::prelude::*;
 #[agent]
 fn reviewer() -> Agent {
     Agent::builder()
+        .sandbox(SandboxKind::Bashkit)
         // A lighter model is enough for a two-sentence review.
         .model("openai/gpt-6-luna")
         .instructions(

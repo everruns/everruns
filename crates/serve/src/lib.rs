@@ -149,8 +149,8 @@ pub type Result<T = (), E = Error> = std::result::Result<T, E>;
 /// Everything an application file usually imports.
 pub mod prelude {
     pub use crate::{
-        Agent, App, Channel, Cx, Destination, EvalCx, McpServer, Result, Secret, Slack, Webhook,
-        agent, channel, connection, eval, md, schedule, tool,
+        Agent, App, Channel, Cx, Destination, EvalCx, McpServer, Result, SandboxKind, Secret,
+        Slack, Webhook, agent, channel, connection, eval, md, schedule, tool,
     };
     pub use anyhow::{anyhow, bail, ensure};
     pub use serde::{Deserialize, Serialize};

@@ -115,7 +115,7 @@ The file layout says what each piece is:
 ```text
 revenue-analyst/
   build.rs                 # serve_build::embed()
-  serve.toml               # name, sandbox, extra secrets
+  serve.toml               # name, extra secrets
   agent/
     instructions.md        # always-on prompt
     skills/sql-style/SKILL.md
@@ -473,3 +473,30 @@ The full guide, wire reference and hosting contract live next to the crate in
 Load and export the shared portable package format, including initial files and
 complete skill directories. See [Define agents as files](/how-to/define-agents-as-files/)
 for validation, diffs, model bindings and runnable examples.
+
+## Agent sandbox and workspace permissions
+
+Declare capabilities with the agent in `agent.rs`:
+
+```rust
+use serve::prelude::*;
+
+let agent = Agent::builder()
+    .model("openai/gpt-6-luna")
+    .sandbox(SandboxKind::Bashkit)
+    .workspace_policy(everruns::WorkspacePolicy::read_only())
+    .build();
+```
+
+Bashkit provides a virtual shell over the session filesystem. Selecting it
+does not enable writes; supply a scoped workspace policy when writes are needed.
+The [Bashkit workspace example](https://github.com/everruns/everruns/tree/main/examples/serve/bashkit-workspace)
+declares its write scope in the same builder and verifies files across turns
+and a server restart.
+
+Agents can select different sandboxes in one app. An explicit selection,
+including `SandboxKind::None`, overrides the legacy `[sandbox]` app default
+in `serve.toml`. The manifest lists each agent's effective sandbox. Hosts
+still supply storage and MicroVM adapters; without an adapter Serve retains
+its Bashkit substitution. App naming, auth and deployment settings remain in
+`serve.toml`.

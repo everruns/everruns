@@ -34,6 +34,7 @@ pub struct Manifest {
     pub schedules: Vec<ScheduleInfo>,
     pub connections: Vec<ConnectionInfo>,
     pub secrets: Vec<SecretInfo>,
+    /// Legacy app-wide default. Each agent reports its effective selection.
     pub sandbox: SandboxInfo,
     /// Every model string, for the gateway.
     pub models: Vec<String>,
@@ -53,6 +54,8 @@ pub struct AppInfo {
 pub struct AgentInfo {
     pub name: String,
     pub model: String,
+    /// Effective sandbox after resolving the agent declaration and app default.
+    pub sandbox: SandboxInfo,
     pub description: Option<String>,
     pub default: bool,
     /// Other agents of this app this one hands work to (`spawn_agent`).
@@ -151,6 +154,9 @@ impl Manifest {
                 AgentInfo {
                     name: agent.name.clone(),
                     model: agent.spec.model.clone(),
+                    sandbox: SandboxInfo {
+                        kind: agent.spec.sandbox_kind(&inner.config).as_str().into(),
+                    },
                     description: agent
                         .spec
                         .description
@@ -371,5 +377,11 @@ fn hash(manifest: &Manifest, app: &App) -> String {
         .map(|asset| (asset.path, asset.contents))
         .collect();
     assets.hash(&mut hasher);
+    // WorkspacePolicy has no wire format. Include its deterministic structural
+    // representation so policy-only edits change the declaration identity too.
+    for agent in &app.inner.agents {
+        agent.name.hash(&mut hasher);
+        format!("{:?}", agent.spec.workspace_policy).hash(&mut hasher);
+    }
     format!("b{:016x}", hasher.finish())
 }

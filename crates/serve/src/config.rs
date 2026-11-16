@@ -3,9 +3,6 @@
 //! ```toml
 //! name = "revenue-analyst"          # defaults to the Cargo package name
 //!
-//! [sandbox]
-//! kind = "bashkit"                  # none | local | bashkit | microvm
-//!
 //! [secrets]
 //! required = ["WAREHOUSE_URL"]      # beyond those connections/channels declare
 //!
@@ -55,7 +52,8 @@ pub struct AppConfig {
     pub voice: Option<everruns::voice::VoiceChannelConfig>,
 }
 
-/// `[sandbox]`.
+/// Legacy app-wide `[sandbox]` default. Prefer `AgentBuilder::sandbox` so
+/// capabilities and workspace permissions live alongside the agent.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SandboxConfig {
@@ -63,8 +61,8 @@ pub struct SandboxConfig {
     pub kind: SandboxKind,
 }
 
-/// Where the agent's shell and files run. The code never changes between
-/// kinds; the host (or `dev`) supplies the adapter.
+/// The agent's shell/filesystem capability. The host supplies storage and
+/// any MicroVM adapter.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum SandboxKind {

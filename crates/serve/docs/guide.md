@@ -279,12 +279,29 @@ engine's events directly; `--against` drives the same wire API the SDK uses
 
 ## 10. The sandbox
 
-```toml
-# serve.toml
-[sandbox]
-kind = "bashkit"   # none | local | bashkit | microvm
+Declare the sandbox alongside the model and workspace permissions in `agent.rs`:
+
+```rust
+use serve::prelude::*;
+
+let agent = Agent::builder()
+    .model("openai/gpt-6-luna")
+    .sandbox(SandboxKind::Bashkit)
+    .workspace_policy(everruns::WorkspacePolicy::read_only())
+    .build();
 ```
 
-The code does not change between kinds. `bashkit` gives agents a virtual bash
-over the session filesystem, and `local` gives them files under the data dir.
-`microvm` is supplied by a host; in `dev`, bashkit stands in for it.
+`Bashkit` gives this agent a virtual bash over its session filesystem;
+`Local` gives it file tools, and `None` adds neither. Writes require an
+explicit workspace policy. The [workspace example](../../../examples/serve/bashkit-workspace)
+shows a narrow write scope and files surviving a restart.
+
+The host supplies storage and any `Microvm` adapter. Without an adapter,
+Serve retains its Bashkit substitution. SQLite's automatic workspace directory
+does not replace an explicit MicroVM adapter's workspace binding.
+
+The older `[sandbox] kind = "bashkit"` in `serve.toml` remains an app-wide
+fallback for agents without `.sandbox(...)`. An explicit agent setting,
+including `SandboxKind::None`, takes precedence. The manifest reports each
+agent's effective sandbox; its top-level sandbox is only the legacy default.
+`serve.toml` remains the place for app naming, auth and deployment configuration.

@@ -112,7 +112,10 @@ impl Host {
                 .capability(images.capability())
                 .allow_workspace_write(crate::config::ImagesConfig::OUTPUT_DIR)?;
         }
-        builder = match self.app.inner.config.sandbox.kind {
+        if let Some(policy) = &spec.workspace_policy {
+            builder = builder.workspace_policy(policy.clone());
+        }
+        builder = match spec.sandbox_kind(&self.app.inner.config) {
             SandboxKind::None => builder,
             SandboxKind::Local => builder.capability(everruns::FileSystem),
             SandboxKind::Bashkit => builder.capability(BashkitShell::new()),
@@ -140,6 +143,11 @@ impl Host {
         if let Some(package) = &spec.package {
             let package = package.clone().bind_mcp(|key| std::env::var(key).ok())?;
             builder = package.apply_to(builder)?;
+        }
+        // Explicit agent permissions cap adapter/customization grants, while
+        // composing with (rather than replacing) any host restrictions.
+        if let Some(policy) = &spec.workspace_policy {
+            builder = builder.restrict_workspace_policy(policy.clone());
         }
         builder
             .build()

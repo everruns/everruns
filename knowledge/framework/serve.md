@@ -92,6 +92,15 @@ runtime.
   client resumes with the server's cursors: `since_id` (an event id) or
   `after_sequence` (a durable sequence). Both address the engine's canonical
   log, which survives restarts with dense sequences.
+- **Agents declare capabilities; hosts bind resources.** Sandbox selection and
+  workspace permissions belong beside the model and instructions in the agent
+  declaration. The app-wide sandbox config remains a fallback; an explicit
+  per-agent choice wins, including disabling the tools. The manifest reports
+  effective per-agent selections and policy changes affect declaration identity.
+  Host-provided storage and MicroVM adapters retain their binding precedence;
+  selecting a shell does not grant workspace writes. See the
+  [builder](../../crates/serve/src/agent.rs) and
+  [configuration guide](../../crates/serve/docs/guide.md#10-the-sandbox).
 - **Apps name models; hosts own keys.** Model routing uses the standard provider
   environment settings; OpenAI endpoint overrides apply only to OpenAI-routed
   models and preserve the provider-visible model ID after removing its routing

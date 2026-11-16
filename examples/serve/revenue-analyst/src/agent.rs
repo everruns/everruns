@@ -4,6 +4,7 @@ use serve::prelude::*;
 #[agent(default)]
 fn analyst() -> Agent {
     Agent::builder()
+        .sandbox(SandboxKind::Bashkit)
         // Resolved by the host's model gateway (or `OPENAI_API_KEY` locally);
         // the app holds no provider keys.
         .model("openai/gpt-6.1-sol")

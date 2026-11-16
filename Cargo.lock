@@ -4263,6 +4263,7 @@ dependencies = [
  "everruns-drivers",
  "everruns-integrations",
  "everruns-llmsim",
+ "everruns-serve",
  "futures",
  "serde",
  "serde_json",
