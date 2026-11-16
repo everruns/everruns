@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-16
+
+- [Host-owned browser sessions](integrations/browser-sessions.md): separate browser action semantics from transport, target ownership and network authority; preserve hosted Browserless egress controls.
+
 ## 2026-11-15
 
 - [MCP Apps](ui/mcp-apps.md): separate data tools from explicit session rendering, preserve drafts and navigation on repeated entry results, version shell resources, and bound bridge lifecycles with connection recovery.

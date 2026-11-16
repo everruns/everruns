@@ -23,6 +23,7 @@ pub mod cdp;
 pub mod client;
 pub mod computer;
 pub mod connection;
+pub mod direct;
 mod interaction_code;
 pub mod session_tools;
 pub mod state;

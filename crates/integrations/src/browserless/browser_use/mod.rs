@@ -64,11 +64,25 @@ screenshot, fill forms with form_input, and manage tabs. Every result reports th
 /// The `browser` tool on a Browserless browser.
 pub struct BrowserTool {
     config: BrowserUseConfig,
+    direct: Option<std::sync::Arc<super::direct::DirectBackend>>,
 }
 
 impl BrowserTool {
     pub fn new(config: BrowserUseConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            direct: None,
+        }
+    }
+
+    pub(crate) fn with_direct(
+        config: BrowserUseConfig,
+        backend: std::sync::Arc<super::direct::DirectBackend>,
+    ) -> Self {
+        Self {
+            config,
+            direct: Some(backend),
+        }
     }
 
     async fn charge(&self, context: &ToolContext) -> Result<u32, ToolExecutionResult> {
@@ -92,7 +106,8 @@ impl BrowserTool {
         if let Err(e) = call.validate(viewport) {
             return ToolExecutionResult::tool_error(e);
         }
-        if let BrowserAction::Navigate { url } = &call.action
+        if self.direct.is_none()
+            && let BrowserAction::Navigate { url } = &call.action
             && let Err(e) = navigation_target(url).and_then(|url| match url {
                 Navigation::Url(url) => url_blocked(context, &url).map_or(Ok(()), Err),
                 Navigation::History(_) => Ok(()),
@@ -104,7 +119,68 @@ impl BrowserTool {
             Ok(used) => used,
             Err(result) => return result,
         };
-        let mut session = match connect(context).await {
+        // THREAT[TM-BROWSER-004]: fail closed on missing ownership; never replay actions.
+        // Direct contexts are host-owned; the per-capability lock also protects
+        // callers that execute a tool outside the normal scheduler.
+        let owned_context = match &self.direct {
+            Some(backend) => Some(backend.session(context.session_id).await),
+            None => None,
+        };
+        let mut direct_context = match &owned_context {
+            Some(owned) => Some(owned.lock().await),
+            None => None,
+        };
+        let connection = match (&self.direct, &mut direct_context) {
+            (Some(backend), Some(owned)) => {
+                let Some(storage) = context.storage_store.as_ref() else {
+                    return ToolExecutionResult::tool_error(
+                        "Direct browser requires session storage",
+                    );
+                };
+                let marker = match storage
+                    .get_value(context.session_id, "browser_use.direct_context")
+                    .await
+                {
+                    Ok(marker) => marker,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(
+                            "Cannot verify browser session ownership",
+                        );
+                    }
+                };
+                if owned.is_none() && marker.is_some() {
+                    return ToolExecutionResult::tool_error(
+                        "Browser ownership was lost or closed; start a new agent session rather than reusing stale browser state",
+                    );
+                }
+                match CdpSession::connect_direct(
+                    &backend.config.endpoint,
+                    &backend.config.headers,
+                    owned.as_deref(),
+                )
+                .await
+                {
+                    Ok(session) => {
+                        let id = session.browser_context_id().to_owned();
+                        **owned = Some(id.clone());
+                        if storage
+                            .set_value(context.session_id, "browser_use.direct_context", &id)
+                            .await
+                            .is_err()
+                        {
+                            session.disconnect().await;
+                            return ToolExecutionResult::tool_error(
+                                "Cannot persist browser session ownership; no action was performed",
+                            );
+                        }
+                        Connected::attach(session, context).await
+                    }
+                    Err(error) => Err(ToolExecutionResult::tool_error(error)),
+                }
+            }
+            _ => connect(context).await,
+        };
+        let mut session = match connection {
             Ok(session) => session,
             Err(result) => return result,
         };
@@ -113,7 +189,12 @@ impl BrowserTool {
             Ok(_) => Some(browser_state(context, &mut session.display).await),
             Err(_) => None,
         };
-        session.release(context).await;
+        if self.direct.is_some() {
+            session.save_cursor(context).await;
+            session.display.into_session().disconnect().await;
+        } else {
+            session.release(context).await;
+        }
         let (done, state) = match (outcome, state) {
             (Ok(done), Some(Ok(state))) => (done, state),
             (Ok(_), Some(Err(e))) => {
@@ -170,7 +251,8 @@ impl BrowserTool {
             action => {
                 let done = act(action, context, &mut session.display, viewport).await;
                 // THREAT[TM-TOOL-015]: the page may have navigated itself.
-                if let Ok(url) = session.display.current_url().await
+                if self.direct.is_none()
+                    && let Ok(url) = session.display.current_url().await
                     && !is_local_page(&url)
                     && let Some(reason) = url_blocked(context, &url)
                 {
@@ -766,7 +848,7 @@ impl Connected {
     }
 
     /// Keep the browser alive for the next call and remember the cursor.
-    async fn release(self, context: &ToolContext) {
+    async fn save_cursor(&self, context: &ToolContext) {
         let cursor = self.display.cursor();
         let held = self.display.button_held();
         let value = if held {
@@ -775,6 +857,10 @@ impl Connected {
             format!("{},{}", cursor[0], cursor[1])
         };
         save(context, CURSOR_KEY, &value).await;
+    }
+
+    async fn release(self, context: &ToolContext) {
+        self.save_cursor(context).await;
         let mut session = self.display.into_session();
         match session.reconnect(DEFAULT_RECONNECT_TIMEOUT_MS).await {
             Ok(endpoint) => {

@@ -2231,3 +2231,16 @@ See [Native Extraction Services](../operations/extractions-service.md).
 
 See [Framework application boundaries](../framework/application-api.md) and the
 [acceptance tests](../../crates/everruns/tests/service_parity.rs).
+
+## Host-owned browser boundary
+
+| ID | Threat | Mitigation |
+| --- | --- | --- |
+| TM-BROWSER-001 | A model supplies a CDP endpoint or credentials, or transport errors leak credentials | Endpoint and headers are trusted host-only configuration, never tool arguments. Config Debug and connection errors are redacted. Remote endpoints require TLS; plaintext is limited to literal loopback. The host must authenticate its endpoint and protect its configuration. |
+| TM-BROWSER-002 | Sessions share cookies, tabs or a personal default profile | Create a dedicated Chromium browser context per session, retain context ownership in the host, filter/validate targets by context, serialize actions per session and dispose only owned contexts. Browser contexts are logical isolation, not an OS or mutually hostile-tenant security boundary. |
+| TM-BROWSER-003 | Browser requests reach host/sandbox private services | Explicit BrowserOwned mode assigns all navigation, subresource and WebSocket egress to the browser host. The hosted Browserless interceptor is not silently reused or weakened. Host sandbox/firewall policy is required; allowing sandbox localhost is intentional. |
+| TM-BROWSER-004 | Reconnect silently replays a mutation or resumes with stale ownership | A persisted marker detects a lost in-memory context owner and refuses replacement. Do not blindly replay an interrupted click/submission; reconcile its outcome. Browser lifetime and session-end cleanup are host responsibilities. This backend does not provide personal-profile lending or durable human approval. |
+
+See [browser session design](../integrations/browser-sessions.md) and
+[acceptance harness](../../scripts/browser-acceptance/README.md). Loopback/container
+acceptance is not evidence of production TLS, remote-provider or hostile-tenant isolation.

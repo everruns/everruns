@@ -631,3 +631,11 @@ pub mod evaluation;
 
 #[cfg(feature = "channels")]
 mod channel_controls;
+
+/// Host-configured isolated local and remote Chromium.
+#[cfg(feature = "direct-browser")]
+pub mod browser {
+    pub use everruns_integrations::browserless::direct::{
+        BrowserNetworkMode, DirectBrowserCapability, DirectBrowserConfig,
+    };
+}

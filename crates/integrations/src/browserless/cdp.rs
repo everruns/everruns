@@ -82,6 +82,7 @@ pub struct CdpSession {
     page_target_id: String,
     page_session_id: String,
     browser_context_id: String,
+    guarded: bool,
 }
 
 impl Drop for CdpSession {
@@ -112,6 +113,85 @@ impl CdpSession {
         Ok(session)
     }
 
+    /// Attach to a host-owned browser with browser-side networking. Never attaches the
+    /// default context. The host must enforce the sandbox's network boundary.
+    /// THREAT[TM-BROWSER-002]: context ownership confines target discovery and attachment.
+    pub(crate) async fn connect_direct(
+        ws_url: &str,
+        headers: &[(String, String)],
+        context: Option<&str>,
+    ) -> Result<Self, String> {
+        let mut session = Self::open_socket_with_headers(ws_url, None, headers)
+            .await
+            .map_err(|_| {
+                "Direct browser connection failed (endpoint and credentials redacted)".to_string()
+            })?;
+        let context_id = if let Some(id) = context {
+            if !session.context_exists(id).await? {
+                return Err(
+                    "Browser session was lost; close it before starting a fresh browser context"
+                        .into(),
+                );
+            }
+            id.to_owned()
+        } else {
+            let result = session
+                .send_browser_command(
+                    "Target.createBrowserContext",
+                    json!({"disposeOnDetach": false}),
+                )
+                .await?;
+            result
+                .get("browserContextId")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .ok_or("Browser did not create an isolated context")?
+                .to_owned()
+        };
+        session.browser_context_id = context_id.clone();
+        let attached = async {
+            let target = match session.find_page_in_context(&context_id).await? {
+                Some(id) => id,
+                None => session.create_blank_page_target(&context_id).await?,
+            };
+            session.attach_page(&target).await
+        }
+        .await;
+        if let Err(error) = attached {
+            if context.is_none() {
+                let _ = session
+                    .send_browser_command(
+                        "Target.disposeBrowserContext",
+                        json!({"browserContextId":context_id}),
+                    )
+                    .await;
+            }
+            session.disconnect().await;
+            return Err(error);
+        }
+        Ok(session)
+    }
+
+    pub(crate) async fn dispose_direct(
+        ws_url: &str,
+        headers: &[(String, String)],
+        context_id: &str,
+    ) -> Result<(), String> {
+        let mut session = Self::open_socket_with_headers(ws_url, None, headers)
+            .await
+            .map_err(|_| "Direct browser connection failed".to_string())?;
+        if session.context_exists(context_id).await? {
+            session
+                .send_browser_command(
+                    "Target.disposeBrowserContext",
+                    json!({"browserContextId": context_id}),
+                )
+                .await?;
+        }
+        session.disconnect().await;
+        Ok(())
+    }
+
     /// Connect only to end a persistent browser: disconnecting without
     /// `Browserless.reconnect` destroys it. No page is attached, so nothing
     /// can be navigated through this session.
@@ -120,29 +200,33 @@ impl CdpSession {
     }
 
     async fn open_socket(ws_url: &str, egress: Option<Arc<BrowserEgress>>) -> Result<Self, String> {
-        // THREAT[TM-TOOL-017]: Redact token from log output to avoid leaking credentials
-        let redacted = if let Some(idx) = ws_url.find("token=") {
-            format!("{}token=<REDACTED>", &ws_url[..idx])
-        } else {
-            ws_url.to_string()
-        };
-        debug!("CDP connecting to {redacted}");
+        Self::open_socket_with_headers(ws_url, egress, &[]).await
+    }
+
+    async fn open_socket_with_headers(
+        ws_url: &str,
+        egress: Option<Arc<BrowserEgress>>,
+        headers: &[(String, String)],
+    ) -> Result<Self, String> {
+        // Endpoint paths, query strings and headers may all contain credentials.
+        debug!("CDP connecting to configured endpoint");
+        let guarded = egress.is_some();
 
         // Force HTTP/1.1 ALPN — WebSocket upgrade (RFC 6455) requires HTTP/1.1.
         // Without this, rustls may negotiate h2, and the proxy in front of
         // Browserless converts the upgrade into a plain GET, returning 400.
         let connector = build_http11_tls_connector()?;
 
-        let (ws_stream, _response) =
-            tokio::time::timeout(CDP_CONNECT_TIMEOUT, connect_with_proxy(ws_url, connector))
-                .await
-                .map_err(|_| {
-                    format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})")
-                })?
-                .map_err(|e| {
-                    debug!("CDP WebSocket connection error for {redacted}: {e}");
-                    e
-                })?;
+        let (ws_stream, _response) = tokio::time::timeout(
+            CDP_CONNECT_TIMEOUT,
+            connect_with_proxy(ws_url, connector, headers),
+        )
+        .await
+        .map_err(|_| format!("CDP WebSocket connection timed out ({CDP_CONNECT_TIMEOUT:?})"))?
+        .map_err(|e| {
+            debug!("CDP WebSocket connection failed");
+            e
+        })?;
 
         let (sink, source) = ws_stream.split();
         let sink: SharedSink = Arc::new(tokio::sync::Mutex::new(sink));
@@ -168,6 +252,7 @@ impl CdpSession {
             page_target_id: String::new(),
             page_session_id: String::new(),
             browser_context_id: String::new(),
+            guarded,
         })
     }
 
@@ -458,15 +543,16 @@ impl CdpSession {
             std::mem::replace(&mut self.page_target_id, target_id.to_string()),
             std::mem::replace(&mut self.page_session_id, session_id),
         );
-        if let Err(error) = self
-            .send_page_command(
-                "Fetch.enable",
-                json!({
-                    "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
-                    "handleAuthRequests": false
-                }),
-            )
-            .await
+        if self.guarded
+            && let Err(error) = self
+                .send_page_command(
+                    "Fetch.enable",
+                    json!({
+                        "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
+                        "handleAuthRequests": false
+                    }),
+                )
+                .await
         {
             (self.page_target_id, self.page_session_id) = previous;
             return Err(format!("Could not arm the browser network guard: {error}"));
@@ -1201,10 +1287,20 @@ fn map_ws_connect_error(e: tokio_tungstenite::tungstenite::Error) -> String {
 async fn connect_with_proxy(
     ws_url: &str,
     connector: Connector,
+    headers: &[(String, String)],
 ) -> Result<(WsStream, Response<Option<Vec<u8>>>), String> {
-    let request = ws_url
+    let mut request = ws_url
         .into_client_request()
-        .map_err(|e| format!("Invalid WebSocket URL: {e}"))?;
+        .map_err(|_| "Invalid WebSocket URL".to_string())?;
+    for (name, value) in headers {
+        request.headers_mut().insert(
+            name.parse::<tokio_tungstenite::tungstenite::http::HeaderName>()
+                .map_err(|_| "Invalid CDP header name".to_string())?,
+            value
+                .parse()
+                .map_err(|_| "Invalid CDP header value".to_string())?,
+        );
+    }
     let uri = request.uri().clone();
     let host = uri
         .host()
@@ -1226,7 +1322,7 @@ async fn connect_with_proxy(
             .map_err(map_ws_connect_error);
     }
 
-    connect_async_tls_with_config(ws_url, None, false, Some(connector))
+    connect_async_tls_with_config(request, None, false, Some(connector))
         .await
         .map_err(map_ws_connect_error)
 }

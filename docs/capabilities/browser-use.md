@@ -1,7 +1,7 @@
 ---
 title: Browser Use
 description: Let an agent work in a browser through the page structure, with element refs, form filling, and tabs, on any model.
-appliesTo: [platform]
+appliesTo: [framework, platform]
 ---
 
 | | |
@@ -33,6 +33,59 @@ browser. Connect Browserless from **Settings → Connections** first.
 The agent shares that browser with the Browserless tools and with
 [Computer Use](/capabilities/computer-use/), so a page one opens is a page the
 others see.
+
+## Host-owned browsers in the Framework
+
+An embedding application can attach an isolated local or sandbox Chromium
+browser instead of provisioning Browserless. The host supplies a browser-root
+CDP WebSocket endpoint and owns browser launch, authentication, network egress
+and shutdown. Each Everruns session receives a separate browser context; it
+cannot select another session's tabs or the browser's default profile.
+
+Enable the Framework `direct-browser` feature. Do not enable its `browserless`
+preset at the same time: both implementations provide the same `browser_use`
+capability. The example also uses the Framework `openai` feature.
+
+```rust
+use everruns::{Agent, Engine, Model, OpenAI};
+use everruns::browser::{
+    BrowserNetworkMode, DirectBrowserCapability, DirectBrowserConfig,
+};
+
+let config = DirectBrowserConfig::new(
+    std::env::var("BROWSER_CDP_URL")?,
+    BrowserNetworkMode::BrowserOwned,
+)?;
+let browser = DirectBrowserCapability::new(config);
+let engine = Engine::new();
+engine.register_capability(browser.clone())?;
+let agent = Agent::builder()
+    .instructions("Inspect the application in the browser.")
+    .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+    .capability("browser_use")
+    .build()?;
+let session = engine.create(agent);
+// Run the session, then dispose its browser context with browser.close(session.session_id()).await.
+```
+
+Supply authentication through `config.header(name, value)` from trusted host
+configuration. Neither endpoint nor header values belong in the agent prompt,
+tool arguments, or logs. Use `wss://` for remote endpoints; unencrypted `ws://`
+is accepted only for literal loopback addresses. Do not expose a raw CDP port
+to the public network. Host configuration is privileged: it is not a mechanism
+for accepting arbitrary endpoint URLs from users or model output.
+
+`BrowserOwned` explicitly assigns egress enforcement to the browser host or
+sandbox. Requests, subresources and WebSockets originate there, so an app on
+sandbox-local `localhost` remains reachable. This does not apply the hosted
+Browserless SSRF interceptor. Deploy sandbox firewall/egress policy separately;
+a CDP credential authorizes powerful browser control, not just navigation.
+
+The host must call `close` for a finished session and manage browser lifetime.
+This backend is not a connection to a personal profile and does not implement
+personal-browser tab lending or human handoff. Reconnecting the transport does
+not prove that an interrupted click or submission failed: inspect the page and
+reconcile the result rather than blindly repeating it.
 
 ## Tools
 

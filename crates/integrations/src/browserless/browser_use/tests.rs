@@ -198,7 +198,7 @@ async fn ok(
 fn ref_of(text: &str, name: &str) -> String {
     let line = text
         .lines()
-        .find(|line| line.contains(&format!("\"{name}\"")))
+        .find(|line| line.contains(&format!("\"{name}\"")) && line.contains("[ref_"))
         .unwrap_or_else(|| panic!("no {name} in\n{text}"));
     let start = line.rfind("[ref_").unwrap() + 1;
     line[start..line.len() - 1].to_string()
@@ -504,4 +504,186 @@ async fn a_key_press_reports_where_focus_landed_on_a_real_browser() {
         "{page}"
     );
     let _ = browser.child.kill().await;
+}
+
+#[test]
+fn direct_browser_host_configuration_is_validated_and_redacted() {
+    use crate::browserless::direct::{BrowserNetworkMode, DirectBrowserConfig};
+    for endpoint in [
+        "ws://example.com/devtools",
+        "http://127.0.0.1",
+        "ws://localhost:9222",
+        "wss://user:secret@example.com",
+        "wss://example.com/#token",
+    ] {
+        assert!(DirectBrowserConfig::new(endpoint, BrowserNetworkMode::BrowserOwned).is_err());
+    }
+    let config = DirectBrowserConfig::new(
+        "wss://example.com/secret-path?token=secret-query",
+        BrowserNetworkMode::BrowserOwned,
+    )
+    .unwrap()
+    .header("Authorization", "Bearer secret-header")
+    .unwrap();
+    assert!(!format!("{config:?}").contains("secret"));
+    assert!(config.clone().header("Host", "evil").is_err());
+    assert!(config.header("Authorization", "x\r\ny").is_err());
+}
+
+/// Invoked by scripts/browser-acceptance/run.py for local and remote-container
+/// Chromium. Ordinary unit runs skip; the harness requires every fixture input.
+#[tokio::test]
+async fn direct_browser_acceptance() {
+    use crate::browserless::direct::{
+        BrowserNetworkMode, DirectBrowserCapability, DirectBrowserConfig,
+    };
+    let Ok(endpoint) = std::env::var("EVERRUNS_BROWSER_CDP_ENDPOINT") else {
+        assert!(
+            std::env::var_os("EVERRUNS_BROWSER_ACCEPTANCE_REQUIRED").is_none(),
+            "CDP endpoint required"
+        );
+        eprintln!("SKIP direct_browser_acceptance: run scripts/browser-acceptance/run.py");
+        return;
+    };
+    let fixture = std::env::var("EVERRUNS_BROWSER_FIXTURE_URL").expect("fixture URL");
+    let mut config = DirectBrowserConfig::new(endpoint, BrowserNetworkMode::BrowserOwned).unwrap();
+    if let Ok(auth) = std::env::var("EVERRUNS_BROWSER_AUTHORIZATION") {
+        let refused = DirectBrowserCapability::new(config.clone());
+        let (ctx, _) = context();
+        assert!(matches!(
+            refused.tools()[0]
+                .execute_with_context(json!({"action":"list_tabs"}), &ctx)
+                .await,
+            ToolExecutionResult::ToolError(_)
+        ));
+        config = config.header("Authorization", auth).unwrap();
+    }
+    let cap = DirectBrowserCapability::new(config);
+    let tool = cap.tools().remove(0);
+    let (one, _) = context();
+    let (two, _) = context();
+    let navigate = tool
+        .execute_with_context(json!({"action":"navigate", "url":fixture}), &one)
+        .await;
+    let first = match navigate {
+        ToolExecutionResult::Success(value) => value,
+        other => panic!("navigate failed: {other:?}"),
+    };
+    let tab = first["browser_state"]["tabs"][0]["id"]
+        .as_str()
+        .or_else(|| first["browser_state"]["tabs"][0]["tab_id"].as_str())
+        .expect("tab id");
+    let page = tool
+        .execute_with_context(json!({"action":"read_page"}), &one)
+        .await;
+    assert!(
+        matches!(&page, ToolExecutionResult::Success(value) if value.to_string().contains("Submit")),
+        "{page:?}"
+    );
+    let text = match &page {
+        ToolExecutionResult::Success(value) => value["text"].as_str().unwrap(),
+        _ => unreachable!(),
+    };
+    let field = ref_of(text, "Name");
+    let submit = ref_of(text, "Submit");
+    for args in [
+        json!({"action":"form_input","target":{"type":"ref","ref":field},"value":"acceptance"}),
+        json!({"action":"left_click","target":{"type":"ref","ref":submit}}),
+    ] {
+        let result = tool.execute_with_context(args, &one).await;
+        assert!(
+            matches!(result, ToolExecutionResult::Success(_)),
+            "{result:?}"
+        );
+    }
+    let result = tool
+        .execute_with_context(json!({"action":"get_page_text"}), &one)
+        .await;
+    assert!(
+        matches!(&result, ToolExecutionResult::Success(value) if value.to_string().contains("acceptance:1")),
+        "{result:?}"
+    );
+    // A new connection to the same context retains its page. A second session
+    // cannot select the first session's target, even with a known target id.
+    let other = tool
+        .execute_with_context(json!({"action":"switch_tab", "tab_id":tab}), &two)
+        .await;
+    assert!(
+        matches!(other, ToolExecutionResult::ToolError(_)),
+        "{other:?}"
+    );
+    let shot = tool
+        .execute_with_context(json!({"action":"screenshot"}), &one)
+        .await;
+    assert!(
+        matches!(shot, ToolExecutionResult::SuccessWithImages { .. }),
+        "{shot:?}"
+    );
+    let blocked = tool
+        .execute_with_context(
+            json!({"action":"navigate", "url":"file:///etc/passwd"}),
+            &one,
+        )
+        .await;
+    assert!(matches!(blocked, ToolExecutionResult::ToolError(_)));
+    let restarted = DirectBrowserCapability::new(cap.backend.config.clone());
+    let result = restarted.tools()[0]
+        .execute_with_context(json!({"action":"list_tabs"}), &one)
+        .await;
+    assert!(
+        matches!(result, ToolExecutionResult::ToolError(ref error) if error.contains("ownership was lost")),
+        "{result:?}"
+    );
+    // Independent contexts cannot observe the other session's origin storage.
+    let result = tool
+        .execute_with_context(json!({"action":"navigate", "url":fixture}), &two)
+        .await;
+    assert!(
+        matches!(result, ToolExecutionResult::Success(_)),
+        "{result:?}"
+    );
+    for (ctx, expected) in [(&one, Some("1")), (&two, None)] {
+        let owned = cap.backend.session(ctx.session_id).await;
+        let id = owned.lock().await.clone().unwrap();
+        let mut cdp = CdpSession::connect_direct(
+            &cap.backend.config.endpoint,
+            &cap.backend.config.headers,
+            Some(&id),
+        )
+        .await
+        .unwrap();
+        let state = cdp
+            .evaluate("localStorage.getItem('submissions')")
+            .await
+            .unwrap();
+        assert_eq!(state["result"]["value"].as_str(), expected, "{state:?}");
+        // Browser-owned networking must support upgraded connections too.
+        // In container mode this address exists inside the browser container.
+        let echo = cdp
+            .evaluate(r#"new Promise((resolve, reject) => {
+                const ws = new WebSocket(location.origin.replace('http', 'ws') + '/socket');
+                const timeout = setTimeout(() => { ws.close(); reject(new Error('echo timeout')); }, 5000);
+                ws.onopen = () => ws.send('browser-owned-echo');
+                ws.onerror = () => { clearTimeout(timeout); reject(new Error('echo failed')); };
+                ws.onmessage = event => { clearTimeout(timeout); ws.close(); resolve(event.data); };
+            })"#)
+            .await
+            .unwrap();
+        assert_eq!(
+            echo["result"]["value"].as_str(),
+            Some("browser-owned-echo"),
+            "{echo:?}"
+        );
+        cdp.disconnect().await;
+    }
+    cap.close(one.session_id).await.unwrap();
+    let still_live = tool
+        .execute_with_context(json!({"action":"get_page_text"}), &two)
+        .await;
+    assert!(
+        matches!(still_live, ToolExecutionResult::Success(_)),
+        "{still_live:?}"
+    );
+    cap.close(two.session_id).await.unwrap();
+    cap.close(one.session_id).await.unwrap();
 }
