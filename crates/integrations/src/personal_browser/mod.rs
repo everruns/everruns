@@ -60,8 +60,12 @@ impl std::fmt::Debug for BrowseProcessConfig {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BrowseState {
+    /// MCP transport initialized. This does not mean an extension is paired,
+    /// a tab is lent, or browser actions are currently permitted.
     Ready,
+    /// The host explicitly ended this supervisor.
     Closed,
+    /// Process/protocol continuity was lost; never automatically replay actions.
     Interrupted,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
