@@ -22,6 +22,7 @@ all-features = true
 ignored = ["prost", "protox", "tonic-prost", "tonic-prost-build", "connectrpc-build", "connectrpc", "buffa", "http-body"]
 
 [features]
+personal-browser = ["dep:tokio", "tokio/process", "tokio/io-util", "tokio/macros", "dep:serde_json", "dep:uuid"]
 event-webhooks = ["dep:hmac", "dep:sha2", "dep:base64", "dep:rand", "dep:hex"]
 default = []
 bashkit = ["dep:everruns-cli-contract", "dep:async-trait", "dep:base64", "dep:bashkit", "dep:clap", "dep:serde_json", "dep:futures", "dep:tokio", "dep:tracing", "dep:url", "dep:everruns-contracts", "everruns-contracts/runtime"]

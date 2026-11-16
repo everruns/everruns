@@ -31,10 +31,12 @@ class HarnessTests(unittest.TestCase):
                 trusted = ssl.create_default_context(cafile=secured['test_ca'])
                 with urllib.request.urlopen(address, context=trusted) as response:
                     self.assertIn(b'Browser acceptance', response.read())
-                with self.assertRaises(urllib.error.URLError):
+                with self.assertRaises(urllib.error.URLError) as untrusted:
                     urllib.request.urlopen(address, context=ssl.create_default_context())
-                with self.assertRaises(urllib.error.URLError):
+                self.assertIsInstance(untrusted.exception.reason, ssl.SSLCertVerificationError)
+                with self.assertRaises(urllib.error.URLError) as mismatch:
                     urllib.request.urlopen(address.replace('127.0.0.1', 'localhost'), context=trusted)
+                self.assertIsInstance(mismatch.exception.reason, ssl.SSLCertVerificationError)
 
     def test_fixture_and_missing_route(self):
         with running(http.server.ThreadingHTTPServer(('127.0.0.1', 0), acceptance.Fixture)) as server:

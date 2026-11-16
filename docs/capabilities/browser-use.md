@@ -87,6 +87,40 @@ personal-browser tab lending or human handoff. Reconnecting the transport does
 not prove that an interrupted click or submission failed: inspect the page and
 reconcile the result rather than blindly repeating it.
 
+## Personal-browser host primitives (experimental)
+
+The separate Framework `personal-browser` feature exposes
+`everruns::personal_browser::BrowseSupervisor` for a host-managed, pinned
+[OpenCode Browse](https://github.com/anomalyco/browse) executable. It retains one
+initialized stdio process per session, with owner checks, bounded messages and
+requests, cancellation cleanup and typed upstream handoff outcomes.
+
+This is **not** a ready-made personal-browser capability: it does not install or
+pair the extension, register model tools, provide a Yolop pairing UI, or persist
+a durable handoff bridge. Extension tab lending and revocation still apply.
+The direct-CDP capability above deliberately does not attach personal profiles.
+
+```rust
+use everruns::personal_browser::{BrowseProcessConfig, BrowseSupervisor};
+
+// `session` is the Framework session owned by this authenticated host request.
+let owner = session.session_id().uuid();
+let browse = BrowseSupervisor::start(
+    owner,
+    BrowseProcessConfig::new("/absolute/path/to/verified/browse"),
+).await?;
+let tools = browse.list_tools(owner).await?;
+// Host controls routing and explicit tool exposure; no model-supplied process config.
+browse.close().await;
+```
+
+A host may bridge the supervisor's `handoff` future to existing Framework durable
+client-tool waits and `resolve_tools`, but must persist its own dispatch/result
+state and authenticate the destination session. Process loss, cancellation or
+an ambiguous mutation is interrupted/unknown, never implicit human approval or
+permission to replay. Supervisor protocol tests alone do not verify extension
+pairing, personal tab isolation or the complete human interaction.
+
 ## Tools
 
 ### `browser`

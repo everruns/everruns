@@ -40,3 +40,17 @@ No release, deployment, push or merge is implied by these results.
   including rejection of an untrusted CA and mismatched hostname. No system
   trust changes and no verification bypass. Production remote-provider
   qualification remains outstanding.
+
+- Full native Yolop application test binary now builds against local shared
+  source plus the endpoint-identity migration. OAuth tests: 20 passed;
+  stored-provider tests: 4 passed; browser tests: 6 passed. Real runtime
+  settings activation, navigate/read/screenshot, persisted results and shutdown
+  passed on local authenticated Chromium and container authenticated WS/WSS.
+  The published-dependency prerequisite still applies; no release was created.
+- Personal supervisor: six subprocess tests plus required real upstream
+  discovery smoke passed (7 executed, no skips). Official Browse commit
+  `c3b29be5299658281fe4ecdcb926bb7b5a9d6f8c`, binary version 0.1.0,
+  built locked in a temporary directory. Initialize/tools discovery and exact
+  handoff schema passed after requesting the supported plain tool surface.
+  Smoke used isolated temporary profiles, autostart disabled and a unique
+  loopback port. It did not install/pair an extension or exercise human handoff.

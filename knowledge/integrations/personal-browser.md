@@ -8,7 +8,10 @@ tags:
 ---
 # Personal browser pairing and handoff (proposed)
 
-Status: design for a follow-on change, **not implemented**. The direct-browser
+Status: partial implementation. The opt-in `personal-browser` feature now supplies
+a persistent session-owned subprocess supervisor and typed upstream handoff
+outcomes. The Framework durable bridge, Yolop UI and actual extension workflow
+remain **not implemented or verified**. The direct-browser
 foundation controls isolated Chromium contexts through host-configured CDP. It
 does not provide personal-profile access, extension pairing, tab lending, or
 human handoff. No release is required or authorized by this design.
@@ -110,3 +113,22 @@ Implement and review this trust boundary in a separate follow-on PR. The direct
 CDP acceptance fixture is useful infrastructure but is not evidence that these
 personal-browser cases pass. This design does not require a new release; Yolop
 package/version coordination remains separate from local path-based validation.
+
+## Implemented host primitive
+
+`everruns::personal_browser` reexports `BrowseSupervisor`, `BrowseProcessConfig`,
+`BrowseState`, `BrowseError` and `HandoffOutcome`. The host supplies an absolute
+path to its pinned upstream executable and starts one supervisor with the
+Framework session's `session_id().uuid()`. Every tool/handoff request checks
+that owner; model input cannot set MCP metadata or executable configuration.
+The library preserves one initialized stdio process rather than spawning per RPC.
+Requests, response frames, queue depth and time are bounded. Drop/cancel/timeout
+ends the owner process instead of automatically repeating a possibly completed
+browser action. Remote errors are redacted; page results still require private
+session-scoped handling. Hosts must cap total supervisor count and authenticate
+all user-facing routes. No extension is installed and no personal profile is
+opened by this library automatically.
+
+The supervisor itself is not a model capability or durable workflow. Do not
+advertise it as complete personal-browser integration. Its synthetic protocol
+tests do not establish upstream extension pairing, tab-lending or human UX.

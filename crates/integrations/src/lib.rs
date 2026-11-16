@@ -61,3 +61,6 @@ mod credential_test_support;
 /// Standard Webhooks signing and verification.
 #[cfg(feature = "event-webhooks")]
 pub mod standard_webhooks;
+
+#[cfg(feature = "personal-browser")]
+pub mod personal_browser;

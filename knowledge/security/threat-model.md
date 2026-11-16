@@ -2244,3 +2244,11 @@ See [Framework application boundaries](../framework/application-api.md) and the
 See [browser session design](../integrations/browser-sessions.md) and
 [acceptance harness](../../scripts/browser-acceptance/README.md). Loopback/container
 acceptance is not evidence of production TLS, remote-provider or hostile-tenant isolation.
+
+## Personal browser supervisor boundary
+
+| ID | Threat | Mitigation |
+| --- | --- | --- |
+| TM-BROWSER-005 | Process pooling or forged metadata borrows another personal browser owner | Trusted host starts one persistent upstream MCP process per full session UUID, checks owner on every tool/handoff call and never accepts caller MCP metadata. Extension lending and authenticated host routing remain necessary; this is not tenant isolation by itself. |
+| TM-BROWSER-006 | Malformed/oversized subprocess output, credentials in logs, or ambiguous cancellation | Bound frames, requests, queue and timeout; inherit only required environment names, redact configuration/errors, discard subprocess stderr, terminate/reap on cancellation/protocol loss without restart/replay. Host caps total process count and supplies a verified executable. Page data remains sensitive to the session. |
+| TM-BROWSER-007 | Fake approval substitutes for human browser continuation | Typed handoff results come from the upstream protocol, not page text or a generic approval. The durable authenticated host bridge is not yet implemented; process loss must be interrupted/unknown and never successful continuation. |
