@@ -745,7 +745,7 @@
           "type": "string"
         },
         "SideEffectClass": {
-          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
           "enum": [
             "Pure",
             "Idempotent",
@@ -905,7 +905,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SideEffectClass",
-                  "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                  "description": "Replay-safety class used when recovering an unfinished tool call.\n\nWhen the journal records a start but no completed result,\n`Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to avoid repeating an uncertain external effect.\n\n`None` is treated conservatively as `AtMostOnce`."
                 },
                 {
                   "type": "null"
@@ -3054,7 +3054,7 @@
           "type": "string"
         },
         "SideEffectClass": {
-          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
           "enum": [
             "Pure",
             "Idempotent",
@@ -3214,7 +3214,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SideEffectClass",
-                  "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                  "description": "Replay-safety class used when recovering an unfinished tool call.\n\nWhen the journal records a start but no completed result,\n`Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to avoid repeating an uncertain external effect.\n\n`None` is treated conservatively as `AtMostOnce`."
                 },
                 {
                   "type": "null"
@@ -7069,7 +7069,7 @@
           ]
         },
         "InputMessage": {
-          "description": "Input message for creating a user message\n\nOnly user messages can be created via the API.\nAgent messages are created internally by the workflow.",
+          "description": "Input message for creating a user message\n\nOnly user messages can be created via the API.\nAgent messages are created internally by the turn runtime.",
           "example": {
             "content": [
               {
@@ -8917,10 +8917,12 @@
           "description": "Target for a schedule - either a workflow or activity",
           "example": {
             "input": {
-              "session_id": "session_01933b5a00007000800000000000001"
+              "batch_size": 25,
+              "retry_after_seconds": 60,
+              "stale_after_seconds": 300
             },
-            "name": "session.run",
-            "type": "workflow"
+            "name": "leased_resource_cleanup",
+            "type": "activity"
           },
           "properties": {
             "input": {
@@ -8928,12 +8930,12 @@
             },
             "name": {
               "description": "Workflow type name or activity type name",
-              "example": "session.run",
+              "example": "leased_resource_cleanup",
               "type": "string"
             },
             "type": {
               "description": "Target type: \"workflow\" or \"activity\"",
-              "example": "workflow",
+              "example": "activity",
               "type": "string"
             }
           },
@@ -10015,7 +10017,7 @@
           "type": "string"
         },
         "SideEffectClass": {
-          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
           "enum": [
             "Pure",
             "Idempotent",
@@ -10175,7 +10177,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SideEffectClass",
-                  "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                  "description": "Replay-safety class used when recovering an unfinished tool call.\n\nWhen the journal records a start but no completed result,\n`Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to avoid repeating an uncertain external effect.\n\n`None` is treated conservatively as `AtMostOnce`."
                 },
                 {
                   "type": "null"
@@ -18558,7 +18560,7 @@
         },
         "target_type": {
           "description": "Filter by target type (\"workflow\" or \"activity\")",
-          "example": "workflow",
+          "example": "activity",
           "type": [
             "string",
             "null"
@@ -20676,7 +20678,7 @@
           "type": "string"
         },
         "SideEffectClass": {
-          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
           "enum": [
             "Pure",
             "Idempotent",
@@ -20836,7 +20838,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SideEffectClass",
-                  "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                  "description": "Replay-safety class used when recovering an unfinished tool call.\n\nWhen the journal records a start but no completed result,\n`Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to avoid repeating an uncertain external effect.\n\n`None` is treated conservatively as `AtMostOnce`."
                 },
                 {
                   "type": "null"
@@ -24621,7 +24623,7 @@
           "type": "string"
         },
         "SideEffectClass": {
-          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
           "enum": [
             "Pure",
             "Idempotent",
@@ -24781,7 +24783,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SideEffectClass",
-                  "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                  "description": "Replay-safety class used when recovering an unfinished tool call.\n\nWhen the journal records a start but no completed result,\n`Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to avoid repeating an uncertain external effect.\n\n`None` is treated conservatively as `AtMostOnce`."
                 },
                 {
                   "type": "null"
@@ -30242,10 +30244,12 @@
           "description": "Target for a schedule - either a workflow or activity",
           "example": {
             "input": {
-              "session_id": "session_01933b5a00007000800000000000001"
+              "batch_size": 25,
+              "retry_after_seconds": 60,
+              "stale_after_seconds": 300
             },
-            "name": "session.run",
-            "type": "workflow"
+            "name": "leased_resource_cleanup",
+            "type": "activity"
           },
           "properties": {
             "input": {
@@ -30253,12 +30257,12 @@
             },
             "name": {
               "description": "Workflow type name or activity type name",
-              "example": "session.run",
+              "example": "leased_resource_cleanup",
               "type": "string"
             },
             "type": {
               "description": "Target type: \"workflow\" or \"activity\"",
-              "example": "workflow",
+              "example": "activity",
               "type": "string"
             }
           },
@@ -31927,7 +31931,7 @@
           "type": "string"
         },
         "SideEffectClass": {
-          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
           "enum": [
             "Pure",
             "Idempotent",
@@ -32087,7 +32091,7 @@
               "oneOf": [
                 {
                   "$ref": "#/$defs/SideEffectClass",
-                  "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+                  "description": "Replay-safety class used when recovering an unfinished tool call.\n\nWhen the journal records a start but no completed result,\n`Pure`/`Idempotent` tools may be re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to avoid repeating an uncertain external effect.\n\n`None` is treated conservatively as `AtMostOnce`."
                 },
                 {
                   "type": "null"
