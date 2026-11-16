@@ -1,4 +1,4 @@
-// Unit tests for the one-click Slack install (`install.rs`), kept apart so
+// Unit tests for the one-click Slack install (`install.rs`), in its own file so
 // that file stays under the size guard.
 
 use super::super::manager_connect::{manager_redirect_uri, slack_error_code};

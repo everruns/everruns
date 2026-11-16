@@ -1169,5 +1169,4 @@ fn urlencoding_encode(value: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "install_tests.rs"]
 mod tests;
