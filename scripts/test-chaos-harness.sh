@@ -217,6 +217,40 @@ esac
             self.assertIn('--database-url "$DATABASE_URL"', job)
             self.assertNotIn("localhost:43332", job)
 
+    def test_nats_uses_allocated_port_when_default_is_busy(self):
+        for workflow in ("ci.yml", "chaos.yml"):
+            with self.subTest(workflow=workflow), tempfile.TemporaryDirectory() as directory:
+                wf = Path(".github/workflows", workflow).read_text()
+                step = wf.split("- name: Start NATS with JetStream\n", 1)[1]
+                body = step.split("run: |\n", 1)[1]
+                script = textwrap.dedent(body.split("- name:", 1)[0])
+                root = Path(directory)
+                docker = root / "docker"
+                docker.write_text("""#!/bin/bash
+set -eu
+case "$1" in
+  run)
+    [[ " $* " != *" -p 43322:4222 "* ]] || { echo 'address already in use' >&2; exit 125; }
+    [[ " $* " == *" -p 127.0.0.1::4222 "* ]] || exit 2
+    [[ " $* " == *" --jetstream "* ]] || exit 2
+    echo container-id ;;
+  port)
+    [[ "$*" == 'port chaos-nats 4222/tcp' ]] || exit 2
+    echo '127.0.0.1:49174' ;;
+  logs) printf 'Starting JetStream\\nServer is ready\\n' ;;
+  *) exit 2 ;;
+esac
+""")
+                docker.chmod(0o755)
+                output = root / "env"
+                output.touch()
+                env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", GITHUB_ENV=str(output))
+                result = subprocess.run(["bash", "-e", "-c", script], env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(output.read_text(), "NATS_URL=nats://127.0.0.1:49174\n")
+                self.assertIn('--nats-url "$NATS_URL"', wf)
+
     def test_ci_nats_runs_jetstream(self):
         wf = Path(".github/workflows/chaos.yml").read_text()
         services = wf.split("services:", 1)[1].split("steps:", 1)[0]
