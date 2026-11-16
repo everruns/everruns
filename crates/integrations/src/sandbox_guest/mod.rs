@@ -1,8 +1,10 @@
 //! Sandbox guest agent: the provider-neutral way to run commands and move
 //! files in a sandbox whose provider has no exec or file API.
 //!
-//! - [`server`]: the guest itself, an HTTP server inside the sandbox
-//!   (binary `everruns-sandbox-guest`).
+//! - `server`: the guest itself, an HTTP server inside the sandbox
+//!   (binary `everruns-sandbox-guest`). Unix only: the guest runs in a Linux
+//!   sandbox and uses process groups and Unix file modes, while the client is
+//!   portable so a Windows host can still drive Kubernetes sandboxes.
 //! - [`client`]: what Everruns uses to talk to it. A provider supplies only a
 //!   [`client::GuestTransport`] (how a request reaches the guest); auth,
 //!   timeouts, readiness and error mapping are shared.
@@ -30,7 +32,9 @@
 //! ```
 
 pub mod client;
+#[cfg(unix)]
 pub mod server;
 
 pub use client::{DirectTransport, GuestClient, GuestClientError, GuestTransport};
+#[cfg(unix)]
 pub use server::{GuestConfig, router};

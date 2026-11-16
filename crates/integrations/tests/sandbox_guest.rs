@@ -1,4 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+// The guest server is Unix only.
+#![cfg(unix)]
 //! The sandbox guest end to end: the real server on a local port, driven by
 //! the real client over the direct transport.
 
