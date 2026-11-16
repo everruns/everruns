@@ -83,10 +83,14 @@ jobs:
             latest="${LATEST:-false}"
             arches="${ARCHES:-[\"amd64\",\"arm64\"]}"
           else
-            # Push to main or a manual run: commit tags, plus `edge` from main.
-            ref="$COMMIT_SHA" sha="$COMMIT_SHA" latest=false RELEASE_TAG=""
+            # Push to main or a manual run, which must be on main too: only
+            # reviewed code builds the images and writes their caches.
+            if [ "$GIT_REF" != refs/heads/main ]; then
+              echo "sandbox images build from main only, not $GIT_REF" >&2
+              exit 1
+            fi
+            ref="$COMMIT_SHA" sha="$COMMIT_SHA" latest=false RELEASE_TAG="" edge=true
             arches='["amd64","arm64"]'
-            if [ "$GIT_REF" = refs/heads/main ]; then edge=true; else edge=false; fi
           fi
           if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "not a full commit SHA: $sha" >&2
