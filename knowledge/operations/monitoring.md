@@ -99,6 +99,23 @@ Timeline endpoints follow the other Monitoring endpoints: scoped personal
 access tokens are denied, browser sessions and full-access tokens are not.
 Like the rest of Monitoring, Timeline has no CLI command.
 
+Per-node detail finer than a minute is optional and read, never stored: the
+server queries a Prometheus-compatible store (VictoriaMetrics or Prometheus)
+that scrapes the cells, for one cell's last hour at 10-second steps
+([the reader](../../crates/server/src/domains/system/monitoring_detail.rs)).
+PostgreSQL stays the record, so Monitoring works without the store, and a
+missing or unreachable store is an answer that says why, not an error. The
+store's address comes from the environment only, because an address settable
+through the API would let platform users aim the server at internal hosts; pages
+show its scheme and host, never credentials or a path. Cell names reach PromQL
+only from a fixed character set. CloudWatch on AWS is served by alarms and
+dashboards outside the app, not by this reader. The system doctor reports
+whether minutes are still being recorded and whether the store answers.
+
+An organization sees only the execution path it runs on: on a data plane, its
+sessions on cells without the Workers and Actors tabs; otherwise the worker
+view without cells. The platform view keeps both.
+
 The UI reuses Slate's page layout and canonical navigation. The default is Flow,
 with Density available alongside it; Workers, Actors, and Metrics are separate
 tabs. The implementation and sampling bounds live in

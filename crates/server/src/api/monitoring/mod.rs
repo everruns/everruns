@@ -551,6 +551,10 @@ pub fn routes(state: AppState) -> Router {
             get(timeline::get_fleet_monitoring_cells),
         )
         .route(
+            "/v1/durable/monitoring/cells/{cell}/detail",
+            get(cell_detail::get_fleet_monitoring_cell_detail),
+        )
+        .route(
             "/v1/durable/monitoring/actors",
             get(list_fleet_monitoring_actors),
         )
@@ -775,7 +779,9 @@ pub async fn get_fleet_monitoring_actor(
     actor_detail(&state, None, session).await
 }
 
+pub mod cell_detail;
 pub mod timeline;
+pub use cell_detail::{CellNodeDetail, CellNodePoint, MonitoringCellDetail};
 pub use timeline::*;
 
 #[cfg(test)]

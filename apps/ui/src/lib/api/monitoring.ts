@@ -6,6 +6,7 @@ import type {
   MonitoringTimeline,
   MonitoringTimelineWindow,
   MonitoringCells,
+  MonitoringCellDetail,
 } from "./types";
 
 export type MonitoringScope = "organization" | "fleet";
@@ -70,4 +71,13 @@ export async function getMonitoringTimelineWindow(
 export async function getMonitoringCells(range: TimelineRange): Promise<MonitoringCells> {
   const params = new URLSearchParams({ range });
   return (await api.get<MonitoringCells>(`/v1/durable/monitoring/cells?${params}`)).data;
+}
+
+/** One cell's last hour per node, every 10 seconds, from the optional detail store. */
+export async function getMonitoringCellDetail(cell: string): Promise<MonitoringCellDetail> {
+  return (
+    await api.get<MonitoringCellDetail>(
+      `/v1/durable/monitoring/cells/${encodeURIComponent(cell)}/detail`,
+    )
+  ).data;
 }

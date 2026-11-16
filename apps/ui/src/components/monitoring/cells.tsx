@@ -19,8 +19,12 @@ import {
 } from "@/components/layout/page-layout";
 import { TimeSeriesChart, type TimeSeries } from "@/components/charts/time-series-chart";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
-import { getMonitoringCells, type TimelineRange } from "@/lib/api/monitoring";
-import type { MonitoringCell, MonitoringCells } from "@/lib/api/types";
+import {
+  getMonitoringCellDetail,
+  getMonitoringCells,
+  type TimelineRange,
+} from "@/lib/api/monitoring";
+import type { MonitoringCell, MonitoringCellDetail, MonitoringCells } from "@/lib/api/types";
 import { number } from "./model";
 import { axisFormatter, bucketLabel, timelineColors as C } from "./timeline-model";
 
@@ -302,7 +306,93 @@ function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCel
           ariaLabel={ui("Cell turns over time")}
         />
       </RailSection>
+      <NodeDetail cell={cell.cell} />
     </>
+  );
+}
+
+/** Per-node rows for one measure, keyed `n<node>` so each node is a series. */
+export function nodeRows(
+  detail: MonitoringCellDetail,
+  pick: (p: MonitoringCellDetail["nodes"][number]["points"][number]) => number | null | undefined,
+) {
+  type Row = Record<string, number | null> & { t: number };
+  const rows = new Map<number, Row>();
+  for (const n of detail.nodes) {
+    for (const p of n.points) {
+      const t = Date.parse(p.t);
+      const row: Row = rows.get(t) ?? { t };
+      row[`n${n.node}`] = pick(p) ?? null;
+      rows.set(t, row);
+    }
+  }
+  return [...rows.values()].sort((a, b) => a.t - b.t);
+}
+
+const NODE_COLORS = [C.cells, C.cpu, C.memory, C.agents, C.working, C.servers];
+
+/** The last hour every 10 seconds, by node, when a detail store is configured. */
+function NodeDetail({ cell }: { cell: string }) {
+  const ui = useUiTranslations();
+  const { displayLocale } = useLocale();
+  const detail = useQuery({
+    queryKey: ["monitoring-cell-detail", cell],
+    queryFn: () => getMonitoringCellDetail(cell),
+    refetchInterval: 10_000,
+    retry: false,
+  });
+  const data = detail.data;
+  if (!data) return null;
+  if (!data.available)
+    return (
+      <RailSection label={ui("Last hour, by node")}>
+        <p className="text-xs text-muted-foreground" data-testid="cell-detail-unavailable">
+          {data.reason ?? ui("No 10-second detail.")}
+        </p>
+      </RailSection>
+    );
+  const series: TimeSeries[] = data.nodes.map((n, i) => ({
+    key: `n${n.node}`,
+    label: ui("Node {value0}", { value0: n.node }),
+    color: NODE_COLORS[i % NODE_COLORS.length],
+    kind: "line",
+  }));
+  const common = {
+    bucketMs: data.step_seconds * 1000,
+    formatX: axisFormatter(data.step_seconds, displayLocale),
+    formatTooltipTime: bucketLabel(displayLocale, data.step_seconds),
+    series,
+    height: 80,
+  };
+  return (
+    <RailSection label={ui("Last hour, by node")}>
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        {ui("Every {value0} seconds from {value1}", {
+          value0: String(data.step_seconds),
+          value1: data.source ?? "",
+        })}
+      </p>
+      <div className="space-y-3">
+        <div>
+          <div className="mb-1 text-[11px] text-muted-foreground">{ui("Turns running")}</div>
+          <TimeSeriesChart
+            {...common}
+            rows={nodeRows(data, (p) => p.running)}
+            formatY={(v) => number(v)}
+            ariaLabel={ui("Turns running by node")}
+          />
+        </div>
+        <div>
+          <div className="mb-1 text-[11px] text-muted-foreground">{ui("Memory")}</div>
+          <TimeSeriesChart
+            {...common}
+            rows={nodeRows(data, (p) => p.rss_bytes)}
+            formatY={(v) => bytes(v)}
+            ariaLabel={ui("Memory by node")}
+          />
+        </div>
+      </div>
+    </RailSection>
   );
 }
 

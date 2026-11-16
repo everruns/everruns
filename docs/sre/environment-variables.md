@@ -31,6 +31,7 @@ a working default; each row links to the section that documents it.
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration), [`SERVER_SHUTDOWN_*`](#server-shutdown) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits, a 5 s linger and 20 s drain on shutdown. |
 | [`EVENT_GROUP_COMMIT`](#throughput-tuning), [`SESSION_ACTOR_STICKY_GRACE_MS`](#throughput-tuning), [`REPORTING_BACKGROUND_ENABLED`](#throughput-tuning) | API | No | Event writes share commits over 4 lanes, a session waits 300 ms for the worker that ran its last turn, reports are built. |
+| [`MONITORING_DETAIL`](#monitoring-detail), [`MONITORING_DETAIL_URL`](#monitoring-detail) | API | No | Monitoring keeps its one-minute history in PostgreSQL, without 10-second cell detail. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
 
 
@@ -1113,6 +1114,28 @@ EVERRUNS_TRACE_CONVENTIONS=openinference
 **Notes:**
 - Span names, kinds, and hierarchy are the same under either vocabulary; only attributes differ
 - Unknown values are ignored, and an empty selection falls back to both
+
+## Monitoring detail
+
+Monitoring records one-minute history in PostgreSQL with no setup. These two
+variables add optional 10-second, per-node detail for data plane v2 cells, read
+from a Prometheus-compatible store that scrapes the cells' `/metrics`.
+
+| Variable | Value |
+|---|---|
+| `MONITORING_DETAIL` | `prometheus` (also `victoriametrics`) to read detail; unset or `off` for none. |
+| `MONITORING_DETAIL_URL` | Base URL of the store's query API, `http` or `https`. |
+
+```bash
+# Docker Compose with the metrics profile
+MONITORING_DETAIL=prometheus
+MONITORING_DETAIL_URL=http://victoriametrics:8428
+```
+
+**Notes:**
+- The address is read from the environment only, never set through the API.
+- Pages show only the store's scheme and host, never credentials or a path.
+- **System → Health** reports whether the store answers.
 
 ## Local Development with OpenTelemetry
 

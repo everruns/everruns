@@ -2752,6 +2752,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/durable/monitoring/cells/{cell}/detail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read one cell's per-node detail for the last hour
+     * @description Read one cell's per-node detail for the last hour. Requires platform-user access.
+     */
+    get: operations["get_fleet_monitoring_cell_detail"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/durable/monitoring/timeline": {
     parameters: {
       query?: never;
@@ -12428,6 +12448,49 @@ export interface components {
       | "errored"
       | "timeout"
       | "skipped";
+    /** @description One node's detail. */
+    CellNodeDetail: {
+      /**
+       * @description Node id within the cell.
+       * @example 2
+       */
+      node: string;
+      /** @description Points, oldest first. */
+      points: components["schemas"]["CellNodePoint"][];
+    };
+    /** @description One point of a node's detail. */
+    CellNodePoint: {
+      /**
+       * Format: double
+       * @description One-minute p99 time to admit a turn, in milliseconds.
+       * @example 12.5
+       */
+      admit_p99_ms?: number | null;
+      /**
+       * Format: double
+       * @description Messages waiting for a turn, as the node sees them.
+       * @example 0
+       */
+      queued?: number | null;
+      /**
+       * Format: double
+       * @description Resident memory in bytes.
+       * @example 1073741824
+       */
+      rss_bytes?: number | null;
+      /**
+       * Format: double
+       * @description Turns running on the node.
+       * @example 81
+       */
+      running?: number | null;
+      /**
+       * Format: date-time
+       * @description UTC time of the point.
+       * @example 2026-11-15T19:59:50Z
+       */
+      t: string;
+    };
     /**
      * @description Portable channel intent. Authentication and installation are host bindings.
      *     Channels default to disabled; enabled intent still requires host publication.
@@ -24694,6 +24757,49 @@ export interface components {
        * @description Turns failed.
        */
       turns_failed: number;
+    };
+    /** @description A cell's per-node detail, or why there is none. */
+    MonitoringCellDetail: {
+      /**
+       * @description Whether detail could be read.
+       * @example true
+       */
+      available: boolean;
+      /**
+       * @description Cell name.
+       * @example cell-07
+       */
+      cell: string;
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start.
+       * @example 2026-11-15T19:00:00Z
+       */
+      from: string;
+      /** @description Nodes, by id. */
+      nodes: components["schemas"]["CellNodeDetail"][];
+      /**
+       * @description Why not, when `available` is false.
+       * @example No detail store is configured (MONITORING_DETAIL).
+       */
+      reason?: string | null;
+      /**
+       * @description The detail store's scheme and host, without credentials or path.
+       * @example http://victoriametrics:8428
+       */
+      source?: string | null;
+      /**
+       * Format: int32
+       * @description Seconds between points.
+       * @example 10
+       */
+      step_seconds: number;
+      /**
+       * Format: date-time
+       * @description UTC end.
+       * @example 2026-11-15T20:00:00Z
+       */
+      to: string;
     };
     /** @description Data plane v2 cells as their minute reports show them. */
     MonitoringCells: {
@@ -45597,6 +45703,50 @@ export interface operations {
         };
       };
       /** @description Invalid range */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Platform access required */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_fleet_monitoring_cell_detail: {
+    parameters: {
+      query?: {
+        /** @description Minutes ending now, 5 to 60. Defaults to 60. */
+        minutes?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Cell name */
+        cell: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Per-node detail, or why there is none */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MonitoringCellDetail"];
+        };
+      };
+      /** @description Invalid cell name or minutes */
       400: {
         headers: {
           [name: string]: unknown;

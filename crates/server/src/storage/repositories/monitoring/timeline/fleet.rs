@@ -551,6 +551,19 @@ impl Database {
             .await?)
     }
 
+    /// Oldest and newest minute of the platform's recorded history, for the
+    /// system doctor. Both `None` before the first sample.
+    pub async fn monitoring_history_extent(
+        &self,
+    ) -> Result<(Option<DateTime<Utc>>, Option<DateTime<Utc>>)> {
+        Ok(sqlx::query_as(
+            "SELECT min(minute), max(minute) FROM monitoring_minutes WHERE org_id = $1",
+        )
+        .bind(PLATFORM_ORG)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
     /// Each cell's newest report from the last week.
     pub async fn monitoring_cells_latest(&self) -> Result<Vec<CellLatestRow>> {
         Ok(sqlx::query_as(
