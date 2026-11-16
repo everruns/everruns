@@ -31,6 +31,7 @@ on:
       - 'apps/ui/.dockerignore'
       - '.dockerignore'
       - '.github/workflows/docker-publish.yml'
+      - '.github/workflows/sandbox-images.yml'
       - 'scripts/docker-release-source.py'
       - 'scripts/test-docker-release-source.sh'
 
@@ -311,130 +312,23 @@ jobs:
             done
           done
 
-  # Isolated sandbox images (docker/sandbox). Built natively per
-  # architecture: the images install toolchains with apt and curl, which
-  # under QEMU would take most of an hour. Each runner pushes by digest; the
-  # merge job below tags the multi-architecture manifest.
-  build-sandbox-images:
-    name: Build sandbox-${{ matrix.variant }} (${{ matrix.arch }})
-    needs: [resolve-source, build-binaries]
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    timeout-minutes: 60
+  # Isolated sandbox images: sandbox-images.yml builds and tags them, here
+  # with this run's source and release tags. It also runs on its own for
+  # main pushes that change the images, publishing `:edge` between releases.
+  sandbox-images:
+    name: Sandbox images
+    needs: resolve-source
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: ${{ fromJSON(needs.resolve-source.outputs.arches) }}
-        variant: [dev, desktop]
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ needs.resolve-source.outputs.ref }}
-
-      - name: Download the sandbox guest
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: bin-${{ matrix.arch }}-guest
-          path: docker/sandbox/bin
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: docker/sandbox
-          target: ${{ matrix.variant }}
-          platforms: linux/${{ matrix.arch }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
-          outputs: type=image,name=${{ env.IMAGE_BASE }}/sandbox-${{ matrix.variant }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=sandbox-${{ matrix.variant }}-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=sandbox-${{ matrix.variant }}-${{ matrix.arch }}
-
-      - name: Record the digest
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          mkdir -p digests
-          touch "digests/${DIGEST#sha256:}"
-
-      - name: Upload the digest
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: digest-sandbox-${{ matrix.variant }}-${{ matrix.arch }}
-          path: digests/*
-          retention-days: 1
-
-  merge-sandbox-images:
-    name: Tag sandbox-${{ matrix.variant }}
-    needs: [resolve-source, build-sandbox-images]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    strategy:
-      matrix:
-        variant: [dev, desktop]
-
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: digest-sandbox-${{ matrix.variant }}-*
-          merge-multiple: true
-          path: digests
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Same tags as every other Everruns image, so the server's default
-      # (kubernetes_sandbox::default_image, `:v<version>`) and the chart's
-      # always name an image this workflow published.
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
-        with:
-          images: ${{ env.IMAGE_BASE }}/sandbox-${{ matrix.variant }}
-          tags: |
-            type=raw,value=${{ needs.resolve-source.outputs.tag }},enable=${{ needs.resolve-source.outputs.is_release == 'true' }}
-            type=raw,value=latest,enable=${{ needs.resolve-source.outputs.is_latest == 'true' }}
-            type=raw,value=${{ needs.resolve-source.outputs.sha_short }}
-            type=raw,value=${{ needs.resolve-source.outputs.sha }}
-
-      - name: Create the manifest
-        working-directory: digests
-        env:
-          IMAGE: ${{ env.IMAGE_BASE }}/sandbox-${{ matrix.variant }}
-          TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -euo pipefail
-          args=()
-          while IFS= read -r tag; do
-            [ -n "$tag" ] && args+=(-t "$tag")
-          done <<< "$TAGS"
-          digests=()
-          for digest in *; do digests+=("$IMAGE@sha256:$digest"); done
-          docker buildx imagetools create "${args[@]}" "${digests[@]}"
+    uses: ./.github/workflows/sandbox-images.yml
+    with:
+      ref: ${{ needs.resolve-source.outputs.ref }}
+      sha: ${{ needs.resolve-source.outputs.sha }}
+      release_tag: ${{ needs.resolve-source.outputs.is_release == 'true' && needs.resolve-source.outputs.tag || '' }}
+      latest: ${{ needs.resolve-source.outputs.is_latest == 'true' }}
+      arches: ${{ needs.resolve-source.outputs.arches }}
 
   # Dev Container Feature that installs the sandbox guest into any image.
   # Published on releases only, after the binaries it downloads are on the

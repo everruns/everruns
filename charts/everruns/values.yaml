@@ -239,6 +239,9 @@ sandboxes:
     # Default image; templates may name another (see allowedImages).
     # Empty uses ghcr.io/everruns/sandbox-dev at the chart's appVersion.
     image: ""
+    # Image of desktop sandboxes; empty uses ghcr.io/everruns/sandbox-desktop
+    # at this release. `:edge` or a commit tag runs images published from main.
+    desktopImage: ""
     # Image prefixes templates may use, comma separated; empty allows any.
     allowedImages: ""
     sizes: [small, medium, large]

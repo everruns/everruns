@@ -83,9 +83,10 @@ from pathlib import Path
 
 dockerfile = re.search(r"^FROM --platform=\$BUILDPLATFORM (rust:\S+) AS builder-base$",
                        Path("docker/Dockerfile.unified").read_text(), re.M).group(1)
-workflow = re.search(r"^      image: (rust:\S+)$",
-                     Path(".github/workflows/docker-publish.yml").read_text(), re.M).group(1)
-if dockerfile != workflow:
-    raise SystemExit(f"docker-publish.yml builds with {workflow}, Dockerfile.unified with {dockerfile}")
-print(f"release binaries and Dockerfile.unified share {workflow}")
+for name in ("docker-publish.yml", "sandbox-images.yml"):
+    workflow = re.search(r"^      image: (rust:\S+)$",
+                         Path(f".github/workflows/{name}").read_text(), re.M).group(1)
+    if dockerfile != workflow:
+        raise SystemExit(f"{name} builds with {workflow}, Dockerfile.unified with {dockerfile}")
+print(f"release binaries, the sandbox guest and Dockerfile.unified share {dockerfile}")
 PY

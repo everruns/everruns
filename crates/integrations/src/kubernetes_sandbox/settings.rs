@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use super::{SandboxSize, default_image};
+use super::{SandboxSize, default_image, desktop_image};
 
 /// Where an open sandbox's traffic goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +48,9 @@ pub struct KubernetesSandboxSettings {
     /// UI flags as no isolation boundary.
     pub runtime_class: Option<String>,
     pub image: String,
+    /// Image of desktop sandboxes whose template names none. Point both at
+    /// `:edge` or a commit tag to run images published between releases.
+    pub desktop_image: String,
     /// Image prefixes templates may name; empty allows any image.
     pub allowed_image_prefixes: Vec<String>,
     pub storage_class: Option<String>,
@@ -105,6 +108,7 @@ impl KubernetesSandboxSettings {
             namespace: namespace.into(),
             runtime_class: None,
             image: default_image(),
+            desktop_image: desktop_image(),
             allowed_image_prefixes: Vec::new(),
             storage_class: None,
             workspace_size: "10Gi".to_string(),
@@ -133,6 +137,9 @@ impl KubernetesSandboxSettings {
         settings.runtime_class = var("KUBERNETES_SANDBOX_RUNTIME_CLASS");
         if let Some(image) = var("KUBERNETES_SANDBOX_IMAGE") {
             settings.image = image;
+        }
+        if let Some(image) = var("KUBERNETES_SANDBOX_DESKTOP_IMAGE") {
+            settings.desktop_image = image;
         }
         if let Some(prefixes) = var("KUBERNETES_SANDBOX_ALLOWED_IMAGES") {
             settings.allowed_image_prefixes = prefixes

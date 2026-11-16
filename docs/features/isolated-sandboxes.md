@@ -111,6 +111,11 @@ Everruns publishes two images with every release:
 - `ghcr.io/everruns/sandbox-desktop`: the same, plus Xvfb, an xfce session, xdotool, screenshot
   tools, ffmpeg and Chromium
 
+Changes to the images also publish an `:edge` tag between releases. To try it, set
+`sandboxes.kubernetes.image` to `ghcr.io/everruns/sandbox-dev:edge` and
+`sandboxes.kubernetes.desktopImage` to `ghcr.io/everruns/sandbox-desktop:edge`. Released tags stay
+the default.
+
 To use your own image, add the sandbox guest with the Dev Container Feature and allow the image
 on your deployment:
 

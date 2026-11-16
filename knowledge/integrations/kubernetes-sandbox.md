@@ -111,7 +111,10 @@ enforcement.
 Node, Python/uv, Go, Rust, Docker CLI, gh, ripgrep, jq) and
 `sandbox-desktop` (adds Xvfb, xfce, xdotool, screenshot tools, ffmpeg,
 Playwright's Chromium). Tagged `v<version>` like every release image, which is
-what `default_image()` names. The guest is a static musl binary, also shipped
+what `default_image()` names. `sandbox-images.yml` builds them, called by the
+release and also on main pushes that touch `docker/sandbox/` or the guest,
+which publish `:edge` and commit tags so a deployment can run unreleased
+images (`KUBERNETES_SANDBOX_IMAGE`, `KUBERNETES_SANDBOX_DESKTOP_IMAGE`). The guest is a static musl binary, also shipped
 as the Dev Container Feature `ghcr.io/everruns/features/sandbox-guest`, so
 any Linux image can become a sandbox image. Sources: `docker/sandbox/`.
 

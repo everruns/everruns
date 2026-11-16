@@ -1,0 +1,275 @@
+name: Sandbox Images
+
+# Isolated sandbox images (docker/sandbox): sandbox-dev and sandbox-desktop.
+#
+# Decision (2026-11-15): sandbox images ship outside the release cycle too.
+# A push to main that changes the images or the guest publishes `:edge` plus
+# commit tags, so a deployment can try them (KUBERNETES_SANDBOX_IMAGE,
+# KUBERNETES_SANDBOX_DESKTOP_IMAGE) before the next release. Releases call
+# this workflow from docker-publish.yml for the `v<version>` and `latest`
+# tags that `kubernetes_sandbox::default_image()` names. Paths keep main
+# pushes rare: the images take tens of minutes per architecture.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/sandbox/**'
+      - 'crates/integrations/src/sandbox_guest/**'
+      - 'crates/integrations/src/bin/everruns-sandbox-guest.rs'
+      - 'crates/contracts/src/sandbox_guest.rs'
+      - '.github/workflows/sandbox-images.yml'
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build
+        required: true
+        type: string
+      sha:
+        description: Full commit SHA of ref
+        required: true
+        type: string
+      release_tag:
+        description: Release tag to apply (e.g. v0.53.0); empty for none
+        required: false
+        type: string
+        default: ''
+      latest:
+        description: Also tag `latest`
+        required: false
+        type: boolean
+        default: false
+      arches:
+        description: JSON list of architectures
+        required: false
+        type: string
+        default: '["amd64","arm64"]'
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BASE: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  resolve:
+    name: Resolve sandbox image source
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.source.outputs.ref }}
+      sha: ${{ steps.source.outputs.sha }}
+      sha_short: ${{ steps.source.outputs.sha_short }}
+      release_tag: ${{ steps.source.outputs.release_tag }}
+      latest: ${{ steps.source.outputs.latest }}
+      edge: ${{ steps.source.outputs.edge }}
+      arches: ${{ steps.source.outputs.arches }}
+    steps:
+      - name: Resolve
+        id: source
+        env:
+          CALLED_SHA: ${{ inputs.sha }}
+          CALLED_REF: ${{ inputs.ref }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          LATEST: ${{ inputs.latest }}
+          ARCHES: ${{ inputs.arches }}
+          GIT_REF: ${{ github.ref }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CALLED_SHA" ]; then
+            # Called by docker-publish: its source, its tags, no edge.
+            ref="$CALLED_REF" sha="$CALLED_SHA" edge=false
+            latest="${LATEST:-false}"
+            arches="${ARCHES:-[\"amd64\",\"arm64\"]}"
+          else
+            # Push to main or a manual run: commit tags, plus `edge` from main.
+            ref="$COMMIT_SHA" sha="$COMMIT_SHA" latest=false RELEASE_TAG=""
+            arches='["amd64","arm64"]'
+            if [ "$GIT_REF" = refs/heads/main ]; then edge=true; else edge=false; fi
+          fi
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "not a full commit SHA: $sha" >&2
+            exit 1
+          fi
+          if [ -n "$RELEASE_TAG" ] && ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "not a release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          {
+            echo "ref=$ref"
+            echo "sha=$sha"
+            echo "sha_short=${sha:0:7}"
+            echo "release_tag=$RELEASE_TAG"
+            echo "latest=$latest"
+            echo "edge=$edge"
+            echo "arches=$arches"
+          } >> "$GITHUB_OUTPUT"
+
+  # The guest is static (musl) so it runs in any sandbox image.
+  build-guest:
+    name: Build the sandbox guest (${{ matrix.arch }})
+    needs: resolve
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    container:
+      image: rust:1.99.1-slim-bookworm
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(needs.resolve.outputs.arches) }}
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git pkg-config clang musl-tools
+          rm -rf /var/lib/apt/lists/*
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+
+      - name: Build
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          case "$ARCH" in
+            amd64) target=x86_64-unknown-linux-musl ;;
+            arm64) target=aarch64-unknown-linux-musl ;;
+            *) echo "unknown architecture: $ARCH" >&2; exit 1 ;;
+          esac
+          rustup target add "$target"
+          cargo build --locked --release -p everruns-integrations --features sandbox-guest \
+            --bin everruns-sandbox-guest --target "$target"
+          mkdir -p out
+          cp "target/$target/release/everruns-sandbox-guest" out/
+
+      # Names differ from docker-publish's `bin-*` artifacts: a called
+      # workflow shares the caller's artifact namespace.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sandbox-guest-${{ matrix.arch }}
+          path: out/everruns-sandbox-guest
+          retention-days: 1
+
+  # Built natively per architecture: the images install toolchains with apt
+  # and curl, which under QEMU would take most of an hour. Each runner pushes
+  # by digest; the merge job tags the multi-architecture manifest.
+  build:
+    name: Build sandbox-${{ matrix.variant }} (${{ matrix.arch }})
+    needs: [resolve, build-guest]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.resolve.outputs.arches) }}
+        variant: [dev, desktop]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+
+      - name: Download the sandbox guest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sandbox-guest-${{ matrix.arch }}
+          path: docker/sandbox/bin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: docker/sandbox
+          target: ${{ matrix.variant }}
+          platforms: linux/${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.resolve.outputs.sha }}
+          outputs: type=image,name=${{ env.IMAGE_BASE }}/sandbox-${{ matrix.variant }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=sandbox-${{ matrix.variant }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=sandbox-${{ matrix.variant }}-${{ matrix.arch }}
+
+      - name: Record the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: digest-sandbox-${{ matrix.variant }}-${{ matrix.arch }}
+          path: digests/*
+          retention-days: 1
+
+  merge:
+    name: Tag sandbox-${{ matrix.variant }}
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        variant: [dev, desktop]
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: digest-sandbox-${{ matrix.variant }}-*
+          merge-multiple: true
+          path: digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE_BASE }}/sandbox-${{ matrix.variant }}
+          tags: |
+            type=raw,value=${{ needs.resolve.outputs.release_tag }},enable=${{ needs.resolve.outputs.release_tag != '' }}
+            type=raw,value=latest,enable=${{ needs.resolve.outputs.latest == 'true' }}
+            type=raw,value=edge,enable=${{ needs.resolve.outputs.edge == 'true' }}
+            type=raw,value=${{ needs.resolve.outputs.sha_short }}
+            type=raw,value=${{ needs.resolve.outputs.sha }}
+
+      - name: Create the manifest
+        working-directory: digests
+        env:
+          IMAGE: ${{ env.IMAGE_BASE }}/sandbox-${{ matrix.variant }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && args+=(-t "$tag")
+          done <<< "$TAGS"
+          digests=()
+          for digest in *; do digests+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}" "${digests[@]}"

@@ -113,6 +113,9 @@ appears in the manifest.
 - { name: KUBERNETES_SANDBOX_RUNTIME_CLASS, value: {{ . | quote }} }
 {{- end }}
 - { name: KUBERNETES_SANDBOX_IMAGE, value: {{ .image | default (printf "ghcr.io/everruns/sandbox-dev:%s" (ternary "latest" (printf "v%s" $.Chart.AppVersion) (eq $.Chart.AppVersion "latest"))) | quote }} }
+{{- with .desktopImage }}
+- { name: KUBERNETES_SANDBOX_DESKTOP_IMAGE, value: {{ . | quote }} }
+{{- end }}
 {{- with .allowedImages }}
 - { name: KUBERNETES_SANDBOX_ALLOWED_IMAGES, value: {{ . | quote }} }
 {{- end }}

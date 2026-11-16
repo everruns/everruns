@@ -447,6 +447,7 @@ After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workfl
 - **`latest`**: Updated on version-tag builds. Recovery of an older published release does not overwrite the current release channel.
 - **SHA tags**: Generated on every build for traceability (short + full SHA).
 - **No `:development` tag and no per-main-commit images.** Docker images are a release artifact, not a per-commit artifact. Pin consumers to a released version (`vX.Y.Z` or `latest`).
+- **Exception: sandbox images.** `sandbox-images.yml` also publishes `sandbox-dev` and `sandbox-desktop` as `:edge` plus SHA tags when a push to `main` changes `docker/sandbox/` or the sandbox guest, so a deployment can try them before a release (`KUBERNETES_SANDBOX_IMAGE`, `KUBERNETES_SANDBOX_DESKTOP_IMAGE`). The path filter keeps that rare. Releases call the same workflow for `vX.Y.Z` and `latest`.
 
 #### How images are built
 
