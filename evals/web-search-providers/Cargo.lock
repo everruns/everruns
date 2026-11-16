@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.53.0"
+version = "0.53.1"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.53.0"
+version = "0.53.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -549,7 +549,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations"
-version = "0.53.0"
+version = "0.53.1"
 dependencies = [
  "async-trait",
  "everruns-contracts",
