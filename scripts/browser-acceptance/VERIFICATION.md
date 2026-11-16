@@ -28,3 +28,15 @@ Qualification is incomplete:
   remote-provider qualification. No personal-browser pairing/handoff was tested.
 
 No release, deployment, push or merge is implied by these results.
+
+## Follow-up qualification
+
+- Clean baseline `b42e96590` reproduced the Mac select-all failure. A narrow
+  cross-platform CDP editing-command fix now passes the complete Browserless
+  suite: 124 passed, 0 failed. The final form test also verifies initial typing
+  before replacement. This supersedes the unresolved regression note above.
+- Authenticated WSS local and container acceptance: 2 passed each. TLS uses an
+  ephemeral CA trusted only by the child test process. Harness tests: 4 passed,
+  including rejection of an untrusted CA and mismatched hostname. No system
+  trust changes and no verification bypass. Production remote-provider
+  qualification remains outstanding.

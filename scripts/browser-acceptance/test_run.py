@@ -4,6 +4,7 @@ import http.server
 import importlib.util
 import pathlib
 import socket
+import ssl
 import threading
 import unittest
 import urllib.error
@@ -23,6 +24,18 @@ def running(server):
         server.server_close()
 
 class HarnessTests(unittest.TestCase):
+    def test_tls_verifies_ca_and_hostname_without_global_trust(self):
+        with running(http.server.ThreadingHTTPServer(('127.0.0.1', 0), acceptance.Fixture)) as origin:
+            with acceptance.tls_browser({'endpoint': f'ws://127.0.0.1:{origin.server_port}/'}) as secured:
+                address = secured['endpoint'].replace('wss://', 'https://')
+                trusted = ssl.create_default_context(cafile=secured['test_ca'])
+                with urllib.request.urlopen(address, context=trusted) as response:
+                    self.assertIn(b'Browser acceptance', response.read())
+                with self.assertRaises(urllib.error.URLError):
+                    urllib.request.urlopen(address, context=ssl.create_default_context())
+                with self.assertRaises(urllib.error.URLError):
+                    urllib.request.urlopen(address.replace('127.0.0.1', 'localhost'), context=trusted)
+
     def test_fixture_and_missing_route(self):
         with running(http.server.ThreadingHTTPServer(('127.0.0.1', 0), acceptance.Fixture)) as server:
             base = f'http://127.0.0.1:{server.server_port}'

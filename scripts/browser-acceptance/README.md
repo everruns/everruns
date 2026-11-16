@@ -39,11 +39,27 @@ boundary. This is not a production hardened browser image. Browser/package
 versions follow the Debian repository; record versions when capturing evidence.
 
 The authenticated mode exercises the actual WebSocket handshake through a local
-bearer-token proxy. It deliberately uses loopback `ws://`; it does **not** validate
-production TLS, remote networks, or provider access. Never interpret this result
+bearer-token proxy. By default it uses loopback `ws://`; add `--tls` for the
+verified test-CA transport below. Neither mode validates production gateways,
+remote networks, or provider access. Never interpret this result
 as approval to expose an unauthenticated CDP port or use plaintext credentials
 across an untrusted network. TLS verification is not disabled or system trust
 modified.
+
+## Verified TLS transport
+
+Add `--tls --authenticated` to either local or container mode to wrap the CDP
+transport in a loopback WSS gateway. OpenSSL generates a one-day test CA and
+server certificate in a temporary directory. Only the child test process gets
+`SSL_CERT_FILE`; system/browser trust is never modified, and TLS verification
+is never disabled. The fixture tests also reject an untrusted CA and wrong
+hostname. This tests the real TLS transport, not a production remote provider.
+
+```sh
+python3 scripts/browser-acceptance/run.py --container --tls --authenticated -- \
+  cargo test -p everruns-integrations --features browserless --lib \
+  direct_browser_acceptance -- --nocapture
+```
 
 ## Acceptance matrix
 

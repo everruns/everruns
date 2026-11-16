@@ -18,6 +18,8 @@ import secrets
 import shutil
 import socket
 import socketserver
+import ssl
+import urllib.parse
 import subprocess
 import sys
 import tempfile
@@ -151,6 +153,56 @@ class ThreadedTCP(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+class TLSTCP(ThreadedTCP):
+    def get_request(self):
+        connection, address = super().get_request()
+        try:
+            connection.settimeout(5)
+            return self.tls.wrap_socket(connection, server_side=True), address
+        except Exception:
+            connection.close()
+            raise
+
+@contextlib.contextmanager
+def tls_browser(result):
+    """Process-local test CA; never change system/browser trust or disable checks."""
+    with tempfile.TemporaryDirectory(prefix='everruns-browser-tls-') as temporary:
+        root = pathlib.Path(temporary)
+        config, cert, key = root / 'openssl.cnf', root / 'cert.pem', root / 'key.pem'
+        ca, ca_key, csr = root / 'ca.pem', root / 'ca-key.pem', root / 'request.pem'
+        config.write_text('[req]\ndistinguished_name=dn\nreq_extensions=leaf\nprompt=no\n'
+                          '[dn]\nCN=Browser acceptance test\n[ca]\n'
+                          'basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n'
+                          '[leaf]\nbasicConstraints=critical,CA:FALSE\n'
+                          'subjectAltName=IP:127.0.0.1\nextendedKeyUsage=serverAuth\n'
+                          'keyUsage=critical,digitalSignature,keyEncipherment\n')
+        commands = [
+            ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+             '-config', str(config), '-extensions', 'ca', '-keyout', str(ca_key), '-out', str(ca)],
+            ['req', '-newkey', 'rsa:2048', '-nodes', '-config', str(config),
+             '-keyout', str(key), '-out', str(csr)],
+            ['x509', '-req', '-in', str(csr), '-CA', str(ca), '-CAkey', str(ca_key),
+             '-CAcreateserial', '-days', '1', '-extfile', str(config), '-extensions', 'leaf', '-out', str(cert)],
+        ]
+        for command in commands:
+            subprocess.run(['openssl'] + command, check=True, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
+        key.chmod(0o600)
+        ca_key.chmod(0o600)
+        endpoint = urllib.parse.urlsplit(result['endpoint'])
+        server = TLSTCP(('127.0.0.1', 0), Forward)
+        server.upstream = (endpoint.hostname, endpoint.port)
+        server.authorization = None  # Inner proxy still validates authorization.
+        server.tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        server.tls.load_cert_chain(cert, key)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            yield dict(result, endpoint=f'wss://127.0.0.1:{server.server_address[1]}{endpoint.path}',
+                       test_ca=str(ca))
+        finally:
+            server.shutdown()
+            server.server_close()
+
 @contextlib.contextmanager
 def browser(worker=False, authenticated=False):
     candidates = [os.environ.get('CHROME_BIN'), shutil.which('chromium'),
@@ -245,6 +297,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--container', action='store_true')
     parser.add_argument('--authenticated', action='store_true', help='Require a synthetic bearer token on the loopback CDP proxy')
+    parser.add_argument('--tls', action='store_true', help='Exercise verified TLS with an ephemeral process-local test CA')
     parser.add_argument('--worker', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -265,11 +318,17 @@ def main():
     if not command:
         parser.error('Supply the native acceptance-test command after --')
     manager = container_browser(args.authenticated) if args.container else browser(authenticated=args.authenticated)
-    with manager as result:
+    with contextlib.ExitStack() as stack:
+        result = stack.enter_context(manager)
+        if args.tls:
+            result = stack.enter_context(tls_browser(result))
         environment = os.environ.copy()
         environment['EVERRUNS_BROWSER_CDP_ENDPOINT'] = result['endpoint']
         environment['EVERRUNS_BROWSER_FIXTURE_URL'] = result['fixture']
         environment['EVERRUNS_BROWSER_ACCEPTANCE_REQUIRED'] = '1'
+        if result.get('test_ca'):
+            environment['SSL_CERT_FILE'] = result['test_ca']
+            environment['SSL_CERT_DIR'] = str(pathlib.Path(result['test_ca']).parent / 'empty')
         if result.get('authorization'):
             environment['EVERRUNS_BROWSER_AUTHORIZATION'] = result['authorization']
         else:
