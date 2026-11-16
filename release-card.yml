@@ -1,22 +1,21 @@
-version: 0.53.0
-date: 2026-11-15
+version: 0.53.1
+date: 2026-11-16
 headline:
-  - Own sandboxes,
-  - native tracing.
+  - Windows build
+  - fix.
 summary:
-  - Sandboxes run on your own cluster.
-  - Traces go to Langfuse and LangSmith.
-  - Framework agents gain application services.
+  - everruns-integrations builds on Windows.
+  - Fixes and UI changes since 0.53.0.
 highlights:
-  - title: Isolated sandboxes
-    description: One pod per sandbox on your own Kubernetes cluster.
-    source: "#5417"
-  - title: Native tracing
-    description: Send traces to Langfuse and LangSmith.
-    source: "#5394"
-  - title: Framework services
-    description: Extractions, integrations, evaluations, session data.
-    source: "#5408"
-  - title: Gemini Decision 1
-    description: Typed decisions that read images, audio and PDFs.
-    source: "#5371"
+  - title: Windows build
+    description: everruns-integrations compiles on Windows.
+    source: "#5443"
+  - title: Provider credentials
+    description: Sign in or paste an API key in one drawer.
+    source: "#5444"
+  - title: MCP page
+    description: A browser opening /mcp gets a page meant for agents.
+    source: "#5446"
+  - title: Eval default harness
+    description: Evals with no harness use the org default.
+    source: "#5406"

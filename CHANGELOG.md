@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.53.1] - 2026-11-16
+
+Changelog: https://everruns.com/docs/changelog/2026-11-16-everruns-0-53-1/
+
+A patch release. `everruns-integrations` 0.53.0 does not compile on Windows when `kubernetes-sandbox` is on (`everruns-capabilities`' `hosted-integration-catalog` turns it on); 0.53.1 fixes that ([#5443](https://github.com/everruns/everruns/pull/5443)). It also carries the fixes and small UI changes merged since 0.53.0.
+
+### What's Changed
+
+- fix(evals): resolve default harness when an eval target names none ([#5406](https://github.com/everruns/everruns/pull/5406)) by [@chaliy](https://github.com/chaliy)
+- fix(cell): only the leader copies its snapshots to the object store ([#5448](https://github.com/everruns/everruns/pull/5448)) by [@chaliy](https://github.com/chaliy)
+- fix(cell): a follower killed under load rejoins and catches up ([#5447](https://github.com/everruns/everruns/pull/5447)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): show a page for agents when a browser opens /mcp ([#5446](https://github.com/everruns/everruns/pull/5446)) by [@chaliy](https://github.com/chaliy)
+- fix(integrations): build the sandbox guest client on Windows ([#5443](https://github.com/everruns/everruns/pull/5443)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): one provider credentials drawer with sign-in vs API key choice ([#5444](https://github.com/everruns/everruns/pull/5444)) by [@chaliy](https://github.com/chaliy)
+- feat(monitoring): hide live Execution for organizations on cells ([#5442](https://github.com/everruns/everruns/pull/5442)) by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+All published crates ship at the platform version 0.53.1.
+
 ## [0.53.0] - 2026-11-15
 
 Changelog: https://everruns.com/docs/changelog/2026-11-15-everruns-0-53-0/
