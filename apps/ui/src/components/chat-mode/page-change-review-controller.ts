@@ -387,22 +387,47 @@ export class PageChangeReviewController {
       },
     };
   };
+  // Decision: consecutive model toggles fold into one open selection receipt
+  // ("Disabled 3 models") instead of stacking a bar per click. A model changed
+  // again keeps its first baseline, and one toggled back to where it started
+  // drops out, so Undo reverts only what still differs. A receipt that is
+  // undoing, stale or failed is left alone and a new one starts.
   recordSelection = (members: ModelSelectionReceipt[]) => {
     if (!members.length || !this.live()) return;
-    const resource = {
-      kind: "model_selection",
-      id: `selection-${++this.version}`,
-      label: "Model selection",
-    };
-    this.state(resource).receipt = {
-      resource,
-      from: 0,
-      revision: 0,
-      stale: false,
-      pending: false,
-      members,
-      fields: members.map((item) => ({ field: item.id, from: item.before, to: item.after })),
-    };
+    const open = [...this.resources.values()].find(
+      (state) =>
+        state.resource.kind === "model_selection" &&
+        state.receipt?.members &&
+        !state.receipt.pending &&
+        !state.receipt.stale &&
+        !state.receipt.error,
+    );
+    const merged = open?.receipt?.members && mergeSelection(open.receipt.members, members);
+    const state =
+      open && merged
+        ? open
+        : this.state({
+            kind: "model_selection",
+            id: `selection-${++this.version}`,
+            label: "Model selection",
+          });
+    const next = merged || members.filter((item) => item.before !== item.after);
+    state.undone = undefined;
+    state.receipt = next.length
+      ? {
+          resource: state.resource,
+          from: 0,
+          revision: 0,
+          stale: false,
+          pending: false,
+          members: next,
+          fields: next.map((item) => ({
+            field: item.id,
+            from: item.before,
+            to: item.after,
+          })),
+        }
+      : undefined;
     this.prune();
     this.emit();
   };
@@ -500,4 +525,31 @@ export class PageChangeReviewController {
       this.emit();
     }
   }
+}
+
+/**
+ * Folds a new selection receipt into an open one. Returns undefined when a
+ * model was changed by someone else in between (its new change does not start
+ * at the revision the open receipt ended on), so Undo never reaches past it.
+ */
+export function mergeSelection(
+  current: ModelSelectionReceipt[],
+  incoming: ModelSelectionReceipt[],
+): ModelSelectionReceipt[] | undefined {
+  const byId = new Map(current.map((item) => [item.id, item]));
+  for (const item of incoming) {
+    const previous = byId.get(item.id);
+    if (previous && previous.revision !== item.from_revision) return undefined;
+    byId.set(
+      item.id,
+      previous
+        ? {
+            ...item,
+            from_revision: previous.from_revision,
+            before: previous.before,
+          }
+        : item,
+    );
+  }
+  return [...byId.values()].filter((item) => item.before !== item.after);
 }

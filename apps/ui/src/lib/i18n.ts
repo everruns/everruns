@@ -259,6 +259,15 @@ const messages = {
     undone_change_count_one: "Undid {count} change",
     undone_change_count_few: "Undid {count} changes",
     undone_change_count_many: "Undid {count} changes",
+    enabled_model_count_one: "Enabled {count} model",
+    enabled_model_count_few: "Enabled {count} models",
+    enabled_model_count_many: "Enabled {count} models",
+    disabled_model_count_one: "Disabled {count} model",
+    disabled_model_count_few: "Disabled {count} models",
+    disabled_model_count_many: "Disabled {count} models",
+    changed_model_count_one: "Changed {count} model",
+    changed_model_count_few: "Changed {count} models",
+    changed_model_count_many: "Changed {count} models",
     line_number: "line {value}",
     no_tasks: "No tasks",
     todos_completed_summary: "{completed} of {total} todos completed",
@@ -588,6 +597,15 @@ const messages = {
     undone_change_count_one: "Скасовано {count} зміну",
     undone_change_count_few: "Скасовано {count} зміни",
     undone_change_count_many: "Скасовано {count} змін",
+    enabled_model_count_one: "Увімкнено {count} модель",
+    enabled_model_count_few: "Увімкнено {count} моделі",
+    enabled_model_count_many: "Увімкнено {count} моделей",
+    disabled_model_count_one: "Вимкнено {count} модель",
+    disabled_model_count_few: "Вимкнено {count} моделі",
+    disabled_model_count_many: "Вимкнено {count} моделей",
+    changed_model_count_one: "Змінено {count} модель",
+    changed_model_count_few: "Змінено {count} моделі",
+    changed_model_count_many: "Змінено {count} моделей",
     line_number: "рядок {value}",
     no_tasks: "Завдань немає",
     todos_completed_summary: "Завершено {completed} із {total} завдань",
@@ -721,7 +739,10 @@ type CountMessagePrefix =
   | "atif_export_stopped"
   | "edit_count"
   | "saved_change_count"
-  | "undone_change_count";
+  | "undone_change_count"
+  | "enabled_model_count"
+  | "disabled_model_count"
+  | "changed_model_count";
 
 function formatPluralMessage(
   locale: SupportedLocale,
@@ -764,4 +785,11 @@ export function formatSavedChangeCount(locale: SupportedLocale, count: number): 
 }
 export function formatUndoneChangeCount(locale: SupportedLocale, count: number): string {
   return formatPluralMessage(locale, "undone_change_count", count);
+}
+export function formatModelSelectionCount(
+  locale: SupportedLocale,
+  kind: "enabled" | "disabled" | "changed",
+  count: number,
+): string {
+  return formatPluralMessage(locale, `${kind}_model_count`, count);
 }

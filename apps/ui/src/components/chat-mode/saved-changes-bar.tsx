@@ -4,17 +4,27 @@
 // page, not a panel under it. A save is routine; review and undo are one click
 // away without taking space from the form. The bar renders nothing until a
 // save produces a receipt, and leaves a short "Undid" confirmation that fades.
+// The bar names what changed ("Disabled Muse Ember", "Disabled 3 models") and
+// dismisses itself after AUTO_DISMISS_MS so routine saves do not pile up. It
+// stays while the pointer or focus is on it, Review is open, an Undo is
+// running, or it carries an error or conflict the person still has to see.
 
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, Undo2, X } from "lucide-react";
 import { useUiTranslations, useLocale } from "@/providers/locale-provider";
-import { formatSavedChangeCount, formatUndoneChangeCount } from "@/lib/i18n";
+import {
+  formatModelSelectionCount,
+  formatSavedChangeCount,
+  formatUndoneChangeCount,
+  type SupportedLocale,
+} from "@/lib/i18n";
 import { isSecretField } from "@/lib/api/change-history";
 import type { FieldDiff } from "@/lib/api/types";
 import type { PageResource } from "./page-resource-history";
 import type { SavedPageChange } from "./page-change-review-controller";
 
 const UNDONE_NOTICE_MS = 5_000;
+export const AUTO_DISMISS_MS = 8_000;
 const INLINE_LIMIT = 48;
 
 export interface SavedChangesBarProps {
@@ -26,6 +36,30 @@ export interface SavedChangesBarProps {
   fieldLabels?: Record<string, string>;
   /** Start with Review open (previews). */
   initiallyOpen?: boolean;
+}
+
+/** One line that says what the save changed, not only how many fields. */
+export function savedChangeSummary(
+  receipt: SavedPageChange,
+  fields: FieldDiff[],
+  label: (field: string) => string,
+  locale: SupportedLocale,
+  ui: (key: string, values?: Record<string, string>) => string,
+): string {
+  if (receipt.members) {
+    const members = receipt.members.filter((item) =>
+      fields.some((field) => field.field === item.id),
+    );
+    const enabled = members.filter((item) => item.after).length;
+    if (members.length === 1) {
+      const value0 = members[0].label;
+      return enabled ? ui("Enabled {value0}", { value0 }) : ui("Disabled {value0}", { value0 });
+    }
+    const kind = enabled === members.length ? "enabled" : enabled ? "changed" : "disabled";
+    return formatModelSelectionCount(locale, kind, members.length);
+  }
+  if (fields.length === 1) return ui("Changed {value0}", { value0: label(fields[0].field) });
+  return formatSavedChangeCount(locale, fields.length);
 }
 
 function valueText(value: unknown, ui: (key: string) => string): string {
@@ -120,14 +154,36 @@ export function SavedChangesBar({
   const ui = useUiTranslations();
   const { locale } = useLocale();
   const [open, setOpen] = useState(initiallyOpen);
+  const [held, setHeld] = useState(false);
   const fields = receipt.fields.filter((field) => !isSecretField(field.field));
   const canUndo = !receipt.pending && !receipt.stale && !dirty;
   const history = receipt.resource.kind !== "model_selection";
   const label = (field: string) => fieldLabels?.[field] ?? field.replaceAll("_", " ");
   const count = fields.length;
+  const summary = savedChangeSummary(receipt, fields, label, locale, ui);
+  // A folded-in save changes the signature and restarts the countdown.
+  const signature = `${receipt.revision}:${fields.map((f) => `${f.field}=${String(f.to)}`).join()}`;
+  const hold = held || open || receipt.pending || receipt.stale || !!receipt.error;
+  const dismiss = useRef(onDismiss);
+  useEffect(() => {
+    dismiss.current = onDismiss;
+  });
+  useEffect(() => {
+    if (hold) return;
+    const timer = setTimeout(() => dismiss.current(), AUTO_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [hold, signature]);
   if (!count && !receipt.error) return null;
   return (
-    <div className="flex max-w-full flex-col items-center gap-2">
+    <div
+      className="flex max-w-full flex-col items-center gap-2"
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+      onFocus={() => setHeld(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHeld(false);
+      }}
+    >
       {open && !receipt.stale && count > 0 && (
         <section
           aria-label={ui("Saved page changes")}
@@ -135,7 +191,8 @@ export function SavedChangesBar({
         >
           <header className="flex items-center justify-between gap-3 border-b px-3 py-2">
             <strong className="truncate font-medium">
-              {formatSavedChangeCount(locale, count)} · {receipt.resource.label}
+              {summary}
+              {!receipt.members && ` · ${receipt.resource.label}`}
             </strong>
             {history && (
               <button
@@ -184,9 +241,7 @@ export function SavedChangesBar({
         ) : (
           <>
             <Check className="size-3.5 shrink-0 text-success" aria-hidden />
-            <span className="truncate">
-              {receipt.pending ? ui("Undoing…") : formatSavedChangeCount(locale, count)}
-            </span>
+            <span className="truncate">{receipt.pending ? ui("Undoing…") : summary}</span>
             <span className="h-4 w-px shrink-0 bg-border" aria-hidden />
             <button
               type="button"
