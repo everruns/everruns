@@ -27,6 +27,10 @@ Changelog: https://everruns.com/docs/changelog/2026-11-15-everruns-0-53-0/
 
 ### What's Changed
 
+- feat(github): let an agent merge its pull request ([#5430](https://github.com/everruns/everruns/pull/5430)) by [@chaliy](https://github.com/chaliy)
+- feat(sandboxes): platform gate for isolated sandbox runs ([#5428](https://github.com/everruns/everruns/pull/5428)) by [@chaliy](https://github.com/chaliy)
+- feat(cell): shed new work when a cell runs short of memory ([#5431](https://github.com/everruns/everruns/pull/5431)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): name saved changes, auto-dismiss the bar, fold model toggles ([#5427](https://github.com/everruns/everruns/pull/5427)) by [@chaliy](https://github.com/chaliy)
 - fix(cli): k8s destroy checks the cluster first; add k8s/docker health ([#5424](https://github.com/everruns/everruns/pull/5424)) by [@chaliy](https://github.com/chaliy)
 - fix(mcp): share OAuth protocol across hosts ([#5420](https://github.com/everruns/everruns/pull/5420)) by [@chaliy](https://github.com/chaliy)
 - test(cell): wait for restored history across replicas ([#5425](https://github.com/everruns/everruns/pull/5425)) by [@chaliy](https://github.com/chaliy)

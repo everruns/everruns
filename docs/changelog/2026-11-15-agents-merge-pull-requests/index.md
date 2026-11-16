@@ -5,6 +5,7 @@ date: 2026-11-15
 kind: feature
 significance: notable
 products: [platform, cloud, framework]
+release: "0.53.0"
 surfaces: [agent, api]
 links:
   docs: [/capabilities/github/]
