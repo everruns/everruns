@@ -66,6 +66,14 @@ pub struct Shared {
     pub snapshot_ms: AtomicU64,
     /// When this replica last built a snapshot (or started).
     last_snapshot: parking_lot::Mutex<Instant>,
+    /// Whether this replica leads its cell, as the ship loop last saw it
+    /// (`set_leading`): only the leader copies its snapshots to the object
+    /// store.
+    leading: std::sync::atomic::AtomicBool,
+    /// Snapshot copies on their way to the object store.
+    archiver: Arc<Archiver>,
+    /// This replica's snapshot directory, once its state machine opened.
+    snapshot_dir: std::sync::OnceLock<PathBuf>,
     /// Called with every applied change (the node's Engine hosting hears
     /// commits through it).
     pub on_change: std::sync::OnceLock<ChangeHook>,
@@ -89,6 +97,9 @@ impl Shared {
             event_bytes: AtomicU64::new(4096),
             snapshot_ms: AtomicU64::new(0),
             last_snapshot: parking_lot::Mutex::new(Instant::now()),
+            leading: Default::default(),
+            archiver: Default::default(),
+            snapshot_dir: Default::default(),
             on_change: std::sync::OnceLock::new(),
         })
     }
@@ -529,6 +540,146 @@ pub(crate) fn archived_parts(meta: &Meta, data: bytes::Bytes) -> io::Result<[byt
     Ok([bytes::Bytes::from(snapshot_header(meta)?), data])
 }
 
+/// The current snapshot in `dir`, a node's snapshot directory: its
+/// metadata and state. The state is the file's own buffer with the header
+/// cut off, not a copy.
+fn read_snapshot_file(dir: &std::path::Path) -> io::Result<Option<(Meta, Vec<u8>)>> {
+    match fs::read(dir.join("current.snap")) {
+        Ok(mut bytes) => {
+            let (meta, at) = split_snapshot(&bytes)?;
+            bytes.drain(..at);
+            Ok(Some((meta, bytes)))
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// One snapshot copy waiting for the object store.
+struct Copy {
+    id: String,
+    inc: u64,
+    index: u64,
+    clock_ms: i64,
+    parts: [bytes::Bytes; 2],
+}
+
+/// Snapshot copies to the object store: one in flight, the newest waiting.
+#[derive(Default)]
+struct Archiver {
+    busy: std::sync::atomic::AtomicBool,
+    next: parking_lot::Mutex<Option<Copy>>,
+}
+
+/// The fields of a cell state an archived copy is named by.
+#[derive(serde::Deserialize)]
+struct Stamp {
+    #[serde(default)]
+    incarnation: u64,
+    #[serde(default)]
+    clock_ms: i64,
+}
+
+impl Shared {
+    /// The ship loop's view of whether this replica leads. A replica that
+    /// starts leading copies its current snapshot: the log it ships starts
+    /// after that snapshot when the snapshot purged entries it had not
+    /// shipped (`ship.rs`), and restore needs a copy at or past that gap.
+    pub fn set_leading(self: &Arc<Self>, leading: bool) {
+        if !leading {
+            self.leading.store(false, Ordering::Relaxed);
+            return;
+        }
+        if self.leading.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let Some(dir) = self.snapshot_dir.get().cloned() else {
+            return;
+        };
+        let shared = self.clone();
+        tokio::spawn(async move {
+            let read = tokio::task::spawn_blocking(move || {
+                let Some((meta, data)) = read_snapshot_file(&dir)? else {
+                    return Ok(None);
+                };
+                let stamp: Stamp = serde_json::from_slice(&data)?;
+                io::Result::Ok(Some((meta, data, stamp)))
+            })
+            .await;
+            match read {
+                Ok(Ok(Some((meta, data, stamp)))) => {
+                    shared.archive(&meta, data.into(), stamp.incarnation, stamp.clock_ms)
+                }
+                Ok(Ok(None)) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "reading the snapshot to copy failed")
+                }
+                Err(error) => tracing::warn!(%error, "reading the snapshot to copy failed"),
+            }
+        });
+    }
+
+    /// Copy a snapshot to the object store; best effort, and only while
+    /// this replica leads. It shares `data` with the caller instead of
+    /// copying it.
+    ///
+    /// Decision: the leader's copies only, one upload at a time, and the
+    /// newest snapshot waiting replaces an older one. Every replica's
+    /// snapshot of a cell is the same state and restore takes the newest
+    /// copy whoever wrote it, so three copies bought nothing and tripled
+    /// the upload. In EKS run 43827766384 all nine nodes uploaded a whole
+    /// cell state every few minutes through a NAT whose burst ran out, and
+    /// once S3 slowed every spawned upload held its snapshot in memory
+    /// until it finished or failed. Now a node holds at most two.
+    pub(crate) fn archive(&self, meta: &Meta, data: bytes::Bytes, inc: u64, clock_ms: i64) {
+        if !self.leading.load(Ordering::Relaxed) {
+            return;
+        }
+        let Ok(header) = snapshot_header(meta) else {
+            return;
+        };
+        *self.archiver.next.lock() = Some(Copy {
+            id: meta.snapshot_id.clone(),
+            inc,
+            index: meta.last_log_id.map_or(0, |id| id.index),
+            clock_ms,
+            parts: [bytes::Bytes::from(header), data],
+        });
+        if self.archiver.busy.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let (archiver, store, cell) = (self.archiver.clone(), self.store.clone(), self.cell);
+        tokio::spawn(async move {
+            loop {
+                let next = archiver.next.lock().take();
+                let Some(copy) = next else {
+                    archiver.busy.store(false, Ordering::Release);
+                    // A copy queued after the take and before the store
+                    // went unseen: go on unless another upload took it.
+                    if archiver.next.lock().is_none() || archiver.busy.swap(true, Ordering::AcqRel)
+                    {
+                        break;
+                    }
+                    continue;
+                };
+                if let Err(error) = store
+                    .put_snapshot(
+                        cell,
+                        &copy.id,
+                        copy.inc,
+                        copy.index,
+                        copy.clock_ms,
+                        copy.parts,
+                    )
+                    .await
+                {
+                    tracing::warn!(%error, "snapshot copy to the object store failed");
+                }
+            }
+        });
+    }
+}
+
 /// The Raft-facing state machine.
 #[derive(Clone)]
 pub struct StateMachine {
@@ -606,6 +757,7 @@ impl StateMachine {
     pub fn open(dir: impl Into<PathBuf>, shared: Arc<Shared>) -> io::Result<Self> {
         let dir = dir.into();
         fs::create_dir_all(&dir)?;
+        let _ = shared.snapshot_dir.set(dir.clone());
         let machine = Self {
             shared,
             dir,
@@ -621,46 +773,14 @@ impl StateMachine {
         Ok(machine)
     }
 
-    fn current_path(&self) -> PathBuf {
-        self.dir.join("current.snap")
-    }
-
     /// The current snapshot's metadata and state. The state is the file's
     /// own buffer with the header cut off, not a copy.
     fn read_current(&self) -> io::Result<Option<(Meta, Vec<u8>)>> {
-        match fs::read(self.current_path()) {
-            Ok(mut bytes) => {
-                let (meta, at) = split_snapshot(&bytes)?;
-                bytes.drain(..at);
-                Ok(Some((meta, bytes)))
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(error),
-        }
+        read_snapshot_file(&self.dir)
     }
 
     fn write_current(&self, meta: &Meta, data: &[u8]) -> io::Result<()> {
         write_snapshot_file(&self.dir, meta, data)
-    }
-
-    /// Keep a copy of the snapshot in the object store; best effort. It
-    /// shares `data` with the caller instead of copying it.
-    fn archive(&self, meta: &Meta, data: bytes::Bytes, inc: u64, clock_ms: i64) {
-        let Ok(header) = snapshot_header(meta) else {
-            return;
-        };
-        let store = self.shared.store.clone();
-        let (cell, id) = (self.shared.cell, meta.snapshot_id.clone());
-        let index = meta.last_log_id.map_or(0, |id| id.index);
-        tokio::spawn(async move {
-            let parts = [bytes::Bytes::from(header), data];
-            if let Err(error) = store
-                .put_snapshot(cell, &id, inc, index, clock_ms, parts)
-                .await
-            {
-                tracing::warn!(%error, "snapshot copy to the object store failed");
-            }
-        });
     }
 
     /// The cell state as a snapshot holds it: metadata and segment lists,
@@ -729,7 +849,7 @@ impl RaftSnapshotBuilder<TypeConfig> for StateMachine {
             .await
             .map_err(sm_err)?
             .map_err(sm_err)?;
-        self.archive(&meta, data, inc, clock_ms);
+        self.shared.archive(&meta, data, inc, clock_ms);
         self.shared
             .snapshot_ms
             .store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
@@ -916,6 +1036,85 @@ mod tests {
             .map(|e| e.sequence)
             .collect();
         assert_eq!(kept, [Some(4), Some(5)], "the unstored tail stays");
+    }
+
+    /// Only the leader copies its snapshots to the object store: the
+    /// current one when it starts leading, then each it builds, one upload
+    /// at a time with only the newest waiting.
+    #[tokio::test]
+    async fn only_the_leader_copies_its_snapshots_one_at_a_time() {
+        use openraft::RaftSnapshotBuilder;
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+
+        let store = crate::store::Store::open("memory://").unwrap();
+        let shared = super::Shared::new(store.clone(), 0);
+        let dir = tempfile::tempdir().unwrap();
+        let mut machine = super::StateMachine::open(dir.path(), shared.clone()).unwrap();
+        let copies = || async {
+            let mut ids: Vec<String> = store
+                .snapshot_copies(0)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|c| format!("{c:?}"))
+                .collect();
+            ids.sort();
+            ids
+        };
+        let settle = || async {
+            for _ in 0..200 {
+                if !shared.archiver.busy.load(Ordering::Acquire) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        };
+
+        machine.build_snapshot().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            copies().await.is_empty(),
+            "a follower keeps its snapshot local"
+        );
+
+        shared.set_leading(true);
+        for _ in 0..200 {
+            if copies().await.len() == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        settle().await;
+        assert_eq!(
+            copies().await.len(),
+            1,
+            "a new leader copies its current snapshot"
+        );
+
+        // An upload in flight: later snapshots wait, the newest replacing
+        // the older.
+        shared.archiver.busy.store(true, Ordering::Release);
+        let second = machine.build_snapshot().await.unwrap().meta.snapshot_id;
+        let third = machine.build_snapshot().await.unwrap().meta.snapshot_id;
+        let waiting = shared.archiver.next.lock().as_ref().map(|c| c.id.clone());
+        assert_eq!(waiting, Some(third), "only the newest waits, not {second}");
+        assert_eq!(
+            copies().await.len(),
+            1,
+            "nothing uploads while one is in flight"
+        );
+
+        shared.archiver.busy.store(false, Ordering::Release);
+        machine.build_snapshot().await.unwrap();
+        settle().await;
+        assert_eq!(copies().await.len(), 2, "the leader copies what it builds");
+        assert!(shared.archiver.next.lock().is_none());
+
+        shared.set_leading(false);
+        machine.build_snapshot().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(copies().await.len(), 2, "no copies once it stops leading");
     }
 
     #[test]

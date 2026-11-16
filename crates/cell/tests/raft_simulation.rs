@@ -325,7 +325,11 @@ impl Cell {
         for node in self.up() {
             let raft = self.raft(node)?;
             let shipper = self.shippers.lock().get(&node).cloned()?;
-            if raft.metrics().borrow().current_leader != Some(node) {
+            let leading = raft.metrics().borrow().current_leader == Some(node);
+            if let Some(shared) = self.shared.lock().get(&node).cloned() {
+                shared.set_leading(leading);
+            }
+            if !leading {
                 shipper.reset();
                 continue;
             }
