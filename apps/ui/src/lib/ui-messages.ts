@@ -2,6 +2,7 @@ import { messages as extractions } from "./messages/uk/extractions";
 import { messages as rooms } from "./messages/uk/rooms";
 import { messages as chatLayout } from "./messages/uk/chat-layout";
 import { messages as slackSocketMode } from "./messages/uk/slack-socket-mode";
+import { messages as providerCredentials } from "./messages/uk/provider-credentials";
 import { messages as channelsAndTriggers } from "./messages/uk/channels-and-triggers";
 import { messages as sandboxBuilds } from "./messages/uk/sandbox-builds";
 import { messages as externalWorker } from "./messages/uk/external-agent";
@@ -80,6 +81,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   evalCases,
   channelsAndTriggers,
   slackSocketMode,
+  providerCredentials,
   chatLayout,
   extractions,
   rooms,

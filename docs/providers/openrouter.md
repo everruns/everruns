@@ -40,12 +40,14 @@ provider actually serves each request.
 
 ## Connecting
 
-Providers are configured by organization admins under **Settings** →
-**Providers** → **Add provider** → **OpenRouter**. You can connect two ways:
+Providers are configured by organization admins under **Models** →
+**Providers** → **Connect provider** → **OpenRouter**. Under **How to connect**,
+pick one of two ways:
 
 ### OAuth (recommended)
 
-Click **Connect with OpenRouter** and authorize in the browser. OpenRouter's
+Choose **Sign in with OpenRouter**, click **Continue to OpenRouter** and
+authorize in the browser. OpenRouter's
 one-click [PKCE](https://openrouter.ai/docs/use-cases/oauth-pkce) flow returns a
 user-controlled API key that Everruns stores org-wide, no key copy-pasting, and
 no app registration. The consent screen's key label is preset to
@@ -59,8 +61,12 @@ encrypted at rest and never returned by the API.
 
 ### API key
 
-Alternatively, paste an OpenRouter API key from the
+Choose **Paste an API key** and paste a key from the
 [OpenRouter keys page](https://openrouter.ai/keys).
+
+To rotate the credential later, click the key button on the provider's card. The
+same drawer shows the current credential and offers **Sign in again with
+OpenRouter** or **Paste a different API key**.
 
 Either way, save and Everruns discovers available models and their capability
 profiles automatically.

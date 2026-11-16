@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { Notice, NoticeDescription } from "@/components/ui/notice";
 import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
-import { SetApiKeyDialog } from "./provider-dialogs";
+import { ProviderCredentialsSheet } from "./provider-credentials";
 import { useSyncProviderModels } from "@/hooks/use-providers";
 import { ApiError } from "@/lib/api/client";
 import { isPlatformProviderVisible } from "@/lib/api/provider-driver-types";
@@ -145,10 +145,11 @@ export function ProvidersTab({
           {ui("No providers are connected yet. Ask an organization admin to connect one.")}
         </p>
       )}
-      <SetApiKeyDialog
+      <ProviderCredentialsSheet
         provider={apiKeyProvider}
         open={apiKeyProvider !== null}
         onOpenChange={(open) => !open && setApiKeyProvider(null)}
+        onSaved={(text) => onNotice({ kind: "success", text })}
       />
     </>
   );

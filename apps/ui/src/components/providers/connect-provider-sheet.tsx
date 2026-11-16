@@ -12,9 +12,10 @@
 // Creating a provider with a credential discovers its models server-side
 // before the request returns, which is what makes step 3 possible.
 //
-// Drivers that sign in instead of taking a key leave the page for the
-// provider's consent screen; their models are reviewed
-// from the "new models" prompt when the browser comes back.
+// Drivers that support sign-in ask "How to connect" first (see
+// provider-credentials.tsx): signing in leaves the page for the provider's
+// consent screen, and its models are reviewed from the "new models" prompt
+// when the browser comes back; pasting a key continues to step 3 here.
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,7 +24,7 @@ import {
   isPublicDraftLocation,
   providerConnectDraftSchema,
 } from "@/components/chat-mode/page-form-schemas";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,7 +70,14 @@ import {
   PROVIDER_TYPES,
   getBaseUrlPlaceholder,
   useDriverCredentialSchema,
-} from "./provider-dialogs";
+} from "./provider-drivers";
+import {
+  ConnectMethodOptions,
+  ContinueToProviderLabel,
+  KeyConsoleHint,
+  keyCheckAllowsSave,
+  type ConnectMethod,
+} from "./provider-credentials";
 import { useCredentialCheck } from "./use-credential-check";
 
 // The order drivers are listed in: the ones most orgs connect first, then the
@@ -83,19 +91,6 @@ const CONNECT_ORDER: DriverId[] = [
   "meta",
   ...PROVIDER_TYPES,
 ];
-
-// Where to mint a key, so the form is self-sufficient for a first-time user.
-const KEY_CONSOLES: Partial<Record<DriverId, { label: string; href: string }>> = {
-  anthropic: {
-    label: "console.anthropic.com",
-    href: "https://console.anthropic.com/settings/keys",
-  },
-  openai: { label: "platform.openai.com", href: "https://platform.openai.com/api-keys" },
-  gemini: { label: "aistudio.google.com", href: "https://aistudio.google.com/apikey" },
-  openrouter: { label: "openrouter.ai/keys", href: "https://openrouter.ai/keys" },
-  mistral: { label: "console.mistral.ai", href: "https://console.mistral.ai/api-keys" },
-  meta: { label: "llama.developer.meta.com", href: "https://llama.developer.meta.com/api-keys" },
-};
 
 // Driver labels double as the default provider name, so the catalog label is
 // shortened where it carries a disambiguator nobody needs in a name.
@@ -293,8 +288,10 @@ function ConnectForm({
   const [customEndpoint, setCustomEndpoint] = useState(baseUrlRequired);
   const [baseUrl, setBaseUrl] = useState("");
   const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [method, setMethod] = useState<ConnectMethod>("signin");
   const [error, setError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  const signingIn = supportsOAuth && method === "signin";
   const nameRef = useRef<HTMLInputElement>(null);
   const chat = usePageFormDraft({
     schema: providerConnectDraftSchema,
@@ -322,6 +319,7 @@ function ConnectForm({
     providerType: driver,
     credentials,
     baseUrl: customEndpoint ? baseUrl : undefined,
+    enabled: !signingIn,
   });
 
   const trimmedName = name.trim();
@@ -331,19 +329,22 @@ function ConnectForm({
   const endpoint = customEndpoint ? baseUrl.trim() : "";
   const formReady =
     trimmedName !== "" && !duplicate && (!baseUrlRequired || endpoint !== "") && !redirecting;
-  const keyConsole = KEY_CONSOLES[driver];
 
   const create = () =>
     createProvider.mutateAsync({
       name: trimmedName,
       provider_type: driver,
       base_url: endpoint || undefined,
-      credentials: hasCredential ? submitted : undefined,
+      credentials: hasCredential && !signingIn ? submitted : undefined,
     });
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (chat.blocked || !formReady || !hasCredential) return;
+    if (signingIn) {
+      void handleSignIn();
+      return;
+    }
+    if (chat.blocked || !formReady || !hasCredential || !keyCheckAllowsSave(check)) return;
     setError(null);
     try {
       onCreated(await create());
@@ -365,6 +366,19 @@ function ConnectForm({
       setError(errorText(err, `Could not start the ${label} sign-in. Please try again.`));
     }
   };
+
+  const keyFields = schema ? (
+    <div className="space-y-2">
+      <CredentialFields
+        schema={schema}
+        values={credentials}
+        onChange={(key, value) => setCredentials((prev) => ({ ...prev, [key]: value }))}
+        idPrefix="connect-provider"
+      />
+      <CredentialCheckStatus state={check} />
+      <KeyConsoleHint driver={driver} />
+    </div>
+  ) : null;
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4">
@@ -441,32 +455,16 @@ function ConnectForm({
           </button>
         )}
 
-        {schema && (
-          <div className="space-y-2">
-            <CredentialFields
-              schema={schema}
-              values={credentials}
-              onChange={(key, value) => setCredentials((prev) => ({ ...prev, [key]: value }))}
-              idPrefix="connect-provider"
-              allowEmptySubmit={supportsOAuth}
-            />
-            <CredentialCheckStatus state={check} />
-            {keyConsole && (
-              <p className="text-xs text-muted-foreground">
-                {ui("Generate one at")}{" "}
-                <a
-                  href={keyConsole.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-foreground hover:underline"
-                >
-                  {keyConsole.label}
-                  <ExternalLink className="icon-sharp size-3" />
-                </a>
-                {ui(". Keys are encrypted at rest.")}
-              </p>
-            )}
-          </div>
+        {supportsOAuth ? (
+          <ConnectMethodOptions
+            label={label}
+            method={method}
+            onMethodChange={setMethod}
+            keyFields={keyFields}
+            idPrefix="connect-provider"
+          />
+        ) : (
+          keyFields
         )}
 
         {error && (
@@ -480,22 +478,24 @@ function ConnectForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           {ui("Cancel")}
         </Button>
-        {supportsOAuth && (
+        {signingIn ? (
+          <Button type="submit" disabled={chat.blocked || !formReady || createProvider.isPending}>
+            {redirecting ? ui("Redirecting…") : <ContinueToProviderLabel label={label} />}
+          </Button>
+        ) : (
           <Button
-            type="button"
-            variant="outline"
-            onClick={() => void handleSignIn()}
-            disabled={chat.blocked || !formReady || createProvider.isPending}
+            type="submit"
+            disabled={
+              chat.blocked ||
+              !formReady ||
+              !hasCredential ||
+              !keyCheckAllowsSave(check) ||
+              createProvider.isPending
+            }
           >
-            {redirecting ? ui("Redirecting…") : ui("Sign in with {value0}", { value0: label })}
+            {createProvider.isPending ? ui("Connecting…") : ui("Connect")}
           </Button>
         )}
-        <Button
-          type="submit"
-          disabled={chat.blocked || !formReady || !hasCredential || createProvider.isPending}
-        >
-          {createProvider.isPending && !redirecting ? ui("Connecting…") : ui("Connect")}
-        </Button>
       </DrawerFooter>
     </form>
   );
