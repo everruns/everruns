@@ -107,7 +107,7 @@ async fn client_dispatch_sqlite_concurrent_claim_reopen_and_atomic_resolution() 
         call_id: record.call.id.clone(),
         owner: record.owner,
         fence: record.fence,
-        result: ToolCompletedData::success(record.call.id, record.call.name, vec![], None),
+        result: ToolCompletedData::success(record.call.id, record.call.name, vec![], None).into(),
     };
     let reply = hosting.execute_command(session, complete.clone()).unwrap();
     drop(hosting);

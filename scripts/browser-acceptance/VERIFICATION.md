@@ -71,11 +71,12 @@ its validation is tracked separately:
 - Memory/SQLite adapters: three tests passed, including independent SQLite
   connections racing a claim, reopening, and lost-completion-response replay.
 - Cell authority: snapshot/replay test passed.
-- Expanded coordinator suite: 13 executed tests passed, covering narrow actions,
-  inline images and oversized results, handoff outcomes, policy denial,
+- Expanded coordinator suite: all 14 tests executed and passed, covering narrow
+  actions, inline images and oversized results, handoff outcomes, policy denial,
   unconditional child cleanup, initialization races, lost replies and foreign
-  live claims. The optional real pinned-schema test was explicitly skipped
-  pending its executable; it is not counted as an executed passing test.
+  live claims. The real pinned-upstream schema compatibility test also passed
+  against Browse c3b29be; the final run required the executable and protocol
+  prerequisites, with no optional skips.
 - Yolop native follow-on: six selected tests passed (configuration, child-process
   opt-in removal, truthful terminal guidance, and durable worker completion),
   plus unconfigured full-runtime startup. This used temporary local source

@@ -312,23 +312,23 @@ impl PersonalBrowserCoordinator {
                         .map_err(|_| CoordinatorError::Authority)?,
                 )
                 .map_err(|_| CoordinatorError::Authority)?;
-                if let Some(record) = current {
-                    if record.state == ClientDispatchState::Claimed {
-                        let now = profile
-                            .status(session)
-                            .await
-                            .map_err(|_| CoordinatorError::Authority)?
-                            .now_ms;
-                        if record.owner == self.inner.incarnation || record.deadline_ms <= now {
-                            self.interrupt(engine, &record).await?;
-                            report.interrupted += 1;
-                        } else {
-                            report.next_check_at_ms = Some(
-                                report
-                                    .next_check_at_ms
-                                    .map_or(record.deadline_ms, |old| old.min(record.deadline_ms)),
-                            );
-                        }
+                if let Some(record) = current
+                    && record.state == ClientDispatchState::Claimed
+                {
+                    let now = profile
+                        .status(session)
+                        .await
+                        .map_err(|_| CoordinatorError::Authority)?
+                        .now_ms;
+                    if record.owner == self.inner.incarnation || record.deadline_ms <= now {
+                        self.interrupt(engine, &record).await?;
+                        report.interrupted += 1;
+                    } else {
+                        report.next_check_at_ms = Some(
+                            report
+                                .next_check_at_ms
+                                .map_or(record.deadline_ms, |old| old.min(record.deadline_ms)),
+                        );
                     }
                 }
                 continue;
@@ -361,7 +361,7 @@ impl PersonalBrowserCoordinator {
                         call_id: call.id,
                         owner: self.inner.incarnation,
                         fence: claim.record.fence,
-                        result,
+                        result: Box::new(result),
                     },
                 )
                 .await;

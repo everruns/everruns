@@ -112,7 +112,7 @@ pub enum SessionCommand {
         /// Claim UUID returned by begin; rejects stale or conflicting owners.
         fence: uuid::Uuid,
         /// Verified tool result for the exact pending call.
-        result: ToolCompletedData,
+        result: Box<ToolCompletedData>,
     },
     /// Retire a claim as unknown outcome, without ever authorizing redispatch.
     InterruptClientDispatch {

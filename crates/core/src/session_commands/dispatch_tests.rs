@@ -42,7 +42,8 @@ fn complete(record: &ClientDispatchRecord) -> SessionCommand {
             record.call.name.clone(),
             vec![],
             None,
-        ),
+        )
+        .into(),
     }
 }
 fn interrupt(record: &ClientDispatchRecord, owner: uuid::Uuid) -> SessionCommand {

@@ -237,7 +237,7 @@ pub(super) fn prepare_dispatch(
                             "dispatch owner stale or deadline expired",
                         ));
                     }
-                    (id, owner, fence, result, ClientDispatchState::Completed)
+                    (id, owner, fence, *result, ClientDispatchState::Completed)
                 }
                 SessionCommand::InterruptClientDispatch {
                     id, owner, fence, ..

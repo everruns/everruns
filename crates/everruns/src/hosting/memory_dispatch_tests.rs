@@ -66,7 +66,8 @@ async fn client_dispatch_memory_claim_is_exclusive_and_completion_atomic() {
             record.call.name.clone(),
             vec![],
             None,
-        ),
+        )
+        .into(),
     };
     let result = profile.execute_command(id, cmd.clone()).await.unwrap();
     assert_eq!(profile.execute_command(id, cmd).await.unwrap(), result);

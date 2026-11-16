@@ -43,12 +43,10 @@ pub(super) async fn configure(
         if let Some(expected) = declared
             .iter()
             .find(|expected| expected.name == tool.name())
+            && (tool.parameters() != &expected.parameters
+                || tool.description() != expected.description)
         {
-            if tool.parameters() != &expected.parameters
-                || tool.description() != expected.description
-            {
-                return Err(CoordinatorError::InvalidConfiguration);
-            }
+            return Err(CoordinatorError::InvalidConfiguration);
         }
     }
     tools.retain(|tool| !owns(tool.name()));
@@ -183,12 +181,11 @@ fn tool_json(result: &Value) -> Result<Value, BrowseError> {
         .as_array()
         .ok_or(BrowseError::ProtocolError)?
     {
-        if content["type"] == "text" {
-            if let Some(text) = content["text"].as_str() {
-                if let Ok(value) = serde_json::from_str(text) {
-                    return Ok(value);
-                }
-            }
+        if content["type"] == "text"
+            && let Some(text) = content["text"].as_str()
+            && let Ok(value) = serde_json::from_str(text)
+        {
+            return Ok(value);
         }
     }
     Err(BrowseError::ProtocolError)

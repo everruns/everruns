@@ -11,8 +11,8 @@ tags:
 Status: partial implementation. The opt-in `personal-browser` feature supplies
 a persistent session-owned subprocess supervisor, narrowly exposed browser tools
 and an authority-backed durable dispatch coordinator. Yolop's host adapter and
-terminal handoff guidance are under separate local validation. Actual extension
-pairing, lending and human Continue and stopping UX still require end-to-end evidence.
+terminal handoff guidance passed native local tests. Actual extension pairing,
+lending and browser-side continuation/stopping still require end-to-end evidence.
 The isolated direct-CDP backend is separate from personal profiles. No release,
 deployment or extension installation is authorized by this implementation.
 
@@ -198,3 +198,16 @@ of stranding the durable claim. Page content remains untrusted private data.
 Authority tests and protocol fixtures cover failure/retry boundaries separately
 from real-extension UX. Record actual end-to-end results before claiming full
 pairing, lending, revocation or human-interaction qualification.
+
+
+## Disposable extension qualification status
+
+The checked-in [extension harness](../../scripts/browser-acceptance/EXTENSION_E2E.md)
+requires explicit pinned assets and a fresh profile. On the Mac mini, the real
+production extension loaded and its pairing settings form was submitted, but
+extension loopback requests timed out while host requests reached the relay.
+Pairing did not complete. Native inspection was blocked by the locked Mac;
+no permission prompt was confirmed and no security setting was weakened.
+Browser actions, tab lending/revocation and actual Continue remain unverified.
+The authority, coordinator and real upstream schema tests are separate evidence,
+not a substitute for this remaining qualification.

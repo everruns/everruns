@@ -54,7 +54,8 @@ fn client_dispatch_cell_snapshot_retains_owner_and_atomic_resolution() {
             record.call.name.clone(),
             vec![],
             None,
-        ),
+        )
+        .into(),
     };
     let (reply, events) = state
         .command(session, command.clone(), 1002, EventId::new())
