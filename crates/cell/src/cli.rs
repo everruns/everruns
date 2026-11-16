@@ -197,6 +197,9 @@ enum Mode {
         #[command(subcommand)]
         what: Inspect,
     },
+    /// This container's CPU and memory and its machine's, as JSON
+    /// (`container.rs`), for load runs that sample every pod. Read only.
+    Usage,
     /// Run a stateless gateway.
     Gateway {
         #[arg(long, env = "CELL_TOPOLOGY")]
@@ -389,6 +392,10 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             json,
             what,
         } => inspect(Topology::load(&topology)?, json, what).await,
+        Mode::Usage => {
+            println!("{}", serde_json::to_string(&crate::container::read())?);
+            Ok(())
+        }
         Mode::Gateway { topology, listen } => {
             let gateway = Gateway::new(TopologySource { path: topology });
             let listener = tokio::net::TcpListener::bind(listen).await?;

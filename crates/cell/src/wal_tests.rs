@@ -367,3 +367,39 @@ async fn held_after_counts_only_the_entries_past_an_index() {
     assert_eq!(wal.held_bytes(), wal.held_after(20));
     assert_eq!(wal.held_after(30), tail);
 }
+
+/// A restarted node re-applies its own log at startup only up to the
+/// commit index it reads back, so the index is written down; one ahead of
+/// the log that reached the disk is cut back to the last held entry.
+#[tokio::test]
+async fn the_commit_index_survives_a_restart_and_never_passes_the_log() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let wal = open(dir.path(), 1 << 20);
+    append_durable(&wal, (1..=40).map(|index| entry(1, index)).collect()).await;
+    let mut store = wal.clone();
+    store
+        .save_committed(Some(entry(1, 30).log_id))
+        .await
+        .expect("save");
+    drop((wal, store));
+    let mut reopened = open(dir.path(), 1 << 20);
+    assert_eq!(
+        reopened.read_committed().await.expect("read"),
+        Some(entry(1, 30).log_id)
+    );
+
+    // An index written before its entries reached the disk.
+    write_committed(dir.path(), entry(1, 90).log_id).expect("write");
+    drop(reopened);
+    let mut reopened = open(dir.path(), 1 << 20);
+    assert_eq!(
+        reopened.read_committed().await.expect("read"),
+        Some(entry(1, 40).log_id)
+    );
+
+    // A missing or unreadable file falls back to the fsynced meta.
+    std::fs::write(dir.path().join(COMMITTED_FILE), b"not json").expect("write");
+    drop(reopened);
+    let mut reopened = open(dir.path(), 1 << 20);
+    assert_eq!(reopened.read_committed().await.expect("read"), None);
+}
