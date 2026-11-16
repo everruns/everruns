@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useProvidersConfig, useUpdateProvider } from "@/hooks/use-providers";
 import { getProviderLabel } from "@/components/providers/provider-icon";
-import { providerSupportsOAuth, providerOAuthAuthorizeUrl } from "@/lib/api/providers";
+import { providerSupportsOAuth, startProviderOAuth } from "@/lib/api/providers";
 import type { Provider, DriverId, CredentialFormSchema } from "@/lib/api/types";
 import {
   CredentialFields,
@@ -120,7 +120,9 @@ export function SetApiKeyDialog({
   const handleConnectOAuth = () => {
     if (!provider) return;
     // Server redirect that sets a state cookie, so navigate the browser directly.
-    window.location.href = providerOAuthAuthorizeUrl(provider.id);
+    void startProviderOAuth(provider.id).catch((err) => {
+      console.error("Failed to start provider sign-in:", err);
+    });
   };
 
   const updateCredential = (key: string, value: string) =>

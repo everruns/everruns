@@ -1,7 +1,8 @@
 // LLM Provider API endpoints
 // Routes: /v1/providers/...
 
-use crate::auth::{AuthState, ResolvedOrg};
+use crate::auth::config::AuthMode;
+use crate::auth::{AuthState, AuthUser, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::models::ModelSyncService;
 use crate::domains::providers::record::Provider;
@@ -518,8 +519,16 @@ pub async fn provider_config(
 // ============================================================================
 
 /// HttpOnly, browser-bound state persisted across the OAuth round-trip. Binds
-/// the callback to the provider, org, and the PKCE verifier this browser
+/// the callback to the provider, org, admin, and the PKCE verifier this browser
 /// generated, so a forged callback cannot inject an attacker's credential.
+///
+/// Decision: the callback is authenticated by this state, not by the session
+/// cookie. The provider's consent page can outlive the 15-minute access-token
+/// cookie (signing in or signing up at OpenRouter takes a while), and only XHRs
+/// refresh that cookie, so a top-level redirect back routinely arrived with no
+/// session and failed with a bare 401. The state is HMAC-signed with the JWT
+/// secret, expires server-side, and names the admin who started the flow; the
+/// callback reloads that admin's membership and re-checks `provider.manage`.
 ///
 // THREAT[TM-API-021]: this binding plus the `provider.manage` re-check in the
 // callback is the CSRF/forgery mitigation; do not relax it without updating
@@ -532,14 +541,24 @@ struct PendingProviderOAuth {
     provider_id: String,
     /// Org the provider belongs to.
     org_id: i64,
+    /// Admin who started the flow; the callback acts as them. `None` only for
+    /// the anonymous no-auth (local development) user.
+    user_id: Option<uuid::Uuid>,
+    /// Unix seconds after which the state is refused, whatever the browser kept.
+    expires_at: i64,
     /// PKCE code verifier exchanged for the credential.
     code_verifier: String,
 }
 
+/// How long a started connect flow stays valid (state cookie and payload).
+const PROVIDER_OAUTH_STATE_TTL_MINUTES: i64 = 10;
+
 #[derive(Debug, Deserialize)]
 pub struct ProviderOAuthCallbackQuery {
-    pub code: String,
+    pub code: Option<String>,
     pub state: Option<String>,
+    /// Set by the provider when the user declines consent.
+    pub error: Option<String>,
 }
 
 /// OpenRouter's token-exchange response: the `key` is a user-controlled API key.
@@ -581,6 +600,10 @@ pub async fn oauth_authorize(
         state: csrf_state.clone(),
         provider_id: id.clone(),
         org_id: org.org_id,
+        user_id: (state.auth.config.mode != AuthMode::None)
+            .then_some(caller.user_id)
+            .flatten(),
+        expires_at: chrono::Utc::now().timestamp() + PROVIDER_OAUTH_STATE_TTL_MINUTES * 60,
         code_verifier,
     };
     let cookie = Cookie::build((
@@ -592,7 +615,7 @@ pub async fn oauth_authorize(
     .http_only(true)
     .secure(true)
     .same_site(SameSite::Lax)
-    .max_age(time::Duration::minutes(10))
+    .max_age(time::Duration::minutes(PROVIDER_OAUTH_STATE_TTL_MINUTES))
     .build();
 
     // The CSRF token rides in the callback URL so it round-trips regardless of
@@ -630,48 +653,121 @@ pub async fn oauth_authorize(
 
 /// GET /v1/providers/{id}/oauth/callback — finish the OAuth connect flow.
 ///
-/// Validates the browser-bound state, exchanges the authorization code for a
-/// credential, and stores it on the provider (encrypted at rest).
+/// Reached by the provider's browser redirect, so it carries no session of its
+/// own: the signed state cookie set by `oauth_authorize` authenticates it (see
+/// [`PendingProviderOAuth`]). Validates that state, exchanges the authorization
+/// code for a credential, stores it on the provider (encrypted at rest), and
+/// always returns the browser to the providers page: `?connected=<driver>` on
+/// success, `?connect_error=<code>` otherwise.
 pub async fn oauth_callback(
-    org: ResolvedOrg,
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
     Query(query): Query<ProviderOAuthCallbackQuery>,
-) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
-    let caller = require_provider_manage(&state, &org)?;
-    let pending = validate_pending_oauth(
-        &jar,
-        &id,
-        org.org_id,
-        query.state.as_deref(),
-        &state.auth.config.jwt.secret,
-    )?;
+) -> (CookieJar, Redirect) {
     // A `__Host-`-prefixed cookie is only deleted if the removal Set-Cookie also
     // carries Secure and Path=/, so build the removal cookie with those attributes
     // rather than relying on a bare name (which browsers would reject and ignore).
-    let clear_cookie = jar.remove(
+    let clear_cookie = jar.clone().remove(
         Cookie::build(oauth_state_cookie_name(&id))
             .path("/")
             .secure(true)
             .http_only(true)
             .build(),
     );
+    let providers_page = format!(
+        "{}/models?tab=providers",
+        state.auth.config.frontend_url.trim_end_matches('/'),
+    );
+    match finish_oauth_callback(&state, &jar, &id, query).await {
+        Ok(provider_type) => (
+            clear_cookie,
+            Redirect::to(&format!(
+                "{providers_page}&connected={}",
+                urlencoding::encode(provider_type.as_str()),
+            )),
+        ),
+        Err(failure) => {
+            tracing::warn!(
+                provider_id = %id,
+                reason = failure.reason,
+                "OAuth provider connection failed"
+            );
+            (
+                clear_cookie,
+                Redirect::to(&format!("{providers_page}&connect_error={}", failure.code)),
+            )
+        }
+    }
+}
 
-    let (provider, oauth) = resolve_oauth_provider(&state, &caller, &id).await?;
-    // Storing the obtained key requires encryption; fail fast with the canonical
-    // message rather than letting the update surface a generic 500.
-    require_encryption_configured(&state)?;
+/// Why a provider OAuth callback failed: a stable `connect_error` code the UI
+/// turns into a sentence, and a log-only reason.
+#[derive(Debug)]
+struct OAuthCallbackFailure {
+    code: &'static str,
+    reason: &'static str,
+}
+
+impl OAuthCallbackFailure {
+    fn new(code: &'static str, reason: &'static str) -> Self {
+        Self { code, reason }
+    }
+}
+
+async fn finish_oauth_callback(
+    state: &AppState,
+    jar: &CookieJar,
+    id: &str,
+    query: ProviderOAuthCallbackQuery,
+) -> Result<DriverId, OAuthCallbackFailure> {
+    let pending = validate_pending_oauth(
+        jar,
+        id,
+        query.state.as_deref(),
+        &state.auth.config.jwt.secret,
+        chrono::Utc::now().timestamp(),
+    )
+    .map_err(|_| OAuthCallbackFailure::new("expired", "invalid or expired OAuth state"))?;
+    if query.error.is_some() {
+        return Err(OAuthCallbackFailure::new(
+            "provider_refused",
+            "provider returned an error",
+        ));
+    }
+    let code = query
+        .code
+        .filter(|code| !code.is_empty())
+        .ok_or_else(|| OAuthCallbackFailure::new("provider_refused", "no authorization code"))?;
+
+    let caller = oauth_callback_caller(state, &pending).await?;
+    Policy::evaluate_with(
+        &LLM_PROVIDER_MANAGE,
+        state.auth.permission_resolver.as_ref(),
+        &caller,
+    )
+    .map_err(|_| OAuthCallbackFailure::new("failed", "caller can no longer manage providers"))?;
+
+    let (provider, oauth) = resolve_oauth_provider(state, &caller, id)
+        .await
+        .map_err(|_| OAuthCallbackFailure::new("failed", "provider or OAuth flow not found"))?;
+    // Storing the obtained key requires encryption.
+    require_encryption_configured(state)
+        .map_err(|_| OAuthCallbackFailure::new("failed", "encryption not configured"))?;
 
     let api_key = match oauth.flow {
         DriverOAuthFlow::ChatGptPlan => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Use the ChatGPT connection endpoint.".to_string(),
+            return Err(OAuthCallbackFailure::new(
+                "failed",
+                "ChatGPT uses its own connection endpoint",
             ));
         }
         DriverOAuthFlow::OpenRouterPkce => {
-            exchange_openrouter_code(&oauth.token_url, &query.code, &pending.code_verifier).await?
+            exchange_openrouter_code(&oauth.token_url, &code, &pending.code_verifier)
+                .await
+                .map_err(|_| {
+                    OAuthCallbackFailure::new("provider_refused", "token exchange failed")
+                })?
         }
     };
 
@@ -695,21 +791,52 @@ pub async fn oauth_callback(
             },
         )
         .await
-        .map_err(|e| internal("OAuth provider connection", &e))?
-        .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to store OAuth provider credential");
+            OAuthCallbackFailure::new("failed", "could not store credential")
+        })?
+        .ok_or_else(|| OAuthCallbackFailure::new("failed", "provider not found"))?;
 
     tracing::info!(
-        org_id = org.org_id,
+        org_id = pending.org_id,
         provider = %provider.provider_type,
         "Stored credential from OAuth provider connection"
     );
+    Ok(provider.provider_type)
+}
 
-    let redirect = format!(
-        "{}/models?tab=providers&connected={}",
-        state.auth.config.frontend_url.trim_end_matches('/'),
-        urlencoding::encode(provider.provider_type.as_str()),
-    );
-    Ok((clear_cookie, Redirect::to(&redirect)))
+/// Rebuild the caller who started the flow from the signed state: the admin's
+/// current membership and role (so a removal or demotion since the start is
+/// honored), or the anonymous owner in no-auth local development.
+async fn oauth_callback_caller(
+    state: &AppState,
+    pending: &PendingProviderOAuth,
+) -> Result<Caller, OAuthCallbackFailure> {
+    if state.auth.config.mode == AuthMode::None {
+        let org = state
+            .db
+            .get_organization(pending.org_id)
+            .await
+            .ok()
+            .flatten()
+            .ok_or_else(|| OAuthCallbackFailure::new("failed", "organization not found"))?;
+        let anonymous = AuthUser::anonymous();
+        return Ok(Caller {
+            org_id: org.org_id,
+            org_public_id: org.public_id,
+            user_id: Some(anonymous.id),
+            role: everruns_core::OrgRole::Owner,
+            is_platform_user: anonymous.is_platform_user,
+            is_internal: false,
+            read_only: false,
+        });
+    }
+    let user_id = pending
+        .user_id
+        .ok_or_else(|| OAuthCallbackFailure::new("expired", "state names no user"))?;
+    crate::auth::caller_resolution::caller_for_user(&state.db, pending.org_id, user_id)
+        .await
+        .map_err(|_| OAuthCallbackFailure::new("failed", "user is no longer an org member"))
 }
 
 /// Resolve the provider and its driver's declared OAuth flow, or a client error
@@ -862,9 +989,9 @@ fn require_provider_manage(
 fn validate_pending_oauth(
     jar: &CookieJar,
     provider_id: &str,
-    org_id: i64,
     query_state: Option<&str>,
     signing_secret: &str,
+    now: i64,
 ) -> Result<PendingProviderOAuth, (StatusCode, String)> {
     let cookie = jar.get(&oauth_state_cookie_name(provider_id)).ok_or((
         StatusCode::BAD_REQUEST,
@@ -875,11 +1002,14 @@ fn validate_pending_oauth(
         StatusCode::BAD_REQUEST,
         "Missing state parameter".to_string(),
     ))?;
-    if pending.state != callback_state
-        || pending.provider_id != provider_id
-        || pending.org_id != org_id
-    {
+    if pending.state != callback_state || pending.provider_id != provider_id {
         return Err((StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()));
+    }
+    if now > pending.expires_at {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid or expired OAuth state".to_string(),
+        ));
     }
     Ok(pending)
 }
@@ -987,6 +1117,7 @@ mod oauth_tests {
     use super::*;
 
     const TEST_SIGNING_SECRET: &str = "test-oauth-cookie-signing-secret";
+    const NOW: i64 = 1_800_000_000;
 
     fn jar_with_pending(pending: &PendingProviderOAuth) -> CookieJar {
         let value = encode_pending_oauth(pending, TEST_SIGNING_SECRET).unwrap();
@@ -1001,6 +1132,8 @@ mod oauth_tests {
             state: "csrf-token".to_string(),
             provider_id: "provider_abc".to_string(),
             org_id: 42,
+            user_id: Some(uuid::Uuid::nil()),
+            expires_at: NOW + 600,
             code_verifier: "verifier".to_string(),
         }
     }
@@ -1069,9 +1202,9 @@ mod oauth_tests {
         let result = validate_pending_oauth(
             &jar,
             "provider_abc",
-            42,
             Some("csrf-token"),
             TEST_SIGNING_SECRET,
+            NOW,
         )
         .unwrap();
         assert_eq!(result.code_verifier, "verifier");
@@ -1080,22 +1213,28 @@ mod oauth_tests {
     #[test]
     fn validate_pending_rejects_state_mismatch() {
         let jar = jar_with_pending(&sample_pending());
-        let err =
-            validate_pending_oauth(&jar, "provider_abc", 42, Some("wrong"), TEST_SIGNING_SECRET)
-                .unwrap_err();
+        let err = validate_pending_oauth(
+            &jar,
+            "provider_abc",
+            Some("wrong"),
+            TEST_SIGNING_SECRET,
+            NOW,
+        )
+        .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
     #[test]
-    fn validate_pending_rejects_org_mismatch() {
-        // A cookie minted for another org must not authorize this org's provider.
+    fn validate_pending_rejects_expired_state() {
+        // The browser may keep the cookie past its max-age; the signed payload's
+        // own expiry still refuses it.
         let jar = jar_with_pending(&sample_pending());
         let err = validate_pending_oauth(
             &jar,
             "provider_abc",
-            99,
             Some("csrf-token"),
             TEST_SIGNING_SECRET,
+            NOW + 601,
         )
         .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -1108,9 +1247,9 @@ mod oauth_tests {
         let err = validate_pending_oauth(
             &jar,
             "provider_other",
-            42,
             Some("csrf-token"),
             TEST_SIGNING_SECRET,
+            NOW,
         )
         .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -1119,7 +1258,7 @@ mod oauth_tests {
     #[test]
     fn validate_pending_requires_query_state() {
         let jar = jar_with_pending(&sample_pending());
-        let err = validate_pending_oauth(&jar, "provider_abc", 42, None, TEST_SIGNING_SECRET)
+        let err = validate_pending_oauth(&jar, "provider_abc", None, TEST_SIGNING_SECRET, NOW)
             .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
@@ -1129,9 +1268,9 @@ mod oauth_tests {
         let err = validate_pending_oauth(
             &CookieJar::new(),
             "provider_abc",
-            42,
             Some("csrf-token"),
             TEST_SIGNING_SECRET,
+            NOW,
         )
         .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -1148,9 +1287,9 @@ mod oauth_tests {
         let err = validate_pending_oauth(
             &jar,
             "provider_abc",
-            42,
             Some("csrf-token"),
             TEST_SIGNING_SECRET,
+            NOW,
         )
         .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -1165,12 +1304,136 @@ mod oauth_tests {
         let err = validate_pending_oauth(
             &jar,
             "provider_abc",
-            42,
             Some("csrf-token"),
             TEST_SIGNING_SECRET,
+            NOW,
         )
         .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    fn callback_state(mode: AuthMode) -> AppState {
+        let db = Arc::new(StorageBackend::test_database());
+        let config = crate::auth::AuthConfig {
+            mode,
+            jwt: crate::auth::config::JwtConfig {
+                secret: TEST_SIGNING_SECRET.to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        AppState::new(
+            db.clone(),
+            None,
+            Arc::new(DriverRegistry::new()),
+            AuthState::builtin(config, db),
+            None,
+        )
+    }
+
+    fn live_pending() -> PendingProviderOAuth {
+        PendingProviderOAuth {
+            expires_at: chrono::Utc::now().timestamp() + 600,
+            ..sample_pending()
+        }
+    }
+
+    async fn callback_location(
+        state: AppState,
+        jar: CookieJar,
+        query: ProviderOAuthCallbackQuery,
+    ) -> String {
+        use axum::response::IntoResponse;
+        let response = oauth_callback(
+            State(state),
+            jar,
+            Path("provider_abc".to_string()),
+            Query(query),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        response.headers()[axum::http::header::LOCATION]
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
+    // Regression: the provider's redirect back carries no session cookie once
+    // the 15-minute access token lapses during consent. The callback must not
+    // answer with a bare 401 JSON page; it returns the browser to the providers
+    // page with a reason the UI can show.
+    #[tokio::test]
+    async fn callback_without_session_or_state_returns_to_the_ui() {
+        let location = callback_location(
+            callback_state(AuthMode::Admin),
+            CookieJar::new(),
+            ProviderOAuthCallbackQuery {
+                code: Some("code".into()),
+                state: Some("csrf-token".into()),
+                error: None,
+            },
+        )
+        .await;
+        assert_eq!(
+            location,
+            "http://localhost:9300/models?tab=providers&connect_error=expired"
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_reports_declined_consent() {
+        let location = callback_location(
+            callback_state(AuthMode::Admin),
+            jar_with_pending(&live_pending()),
+            ProviderOAuthCallbackQuery {
+                code: None,
+                state: Some("csrf-token".into()),
+                error: Some("access_denied".into()),
+            },
+        )
+        .await;
+        assert!(
+            location.ends_with("connect_error=provider_refused"),
+            "{location}"
+        );
+    }
+
+    // With a valid signed state and no session, the callback acts as the admin
+    // the state names, re-resolved from the database: a user who is no longer a
+    // member (here: unknown) cannot finish the flow.
+    #[tokio::test]
+    async fn callback_rechecks_the_admin_named_by_the_state() {
+        let location = callback_location(
+            callback_state(AuthMode::Admin),
+            jar_with_pending(&live_pending()),
+            ProviderOAuthCallbackQuery {
+                code: Some("code".into()),
+                state: Some("csrf-token".into()),
+                error: None,
+            },
+        )
+        .await;
+        assert!(location.ends_with("connect_error=failed"), "{location}");
+    }
+
+    #[tokio::test]
+    async fn callback_refuses_expired_state_even_if_the_browser_kept_it() {
+        let expired = PendingProviderOAuth {
+            expires_at: chrono::Utc::now().timestamp() - 1,
+            ..sample_pending()
+        };
+        let location = callback_location(
+            callback_state(AuthMode::Admin),
+            jar_with_pending(&expired),
+            ProviderOAuthCallbackQuery {
+                code: Some("code".into()),
+                state: Some("csrf-token".into()),
+                error: None,
+            },
+        )
+        .await;
+        assert!(location.ends_with("connect_error=expired"), "{location}");
     }
 
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.

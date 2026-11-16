@@ -94,6 +94,15 @@ export function providerOAuthAuthorizeUrl(providerId: string): string {
   return `${getBackendUrl()}/v1/providers/${providerId}/oauth/authorize`;
 }
 
+// Begin the provider's OAuth connect flow from a click. A top-level navigation
+// cannot refresh an expired session cookie (only API calls retry after a
+// refresh), so touch the provider through the API client first: that renews the
+// session if needed, and the authorize redirect then carries a live cookie.
+export async function startProviderOAuth(providerId: string): Promise<void> {
+  await getProvider(providerId);
+  window.location.assign(providerOAuthAuthorizeUrl(providerId));
+}
+
 // Model CRUD
 export async function getModels(): Promise<ModelWithProvider[]> {
   const response = await api.get<ListResponse<ModelWithProvider>>("/v1/models");
