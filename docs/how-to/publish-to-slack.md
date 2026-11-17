@@ -138,6 +138,21 @@ manifest, keeping its other settings, and opens Slack so you can approve them:
   the issue says why and lists the manual steps: add the listed bot scopes in Slack,
   reinstall the existing app, and save the refreshed bot token in the endpoint editor.
 
+If the fix cannot run yet, the issue says why and links to what unblocks it. Most often
+Slack stopped accepting the organization's connection to the workspace: select
+**Reconnect Slack workspace**, reconnect it under **Settings** > **Slack**, then return
+to the issue and select **Fix in Slack**.
+
+To fix it by hand instead, for any app:
+
+1. Open the app at [api.slack.com/apps](https://api.slack.com/apps) and go to
+   **OAuth & Permissions**.
+2. Under **Bot Token Scopes**, add the scopes the issue lists.
+3. Select **Reinstall to Workspace** and approve.
+4. For an app you configured by hand, if Slack shows a new bot token, save it in the
+   endpoint editor. An app Everruns created keeps its token.
+5. Return to the issue and select **Check again**.
+
 When several apps need the same fix, **Fix N Slack apps** goes through them one at a
 time. Your Slack administrator may need to approve the change. Use **Check again** to
 verify the installation; unavailable or stale permission evidence keeps the issue open

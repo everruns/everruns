@@ -56091,6 +56091,17 @@
           "undoable": {
             "type": "boolean",
             "description": "Whether the fix can be undone from the finding."
+          },
+          "unblock": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FixerUnblock",
+                "description": "The page where the person takes the step that unlocks the fix, when\none exists in Everruns. Absent when the fix can run, or when nothing in\nEverruns unlocks it (only the manual steps remain)."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -89945,6 +89956,26 @@
         "description": "Prefixed identifier with 'session' prefix",
         "example": "session_01933b5a000070008000000000000001",
         "pattern": "^session_[0-9a-f]{32}$"
+      },
+      "FixerUnblock": {
+        "type": "object",
+        "description": "A link to the step that makes a blocked fixer available.",
+        "required": [
+          "label",
+          "href"
+        ],
+        "properties": {
+          "href": {
+            "type": "string",
+            "description": "A path inside the Everruns console, never an external URL.",
+            "example": "/settings/slack"
+          },
+          "label": {
+            "type": "string",
+            "description": "Button text.",
+            "example": "Reconnect Slack workspace"
+          }
+        }
       }
     },
     "securitySchemes": {

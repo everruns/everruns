@@ -9,7 +9,7 @@ products: [platform, cloud]
 surfaces: [ui, api]
 links:
   docs: [/how-to/publish-to-slack/#resolve-installation-issues]
-  prs: [everruns/everruns#5227]
+  prs: [everruns/everruns#5227, everruns/everruns#PRNUM]
 ---
 
 An issue in **Settings → Health** now offers a fix when Everruns can make
@@ -27,6 +27,11 @@ token. When several apps need the same fix, **Fix 3 Slack apps** walks
 through them one at a time. An issue resolves only after Everruns checks the
 app with Slack again
 ([Publish to Slack](/how-to/publish-to-slack/#resolve-installation-issues)).
+
+When the fix cannot run yet, the card links to the step that unblocks it,
+such as **Reconnect Slack workspace** when Slack stopped accepting the
+organization's workspace connection. The manual steps (add the scope under
+Bot Token Scopes, reinstall, check again) are listed for every Slack app.
 
 The same fix runs from the API and CLI:
 
