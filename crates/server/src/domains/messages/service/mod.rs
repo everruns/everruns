@@ -810,6 +810,12 @@ impl MessageService {
         &self.db
     }
 
+    /// The control plane's view of the org data planes, for callers that
+    /// route a message to one (`data_plane::sessions::admit`).
+    pub fn data_plane(&self) -> crate::domains::data_plane::ControlPlane {
+        crate::domains::data_plane::ControlPlane::from_env(self.db.clone())
+    }
+
     pub fn event_service(&self) -> &EventService {
         &self.event_service
     }

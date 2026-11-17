@@ -199,12 +199,13 @@ export function sessionRecordPanes({
   features: Set<string>;
   hasSchedules: boolean;
   hasValues?: boolean;
-  /** A data plane serves the session's files, not yet its values or schedules. */
+  /** A data plane serves the session's files and schedules, not yet its values. */
   dataPlane?: boolean;
 }): SessionRecordPane[] {
   const panes: SessionRecordPane[] = ["files"];
-  if (dataPlane) return panes;
-  if (hasValues || features.has("key_value") || features.has("secrets")) panes.push("values");
+  if (!dataPlane && (hasValues || features.has("key_value") || features.has("secrets"))) {
+    panes.push("values");
+  }
   if (hasSchedules || features.has("schedules")) panes.push("schedules");
   return panes;
 }
@@ -232,8 +233,9 @@ export function buildSessionNavigation({
   /** Another agent handed this session its work. */
   inRun?: boolean;
   /**
-   * The org's sessions run on a data plane, which serves chat and the
-   * session's files for now: no repositories or background work to show.
+   * The org's sessions run on a data plane, which serves chat, the
+   * session's files, its schedules and subagents for now: no repositories
+   * or leased resources to show.
    * Every session there has its own durable workspace, so Files always shows.
    */
   dataPlane?: boolean;
@@ -241,12 +243,14 @@ export function buildSessionNavigation({
   const hasFeature = (feature: string) => features.has(feature);
   // Work covers subagents, leased resources and the schedules this session
   // created. A count covers a recording whose capability was removed later.
-  const hasWork =
-    !dataPlane &&
-    (hasFeature("leased_resources") ||
+  // A data plane keeps subagent tasks and schedules (step 11.4) but no
+  // leased resources, and the platform's task count does not see its tasks.
+  const hasWork = dataPlane
+    ? hasFeature("schedules") || hasFeature("subagents") || (activeScheduleCount ?? 0) > 0
+    : hasFeature("leased_resources") ||
       hasFeature("schedules") ||
       (taskCount ?? 0) > 0 ||
-      (activeScheduleCount ?? 0) > 0);
+      (activeScheduleCount ?? 0) > 0;
   const hasFiles = dataPlane || sessionShowsFiles(features, fileCount);
   // Agents shows the whole run: on a session that can hand work to other
   // agents, and on one another agent handed work to.

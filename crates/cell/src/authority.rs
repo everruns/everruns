@@ -154,6 +154,10 @@ pub struct Authority {
     /// Turns with a Framework outcome.
     #[serde(default)]
     pub outcomes: u64,
+    /// Tool calls an executor finishes after their turn parked, by call id
+    /// (`detach.rs`). While one is live the session owes no work.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub detached: BTreeMap<String, crate::detach::DetachedCall>,
 }
 
 impl Authority {
@@ -175,9 +179,14 @@ impl Authority {
         self.holder.as_ref().is_some_and(|h| h.expires_ms > now_ms)
     }
 
-    /// Work is owed: input, a resume, a cancel, or a due timer.
+    /// Work is owed: input, a resume, a cancel, a due timer, or a detached
+    /// call whose executor stopped renewing it. Nothing is owed while a
+    /// detached call runs: its turn resumes when the call settles.
     pub fn owed(&self, now_ms: i64) -> bool {
-        !self.suspended && (self.runnable || self.wake_at.is_some_and(|at| at <= now_ms))
+        if self.suspended || crate::detach::live(self, now_ms) {
+            return false;
+        }
+        self.runnable || self.wake_at.is_some_and(|at| at <= now_ms) || !self.detached.is_empty()
     }
 
     pub fn configuration(&self) -> Value {
@@ -287,7 +296,7 @@ pub enum Applied {
 impl crate::state::SessionState {
     /// Append one event to the journal, tracking what the authority derives
     /// from events (open turn, pending calls, waits, terminal outcomes).
-    fn journal(&mut self, mut request: EventRequest, id: EventId) -> Event {
+    pub(crate) fn journal(&mut self, mut request: EventRequest, id: EventId) -> Event {
         self.authority.human_waits.annotate(&mut request);
         let sequence = self.last_sequence().unwrap_or(0) + 1;
         let event = request.into_event(id, sequence);
@@ -503,6 +512,9 @@ impl crate::state::SessionState {
                 let position = a.inbox;
                 a.target_cancels.insert(input, position);
                 if interrupt {
+                    // A cancelled turn keeps no detached call: its executor
+                    // finds the record gone at its next renewal and stops.
+                    a.detached.clear();
                     a.cancel = Some(position);
                     a.cancel_reported = false;
                     a.runnable = true;
@@ -526,8 +538,18 @@ impl crate::state::SessionState {
     pub fn claim(&mut self, name: &str, node: NodeId, ttl_ms: i64, now_ms: i64) -> Option<Value> {
         let a = &mut self.authority;
         a.binding.as_ref()?;
+        if crate::detach::live(a, now_ms) {
+            return None;
+        }
         if a.wake_at.is_some_and(|at| at <= now_ms) {
             a.wake_at = None;
+            a.resume_generation += 1;
+            a.runnable = true;
+        }
+        if !a.detached.is_empty() {
+            // Expired: the turn resumes and reruns or cuts off each call,
+            // as after a crash mid-tool.
+            a.detached.clear();
             a.resume_generation += 1;
             a.runnable = true;
         }

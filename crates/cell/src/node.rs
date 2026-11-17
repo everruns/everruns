@@ -1028,6 +1028,7 @@ impl Node {
                 },
                 _ = tick.tick() => {
                     self.hosting.sweep();
+                    if self.is_leader() { crate::platform::fire_due(&self).await; }
                     if self.cfg.executors != ExecutorMode::InNode {
                         let state = self.shared.state.read();
                         self.dispatch.retain(|s| state.sessions.contains_key(s));

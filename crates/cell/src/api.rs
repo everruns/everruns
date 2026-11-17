@@ -323,6 +323,16 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         "How long the oldest unshipped entry waited, per shipping round (upper bound).",
         &p.ship_lag_seconds,
     );
+    w.counters(
+        "cell_schedules_fired_total",
+        "Schedules this node fired as its cell's leader.",
+        &p.schedules_fired,
+    );
+    w.histograms(
+        "cell_schedule_fire_lag_seconds",
+        "From a schedule's time to its occurrence committed.",
+        &p.schedule_lag_seconds,
+    );
     if let Some(gateway) = node.gateway.get() {
         w.counters(
             "cell_messages_admitted_total",
@@ -799,6 +809,9 @@ pub struct SessionView {
     /// The org the session is billed to.
     #[serde(default)]
     pub tenant: Option<String>,
+    /// Tool calls finishing after their turn parked (`detach.rs`).
+    #[serde(default)]
+    pub detached: usize,
 }
 
 impl SessionView {
@@ -812,6 +825,7 @@ impl SessionView {
             turns_completed: s.turns_completed(),
             placement: s.placement,
             tenant: s.tenant.clone(),
+            detached: s.authority.detached.len(),
         }
     }
 }
@@ -1118,6 +1132,9 @@ async fn create_session(
 pub struct MessageBody {
     pub text: String,
     pub id: everruns_contracts::typed_id::MessageId,
+    /// Who wrote it, when not the person (an agent trigger, step 11.4).
+    #[serde(default)]
+    pub origin: Option<everruns_contracts::message_origin::MessageOrigin>,
 }
 
 /// Admit a user message through Engine (`Session::send_with_id`): a retry
@@ -1142,10 +1159,11 @@ async fn send_message(
             return Ok(Json(reply));
         }
     };
-    let reply = match handle
-        .send_with_id(body.id, everruns::InputMessage::user(body.text))
-        .await
-    {
+    let mut input = everruns::InputMessage::user(body.text);
+    if let Some(origin) = &body.origin {
+        origin.write(&mut input.metadata);
+    }
+    let reply = match handle.send_with_id(body.id, input).await {
         Ok(_) => {
             node.prom.messages_admitted.inc(&[("status", "accepted")]);
             CellReply::Ok {

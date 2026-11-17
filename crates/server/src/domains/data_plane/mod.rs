@@ -176,6 +176,17 @@ pub trait DataPlane: Send + Sync {
         initial_files: &[everruns_core::session_file::InitialFile],
         sandbox: Option<&Value>,
     ) -> anyhow::Result<()>;
+    /// `POST /dp/v1/orgs/{org}/sessions/{id}/messages`: admit a message
+    /// the control plane wrote itself (an agent trigger's run). A retry
+    /// with the same `message` id admits once.
+    async fn send_message(
+        &self,
+        org: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+        text: &str,
+        origin: &everruns_core::message::MessageOrigin,
+    ) -> anyhow::Result<()>;
 }
 
 /// v1: the org runs on the platform's own workers.
@@ -210,6 +221,17 @@ impl DataPlane for NoDataPlane {
         _: Option<&Value>,
     ) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    async fn send_message(
+        &self,
+        _: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        _: everruns_contracts::typed_id::MessageId,
+        _: &str,
+        _: &everruns_core::message::MessageOrigin,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("session {session} is not on a data plane")
     }
 }
 
@@ -299,6 +321,28 @@ impl DataPlane for HttpDataPlane {
         if let Some(sandbox) = sandbox {
             body["sandbox"] = sandbox.clone();
         }
+        self.request(reqwest::Method::POST, url)
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    async fn send_message(
+        &self,
+        org: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+        text: &str,
+        origin: &everruns_core::message::MessageOrigin,
+    ) -> anyhow::Result<()> {
+        let url = format!(
+            "{}{}/orgs/{org}/sessions/{session}/messages",
+            self.row.url,
+            dp::PREFIX
+        );
+        let body = serde_json::json!({ "id": message, "text": text, "origin": origin });
         self.request(reqwest::Method::POST, url)
             .json(&body)
             .send()

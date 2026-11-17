@@ -183,6 +183,9 @@ pub struct Prom {
     /// Tool calls by tool and status, with duration (`tool.completed`).
     pub tool_calls: Counters,
     pub tool_seconds: Histograms,
+    /// Schedules this node fired as leader, and how late each committed.
+    pub schedules_fired: Counters,
+    pub schedule_lag_seconds: Histograms,
 }
 
 impl Prom {

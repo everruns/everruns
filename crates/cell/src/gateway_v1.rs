@@ -6,7 +6,10 @@
 //! - Stage 1 is chat: send and list messages, list events (with the
 //!   control plane's filters and cursors), the SSE stream, cancelling the
 //!   running turn, tool approvals and client-side tool results; the
-//!   session's files are `gateway_fs.rs` (step 11.1). Every other call on a
+//!   session's files are `gateway_fs.rs` (step 11.1), and its schedules
+//!   are here since step 11.4 (`platform.rs`), with its tasks to read
+//!   (`tasks.rs`; cancelling a task, answering one and push configs come
+//!   with 11.6). Every other call on a
 //!   session answers 501 with the feature's name, and the console hides
 //!   those features for a v2 org, so a client never gets half a shape.
 //! - The session record itself (get, list, title, pin, archive) stays with
@@ -24,7 +27,7 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
-use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_contracts::typed_id::{MessageId, ScheduleId, SessionId};
 use everruns_core::events::Event;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -43,6 +46,19 @@ pub fn routes() -> Router<Arc<Gateway>> {
         .route("/v1/sessions/{session}/cancel", post(cancel_turn))
         .route("/v1/sessions/{session}/tool-approvals", post(approvals))
         .route("/v1/sessions/{session}/tool-results", post(tool_results))
+        .route("/v1/sessions/{session}/schedules", get(list_schedules))
+        .route(
+            "/v1/sessions/{session}/schedules/{schedule}",
+            get(get_schedule)
+                .patch(update_schedule)
+                .delete(delete_schedule),
+        )
+        .route(
+            "/v1/sessions/{session}/schedules/{schedule}/trigger",
+            post(trigger_schedule),
+        )
+        .route("/v1/sessions/{session}/tasks", get(list_tasks))
+        .route("/v1/sessions/{session}/tasks/{task}", get(get_task))
         .route("/v1/sessions/{session}/{*feature}", any(not_yet))
 }
 
@@ -461,4 +477,167 @@ mod tests {
             StatusCode::NOT_IMPLEMENTED
         );
     }
+}
+
+/// A schedule command on the session's cell; a schedule it does not hold
+/// answers 404, as on the control plane.
+async fn schedule_command(
+    gateway: &Gateway,
+    session: SessionId,
+    action: Option<crate::platform::Op>,
+) -> Result<Value, ApiError> {
+    gateway
+        .session_command(session, "schedules", &json!({ "action": action }))
+        .await
+        .map_err(|(status, reason)| {
+            if reason == crate::platform::SCHEDULE_NOT_FOUND {
+                (StatusCode::NOT_FOUND, "Schedule not found".into())
+            } else {
+                (status, reason)
+            }
+        })
+}
+
+fn schedule_id(id: &str) -> Result<ScheduleId, ApiError> {
+    ScheduleId::parse(id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
+}
+
+/// `GET /v1/sessions/{id}/schedules`.
+async fn list_schedules(
+    State(gateway): State<Arc<Gateway>>,
+    Path(session): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    Ok(Json(schedule_command(&gateway, session, None).await?))
+}
+
+/// `GET /v1/sessions/{id}/schedules/{schedule_id}`.
+async fn get_schedule(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, schedule)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    let schedule = schedule_id(&schedule)?.to_string();
+    let listed = schedule_command(&gateway, session, None).await?;
+    listed
+        .as_array()
+        .and_then(|all| all.iter().find(|s| s["id"] == schedule.as_str()))
+        .cloned()
+        .map(Json)
+        .ok_or((StatusCode::NOT_FOUND, "Schedule not found".into()))
+}
+
+/// `PATCH /v1/sessions/{id}/schedules/{schedule_id}`: the control plane's
+/// body; an empty one enables the schedule. A spend cap needs metering a
+/// cell does not have yet (11.6), so `budget_usd` is refused.
+async fn update_schedule(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, schedule)): Path<(String, String)>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    let id = schedule_id(&schedule)?;
+    if body.get("budget_usd").is_some_and(|v| !v.is_null()) {
+        return Err((
+            StatusCode::NOT_IMPLEMENTED,
+            "a schedule budget is not available yet for sessions on a v2 data plane".into(),
+        ));
+    }
+    let mut change: crate::platform::ScheduleChange =
+        serde_json::from_value(body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    if change.enabled.is_none() && change.ends_at.is_none() && change.max_runs.is_none() {
+        change.enabled = Some(true);
+    }
+    change.deleted = false;
+    if matches!(change.max_runs, Some(Some(0))) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "max_runs must be at least 1".into(),
+        ));
+    }
+    let action = crate::platform::Op::UpdateSchedule { id, change };
+    Ok(Json(
+        schedule_command(&gateway, session, Some(action)).await?,
+    ))
+}
+
+/// `DELETE /v1/sessions/{id}/schedules/{schedule_id}`.
+async fn delete_schedule(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, schedule)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let session = parse(&session)?;
+    let id = schedule_id(&schedule)?;
+    let change = crate::platform::ScheduleChange {
+        deleted: true,
+        ..Default::default()
+    };
+    let action = crate::platform::Op::UpdateSchedule { id, change };
+    schedule_command(&gateway, session, Some(action)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /v1/sessions/{id}/schedules/{schedule_id}/trigger`: run it now.
+async fn trigger_schedule(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, schedule)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    let id = schedule_id(&schedule)?;
+    let action = crate::platform::Op::TriggerSchedule { id };
+    let fired = schedule_command(&gateway, session, Some(action)).await?;
+    if fired["fired"] != true {
+        let reason = fired["reason"]
+            .as_str()
+            .unwrap_or("the session refused the run");
+        return Err((StatusCode::CONFLICT, reason.to_owned()));
+    }
+    Ok(Json(fired["schedule"].clone()))
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct TaskQuery {
+    state: Option<String>,
+    kind: Option<String>,
+    after_id: Option<String>,
+    limit: Option<usize>,
+}
+
+/// `GET /v1/sessions/{id}/tasks`, with the control plane's filters.
+async fn list_tasks(
+    State(gateway): State<Arc<Gateway>>,
+    Path(session): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<TaskQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    let listed = gateway
+        .session_command(session, "tasks", &json!({}))
+        .await?;
+    let keep = |task: &Value, field: &str, wanted: &Option<String>| {
+        wanted.as_deref().is_none_or(|w| task[field] == w)
+    };
+    let tasks: Vec<Value> = listed
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|t| keep(t, "state", &query.state) && keep(t, "kind", &query.kind))
+        .collect();
+    Ok(Json(json!(tasks)))
+}
+
+/// `GET /v1/sessions/{id}/tasks/{task_id}`: the task and a page of its
+/// messages.
+async fn get_task(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task)): Path<(String, String)>,
+    axum::extract::Query(query): axum::extract::Query<TaskQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    let body = json!({ "task": task, "after_id": query.after_id, "limit": query.limit });
+    let detail = gateway.session_command(session, "tasks", &body).await?;
+    if detail.is_null() {
+        return Err((StatusCode::NOT_FOUND, "Task not found".into()));
+    }
+    Ok(Json(detail))
 }

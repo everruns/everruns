@@ -128,6 +128,7 @@ pub fn view(s: &SessionState, since: Option<i32>) -> SessionState {
         turn_start: s.turn_start,
         checkpoints: s.checkpoints.clone(),
         files: s.files.clone(),
+        platform: s.platform.clone(),
         branch: s.branch,
     }
 }

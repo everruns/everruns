@@ -74,6 +74,11 @@ struct Inner {
     pokes: parking_lot::Mutex<HashMap<SessionId, Weak<actors::Poke>>>,
     /// Managed sandboxes of the sessions that run here (`sandbox.rs`).
     sandboxes: std::sync::OnceLock<Arc<crate::sandbox::OrgSandboxes>>,
+    /// Tool calls finished here after their turn parked (`detach.rs`).
+    detached: std::sync::OnceLock<Arc<crate::detach::Runner>>,
+    /// An executor's way to the fleet's sessions (`subagents.rs`); a node
+    /// uses its own gateway.
+    gateway: std::sync::OnceLock<Arc<crate::gateway::Gateway>>,
 }
 
 /// Where hosting reaches its cell.
@@ -107,6 +112,11 @@ impl RaftHosting {
         let _ = self.inner.sandboxes.set(sandboxes);
     }
 
+    /// The gateway an executor reaches other sessions through.
+    pub fn set_gateway(&self, gateway: Arc<crate::gateway::Gateway>) {
+        let _ = self.inner.gateway.set(gateway);
+    }
+
     /// Hosting for an executor outside the cell (see `remote`).
     pub fn remote(remote: Arc<crate::remote::Remote>) -> Self {
         Self::with_source(Source::Remote(remote))
@@ -122,6 +132,8 @@ impl RaftHosting {
                 epochs: Default::default(),
                 pokes: Default::default(),
                 sandboxes: Default::default(),
+                detached: Default::default(),
+                gateway: Default::default(),
             }),
         }
     }
@@ -268,6 +280,40 @@ impl Inner {
     }
 }
 
+/// Proposals and reads for the session services an activation gets
+/// (`platform_store.rs`).
+#[derive(Clone)]
+pub(crate) struct Port(Arc<Inner>);
+
+impl Port {
+    /// Propose `command`; its value, or why it was refused.
+    pub(crate) async fn propose(&self, session: SessionId, command: Command) -> Result<Value> {
+        match self.0.propose(session, command).await? {
+            Response::Value { value } => Ok(value),
+            other => Err(refused(session, other)),
+        }
+    }
+
+    pub(crate) async fn read<T>(
+        &self,
+        session: SessionId,
+        f: impl FnOnce(&SessionState) -> T,
+    ) -> Result<T> {
+        self.0.read(session, f).await
+    }
+
+    /// The gateway to other sessions, wherever they run.
+    pub(crate) fn gateway(&self) -> Option<Arc<crate::gateway::Gateway>> {
+        if let Some(gateway) = self.0.gateway.get() {
+            return Some(gateway.clone());
+        }
+        match &self.0.source {
+            Source::Node(node) => node.upgrade()?.gateway.get().cloned(),
+            Source::Remote(_) => None,
+        }
+    }
+}
+
 /// Why a session is not here, as an error a gateway can act on.
 fn missing(state: &crate::state::CellState, session: SessionId) -> AgentLoopError {
     match state.forwarded.get(&session) {
@@ -363,6 +409,13 @@ impl SessionHosting for RaftHosting {
         backends: HostBackends,
     ) -> Result<HostBackends> {
         let backends = actors::with_allowance(self.inner.clone(), session, backends);
+        let backends = crate::platform_store::attach(backends, Port(self.inner.clone()));
+        let backends = self
+            .inner
+            .detached
+            .get_or_init(|| crate::detach::Runner::start(Port(self.inner.clone())))
+            .attach(session, backends);
+        let backends = crate::subagents::attach(session, backends, Port(self.inner.clone())).await;
         Ok(match self.inner.sandboxes.get() {
             Some(sandboxes) => sandboxes.attach(backends, self.files()),
             None => backends,
