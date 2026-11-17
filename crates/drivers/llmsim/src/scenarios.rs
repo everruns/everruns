@@ -15,6 +15,9 @@
 //!   at timings measured on 2026-10-28 (Luna: first token 2.9 s, 108 tokens/s;
 //!   Sol: 2 s, 46 tokens/s; Muse Spark 1.3 Contributor in production: 12.7 s,
 //!   136 tokens/s), so a load test can ask how capacity changes with the model.
+//! - `subagent-fanout` lives here (`scenarios/`), not in llmsim, because it
+//!   drives everruns' own `spawn_agent` tool: three foreground subagents at
+//!   once, each playing a built-in scenario from its instructions' marker.
 //! - A step that needs a tool, played on a call that offers none (titles,
 //!   compaction and other side calls carry the user message but no tools),
 //!   falls back to the driver's normal answer instead of failing that call.
@@ -34,7 +37,9 @@ use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use futures::StreamExt;
 use futures::stream::{self, BoxStream};
-use llmsim::latency::LatencyProfile;
+
+use crate::prompt_cache::PromptUsage;
+use llmsim::latency::{DEFAULT_PREFILL_US_PER_TOKEN, LatencyProfile};
 use llmsim::scenario::{
     self, AttemptOutcome, AttemptTracker, ConversationMessage, ResolveError, ScenarioSet,
     StepError, ToolSpec,
@@ -42,7 +47,19 @@ use llmsim::scenario::{
 use llmsim::scenario_stream::{Pacing, word_tokens};
 use llmsim::{SimError, SimTurn};
 
-static BUILTIN_SET: LazyLock<ScenarioSet> = LazyLock::new(ScenarioSet::builtin);
+/// Scenarios for everruns features llmsim does not know about, such as
+/// subagents. They are parsed by `local_scenarios_are_valid`.
+const LOCAL_SCENARIOS: [&str; 1] = [include_str!("../scenarios/subagent-fanout.json")];
+
+static BUILTIN_SET: LazyLock<ScenarioSet> = LazyLock::new(|| {
+    let mut set = ScenarioSet::builtin();
+    for json in LOCAL_SCENARIOS {
+        if let Ok(local) = ScenarioSet::from_json(json) {
+            set.extend_replacing(local);
+        }
+    }
+    set
+});
 
 /// Names of the built-in scenarios a marker can select.
 pub fn builtin_scenario_names() -> Vec<String> {
@@ -59,6 +76,8 @@ pub(crate) fn play(
     tools: &[ToolDefinition],
     model: &str,
     latency: LatencyProfile,
+    prompt: PromptUsage,
+    extra_ttft: Duration,
     attempts: &Attempts,
 ) -> Option<Result<BoxStream<'static, Result<LlmStreamEvent>>>> {
     let conversation: Vec<ConversationMessage> = messages.iter().map(conversation).collect();
@@ -132,7 +151,7 @@ pub(crate) fn play(
                         .into(),
                 )),
             ));
-            return Some(Ok(play_plan(plan)));
+            return Some(Ok(play_plan(with_prefill(plan, prompt, extra_ttft))));
         }
         // Close the reasoning block before the first answer token.
         if reasoning_open && matches!(event, LlmStreamEvent::TextDelta(_)) {
@@ -156,13 +175,30 @@ pub(crate) fn play(
         ));
     }
     let mut metadata = LlmCompletionMetadata::default();
+    metadata.prompt_tokens = Some(prompt.prompt_tokens());
+    metadata.cache_read_tokens = prompt.cache_read_tokens();
     metadata.completion_tokens = Some(completion_tokens);
-    metadata.total_tokens = Some(completion_tokens);
+    metadata.total_tokens = Some(prompt.uncached + prompt.cached + completion_tokens);
     metadata.model = Some(model.to_string());
     metadata.response_model = Some(model.to_string());
     metadata.finish_reason = Some("stop".to_string());
     plan.push((Duration::ZERO, Ok(LlmStreamEvent::Done(Box::new(metadata)))));
-    Some(Ok(play_plan(plan)))
+    Some(Ok(play_plan(with_prefill(plan, prompt, extra_ttft))))
+}
+
+/// Reading the prompt comes before anything the model writes. Scenarios model
+/// hosted providers, so they use llmsim's default prefill rate even on the
+/// instant `llmsim-default` model. `extra` is provider back-pressure from the
+/// model's conditions.
+fn with_prefill(
+    mut plan: Vec<(Duration, Result<LlmStreamEvent>)>,
+    prompt: PromptUsage,
+    extra: Duration,
+) -> Vec<(Duration, Result<LlmStreamEvent>)> {
+    if let Some((wait, _)) = plan.first_mut() {
+        *wait += prompt.prefill(DEFAULT_PREFILL_US_PER_TOKEN) + extra;
+    }
+    plan
 }
 
 /// Time a model spends writing tool calls: their arguments are output tokens
@@ -224,6 +260,7 @@ fn reasoning_item(text: &str) -> LlmStreamEvent {
     LlmStreamEvent::ReasoningItem(
         ReasoningContentPart::opaque("llmsim")
             .with_item_id("rs_llmsim_scenario")
+            .with_encrypted(crate::replay::encrypted_payload(word_tokens(text).len()))
             .with_text(ReasoningText::Plain {
                 text: text.to_string(),
             }),
@@ -291,6 +328,8 @@ mod tests {
             tools,
             "llmsim-default",
             LatencyProfile::instant(),
+            PromptUsage::default(),
+            Duration::ZERO,
             attempts,
         )?;
         Some(match played {
@@ -478,8 +517,52 @@ mod tests {
     }
 
     #[test]
+    fn local_scenarios_are_valid() {
+        for json in LOCAL_SCENARIOS {
+            ScenarioSet::from_json(json).unwrap();
+        }
+        assert!(
+            builtin_scenario_names()
+                .iter()
+                .any(|n| n == "subagent-fanout")
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn fanout_spawns_three_subagents_with_their_own_markers() {
+        let tools = vec![ToolDefinition::function(
+            "spawn_agent",
+            "Delegate a task",
+            serde_json::json!({"type": "object"}),
+        )];
+        let messages = [Message::text(
+            MessageRole::User,
+            "go [[llmsim:subagent-fanout]]",
+        )];
+        let attempts = Attempts::default();
+        let spawn = call(&messages, &tools, &attempts).await.unwrap().unwrap();
+        let calls = tool_calls(&spawn);
+        assert_eq!(calls.len(), 3);
+        for call in &calls {
+            assert_eq!(call.name, "spawn_agent");
+            let instructions = call.arguments["instructions"].as_str().unwrap();
+            assert!(
+                scenario::parse_marker(instructions).is_some(),
+                "{instructions}"
+            );
+        }
+    }
+
+    #[test]
     fn builtin_set_has_the_agent_scenarios() {
-        for name in ["luna-agent", "sol-agent", "muse-agent", "long-tool"] {
+        for name in [
+            "luna-agent",
+            "sol-agent",
+            "muse-agent",
+            "long-tool",
+            "coding-agent",
+            "tool-trouble",
+        ] {
             assert!(builtin_scenario_names().iter().any(|n| n == name), "{name}");
         }
     }
@@ -636,5 +719,52 @@ mod tests {
             .count();
         assert_eq!(deltas, 400);
         assert_eq!(item + 1, first_text);
+    }
+
+    /// A long prompt is read before the first token, and the scenario reports
+    /// it as prompt and cache-read tokens.
+    #[tokio::test(start_paused = true)]
+    async fn prompts_are_prefilled_and_billed() {
+        let messages = vec![Message::text(MessageRole::User, "hi [[llmsim:chat-short]]")];
+        let mut times = Vec::new();
+        for prompt in [
+            PromptUsage::default(),
+            PromptUsage {
+                uncached: 100_000,
+                cached: 0,
+            },
+            PromptUsage {
+                uncached: 0,
+                cached: 100_000,
+            },
+        ] {
+            let started = tokio::time::Instant::now();
+            let events: Vec<_> = play(
+                &messages,
+                &[],
+                "llmsim-default",
+                LatencyProfile::instant(),
+                prompt,
+                Duration::ZERO,
+                &Attempts::default(),
+            )
+            .unwrap()
+            .unwrap()
+            .collect()
+            .await;
+            times.push(started.elapsed());
+            let Some(Ok(LlmStreamEvent::Done(metadata))) = events.last() else {
+                panic!("no metadata");
+            };
+            assert_eq!(metadata.prompt_tokens, Some(prompt.uncached));
+            assert_eq!(metadata.cache_read_tokens, prompt.cache_read_tokens());
+        }
+        // 100k cold tokens at 50 us each add 5 s; cached ones a tenth of that.
+        assert!(times[1] >= times[0] + Duration::from_secs(5), "{times:?}");
+        assert!(
+            times[2] >= times[0] + Duration::from_millis(500),
+            "{times:?}"
+        );
+        assert!(times[2] < times[1], "{times:?}");
     }
 }

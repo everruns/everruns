@@ -585,3 +585,118 @@ fn test_resolve_latency_profile_from_model_name() {
     let profile = driver.resolve_latency_profile("llmsim-default");
     assert!(profile.sample_ttft().as_nanos() > 0);
 }
+
+#[tokio::test]
+async fn a_long_session_reports_cache_reads_like_a_hosted_provider() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    let mut config = make_config();
+    config
+        .metadata
+        .insert("session_id".into(), "long-session".into());
+    // About 5,000 tokens of system prompt, then a growing conversation.
+    let mut messages = vec![system_message(&"x".repeat(20_000)), user_message("hi")];
+
+    let first = driver
+        .chat_completion(messages.clone(), &config)
+        .await
+        .unwrap()
+        .metadata;
+    assert_eq!(first.cache_read_tokens, None);
+    let first_prompt = first.prompt_tokens.unwrap();
+    assert!(first_prompt >= 5_000);
+
+    messages.push(Message::text(MessageRole::Assistant, "ok"));
+    messages.push(user_message("and then?"));
+    let second = driver
+        .chat_completion(messages, &config)
+        .await
+        .unwrap()
+        .metadata;
+    let cached = second.cache_read_tokens.unwrap();
+    assert!(cached >= 4_992, "cached {cached}");
+    // Billed prompt tokens exclude the cache read; the total includes it.
+    assert!(second.prompt_tokens.unwrap() < 200);
+    assert_eq!(
+        second.total_tokens.unwrap(),
+        second.prompt_tokens.unwrap() + cached + second.completion_tokens.unwrap()
+    );
+}
+
+#[tokio::test]
+async fn calls_without_a_session_are_never_cached() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    let messages = vec![system_message(&"x".repeat(20_000))];
+    for _ in 0..2 {
+        let metadata = driver
+            .chat_completion(messages.clone(), &make_config())
+            .await
+            .unwrap()
+            .metadata;
+        assert_eq!(metadata.cache_read_tokens, None);
+        assert!(metadata.prompt_tokens.unwrap() >= 5_000);
+    }
+}
+
+#[tokio::test]
+async fn compaction_summaries_are_sized_from_the_history() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    let messages = vec![
+        system_message(
+            "<task>\nSummarize the following conversation history. The summary replaces",
+        ),
+        // About 20k tokens of transcript.
+        user_message(&"history ".repeat(10_000)),
+    ];
+    let response = driver
+        .chat_completion(messages, &make_config())
+        .await
+        .unwrap();
+    let words = response.text.split_whitespace().count();
+    // Capped at 1,200 tokens, about 900 words of lorem text.
+    assert!((700..=1_000).contains(&words), "{words} words");
+    assert!(response.tool_calls.is_none());
+}
+
+#[test]
+fn realistic_families_report_their_real_context_window() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    assert_eq!(
+        driver.effective_context_window("llmsim-realistic-claude-sonnet"),
+        Some(200_000)
+    );
+    assert_eq!(
+        driver.effective_context_window("llmsim-realistic-gpt-5"),
+        Some(400_000)
+    );
+    assert_eq!(driver.effective_context_window("llmsim-realistic"), None);
+    assert_eq!(driver.effective_context_window("llmsim-default"), None);
+    let pinned = LlmSimDriver::new(LlmSimConfig::fixed("ok").with_context_window(8_000));
+    assert_eq!(
+        pinned.effective_context_window("llmsim-realistic-gpt-5"),
+        Some(8_000)
+    );
+}
+
+#[tokio::test]
+async fn a_storm_that_never_ends_rate_limits_every_call() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    // A 60 s window every 60 s: always inside the storm.
+    let config = LlmCallConfig::new("llmsim-default-storm-429-60-60");
+    for _ in 0..2 {
+        let Err(err) = driver
+            .chat_completion_stream(vec![user_message("hi")], &config)
+            .await
+        else {
+            panic!("expected a rate limit");
+        };
+        let retry = err.retry_after_secs().unwrap();
+        assert!((1..=60).contains(&retry), "{retry}");
+    }
+    // The same driver serves plain models normally.
+    assert!(
+        driver
+            .chat_completion(vec![user_message("hi")], &make_config())
+            .await
+            .is_ok()
+    );
+}

@@ -90,6 +90,32 @@ pub(crate) fn realistic_latency(model_name: &str) -> Option<LatencyProfile> {
     })
 }
 
+/// Context window of a `-realistic-<family>` model, as its real counterpart
+/// has; `None` for other names, which leaves the runtime's default.
+pub(crate) fn context_window(model_name: &str) -> Option<usize> {
+    let (_, rest) = model_name.split_once(MARKER)?;
+    let family = rest.trim_start_matches('-').to_ascii_lowercase();
+    if family.is_empty() {
+        return None;
+    }
+    Some(if family.contains("gemini") {
+        1_048_576
+    } else if family.contains("claude")
+        || family.contains("opus")
+        || family.contains("sonnet")
+        || family.contains("haiku")
+    {
+        200_000
+    } else if ["gpt-5", "gpt-6", "sol", "luna", "terra", "astra"]
+        .iter()
+        .any(|name| family.contains(name))
+    {
+        400_000
+    } else {
+        128_000
+    })
+}
+
 /// A cheap, side-effect-free call to a tool the agent has: `bash` (an
 /// `echo`), else `write_file` into a scratch path. `None` when it has neither.
 fn tool_call(tools: &[ToolDefinition], user_turn: usize, round: usize) -> Option<ToolCall> {
