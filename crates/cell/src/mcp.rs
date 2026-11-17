@@ -58,6 +58,13 @@ impl Bindings {
     }
 }
 
+/// Whether `definition` names any of an org's credentials: a header
+/// placeholder or an `mcp_oauth` connection. One that does not parse names
+/// none (it fails at create anyway).
+pub fn names_org_credentials(definition: &serde_json::Value) -> bool {
+    crate::host::package_with_bindings(definition).is_ok_and(|(_, bindings)| !bindings.is_empty())
+}
+
 /// Take every `${BINDING}` header and `mcp_oauth` connection out of
 /// `servers`, to be filled per call. Environment placeholders go too: a
 /// cell runs no local-process servers.
