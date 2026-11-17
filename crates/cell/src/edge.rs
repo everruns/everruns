@@ -2,9 +2,10 @@
 //! some orgs run on a data plane (design.md, step 8).
 //!
 //! Decisions:
-//! - The proxy in front (Caddy locally) sends `/v1/sessions` and below to
-//!   the edge, and everything else straight to the control plane: only
-//!   session calls can belong to a data plane.
+//! - The proxy in front (Caddy locally) sends `/v1/sessions` and
+//!   `/v1/workspaces` and below to the edge, and everything else straight
+//!   to the control plane: only session calls (and a session's workspace,
+//!   which has the session's id) can belong to a data plane.
 //! - A session's record (get, update, delete, archive, pin, cost, budgets,
 //!   resolved model, participants, slash commands, run requests, and the
 //!   list and create calls) always goes to the control plane,
@@ -115,6 +116,12 @@ fn route(path: &str) -> Route {
                 Err(_) => Route::ControlPlane,
             }
         }
+        // A session's workspace has the session's id; the workspace record
+        // (get, rename, archive) stays with the control plane.
+        ["v1", "workspaces", id, "fs", ..] => match crate::gateway_fs::session_of(id) {
+            Ok(id) => Route::Session(id),
+            Err(_) => Route::ControlPlane,
+        },
         _ => Route::ControlPlane,
     }
 }
@@ -535,10 +542,18 @@ mod tests {
             route(&format!("/v1/sessions/{id}/messages")),
             Route::Session(id)
         );
-        // A stage 2 call goes to the data plane, which answers 501 for it.
         assert_eq!(
             route(&format!("/v1/sessions/{id}/fs/a.md")),
             Route::Session(id)
+        );
+        let workspace = everruns_contracts::typed_id::WorkspaceId::from_uuid(id.uuid());
+        assert_eq!(
+            route(&format!("/v1/workspaces/{workspace}/fs/_/upload/a.png")),
+            Route::Session(id)
+        );
+        assert_eq!(
+            route(&format!("/v1/workspaces/{workspace}")),
+            Route::ControlPlane
         );
         assert_eq!(route("/v1/sessions/not-an-id/sse"), Route::ControlPlane);
         assert_eq!(route("/v1/agents"), Route::ControlPlane);

@@ -47,6 +47,11 @@ const PATTERN_MAX: usize = 1_000;
 #[derive(Clone)]
 pub struct CellFiles {
     inner: Arc<Inner>,
+    /// Whether writes commit under the epoch this hosting holds. The
+    /// console's file API (`api_files.rs`) writes unfenced, as the gateway:
+    /// a person's upload is not an executor's write, and must not fail
+    /// because this node's own executor lost the session a moment ago.
+    fenced: bool,
 }
 
 impl RaftHosting {
@@ -55,6 +60,16 @@ impl RaftHosting {
     pub fn files(&self) -> CellFiles {
         CellFiles {
             inner: self.inner.clone(),
+            fenced: true,
+        }
+    }
+
+    /// Sessions' workspaces as the console's file API writes them:
+    /// unfenced, like any gateway write.
+    pub fn workspace_api(&self) -> CellFiles {
+        CellFiles {
+            inner: self.inner.clone(),
+            fenced: false,
         }
     }
 }
@@ -75,7 +90,7 @@ fn file_id(session: SessionId, path: &str) -> uuid::Uuid {
     uuid::Uuid::new_v5(&session.uuid(), path.as_bytes())
 }
 
-fn info(session: SessionId, path: &str, e: &Entry) -> FileInfo {
+pub(crate) fn info(session: SessionId, path: &str, e: &Entry) -> FileInfo {
     FileInfo {
         id: file_id(session, path),
         session_id: session.uuid(),
@@ -113,17 +128,17 @@ impl CellFiles {
         }
     }
 
-    async fn entry(&self, session: SessionId, path: &str) -> Result<Option<Entry>> {
+    pub(crate) async fn entry(&self, session: SessionId, path: &str) -> Result<Option<Entry>> {
         self.inner
             .read(session, |s| s.files.entries.get(path).cloned())
             .await
     }
 
-    async fn entries(&self, session: SessionId) -> Result<BTreeMap<String, Entry>> {
+    pub(crate) async fn entries(&self, session: SessionId) -> Result<BTreeMap<String, Entry>> {
         self.inner.read(session, |s| s.files.entries.clone()).await
     }
 
-    async fn content(&self, entry: &Entry) -> Result<Option<String>> {
+    pub(crate) async fn content(&self, entry: &Entry) -> Result<Option<String>> {
         match &entry.content {
             Content::None => Ok(None),
             Content::Inline { data } => Ok(Some(data.clone())),
@@ -136,7 +151,12 @@ impl CellFiles {
         }
     }
 
-    async fn file(&self, session: SessionId, path: &str, e: &Entry) -> Result<SessionFile> {
+    pub(crate) async fn file(
+        &self,
+        session: SessionId,
+        path: &str,
+        e: &Entry,
+    ) -> Result<SessionFile> {
         Ok(SessionFile {
             id: file_id(session, path),
             session_id: session.uuid(),
@@ -153,7 +173,7 @@ impl CellFiles {
     }
 
     /// The content as a commit carries it: inline, or stored first.
-    async fn stage(&self, content: &str) -> Result<Content> {
+    pub(crate) async fn stage(&self, content: &str) -> Result<Content> {
         if content.len() <= INLINE_MAX {
             return Ok(Content::Inline {
                 data: content.to_string(),
@@ -168,8 +188,12 @@ impl CellFiles {
     }
 
     /// Commit `changes` under the epoch held here, if any.
-    async fn commit(&self, session: SessionId, changes: Vec<Change>) -> Result<Value> {
-        let fence = self.inner.epochs.lock().get(&session).copied();
+    pub(crate) async fn commit(&self, session: SessionId, changes: Vec<Change>) -> Result<Value> {
+        let fence = if self.fenced {
+            self.inner.epochs.lock().get(&session).copied()
+        } else {
+            None
+        };
         let response = self
             .inner
             .propose(
@@ -208,6 +232,14 @@ impl CellFiles {
                 value["path"].as_str().unwrap_or_default()
             ))),
             Some("quota") => Err(AgentLoopError::tool("the workspace is full")),
+            Some("exists") => Err(AgentLoopError::tool(format!(
+                "File already exists at path: {}",
+                value["path"].as_str().unwrap_or_default()
+            ))),
+            Some("missing") => Err(AgentLoopError::tool(format!(
+                "Source not found: {}",
+                value["path"].as_str().unwrap_or_default()
+            ))),
             Some(_) => Err(AgentLoopError::tool(
                 value["reason"]
                     .as_str()
@@ -247,7 +279,7 @@ impl CellFiles {
         .await
     }
 
-    async fn written(&self, session: SessionId, path: &str) -> Result<SessionFile> {
+    pub(crate) async fn written(&self, session: SessionId, path: &str) -> Result<SessionFile> {
         let entry = self
             .entry(session, path)
             .await?

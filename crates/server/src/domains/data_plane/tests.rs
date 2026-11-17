@@ -559,12 +559,20 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
     let harness = harness(&cp.db, ORG).await;
     let mut row = crate::storage::test_database::test_session_row(ORG);
     row.harness_id = Some(harness);
+    // A session's own starter files ride along with the create.
+    row.initial_files = json!([{ "path": "/brief.md", "content": "Read me." }]);
     assert_eq!(sessions::unsupported(&row, false), None);
     assert_eq!(sessions::unsupported(&row, true), Some("capabilities"));
     let id = cp.db.create_session(row).await.unwrap().id;
     assert!(!sessions::runs_on_data_plane(&cp, ORG, id).await.unwrap());
 
-    sessions::created(&cp, ORG, id, harness, None)
+    let brief = everruns_core::session_file::InitialFile {
+        path: "/brief.md".into(),
+        content: "Read me.".into(),
+        encoding: "text".into(),
+        is_readonly: false,
+    };
+    sessions::created(&cp, ORG, id, harness, None, &[brief])
         .await
         .unwrap();
     let (key, _) = crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, None)
@@ -576,6 +584,7 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         assert_eq!(org, &org_public(ORG));
         assert_eq!(body["id"], json!(id.to_string()));
         assert_eq!(body["agent_ref"], json!(key));
+        assert_eq!(body["initial_files"][0]["path"], "/brief.md");
         // The agent was delivered before the create.
         let agents: Vec<&ConfigUpdate> = seen
             .updates
@@ -604,7 +613,7 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         .await;
     if let Ok(v1) = v1 {
         let before = seen.lock().sessions.len();
-        sessions::created(&cp, 3, v1.id, harness, None)
+        sessions::created(&cp, 3, v1.id, harness, None, &[])
             .await
             .unwrap();
         assert_eq!(seen.lock().sessions.len(), before);

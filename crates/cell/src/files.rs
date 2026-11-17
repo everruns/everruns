@@ -19,9 +19,12 @@
 //!   is the gateway's or the control plane's (starter files, uploads).
 //! - Compare-and-set is per path: a write may name the version of the entry
 //!   it read, and is refused as a conflict if the entry changed since.
+//! - The console's file calls (`/v1/workspaces/{id}/fs`) reach a node as
+//!   one change each (`api_files.rs`); create, move and copy refuse an
+//!   existing target here, in apply, so two writers cannot both win.
 //! - Not here yet (fs.md steps 5 and 8): compaction of the map into tree
-//!   nodes in S3, forks, and the gateway's `/fs` routes. The per-session
-//!   quota bounds what the map can hold until then.
+//!   nodes in S3, and forks. The per-session quota bounds what the map can
+//!   hold until then.
 //!
 //! [`Command::Files`]: crate::state::Command::Files
 
@@ -124,6 +127,32 @@ pub enum Change {
     Mkdir {
         path: String,
     },
+    /// Create a file that must not exist yet (an upload or the console's
+    /// "new file"; a create over an existing path is refused, not merged).
+    Create {
+        path: String,
+        encoding: String,
+        content: Content,
+        size: u64,
+        #[serde(default)]
+        readonly: bool,
+    },
+    /// Set or clear a path's read-only mark; its content stays.
+    Mark {
+        path: String,
+        readonly: bool,
+    },
+    /// Rename a file. The content travels by reference: a blob is not
+    /// copied.
+    Move {
+        from: String,
+        to: String,
+    },
+    /// Copy a file; as with a move, a blob is shared, not copied.
+    Copy {
+        from: String,
+        to: String,
+    },
 }
 
 /// Why a commit did not apply.
@@ -133,6 +162,10 @@ pub enum Refusal {
     Conflict(String),
     ReadOnly(String),
     NotADirectory(String),
+    /// The path a create, move or copy writes already exists.
+    Exists(String),
+    /// The path a move, copy or mark reads does not exist.
+    Missing(String),
     Quota,
     Invalid(String),
 }
@@ -143,6 +176,8 @@ impl Refusal {
             Refusal::Conflict(path) => json!({ "refused": "conflict", "path": path }),
             Refusal::ReadOnly(path) => json!({ "refused": "read_only", "path": path }),
             Refusal::NotADirectory(path) => json!({ "refused": "not_a_directory", "path": path }),
+            Refusal::Exists(path) => json!({ "refused": "exists", "path": path }),
+            Refusal::Missing(path) => json!({ "refused": "missing", "path": path }),
             Refusal::Quota => json!({ "refused": "quota" }),
             Refusal::Invalid(reason) => json!({ "refused": "invalid", "reason": reason }),
         }
@@ -244,6 +279,24 @@ impl Files {
         Ok(changed)
     }
 
+    /// The file a move or copy reads, once `to` is free for it.
+    fn source(&self, from: &str, to: &str) -> Result<Entry, Refusal> {
+        valid(from)?;
+        valid(to)?;
+        let source = self
+            .entries
+            .get(from)
+            .cloned()
+            .ok_or_else(|| Refusal::Missing(from.to_owned()))?;
+        if source.dir {
+            return Err(Refusal::Invalid(format!("not a file: {from}")));
+        }
+        if self.entries.contains_key(to) {
+            return Err(Refusal::Exists(to.to_owned()));
+        }
+        Ok(source)
+    }
+
     fn apply(&mut self, change: Change, version: u64, now_ms: i64) -> Result<Value, Refusal> {
         match change {
             Change::Mkdir { path } => {
@@ -309,6 +362,90 @@ impl Files {
                     },
                 );
                 Ok(json!({ "path": path, "changed": true, "created": existing.is_none() }))
+            }
+            Change::Create {
+                path,
+                encoding,
+                content,
+                size,
+                readonly,
+            } => {
+                valid(&path)?;
+                if self.entries.contains_key(&path) {
+                    return Err(Refusal::Exists(path));
+                }
+                self.apply(
+                    Change::Put {
+                        path,
+                        encoding,
+                        content,
+                        size,
+                        readonly,
+                        if_absent: false,
+                        expected: None,
+                    },
+                    version,
+                    now_ms,
+                )
+            }
+            Change::Mark { path, readonly } => {
+                valid(&path)?;
+                let entry = self
+                    .entries
+                    .get_mut(&path)
+                    .ok_or_else(|| Refusal::Missing(path.clone()))?;
+                let changed = entry.readonly != readonly;
+                if changed {
+                    entry.readonly = readonly;
+                    entry.version = version;
+                    entry.updated_ms = now_ms;
+                }
+                Ok(json!({ "path": path, "changed": changed }))
+            }
+            Change::Move { from, to } | Change::Copy { from, to } if from == to => {
+                valid(&from)?;
+                Err(Refusal::Exists(to))
+            }
+            Change::Move { from, to } => {
+                let source = self.source(&from, &to)?;
+                if source.readonly {
+                    return Err(Refusal::ReadOnly(from));
+                }
+                if let Some(dir) = parent(&to).filter(|dir| *dir != "/") {
+                    self.mkdirs(dir, version, now_ms)?;
+                }
+                self.entries.remove(&from);
+                self.entries.insert(
+                    to.clone(),
+                    Entry {
+                        version,
+                        updated_ms: now_ms,
+                        ..source
+                    },
+                );
+                Ok(json!({ "path": to, "changed": true }))
+            }
+            Change::Copy { from, to } => {
+                let source = self.source(&from, &to)?;
+                if let Some(dir) = parent(&to).filter(|dir| *dir != "/") {
+                    self.mkdirs(dir, version, now_ms)?;
+                }
+                let bytes = self.bytes + source.size;
+                if bytes > QUOTA {
+                    return Err(Refusal::Quota);
+                }
+                self.bytes = bytes;
+                self.entries.insert(
+                    to.clone(),
+                    Entry {
+                        readonly: false,
+                        version,
+                        created_ms: now_ms,
+                        updated_ms: now_ms,
+                        ..source
+                    },
+                );
+                Ok(json!({ "path": to, "changed": true }))
             }
             Change::Delete { path, recursive } => {
                 valid(&path)?;
@@ -480,5 +617,102 @@ mod tests {
         );
         assert!(files.entries.is_empty());
         assert_eq!(files.bytes, 0);
+    }
+
+    #[test]
+    fn create_move_and_copy_refuse_an_existing_target() {
+        let mut files = Files::default();
+        files.commit("1".into(), vec![put("/a.md", "a"), put("/b.md", "b")], 1);
+        let create = |path: &str| Change::Create {
+            path: path.into(),
+            encoding: "text".into(),
+            content: Content::Inline { data: "c".into() },
+            size: 1,
+            readonly: false,
+        };
+        assert_eq!(
+            files.commit("2".into(), vec![create("/a.md")], 2)["refused"],
+            "exists"
+        );
+        let moved = Change::Move {
+            from: "/a.md".into(),
+            to: "/b.md".into(),
+        };
+        assert_eq!(
+            files.commit("3".into(), vec![moved], 3)["refused"],
+            "exists"
+        );
+        let copied = Change::Copy {
+            from: "/gone.md".into(),
+            to: "/c.md".into(),
+        };
+        assert_eq!(
+            files.commit("4".into(), vec![copied], 4)["refused"],
+            "missing"
+        );
+        assert_eq!(files.entries.len(), 2);
+    }
+
+    #[test]
+    fn a_move_keeps_the_content_and_a_copy_counts_its_bytes() {
+        let mut files = Files::default();
+        files.commit("1".into(), vec![put("/a.md", "abc")], 1);
+        files.commit(
+            "2".into(),
+            vec![Change::Move {
+                from: "/a.md".into(),
+                to: "/x/b.md".into(),
+            }],
+            2,
+        );
+        assert!(!files.entries.contains_key("/a.md"));
+        assert!(files.entries["/x"].dir);
+        assert_eq!(
+            files.entries["/x/b.md"].content,
+            Content::Inline { data: "abc".into() }
+        );
+        assert_eq!(files.bytes, 3);
+        files.commit(
+            "3".into(),
+            vec![Change::Copy {
+                from: "/x/b.md".into(),
+                to: "/c.md".into(),
+            }],
+            3,
+        );
+        assert_eq!(files.bytes, 6);
+        assert_eq!(
+            files.entries["/c.md"].content,
+            files.entries["/x/b.md"].content
+        );
+    }
+
+    #[test]
+    fn a_read_only_file_can_be_unmarked_but_not_moved() {
+        let mut files = Files::default();
+        files.commit("1".into(), vec![put("/a.md", "a")], 1);
+        let mark = |readonly| Change::Mark {
+            path: "/a.md".into(),
+            readonly,
+        };
+        files.commit("2".into(), vec![mark(true)], 2);
+        assert!(files.entries["/a.md"].readonly);
+        let moved = Change::Move {
+            from: "/a.md".into(),
+            to: "/b.md".into(),
+        };
+        assert_eq!(
+            files.commit("3".into(), vec![moved.clone()], 3)["refused"],
+            "read_only"
+        );
+        files.commit("4".into(), vec![mark(false)], 4);
+        assert_eq!(
+            files.commit("5".into(), vec![moved], 5)["results"][0]["changed"],
+            true
+        );
+        assert_eq!(
+            files.commit("6".into(), vec![mark(true)], 6)["refused"],
+            "missing"
+        );
     }
 }

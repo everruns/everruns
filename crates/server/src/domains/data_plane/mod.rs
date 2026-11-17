@@ -171,6 +171,7 @@ pub trait DataPlane: Send + Sync {
         org: &str,
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
+        initial_files: &[everruns_core::session_file::InitialFile],
     ) -> anyhow::Result<()>;
 }
 
@@ -202,6 +203,7 @@ impl DataPlane for NoDataPlane {
         _: &str,
         _: everruns_contracts::typed_id::SessionId,
         _: &str,
+        _: &[everruns_core::session_file::InitialFile],
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -282,10 +284,15 @@ impl DataPlane for HttpDataPlane {
         org: &str,
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
+        initial_files: &[everruns_core::session_file::InitialFile],
     ) -> anyhow::Result<()> {
         let url = format!("{}{}/orgs/{org}/sessions", self.row.url, dp::PREFIX);
+        let mut body = serde_json::json!({ "id": id, "agent_ref": agent_key });
+        if !initial_files.is_empty() {
+            body["initial_files"] = serde_json::to_value(initial_files)?;
+        }
         self.request(reqwest::Method::POST, url)
-            .json(&serde_json::json!({ "id": id, "agent_ref": agent_key }))
+            .json(&body)
             .send()
             .await?
             .error_for_status()?;

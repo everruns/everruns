@@ -621,6 +621,7 @@ impl SessionService {
                 row.id,
                 harness_id,
                 agent_id,
+                &req.initial_files,
             )
             .await
         {

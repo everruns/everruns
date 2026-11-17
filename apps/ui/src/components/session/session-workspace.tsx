@@ -27,10 +27,12 @@ import { sessionRecordPanes, type SessionRecordPane } from "@/components/session
 import { useSessionSchedules } from "@/hooks/use-session-schedules";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { cn } from "@/lib/utils";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 
-function useSessionStorage(sessionId: string) {
+function useSessionStorage(sessionId: string, enabled: boolean) {
   return useQuery({
     queryKey: ["session-storage", sessionId],
+    enabled,
     queryFn: async () => {
       const [keys, secrets] = await Promise.all([
         api.get<ListResponse<KeyValueInfo>>(`/v1/sessions/${sessionId}/storage/keys`),
@@ -45,7 +47,7 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
   const { displayLocale } = useLocale();
 
   const ui = useUiTranslations();
-  const { data, isLoading } = useSessionStorage(sessionId);
+  const { data, isLoading } = useSessionStorage(sessionId, true);
 
   return (
     <div className="p-4">
@@ -125,9 +127,11 @@ const PANE_LABELS: Record<SessionRecordPane, string> = {
 function FilesystemPane({
   workspaceId,
   sessionId,
+  dataPlane,
 }: {
   workspaceId: string | undefined;
   sessionId: string;
+  dataPlane: boolean;
 }) {
   const ui = useUiTranslations();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
@@ -159,7 +163,7 @@ function FilesystemPane({
           )}
         </div>
 
-        <SessionSandboxPanel sessionId={sessionId} />
+        {!dataPlane && <SessionSandboxPanel sessionId={sessionId} />}
       </div>
     </div>
   );
@@ -174,8 +178,11 @@ export function SessionWorkspace() {
   const { session, sessionId } = useSessionContext();
   const workspaceId = session?.workspace_id;
   const features = new Set(session?.features ?? []);
-  const schedules = useSessionSchedules(sessionId);
-  const storage = useSessionStorage(sessionId);
+  // A data plane serves the session's files; its values, schedules and
+  // sandbox are not there yet, so they are neither asked for nor shown.
+  const dataPlane = !!useOptionalFeatureFlags()?.flags?.data_plane;
+  const schedules = useSessionSchedules(dataPlane ? undefined : sessionId);
+  const storage = useSessionStorage(sessionId, !dataPlane);
   const hasScheduleRows = (schedules.data?.length ?? 0) > 0;
   const hasValueRows =
     (storage.data?.keyValues.length ?? 0) > 0 || (storage.data?.secrets.length ?? 0) > 0;
@@ -183,6 +190,7 @@ export function SessionWorkspace() {
     features,
     hasSchedules: hasScheduleRows,
     hasValues: hasValueRows,
+    dataPlane,
   });
   const [pane, setPane] = useState<SessionRecordPane>(panes[0] ?? "files");
   const active = panes.includes(pane) ? pane : (panes[0] ?? "files");
@@ -211,7 +219,9 @@ export function SessionWorkspace() {
         </div>
       )}
 
-      {active === "files" && <FilesystemPane workspaceId={workspaceId} sessionId={sessionId} />}
+      {active === "files" && (
+        <FilesystemPane workspaceId={workspaceId} sessionId={sessionId} dataPlane={dataPlane} />
+      )}
       {active === "values" && (
         <div className="flex-1 overflow-y-auto">
           <StoragePanel sessionId={sessionId} />
