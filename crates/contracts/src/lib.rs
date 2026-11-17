@@ -112,6 +112,7 @@ pub mod stream_event;
 #[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod structured_output;
+pub mod tool_approval_policy;
 pub mod tool_approval_types;
 pub mod tool_schema_compat;
 pub mod tool_types;

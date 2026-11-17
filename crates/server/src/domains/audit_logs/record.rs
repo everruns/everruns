@@ -170,6 +170,9 @@ pub enum AgentAction {
     ApprovalRequested,
     /// A human's spoken consent for a critical action was recorded.
     ApprovalGranted,
+    /// The auto approval reviewer allowed or blocked a tool call, or handed
+    /// it to a person.
+    AutoReviewed,
 }
 
 impl AgentAction {
@@ -183,6 +186,7 @@ impl AgentAction {
             Self::AppInvocationStarted => "agent.app_invocation.started",
             Self::ApprovalRequested => "agent.approval.requested",
             Self::ApprovalGranted => "agent.approval.granted",
+            Self::AutoReviewed => "agent.approval.auto_reviewed",
         }
     }
 }

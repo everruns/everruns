@@ -40,6 +40,10 @@ blocks until it answers) is unchanged and lives with the capability.
 - [`crates/core/src/session_commands/approval.rs`](../../crates/core/src/session_commands/approval.rs)
   owns Engine approval commands over the same durable gate; native serve and
   AgentCore use them as well as external hosting profiles.
+- [`crates/core/src/builtins/tool_review.rs`](../../crates/core/src/builtins/tool_review.rs)
+  owns the auto reviewer: what it may read, its rules and both passes.
+- [`crates/contracts/src/tool_approval_policy.rs`](../../crates/contracts/src/tool_approval_policy.rs)
+  owns rules, the organization policy, personal settings and the block streak.
 - [`docs/api/openapi.json`](../../docs/api/openapi.json) is the wire contract.
 - [`crates/server/tests/contracts/tool_approvals_test.rs`](../../crates/server/tests/contracts/tool_approvals_test.rs)
   covers the acceptance paths end to end.
@@ -189,7 +193,61 @@ from the decisions service only suggests a label; it never changes approval unti
 a person confirms it. See
 [MCP servers](../integrations/mcp-servers.md#tool-risk-labels).
 
+## Auto mode
+
+`auto` sits between `off` and `normal`: the gate asks about the same calls
+`protective` would, but a reviewer model answers first and a person is asked
+only when the reviewer will not decide. It exists so long unattended work does
+not stall on routine approvals, without dropping the gate. The modes order
+`off < auto < normal < protective`.
+
+**What the reviewer reads.** The people's messages in the session (last 12),
+the agent's tool calls since the last person message, the call under review
+with its arguments and declared risk, and the trust notes from the organization
+and the agent. It never reads assistant prose, tool output or tool
+descriptions: those can carry injected instructions, and an MCP server writes
+its own descriptions. The reviewer judges intent ("did a person ask for
+this?"), not text the agent was shown. Rules live in `AUTO_REVIEW_RULES`.
+
+**Two passes.** A fast pass asks the decision service for a calibrated
+probability that the call is routine; only a calibrated yes at p ≥ 0.9 allows.
+Otherwise the careful pass asks the utility model for a JSON verdict: allow,
+block (naming the rule) or ask a person. No verdict (no service, a timeout, a
+malformed answer) asks a person: the reviewer fails closed, never open.
+
+**Blocks talk back.** A block is a tool error telling the agent which rule and
+why, and that a person can still say yes. The agent asks in chat
+(`request_approval` in [soft approval](soft-approval.md)); on the retry the
+reviewer sees that yes in the person's messages. After 3 blocks in a row or 20
+in the session, auto review pauses and every further call goes to a person; a
+person's allow resets the streak. The streak lives under `tool_approval/`.
+
+**Person only.** A tool whose policy requires approval, a host policy, or an
+`ask` rule skips the reviewer: those calls always reach a person.
+
+**Rules.** An agent (`rules` in the capability config), its organization and
+the session owner can name tools (`*` glob) as `allow`, `ask` or `never`. The
+strictest matching rule wins (`never > ask > allow`), in every mode, before
+the reviewer runs. Personal rules may only `ask` or `never`.
+
+**Who picks the mode.** In order: a person's switch for the session
+(`PUT /v1/sessions/{id}/approval-mode`), the owner's personal default (user
+preference `tool_approval`), then the agent's config. A person cannot switch
+the gate fully off when the agent's mode is not `off`: `off` then runs as
+`auto`. Last, the organization's `allowed_modes` raise a disallowed mode to
+the next more careful allowed one. The worker fetches the organization policy
+and the owner's settings through `worker_get_tool_approval_policy` and caches
+them for a minute per session.
+
+**Record.** Every verdict emits `tool.reviewed` (verdict, stage, rule, reason)
+into the session log, and `ApprovalAuditListener` writes it to the org audit
+log as `agent.approval.auto_reviewed`. Unattended runs park and time out as in
+`normal` when the reviewer hands a call to a person.
+
 ## Not covered yet
+
+- The UI has no approval mode controls yet; the API, CLI and capability config
+  carry the whole feature.
 
 - MCP Apps, Slack and A2A surfaces do not render approval cards; those sessions
   can still be answered through the API.

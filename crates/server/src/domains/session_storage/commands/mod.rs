@@ -310,5 +310,7 @@ fn validate_bindings(
         .collect()
 }
 
+mod approval_mode;
+pub use approval_mode::{GetSessionApprovalMode, SessionApprovalMode, SetSessionApprovalMode};
 mod worker;
 pub use worker::*;

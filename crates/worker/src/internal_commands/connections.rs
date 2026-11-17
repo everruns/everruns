@@ -21,6 +21,7 @@ use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
+use everruns_contracts::tool_approval_policy::SessionToolApprovalPolicy;
 use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -233,6 +234,20 @@ impl<T: InternalCommandTransport + 'static> UserConnectionResolver
             &*self.transport,
             "Get web search settings",
             "worker_get_web_search_settings",
+            json!({ "session_id": session_id.to_string() }),
+        )
+        .await
+        .map(Some)
+    }
+
+    async fn get_tool_approval_policy(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<SessionToolApprovalPolicy>> {
+        call(
+            &*self.transport,
+            "Get tool approval policy",
+            "worker_get_tool_approval_policy",
             json!({ "session_id": session_id.to_string() }),
         )
         .await

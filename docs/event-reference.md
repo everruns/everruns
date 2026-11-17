@@ -36,6 +36,7 @@ This page lists every event type in the Everruns event protocol and documents th
 | `tool.progress` | Progress update from a running tool. |
 | `tool.output.delta` | Streaming chunk of tool output. |
 | `tool.call_requested` | A client-side tool call is waiting for a result from the client. |
+| `tool.reviewed` | The [auto approval](/capabilities/tool-approval/#auto-mode) reviewer allowed, blocked or handed a tool call to a person. Carries `verdict`, `stage`, `rule` and `reason`. |
 | `tool.call_repaired` | A malformed tool call was repaired, or repair was attempted, by the `tool_call_repair` capability. |
 | `tool.hosted_call` | A provider-executed (hosted) tool call changed state. |
 | `tool.nested_call` | A tool a shell script called through `tools` ([Shell Code Mode](/capabilities/shell-code-mode/)) finished, was refused, or stopped the script for approval. Carries the parent `bash` call id. |

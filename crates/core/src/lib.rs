@@ -495,11 +495,11 @@ pub use events::{
     SESSION_ACTIVATED, SESSION_IDLED, SESSION_MODEL_CHANGED, SESSION_STARTED,
     SESSION_TITLE_UPDATED, SessionActivatedData, SessionIdledData, SessionModelChangedData,
     SessionStartedData, SessionTitleUpdatedData, TOOL_CALL_REQUESTED, TOOL_COMPLETED,
-    TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
-    TURN_SEALED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
-    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
-    TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
-    normalize_reaction_emoji,
+    TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_REVIEWED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_SEALED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolReviewedData, ToolStartedData,
+    TurnCancelledData, TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
+    VALID_EVENT_TYPES, normalize_reaction_emoji,
 };
 pub use finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,

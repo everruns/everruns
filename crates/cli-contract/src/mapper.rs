@@ -364,6 +364,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Running and archived sessions, their state and participants.",
     ),
     (
+        "sessions approval-mode",
+        "How a session's tool calls get approved: off, auto, normal or protective.",
+    ),
+    (
         "sessions budget-check",
         "Check every budget that applies to a session.",
     ),

@@ -88,6 +88,9 @@ pub struct ToolApprovalRequired {
     /// When the server stops waiting and treats the request as rejected
     /// (RFC 3339).
     pub expires_at: String,
+    /// In auto mode, why the reviewer handed this call to a person.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_note: Option<String>,
 }
 
 impl ToolApprovalRequired {

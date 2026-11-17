@@ -544,3 +544,95 @@ async fn web_search_lookups_answer_only_for_the_orgs_search_accounts() {
         "{error:?}"
     );
 }
+
+/// The approval lookup hands the worker the org policy and the session
+/// owner's settings, with anything that would loosen the gate stripped.
+#[tokio::test]
+async fn tool_approval_lookup_returns_org_policy_and_owner_settings() {
+    use crate::storage::CreateUserRow;
+    use everruns_contracts::tool_approval_policy::{
+        OrgToolApprovalPolicy, ToolApprovalRule, ToolRuleAction,
+    };
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
+    let lookup = |session_id: SessionId| {
+        run(
+            &ctx,
+            "worker_get_tool_approval_policy",
+            json!({ "session_id": session_id.to_string() }),
+        )
+    };
+
+    // No policy, no owner: empty.
+    let ownerless = session(&db, DEFAULT_ORG_ID).await;
+    let answer = lookup(ownerless).await.unwrap();
+    assert_eq!(answer, json!({ "org": {}, "personal": {} }));
+
+    db.set_org_tool_approval_policy(
+        DEFAULT_ORG_ID,
+        &OrgToolApprovalPolicy {
+            allowed_modes: vec!["auto".into(), "normal".into()],
+            rules: vec![ToolApprovalRule {
+                tool: "github_merge_*".into(),
+                action: ToolRuleAction::Never,
+            }],
+            trust_notes: vec!["github.com/everruns is ours".into()],
+        },
+    )
+    .await
+    .unwrap();
+    let user = db
+        .create_user(CreateUserRow {
+            email: "approval-owner@example.com".to_string(),
+            name: "Owner".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    // A stored value written before validation: the allow rule is dropped.
+    db.set_user_preference(
+        user,
+        "tool_approval",
+        r#"{"default_mode":"auto","rules":[{"tool":"bash","action":"allow"},{"tool":"send_*","action":"ask"}]}"#,
+        100,
+    )
+    .await
+    .unwrap();
+    let owned = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: Some(user),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .id;
+    let answer = lookup(owned).await.unwrap();
+    assert_eq!(answer["org"]["allowed_modes"], json!(["auto", "normal"]));
+    assert_eq!(answer["org"]["rules"][0]["action"], "never");
+    assert_eq!(answer["personal"]["default_mode"], "auto");
+    assert_eq!(
+        answer["personal"]["rules"],
+        json!([{ "tool": "send_*", "action": "ask" }])
+    );
+
+    // Another org's worker cannot read it.
+    let other = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID + 999), db, None);
+    assert!(
+        run(
+            &other,
+            "worker_get_tool_approval_policy",
+            json!({ "session_id": owned.to_string() }),
+        )
+        .await
+        .is_err()
+    );
+}

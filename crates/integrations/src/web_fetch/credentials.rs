@@ -249,7 +249,7 @@ async fn run(
                     return Err("Credential consent plan is too large to display safely".into());
                 }
                 let marker = format!("credential:{ticket}");
-                let required=ToolApprovalRequired {code:TOOL_APPROVAL_REQUIRED_CODE.into(),error:"Credential storage needs your approval. No request has been sent. After approval, retry exactly the same call.".into(),tool_call_id:context.tool_call_id.clone().ok_or("Missing tool call identity")?,tool:"web_fetch".into(),display_name:Some("Save service credentials".into()),arguments:preview,arguments_truncated:false,fingerprint:marker.clone(),risk:marker,mode:"credential_consent".into(),asked_at:Utc::now().to_rfc3339(),expires_at:expires_at.to_rfc3339()};
+                let required=ToolApprovalRequired {code:TOOL_APPROVAL_REQUIRED_CODE.into(),error:"Credential storage needs your approval. No request has been sent. After approval, retry exactly the same call.".into(),tool_call_id:context.tool_call_id.clone().ok_or("Missing tool call identity")?,tool:"web_fetch".into(),display_name:Some("Save service credentials".into()),arguments:preview,arguments_truncated:false,fingerprint:marker.clone(),risk:marker,mode:"credential_consent".into(),asked_at:Utc::now().to_rfc3339(),expires_at:expires_at.to_rfc3339(),review_note:None};
                 return serde_json::to_value(required)
                     .map_err(|_| "Could not create credential consent request".into());
             }

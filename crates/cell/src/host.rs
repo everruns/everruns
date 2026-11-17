@@ -172,9 +172,12 @@ impl Host for StandardHost {
             .iter()
             .any(|c| c.id() == everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID)
         {
-            services = services.register(everruns_core::builtins::ToolApprovalCapability::new(
-                Arc::new(everruns_core::builtins::DurableToolApprover),
-            ));
+            services = services.register(
+                everruns_core::builtins::ToolApprovalCapability::new(Arc::new(
+                    everruns_core::builtins::DurableToolApprover,
+                ))
+                .with_reviewer(Arc::new(everruns_core::builtins::ModelToolReviewer)),
+            );
         }
         // A managed sandbox the control plane pinned for the session
         // (`sandbox.rs`): its provider key and the workspace sync come from

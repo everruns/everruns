@@ -10357,6 +10357,12 @@
         "required": false
       },
       {
+        "field": "tool_approval_policy",
+        "long": "tool-approval-policy",
+        "kind": "json",
+        "required": false
+      },
+      {
         "field": "web_search_defaults",
         "long": "web-search-defaults",
         "kind": "json",
@@ -14139,6 +14145,65 @@
       {
         "intent": "See when Sandboxes ran or were lost over the last day",
         "command": "everruns sandboxes timeline get --from 2026-05-01T00:00:00Z --to 2026-05-02T00:00:00Z --state running,lost"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_approval_mode",
+    "path": [
+      "sessions",
+      "approval-mode"
+    ],
+    "verb": "get",
+    "description": "Get a session's tool approval mode.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/approval-mode",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See which approval mode a session runs in",
+        "command": "everruns sessions approval-mode get --session-id session_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_session_approval_mode",
+    "path": [
+      "sessions",
+      "approval-mode"
+    ],
+    "verb": "set",
+    "description": "Set or clear a session's tool approval mode.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/approval-mode",
+    "args": [
+      {
+        "field": "mode",
+        "long": "mode",
+        "kind": "string",
+        "required": false,
+        "help": "`off`, `auto`, `normal` or `protective`; `null` clears the switch so the session follows the ..."
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Let a reviewer model answer routine approvals in a session",
+        "command": "everruns sessions approval-mode set --session-id session_01h9 --mode auto --reason 'Long refactor, review routine calls automatically'"
       }
     ]
   },

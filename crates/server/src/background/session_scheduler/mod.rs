@@ -1223,8 +1223,10 @@ mod limits_tests {
     async fn schedule_ends_when_its_next_time_is_past_its_end() {
         let db = Arc::new(StorageBackend::test_database());
         let service = SessionScheduleService::new(db.clone());
-        let row =
-            bounded_schedule(&db, None, Some(Utc::now() + chrono::Duration::seconds(1))).await;
+        // The end is now: the next `*/5` boundary is always after it. A margin
+        // (once `now + 1s`) failed whenever the test ran within that margin of
+        // a five-minute boundary.
+        let row = bounded_schedule(&db, None, Some(Utc::now())).await;
         let fired = service
             .mark_triggered(DEFAULT_ORG_ID, row.id)
             .await

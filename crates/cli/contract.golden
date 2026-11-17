@@ -275,7 +275,7 @@ orgs list	--context-revision --reason
 orgs provider-accounts list	--context-revision --org! --reason
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --research-model-id --self-healing --small-model-id --system-decisions --web-search-defaults
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --name --org! --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason
@@ -371,6 +371,8 @@ sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
 sandboxes timeline get	--agent-id --context-revision --from --include-in-process --limit --needs-attention --provider --reason --sandbox-template-id --search --state --to
+sessions approval-mode get	--context-revision --reason --session-id!
+sessions approval-mode set	--context-revision --mode --reason --session-id!
 sessions archive	--context-revision --reason --session <session_id>
 sessions budget-check check	--context-revision --reason --session-id <session_id>
 sessions budgets list	--context-revision --reason --session-id <session_id>

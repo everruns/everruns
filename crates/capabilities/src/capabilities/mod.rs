@@ -247,9 +247,17 @@ pub fn register_hosted_capabilities(
     // decisions live in session storage, so a parked turn resumes on whichever
     // worker picks it up after a person answers.
     #[cfg(feature = "portable-builtins")]
-    registry.register(everruns_core::builtins::ToolApprovalCapability::new(
-        std::sync::Arc::new(everruns_core::builtins::DurableToolApprover),
-    ));
+    // `auto` mode's reviewer reads the decision service and utility model
+    // from each call's context, so it is inert where neither is configured
+    // and the gate then asks a person.
+    registry.register(
+        everruns_core::builtins::ToolApprovalCapability::new(std::sync::Arc::new(
+            everruns_core::builtins::DurableToolApprover,
+        ))
+        .with_reviewer(std::sync::Arc::new(
+            everruns_core::builtins::ModelToolReviewer,
+        )),
+    );
     registry.register(UserHooksCapability);
     // Inert outside the hosted control plane, which resolves the chatting
     // person's servers per turn.

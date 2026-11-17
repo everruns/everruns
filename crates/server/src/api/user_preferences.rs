@@ -16,6 +16,9 @@ use axum::{
     routing::get,
 };
 use chrono::{DateTime, Utc};
+use everruns_contracts::tool_approval_policy::{
+    PERSONAL_APPROVAL_PREFERENCE_KEY, PersonalToolApproval,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -30,6 +33,14 @@ pub(crate) fn validate_preference(key: &str, value: &str) -> Result<(), StatusCo
     }
     if value.len() > MAX_PREFERENCE_VALUE_BYTES {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    // The personal approval settings shape the tool gate, so their value must
+    // parse and may only add caution (no allow rules).
+    if key == PERSONAL_APPROVAL_PREFERENCE_KEY {
+        serde_json::from_str::<PersonalToolApproval>(value)
+            .map_err(|_| StatusCode::BAD_REQUEST)?
+            .validate()
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
     }
     Ok(())
 }
@@ -183,5 +194,30 @@ mod tests {
             validate_preference("key", &"x".repeat(4097)),
             Err(StatusCode::PAYLOAD_TOO_LARGE)
         );
+    }
+
+    #[test]
+    fn personal_approval_settings_may_only_add_caution() {
+        assert!(
+            validate_preference(
+                "tool_approval",
+                r#"{"default_mode":"auto","rules":[{"tool":"github_*","action":"ask"}]}"#
+            )
+            .is_ok()
+        );
+        for bad in [
+            r#"{"rules":[{"tool":"bash","action":"allow"}]}"#,
+            r#"{"default_mode":"yolo"}"#,
+            r#"{"unknown":true}"#,
+            r#""auto""#,
+        ] {
+            assert_eq!(
+                validate_preference("tool_approval", bad),
+                Err(StatusCode::BAD_REQUEST),
+                "{bad}"
+            );
+        }
+        // Other keys keep their free-form values.
+        assert!(validate_preference("theme", r#"{"rules":"anything"}"#).is_ok());
     }
 }
