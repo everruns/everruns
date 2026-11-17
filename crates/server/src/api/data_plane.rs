@@ -75,7 +75,7 @@ async fn feed(
     let cp = control_plane(&state)?;
     require_link(&cp, &headers)?;
     let budgets = crate::domains::budgets::BudgetService::new(state.db.clone());
-    dp_domain::feed::ingest(&cp, &budgets, batch)
+    dp_domain::feed::ingest(&cp, &budgets, state.event_listeners(), batch)
         .await
         .map(Json)
         .map_err(internal)

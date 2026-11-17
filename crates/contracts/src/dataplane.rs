@@ -197,6 +197,11 @@ pub struct TenantPolicy {
     /// Enabled feature stages.
     #[serde(default)]
     pub features: Vec<String>,
+    /// The session event types the control plane wants copied onto the
+    /// feed as `Record::Event`, for observers, trace exports and reports;
+    /// `*` is every type. Empty: none.
+    #[serde(default)]
+    pub events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -471,6 +476,13 @@ pub enum Record {
     },
     ConfigApplied {
         version: u64,
+    },
+    /// A session event the org's policy asks for (`TenantPolicy::events`),
+    /// in the session's stream form (type, sequence, data, context). Feed
+    /// positions make it arrive once.
+    Event {
+        session_id: String,
+        event: Value,
     },
     OrgEvent {
         /// `budget_exhausted`, `limit_hit`, `suspended`.

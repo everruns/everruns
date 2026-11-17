@@ -20,12 +20,18 @@
 //!   organization check; finished turns and model calls are tallied per
 //!   batch and added to the minute history once the batch's records are
 //!   stored. A failure there is logged and never refuses the batch.
+//! - A session event the org's policy asked for goes to the control
+//!   plane's listeners (`event_tap.rs`, step 11.5), and to the org's
+//!   warehouse files first when it exports them (`warehouse.rs`).
 //! - Feed lag (record time to stored) is logged per batch at debug level.
 //!   The gate measures it in the cell suite (`FakeCp::feed_lag`); a metric
 //!   comes with step 10's per-cell dashboards.
 
+use std::sync::Arc;
+
 use chrono::{TimeZone, Utc};
 use everruns_contracts::dataplane::{FeedAck, FeedBatch, FeedRecord, Record};
+use everruns_core::EventListener;
 
 use super::{ControlPlane, org_internal};
 use crate::domains::budgets::{BudgetService, DataPlaneUsage};
@@ -35,6 +41,7 @@ use crate::storage::{CellBatchCounters, CellMinuteReport, DpSessionSummary};
 pub async fn ingest(
     cp: &ControlPlane,
     budgets: &BudgetService,
+    listeners: &[Arc<dyn EventListener>],
     batch: FeedBatch,
 ) -> anyhow::Result<FeedAck> {
     let incarnation = batch.incarnation as i64;
@@ -54,12 +61,13 @@ pub async fn ingest(
         .await?
         .map_or((0, 0), |(i, o)| (i as u64, o as u32));
     let start = through;
+    super::warehouse::export(cp, &batch, start).await?;
     let mut counters = CellBatchCounters::default();
     for record in &batch.records {
         if (record.index, record.ordinal) <= start {
             continue;
         }
-        if let Err(error) = store(cp, budgets, &batch, record, &mut counters).await {
+        if let Err(error) = store(cp, budgets, listeners, &batch, record, &mut counters).await {
             tracing::warn!(source = %batch.source, index = record.index, %error, "feed record not stored");
             break;
         }
@@ -101,6 +109,7 @@ fn at(ms: i64) -> chrono::DateTime<Utc> {
 async fn store(
     cp: &ControlPlane,
     budgets: &BudgetService,
+    listeners: &[Arc<dyn EventListener>],
     batch: &FeedBatch,
     record: &FeedRecord,
     counters: &mut CellBatchCounters,
@@ -238,6 +247,9 @@ async fn store(
             cp.db
                 .dp_insert_org_event(org_id, kind, detail, &batch.source, at(record.at_unix_ms))
                 .await?;
+        }
+        Record::Event { session_id, event } => {
+            super::event_tap::deliver(cp, listeners, org_id, session_id, event).await?;
         }
         Record::Health { .. } | Record::Unknown => {}
     }

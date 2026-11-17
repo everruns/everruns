@@ -33,6 +33,10 @@ use crate::state::SessionState;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Orgs {
     pub orgs: BTreeMap<String, OrgConfig>,
+    /// The event types each org taps (`tap.rs`), as the directory cell's
+    /// policies say; every cell holds them.
+    #[serde(default)]
+    pub taps: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -411,6 +415,15 @@ impl Orgs {
     }
 
     /// The orgs whose sessions may not start new turns, and the reason.
+    /// The orgs whose policy taps events, and the types (directory cell).
+    pub fn policy_taps(&self) -> BTreeMap<String, Vec<String>> {
+        self.orgs
+            .iter()
+            .filter(|(_, c)| !c.policy.events.is_empty())
+            .map(|(org, c)| (org.clone(), c.policy.events.clone()))
+            .collect()
+    }
+
     pub fn stopped(&self) -> BTreeMap<String, String> {
         self.orgs
             .iter()

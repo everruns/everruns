@@ -11,6 +11,9 @@
 //!   from the directory within [`FRESH`] starts no new turn at all (a
 //!   leader offers nothing, an executor pulls nothing). Running turns go
 //!   on: suspension refuses new work, it doesn't kill turns.
+//! - The same read carries each org's tapped event types (`tap.rs`); a
+//!   leader whose cell holds others proposes them, so every replica taps
+//!   the same events, within a poll of a policy change.
 //! - Two guards, not one: the cell leader doesn't offer a stopped tenant's
 //!   sessions, and the executor doesn't run one it was offered anyway (a
 //!   leader whose view is a poll older than the executor's).
@@ -103,6 +106,9 @@ impl TenantView {
 pub struct Tenants {
     /// Org id → why it is stopped (`suspended`, `deleted`, a reason).
     pub stopped: BTreeMap<String, String>,
+    /// Org id → the event types its policy taps (`tap.rs`).
+    #[serde(default)]
+    pub taps: BTreeMap<String, Vec<String>>,
 }
 
 impl Node {
@@ -118,6 +124,7 @@ impl Node {
             match self.read_tenants().await {
                 Ok(tenants) => {
                     self.tenants.heard(tenants.stopped);
+                    self.sync_taps(tenants.taps).await;
                 }
                 Err(error) => tracing::debug!(cell = self.cfg.cell, %error, "tenants not read"),
             }
@@ -136,6 +143,7 @@ impl Node {
             let state = self.shared.state.read();
             return Ok(Tenants {
                 stopped: state.orgs.stopped(),
+                taps: state.orgs.policy_taps(),
             });
         }
         gateway

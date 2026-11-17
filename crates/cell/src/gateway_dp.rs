@@ -47,8 +47,12 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
         .route("/dp/v1/orgs/{org}/sessions", post(org_session))
         .route(
-            "/dp/v1/orgs/{org}/sessions/{session}/messages",
-            post(org_message),
+            "/dp/v1/orgs/{org}/sessions/{session}/sse",
+            get(org_session_sse),
+        )
+        .route(
+            "/dp/v1/orgs/{org}/sessions/{session}/{command}",
+            post(org_session_command),
         )
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
@@ -200,34 +204,57 @@ async fn org_session(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
-#[derive(serde::Deserialize)]
-struct OrgMessage {
-    /// The message's id: a retry with the same id admits once.
-    id: everruns_contracts::typed_id::MessageId,
-    text: String,
-    #[serde(default)]
-    origin: Option<serde_json::Value>,
-}
+/// The session commands the control plane runs on an org's session
+/// itself: admitting a message it produced (an agent trigger's run, step
+/// 11.4, or a channel's message, 11.5), cancelling the running turn, and a
+/// channel's prior conversation. The cell checks each body.
+const ORG_SESSION_COMMANDS: &[&str] = &["messages", "cancel-turn", "seed"];
 
-/// `POST /dp/v1/orgs/{org}/sessions/{session}/messages`: the control plane
-/// admitting a message it produced itself (an agent trigger's run, step
-/// 11.4) into one of the org's sessions.
-async fn org_message(
-    State(gateway): State<Arc<Gateway>>,
-    Path((org, session)): Path<(String, String)>,
-    Json(body): Json<OrgMessage>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let session = everruns_contracts::typed_id::SessionId::parse(&session)
+/// The org's session `session`, or 404.
+async fn owned_session(
+    gateway: &Gateway,
+    org: &str,
+    session: &str,
+) -> Result<everruns_contracts::typed_id::SessionId, ApiError> {
+    let session = everruns_contracts::typed_id::SessionId::parse(session)
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // THREAT[TM-TENANT]: the link authenticates the control plane, not the
     // org; a session of another org reads as missing.
-    if gateway.session_tenant(session).await?.as_deref() != Some(org.as_str()) {
+    if gateway.session_tenant(session).await?.as_deref() != Some(org) {
         return Err((StatusCode::NOT_FOUND, "session not found".into()));
     }
-    let admit = serde_json::json!({ "id": body.id, "text": body.text, "origin": body.origin });
+    Ok(session)
+}
+
+/// `POST /dp/v1/orgs/{org}/sessions/{session}/{command}`: one of
+/// [`ORG_SESSION_COMMANDS`] on one of the org's sessions.
+async fn org_session_command(
+    State(gateway): State<Arc<Gateway>>,
+    Path((org, session, command)): Path<(String, String, String)>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if !ORG_SESSION_COMMANDS.contains(&command.as_str()) {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("no session command {command}"),
+        ));
+    }
+    let session = owned_session(&gateway, &org, &session).await?;
     Ok(Json(
-        gateway.session_command(session, "messages", &admit).await?,
+        gateway.session_command(session, &command, &body).await?,
     ))
+}
+
+/// `GET /dp/v1/orgs/{org}/sessions/{session}/sse`: the session's live
+/// stream for the control plane (a channel delivering a reply, step 11.5),
+/// in the shape the console's stream has.
+async fn org_session_sse(
+    State(gateway): State<Arc<Gateway>>,
+    Path((org, session)): Path<(String, String)>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<axum::response::Response, ApiError> {
+    let id = owned_session(&gateway, &org, &session).await?;
+    crate::gateway_sse::stream(&gateway, &id.to_string(), raw.as_deref()).await
 }
 
 /// `definition` running the pinned sandbox `entry`: it replaces the
@@ -689,5 +716,6 @@ async fn cell_tenants(
     let state = node.shared.state.read();
     Ok(Json(crate::tenants::Tenants {
         stopped: state.orgs.stopped(),
+        taps: state.orgs.policy_taps(),
     }))
 }

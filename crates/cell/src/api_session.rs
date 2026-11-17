@@ -1,6 +1,7 @@
 //! A node's session commands behind the Everruns `/v1` session API
 //! (`gateway_v1.rs`): answering tool approvals, client-side tool results,
-//! cancelling the running turn, and the session's schedules. Each answers
+//! cancelling the running turn, the session's schedules, and a channel's
+//! prior conversation (step 11.5). Each answers
 //! a [`CellReply`], so the gateway follows moves and freezes the same way
 //! it does for admissions.
 
@@ -28,6 +29,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/sessions/{session}/approvals", post(approvals))
         .route("/cell/sessions/{session}/tool-results", post(tool_results))
         .route("/cell/sessions/{session}/cancel-turn", post(cancel_turn))
+        .route("/cell/sessions/{session}/seed", post(seed))
         .route("/cell/sessions/{session}/schedules", post(schedules))
         .route("/cell/sessions/{session}/tasks", post(tasks))
         .with_state(node)
@@ -196,6 +198,38 @@ async fn cancel_turn(
     let reply = match node.hosting.cancel(id, body.command, input).await {
         Ok(()) => CellReply::Ok {
             value: json!({ "status": "cancelled", "message": "Turn cancelled successfully" }),
+        },
+        Err(error) => reply_of(error),
+    };
+    Ok(Json(reply))
+}
+
+#[derive(Deserialize)]
+struct Seed {
+    /// The command's own id (retry-safe).
+    command: uuid::Uuid,
+    messages: Vec<everruns_core::RuntimeMessage>,
+}
+
+/// Record `messages` as the session's prior conversation, only while it has
+/// none: a channel joining a thread mid-way brings what was said before.
+/// `seeded` is false for a session that already holds history.
+async fn seed(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<Seed>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    if let Err(reply) = resume(&node, id).await {
+        return Ok(Json(reply));
+    }
+    let reply = match node
+        .hosting
+        .seed_history(id, body.command, body.messages)
+        .await
+    {
+        Ok(seeded) => CellReply::Ok {
+            value: json!({ "seeded": seeded }),
         },
         Err(error) => reply_of(error),
     };

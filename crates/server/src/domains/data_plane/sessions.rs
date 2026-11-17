@@ -201,15 +201,10 @@ impl TriggerRun<'_> {
             )),
             None => MessageId::new(),
         };
+        let body = serde_json::json!({ "id": message, "text": self.text, "origin": self.origin });
         for_org(cp, self.org_id)
             .await?
-            .send_message(
-                &org_public(self.org_id),
-                self.session,
-                message,
-                self.text,
-                self.origin,
-            )
+            .session_command(&org_public(self.org_id), self.session, "messages", &body)
             .await
             .map_err(|error| error.context("the data plane did not take the message"))?;
         Ok(true)
