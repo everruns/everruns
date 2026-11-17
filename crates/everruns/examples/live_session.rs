@@ -23,12 +23,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Usage: live_session [INITIAL_REQUEST [CORRECTION]]".into());
     }
 
-    println!("OpenAI gpt-6.1-sol over HTTP; corrections apply at iteration boundaries.");
+    println!("OpenAI gpt-6.2-sol over HTTP; corrections apply at iteration boundaries.");
     let agent = Agent::builder()
         .name("steering-example")
         .instructions("Incorporate every user message. Keep the final answer within 150 words.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .build()?;
     let engine = Engine::new();
     let session = engine.create(agent);

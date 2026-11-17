@@ -5563,7 +5563,7 @@
             },
             "model_override": {
               "description": "Model for this variant, beating the target's model.",
-              "example": "gpt-6.1-sol",
+              "example": "gpt-6.2-sol",
               "type": [
                 "string",
                 "null"
@@ -15810,7 +15810,7 @@
             },
             "variant": {
               "description": "The variant this import is. A later import with the same label\nreplaces it.",
-              "example": "gpt-6.1-sol",
+              "example": "gpt-6.2-sol",
               "type": "string"
             }
           },

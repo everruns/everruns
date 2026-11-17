@@ -274,7 +274,14 @@ async fn bootstrap_elects_luna_over_other_openai_models() {
     let service = ModelService::new(db.clone());
     let provider_id = create_keyed_provider(&db, org_id).await;
 
-    for model_id in ["gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-terra", "gpt-6-luna"] {
+    for model_id in [
+        "gpt-6.2-astra",
+        "gpt-6.2-sol",
+        "gpt-6-astra",
+        "gpt-6.1-sol",
+        "gpt-5.6-terra",
+        "gpt-6-luna",
+    ] {
         discover_model(&db, org_id, provider_id, model_id, &["chat"]).await;
     }
 

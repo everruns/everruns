@@ -1,7 +1,7 @@
 # `everruns` examples
 
 These examples use the [`everruns`](../README.md) crate.
-Every example runs against a real model, `gpt-6.1-sol` unless it says
+Every example runs against a real model, `gpt-6.2-sol` unless it says
 otherwise, and requires `OPENAI_API_KEY`. `agent_decisions` also requires
 `TYPESAFE_API_KEY`.
 

@@ -114,7 +114,7 @@ impl<'a> ModelInfo<'a> {
         Self { provider, model }
     }
 
-    /// The canonical catalog id, e.g. `"gpt-6.1-sol"`.
+    /// The canonical catalog id, e.g. `"gpt-6.2-sol"`.
     pub fn id(&self) -> &'static str {
         self.model
     }

@@ -35,7 +35,7 @@ a production credential into this manual test transcript.
 | Field | Value |
 | --- | --- |
 | Agent name | `hourly-joke` in a disposable test org |
-| Requested model | Active `gpt-6.1-sol` profile |
+| Requested model | Active `gpt-6.2-sol` profile |
 | Schedule | Hourly Agent Trigger |
 | Credential | Disposable value entered only through the secure setup link |
 | Endpoint | Controlled Visti-compatible MCP test endpoint |
@@ -49,7 +49,7 @@ a production credential into this manual test transcript.
    ```text
    Create an agent named hourly-joke that sends a short dad joke through the
    attached Visti-compatible MCP server. It requires a channel key. Use the
-   active model whose model ID is gpt-6.1-sol and run it hourly using an Agent
+   active model whose model ID is gpt-6.2-sol and run it hourly using an Agent
    Trigger. Show me how to configure the credential securely.
    ```
 
@@ -63,7 +63,7 @@ a production credential into this manual test transcript.
    - sends each canonical typed payload under `params`; change calls include
      the user-facing `reason` and current `context_revision` as separate
      envelope fields;
-   - resolves `gpt-6.1-sol`, inspects existing resources, performs the creates,
+   - resolves `gpt-6.2-sol`, inspects existing resources, performs the creates,
      and reads back the final Agent and Trigger state before answering;
    - may use the `everruns` shell for dependent-call composition, using
      progressive `--help` and exact supported flags rather than guessed flags;
@@ -71,7 +71,7 @@ a production credential into this manual test transcript.
      or Session Schedule tools.
 
 5. Open the returned Agent link and verify its `default_model_id` points to the
-   model whose provider model ID is `gpt-6.1-sol`.
+   model whose provider model ID is `gpt-6.2-sol`.
 
 6. Open the returned Trigger link and verify it targets the new Agent and uses
    an hourly schedule.
@@ -101,7 +101,7 @@ a production credential into this manual test transcript.
 
 ## Negative paths
 
-- If `gpt-6.1-sol` is absent or inactive, Platform Chat reports that fact and
+- If `gpt-6.2-sol` is absent or inactive, Platform Chat reports that fact and
   does not silently choose another model.
 - If the caller cannot assign a requested high-risk capability, native
   dispatch returns a permission error and no elevated Agent is created.

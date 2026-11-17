@@ -60,7 +60,7 @@ For CI, the gate fails when a variant misses a bar:
 
 ```bash
 everruns evals experiments create --eval-id eval_01h9 \
-  --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.1-sol"}]' \
+  --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.2-sol"}]' \
   --max-cost-usd 10
 everruns evals experiments gate --eval-id eval_01h9 --experiment-id evalexp_01h9 \
   --min-pass-rate 0.9 --no-regression true

@@ -17,7 +17,7 @@ let actions = SlackActions::new(
 );
 let agent = Agent::builder()
     .instructions("Use Slack tools to help in the authorized conversation.")
-    .model(Model::new("gpt-6.1-sol", everruns::OpenAI::from_env()?))
+    .model(Model::new("gpt-6.2-sol", everruns::OpenAI::from_env()?))
     .slack_actions(actions)
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())

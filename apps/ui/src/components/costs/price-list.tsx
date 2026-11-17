@@ -128,7 +128,7 @@ function AddRateForm({ onDone }: { onDone: () => void }) {
         <Input
           id="rate-detail"
           value={modelOrSize}
-          placeholder={isSandbox ? ui("Template size, for example small") : "gpt-6.1-sol"}
+          placeholder={isSandbox ? ui("Template size, for example small") : "gpt-6.2-sol"}
           onChange={(e) => setModelOrSize(e.target.value)}
         />
       </div>

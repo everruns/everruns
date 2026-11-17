@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              follow it. Keep the answer to two sentences.",
         )
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .workspace(workspace.path())
         .workspace_policy(policy)
         .readonly_file("input/brief.md", "Summarize the workspace policy.")

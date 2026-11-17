@@ -26,7 +26,7 @@ use everruns::{Agent, Engine, OpenAI};
 let agent = Agent::builder()
     .instructions("You maintain this repository.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .capability("btw")
     .build()?;
 let session = Engine::new().create(agent);

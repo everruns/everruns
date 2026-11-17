@@ -12,7 +12,7 @@
 //!
 //! #[agent]
 //! fn assistant() -> Agent {
-//!     Agent::builder().model("openai/gpt-6.1-sol").instructions("Answer concisely.").build()
+//!     Agent::builder().model("openai/gpt-6.2-sol").instructions("Answer concisely.").build()
 //! }
 //!
 //! #[tokio::main]

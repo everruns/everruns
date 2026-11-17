@@ -19,8 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Usage: direct_llm [PROMPT]".into());
     }
 
-    println!("OpenAI gpt-6.1-sol over HTTP.\n");
-    let model = Model::new("gpt-6.1-sol", OpenAI::from_env()?);
+    println!("OpenAI gpt-6.2-sol over HTTP.\n");
+    let model = Model::new("gpt-6.2-sol", OpenAI::from_env()?);
 
     // One prompt, one answer. This is the whole API for the common case.
     println!("> {prompt}");

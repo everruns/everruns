@@ -3,10 +3,12 @@
 Answer a question over an MCP server with 1,000 tools without putting a single
 one of their schemas in the prompt. The agent writes [Bashkit](https://bashkit.sh)
 scripts that find and call the server's tools through the `tools` command, joins
-the results with `jq`, and prints only the answer. This is a real `gpt-6.1-sol`
+the results with `jq`, and prints only the answer. This is a real `gpt-6.2-sol`
 agent, not a scripted turn.
 
 ![Code Mode MCP Agent terminal demo](demo/demo.gif)
+
+The recording and transcript retain the earlier `gpt-6.1-sol` run; new runs use `gpt-6.2-sol`.
 
 ## What you learn
 
@@ -64,7 +66,7 @@ Type your own question:
 cargo run -p everruns-code-mode-mcp-agent -- --interactive
 ```
 
-The model is `gpt-6.1-sol`: through OpenRouter (`openai/gpt-6.1-sol`) when
+The model is `gpt-6.2-sol`: through OpenRouter (`openai/gpt-6.2-sol`) when
 `OPENROUTER_API_KEY` is set, straight from OpenAI otherwise. The answer check
 runs only for the default question.
 

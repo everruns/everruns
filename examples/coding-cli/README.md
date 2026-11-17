@@ -11,7 +11,7 @@ The deliberately small profile uses typed values for `session_file_system`,
 `bashkit_shell`, live `agent_instructions`, `skills`, `stateless_todo_list`,
 `web_fetch`, and `duckduckgo`. The CLI keeps a multiline composer, optional
 destructive-tool approval, and durable conversation resume. It
-runs on OpenAI (`gpt-6.1-sol` by default); multi-provider routing belongs in an
+runs on OpenAI (`gpt-6.2-sol` by default); multi-provider routing belongs in an
 application, not this example.
 
 The important safety model is simple:
@@ -39,7 +39,7 @@ cargo run -p everruns-coding-cli -- --head review --base main \
 ```
 
 `--model <ID>` (or `EVERRUNS_CLI_MODEL`) picks another OpenAI model; the
-default is `gpt-6.1-sol`. `--reasoning-effort <LEVEL>` attaches a portable per-turn control.
+default is `gpt-6.2-sol`. `--reasoning-effort <LEVEL>` attaches a portable per-turn control.
 
 Interactive mode supports `/help`, `/tools`, `/cwd`, `/clear`,
 `/model`, and `/quit`. Pass `--ask` to confirm filesystem writes and shell

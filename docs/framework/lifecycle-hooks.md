@@ -13,7 +13,7 @@ use everruns::prelude::*;
 let agent = Agent::builder()
     .instructions("You are concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .on_agent_start(|context| async move {
         println!("starting {}", context.session_id);
     })
@@ -125,4 +125,4 @@ example registers all five lifecycle points around a typed tool:
 cargo run -p everruns --features openai --example lifecycle_hooks
 ```
 
-It uses `gpt-6.1-sol` and requires `OPENAI_API_KEY`.
+It uses `gpt-6.2-sol` and requires `OPENAI_API_KEY`.

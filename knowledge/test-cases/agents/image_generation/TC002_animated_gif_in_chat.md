@@ -21,11 +21,11 @@ plays it with a frame badge, pause and download.
 - Control plane running
 - An OpenAI provider with credit, with `gpt-image-2.6-flare` enabled
 - **Models → Defaults → Images** set to GPT Image 2.6 Flare (or left on the platform default)
-- `gpt-6.1-sol` enabled for chat
+- `gpt-6.2-sol` enabled for chat
 
 ## Steps
 
-1. Create an agent on the Worker harness with model `gpt-6.1-sol`. Do not add or configure
+1. Create an agent on the Worker harness with model `gpt-6.2-sol`. Do not add or configure
    Image Generation: the Worker kit carries it.
 2. Open chat and send: `Make a short looping GIF of a paper lantern swaying at dusk.`
 3. Wait for the turn to finish.

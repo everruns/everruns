@@ -384,6 +384,8 @@ mod tests {
     #[test]
     fn openai_models_with_web_search() {
         for model in [
+            "gpt-6.2-sol",
+            "gpt-6.2-astra",
             "gpt-6.1-sol",
             "gpt-6-luna",
             "gpt-5",

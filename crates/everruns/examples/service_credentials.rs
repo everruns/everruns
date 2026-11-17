@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let service = std::env::args()
         .nth(1)
         .ok_or("Choose cursor, browserless, or e2b")?;
-    let builder=Agent::builder().instructions("Use the selected native integration to complete the request. Never print credentials. Release browsers and delete sandboxes you create after finishing, including after a tool failure.").model(Model::new("gpt-6.1-sol",OpenAI::from_env()?));
+    let builder=Agent::builder().instructions("Use the selected native integration to complete the request. Never print credentials. Release browsers and delete sandboxes you create after finishing, including after a tool failure.").model(Model::new("gpt-6.2-sol",OpenAI::from_env()?));
     let (builder, default_task) = match service.as_str() {
         "cursor" => (
             builder.cursor(ApiKey::new(std::env::var("CURSOR_API_KEY")?)),

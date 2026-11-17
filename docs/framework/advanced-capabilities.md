@@ -32,7 +32,7 @@ let weather_definition = build_weather_capability();
 let agent = Agent::builder()
     .instructions("Use configured capabilities when relevant.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .capability(CompactionConfig::new().budget_percent(0.85))
     .capability(ToolSearch::automatic())
     .capability(weather_definition)
@@ -141,7 +141,7 @@ async fn fahrenheit(celsius: f64) -> f64 {
 let agent = everruns::Agent::builder()
     .instructions("Use the conversion tool.")
     .provider(everruns::OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .tool(fahrenheit())
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -224,7 +224,7 @@ let records = capability::Definition::new(
 let agent = Agent::builder()
     .instructions("Answer with verified record data.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .capability(records)
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())

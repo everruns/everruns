@@ -22,6 +22,8 @@ pub fn supports_cache_options(model: &str) -> bool {
                 | "openai/gpt-6-sol"
                 | "openai/gpt-6-luna"
                 | "openai/gpt-6.1-sol"
+                | "openai/gpt-6.2-astra"
+                | "openai/gpt-6.2-sol"
                 | "openai/gpt-5.6-sol"
                 | "openai/gpt-5.6-terra"
                 | "openai/gpt-5.6-luna"
@@ -58,7 +60,12 @@ pub(crate) fn validate_config(config: &LlmCallConfig) -> Result<()> {
                 )));
             }
         }
-        if config.temperature.is_some() && profile.family == "gpt-6-astra" {
+        if config.temperature.is_some()
+            && matches!(
+                profile.family.as_str(),
+                "gpt-6-astra" | "gpt-6.2-astra" | "gpt-6.2-sol"
+            )
+        {
             return Err(AgentLoopError::Configuration(format!(
                 "temperature is unsupported by {}",
                 config.model
@@ -74,18 +81,29 @@ pub(crate) fn validate_body(
     endpoint: &ProviderEndpoint,
     responses: bool,
 ) -> Result<()> {
-    let astra = body
+    let model_key = body
         .get("model")
         .and_then(Value::as_str)
         .and_then(|model| crate::model_profiles::get_model_profile_key(&DriverId::OpenAI, model))
-        .is_some_and(|key| key == "openai/gpt-6-astra");
-    if !astra {
+        .filter(|key| {
+            matches!(
+                key.as_str(),
+                "openai/gpt-6-astra" | "openai/gpt-6.2-astra" | "openai/gpt-6.2-sol"
+            )
+        });
+    let Some(model_key) = model_key else {
         return Ok(());
-    }
+    };
+    let legacy_astra = model_key == "openai/gpt-6-astra";
+    let model_name = if legacy_astra {
+        "GPT-6 Astra"
+    } else {
+        "GPT-6.2 Astra/Sol"
+    };
     let invalid = |message: &str| AgentLoopError::Configuration(message.to_string());
     for key in ["temperature", "top_p", "top_logprobs"] {
         if body.get(key).is_some_and(|v| !v.is_null()) {
-            return Err(invalid(&format!("GPT-6 Astra does not support {key}")));
+            return Err(invalid(&format!("{model_name} does not support {key}")));
         }
     }
     if !responses {
@@ -103,21 +121,21 @@ pub(crate) fn validate_body(
                     })
                 });
         if has_tools || has_tool_history {
-            return Err(invalid(
-                "GPT-6 Astra tool calling requires the Responses API",
-            ));
+            return Err(invalid(&format!(
+                "{model_name} tool calling requires the Responses API"
+            )));
         }
         if body.get("logprobs").is_some_and(|v| !v.is_null()) {
-            return Err(invalid("GPT-6 Astra does not support logprobs"));
+            return Err(invalid(&format!("{model_name} does not support logprobs")));
         }
     } else if body
         .get("include")
         .and_then(Value::as_array)
         .is_some_and(|items| items.iter().any(|v| v == "message.output_text.logprobs"))
     {
-        return Err(invalid(
-            "GPT-6 Astra does not support message.output_text.logprobs",
-        ));
+        return Err(invalid(&format!(
+            "{model_name} does not support message.output_text.logprobs"
+        )));
     }
     // Residency follows the configured processing endpoint, never a model name,
     // user locale, or a substring in an unrelated gateway URL.
@@ -131,14 +149,15 @@ pub(crate) fn validate_body(
             })
         });
     if eu
+        && (legacy_astra || body.get("service_tier").and_then(Value::as_str) == Some("ultrafast"))
         && matches!(
             body.get("service_tier").and_then(Value::as_str),
             Some("fast" | "priority" | "ultrafast")
         )
     {
-        return Err(invalid(
-            "GPT-6 Astra requires Standard processing with EU data residency",
-        ));
+        return Err(invalid(&format!(
+            "{model_name} does not support this service tier with EU data residency"
+        )));
     }
     Ok(())
 }
@@ -148,6 +167,80 @@ mod tests {
     use super::*;
     use crate::{OpenAIProtocolChatDriver, Provider, ReasoningEffort};
     use serde_json::json;
+
+    #[test]
+    fn gpt_62_checks_tools_parameters_and_eu_tiers() {
+        let global = Provider::new("openai", OpenAIProtocolChatDriver::new())
+            .base_url("https://api.openai.com/v1");
+        let eu = Provider::new("openai", OpenAIProtocolChatDriver::new())
+            .base_url("https://eu.api.openai.com/v1");
+        for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
+            assert!(supports_cache_options(model));
+            assert!(crate::reasoning_updates::supports_configuration_updates(
+                model
+            ));
+            for effort in [ReasoningEffort::None, ReasoningEffort::Minimal] {
+                let config = LlmCallConfig {
+                    model: model.into(),
+                    reasoning_effort: Some(effort),
+                    ..Default::default()
+                };
+                assert!(validate_config(&config).is_err());
+            }
+            for speed in ["default", "fast", "priority", "ultrafast"] {
+                let config = LlmCallConfig {
+                    model: model.into(),
+                    speed: Some(speed.into()),
+                    ..Default::default()
+                };
+                assert!(validate_config(&config).is_ok());
+            }
+            let config = LlmCallConfig {
+                model: model.into(),
+                speed: Some("flex".into()),
+                ..Default::default()
+            };
+            assert!(validate_config(&config).is_err());
+            for body in [
+                json!({"model":model,"tools":[{"type":"function"}]}),
+                json!({"model":model,"messages":[{"role":"tool","content":"done"}]}),
+            ] {
+                assert!(validate_body(&body, global.endpoint(), false).is_err());
+                assert!(validate_body(&body, global.endpoint(), true).is_ok());
+            }
+            for field in ["temperature", "top_p", "top_logprobs", "logprobs"] {
+                let mut body = json!({"model":model});
+                body[field] = json!(0);
+                assert!(validate_body(&body, global.endpoint(), false).is_err());
+            }
+            for tier in ["default", "fast", "priority"] {
+                assert!(
+                    validate_body(
+                        &json!({"model":model,"service_tier":tier}),
+                        eu.endpoint(),
+                        true
+                    )
+                    .is_ok()
+                );
+            }
+            assert!(
+                validate_body(
+                    &json!({"model":model,"service_tier":"ultrafast"}),
+                    eu.endpoint(),
+                    true
+                )
+                .is_err()
+            );
+            assert!(
+                validate_body(
+                    &json!({"model":model,"service_tier":"ultrafast"}),
+                    global.endpoint(),
+                    true
+                )
+                .is_ok()
+            );
+        }
+    }
 
     #[test]
     fn astra_compatibility_checks_endpoint_and_wire_shape() {

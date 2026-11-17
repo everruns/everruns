@@ -44,9 +44,13 @@ pub(super) fn resolve_request_controls(
         .filter(|effort| {
             if !effort.requests_reasoning() {
                 // Preserve an invalid explicit selection for provider validation.
-                // Dropping Astra's `none` here silently selects its default effort.
+                // Dropping `none` on these models silently selects their default effort.
                 return crate::engine::model_profiles::get_model_profile(provider_type, model)
-                    .is_some_and(|profile| profile.family == "gpt-6-astra");
+                    .is_some_and(|profile| {
+                        everruns_contracts::reasoning_updates::supports_configuration_updates(
+                            &profile.family,
+                        )
+                    });
             }
             match crate::engine::model_profiles::get_model_profile(provider_type, model) {
                 Some(profile) if !profile.reasoning => {
@@ -119,7 +123,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn astra_none_reaches_provider_validation() {
+    fn astra_and_gpt_62_none_reach_provider_validation() {
         let mut message = RuntimeMessage::user("hello");
         message.controls = Some(crate::engine::message::Controls {
             reasoning: Some(crate::engine::message::ReasoningConfig {
@@ -127,11 +131,19 @@ mod tests {
             }),
             ..Default::default()
         });
-        let controls = resolve_request_controls(&[message], None, &DriverId::OpenAI, "gpt-6-astra");
-        assert_eq!(
-            controls.reasoning_effort,
-            Some(everruns_contracts::ReasoningEffort::None)
-        );
+        for model in ["gpt-6-astra", "gpt-6.2-astra", "gpt-6.2-sol"] {
+            let controls = resolve_request_controls(
+                std::slice::from_ref(&message),
+                None,
+                &DriverId::OpenAI,
+                model,
+            );
+            assert_eq!(
+                controls.reasoning_effort,
+                Some(everruns_contracts::ReasoningEffort::None),
+                "{model}",
+            );
+        }
     }
 
     #[test]

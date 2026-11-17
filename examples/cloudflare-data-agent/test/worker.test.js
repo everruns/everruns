@@ -32,7 +32,7 @@ test("tool loop emits canonical events and usage; no CP credential reaches provi
     assert.equal(url,"https://api.openai.com/v1/responses");
     assert.equal(request.headers.Authorization,"Bearer app-owned-model-key");
     assert.equal(request.redirect,"manual");
-    const sent=JSON.parse(request.body); assert.equal(sent.model,"gpt-6.1-sol");
+    const sent=JSON.parse(request.body); assert.equal(sent.model,"gpt-6.2-sol");
     calls++;
     return Response.json({ model:sent.model, status:"completed", usage:{input_tokens:20,output_tokens:5}, output:calls===1?[{type:"function_call",call_id:"call_1",name:"sales_summary",arguments:'{"region":"north"}'}]:[{type:"message",role:"assistant",content:[{type:"output_text",text:"27278 cents, 2 orders"}]}] });
   };

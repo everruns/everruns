@@ -10,7 +10,7 @@ Two agents talking over [A2A](https://a2a-protocol.org) 1.0:
   It asks the researcher for notes with `spawn_agent` (target
   `external_a2a`), then drafts from them.
 
-Both run on `gpt-6.1-sol` through OpenAI: set `OPENAI_API_KEY` for both
+Both run on `gpt-6.2-sol` through OpenAI: set `OPENAI_API_KEY` for both
 processes. For the Serve researcher, an explicit `OPENAI_BASE_URL` selects
 a compatible Responses API endpoint with that key; otherwise, a configured
 `OPENROUTER_API_KEY` takes precedence over direct OpenAI.

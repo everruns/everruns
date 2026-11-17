@@ -121,7 +121,7 @@ Events](#reasoning-events)) and its own channel.
   "type": "output.message.started",
   "data": {
     "turn_id": "turn_...",
-    "model": "gpt-6.1-sol"
+    "model": "gpt-6.2-sol"
   }
 }
 ```
@@ -487,7 +487,7 @@ events or on any API surface.
   "data": {
     "turn_id": "turn_...",
     "provider": "openai",
-    "model": "gpt-6.1-sol",
+    "model": "gpt-6.2-sol",
     "item_id": "rs_68a1f...",
     "summary": ["Checking the build logs before answering."],
     "token_count": 412
@@ -516,7 +516,7 @@ Emitted when LLM inference begins.
   "data": {
     "agent_id": "agent_...",
     "metadata": {
-      "model": "gpt-6.1-sol"
+      "model": "gpt-6.2-sol"
     }
   }
 }
@@ -703,7 +703,7 @@ dropped calls.
       "tool_calls": []
     },
     "metadata": {
-      "model": "gpt-6.1-sol",
+      "model": "gpt-6.2-sol",
       "provider": "openai",
       "usage": {"input_tokens": 100, "output_tokens": 50},
       "duration_ms": 1200,
@@ -852,7 +852,7 @@ Information about the model used.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model` | string | Model name (e.g., "gpt-6.1-sol") |
+| `model` | string | Model name (e.g., "gpt-6.2-sol") |
 | `model_id` | string? | Internal model ID |
 | `provider_id` | string? | Internal provider ID |
 

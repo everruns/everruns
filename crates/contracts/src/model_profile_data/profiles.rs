@@ -463,6 +463,18 @@ static REGISTRY: &[ModelDescriptor] = &[
         ModelVendor::OpenAi,
         OPENAI,
     ),
+    // GPT-6.2 agentic tool calling requires Responses. Do not advertise it
+    // on Chat Completions or unverified Azure deployments.
+    md(
+        &["gpt-6.2-astra", "openai/gpt-6.2-astra"],
+        ModelVendor::OpenAi,
+        &["openai", "openrouter", "vercel"],
+    ),
+    md(
+        &["gpt-6.2-sol", "openai/gpt-6.2-sol"],
+        ModelVendor::OpenAi,
+        &["openai", "openrouter", "vercel"],
+    ),
     // Anthropic
     md(&["claude-fable-5-2"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-mythos-5-2"], ModelVendor::Anthropic, ANTHROPIC),

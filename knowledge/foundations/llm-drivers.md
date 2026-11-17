@@ -414,9 +414,9 @@ The UI also prevents setting reasoning on non-thinking models (checks `profile.r
 
 ### Speed (Service Tier)
 
-The speed selector maps to OpenAI's `service_tier` request parameter: `flex` trades latency for batch-rate pricing, `priority` buys faster and more consistent latency at a premium, `default` pins the standard tier. `fast` is OpenAI's current name for `priority` (Fast mode); the API accepts both and older models echo `priority` for either, so the two are one tier wherever a profile is checked. `ultrafast` is a separate premium tier (6x Standard, GA for GPT-6 Astra only at the time of writing). The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.speed` and guarded like reasoning effort: ReasonAtom strips the value (with a warning log) when the model profile carries no `speed` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`auto`) routing.
+The speed selector maps to OpenAI's `service_tier` request parameter: `flex` trades latency for batch-rate pricing, `priority` buys faster and more consistent latency at a premium, `default` pins the standard tier. `fast` is OpenAI's current name for `priority` (Fast mode); the API accepts both and older models echo `priority` for either, so the two are one tier wherever a profile is checked. `ultrafast` is a separate premium tier. GPT-6.2 Astra and Sol offer Standard, Fast and Ultrafast, but not Flex. Their Ultrafast price is 3x Standard through February 28, 2027, then 6x from March 1 (Pacific time); the catalog switches at that boundary. The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.speed` and guarded like reasoning effort: ReasonAtom strips the value (with a warning log) when the model profile carries no `speed` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`auto`) routing.
 
-A tier is model-gated at OpenAI, so the OpenAI drivers' pre-flight check rejects a tier the model's profile does not list with a configuration error (`default` is always allowed) instead of letting the provider answer 400; on the session path ReasonAtom has already dropped it. Cost follows the tier that served the call, not the one requested: the Responses driver carries the response's echoed `service_tier` on the completion metadata, and the price-table estimate scales by that tier's `cost_multiplier` from the profile (recorded only where OpenAI prices the tier as a flat multiple of Standard: GPT-6 series Flex 0.5x, Fast 2x, Ultrafast 6x). A ramp-limited premium request that degrades to `default` is therefore priced at Standard. The Chat Completions driver does not surface the echoed tier yet and prices at Standard.
+A tier is model-gated at OpenAI, so the OpenAI drivers' pre-flight check rejects a tier the model's profile does not list with a configuration error (`default` is always allowed) instead of letting the provider answer 400; on the session path ReasonAtom has already dropped it. Cost follows the tier that served the call, not the one requested: the Responses driver carries the response's echoed `service_tier` on the completion metadata, and the price-table estimate scales by that tier's `cost_multiplier` from the profile (recorded only where OpenAI prices the tier as a flat multiple of Standard: supported prior GPT-6 tiers Flex 0.5x, Fast 2x, Ultrafast 6x; GPT-6.2 Fast 2x and introductory Ultrafast 3x). A ramp-limited premium request that degrades to `default` is therefore priced at Standard. The Chat Completions driver does not surface the echoed tier yet and prices at Standard.
 
 Per-model availability lives in the model profile's `speed` config, sourced from OpenAI's official tier tables, the API pricing page for Flex, the Priority-processing docs for first-party priority models, and the specialized Codex priority table (models without a tier row get no config). Profiles mask the config for every provider surface except first-party OpenAI, Azure and gateways have their own capacity models. Both OpenAI drivers (Responses and Chat Completions) serialize the value verbatim as `service_tier`; other drivers ignore it.
 
@@ -1510,3 +1510,16 @@ and propagate the persisted choice through direct and gRPC workers. Resetting to
 the driver default is explicit. Existing connections keep their defaults; selecting
 OpenAI Chat Completions does not discard unrelated provider services. See the
 [public setup guide](../../docs/framework/models-and-providers.md#provider-configuration).
+
+### GPT-6.2 migration
+
+The current balanced and flagship recommendations are `gpt-6.2-sol` and
+`gpt-6.2-astra` on verified Responses surfaces. Explicit predecessor IDs remain
+valid, and budget/default election remains `gpt-6-luna`. GPT-6.2 rejects `none`
+and `minimal` reasoning, Flex, and sampling controls. Function tools require
+Responses; do not redirect an agent workload to Chat Completions. Both models
+support append-only `configuration_update` effort changes and inline tool
+updates. Keep prior input and encrypted reasoning items unchanged and append new
+instructions: prefix edits, model downgrades, or identity/organization changes
+can cause the API to discard reasoning and repeat work. See the
+[official migration guide](https://developers.openai.com/api/docs/guides/latest-model).

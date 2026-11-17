@@ -17,7 +17,7 @@ use everruns::control::default_dir;
 use everruns::{Agent, Engine, OpenAI};
 use everruns_attached_cli::{AttachedCommand, run_attached, serve};
 
-const MODEL: &str = "gpt-6.1-sol";
+const MODEL: &str = "gpt-6.2-sol";
 
 #[derive(Parser)]
 #[command(

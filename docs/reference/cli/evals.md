@@ -359,7 +359,7 @@ Example:
 
 ```bash
 # Compare two models on the same cases, three trials each, within $10
-everruns evals experiments create --eval-id eval_01h9 --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.1-sol"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'
+everruns evals experiments create --eval-id eval_01h9 --variants '[{"label":"luna","model_override":"gpt-6-luna"},{"label":"sol","model_override":"gpt-6.2-sol"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'
 ```
 
 ## evals experiments gate

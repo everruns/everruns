@@ -5,14 +5,14 @@
 //! points it at pages worth fetching; fetching every hit would grade fetchkit
 //! as much as the search index.
 //!
-//! The judge is `gpt-6.1-sol`, a different model from native search's
+//! The judge is `gpt-6.2-sol`, a different model from native search's
 //! `gpt-6-luna`, and it never sees which provider produced the list.
 
 use everruns_contracts::runtime::web_search::SearchHit;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-pub const JUDGE_MODEL: &str = "gpt-6.1-sol";
+pub const JUDGE_MODEL: &str = "gpt-6.2-sol";
 
 /// What the judge returns for one result list.
 #[derive(Debug, Clone, Deserialize)]

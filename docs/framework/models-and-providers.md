@@ -97,7 +97,7 @@ use everruns::{Agent, OpenAI};
 let agent = Agent::builder()
     .instructions("Be concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
@@ -514,7 +514,7 @@ The profile registry is static data, so a model's identity can be read offline:
 ```rust
 use everruns::{DriverId, models};
 
-let profile = models::profile(&DriverId::OpenAI, "gpt-6.1-sol");
+let profile = models::profile(&DriverId::OpenAI, "gpt-6.2-sol");
 assert!(profile.is_some());
 ```
 

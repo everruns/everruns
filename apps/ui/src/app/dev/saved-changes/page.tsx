@@ -61,7 +61,7 @@ function Frame({ title, children }: { title: string; children: ReactNode }) {
         <div className="grid gap-3 p-4 text-sm">
           {[
             ["Display name", "GPT-6.1 Sol (fast)"],
-            ["Model id", "gpt-6.1-sol"],
+            ["Model id", "gpt-6.2-sol"],
           ].map(([label, value]) => (
             <div key={label} className="grid grid-cols-[8rem_1fr] items-center gap-3">
               <span className="text-muted-foreground">{label}</span>

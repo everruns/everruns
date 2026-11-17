@@ -91,7 +91,7 @@ let data_dir = std::env::var("APP_DATA_DIR").unwrap_or_else(|_| "/data".into());
 let agent = Agent::builder()
     .instructions("Answer support questions.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .local(LocalConfig::new(data_dir))
     .build()?;
 

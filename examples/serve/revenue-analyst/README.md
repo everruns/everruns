@@ -1,7 +1,7 @@
 # revenue-analyst (serve, experimental)
 
 The full [serve](../../../crates/serve) project layout in one app. The
-warehouse is an in-memory SQLite; the agent runs on `openai/gpt-6.1-sol` (the
+warehouse is an in-memory SQLite; the agent runs on `openai/gpt-6.2-sol` (the
 reviewer on `openai/gpt-6-luna`), so set `OPENAI_API_KEY` or
 `OPENROUTER_API_KEY`. Optional `OPENAI_BASE_URL` selects a compatible Responses
 API endpoint when used with `OPENAI_API_KEY`.

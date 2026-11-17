@@ -74,7 +74,7 @@ async fn complete(
 #[tokio::main]
 async fn main() {
     let key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
-    let model = std::env::var("COMPACTION_EVAL_MODEL").unwrap_or_else(|_| "gpt-6.1-sol".into());
+    let model = std::env::var("COMPACTION_EVAL_MODEL").unwrap_or_else(|_| "gpt-6.2-sol".into());
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(180))
         .build()
