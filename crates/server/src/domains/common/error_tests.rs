@@ -37,12 +37,12 @@ async fn dispatch_accepts_empty_object_for_unit_commands() {
     let db = Arc::new(StorageBackend::test_database());
     let ctx = Ctx::minimal_for_test(Caller::internal(1), db, None);
 
-    let result = dispatch("get_report_catalog", serde_json::json!({}), &ctx)
+    let result = dispatch("list_sandbox_targets", serde_json::json!({}), &ctx)
         .await
         .expect("empty MCP params should dispatch to a unit command");
-    let value: serde_json::Value = serde_json::from_str(&result).expect("catalog JSON");
+    let value: serde_json::Value = serde_json::from_str(&result).expect("targets JSON");
 
-    assert!(value.get("datasets").is_some());
+    assert!(value.get("items").is_some());
 }
 
 #[tokio::test]
@@ -51,7 +51,7 @@ async fn dispatch_does_not_coerce_nonempty_objects_for_unit_commands() {
     let ctx = Ctx::minimal_for_test(Caller::internal(1), db, None);
 
     let error = dispatch(
-        "get_report_catalog",
+        "list_sandbox_targets",
         serde_json::json!({ "unexpected": true }),
         &ctx,
     )
