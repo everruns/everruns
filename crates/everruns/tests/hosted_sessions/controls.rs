@@ -882,7 +882,13 @@ async fn native_process_loss_preserves_admission_and_finalization() {
         let path = directory.path().join(name);
         async move {
             let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
-                while !path.exists() {
+                // The completion effect creates its marker before writing to
+                // it; killing the owner between the two left an empty file.
+                // Wait for content, not only existence.
+                while !path.exists()
+                    || (name == "completion-effects"
+                        && std::fs::metadata(&path).map_or(true, |m| m.len() == 0))
+                {
                     tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
             })
