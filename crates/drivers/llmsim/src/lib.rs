@@ -26,6 +26,7 @@ mod prompt_cache;
 pub mod realtime;
 mod replay;
 mod scenarios;
+mod weather;
 
 pub use demo_scripts::{
     auditor_demo_script, guarded_bash_demo_script, monitor_demo_script, session_tasks_demo_script,
@@ -783,6 +784,28 @@ impl ChatDriver for LlmSimDriver {
             &messages,
         );
 
+        // Provider conditions named in the model id (storms, back-pressure,
+        // token budgets) apply to every call, scenario or not.
+        let conditions = weather::Conditions::from_model(&config.model);
+        let mut effect = (!conditions.is_empty()).then(|| {
+            conditions.effect(
+                u64::from(prompt.uncached + prompt.cached),
+                &self.resolve_latency_profile(&config.model),
+            )
+        });
+        if let Some(effect) = &mut effect {
+            if let Some(error) = effect.error.take() {
+                return Err(error);
+            }
+            if effect.stall {
+                return Ok(Box::pin(futures::stream::pending()));
+            }
+        }
+        let extra_ttft = effect
+            .as_ref()
+            .map_or(std::time::Duration::ZERO, |e| e.extra_ttft);
+        let in_flight = effect.as_mut().and_then(|e| e.in_flight.take());
+
         // The runtime's compaction summary gets a summary-sized answer, even in
         // a scenario session whose history carries markers.
         let summarizing = compaction::is_summarization(&messages);
@@ -796,10 +819,11 @@ impl ChatDriver for LlmSimDriver {
                 &config.model,
                 self.resolve_latency_profile(&config.model),
                 prompt,
+                extra_ttft,
                 &self.scenario_attempts,
             )
         {
-            return played;
+            return played.map(|stream| hold(stream, in_flight));
         }
 
         let counters = if let Some(session) = config.metadata.get("session_id") {
@@ -843,6 +867,9 @@ impl ChatDriver for LlmSimDriver {
         let mut latency_profile = self.resolve_latency_profile(&model_name);
         if summarizing {
             latency_profile = compaction::pacing(&messages, latency_profile);
+        }
+        if let Some(effect) = &effect {
+            latency_profile = weather::paced(latency_profile, effect);
         }
         // Prefill: a longer or colder prompt starts later. Profiles without a
         // prefill rate (instant, fast) stay unchanged.
@@ -948,7 +975,7 @@ impl ChatDriver for LlmSimDriver {
         let full_stream = stream::iter(reasoning_events)
             .chain(event_stream)
             .chain(stream::iter(done_events));
-        Ok(Box::pin(full_stream))
+        Ok(hold(Box::pin(full_stream), in_flight))
     }
 
     /// Scripted answers stand in for a schema-enforcing provider.
@@ -963,6 +990,18 @@ impl std::fmt::Debug for LlmSimDriver {
             .field("model", &self.config.model_name)
             .field("simulate_latency", &self.config.simulate_latency)
             .finish()
+    }
+}
+
+/// Keep `guard` alive until the stream is dropped, so a call counts as in
+/// flight for as long as it streams.
+fn hold(stream: LlmResponseStream, guard: Option<weather::InFlight>) -> LlmResponseStream {
+    match guard {
+        None => stream,
+        Some(guard) => Box::pin(stream.map(move |event| {
+            let _held = &guard;
+            event
+        })),
     }
 }
 

@@ -62,6 +62,7 @@ pub(crate) fn play(
     model: &str,
     latency: LatencyProfile,
     prompt: PromptUsage,
+    extra_ttft: Duration,
     attempts: &Attempts,
 ) -> Option<Result<BoxStream<'static, Result<LlmStreamEvent>>>> {
     let conversation: Vec<ConversationMessage> = messages.iter().map(conversation).collect();
@@ -135,7 +136,7 @@ pub(crate) fn play(
                         .into(),
                 )),
             ));
-            return Some(Ok(play_plan(with_prefill(plan, prompt))));
+            return Some(Ok(play_plan(with_prefill(plan, prompt, extra_ttft))));
         }
         // Close the reasoning block before the first answer token.
         if reasoning_open && matches!(event, LlmStreamEvent::TextDelta(_)) {
@@ -167,18 +168,20 @@ pub(crate) fn play(
     metadata.response_model = Some(model.to_string());
     metadata.finish_reason = Some("stop".to_string());
     plan.push((Duration::ZERO, Ok(LlmStreamEvent::Done(Box::new(metadata)))));
-    Some(Ok(play_plan(with_prefill(plan, prompt))))
+    Some(Ok(play_plan(with_prefill(plan, prompt, extra_ttft))))
 }
 
 /// Reading the prompt comes before anything the model writes. Scenarios model
 /// hosted providers, so they use llmsim's default prefill rate even on the
-/// instant `llmsim-default` model.
+/// instant `llmsim-default` model. `extra` is provider back-pressure from the
+/// model's conditions.
 fn with_prefill(
     mut plan: Vec<(Duration, Result<LlmStreamEvent>)>,
     prompt: PromptUsage,
+    extra: Duration,
 ) -> Vec<(Duration, Result<LlmStreamEvent>)> {
     if let Some((wait, _)) = plan.first_mut() {
-        *wait += prompt.prefill(DEFAULT_PREFILL_US_PER_TOKEN);
+        *wait += prompt.prefill(DEFAULT_PREFILL_US_PER_TOKEN) + extra;
     }
     plan
 }
@@ -311,6 +314,7 @@ mod tests {
             "llmsim-default",
             LatencyProfile::instant(),
             PromptUsage::default(),
+            Duration::ZERO,
             attempts,
         )?;
         Some(match played {
@@ -682,6 +686,7 @@ mod tests {
                 "llmsim-default",
                 LatencyProfile::instant(),
                 prompt,
+                Duration::ZERO,
                 &Attempts::default(),
             )
             .unwrap()

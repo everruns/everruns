@@ -676,3 +676,27 @@ fn realistic_families_report_their_real_context_window() {
         Some(8_000)
     );
 }
+
+#[tokio::test]
+async fn a_storm_that_never_ends_rate_limits_every_call() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    // A 60 s window every 60 s: always inside the storm.
+    let config = LlmCallConfig::new("llmsim-default-storm-429-60-60");
+    for _ in 0..2 {
+        let Err(err) = driver
+            .chat_completion_stream(vec![user_message("hi")], &config)
+            .await
+        else {
+            panic!("expected a rate limit");
+        };
+        let retry = err.retry_after_secs().unwrap();
+        assert!((1..=60).contains(&retry), "{retry}");
+    }
+    // The same driver serves plain models normally.
+    assert!(
+        driver
+            .chat_completion(vec![user_message("hi")], &make_config())
+            .await
+            .is_ok()
+    );
+}
