@@ -636,3 +636,43 @@ async fn calls_without_a_session_are_never_cached() {
         assert!(metadata.prompt_tokens.unwrap() >= 5_000);
     }
 }
+
+#[tokio::test]
+async fn compaction_summaries_are_sized_from_the_history() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    let messages = vec![
+        system_message(
+            "<task>\nSummarize the following conversation history. The summary replaces",
+        ),
+        // About 20k tokens of transcript.
+        user_message(&"history ".repeat(10_000)),
+    ];
+    let response = driver
+        .chat_completion(messages, &make_config())
+        .await
+        .unwrap();
+    let words = response.text.split_whitespace().count();
+    // Capped at 1,200 tokens, about 900 words of lorem text.
+    assert!((700..=1_000).contains(&words), "{words} words");
+    assert!(response.tool_calls.is_none());
+}
+
+#[test]
+fn realistic_families_report_their_real_context_window() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    assert_eq!(
+        driver.effective_context_window("llmsim-realistic-claude-sonnet"),
+        Some(200_000)
+    );
+    assert_eq!(
+        driver.effective_context_window("llmsim-realistic-gpt-5"),
+        Some(400_000)
+    );
+    assert_eq!(driver.effective_context_window("llmsim-realistic"), None);
+    assert_eq!(driver.effective_context_window("llmsim-default"), None);
+    let pinned = LlmSimDriver::new(LlmSimConfig::fixed("ok").with_context_window(8_000));
+    assert_eq!(
+        pinned.effective_context_window("llmsim-realistic-gpt-5"),
+        Some(8_000)
+    );
+}

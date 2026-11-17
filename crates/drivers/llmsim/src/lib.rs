@@ -19,6 +19,7 @@
 //! let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello."));
 //! ```
 
+mod compaction;
 mod demo_scripts;
 mod model_names;
 mod prompt_cache;
@@ -729,8 +730,10 @@ impl LlmSimDriver {
 
 #[async_trait]
 impl ChatDriver for LlmSimDriver {
-    fn effective_context_window(&self, _model: &str) -> Option<usize> {
-        self.config.context_window
+    fn effective_context_window(&self, model: &str) -> Option<usize> {
+        self.config
+            .context_window
+            .or_else(|| model_names::context_window(model))
     }
 
     async fn chat_completion_stream(
@@ -779,16 +782,22 @@ impl ChatDriver for LlmSimDriver {
             &messages,
         );
 
+        // The runtime's compaction summary gets a summary-sized answer, even in
+        // a scenario session whose history carries markers.
+        let summarizing = compaction::is_summarization(&messages);
+
         // A scenario marker in the user message (or an `llmsim-scenario-*`
         // model) takes over the whole call, pacing included.
-        if let Some(played) = scenarios::play(
-            &messages,
-            &config.tools,
-            &config.model,
-            self.resolve_latency_profile(&config.model),
-            prompt,
-            &self.scenario_attempts,
-        ) {
+        if !summarizing
+            && let Some(played) = scenarios::play(
+                &messages,
+                &config.tools,
+                &config.model,
+                self.resolve_latency_profile(&config.model),
+                prompt,
+                &self.scenario_attempts,
+            )
+        {
             return played;
         }
 
@@ -810,10 +819,19 @@ impl ChatDriver for LlmSimDriver {
                 self.tool_call_counter.clone(),
             )
         };
-        let generated_turn = model_names::realistic_turn(self, &messages, config).map_or_else(
-            || self.generate_turn(&messages, &counters.0, &counters.1),
-            Ok,
-        )?;
+        let generated_turn = if summarizing {
+            let tokens = compaction::summary_tokens(prompt.uncached + prompt.cached);
+            GeneratedTurn {
+                text: compaction::summary_text(self, &messages, tokens),
+                tool_calls: None,
+                stream_stall: false,
+            }
+        } else {
+            model_names::realistic_turn(self, &messages, config).map_or_else(
+                || self.generate_turn(&messages, &counters.0, &counters.1),
+                Ok,
+            )?
+        };
         if generated_turn.stream_stall {
             return Ok(Box::pin(futures::stream::pending()));
         }
@@ -822,6 +840,9 @@ impl ChatDriver for LlmSimDriver {
         let model_name = config.model.clone();
         let response_id_for_done = self.config.response_id.clone();
         let mut latency_profile = self.resolve_latency_profile(&model_name);
+        if summarizing {
+            latency_profile = compaction::pacing(&messages, latency_profile);
+        }
         // Prefill: a longer or colder prompt starts later. Profiles without a
         // prefill rate (instant, fast) stay unchanged.
         let prefill = prompt.prefill(latency_profile.prefill_us_per_token);
