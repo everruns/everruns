@@ -66,6 +66,8 @@ pub struct Executor {
     dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
     /// MCP credentials of the orgs whose turns run here.
     pub mcp: Arc<crate::mcp::OrgMcp>,
+    /// Managed sandboxes of the sessions whose turns run here.
+    pub sandboxes: Arc<crate::sandbox::OrgSandboxes>,
 }
 
 impl Executor {
@@ -78,6 +80,8 @@ impl Executor {
         let remote = Remote::new(cfg.id, cfg.store.clone())?;
         remote.set_cells(cfg.topology.read()?.cells);
         let hosting = RaftHosting::remote(remote.clone());
+        let sandboxes = Arc::new(crate::sandbox::OrgSandboxes::default());
+        hosting.set_sandboxes(sandboxes.clone());
         let orgs = Arc::new(crate::providers::OrgProviders::default());
         let mcp = Arc::new(crate::mcp::OrgMcp::from_env());
         let services = crate::host::OrgServices {
@@ -99,10 +103,12 @@ impl Executor {
             stats: Default::default(),
             dp_key: Mutex::new(data_plane_key()?),
             mcp,
+            sandboxes,
         });
         let material: Arc<dyn crate::providers::OrgMaterial> = executor.clone();
         orgs.bind(Arc::downgrade(&material));
         executor.mcp.bind(Arc::downgrade(&material));
+        executor.sandboxes.bind(Arc::downgrade(&material));
         // Whatever refreshes the mirror wakes Engine's waiters, as a node's
         // applied changes do (`Remote::absorb`); a session that left the
         // mirror or froze hands off.
@@ -528,6 +534,21 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
                         "executor_mcp_refreshes_total",
                         "MCP OAuth token refreshes, by outcome.",
                         &executor.mcp.refreshes,
+                    );
+                    w.histograms(
+                        "executor_sandbox_sync_seconds",
+                        "Time to sync a session's workspace with its sandbox, by direction and kind.",
+                        &executor.sandboxes.sync,
+                    );
+                    w.counters(
+                        "executor_sandbox_sync_files_total",
+                        "Files a workspace sync copied, by direction and op.",
+                        &executor.sandboxes.files,
+                    );
+                    w.counters(
+                        "executor_sandbox_orphans_total",
+                        "Orphaned sandboxes removed before a create, by provider.",
+                        &executor.sandboxes.orphans,
                     );
                     w.out
                 },

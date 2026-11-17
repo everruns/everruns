@@ -40,6 +40,7 @@ pub mod feed;
 pub mod mcp;
 pub mod outbox;
 pub mod providers;
+pub mod sandboxes;
 pub mod sessions;
 pub mod tokens;
 
@@ -173,6 +174,7 @@ pub trait DataPlane: Send + Sync {
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
         initial_files: &[everruns_core::session_file::InitialFile],
+        sandbox: Option<&Value>,
     ) -> anyhow::Result<()>;
 }
 
@@ -205,6 +207,7 @@ impl DataPlane for NoDataPlane {
         _: everruns_contracts::typed_id::SessionId,
         _: &str,
         _: &[everruns_core::session_file::InitialFile],
+        _: Option<&Value>,
     ) -> anyhow::Result<()> {
         Ok(())
     }
@@ -286,11 +289,15 @@ impl DataPlane for HttpDataPlane {
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
         initial_files: &[everruns_core::session_file::InitialFile],
+        sandbox: Option<&Value>,
     ) -> anyhow::Result<()> {
         let url = format!("{}{}/orgs/{org}/sessions", self.row.url, dp::PREFIX);
         let mut body = serde_json::json!({ "id": id, "agent_ref": agent_key });
         if !initial_files.is_empty() {
             body["initial_files"] = serde_json::to_value(initial_files)?;
+        }
+        if let Some(sandbox) = sandbox {
+            body["sandbox"] = sandbox.clone();
         }
         self.request(reqwest::Method::POST, url)
             .json(&body)
@@ -371,6 +378,7 @@ pub async fn agent_published(
     let n: u64 = revision.trim_start_matches('r').parse().unwrap_or(1);
     let mut package = declaration.agent;
     mcp::prepare(cp, org_id, agent_key, &mut package).await?;
+    sandboxes::strip(&mut package);
     let change = ConfigChange::Agent(dp::AgentDefinition {
         agent_id: agent_key.to_owned(),
         revision: n,

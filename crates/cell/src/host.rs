@@ -176,6 +176,15 @@ impl Host for StandardHost {
                 Arc::new(everruns_core::builtins::DurableToolApprover),
             ));
         }
+        // A managed sandbox the control plane pinned for the session
+        // (`sandbox.rs`): its provider key and the workspace sync come from
+        // the activation, so the capability is the platform's own.
+        if manifest.capabilities.iter().any(|c| {
+            c.id() == everruns_capabilities::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID
+        }) {
+            services =
+                services.register(everruns_capabilities::capabilities::SessionSandboxCapability);
+        }
         let model = match (local, orgs) {
             (Some(model), _) => model,
             (None, Some(orgs)) => {

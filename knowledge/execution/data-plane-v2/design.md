@@ -1769,6 +1769,47 @@ plane's feed gets it. Every call's overhead is also on each executor's
 `/metrics` (`executor_mcp_credential_seconds`, by kind, and
 `executor_mcp_refreshes_total`, by outcome).
 
+**11.3 Sandboxes.** A session's managed sandbox (Daytona, E2B, boxd,
+Modal, Kubernetes) runs from the data plane in sync mode: the session's
+workspace in the cell stays the source of truth and the sandbox is a
+disposable copy of it. The control plane pins the sandbox at create, as
+in v1, and sends the resolved `session_sandbox` entry with the session
+(`crates/server/src/domains/data_plane/sandboxes.rs`); the provider key
+travels as a sealed org secret (`sandbox:<provider>:<user>:<connection>`),
+sealed again only when it changed, and a published agent carries no
+sandbox of its own. On the executor (`crates/cell/src/sandbox.rs`) the
+capability gets a sync hook (`workspace_sync.rs` in the capabilities
+crate) instead of v1's seed and checkpoints. Before a call the sandbox
+catches up with the workspace: nothing when this executor last synced it
+and the workspace has not moved, only the changed files when it moved,
+and a full listing compared against the workspace when the executor does
+not know the sandbox (another executor's, or a replacement for a lost
+one), which also removes what the workspace never had. After a mutating
+call one shell scan lists what changed since the last sync, by ctime, and
+a digest of every path catches removals; changed files come back as one
+commit. Tool caches (`.git`, `node_modules`, `target`, `.venv`,
+`__pycache__`) and files over 16 MiB stay in the sandbox. A sync record
+(workspace version and sandbox time) lives in the sandbox's state, so any
+executor can tell whether it is current. Before a create the executor
+lists the provider's sandboxes labeled with the session and deletes any
+the session never recorded: an executor killed between the provider's
+create and the record leaves no orphan behind. Engine does not run a
+cut-off `bash` call again; the next call finds the sandbox put back to the
+workspace.
+
+What it costs (`crates/cell-testkit/tests/sandboxes.rs`, a local provider
+taking 1.5 s to create and 50 ms per call, about Daytona's warm numbers):
+a first call takes four provider calls (orphan check, create, command,
+scan) against v1's two, 1700 ms of provider time against 1600 ms (+6.2%,
+gate 10%); median wall time 1707 ms. Sync of an unchanged 1000-file
+workspace: 1.3 ms before a call and 17.9 ms after it, in a debug build,
+with no file read (gate 50 ms). On `/metrics`:
+`executor_sandbox_sync_seconds` (by direction and kind),
+`executor_sandbox_sync_files_total` and `executor_sandbox_orphans_total`.
+Still on the platform after 11.3: the sandbox management API (start,
+stop, the fleet view), idle pause, the desktop and mount mode; they go
+with 11.6.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

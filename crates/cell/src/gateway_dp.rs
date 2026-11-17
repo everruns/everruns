@@ -151,6 +151,11 @@ struct OrgSession {
     /// The session's own starter files, written where absent.
     #[serde(default)]
     initial_files: Vec<everruns_core::session_file::InitialFile>,
+    /// The managed sandbox the control plane pinned for the session, as a
+    /// `session_sandbox` capability entry (`sandbox.rs`). Its provider key
+    /// is a sealed org secret, so the entry names no credential value.
+    #[serde(default)]
+    sandbox: Option<serde_json::Value>,
 }
 
 /// `POST /dp/v1/orgs/{org}/sessions`: the control plane creating an org's
@@ -161,8 +166,16 @@ async fn org_session(
     Json(body): Json<OrgSession>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let revision = gateway.agent_revision(&org, &body.agent_ref).await?;
+    let mut package = revision.package;
+    if let Some(sandbox) = &body.sandbox {
+        let entry = crate::sandbox::capability_entry(sandbox).ok_or((
+            StatusCode::BAD_REQUEST,
+            "sandbox: not a session_sandbox capability entry".to_string(),
+        ))?;
+        with_capability(&mut package, entry);
+    }
     let created = gateway
-        .create(revision.package, None, Some(body.id), Some(org))
+        .create(package, None, Some(body.id), Some(org))
         .await?;
     if !body.initial_files.is_empty() {
         let seed = crate::api_files::FsOp::Seed {
@@ -181,6 +194,22 @@ async fn org_session(
         }
     }
     Ok((StatusCode::CREATED, Json(created)))
+}
+
+/// `definition` running the pinned sandbox `entry`: it replaces the
+/// agent's other compute (a shell, the workspace's own file tools), as the
+/// platform's workers apply a managed sandbox.
+fn with_capability(definition: &mut serde_json::Value, entry: serde_json::Value) {
+    if !definition["capabilities"].is_array() {
+        definition["capabilities"] = serde_json::json!([]);
+    }
+    if let Some(capabilities) = definition["capabilities"].as_array_mut() {
+        capabilities.retain(|c| {
+            let id = c["ref"].as_str().or_else(|| c.as_str()).unwrap_or_default();
+            !crate::sandbox::REPLACED.contains(&id)
+        });
+        capabilities.push(entry);
+    }
 }
 
 async fn position(

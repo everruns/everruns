@@ -140,6 +140,23 @@ pub fn mcp_binding_secret(binding: &str) -> String {
     format!("mcp:{binding}")
 }
 
+/// The secret holding the provider key a session's managed sandbox
+/// credential names: the provider, and the exact owner the control plane
+/// pinned at create (an identity, and for an organization account its
+/// connection). Ids, not secrets, so the name says whose key it is.
+pub fn sandbox_key_secret(
+    provider: &str,
+    virtual_user_id: Option<uuid::Uuid>,
+    connection_id: Option<uuid::Uuid>,
+) -> String {
+    let id = |id: Option<uuid::Uuid>| id.map_or_else(|| "-".to_owned(), |id| id.to_string());
+    format!(
+        "sandbox:{provider}:{}:{}",
+        id(virtual_user_id),
+        id(connection_id)
+    )
+}
+
 /// The connection id of the model provider an agent's `model.provider`
 /// names (`key`, normalized as provider keys are).
 pub fn llm_provider_connection(key: &str) -> String {

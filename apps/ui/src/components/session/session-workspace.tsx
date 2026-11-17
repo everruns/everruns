@@ -127,11 +127,9 @@ const PANE_LABELS: Record<SessionRecordPane, string> = {
 function FilesystemPane({
   workspaceId,
   sessionId,
-  dataPlane,
 }: {
   workspaceId: string | undefined;
   sessionId: string;
-  dataPlane: boolean;
 }) {
   const ui = useUiTranslations();
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
@@ -163,7 +161,7 @@ function FilesystemPane({
           )}
         </div>
 
-        {!dataPlane && <SessionSandboxPanel sessionId={sessionId} />}
+        <SessionSandboxPanel sessionId={sessionId} />
       </div>
     </div>
   );
@@ -178,8 +176,9 @@ export function SessionWorkspace() {
   const { session, sessionId } = useSessionContext();
   const workspaceId = session?.workspace_id;
   const features = new Set(session?.features ?? []);
-  // A data plane serves the session's files; its values, schedules and
-  // sandbox are not there yet, so they are neither asked for nor shown.
+  // A data plane serves the session's files and its sandbox (the control
+  // plane answers which sandbox it pinned); its values and schedules are
+  // not there yet, so they are neither asked for nor shown.
   const dataPlane = !!useOptionalFeatureFlags()?.flags?.data_plane;
   const schedules = useSessionSchedules(dataPlane ? undefined : sessionId);
   const storage = useSessionStorage(sessionId, !dataPlane);
@@ -219,9 +218,7 @@ export function SessionWorkspace() {
         </div>
       )}
 
-      {active === "files" && (
-        <FilesystemPane workspaceId={workspaceId} sessionId={sessionId} dataPlane={dataPlane} />
-      )}
+      {active === "files" && <FilesystemPane workspaceId={workspaceId} sessionId={sessionId} />}
       {active === "values" && (
         <div className="flex-1 overflow-y-auto">
           <StoragePanel sessionId={sessionId} />

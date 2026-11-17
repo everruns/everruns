@@ -72,6 +72,8 @@ struct Inner {
     epochs: parking_lot::Mutex<HashMap<SessionId, u64>>,
     /// Per session, the renew poke of the epoch running here.
     pokes: parking_lot::Mutex<HashMap<SessionId, Weak<actors::Poke>>>,
+    /// Managed sandboxes of the sessions that run here (`sandbox.rs`).
+    sandboxes: std::sync::OnceLock<Arc<crate::sandbox::OrgSandboxes>>,
 }
 
 /// Where hosting reaches its cell.
@@ -100,6 +102,11 @@ impl RaftHosting {
         Self::with_source(Source::Node(node))
     }
 
+    /// Run sessions' managed sandboxes with `sandboxes` (`sandbox.rs`).
+    pub fn set_sandboxes(&self, sandboxes: Arc<crate::sandbox::OrgSandboxes>) {
+        let _ = self.inner.sandboxes.set(sandboxes);
+    }
+
     /// Hosting for an executor outside the cell (see `remote`).
     pub fn remote(remote: Arc<crate::remote::Remote>) -> Self {
         Self::with_source(Source::Remote(remote))
@@ -114,6 +121,7 @@ impl RaftHosting {
                 hand_offs: Default::default(),
                 epochs: Default::default(),
                 pokes: Default::default(),
+                sandboxes: Default::default(),
             }),
         }
     }
@@ -354,11 +362,11 @@ impl SessionHosting for RaftHosting {
         _environment: &everruns::Environment,
         backends: HostBackends,
     ) -> Result<HostBackends> {
-        Ok(actors::with_allowance(
-            self.inner.clone(),
-            session,
-            backends,
-        ))
+        let backends = actors::with_allowance(self.inner.clone(), session, backends);
+        Ok(match self.inner.sandboxes.get() {
+            Some(sandboxes) => sandboxes.attach(backends, self.files()),
+            None => backends,
+        })
     }
 
     async fn command(&self, session: SessionId, command: SessionCommand) -> Result<Value> {

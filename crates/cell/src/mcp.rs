@@ -59,10 +59,16 @@ impl Bindings {
 }
 
 /// Whether `definition` names any of an org's credentials: a header
-/// placeholder or an `mcp_oauth` connection. One that does not parse names
+/// placeholder, an `mcp_oauth` connection, or a managed sandbox (whose
+/// provider key is the org's, `sandbox.rs`). One that does not parse names
 /// none (it fails at create anyway).
 pub fn names_org_credentials(definition: &serde_json::Value) -> bool {
-    crate::host::package_with_bindings(definition).is_ok_and(|(_, bindings)| !bindings.is_empty())
+    crate::host::package_with_bindings(definition).is_ok_and(|(package, bindings)| {
+        !bindings.is_empty()
+            || package.manifest().capabilities.iter().any(|c| {
+                c.id() == everruns_capabilities::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID
+            })
+    })
 }
 
 /// Take every `${BINDING}` header and `mcp_oauth` connection out of

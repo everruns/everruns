@@ -751,3 +751,4 @@ async fn the_consoles_chat_stays_on_the_control_plane() {
 }
 
 mod mcp;
+mod sandboxes;
