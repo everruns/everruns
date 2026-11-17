@@ -181,7 +181,7 @@ describe("buildSessionNavigation", () => {
 });
 
 describe("buildSessionNavigation on a data plane", () => {
-  it("shows files but hides changes and work, which a data plane does not serve yet", () => {
+  it("shows files and work but hides changes, which a data plane does not serve yet", () => {
     const features = new Set(["file_system", "repositories", "schedules", "leased_resources"]);
     const keys = buildSessionNavigation({
       basePath: "/sessions/session_1",
@@ -192,7 +192,21 @@ describe("buildSessionNavigation on a data plane", () => {
     }).map((item) => item.key);
     expect(keys).toContain("files");
     expect(keys).not.toContain("changes");
-    expect(keys).not.toContain("work");
+    expect(keys).toContain("work");
+    // Leased resources alone are no work on a data plane.
+    const leasedOnly = buildSessionNavigation({
+      basePath: "/sessions/session_1",
+      features: new Set(["leased_resources"]),
+      taskCount: 2,
+      dataPlane: true,
+    }).map((item) => item.key);
+    expect(leasedOnly).not.toContain("work");
+    const subagents = buildSessionNavigation({
+      basePath: "/sessions/session_1",
+      features: new Set(["subagents"]),
+      dataPlane: true,
+    }).map((item) => item.key);
+    expect(subagents).toContain("work");
     expect(keys).toContain("trace");
     const v1 = buildSessionNavigation({
       basePath: "/sessions/session_1",
@@ -211,10 +225,11 @@ describe("buildSessionNavigation on a data plane", () => {
     expect(keys).toContain("files");
   });
 
-  it("keeps only the files pane on the Files tab", () => {
+  it("shows files and schedules on the Files tab, not values", () => {
     const features = new Set(["key_value", "secrets", "schedules"]);
     expect(sessionRecordPanes({ features, hasSchedules: true, dataPlane: true })).toEqual([
       "files",
+      "schedules",
     ]);
     expect(sessionRecordPanes({ features, hasSchedules: true })).toEqual([
       "files",

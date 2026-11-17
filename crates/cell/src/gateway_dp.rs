@@ -46,6 +46,10 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         .route("/dp/v1/orgs/{org}/config", get(position))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
         .route("/dp/v1/orgs/{org}/sessions", post(org_session))
+        .route(
+            "/dp/v1/orgs/{org}/sessions/{session}/messages",
+            post(org_message),
+        )
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
             crate::node_control::require_link_token,
@@ -194,6 +198,36 @@ async fn org_session(
         }
     }
     Ok((StatusCode::CREATED, Json(created)))
+}
+
+#[derive(serde::Deserialize)]
+struct OrgMessage {
+    /// The message's id: a retry with the same id admits once.
+    id: everruns_contracts::typed_id::MessageId,
+    text: String,
+    #[serde(default)]
+    origin: Option<serde_json::Value>,
+}
+
+/// `POST /dp/v1/orgs/{org}/sessions/{session}/messages`: the control plane
+/// admitting a message it produced itself (an agent trigger's run, step
+/// 11.4) into one of the org's sessions.
+async fn org_message(
+    State(gateway): State<Arc<Gateway>>,
+    Path((org, session)): Path<(String, String)>,
+    Json(body): Json<OrgMessage>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let session = everruns_contracts::typed_id::SessionId::parse(&session)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    // THREAT[TM-TENANT]: the link authenticates the control plane, not the
+    // org; a session of another org reads as missing.
+    if gateway.session_tenant(session).await?.as_deref() != Some(org.as_str()) {
+        return Err((StatusCode::NOT_FOUND, "session not found".into()));
+    }
+    let admit = serde_json::json!({ "id": body.id, "text": body.text, "origin": body.origin });
+    Ok(Json(
+        gateway.session_command(session, "messages", &admit).await?,
+    ))
 }
 
 /// `definition` running the pinned sandbox `entry`: it replaces the

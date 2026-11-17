@@ -171,6 +171,13 @@ pub enum Command {
         changes: Vec<crate::files::Change>,
         now_ms: i64,
     },
+    /// A change to `session`'s schedules (`platform.rs`).
+    Platform {
+        session: SessionId,
+        action: crate::platform::Op,
+        now_ms: i64,
+        seed: EventId,
+    },
     /// Directory: `session` lives in `cell` at placement `generation`. Only
     /// the directory cell applies it.
     ///
@@ -324,6 +331,7 @@ impl Command {
             | Command::Append { now_ms, .. }
             | Command::Write { now_ms, .. }
             | Command::Files { now_ms, .. }
+            | Command::Platform { now_ms, .. }
             | Command::Revoke { now_ms, .. }
             | Command::Revert { now_ms, .. } => Some(*now_ms),
             _ => None,
@@ -493,6 +501,9 @@ pub struct SessionState {
     /// The session's workspace (see `files`).
     #[serde(default, skip_serializing_if = "crate::files::Files::is_empty")]
     pub files: crate::files::Files,
+    /// The session's schedules (`platform.rs`).
+    #[serde(default, skip_serializing_if = "crate::platform::Platform::is_empty")]
+    pub platform: crate::platform::Platform,
     /// The session's history branch: 0 until a restore takes it back to an
     /// earlier point, then a newer number no earlier branch of it used
     /// (`new_branch`). The segments it writes carry it (`store::SegRef`).
@@ -869,6 +880,12 @@ impl CellState {
                     }
                 }
             }
+            Command::Platform {
+                session,
+                action,
+                now_ms,
+                seed,
+            } => self.apply_platform(session, action, now_ms, seed, changes),
             Command::Claim {
                 session,
                 holder,
@@ -1408,7 +1425,7 @@ impl CellState {
         }
     }
 
-    fn session_mut(&mut self, session: SessionId) -> Option<&mut SessionState> {
+    pub(crate) fn session_mut(&mut self, session: SessionId) -> Option<&mut SessionState> {
         self.sessions.get_mut(&session)
     }
 
@@ -1442,7 +1459,7 @@ impl CellState {
         }
     }
 
-    fn missing(&self, session: SessionId) -> Response {
+    pub(crate) fn missing(&self, session: SessionId) -> Response {
         match self.forwarded.get(&session) {
             Some(left) => Response::Moved { cell: left.cell },
             None => Response::NotFound,

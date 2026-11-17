@@ -176,11 +176,11 @@ export function SessionWorkspace() {
   const { session, sessionId } = useSessionContext();
   const workspaceId = session?.workspace_id;
   const features = new Set(session?.features ?? []);
-  // A data plane serves the session's files and its sandbox (the control
-  // plane answers which sandbox it pinned); its values and schedules are
-  // not there yet, so they are neither asked for nor shown.
+  // A data plane serves the session's files, its sandbox (the control
+  // plane answers which sandbox it pinned) and its schedules; its values
+  // are not there yet, so they are neither asked for nor shown.
   const dataPlane = !!useOptionalFeatureFlags()?.flags?.data_plane;
-  const schedules = useSessionSchedules(dataPlane ? undefined : sessionId);
+  const schedules = useSessionSchedules(sessionId);
   const storage = useSessionStorage(sessionId, !dataPlane);
   const hasScheduleRows = (schedules.data?.length ?? 0) > 0;
   const hasValueRows =

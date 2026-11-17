@@ -172,11 +172,48 @@ async fn a_turn_calls_the_orgs_own_provider_with_its_sealed_key() {
         StatusCode::NOT_FOUND,
         "an agent the org does not have"
     );
+    // An agent trigger's run (step 11.4): the control plane admits the
+    // message itself, under its origin; a retry admits once, and another
+    // org's session reads as missing.
     let session = id.to_string();
-    fleet.say(&session, "ping").await;
+    let message = everruns_contracts::typed_id::MessageId::new();
+    let run = json!({
+        "id": message,
+        "text": "ping",
+        "origin": { "kind": "agent_trigger", "source_id": "trigger_1", "name": "Schedule" },
+    });
+    for _ in 0..2 {
+        let (status, admitted) = cp
+            .call(
+                &base,
+                Method::POST,
+                &format!("/dp/v1/orgs/{ORG}/sessions/{session}/messages"),
+                &run,
+            )
+            .await
+            .unwrap();
+        assert_eq!(status, StatusCode::OK, "{admitted}");
+    }
+    let (status, _) = cp
+        .call(
+            &base,
+            Method::POST,
+            &format!("/dp/v1/orgs/org_other/sessions/{session}/messages"),
+            &run,
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, StatusCode::NOT_FOUND, "another org's session");
     fleet.turns(&session, 1).await;
     let events = fleet.events(&session).await;
     assert_eq!(answers(&events), vec!["pong".to_string()], "{events:?}");
+    let inputs: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|e| e["type"] == "input.message")
+        .collect();
+    assert_eq!(inputs.len(), 1, "a retried run admits once");
+    let origin = &inputs[0]["data"]["message"]["metadata"]["everruns_origin"];
+    assert_eq!(origin["kind"], "agent_trigger", "{origin}");
     let calls = seen.lock().clone();
     assert!(!calls.is_empty());
     for (auth, model) in calls {

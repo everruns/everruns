@@ -24,6 +24,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useSessionResources } from "@/hooks/use-session-resources";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
 import { SessionSchedulesSection } from "@/components/session/session-schedule-list";
 import { TaskChip } from "@/components/session/session-task-chips";
@@ -262,6 +263,8 @@ export default function SessionWorkPage() {
   const ui = useUiTranslations();
   const { sessionId, session } = useSessionContext();
   const features = new Set(session?.features ?? []);
+  // A data plane leases no resources (step 11.4 serves tasks and schedules).
+  const dataPlane = !!useOptionalFeatureFlags()?.flags?.data_plane;
 
   return (
     <div className="flex-1 space-y-8 overflow-y-auto p-6">
@@ -270,10 +273,12 @@ export default function SessionWorkPage() {
         <TasksSection sessionId={sessionId} />
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">{ui("Resources")}</h2>
-        <ResourcesSection sessionId={sessionId} />
-      </section>
+      {!dataPlane && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-muted-foreground">{ui("Resources")}</h2>
+          <ResourcesSection sessionId={sessionId} />
+        </section>
+      )}
 
       <SessionSchedulesSection sessionId={sessionId} announceEmpty={features.has("schedules")} />
 

@@ -168,8 +168,9 @@ fn chat_model() -> Model {
 }
 
 /// A model over the session's own workspace: `write <path> <text>` writes a
-/// file, `read <path>` reads one, and the answer after the tool quotes the
-/// tool's result. What it plays depends only on the conversation, so any
+/// file, `read <path>` reads one, `at <RFC 3339 time> <text>` schedules
+/// `text` to arrive then, and the answer after the tool quotes the tool's
+/// result. What it plays depends only on the conversation, so any
 /// executor, before or after a move, plays the same step.
 struct FilesSim;
 
@@ -207,11 +208,39 @@ impl everruns::ChatDriver for FilesSim {
                         json!({ "path": path, "content": content.unwrap_or_default() }),
                     ),
                     (Some("read"), Some(path), _) => call("read_file", json!({ "path": path })),
+                    (Some("at"), Some(time), what) => call(
+                        "create_schedule",
+                        json!({ "scheduled_at": time, "description": what.unwrap_or("wake up") }),
+                    ),
+                    // A subagent (a session of this same agent) answers in
+                    // the foreground (`ask`) or wakes the parent later
+                    // (`later`).
+                    (Some(verb @ ("ask" | "later")), Some(_), _) => {
+                        let instructions = text.trim()[verb.len()..].trim();
+                        let mode = if verb == "ask" {
+                            "foreground"
+                        } else {
+                            "background"
+                        };
+                        call(
+                            "spawn_agent",
+                            json!({
+                                "name": "helper",
+                                "instructions": instructions,
+                                "target": { "type": "subagent" },
+                                "mode": mode,
+                            }),
+                        )
+                    }
+                    (Some("answer"), Some(_), _) => SimTurn::Assistant(format!(
+                        "The answer is {}.",
+                        text.trim()["answer".len()..].trim()
+                    )),
                     (Some("sh"), Some(_), _) => {
                         let command = text.trim().trim_start_matches("sh").trim();
                         call("bash", json!({ "command": command }))
                     }
-                    _ => SimTurn::Assistant("Say write, read or sh.".into()),
+                    _ => SimTurn::Assistant("Say write, read, at or sh.".into()),
                 }
             }
         };
@@ -620,7 +649,7 @@ fn agent(name: &str, instructions: &str, model: &str, tool_names: &[&str]) -> Va
 ///   shell tools;
 /// - `chat`: answers, with context compaction (for long sessions);
 /// - `files`: writes and reads its workspace (`write <path> <text>`,
-///   `read <path>`);
+///   `read <path>`) and schedules its own runs (`at <time> <text>`);
 /// - `sandbox`: the same in a managed sandbox on this machine, and runs
 ///   `sh <command>` there;
 /// - `lead`: hands each message to its bundled member `worker3`.
@@ -672,8 +701,16 @@ pub fn definition(name: &str) -> Option<Value> {
             // The session's durable workspace, through the Framework's own
             // file tools.
             let mut files = agent("files", "Use the files.", "files", &[]);
-            files["capabilities"] = json!([{ "ref": "session_file_system" }]);
+            files["capabilities"] =
+                json!([{ "ref": "session_file_system" }, { "ref": "session_schedule" }]);
             files
+        }
+        "team" => {
+            // `files`, with subagents: sessions of the same agent, placed
+            // wherever the gateway puts them.
+            let mut team = agent("team", "Ask a helper.", "files", &[]);
+            team["capabilities"] = json!([{ "ref": "subagents" }]);
+            team
         }
         "sandbox" => {
             // A managed sandbox on this machine (`local_sandbox`): `sh

@@ -82,6 +82,7 @@ impl Executor {
         let hosting = RaftHosting::remote(remote.clone());
         let sandboxes = Arc::new(crate::sandbox::OrgSandboxes::default());
         hosting.set_sandboxes(sandboxes.clone());
+        hosting.set_gateway(crate::gateway::Gateway::new(cfg.topology.clone()));
         let orgs = Arc::new(crate::providers::OrgProviders::default());
         let mcp = Arc::new(crate::mcp::OrgMcp::from_env());
         let services = crate::host::OrgServices {

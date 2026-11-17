@@ -1,8 +1,8 @@
 //! A node's session commands behind the Everruns `/v1` session API
 //! (`gateway_v1.rs`): answering tool approvals, client-side tool results,
-//! and cancelling the running turn. Each goes through the node's Engine
-//! and answers a [`CellReply`], so the gateway follows moves and freezes
-//! the same way it does for admissions.
+//! cancelling the running turn, and the session's schedules. Each answers
+//! a [`CellReply`], so the gateway follows moves and freezes the same way
+//! it does for admissions.
 
 use std::sync::Arc;
 
@@ -28,6 +28,8 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/sessions/{session}/approvals", post(approvals))
         .route("/cell/sessions/{session}/tool-results", post(tool_results))
         .route("/cell/sessions/{session}/cancel-turn", post(cancel_turn))
+        .route("/cell/sessions/{session}/schedules", post(schedules))
+        .route("/cell/sessions/{session}/tasks", post(tasks))
         .with_state(node)
 }
 
@@ -198,6 +200,99 @@ async fn cancel_turn(
         Err(error) => reply_of(error),
     };
     Ok(Json(reply))
+}
+
+#[derive(Deserialize)]
+struct Schedules {
+    /// A change to make; none lists them.
+    #[serde(default)]
+    action: Option<crate::platform::Op>,
+}
+
+/// List the session's schedules, or change one (`platform.rs`).
+async fn schedules(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<Schedules>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    let Some(action) = body.action else {
+        let listed = crate::api::lookup(&node, id, |s| {
+            let live: Vec<_> = s
+                .platform
+                .schedules
+                .values()
+                .filter(|schedule| schedule.deleted_at.is_none())
+                .collect();
+            json!(live)
+        });
+        return Ok(Json(match listed {
+            Lookup::Here(value) => CellReply::Ok { value },
+            Lookup::Moved { cell } => CellReply::Moved { cell },
+            Lookup::Missing => CellReply::NotFound,
+        }));
+    };
+    Ok(Json(platform(&node, id, action).await?))
+}
+
+/// Propose a platform change to `id`, as a [`CellReply`].
+async fn platform(
+    node: &Node,
+    id: SessionId,
+    action: crate::platform::Op,
+) -> Result<CellReply, ApiError> {
+    use crate::state::{Command, Response};
+    let command = Command::Platform {
+        session: id,
+        action,
+        now_ms: crate::node::now_ms(),
+        seed: everruns_contracts::typed_id::EventId::new(),
+    };
+    Ok(match node.propose(command).await {
+        Ok((Response::Value { value }, _)) => CellReply::Ok { value },
+        Ok((Response::Moved { cell }, _)) => CellReply::Moved { cell },
+        Ok((Response::Frozen, _)) => CellReply::Frozen,
+        Ok((Response::NotFound, _)) => CellReply::NotFound,
+        Ok((Response::Rejected { reason }, _)) => CellReply::Refused { reason },
+        Ok((other, _)) => CellReply::Refused {
+            reason: format!("unexpected reply {other:?}"),
+        },
+        Err(error) => return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string())),
+    })
+}
+
+#[derive(Deserialize)]
+struct Tasks {
+    /// One task's detail; none lists them.
+    #[serde(default)]
+    task: Option<String>,
+    #[serde(default)]
+    after_id: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+/// List the session's tasks, or one with its messages (`tasks.rs`).
+async fn tasks(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<Tasks>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    let found = crate::api::lookup(&node, id, |s| match &body.task {
+        None => crate::tasks::listed(s),
+        Some(task) => crate::tasks::detail(
+            s,
+            task,
+            body.after_id.as_deref(),
+            body.limit.unwrap_or(50).clamp(1, 500),
+        ),
+    });
+    Ok(Json(match found {
+        Lookup::Here(value) => CellReply::Ok { value },
+        Lookup::Moved { cell } => CellReply::Moved { cell },
+        Lookup::Missing => CellReply::NotFound,
+    }))
 }
 
 #[cfg(test)]

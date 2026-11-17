@@ -21,7 +21,9 @@
 //! - Its pinned managed sandbox goes with the create (step 11.3,
 //!   `sandboxes.rs`), so the record is pinned before the create.
 
-use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+
+use crate::domains::common::CommandError;
 use everruns_core::session_file::InitialFile;
 
 use super::{ControlPlane, agent_published, for_org, org_public, outbox};
@@ -165,4 +167,51 @@ pub async fn runs_on_data_plane(
         return Ok(false);
     }
     cp.db.dp_session_on_data_plane(&session.to_string()).await
+}
+
+/// An agent trigger's run, when its session may be on a data plane.
+pub struct TriggerRun<'a> {
+    pub org_id: i64,
+    pub session: SessionId,
+    /// Identifies the dispatch: a retry with the same key admits once.
+    pub key: Option<String>,
+    pub text: &'a str,
+    pub origin: &'a everruns_core::message::MessageOrigin,
+    /// The run is a saved script, which only the platform's workers run.
+    pub script: bool,
+}
+
+impl TriggerRun<'_> {
+    /// Admit the run into its session on the org's data plane (step 11.4);
+    /// `false` for a session the platform's workers run, which takes the
+    /// message the ordinary way.
+    pub async fn admit(&self, cp: &ControlPlane) -> Result<bool, CommandError> {
+        if !runs_on_data_plane(cp, self.org_id, self.session).await? {
+            return Ok(false);
+        }
+        if self.script {
+            return Err(CommandError::bad_request(
+                "Saved script triggers are not available for sessions on a data plane yet",
+            ));
+        }
+        let message = match &self.key {
+            Some(key) => MessageId::from_uuid(uuid::Uuid::new_v5(
+                &uuid::Uuid::NAMESPACE_OID,
+                format!("agent_trigger:{key}").as_bytes(),
+            )),
+            None => MessageId::new(),
+        };
+        for_org(cp, self.org_id)
+            .await?
+            .send_message(
+                &org_public(self.org_id),
+                self.session,
+                message,
+                self.text,
+                self.origin,
+            )
+            .await
+            .map_err(|error| error.context("the data plane did not take the message"))?;
+        Ok(true)
+    }
 }

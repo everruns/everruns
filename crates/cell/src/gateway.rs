@@ -154,7 +154,10 @@ impl Gateway {
     }
 
     /// `session`'s tenant, read through the log, then cached once assigned.
-    async fn session_tenant(&self, session: SessionId) -> Result<Option<String>, ApiError> {
+    pub(crate) async fn session_tenant(
+        &self,
+        session: SessionId,
+    ) -> Result<Option<String>, ApiError> {
         if let Some(tenant) = self.tenants.lock().get(&session) {
             return Ok(Some(tenant.clone()));
         }

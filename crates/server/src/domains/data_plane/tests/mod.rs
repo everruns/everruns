@@ -33,6 +33,8 @@ struct Seen {
     want_full: bool,
     /// Sessions created: (org, body), with the config version applied then.
     sessions: Vec<(String, Value, u64)>,
+    /// Messages the control plane admitted: (org, session, body).
+    messages: Vec<(String, String, Value)>,
 }
 
 type Stub = Arc<Mutex<Seen>>;
@@ -82,7 +84,19 @@ async fn stub() -> (String, Stub) {
             Json(json!({ "id": body["id"] })),
         )
     }
+    async fn message(
+        State(seen): State<Stub>,
+        Path((org, session)): Path<(String, String)>,
+        Json(body): Json<Value>,
+    ) -> Json<Value> {
+        seen.lock().messages.push((org, session, body.clone()));
+        Json(json!({ "id": body["id"], "status": "accepted" }))
+    }
     let app = Router::new()
+        .route(
+            "/dp/v1/orgs/{org}/sessions/{session}/messages",
+            axum::routing::post(message),
+        )
         .route("/dp/v1/orgs/{org}", put(enable))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
         .route("/dp/v1/orgs/{org}/sessions", axum::routing::post(session))
@@ -619,6 +633,55 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         assert_eq!(seen.lock().sessions.len(), before);
         assert!(!sessions::runs_on_data_plane(&cp, 3, v1.id).await.unwrap());
     }
+}
+
+/// An agent trigger's run on a v2 session goes to the data plane under the
+/// trigger's origin, with an id a retried dispatch repeats; a v1 session is
+/// left to the ordinary path, and a saved script is refused on v2.
+#[tokio::test]
+async fn a_trigger_run_on_a_v2_session_goes_to_the_data_plane() {
+    let (cp, seen, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.harness_id = Some(harness);
+    let id = cp.db.create_session(row).await.unwrap().id;
+    let origin = everruns_core::message::MessageOrigin::new(
+        everruns_core::message::MessageOriginKind::AgentTrigger,
+    )
+    .with_source_id("trigger_1".to_string())
+    .with_name("Schedule");
+    let run = |script: bool| sessions::TriggerRun {
+        org_id: ORG,
+        session: id,
+        key: Some("trigger_1:request_1".into()),
+        text: "check the queue",
+        origin: &origin,
+        script,
+    };
+    // Not on the data plane yet: the ordinary path takes it.
+    assert!(!run(false).admit(&cp).await.unwrap());
+    assert!(seen.lock().messages.is_empty());
+
+    sessions::created(&cp, ORG, id, harness, None, &[])
+        .await
+        .unwrap();
+    assert!(run(false).admit(&cp).await.unwrap());
+    assert!(run(false).admit(&cp).await.unwrap());
+    {
+        let seen = seen.lock();
+        assert_eq!(seen.messages.len(), 2);
+        let (org, session, body) = &seen.messages[0];
+        assert_eq!(org, &org_public(ORG));
+        assert_eq!(session, &id.to_string());
+        assert_eq!(body["text"], "check the queue");
+        assert_eq!(body["origin"]["kind"], "agent_trigger", "{body}");
+        assert_eq!(
+            body["id"], seen.messages[1].2["id"],
+            "a retry repeats the id"
+        );
+    }
+    let refused = run(true).admit(&cp).await.unwrap_err();
+    assert_eq!(refused.status(), axum::http::StatusCode::BAD_REQUEST);
 }
 
 /// An org's model provider reaches the data plane as a connection and a

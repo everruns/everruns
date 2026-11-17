@@ -1114,17 +1114,6 @@ pub async fn invoke_agent_trigger(
         return Err(CommandError::not_found("Agent trigger"));
     }
 
-    // Local schedule input cannot run on the remote data plane. Reject before
-    // either the ordinary or channel path allocates a non-transactional session.
-    let plane = crate::domains::data_plane::ControlPlane::from_env(db.clone());
-    if !crate::domains::data_plane::sessions::stays_on_control_plane(Some(&agent))
-        && crate::domains::data_plane::sessions::on_data_plane(&plane, org_id).await?
-    {
-        return Err(CommandError::bad_request(
-            "Scheduled agent triggers cannot create a session on a data plane",
-        ));
-    }
-
     let outcome = super::schedule_invocation::dispatch_schedule(
         db,
         session_service,
@@ -1388,6 +1377,22 @@ pub(super) async fn dispatch_trigger_message(
     script: Option<&everruns_contracts::runtime::saved_scripts::ScriptRun>,
     request_id: Option<String>,
 ) -> Result<(), CommandError> {
+    // Data plane v2 (step 11.4): a session the org's data plane runs takes
+    // the run there (`data_plane::sessions::TriggerRun`).
+    let origin = trigger_origin(trigger_id, trigger_type);
+    let run = crate::domains::data_plane::sessions::TriggerRun {
+        org_id,
+        session: session_id,
+        key: request_id
+            .as_ref()
+            .map(|r| format!("{trigger_id}:{session_id}:{r}")),
+        text: &rendered_message,
+        origin: &origin,
+        script: script.is_some(),
+    };
+    if run.admit(&message_service.data_plane()).await? {
+        return Ok(());
+    }
     let metadata = Some(
         [
             (
@@ -1433,7 +1438,7 @@ pub(super) async fn dispatch_trigger_message(
         client_message_id: None,
     };
     message_service
-        .create_with_origin(ctx, req, trigger_origin(trigger_id, trigger_type), script)
+        .create_with_origin(ctx, req, origin, script)
         .await?;
     Ok(())
 }

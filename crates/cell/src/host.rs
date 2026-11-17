@@ -188,6 +188,23 @@ impl Host for StandardHost {
             services =
                 services.register(everruns_capabilities::capabilities::SessionSandboxCapability);
         }
+        // Schedules live in the session's cell state (`platform.rs`); the
+        // activation's schedule store reaches them.
+        if manifest.capabilities.iter().any(|c| {
+            c.id() == everruns_capabilities::capabilities::session_schedule::SESSION_SCHEDULE_CAPABILITY_ID
+        }) {
+            services =
+                services.register(everruns_capabilities::capabilities::SessionScheduleCapability);
+        }
+        // Subagents run as sessions of their own through the activation's
+        // platform store (`subagents.rs`).
+        if manifest
+            .capabilities
+            .iter()
+            .any(|c| c.id() == everruns_capabilities::capabilities::SUBAGENTS_CAPABILITY_ID)
+        {
+            services = services.register(everruns_capabilities::capabilities::SubagentCapability);
+        }
         let model = match (local, orgs) {
             (Some(model), _) => model,
             (None, Some(orgs)) => {

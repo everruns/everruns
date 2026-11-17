@@ -1810,6 +1810,46 @@ Still on the platform after 11.3: the sandbox management API (start,
 stop, the fleet view), idle pause, the desktop and mount mode; they go
 with 11.6.
 
+**11.4 Schedules, triggers, detached calls and subagents.** A session's
+schedules live in its cell state (`crates/cell/src/platform.rs`), built in
+full by the proposer so every replica applies the same one. The cell leader
+fires due ones on its tick in batches of 256 (`FireSchedule` carries the
+time it was due, so a retry or the old leader's late fire does nothing),
+and the occurrence enters the session as an admission with an id derived
+from the schedule and its run, under the schedule origin the engine knows.
+The console's schedule API runs on the gateway (`gateway_v1.rs`). An agent
+trigger (schedule, webhook, GitHub, MCP event) on a v2 org creates its
+session on the data plane as before, and the control plane admits the run
+there (`POST /dp/v1/orgs/{org}/sessions/{id}/messages`, under the
+trigger's origin, idempotent per dispatch). A long tool call detaches
+(`crates/cell/src/detach.rs`, after 5 minutes by default): its record
+moves into the session's authority, the turn parks and frees its executor,
+the call's events append once the turn parked, and its result resumes the
+turn; an executor that dies stops renewing the record, and once it
+expires (30 s) another executor resumes the turn. Input that arrives
+meanwhile waits and joins the resumed turn, as on v1. Subagents
+(`crates/cell/src/subagents.rs`) are sessions of the parent's own agent,
+created and driven through the gateway's own calls, so the child lands
+wherever the gateway places it; the parent's tasks live in its cell state
+(`tasks.rs`) and a finished background child's wake is admitted in the
+same command that settles its task.
+
+What it costs (`crates/cell-testkit/tests/schedules.rs`, `detached.rs`,
+`subagents.rs`, debug build, 2 cells): 10 000 one-shot schedules on 2000
+sessions fire with lag p50 113 ms and max 121 ms (gate 1 s). With the
+leader killed just before they are due, the new leader took 4.97 s to be
+elected and they fired 4.86 s late: a crash-driven leader change costs the
+election, which openraft 0.9 cannot shorten by transferring leadership;
+the gate holds for the steady case only, and the decision brief carries
+the trade (shorter election timeouts, or a planned transfer on a newer
+openraft). A detached call's turn resumes 5.2 s after its executor dies
+(2 s records in the test). A subagent placed on the other cell answers its
+parent in 2.1 s. On `/metrics`: `cell_schedules_fired_total` and
+`cell_schedule_fire_lag_seconds`. Still on the platform after 11.4: the
+org-wide schedule cap and schedule budgets (11.6), a subagent running
+another agent of the org, blueprints and forks, saved-script triggers,
+cancelling or answering a task from the API, and push configs.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
