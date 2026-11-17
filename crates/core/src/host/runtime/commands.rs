@@ -58,7 +58,7 @@ impl InProcessRuntime {
         };
         crate::host::mcp::probe_servers(
             &self.mcp_discovery_cache,
-            self.mcp_client(),
+            self.mcp_client(session_id),
             session_id.uuid(),
             &servers,
             &names,

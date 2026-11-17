@@ -448,6 +448,7 @@ mod tests {
             server_url: Some("https://mcp.example/mcp"),
             auth_mode: McpServerAuthMode::OAuth,
             oauth_provider_id: None,
+            session_id: None,
         }
     }
 

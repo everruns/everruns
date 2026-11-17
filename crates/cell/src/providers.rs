@@ -71,6 +71,26 @@ pub trait OrgMaterial: Send + Sync {
     async fn connection(&self, org: &str, id: &str) -> anyhow::Result<Option<Connection>>;
     /// `org`'s secret, opened.
     async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>>;
+    /// `org`'s secret, opened, with its revision and the org's data key;
+    /// `None` when the org has no such secret.
+    async fn open_secret(
+        &self,
+        org: &str,
+        secret_id: &str,
+    ) -> anyhow::Result<Option<crate::mcp::OpenedSecret>> {
+        let _ = (org, secret_id);
+        anyhow::bail!("this node does not open org secrets")
+    }
+    /// Lease or write one of `org`'s secrets in the directory cell
+    /// (`secrets.rs`).
+    async fn secret_op(
+        &self,
+        org: &str,
+        op: crate::secrets::SecretOp,
+    ) -> anyhow::Result<crate::secrets::SecretReply> {
+        let _ = (org, op);
+        anyhow::bail!("this node does not refresh org secrets")
+    }
 }
 
 /// (org, key) -> the provider, opened, and when.

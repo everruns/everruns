@@ -37,6 +37,7 @@ use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 
 pub mod allowances;
 pub mod feed;
+pub mod mcp;
 pub mod outbox;
 pub mod providers;
 pub mod sessions;
@@ -340,7 +341,7 @@ pub async fn enable_org(
     providers::sync(cp, org_id).await?;
     for key in cp.db.engine_agent_keys_for_edit(org_id, None).await? {
         if let Some((revision, _)) = cp.db.engine_agent_current(&key.agent_key).await? {
-            agent_published(&cp.db, &key.agent_key, org_id, &revision).await?;
+            agent_published(cp, &key.agent_key, org_id, &revision).await?;
         }
     }
     Ok(org)
@@ -349,11 +350,12 @@ pub async fn enable_org(
 /// The step 4 publisher published `revision` of `agent_key`: a v2 org's
 /// data plane gets it.
 pub async fn agent_published(
-    db: &StorageBackend,
+    cp: &ControlPlane,
     agent_key: &str,
     org_id: i64,
     revision: &str,
 ) -> anyhow::Result<()> {
+    let db = &cp.db;
     if db.dp_org(org_id).await?.is_none() {
         return Ok(());
     }
@@ -367,11 +369,13 @@ pub async fn agent_published(
         .package()
         .map_err(|e| anyhow::anyhow!("agent {agent_key} {revision}: {e}"))?;
     let n: u64 = revision.trim_start_matches('r').parse().unwrap_or(1);
+    let mut package = declaration.agent;
+    mcp::prepare(cp, org_id, agent_key, &mut package).await?;
     let change = ConfigChange::Agent(dp::AgentDefinition {
         agent_id: agent_key.to_owned(),
         revision: n,
         format: 1,
-        package: declaration.agent,
+        package,
     });
     db.dp_put_item(
         org_id,

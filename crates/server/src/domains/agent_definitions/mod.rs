@@ -138,6 +138,16 @@ pub fn compile(layers: &PlatformLayers) -> anyhow::Result<RuntimeAgent> {
     Ok(compiled)
 }
 
+/// The MCP servers `layers` attach, merged, credentials as written: what
+/// the data plane's copy is made from (`data_plane::mcp`).
+pub fn mcp_servers(layers: &PlatformLayers) -> everruns_core::ScopedMcpServers {
+    let mut overlays = vec![AgentConfigOverlay::from(&layers.harness)];
+    if let Some(agent) = &layers.agent {
+        overlays.push(AgentConfigOverlay::from(agent));
+    }
+    AgentConfigOverlay::fold(overlays).mcp_servers
+}
+
 /// Resolve the layers of a turn on `harness_id` answered by `agent_id`, with
 /// the rules the per-turn configuration read applies.
 pub async fn resolve(
@@ -269,7 +279,8 @@ pub async fn publish(
         )
         .await?;
     // An org on a data plane gets the revision as config (step 7).
-    crate::domains::data_plane::agent_published(db, &key.agent_key, key.org_id, &revision).await?;
+    let cp = crate::domains::data_plane::ControlPlane::from_env(std::sync::Arc::new(db.clone()));
+    crate::domains::data_plane::agent_published(&cp, &key.agent_key, key.org_id, &revision).await?;
     Ok(revision)
 }
 

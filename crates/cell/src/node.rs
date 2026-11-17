@@ -117,7 +117,7 @@ fn turn_runtime() -> &'static tokio::runtime::Handle {
 pub fn engine(
     hosting: crate::hosting::RaftHosting,
     host: Arc<dyn Host>,
-    orgs: Option<everruns::hosting::services::HostProviders>,
+    orgs: Option<crate::host::OrgServices>,
 ) -> everruns::Engine {
     everruns::Engine::builder()
         .hosting(hosting.clone())
@@ -254,7 +254,11 @@ impl Node {
             // Nodes build org agents but never open an org's key: those turns run
             // on executors (`providers.rs`).
             let orgs = Arc::new(crate::providers::OrgProviders::default());
-            let engine = engine(hosting.clone(), host.clone(), Some(orgs.host_providers()));
+            let services = crate::host::OrgServices {
+                providers: orgs.host_providers(),
+                mcp: Arc::new(crate::mcp::OrgMcp::from_env()),
+            };
+            let engine = engine(hosting.clone(), host.clone(), Some(services));
             Self {
                 batcher,
                 raft,

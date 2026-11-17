@@ -15,18 +15,22 @@ use everruns::hosting::services::{HostProviders, HostServices};
 use everruns::{Agent, AgentPackage, FunctionTool, Model};
 use serde_json::Value;
 
+/// What a node or executor serves for orgs on the data plane: their model
+/// providers (`providers.rs`) and MCP credentials (`mcp.rs`).
+#[derive(Clone)]
+pub struct OrgServices {
+    pub providers: HostProviders,
+    pub mcp: Arc<crate::mcp::OrgMcp>,
+}
+
 pub trait Host: Send + Sync + 'static {
     /// Build the agent `definition` describes, or say why this node cannot.
     fn agent(&self, definition: &Value) -> Result<Agent, String>;
 
-    /// [`agent`](Self::agent), where `orgs` serves the model providers of
-    /// orgs on the data plane (`providers.rs`) that this host does not
-    /// serve itself.
-    fn agent_with(
-        &self,
-        definition: &Value,
-        orgs: Option<&HostProviders>,
-    ) -> Result<Agent, String> {
+    /// [`agent`](Self::agent), where `orgs` serves what orgs on the data
+    /// plane bring: the model providers this host does not serve itself,
+    /// and the credentials of their MCP servers.
+    fn agent_with(&self, definition: &Value, orgs: Option<&OrgServices>) -> Result<Agent, String> {
         let _ = orgs;
         self.agent(definition)
     }
@@ -105,15 +109,25 @@ impl StandardHost {
 
 /// Parse and validate a definition as an Everruns agent package.
 pub fn package(definition: &Value) -> Result<AgentPackage, String> {
+    package_with_bindings(definition).map(|(package, _)| package)
+}
+
+/// [`package`], its MCP header placeholders taken out to be filled per call
+/// (`mcp.rs`).
+pub fn package_with_bindings(
+    definition: &Value,
+) -> Result<(AgentPackage, crate::mcp::Bindings), String> {
     let mut manifest: everruns::AgentManifest =
         serde_json::from_value(definition.clone()).map_err(|e| e.to_string())?;
+    let bindings = crate::mcp::take_bindings(&mut manifest.mcp_servers);
     // Decision: a definition's bundled agents are members this agent hands
     // work to. In a cell a member is its own durable session, created by a
     // hand-off tool from the member's definition, not an in-process member
     // of this turn; so they do not reach the Everruns builder.
     manifest.agents.clear();
     manifest.members = Some(Vec::new());
-    AgentPackage::new(manifest).map_err(|e| e.to_string())
+    let package = AgentPackage::new(manifest).map_err(|e| e.to_string())?;
+    Ok((package, bindings))
 }
 
 impl Host for StandardHost {
@@ -121,12 +135,8 @@ impl Host for StandardHost {
         self.agent_with(definition, None)
     }
 
-    fn agent_with(
-        &self,
-        definition: &Value,
-        orgs: Option<&HostProviders>,
-    ) -> Result<Agent, String> {
-        let package = package(definition)?;
+    fn agent_with(&self, definition: &Value, orgs: Option<&OrgServices>) -> Result<Agent, String> {
+        let (package, bindings) = package_with_bindings(definition)?;
         let manifest = package.manifest();
         let mut builder = Agent::builder();
         for tool in &manifest.tools {
@@ -169,7 +179,7 @@ impl Host for StandardHost {
         let model = match (local, orgs) {
             (Some(model), _) => model,
             (None, Some(orgs)) => {
-                services = services.providers(orgs.clone());
+                services = services.providers(orgs.providers.clone());
                 Model::on(model.provider.as_str(), model.model.as_str())
             }
             (None, None) => {
@@ -179,6 +189,13 @@ impl Host for StandardHost {
                 ));
             }
         };
+        // An org's MCP servers get their credentials per call, from the
+        // calling session's org (`mcp.rs`).
+        if let Some(orgs) = orgs
+            && !manifest.mcp_servers.is_empty()
+        {
+            services = services.shared_mcp_auth(Arc::new(orgs.mcp.for_agent(bindings)));
+        }
         // Decision: a session's workspace is its own durable one in the
         // cell, so its file tools may write it, as the platform's workers
         // allow (hidden and sensitive paths stay denied by the policy).

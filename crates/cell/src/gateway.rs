@@ -930,7 +930,7 @@ async fn create(
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     use crate::org_token::{ADMIN, OrgTokenClaimsExt};
     // A token's org is the session's tenant, unless the caller is admin.
-    if let Some(axum::Extension(claims)) = claims
+    if let Some(axum::Extension(claims)) = &claims
         && !claims.has(ADMIN)
     {
         let mine = |named: &Option<String>| named.as_ref().is_none_or(|o| *o == claims.org);
@@ -942,11 +942,28 @@ async fn create(
         }
         body.tenant = Some(claims.org.clone());
         if body.agent_ref.is_some() {
-            body.org = Some(claims.org);
+            body.org = Some(claims.org.clone());
         }
     }
     let (definition, tenant) = match (body.agent, body.org, body.agent_ref) {
-        (Some(agent), _, None) => (agent, body.tenant),
+        (Some(agent), _, None) => {
+            // THREAT[TM-TENANT]: an org's credentials are filled per call
+            // for whatever its sessions' definitions name (`mcp.rs`), so a
+            // definition that names them comes from the control plane only
+            // (by reference, or its own admin calls). A member writing their
+            // own could point another agent's credential at their server.
+            if let Some(axum::Extension(claims)) = &claims
+                && !claims.has(ADMIN)
+                && crate::mcp::names_org_credentials(&agent)
+            {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    "org token: a definition naming the org's credentials comes from the control plane"
+                        .into(),
+                ));
+            }
+            (agent, body.tenant)
+        }
         (None, Some(org), Some(agent)) => {
             let revision = gateway.agent_revision(&org, &agent).await?;
             (revision.package, Some(body.tenant.unwrap_or(org)))

@@ -128,6 +128,18 @@ pub struct Connection {
 /// The connection kind of an org's model provider.
 pub const LLM_PROVIDER: &str = "llm_provider";
 
+/// The connection kind of an MCP server's OAuth grant: its token secret is
+/// an OAuth token set the data plane refreshes (`RefreshOwner::DataPlane`).
+/// Its id starts with this kind, so an agent's server names it by
+/// `oauth_provider_id`.
+pub const MCP_OAUTH: &str = "mcp_oauth";
+
+/// The secret holding the value of the MCP header placeholder `binding`
+/// (`${BINDING}`) in an org's agent definitions.
+pub fn mcp_binding_secret(binding: &str) -> String {
+    format!("mcp:{binding}")
+}
+
 /// The connection id of the model provider an agent's `model.provider`
 /// names (`key`, normalized as provider keys are).
 pub fn llm_provider_connection(key: &str) -> String {

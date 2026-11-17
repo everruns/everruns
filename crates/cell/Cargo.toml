@@ -18,7 +18,7 @@ workspace = true
 
 [dependencies]
 libc = "0.2"
-everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs"] }
+everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs", "mcp"] }
 everruns-core = { workspace = true, features = ["host"] }
 everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
 openraft = { version = "=0.9.25", features = ["serde", "storage-v2"] }

@@ -225,6 +225,7 @@ async fn store(
                 nonce: nonce.clone(),
                 data_key_id: data_key_id.clone(),
             };
+            super::mcp::refreshed(cp, org_id, &sealed).await?;
             let change = everruns_contracts::dataplane::ConfigChange::Secret(sealed).to_value();
             cp.db
                 .dp_put_item(org_id, "secret", secret_id, *revision as i64, Some(&change))

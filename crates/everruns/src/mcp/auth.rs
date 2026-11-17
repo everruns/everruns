@@ -304,6 +304,7 @@ mod tests {
             server_url: Some(url),
             auth_mode: everruns_core::McpServerAuthMode::ApiKey,
             oauth_provider_id: None,
+            session_id: None,
         }
     }
     #[tokio::test]

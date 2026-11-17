@@ -64,6 +64,8 @@ pub struct Executor {
     pub stats: crate::prom::Counters,
     /// The data plane's key (`CELL_DP_KEY`), which opens org data keys.
     dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
+    /// MCP credentials of the orgs whose turns run here.
+    pub mcp: Arc<crate::mcp::OrgMcp>,
 }
 
 impl Executor {
@@ -77,7 +79,12 @@ impl Executor {
         remote.set_cells(cfg.topology.read()?.cells);
         let hosting = RaftHosting::remote(remote.clone());
         let orgs = Arc::new(crate::providers::OrgProviders::default());
-        let engine = crate::node::engine(hosting.clone(), host, Some(orgs.host_providers()));
+        let mcp = Arc::new(crate::mcp::OrgMcp::from_env());
+        let services = crate::host::OrgServices {
+            providers: orgs.host_providers(),
+            mcp: mcp.clone(),
+        };
+        let engine = crate::node::engine(hosting.clone(), host, Some(services));
         let executor = Arc::new(Self {
             free: AtomicUsize::new(cfg.slots),
             cfg,
@@ -91,9 +98,11 @@ impl Executor {
             tenants: Default::default(),
             stats: Default::default(),
             dp_key: Mutex::new(data_plane_key()?),
+            mcp,
         });
         let material: Arc<dyn crate::providers::OrgMaterial> = executor.clone();
         orgs.bind(Arc::downgrade(&material));
+        executor.mcp.bind(Arc::downgrade(&material));
         // Whatever refreshes the mirror wakes Engine's waiters, as a node's
         // applied changes do (`Remote::absorb`); a session that left the
         // mirror or froze hands off.
@@ -152,6 +161,19 @@ impl Executor {
 
     /// `org`'s secret `secret_id`, opened in memory. Never stored or logged.
     pub async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>> {
+        self.open_secret(org, secret_id)
+            .await?
+            .map(|s| s.plain)
+            .ok_or_else(|| anyhow::anyhow!("org {org} has no secret {secret_id}"))
+    }
+
+    /// [`secret`](Self::secret) with its revision and the org's data key,
+    /// to write its next revision (`mcp.rs`).
+    pub async fn open_secret(
+        &self,
+        org: &str,
+        secret_id: &str,
+    ) -> anyhow::Result<Option<crate::mcp::OpenedSecret>> {
         let dp_key = self
             .dp_key
             .lock()
@@ -166,8 +188,43 @@ impl Executor {
                 Duration::from_secs(5),
             )
             .await?;
-        let found = found.ok_or_else(|| anyhow::anyhow!("org {org} has no secret {secret_id}"))?;
-        Ok(found.open(org, &dp_key)?)
+        let Some(found) = found else {
+            return Ok(None);
+        };
+        let data_key = everruns_contracts::dataplane_seal::unwrap_data_key(
+            &dp_key,
+            org,
+            &found.data_key.data_key_id,
+            &found.data_key.wrapped,
+        )?;
+        Ok(Some(crate::mcp::OpenedSecret {
+            revision: found.secret.revision,
+            plain: found.open(org, &dp_key)?,
+            data_key,
+            data_key_id: found.data_key.data_key_id,
+        }))
+    }
+
+    /// Lease or write `org`'s secret in the directory cell.
+    pub async fn secret_op(
+        &self,
+        org: &str,
+        op: crate::secrets::SecretOp,
+    ) -> anyhow::Result<crate::secrets::SecretReply> {
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let command = crate::state::Command::Secret {
+            org: org.to_owned(),
+            request: op,
+            now_ms: crate::node::now_ms(),
+        };
+        let proposed: crate::node::Proposed = self
+            .remote
+            .post(directory, "/cell/propose", &command, Duration::from_secs(5))
+            .await?;
+        match proposed.response {
+            crate::state::Response::Value { value } => Ok(serde_json::from_value(value)?),
+            other => anyhow::bail!("the directory cell answered {other:?}"),
+        }
     }
 
     /// `org`'s connection `id`, from the directory cell.
@@ -462,6 +519,16 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
                         "Pulls and activations.",
                         &executor.stats,
                     );
+                    w.histograms(
+                        "executor_mcp_credential_seconds",
+                        "Time to find an MCP call's credentials, by kind.",
+                        &executor.mcp.resolve,
+                    );
+                    w.counters(
+                        "executor_mcp_refreshes_total",
+                        "MCP OAuth token refreshes, by outcome.",
+                        &executor.mcp.refreshes,
+                    );
                     w.out
                 },
             ),
@@ -491,5 +558,21 @@ impl crate::providers::OrgMaterial for Executor {
 
     async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>> {
         Executor::secret(self, org, secret_id).await
+    }
+
+    async fn open_secret(
+        &self,
+        org: &str,
+        secret_id: &str,
+    ) -> anyhow::Result<Option<crate::mcp::OpenedSecret>> {
+        Executor::open_secret(self, org, secret_id).await
+    }
+
+    async fn secret_op(
+        &self,
+        org: &str,
+        op: crate::secrets::SecretOp,
+    ) -> anyhow::Result<crate::secrets::SecretReply> {
+        Executor::secret_op(self, org, op).await
     }
 }

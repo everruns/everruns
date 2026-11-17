@@ -1736,6 +1736,39 @@ Still 501 after 11.1: attachments in a message (images, PDFs), which need
 the executor to read the control plane's file store; they go with the
 11.6 parity sweep.
 
+**11.2 MCP servers and OAuth tokens.** An agent's MCP servers reach the
+data plane with the agent, without a credential in the definition
+(`crates/server/src/domains/data_plane/mcp.rs`). The control plane turns a
+catalog preset into its server's address and auth mode, every credential
+header into an org secret (`mcp:<BINDING>`, the binding named for the
+agent key, server and header) and the header into its `${BINDING}`
+placeholder, and a server that acts as the agent's service identity into
+an `mcp_oauth:<grant>` connection whose token secret is the grant as a
+self-contained OAuth token set. On the cell (`crates/cell/src/mcp.rs`)
+the placeholders and the connection leave the definition before the agent
+is built, so nodes never open a secret; per call the executor that runs
+the turn fills them for the calling session's org (a session it does not
+know gets nothing). A token within a minute of expiry is refreshed by one
+executor at a time: it leases the secret for the revision it read in the
+directory cell's replicated state (`crates/cell/src/secrets.rs`, 30 s
+lease), writes the new token set as the next revision, and the feed takes
+it to the control plane, which stores it on the platform's grant (only
+over the access token it handed over, so a grant the person authorized
+again wins). A provider that rotates refresh tokens therefore never sees
+the same one spent twice. Still on the platform after 11.2: a person's own
+grant (`actsAs: user`), connection-backed presets (GitHub), legacy
+capability servers and session-level server overrides; they go with 11.6.
+
+What a call pays for its credentials (`crates/cell-testkit/tests/mcp.rs`,
+a header binding and a grant together, on a fleet executor): opened from
+the directory cell 3.6 / 4.1 ms p50 / p99, kept 7 / 21 µs, against a gate
+of 20 ms p99. The same test shows the lease across two executors: the
+second is refused while the first holds it, only the holder's write is
+stored, the other executor reads the new revision, and the control
+plane's feed gets it. Every call's overhead is also on each executor's
+`/metrics` (`executor_mcp_credential_seconds`, by kind, and
+`executor_mcp_refreshes_total`, by outcome).
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

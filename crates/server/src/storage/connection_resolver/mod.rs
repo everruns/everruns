@@ -45,7 +45,9 @@ enum OAuthScope {
     Session(SessionId),
     Org(i64),
 }
+mod dp_grants;
 mod github;
+pub use dp_grants::DataPlaneGrant;
 pub(crate) use github::GitHubIdentityKind;
 
 const REFRESH_LOCK_MAX_CAPACITY: u64 = 10_000;
