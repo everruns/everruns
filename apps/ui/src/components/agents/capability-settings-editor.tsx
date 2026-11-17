@@ -32,6 +32,10 @@ import { KnowledgeConfigEditor } from "./knowledge-config-editor";
 import { KnowledgeIndexConfigEditor } from "./knowledge-index-config-editor";
 import { MemoryConfigEditor } from "./memory-config-editor";
 import { RepositoriesConfigEditor } from "./repositories-config-editor";
+import {
+  TOOL_APPROVAL_CAPABILITY_ID,
+  ToolApprovalConfigEditor,
+} from "./tool-approval-config-editor";
 import { WebSearchConfigEditor } from "./web-search-config-editor";
 
 // Capability IDs with purpose-built editors. Mirrors the constants exported
@@ -71,6 +75,9 @@ export function CapabilitySettingsEditor({
   }
   if (capability.id === WEB_SEARCH_CAPABILITY_ID) {
     return <WebSearchConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+  }
+  if (capability.id === TOOL_APPROVAL_CAPABILITY_ID) {
+    return <ToolApprovalConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }
   if (capability.id === REPOSITORIES_CAPABILITY_ID) {
     return <RepositoriesConfigEditor config={config} onChange={onChange} disabled={disabled} />;

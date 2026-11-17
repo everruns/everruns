@@ -11,7 +11,7 @@ import {
   TokenIcon,
   VirtualUserIcon,
 } from "@/components/icons/facet-icons";
-import { ChartGantt, Gauge, Receipt } from "lucide-react";
+import { ChartGantt, Gauge, Receipt, ShieldCheck, ShieldUser } from "lucide-react";
 import { SlackIcon } from "@/components/icons/slack-icon";
 import type { NavigationSection } from "@/lib/navigation";
 import { registryDomainIcons } from "@/lib/registry-navigation";
@@ -95,6 +95,20 @@ export const settingsNavigationSections: NavigationSection[] = [
         description: "Limit what schedules and other unattended work may run and spend",
       },
       {
+        name: "Approvals",
+        href: "/settings/approvals",
+        keywords: [
+          "tool approval",
+          "auto approval",
+          "auto mode",
+          "reviewer",
+          "rules",
+          "protective",
+        ],
+        icon: ShieldCheck,
+        description: "Choose which approval modes agents may use and set rules for every agent",
+      },
+      {
         name: "Features",
         href: "/settings/features",
         keywords: ["flags", "experimental", "opt-in", "beta"],
@@ -148,6 +162,13 @@ export const settingsNavigationSections: NavigationSection[] = [
         keywords: ["coding agent", "codex", "claude", "cursor", "chatgpt", "connected clients"],
         icon: PluginsIcon,
         description: "AI apps you approved to use Everruns as you",
+      },
+      {
+        name: "My approvals",
+        href: "/settings/my-approvals",
+        keywords: ["tool approval", "auto approval", "auto mode", "default mode"],
+        icon: ShieldUser,
+        description: "The approval mode your sessions start in and your own extra rules",
       },
       {
         name: "Personal access tokens",

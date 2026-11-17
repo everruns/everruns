@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
+import { ToolReviewBadge, ToolReviewBlockReason, useToolReview } from "./tool-review-mark";
 
 // Re-export from centralized registry for backward-compatible imports.
 export { isBashTool } from "@/lib/tool-registry";
@@ -139,6 +140,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
   const ui = useUiTranslations();
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
+  const review = useToolReview(toolCall.id);
 
   const command = toolCall.arguments.command as string | undefined;
   const description = toolCall.arguments.description as string | undefined;
@@ -222,6 +224,7 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
         {durationLabel && (
           <span className="text-[10px] opacity-40 flex-shrink-0">{durationLabel}</span>
         )}
+        <ToolReviewBadge review={review} />
         {hasOutput && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -243,8 +246,11 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
         </div>
       )}
 
+      <ToolReviewBlockReason review={review} className="ml-[22px]" />
+
       {/* Tool-level error (not bash stderr) */}
-      {hasError && !bashOutput && (
+      {/* A block's reason is shown above; the raw error would repeat it. */}
+      {hasError && !bashOutput && review?.verdict !== "blocked" && (
         <div className={cn(failureClass, "ml-[22px] mt-0.5 text-[10px]")}>
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>

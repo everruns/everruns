@@ -1,5 +1,6 @@
 import { messages as extractions } from "./es/extractions";
 import { messages as rooms } from "./es/rooms";
+import { messages as toolApproval } from "./es/tool-approval";
 import { messages as chatLayout } from "./es/chat-layout";
 import { messages as slackSocketMode } from "./es/slack-socket-mode";
 import { messages as providerCredentials } from "./es/provider-credentials";
@@ -40,6 +41,8 @@ import { messages as catalog20 } from "./es/semantic";
 import { messages as externalWorker } from "./es/external-agent";
 export const messages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null),
+  // First, so a translation another catalog already owns keeps its wording.
+  toolApproval,
   sandboxBuilds,
   externalWorker,
   catalog0,

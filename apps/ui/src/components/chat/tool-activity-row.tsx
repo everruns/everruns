@@ -28,6 +28,7 @@ import { ApprovalToolActivity, type ApprovalToolContext } from "./approval-tool-
 import { WebSearchRow } from "./web-search-details";
 import { useToolErrorsInline } from "./tool-error-disclosure";
 import { parseWebSearchDetails } from "@/lib/web-search";
+import { ToolReviewBadge, ToolReviewBlockReason, useToolReview } from "./tool-review-mark";
 
 export function ToolActivityRow({
   toolCall,
@@ -63,6 +64,7 @@ export function ToolActivityRow({
   const isComplete = Boolean(toolResult);
   const isRunning = !isComplete && !hasToolError;
   const summaryChip = isComplete ? getToolActivitySummaryChip(toolCall, toolResult) : null;
+  const review = useToolReview(toolCall.id);
 
   if (toolCall.name === "request_approval" || toolCall.name === "record_approval") {
     return (
@@ -115,6 +117,7 @@ export function ToolActivityRow({
                 {getToolLabel(toolCall, locale)}
               </span>
             )}
+            <ToolReviewBadge review={review} />
             {isRunning && (
               <span className="animate-tool-pulse text-xs font-medium text-accent-foreground/70">
                 {progressMessage ?? (mode === "client" ? t("waiting") : t("running"))}
@@ -133,7 +136,9 @@ export function ToolActivityRow({
             )}
           </div>
 
-          {errorsInline && failureSeverity && (
+          <ToolReviewBlockReason review={review} />
+
+          {errorsInline && failureSeverity && review?.verdict !== "blocked" && (
             <div className={cn("mt-1 text-xs", failureTextClass(failureSeverity))}>
               {toolResult?.error}
             </div>

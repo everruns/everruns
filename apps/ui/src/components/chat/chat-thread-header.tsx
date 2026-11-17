@@ -24,6 +24,10 @@ import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import {
+  SessionApprovalModeSwitch,
+  agentApprovalMode,
+} from "@/components/session/session-approval-mode-switch";
 
 function ThreadTitle({
   session,
@@ -131,7 +135,8 @@ export function ChatThreadHeader({
   const ui = useUiTranslations();
   // The intro box shows on a fresh thread; once the user inputs it hides and
   // the header takes over with the short description, animated below.
-  const { chatEvents } = useSessionContext();
+  const { chatEvents, agent } = useSessionContext();
+  const approvalMode = agentApprovalMode(agent);
   const permanent = session.tags.includes(PLATFORM_CHAT_STARTER_TAG);
   const introVisible = !!platformIntro && chatEvents.length === 0;
   const showDescription = !!platformDescription && !introVisible;
@@ -147,6 +152,9 @@ export function ChatThreadHeader({
             disabled={threadMode && !session.archived_at && session.status !== "idle"}
           />
         </>
+      )}
+      {approvalMode && !session.archived_at && (
+        <SessionApprovalModeSwitch sessionId={session.id} agentMode={approvalMode} />
       )}
       <ChatMcpServersButton
         sessionId={session.id}

@@ -443,6 +443,7 @@ const SSE_EVENT_TYPES = [
   "tool.completed",
   "tool.output.delta",
   "tool.call_requested",
+  "tool.reviewed",
   "llm.generation",
   "session.started",
   "session.activated",

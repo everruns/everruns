@@ -32,6 +32,7 @@ import type {
   Verbosity,
   ToolCompletedData,
   ToolProgressData,
+  ToolReviewedData,
   InputMessageData,
   OutputMessageCompletedData,
   Message,
@@ -45,6 +46,7 @@ import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { useWebMcp } from "@/providers/webmcp-context";
 import { queryKeys } from "@/lib/query-keys";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
+import { ToolReviewsContext } from "@/components/chat/tool-review-mark";
 
 /** Accumulated streamed output for a single tool call */
 export interface ToolOutputStreams {
@@ -485,6 +487,17 @@ export function SessionProvider({
     return map;
   }, [events]);
 
+  // Auto reviewer verdicts by tool_call_id; the last review of a call wins.
+  const toolReviewsMap = useMemo(() => {
+    const map = new Map<string, ToolReviewedData>();
+    if (!events) return map;
+    for (const event of events) {
+      const data = getEventData(event, "tool.reviewed");
+      if (data) map.set(data.tool_call_id, data);
+    }
+    return map;
+  }, [events]);
+
   // Build latest tool progress lookup by tool_call_id (keeps last progress per tool)
   const toolProgressMap = useMemo(() => {
     const map = new Map<string, ToolProgressData>();
@@ -714,5 +727,9 @@ export function SessionProvider({
     getToolCalls,
   };
 
-  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+  return (
+    <SessionContext.Provider value={value}>
+      <ToolReviewsContext.Provider value={toolReviewsMap}>{children}</ToolReviewsContext.Provider>
+    </SessionContext.Provider>
+  );
 }

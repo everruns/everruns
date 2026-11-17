@@ -5,7 +5,7 @@ date: 2026-11-17
 kind: feature
 significance: notable
 products: [platform, cloud, framework, cli]
-surfaces: [api, cli, code]
+surfaces: [ui, api, cli, code]
 links:
   docs: [/capabilities/tool-approval/#auto-mode, /capabilities/soft-approval/]
 ---
@@ -25,6 +25,7 @@ a person decides. After a block the agent asks you through
 everruns sessions approval-mode set --session-id $SESSION_ID --mode auto
 ```
 
-Agents add `allow`, `ask` or `never` rules; organizations limit allowed modes;
-each person can set a default mode and stricter rules. Every verdict lands in
-the audit log.
+Switch a session from its header. Agents add `allow`, `ask` or `never` rules;
+Settings → Approvals limits the organization's modes and lists recent verdicts;
+My approvals sets your default mode and stricter rules. Chat marks auto-allowed
+and blocked calls.
