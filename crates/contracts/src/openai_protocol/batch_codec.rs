@@ -149,8 +149,10 @@ impl OpenAIProtocolChatDriver {
         crate::openai_compat::validate_config(config)?;
         // Tickets retain IDs, not tool definitions. Preserve optional arguments
         // on the wire so collection after restart needs no schema restoration.
-        serde_json::to_value(self.completion_request(api_url, messages, config, false)?)
-            .map_err(|_| AgentLoopError::config("batch request encoding failed"))
+        let body = serde_json::to_value(self.completion_request(api_url, messages, config, false)?)
+            .map_err(|_| AgentLoopError::config("batch request encoding failed"))?;
+        crate::openai_compat::validate_body_for_url(&body, Some(api_url), false)?;
+        Ok(body)
     }
     /// Decode one native batch response without network requests or tool execution.
     pub fn decode_batch_response(&self, value: Value) -> Result<LlmResponse> {

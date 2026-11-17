@@ -869,7 +869,13 @@ fn gpt_62_profiles_cover_pricing_controls_and_gateway_identity() {
         assert_eq!(gateway.cost, profile.cost);
         assert!(!gateway.tool_search && !gateway.supports_phases);
         assert!(gateway.speed.is_none());
-        assert!(get_model_profile("openai_completions", model).is_none());
+        let completions = get_model_profile("openai_completions", model).unwrap();
+        assert_eq!(completions.cost, profile.cost);
+        assert_eq!(completions.limits, profile.limits);
+        assert_eq!(completions.reasoning_effort, profile.reasoning_effort);
+        assert!(!completions.tool_call && !completions.tool_search && !completions.supports_phases);
+        assert!(completions.supported_parameters.is_empty());
+        assert!(completions.speed.is_none());
         assert!(get_model_profile("azure_openai", model).is_none());
         assert!(get_model_profile("openrouter", &format!("untrusted/{model}")).is_none());
         assert!(get_model_profile("openai", &format!("{model}-pro")).is_none());

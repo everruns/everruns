@@ -81,6 +81,17 @@ pub(crate) fn validate_body(
     endpoint: &ProviderEndpoint,
     responses: bool,
 ) -> Result<()> {
+    validate_body_for_url(body, endpoint.base_url(), responses)
+}
+
+/// Shared preflight for live requests and offline batch encoders, which have
+/// a configured endpoint URL but no credential-bearing provider handle.
+#[cfg(feature = "http")]
+pub(crate) fn validate_body_for_url(
+    body: &Value,
+    base_url: Option<&str>,
+    responses: bool,
+) -> Result<()> {
     let model_key = body
         .get("model")
         .and_then(Value::as_str)
@@ -139,8 +150,7 @@ pub(crate) fn validate_body(
     }
     // Residency follows the configured processing endpoint, never a model name,
     // user locale, or a substring in an unrelated gateway URL.
-    let eu = endpoint
-        .base_url()
+    let eu = base_url
         .and_then(|u| url::Url::parse(u).ok())
         .is_some_and(|u| {
             u.host_str().is_some_and(|host| {
