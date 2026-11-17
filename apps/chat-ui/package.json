@@ -16,7 +16,7 @@
     "@everruns/generative-ui": "file:../ui/generative-ui",
     "@openuidev/react-lang": "1.0.1",
     "@openuidev/react-ui": "0.18.1",
-    "next": "^16.3.8",
+    "next": "^16.4.5",
     "pg": "^8.16.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
