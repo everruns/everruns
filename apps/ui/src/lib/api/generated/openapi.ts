@@ -7682,6 +7682,27 @@ export interface paths {
     patch: operations["update_session"];
     trace?: never;
   };
+  "/v1/sessions/{session_id}/approval-mode": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Show the tool approval mode a person picked for a session and the modes the organization allows */
+    get: operations["get_session_approval_mode"];
+    /**
+     * Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null
+     * @description Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.
+     */
+    put: operations["set_session_approval_mode"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/archive": {
     parameters: {
       query?: never;
@@ -31319,6 +31340,16 @@ export interface components {
      * @enum {string}
      */
     SessionActivity: "running" | "paused" | "failed" | "completed" | "idle";
+    /** @description The session's approval mode switch and the modes the organization allows. */
+    SessionApprovalMode: {
+      /** @description Modes the organization allows (`off`, `auto`, `normal`, `protective`). */
+      allowed_modes: string[];
+      /**
+       * @description The mode a person picked for this session, or `null` when the session
+       *     follows the owner's default and the agent's own mode.
+       */
+      mode?: string | null;
+    };
     /**
      * @description What identity keys a session, for every exposure and every transport.
      *
@@ -57732,6 +57763,52 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_session_approval_mode: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionApprovalMode"];
+        };
+      };
+    };
+  };
+  set_session_approval_mode: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionApprovalMode"];
+        };
       };
     };
   };

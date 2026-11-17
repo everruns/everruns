@@ -29516,6 +29516,81 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/approval-mode": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Show the tool approval mode a person picked for a session and the modes the organization allows",
+        "operationId": "get_session_approval_mode",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionApprovalMode"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null",
+        "description": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
+        "operationId": "set_session_approval_mode",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionApprovalMode"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "sessions-workspaces",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/archive": {
       "put": {
         "tags": [
@@ -76383,6 +76458,29 @@
           "completed",
           "idle"
         ]
+      },
+      "SessionApprovalMode": {
+        "type": "object",
+        "description": "The session's approval mode switch and the modes the organization allows.",
+        "required": [
+          "allowed_modes"
+        ],
+        "properties": {
+          "allowed_modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Modes the organization allows (`off`, `auto`, `normal`, `protective`)."
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The mode a person picked for this session, or `null` when the session\nfollows the owner's default and the agent's own mode."
+          }
+        }
       },
       "SessionBinding": {
         "type": "string",

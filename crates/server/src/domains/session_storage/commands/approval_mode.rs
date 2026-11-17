@@ -32,12 +32,13 @@ pub struct GetSessionApprovalMode {
 
 #[command(
     name = "get_session_approval_mode",
-    category = "session_storage",
+    category = "sessions",
     description = "Show the tool approval mode a person picked for a session and the modes the organization allows.",
     method = "GET",
     path = "/v1/sessions/{session_id}/approval-mode",
     policy = crate::domains::sessions::SESSION_VIEW,
     cli = CliRoute::new(&["sessions", "approval-mode"], "get").with_examples(&[CliExample::new("See which approval mode a session runs in", "everruns sessions approval-mode get --session-id session_01h9",)]),
+    http = plain,
 )]
 impl Command for GetSessionApprovalMode {
     type Output = SessionApprovalMode;
@@ -61,12 +62,13 @@ pub struct SetSessionApprovalMode {
 
 #[command(
     name = "set_session_approval_mode",
-    category = "session_storage",
+    category = "sessions",
     description = "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
     method = "PUT",
     path = "/v1/sessions/{session_id}/approval-mode",
     policy = crate::domains::sessions::SESSION_MANAGE,
     cli = CliRoute::new(&["sessions", "approval-mode"], "set").with_examples(&[CliExample::new("Let a reviewer model answer routine approvals in a session", "everruns sessions approval-mode set --session-id session_01h9 --mode auto --reason 'Long refactor, review routine calls automatically'",)]),
+    http = plain,
 )]
 impl Command for SetSessionApprovalMode {
     type Output = SessionApprovalMode;

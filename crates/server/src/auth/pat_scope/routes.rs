@@ -680,6 +680,9 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("DELETE", "/v1/sessions/{session_id}", Write),
     ("GET", "/v1/sessions/{session_id}", Read),
     ("PATCH", "/v1/sessions/{session_id}", Write),
+    ("GET", "/v1/sessions/{session_id}/approval-mode", Read),
+    // Loosening a session's tool gate is a person's call, not a token's.
+    ("PUT", "/v1/sessions/{session_id}/approval-mode", Never),
     ("DELETE", "/v1/sessions/{session_id}/archive", Write),
     ("PUT", "/v1/sessions/{session_id}/archive", Write),
     ("POST", "/v1/sessions/{session_id}/cancel", Write),

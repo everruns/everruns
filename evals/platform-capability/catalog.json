@@ -14608,7 +14608,7 @@
     "read_only": true
   },
   {
-    "category": "session_storage",
+    "category": "sessions",
     "cli": "sessions approval-mode get",
     "description": "Show the tool approval mode a person picked for a session and the modes the organization allows.",
     "input_schema": {
@@ -22863,7 +22863,7 @@
     "read_only": false
   },
   {
-    "category": "session_storage",
+    "category": "sessions",
     "cli": "sessions approval-mode set",
     "description": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
     "input_schema": {
