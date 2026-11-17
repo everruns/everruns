@@ -42,7 +42,14 @@ both layers with one word:
 |---|---|
 | `protective` | any state-changing action |
 | `normal` | clearly destructive, irreversible, or outward-facing actions (default) |
+| `auto` | only when unsure whether a person wants the action, or told to wait |
 | `off` | nothing; the capability contributes no prompt at all |
+
+`auto` pairs with the hard gate's [auto mode](tool-approval.md#auto-mode): a
+reviewer model answers routine calls, so the agent plans out loud instead of
+pausing. When the reviewer blocks a call, the agent asks with
+`request_approval`, records the yes and retries. `set_approval_mode` changes
+only this soft layer, never the enforced gate.
 
 `ApprovalMode::parse` is lenient about synonyms (`paranoid`, `yolo`) because
 the same string arrives from capability config, a host's own settings file, and

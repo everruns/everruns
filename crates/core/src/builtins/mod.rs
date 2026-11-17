@@ -75,6 +75,7 @@ mod tool_approval_durable;
 pub mod tool_call_repair;
 pub mod tool_output_distillation;
 pub mod tool_output_persistence;
+pub mod tool_review;
 pub mod tool_search;
 pub mod usage_limit_auto_continue;
 
@@ -221,6 +222,10 @@ pub use tool_output_distillation::{
 };
 pub use tool_output_persistence::{
     PersistOutputHook, TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID, ToolOutputPersistenceCapability,
+};
+pub use tool_review::{
+    AUTO_REVIEW_RULES, ModelToolReviewer, ReviewVerdict, ReviewedCall, ToolReviewRequest,
+    ToolReviewer, build_review_request,
 };
 pub use tool_search::{
     Reveal as ToolSearchReveal, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME,

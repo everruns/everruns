@@ -17248,6 +17248,7 @@ export interface components {
       | components["schemas"]["ToolCallRequestedData"]
       | components["schemas"]["TranscriptRepairedData"]
       | components["schemas"]["ToolCallRepairedData"]
+      | components["schemas"]["ToolReviewedData"]
       | components["schemas"]["HostedToolCallData"]
       | components["schemas"]["ToolNestedCallData"]
       | components["schemas"]["LlmGenerationData"]
@@ -21695,6 +21696,12 @@ export interface components {
          */
         system_decisions: components["schemas"]["SystemDecisions"];
         /**
+         * @description Tool approval policy (Settings → Approvals): which approval modes
+         *     people and agents may use, rules for every agent, and the trust notes
+         *     the auto reviewer reads. Empty when the organization set no limits.
+         */
+        tool_approval_policy: components["schemas"]["OrgToolApprovalPolicy"];
+        /**
          * Format: date-time
          * @description When the organization was last updated
          */
@@ -25568,6 +25575,22 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
+    /** @description An organization's approval policy. Empty means no limits. */
+    OrgToolApprovalPolicy: {
+      /**
+       * @description Modes people and agents may use (`off`, `auto`, `normal`,
+       *     `protective`). Empty allows all. A mode outside the list is raised to
+       *     the next more careful allowed one.
+       */
+      allowed_modes?: string[];
+      /** @description Rules for every agent in the organization. */
+      rules?: components["schemas"]["ToolApprovalRule"][];
+      /**
+       * @description Plain sentences the auto reviewer reads: trusted domains, repositories,
+       *     which systems count as production.
+       */
+      trust_notes?: string[];
+    };
     /** @description Editable history contains only the account's display name. */
     OrganizationAccountMetadata: {
       /** Format: uuid */
@@ -25685,6 +25708,12 @@ export interface components {
        *     or `organization` (the org's default decision model).
        */
       system_decisions: components["schemas"]["SystemDecisions"];
+      /**
+       * @description Tool approval policy (Settings → Approvals): which approval modes
+       *     people and agents may use, rules for every agent, and the trust notes
+       *     the auto reviewer reads. Empty when the organization set no limits.
+       */
+      tool_approval_policy: components["schemas"]["OrgToolApprovalPolicy"];
       /**
        * Format: date-time
        * @description When the organization was last updated
@@ -33292,6 +33321,16 @@ export interface components {
       /** @description The approval that was answered. */
       tool_call_id: string;
     };
+    /**
+     * @description A rule over tool names. `tool` is an exact name or a pattern with `*`
+     *     standing for any run of characters (`github__merge_*`, `*delete*`).
+     */
+    ToolApprovalRule: {
+      /** @description What happens to a matching call. */
+      action: components["schemas"]["ToolRuleAction"];
+      /** @description Tool name or `*` pattern. */
+      tool: string;
+    };
     /** @description Tool call from LLM response */
     ToolCall: {
       /** @description Arguments as JSON */
@@ -33675,6 +33714,47 @@ export interface components {
       /** @description ID of the tool call this result corresponds to */
       tool_call_id: string;
     };
+    /**
+     * @description Data for the `tool.reviewed` event.
+     *
+     *     Emitted once per call the `tool_approval` gate's auto reviewer decided on,
+     *     in `auto` mode. Carries no tool output and no model prose: only what was
+     *     asked, the verdict and the one-line reason, so the review log can be shown
+     *     to anyone who can see the session.
+     */
+    ToolReviewedData: {
+      /**
+       * @description Digest of the tool name and exact arguments, as the approval gate
+       *     computes it, so a person's later approval binds to this exact call.
+       */
+      fingerprint: string;
+      /** @description One-line reason, written by the reviewer. */
+      reason: string;
+      /** @description Short label of the rule a block matched, such as `Data Exfiltration`. */
+      rule?: string | null;
+      /**
+       * @description Which check decided: `fast` (first pass), `careful` (second pass),
+       *     `paused` (too many blocks, handed to a person) or `unavailable`
+       *     (no reviewer answer, handed to a person).
+       */
+      stage: string;
+      /** @description The reviewed call's id. */
+      tool_call_id: string;
+      /** @description The tool the call targeted. */
+      tool_name: string;
+      /**
+       * @description Turn the call belongs to, when the host knows it.
+       * @example turn_01933b5a00007000800000000000001
+       */
+      turn_id?: string | null;
+      /** @description `allowed`, `blocked` or `asked_person`. */
+      verdict: string;
+    };
+    /**
+     * @description What a rule does with a matching tool call.
+     * @enum {string}
+     */
+    ToolRuleAction: "allow" | "ask" | "never";
     /** @description Data for tool.started event */
     ToolStartedData: {
       /** @description Human-readable display name for UI rendering */
@@ -35719,6 +35799,7 @@ export interface components {
        */
       small_model_id?: string | null;
       system_decisions?: components["schemas"]["SystemDecisions"] | null;
+      tool_approval_policy?: components["schemas"]["OrgToolApprovalPolicy"] | null;
       web_search_defaults?: components["schemas"]["WebSearchDefaults"] | null;
     };
     /** @description Request body for the `update_payment_account` operation. */

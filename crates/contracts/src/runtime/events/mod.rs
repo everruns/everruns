@@ -89,6 +89,9 @@ pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
 /// `tool_call_repair` capability (EVE-600). Carries an outcome label
 /// (`local-salvage` | `re-prompt` | `gave-up`).
 pub const TOOL_CALL_REPAIRED: &str = "tool.call_repaired";
+/// The `tool_approval` gate's auto reviewer decided on a call: allowed it,
+/// blocked it, or handed it to a person.
+pub const TOOL_REVIEWED: &str = "tool.reviewed";
 /// A provider-executed (hosted) tool call changed state (EVE-1115).
 pub const TOOL_HOSTED_CALL: &str = "tool.hosted_call";
 /// A tool a shell script called through `tools` finished (Shell Code Mode).
@@ -220,6 +223,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TOOL_CALL_REQUESTED,
     TRANSCRIPT_REPAIRED,
     TOOL_CALL_REPAIRED,
+    TOOL_REVIEWED,
     TOOL_HOSTED_CALL,
     TOOL_NESTED_CALL,
     LLM_GENERATION,
@@ -679,6 +683,8 @@ pub enum EventData {
     // Recovery / repair events
     TranscriptRepaired(TranscriptRepairedData),
     ToolCallRepaired(ToolCallRepairedData),
+    /// The auto reviewer decided on a gated call.
+    ToolReviewed(ToolReviewedData),
     /// A provider-executed (hosted) tool call changed state.
     ToolHostedCall(HostedToolCallData),
     /// A tool a shell script called through `tools` finished.
@@ -935,6 +941,7 @@ event_data_kinds! {
     // Recovery / repair events
     TranscriptRepaired(TranscriptRepairedData) = TRANSCRIPT_REPAIRED,
     ToolCallRepaired(ToolCallRepairedData) = TOOL_CALL_REPAIRED,
+    ToolReviewed(ToolReviewedData) = TOOL_REVIEWED,
     ToolHostedCall(HostedToolCallData) = TOOL_HOSTED_CALL,
     ToolNestedCall(ToolNestedCallData) = TOOL_NESTED_CALL,
 
@@ -1041,6 +1048,7 @@ impl_from_event_data! {
     ToolCallRequestedData => ToolCallRequested,
     TranscriptRepairedData => TranscriptRepaired,
     ToolCallRepairedData => ToolCallRepaired,
+    ToolReviewedData => ToolReviewed,
     HostedToolCallData => ToolHostedCall,
     ToolNestedCallData => ToolNestedCall,
     LlmGenerationData => LlmGeneration,

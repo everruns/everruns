@@ -110,6 +110,7 @@ everruns orgs update [OPTIONS] --org <org>
 | `--self-healing <SELF_HEALING>` |  |
 | `--small-model-id <SMALL_MODEL_ID>` | Shared small chat model for lightweight work. |
 | `--system-decisions <SYSTEM_DECISIONS>` |  |
+| `--tool-approval-policy <TOOL_APPROVAL_POLICY>` |  |
 | `--web-search-defaults <WEB_SEARCH_DEFAULTS>` |  |
 
 Example:

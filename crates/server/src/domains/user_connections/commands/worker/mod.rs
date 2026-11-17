@@ -347,6 +347,7 @@ impl Command for WorkerGetConnectionTokenForConnection {
     }
 }
 
+mod tool_approval;
 mod web_search;
 
 #[cfg(test)]

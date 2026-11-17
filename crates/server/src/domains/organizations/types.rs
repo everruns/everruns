@@ -68,6 +68,10 @@ pub struct OrganizationResponse {
     /// Inspector suggests changes to agents. Code defaults when the
     /// organization never set any.
     pub self_healing: crate::domains::health_issues::self_healing::SelfHealingPolicy,
+    /// Tool approval policy (Settings → Approvals): which approval modes
+    /// people and agents may use, rules for every agent, and the trust notes
+    /// the auto reviewer reads. Empty when the organization set no limits.
+    pub tool_approval_policy: everruns_contracts::tool_approval_policy::OrgToolApprovalPolicy,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
@@ -172,6 +176,12 @@ pub struct UpdateOrganizationRequest {
     /// fields take the code default. `agent_fixes` cannot be `auto`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub self_healing: Option<crate::domains::health_issues::self_healing::SelfHealingPolicy>,
+    /// Tool approval policy; replaces the stored policy as a whole. Modes are
+    /// `off`, `auto`, `normal` and `protective` (empty allows all), at most 50
+    /// rules and 20 trust notes of up to 1000 bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_approval_policy:
+        Option<everruns_contracts::tool_approval_policy::OrgToolApprovalPolicy>,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>

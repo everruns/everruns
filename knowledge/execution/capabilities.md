@@ -1033,7 +1033,7 @@ Following the agentskills.io specification:
 - **Purpose**: Suspends the turn and asks a human before a risky tool runs
 - **Status**: Not in the portable registry, it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`. The hosted product registers it with `DurableToolApprover`, so any hosted agent can opt in; see [Tool Approval](tool-approval.md) for how a hosted turn parks on it and resumes.
 - **Tools**: None (contributes a `PreToolUseHook`)
-- **Config**: `mode` (`off` / `normal` / `protective`, default `normal`) and, for hosted sessions, `timeout_seconds`; schema in source
+- **Config**: `mode` (`off` / `auto` / `normal` / `protective`, default `normal`), `rules` (tool pattern → `allow` / `ask` / `never`), `auto.notes` (trust notes for the reviewer) and, for hosted sessions, `timeout_seconds`; schema in source. `auto` lets a reviewer model answer first: see [auto mode](tool-approval.md#auto-mode)
 - **Source**: `crates/core/src/builtins/tool_approval.rs`
 - **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`. `destructive`/`open_world` (or a definition whose policy requires approval) decide first, so a tool cannot escape the gate by also declaring itself `readonly`; only a tool that declares `readonly` and neither risky hint counts as read-only; an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which blocks the call: the gate is only registered by hosts that can service a prompt, so an unreachable approver is a transport failure, and a gate that fails open is not a gate. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
 
@@ -1043,7 +1043,7 @@ Following the agentskills.io specification:
 - **Purpose**: Asks the agent to pause for spoken consent before critical actions, batching safe work without interruption
 - **Status**: Registered and included in Base (so every built-in harness), deprecated Generic and the Platform Chat at level `normal`
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
-- **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
+- **Config**: `{"mode": "off" | "auto" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/core/src/builtins/soft_approval.rs`
 - **Behavior**: Contributes a `<soft_approval>` system-prompt block resolved per turn, so a config edit or `set_approval_mode` applies on the next turn; `off` contributes nothing. The pause is the `request_approval` call, not prose, which gives hosts a `PendingApprovalStore` to render and the event log a record of what was asked. Shares the `ApprovalMode` vocabulary with `tool_approval`, and its tools declare themselves read-only so the hard gate never gates the act of asking. The tools record the turn and message a consent was spoken in but never the approver: `ApprovalAuditListener` resolves that server-side from the authenticated `input.message` initiator and writes `agent.approval.requested` / `agent.approval.granted` to the org audit log. Full rationale in [Soft Approval](soft-approval.md).
 

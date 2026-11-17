@@ -656,6 +656,10 @@ async fn build_organization_response(
         .org_web_search_defaults(org_id)
         .await
         .log_internal_error_json("get web search defaults")?;
+    let tool_approval_policy = db
+        .org_tool_approval_policy(org_id)
+        .await
+        .log_internal_error_json("get tool approval policy")?;
     let background_limits = db
         .org_background_limits(org_id)
         .await
@@ -694,6 +698,7 @@ async fn build_organization_response(
         web_search_defaults,
         background_limits,
         self_healing: crate::domains::health_issues::self_healing::policy(db, org_id).await,
+        tool_approval_policy,
         created_at: org.created_at,
         updated_at: org.updated_at,
         onboarding_completed_at,

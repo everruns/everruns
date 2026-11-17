@@ -392,6 +392,16 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// The organization policy and the session owner's own settings for the
+    /// `tool_approval` gate. `Ok(None)` means the host has neither, and the
+    /// gate follows the agent's config alone.
+    async fn get_tool_approval_policy(
+        &self,
+        _session_id: SessionId,
+    ) -> Result<Option<crate::tool_approval_policy::SessionToolApprovalPolicy>> {
+        Ok(None)
+    }
+
     /// Decrypt one organization search account's key for this session.
     ///
     /// THREAT[TM-TOOL-041]: fail-closed by default. An implementation answers

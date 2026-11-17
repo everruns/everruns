@@ -91,7 +91,11 @@ impl Command for UpdateOrg {
             web_search_defaults,
             background_limits,
             self_healing,
+            tool_approval_policy,
         } = self.request;
+        if let Some(policy) = &tool_approval_policy {
+            policy.validate().map_err(CommandError::bad_request)?;
+        }
         if let Some(limits) = &background_limits {
             limits.validate().map_err(CommandError::bad_request)?;
         }
@@ -251,6 +255,11 @@ impl Command for UpdateOrg {
         if let Some(defaults) = web_search_defaults {
             ctx.db
                 .set_org_web_search_defaults(row.org_id, &defaults)
+                .await?;
+        }
+        if let Some(policy) = &tool_approval_policy {
+            ctx.db
+                .set_org_tool_approval_policy(row.org_id, policy)
                 .await?;
         }
         if let Some(limits) = background_limits {

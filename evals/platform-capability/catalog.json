@@ -14608,6 +14608,29 @@
     "read_only": true
   },
   {
+    "category": "session_storage",
+    "cli": "sessions approval-mode get",
+    "description": "Show the tool approval mode a person picked for a session and the modes the organization allows.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_approval_mode",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/approval-mode",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "sessions",
     "cli": "sessions context",
     "description": "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
@@ -22840,6 +22863,36 @@
     "read_only": false
   },
   {
+    "category": "session_storage",
+    "cli": "sessions approval-mode set",
+    "description": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
+    "input_schema": {
+      "properties": {
+        "mode": {
+          "description": "`off`, `auto`, `normal` or `protective`; `null` clears the switch so\nthe session follows the owner's default and the agent's mode again.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_session_approval_mode",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/approval-mode",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "history",
     "cli": "history show",
     "description": "Show an entity as it stood at one revision of its history (the latest by default). Secrets appear only as markers saying whether they were set.",
@@ -28947,6 +29000,34 @@
           },
           "type": "object"
         },
+        "OrgToolApprovalPolicy": {
+          "additionalProperties": false,
+          "description": "An organization's approval policy. Empty means no limits.",
+          "properties": {
+            "allowed_modes": {
+              "description": "Modes people and agents may use (`off`, `auto`, `normal`,\n`protective`). Empty allows all. A mode outside the list is raised to\nthe next more careful allowed one.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "rules": {
+              "description": "Rules for every agent in the organization.",
+              "items": {
+                "$ref": "#/$defs/ToolApprovalRule"
+              },
+              "type": "array"
+            },
+            "trust_notes": {
+              "description": "Plain sentences the auto reviewer reads: trusted domains, repositories,\nwhich systems count as production.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
         "SearchFallbackMode": {
           "description": "What happens when a provider cannot answer.",
           "enum": [
@@ -28998,6 +29079,34 @@
           "enum": [
             "deployment",
             "organization"
+          ],
+          "type": "string"
+        },
+        "ToolApprovalRule": {
+          "additionalProperties": false,
+          "description": "A rule over tool names. `tool` is an exact name or a pattern with `*`\nstanding for any run of characters (`github__merge_*`, `*delete*`).",
+          "properties": {
+            "action": {
+              "$ref": "#/$defs/ToolRuleAction",
+              "description": "What happens to a matching call."
+            },
+            "tool": {
+              "description": "Tool name or `*` pattern.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "action"
+          ],
+          "type": "object"
+        },
+        "ToolRuleAction": {
+          "description": "What a rule does with a matching tool call.",
+          "enum": [
+            "allow",
+            "ask",
+            "never"
           ],
           "type": "string"
         },
@@ -29115,6 +29224,17 @@
                 {
                   "$ref": "#/$defs/SystemDecisions",
                   "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tool_approval_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/OrgToolApprovalPolicy",
+                  "description": "Tool approval policy; replaces the stored policy as a whole. Modes are\n`off`, `auto`, `normal` and `protective` (empty allows all), at most 50\nrules and 20 trust notes of up to 1000 bytes."
                 },
                 {
                   "type": "null"

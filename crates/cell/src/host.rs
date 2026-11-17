@@ -162,9 +162,12 @@ impl Host for StandardHost {
             .iter()
             .any(|c| c.id() == everruns_core::builtins::TOOL_APPROVAL_CAPABILITY_ID)
         {
-            services = services.register(everruns_core::builtins::ToolApprovalCapability::new(
-                Arc::new(everruns_core::builtins::DurableToolApprover),
-            ));
+            services = services.register(
+                everruns_core::builtins::ToolApprovalCapability::new(Arc::new(
+                    everruns_core::builtins::DurableToolApprover,
+                ))
+                .with_reviewer(Arc::new(everruns_core::builtins::ModelToolReviewer)),
+            );
         }
         let model = match (local, orgs) {
             (Some(model), _) => model,

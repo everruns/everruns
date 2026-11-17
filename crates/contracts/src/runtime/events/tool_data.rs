@@ -617,6 +617,46 @@ pub struct ToolCallRepairedData {
     pub outcome: String,
 }
 
+/// Data for the `tool.reviewed` event.
+///
+/// Emitted once per call the `tool_approval` gate's auto reviewer decided on,
+/// in `auto` mode. Carries no tool output and no model prose: only what was
+/// asked, the verdict and the one-line reason, so the review log can be shown
+/// to anyone who can see the session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolReviewedData {
+    /// Turn the call belongs to, when the host knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: Option<TurnId>,
+
+    /// The reviewed call's id.
+    pub tool_call_id: String,
+
+    /// The tool the call targeted.
+    pub tool_name: String,
+
+    /// `allowed`, `blocked` or `asked_person`.
+    pub verdict: String,
+
+    /// Which check decided: `fast` (first pass), `careful` (second pass),
+    /// `paused` (too many blocks, handed to a person) or `unavailable`
+    /// (no reviewer answer, handed to a person).
+    pub stage: String,
+
+    /// Short label of the rule a block matched, such as `Data Exfiltration`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+
+    /// One-line reason, written by the reviewer.
+    pub reason: String,
+
+    /// Digest of the tool name and exact arguments, as the approval gate
+    /// computes it, so a person's later approval binds to this exact call.
+    pub fingerprint: String,
+}
+
 /// Data for the `tool.hosted_call` event (EVE-1115).
 ///
 /// A provider-executed tool (OpenAI hosted `web_search`) changed state inside

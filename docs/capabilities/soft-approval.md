@@ -31,6 +31,7 @@ the `normal` level.
 | Mode | The agent asks before |
 |---|---|
 | `off` | Nothing. The capability adds no prompt. |
+| `auto` | Only when unsure whether a person wants the action, or told to wait. Pair it with [Tool Approval's auto mode](/capabilities/tool-approval/#auto-mode), where a reviewer model answers routine calls; when the reviewer blocks one, the agent asks here, records the yes and retries. |
 | `normal` (default) | Destructive or irreversible actions (deleting files or data, dropping records, force-push, history rewrites) and outward-facing ones (pushing, publishing, opening pull requests, sending messages or mail, deploying, spending money). Ordinary edits and local, reversible changes proceed. |
 | `protective` | Any action that changes state: writing or deleting files, commits and pushes, installing or removing packages, requests with side effects, changes to shared resources, and any command that is not plainly read-only. |
 
@@ -46,7 +47,7 @@ steps, and never pause on read-only inspection.
 }
 ```
 
-`mode` accepts `off`, `normal`, or `protective`, and the synonyms listed under
+`mode` accepts `off`, `auto`, `normal`, or `protective`, and the synonyms listed under
 [`set_approval_mode`](#set_approval_mode). Any other value fails validation.
 
 ## Tools
@@ -85,9 +86,11 @@ names; the agent records that grant once.
 ### `set_approval_mode`
 
 When the user asks the agent to be more or less careful, the agent calls it
-with `mode`. It accepts `protective`, `normal`, and `off`, plus synonyms such
+with `mode`. It accepts `protective`, `normal`, `auto`, and `off`, plus synonyms such
 as `paranoid`, `careful`, `default`, and `yolo`. The new level overrides the
-configured `mode` for that session from the next turn on.
+configured `mode` for that session from the next turn on. It changes only this
+prompt layer, never the enforced [Tool Approval](/capabilities/tool-approval/)
+gate.
 
 ## Relation to Ask User
 

@@ -50966,6 +50966,10 @@
             "$ref": "#/components/schemas/ToolCallRepairedData"
           },
           {
+            "$ref": "#/components/schemas/ToolReviewedData",
+            "description": "The auto reviewer decided on a gated call."
+          },
+          {
             "$ref": "#/components/schemas/HostedToolCallData",
             "description": "A provider-executed (hosted) tool call changed state."
           },
@@ -59000,6 +59004,7 @@
                 "web_search_defaults",
                 "background_limits",
                 "self_healing",
+                "tool_approval_policy",
                 "created_at",
                 "updated_at"
               ],
@@ -59103,6 +59108,10 @@
                 "system_decisions": {
                   "$ref": "#/components/schemas/SystemDecisions",
                   "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
+                },
+                "tool_approval_policy": {
+                  "$ref": "#/components/schemas/OrgToolApprovalPolicy",
+                  "description": "Tool approval policy (Settings → Approvals): which approval modes\npeople and agents may use, rules for every agent, and the trust notes\nthe auto reviewer reads. Empty when the organization set no limits."
                 },
                 "updated_at": {
                   "type": "string",
@@ -66153,6 +66162,34 @@
           }
         }
       },
+      "OrgToolApprovalPolicy": {
+        "type": "object",
+        "description": "An organization's approval policy. Empty means no limits.",
+        "properties": {
+          "allowed_modes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Modes people and agents may use (`off`, `auto`, `normal`,\n`protective`). Empty allows all. A mode outside the list is raised to\nthe next more careful allowed one."
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolApprovalRule"
+            },
+            "description": "Rules for every agent in the organization."
+          },
+          "trust_notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plain sentences the auto reviewer reads: trusted domains, repositories,\nwhich systems count as production."
+          }
+        },
+        "additionalProperties": false
+      },
       "OrganizationAccountMetadata": {
         "type": "object",
         "description": "Editable history contains only the account's display name.",
@@ -66242,6 +66279,7 @@
           "web_search_defaults",
           "background_limits",
           "self_healing",
+          "tool_approval_policy",
           "created_at",
           "updated_at"
         ],
@@ -66345,6 +66383,10 @@
           "system_decisions": {
             "$ref": "#/components/schemas/SystemDecisions",
             "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
+          },
+          "tool_approval_policy": {
+            "$ref": "#/components/schemas/OrgToolApprovalPolicy",
+            "description": "Tool approval policy (Settings → Approvals): which approval modes\npeople and agents may use, rules for every agent, and the trust notes\nthe auto reviewer reads. Empty when the organization set no limits."
           },
           "updated_at": {
             "type": "string",
@@ -79953,6 +79995,25 @@
           }
         }
       },
+      "ToolApprovalRule": {
+        "type": "object",
+        "description": "A rule over tool names. `tool` is an exact name or a pattern with `*`\nstanding for any run of characters (`github__merge_*`, `*delete*`).",
+        "required": [
+          "tool",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ToolRuleAction",
+            "description": "What happens to a matching call."
+          },
+          "tool": {
+            "type": "string",
+            "description": "Tool name or `*` pattern."
+          }
+        },
+        "additionalProperties": false
+      },
       "ToolCall": {
         "type": "object",
         "description": "Tool call from LLM response",
@@ -80654,6 +80715,68 @@
             "description": "ID of the tool call this result corresponds to"
           }
         }
+      },
+      "ToolReviewedData": {
+        "type": "object",
+        "description": "Data for the `tool.reviewed` event.\n\nEmitted once per call the `tool_approval` gate's auto reviewer decided on,\nin `auto` mode. Carries no tool output and no model prose: only what was\nasked, the verdict and the one-line reason, so the review log can be shown\nto anyone who can see the session.",
+        "required": [
+          "tool_call_id",
+          "tool_name",
+          "verdict",
+          "stage",
+          "reason",
+          "fingerprint"
+        ],
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "description": "Digest of the tool name and exact arguments, as the approval gate\ncomputes it, so a person's later approval binds to this exact call."
+          },
+          "reason": {
+            "type": "string",
+            "description": "One-line reason, written by the reviewer."
+          },
+          "rule": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short label of the rule a block matched, such as `Data Exfiltration`."
+          },
+          "stage": {
+            "type": "string",
+            "description": "Which check decided: `fast` (first pass), `careful` (second pass),\n`paused` (too many blocks, handed to a person) or `unavailable`\n(no reviewer answer, handed to a person)."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The reviewed call's id."
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "The tool the call targeted."
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Turn the call belongs to, when the host knows it.",
+            "example": "turn_01933b5a00007000800000000000001"
+          },
+          "verdict": {
+            "type": "string",
+            "description": "`allowed`, `blocked` or `asked_person`."
+          }
+        }
+      },
+      "ToolRuleAction": {
+        "type": "string",
+        "description": "What a rule does with a matching tool call.",
+        "enum": [
+          "allow",
+          "ask",
+          "never"
+        ]
       },
       "ToolStartedData": {
         "type": "object",
@@ -84524,6 +84647,17 @@
               {
                 "$ref": "#/components/schemas/SystemDecisions",
                 "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tool_approval_policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OrgToolApprovalPolicy",
+                "description": "Tool approval policy; replaces the stored policy as a whole. Modes are\n`off`, `auto`, `normal` and `protective` (empty allows all), at most 50\nrules and 20 trust notes of up to 1000 bytes."
               },
               {
                 "type": "null"

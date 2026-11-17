@@ -26,6 +26,8 @@ Running and archived sessions, their state and participants.
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
 | [`sessions resume`](#sessions-resume) | Continue a session past a usage policy's ask step. |
+| [`sessions approval-mode get`](#sessions-approval-mode-get) | Show the tool approval mode a person picked for a session and the modes the organization allows. |
+| [`sessions approval-mode set`](#sessions-approval-mode-set) | Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. |
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
@@ -373,6 +375,45 @@ Example:
 ```bash
 # Let a session continue after a usage policy asked before going further
 everruns sessions resume session_01h9 --reason 'Finish the report'
+```
+
+## sessions approval-mode get
+
+Show the tool approval mode a person picked for a session and the modes the organization allows.
+
+```bash
+everruns sessions approval-mode get [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# See which approval mode a session runs in
+everruns sessions approval-mode get --session-id session_01h9
+```
+
+## sessions approval-mode set
+
+Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.
+
+```bash
+everruns sessions approval-mode set [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--mode <MODE>` | `off`, `auto`, `normal` or `protective`; `null` clears the switch so the session follows the ... |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# Let a reviewer model answer routine approvals in a session
+everruns sessions approval-mode set --session-id session_01h9 --mode auto --reason 'Long refactor, review routine calls automatically'
 ```
 
 ## sessions unarchive

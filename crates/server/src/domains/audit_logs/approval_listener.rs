@@ -25,7 +25,7 @@ use std::sync::Arc;
 use crate::domains::audit_logs::record::{AgentAction, AuditEvent};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{MessageId, SessionId};
-use everruns_core::{Event, EventData, EventListener, TOOL_COMPLETED};
+use everruns_core::{Event, EventData, EventListener, TOOL_COMPLETED, TOOL_REVIEWED};
 use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
@@ -161,11 +161,15 @@ impl EventListener for ApprovalAuditListener {
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
-        Some(vec![TOOL_COMPLETED])
+        Some(vec![TOOL_COMPLETED, TOOL_REVIEWED])
     }
 
     #[instrument(skip(self, event), fields(session_id = %event.session_id))]
     async fn on_event(&self, event: &Event) {
+        if let EventData::ToolReviewed(data) = &event.data {
+            self.record_review(event, data).await;
+            return;
+        }
         let EventData::ToolCompleted(data) = &event.data else {
             return;
         };
@@ -222,8 +226,43 @@ impl EventListener for ApprovalAuditListener {
             audit_event = audit_event.detail("actor_resolution", "unattributed");
         }
 
-        // Keyed by the event, so the listener feed handing the event over
-        // again (at least once) writes the row once.
+        self.write_once(event, audit_event).await;
+    }
+}
+
+impl ApprovalAuditListener {
+    /// One row per auto review verdict. The reviewer is a model, so there is
+    /// no human actor: the row records which call, the verdict, the stage and
+    /// the bounded reason, keyed by the event like the consent rows.
+    async fn record_review(&self, event: &Event, data: &everruns_core::ToolReviewedData) {
+        let Ok(Some(org_id)) = self.db.get_session_organization_id(event.session_id).await else {
+            tracing::warn!(session_id = %event.session_id, "no org for auto review audit row");
+            return;
+        };
+        let mut audit_event = AuditEvent::agent(AgentAction::AutoReviewed, org_id, None)
+            .target("session", event.session_id.to_string())
+            .detail("session_id", event.session_id.to_string())
+            .detail("tool_name", data.tool_name.clone())
+            .detail("tool_call_id", data.tool_call_id.clone())
+            .detail("verdict", data.verdict.clone())
+            .detail("stage", data.stage.clone())
+            .detail("reason", bounded_detail(&data.reason));
+        if let Some(rule) = &data.rule {
+            audit_event = audit_event.detail("rule", bounded_detail(rule));
+        }
+        if let Some(turn_id) = &data.turn_id {
+            audit_event = audit_event.detail("turn_id", turn_id.to_string());
+        }
+        self.write_once(event, audit_event).await;
+    }
+
+    /// Keyed by the event, so the listener feed handing the event over again
+    /// (at least once) writes the row once.
+    async fn write_once(
+        &self,
+        event: &Event,
+        audit_event: crate::domains::audit_logs::record::AuditEventBuilder,
+    ) {
         let event_row = audit_event.build();
         if let Err(error) = self
             .db

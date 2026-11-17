@@ -46,6 +46,7 @@ pub mod finding_fixes;
 pub mod finding_investigations;
 pub mod org_egress_allowlist;
 pub mod org_slack_connections;
+pub mod org_tool_approval;
 pub mod org_web_search;
 pub mod pact_delegation;
 pub mod password;

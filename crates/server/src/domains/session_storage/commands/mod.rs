@@ -310,5 +310,6 @@ fn validate_bindings(
         .collect()
 }
 
+mod approval_mode;
 mod worker;
 pub use worker::*;

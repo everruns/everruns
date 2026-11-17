@@ -154,6 +154,7 @@ impl ApprovalModeStore for SessionApprovalModes {
 pub fn render_approval_block(mode: ApprovalMode) -> Option<String> {
     let threshold = match mode {
         ApprovalMode::Off => return None,
+        ApprovalMode::Auto => return Some(render_auto_block()),
         ApprovalMode::Protective => {
             "PROTECTIVE — the bar is low. Ask before ANY action that changes \
              state: writing or deleting files, commits and pushes, installing \
@@ -199,6 +200,37 @@ those without pausing and note the grant once with `record_approval`.\n\
 </soft_approval>",
         level = mode.as_str(),
     ))
+}
+
+/// The `auto` level: a reviewer checks risky calls, so the agent keeps going
+/// and asks in conversation only when it does not know what people want, when
+/// they asked it to wait, or when the reviewer blocked something it still
+/// believes is needed. A "yes" in the conversation is what the reviewer reads
+/// on the retry, so spoken consent and the gate work together instead of
+/// asking twice.
+fn render_auto_block() -> String {
+    "<soft_approval>\n\
+Soft approval is active at level auto.\n\
+\n\
+AUTO — an automatic reviewer checks every call that changes something before \
+it runs. It lets routine work through and blocks calls that look risky or \
+unrequested, telling you why.\n\
+\n\
+How to operate:\n\
+- Plan out loud and keep going. Do NOT pause for consent on ordinary work; \
+the reviewer covers it.\n\
+- Ask in the conversation only when you genuinely do not know what the person \
+wants, or when they told you to wait or check with them. Asking means calling \
+`request_approval` with the action and one short question, then ending your turn.\n\
+- If the reviewer blocks a call, read its reason. Prefer a safer way to reach \
+the goal. If this exact action is still needed, call `request_approval` and \
+explain what you want to do and why; once the person agrees, call \
+`record_approval` and make the call again. Never repeat a blocked call \
+unchanged without that.\n\
+- A person's \"wait\", \"don't\" or \"check with me first\" holds until they lift it.\n\
+- If the user asks you to be more or less cautious, call `set_approval_mode`.\n\
+</soft_approval>"
+        .to_string()
 }
 
 /// Spoken-consent approval for critical actions.
@@ -287,7 +319,7 @@ impl Capability for SoftApprovalCapability {
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["off", "normal", "protective"],
+                    "enum": ["off", "auto", "normal", "protective"],
                     "default": "normal",
                     "title": "Approval level",
                     "description": "off: never pause. normal: pause before destructive or outward-facing actions. protective: pause before anything that changes state."
@@ -655,7 +687,9 @@ impl Tool for SetApprovalModeTool {
     fn description(&self) -> &str {
         "Set the soft-approval level. Use when the user asks you to be more or less cautious \
          about confirming actions. `protective` asks before any state change, `normal` asks only \
-         before destructive or outward-facing actions, `off` never asks."
+         before destructive or outward-facing actions, `auto` relies on the automatic reviewer and \
+         asks only when unsure, `off` never asks. This changes only how often you ask in the \
+         conversation, never the enforced approval gate."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -668,7 +702,7 @@ impl Tool for SetApprovalModeTool {
                 // rejected in `execute`.
                 "mode": {
                     "type": "string",
-                    "description": "The new approval level: 'protective', 'normal', or 'off' (common synonyms like 'paranoid' or 'yolo' are also accepted)."
+                    "description": "The new approval level: 'protective', 'normal', 'auto', or 'off' (common synonyms like 'paranoid' or 'yolo' are also accepted)."
                 }
             },
             "required": ["mode"],
@@ -722,7 +756,7 @@ impl Tool for SetApprovalModeTool {
         };
         let Some(mode) = ApprovalMode::parse(raw) else {
             return ToolExecutionResult::tool_error(format!(
-                "unknown approval level '{raw}'; expected protective, normal, or off"
+                "unknown approval level '{raw}'; expected protective, normal, auto, or off"
             ));
         };
         match self.modes.set_mode(&context.session_id, mode) {
