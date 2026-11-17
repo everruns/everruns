@@ -40,8 +40,8 @@ Internal readers that go by id alone (`get_session_unscoped`,
 `get_session_config`) and writers are deliberately not filtered. A worker that
 was mid-turn when the delete landed finishes writing its events, and usage and
 cost for that work are still recorded and still count toward agent, budget and
-organization totals. Reports and monitoring aggregate over history, so they
-keep counting deleted sessions too.
+organization totals. Monitoring aggregates over history, so it keeps
+counting deleted sessions too.
 
 There is no restore surface. The data is there, a restore is clearing
 `deleted_at`; exposing it is a product decision that has not been made.

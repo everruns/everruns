@@ -163,7 +163,7 @@ The copy routine and `forked_from_sequence` are written in terms of an
   `idle`, and `paused` are forkable.
 - The copy runs in a **single database transaction** (session row + workspace +
   files + events + KV + secrets + SQL pages) so a fork either fully exists or
-  not at all. Best-effort side effects (reporting outbox, `session_start`
+  not at all. Best-effort side effects (`session_start`
   hooks) fire after commit, mirroring `create_session`.
 - Large sessions: the copy is O(history + files + kv). Very large workspaces or
   long histories make forking a heavier operation than `create_session`; it is

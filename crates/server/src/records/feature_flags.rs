@@ -46,11 +46,6 @@ pub struct FeatureFlags {
     /// channel). Experimental. Gates the public endpoints, channel creation,
     /// the builder UI, and the public web route.
     pub public_chat: bool,
-    /// Reports: the usage and cost reporting page, its sidebar entry, and
-    /// saved-report search results in the UI. Experimental and org-opt-in, so
-    /// it is off for every organization until an admin turns it on. The
-    /// reporting API and background aggregation are not gated.
-    pub reports: bool,
     /// Machine-payment custody, policy, audit, and paid capability surfaces.
     pub machine_payments: bool,
     /// Run the org's sessions on the Engine (data plane v2 step 4).
@@ -190,13 +185,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
-        name: "reports",
-        label: "Reports",
-        description: "Shows the Reports page for exploring usage and cost across sessions, agents, \
-             and models, and for saving and exporting report queries.",
-        grade: FeatureFlagGrade::Dev,
-    },
-    FeatureFlagDefinition {
         name: "machine_payments",
         label: "Machine payments",
         description: "Manage payment accounts, spending policies, and paid capabilities.",
@@ -316,7 +304,6 @@ impl FeatureFlags {
             ("voice".to_string(), self.voice),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
-            ("reports".to_string(), self.reports),
             ("machine_payments".to_string(), self.machine_payments),
             ("engine_hosting".to_string(), self.engine_hosting),
         ]);
@@ -345,7 +332,6 @@ impl FeatureFlags {
             "voice" => self.voice,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
-            "reports" => self.reports,
             "machine_payments" => self.machine_payments,
             "engine_hosting" => self.engine_hosting,
             _ => self.integrations.get(flag).copied().unwrap_or(false),
@@ -364,7 +350,6 @@ impl FeatureFlags {
             "voice" => self.voice = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
-            "reports" => self.reports = enabled,
             "machine_payments" => self.machine_payments = enabled,
             "engine_hosting" => self.engine_hosting = enabled,
             "docker_capability" => self.docker_capability = enabled,
@@ -439,7 +424,6 @@ impl FeatureFlags {
             voice: true,
             observers: true,
             public_chat: true,
-            reports: true,
             machine_payments: true,
             engine_hosting: true,
             integrations: everruns_capabilities::integrations_catalog::feature_flag_definitions()
@@ -619,11 +603,12 @@ mod tests {
             "sprites",
             "mcp_events",
             "agent_change_reasons_required",
+            "reports",
         ] {
             assert!(!is_known_feature_flag(removed), "{removed}");
         }
         assert!(!FeatureFlagGrade::Internal.org_configurable(DeploymentGrade::Prod));
-        for name in ["skills", "memory", "plugins", "public_chat", "reports"] {
+        for name in ["skills", "memory", "plugins", "public_chat"] {
             assert_eq!(policy.grade(name), FeatureFlagGrade::Dev, "{name}");
             assert!(!policy.deployment_flags().is_enabled(name), "{name}");
         }

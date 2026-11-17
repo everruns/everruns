@@ -154,14 +154,14 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
              principals, users, sessions, workspaces, session_participants,
              events, event_sequences, images, memories, models,
              virtual_users, virtual_user_bindings, runtime_invocations,
-             organization_members, reporting_outbox, entity_changes
+             organization_members, entity_changes
          TO {role};
          GRANT INSERT ON
              sessions, workspaces, session_participants, events, images,
-             event_sequences, memories, reporting_outbox, audit_logs,
+             event_sequences, memories, audit_logs,
              virtual_users, virtual_user_bindings, runtime_invocations, principals
          TO {role};
-         GRANT UPDATE ON sessions, agent_channels, event_sequences, virtual_user_bindings, principals, virtual_users, runtime_invocations, session_participants, reporting_outbox TO {role};
+         GRANT UPDATE ON sessions, agent_channels, event_sequences, virtual_user_bindings, principals, virtual_users, runtime_invocations, session_participants TO {role};
          GRANT SELECT, INSERT, UPDATE, DELETE ON agent_trigger_deliveries TO {role};
          GRANT SELECT, INSERT, UPDATE, DELETE ON
              channel_bindings, channel_seen, channel_pending_deliveries

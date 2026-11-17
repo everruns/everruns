@@ -580,7 +580,6 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::PaymentPolicy => ("update_payment_policy", "payment_policy_id"),
         EntityKind::Eval => ("update_eval", "eval_id"),
         EntityKind::EvalCase => ("update_eval_case", "case_id"),
-        EntityKind::SavedReport => ("update_saved_report", "report_id"),
         EntityKind::CheckRule => ("upsert_agent_check_rule", "rule_id"),
         EntityKind::Session => return None,
     })

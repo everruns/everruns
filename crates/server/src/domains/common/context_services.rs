@@ -134,14 +134,6 @@ impl Ctx {
         self
     }
 
-    pub fn with_reporting_service(
-        mut self,
-        service: Arc<crate::domains::reporting::ReportingService>,
-    ) -> Self {
-        self.reporting_service = Some(service);
-        self
-    }
-
     pub fn with_sqldb_store(
         mut self,
         store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,

@@ -14,7 +14,7 @@
 //!   events, sandbox lifecycle, and listeners an embedder adds. Later (polled
 //!   every 2 s, larger pages): usage and budgets (both on `llm.generation`),
 //!   tracing exporters, titles, run summaries, turn latency, session trace, observer
-//!   matching, approval audit, reporting facts. Each keeps its own cursor,
+//!   matching, approval audit. Each keeps its own cursor,
 //!   so a slow exporter never delays a coordination wake-up.
 //! - The poll is one probe per consumer for all partitions this replica
 //!   holds (`feed_probe`), waking only the partitions with something to
@@ -102,8 +102,6 @@ const LATER: &[&str] = &[
     "run_summary",
     "ObserverMatchListener",
     "ApprovalAuditListener",
-    // Reporting facts; its outbox retries what fails here.
-    "ReportingProjection",
 ];
 
 struct Consumer {

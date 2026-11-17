@@ -465,7 +465,6 @@ pub struct Ctx {
     pub provider_service: Option<Arc<crate::domains::providers::ProviderService>>,
     pub model_sync_service: Option<Arc<crate::domains::models::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
-    pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
     /// Decrypts and refreshes provider connection grants for the worker's
     /// internal connection commands. `None` without encryption.
@@ -549,7 +548,6 @@ impl Ctx {
             provider_service: None,
             model_sync_service: None,
             eval_service: None,
-            reporting_service: None,
             sqldb_store: None,
             connection_resolver: None,
             workflow_store: None,

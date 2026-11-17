@@ -18,7 +18,7 @@ okf_version: "0.2"
 * [integrations/](integrations/) - MCP, external integrations, apps, plugins, and messaging channels.
 * [operations/](operations/) - Deployment, persistence, scheduling, observability, networking, and operations.
 * [security/](security/) - Authentication, authorization, multitenancy, security, and governance.
-* [evaluation/](evaluation/) - Evaluation, testing, reporting, datasets, and quality systems.
+* [evaluation/](evaluation/) - Evaluation, testing, datasets, and quality systems.
 * [test-cases/](test-cases/) - Manual test cases by target, plus the format they follow.
 * [project/](project/) - Repository workflow, releases, issue tracking, skills, and project conventions.
 * [harnesses/](harnesses/) - Built-in harnesses and sandbox-backed coding environments.

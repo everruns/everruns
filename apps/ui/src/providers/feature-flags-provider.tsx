@@ -23,7 +23,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   voice: false,
   observers: false,
   public_chat: false,
-  reports: false,
   machine_payments: false,
 };
 

@@ -50,10 +50,7 @@ privacy because, unlike aggregate reporting, it exports raw model-view content.
 | trajectory (messages, tool calls/results) | session `events`, reconstructed to `Vec<Message>` then masked to the model view |
 | efficiency metadata (turns, tokens, latency) | `EvalCaseResult` |
 
-Reporting facts (`knowledge/evaluation/reporting.md`) deliberately exclude prompts / messages /
-tool args / results per `TM-OBS`, so they are the right source for *filtering*,
-not *content*. Trajectory content therefore comes from the session events, not
-reporting.
+Trajectory content comes from the session events, never from an aggregate.
 
 ### Model-view faithfulness
 
@@ -162,8 +159,6 @@ See `knowledge/security/threat-model.md` (TM-OBS-008) for the threat review.
   Requires resolving the run's session capability chain
   (harness/agent/session), which the current export path does not plumb; the
   default `CompactionConfig` is used until then.
-- Optional cost (`cost_usd`) via reporting-fact join. `fact_llm_generation`
-  stores tokens, not a cost column, and is Postgres-only, so
-  a faithful cost join needs a model-pricing lookup rather than a straight join.
+- Optional cost (`cost_usd`) per trajectory, joined from `llm_generations`.
 - Preference-pair / DPO dataset construction.
 - Continuous capture from production sessions (opt-in).

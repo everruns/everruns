@@ -12,7 +12,7 @@ tags:
 
 Events are Everruns' durable session protocol. They are the source of truth for
 conversation reconstruction, expose execution progress to clients, and feed
-observability and reporting projections.
+observability.
 
 This document owns the event protocol's intent, compatibility rules, and
 cross-event semantics. It deliberately does not repeat the event envelope,
@@ -337,9 +337,6 @@ Messages are reconstructed from canonical input, assistant completion, and
 tool completion events. Streaming deltas are not required for replay. Tool
 calls remain part of assistant content; tool results come from tool completion
 events.
-
-Reporting projections are asynchronous and backend-neutral. They must not
-change the semantic event record. See [`reporting.md`](../evaluation/reporting.md).
 
 ## Streaming contract
 

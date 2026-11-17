@@ -497,13 +497,6 @@ pub(super) async fn start_maintenance(
         let sweep = tool_result_timeouts.spawn_local_sweep();
         supervisor.track("tool_result_sweep", sweep);
     }
-
-    // -- Reporting projection and missing-work reconciliation (both prod and dev) --
-    for handle in crate::domains::reporting::background::spawn_reporting_background_task(
-        deps.background_db.clone(),
-    ) {
-        supervisor.track("reporting_background", handle);
-    }
 }
 
 /// Customer worker credentials are never accepted by the trusted listener.

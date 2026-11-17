@@ -247,10 +247,6 @@ Modular functionality that can be enabled on Agents. See `crates/contracts/src/r
 
 See `knowledge/execution/capabilities.md` for the full capabilities specification.
 
-Capability configuration and runtime attribution feed reporting facts with
-separate usage meanings (`configured`, `resolved`, `exposed`, `invoked`,
-`effect_ran`). See [knowledge/evaluation/reporting.md](../evaluation/reporting.md).
-
 ### LLM Provider
 
 Configuration for LLM API providers. See `crates/contracts/src/provider.rs` for full type definitions.

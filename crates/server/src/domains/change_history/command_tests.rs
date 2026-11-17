@@ -279,7 +279,7 @@ async fn a_ref_without_a_prefix_needs_a_kind() {
     assert!(err.to_string().contains("--kind"), "{err}");
     run(
         "list_entity_history",
-        json!({ "entity_ref": "01933b5a-0000-7000-8000-000000000001", "kind": "saved_report" }),
+        json!({ "entity_ref": "01933b5a-0000-7000-8000-000000000001", "kind": "schedule" }),
         &ctx,
     )
     .await

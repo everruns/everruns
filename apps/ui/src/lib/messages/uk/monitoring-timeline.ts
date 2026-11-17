@@ -30,7 +30,6 @@ export const messages: Readonly<Record<string, string>> = {
   "No finished turns": "Немає завершених ходів",
   "No turns started in this window.": "У цьому вікні ходи не починалися.",
   "No worker reports in this range.": "У цьому діапазоні немає звітів воркерів.",
-  "Open Reports →": "Відкрити звіти →",
   "Parallel sessions": "Паралельні сесії",
   "Parallel sessions against capacity": "Паралельні сесії проти місткості",
   "Parallel sessions over time": "Паралельні сесії в часі",

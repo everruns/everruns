@@ -29,7 +29,7 @@ Decisions:
 - Alerts are the observer's own (`alert: {min_pass_rate, window_hours, min_scored}`); there is no global threshold because pass rates mean different things per rubric. The 15-minute health sweep ([`health_issues/quality.rs`](../../crates/server/src/domains/health_issues/quality.rs)) opens `observer.pass_rate_low` on the observer, notifies the authors of the agents it watches (org owners for all-traffic observers), carries no judge text, and resolves when the rate recovers.
 - Reviews (`review` on a score: agrees, note, who, when) calibrate graders; the review queue is completed unreviewed scores, failures first, then a random sample of passes. A disagreed score is the input for Eval Builder cases (step 8).
 - Backfill reads the newest turn, tool and idle events of the last `since_hours` (max 720, max 5,000 events), plans them with the same matcher and enqueues; turns and tool calls already scored are not re-queued, a conversation's score is refreshed. Forward-only scoring plus explicit backfill answers the versioning question.
-- Live quality (`GET /v1/observers/summary`) is computed from `trace_scores` directly (indexed by org and completion time), not the reporting outbox: totals and groups by agent (with a daily trend), observer and day.
+- Live quality (`GET /v1/observers/summary`) is computed from `trace_scores` directly (indexed by org and completion time): totals and groups by agent (with a daily trend), observer and day.
 
 UI: the Evals overview shows **Live quality · 7 days** and a per-agent Live quality column ("Not observed · Observe" when nothing scored the agent); the agent Evals tab shows its live quality and an **Observing** list; the observer edit page has working **Answers / Conversations / Tools** tabs. Review queue, alerts and backfill are API/CLI only until a mockup is approved. The per-observer Quality tab still aggregates recent scores client-side.
 
@@ -50,7 +50,7 @@ UI: the Evals overview shows **Live quality · 7 days** and a per-agent Live qua
   - Scoring never adds latency to user turns.
   - Decisions reasoning text is stored, not just scalar scores, it is the raw material for the
     Phase 2 improvement loop (clustering, prompt-learning).
-  - Scores feed the reporting layer for aggregation; thresholds feed notifications.
+  - Scores are aggregated from `trace_scores`; thresholds feed notifications.
   - Complexity is contained in the UI by progressive disclosure: one-click observer creation
     from an agent with catalog defaults; full editing only for those who open it.
 -->
@@ -104,7 +104,6 @@ The building blocks exist; Observers are mostly composition:
 | Durable engine + scheduler | `knowledge/operations/durable-execution-engine.md`, `knowledge/operations/scheduled-tasks.md` | At-least-once background work, multi-instance safe (SKIP LOCKED), cron schedules, production scoring backend. Existing precedent for dev/full duality: the task worker runs with direct in-process stores in dev and gRPC stores in full mode. |
 | Tool output distillation | `knowledge/execution/tool-output-distillation.md` | Large tool results are already distilled at capture time, reuse as judge-input truncation for tool-scope scoring. |
 | Utility LLM | `knowledge/operations/utility-llm.md` | Candidate judge-model path for platform-internal scoring. |
-| Reporting outbox + facts | `knowledge/evaluation/reporting.md` | Async projection pipeline for aggregations (`fact_trace_score` alongside `fact_turn`, `fact_tool_call`). |
 | Notifications | `knowledge/operations/notifications.md` | Delivery channel for threshold alerts and Phase 2 improvement proposals. |
 | Usage tracking | `knowledge/security/usage-tracking.md` | Decisions calls must be metered like any other LLM usage (cost visibility, budgets). |
 
@@ -208,7 +207,7 @@ Match rules × three scopes × per-scope scorers is genuinely a lot of surface. 
 
 ## Aggregation and alerting
 
-Built in v2 as described in the status section: live-quality summary from `trace_scores`, per-observer pass-rate alerts as health issues. A reporting-layer projection (`fact_trace_score`) for label and per-tool breakdowns remains open.
+Built in v2 as described in the status section: live-quality summary from `trace_scores`, per-observer pass-rate alerts as health issues. Label and per-tool breakdowns remain open.
 
 ## Phase 2 sketch: the improvement loop (own name, own spec)
 

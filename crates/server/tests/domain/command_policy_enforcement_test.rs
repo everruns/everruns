@@ -1069,13 +1069,9 @@ const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
     "preview_agent_source",
     "validate_agent_package",
     "diff_agent_package",
-    "export_report_query",
-    "export_saved_report",
     "grep_workspace_files",
     "preview_agent",
     "preview_harness",
-    "run_report_query",
-    "run_saved_report",
     // Cited retrieval: no collection/file mutations; ordinary usage accounting applies.
     "search_knowledge_collections",
     "search_workspace_files",

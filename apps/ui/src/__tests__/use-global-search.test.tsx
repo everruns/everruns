@@ -87,18 +87,6 @@ jest.mock("@/hooks/use-observers", () => ({
     ],
   }),
 }));
-const mockUseSavedReports = jest.fn((_enabled?: boolean) => ({
-  data: [
-    {
-      id: "report_weekly",
-      name: "Weekly Usage",
-      description: "Usage by week",
-    },
-  ],
-}));
-jest.mock("@/hooks/use-reporting", () => ({
-  useSavedReports: (enabled?: boolean) => mockUseSavedReports(enabled),
-}));
 
 const mockFeatureFlags = {
   evals: false,
@@ -108,7 +96,6 @@ const mockFeatureFlags = {
   plugins: true,
   observers: true,
   machine_payments: true,
-  reports: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => mockFeatureFlags,
@@ -155,7 +142,6 @@ describe("useGlobalSearch", () => {
     mockUseMemories.mockClear();
     mockUseKnowledgeIndexes.mockClear();
     mockUseInstalledPlugins.mockClear();
-    mockUseSavedReports.mockClear();
     Object.assign(mockFeatureFlags, {
       evals: false,
       skills: true,
@@ -164,7 +150,6 @@ describe("useGlobalSearch", () => {
       plugins: true,
       observers: true,
       machine_payments: true,
-      reports: true,
     });
   });
 
@@ -200,7 +185,6 @@ describe("useGlobalSearch", () => {
     renderHook(() => useGlobalSearch(""));
 
     expect(mockUseAgents).toHaveBeenCalledWith({ enabled: false });
-    expect(mockUseSavedReports).toHaveBeenCalledWith(false);
   });
 
   it("finds organizations and switches to the selected organization", () => {
@@ -276,7 +260,6 @@ describe("useGlobalSearch", () => {
     ["health", "/settings/health"],
     ["new side chat", "/chats/new"],
     ["all chats", "/chats/history"],
-    ["reports", "/reports"],
     ["knowledge", "/knowledge"],
     ["plugins", "/plugins"],
     ["observers", "/observers"],
@@ -372,15 +355,6 @@ describe("useGlobalSearch", () => {
     expect(result.current.some((item) => item.href === "/settings/payments")).toBe(false);
   });
 
-  it("hides Reports and saved reports when the reports flag is off", () => {
-    mockFeatureFlags.reports = false;
-
-    const { result } = renderHook(() => useGlobalSearch("report"));
-
-    expect(mockUseSavedReports).toHaveBeenCalledWith(false);
-    expect(result.current.some((item) => item.href === "/reports")).toBe(false);
-  });
-
   it.each([
     ["agent_unknown", "/agents/agent_unknown", AgentIcon],
     ["session_unknown", "/sessions/session_unknown", SessionIcon],
@@ -396,7 +370,6 @@ describe("useGlobalSearch", () => {
     ["documentation index", "knowledge-index:kidx_docs", "/knowledge-indexes/kidx_docs"],
     ["email service", "plugin:plugin_email", "/plugins"],
     ["answer quality", "observer:observer_quality", "/observers/observer_quality"],
-    ["weekly usage", "report:report_weekly", "/reports"],
   ])("finds the %s entity", (query, id, href) => {
     const { result } = renderHook(() => useGlobalSearch(query));
 

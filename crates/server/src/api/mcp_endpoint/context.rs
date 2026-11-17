@@ -13,7 +13,6 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_session_service(state.session_service.clone())
     .with_message_service(state.message_service.clone())
     .with_event_service(state.event_service.clone())
-    .with_reporting_service(state.reporting_service.clone())
     .with_session_file_service(state.session_file_service.clone())
     .with_runner(state.runner.clone())
     .with_fallback_harness_name(state.fallback_default_harness_name.clone())

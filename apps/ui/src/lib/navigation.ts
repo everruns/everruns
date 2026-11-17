@@ -254,15 +254,6 @@ export const defaultQualityNavigation: NavigationItem[] = [
     flag: "observers",
     experimental: true,
   },
-  {
-    name: "Reports",
-    description: "Explore saved views of session activity.",
-    href: "/reports",
-    icon: ReportIcon,
-    flag: "reports",
-    experimental: true,
-    keywords: ["analytics", "saved report"],
-  },
 ];
 
 export const defaultBottomNavigation: NavigationItem[] = [

@@ -15,5 +15,4 @@ export * from "./system";
 export * from "./virtual-users";
 export * from "./memory";
 export * from "./knowledge-indexes";
-export * from "./reporting";
 export * from "./observers";

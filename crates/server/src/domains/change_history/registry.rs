@@ -61,7 +61,6 @@ pub enum EntityKind {
     PaymentPolicy,
     Eval,
     EvalCase,
-    SavedReport,
     Session,
 }
 
@@ -103,7 +102,6 @@ impl EntityKind {
         Self::PaymentPolicy,
         Self::Eval,
         Self::EvalCase,
-        Self::SavedReport,
         Self::Session,
     ];
 
@@ -145,7 +143,6 @@ impl EntityKind {
             Self::PaymentPolicy => "payment_policy",
             Self::Eval => "eval",
             Self::EvalCase => "eval_case",
-            Self::SavedReport => "saved_report",
             Self::Session => "session",
         }
     }
@@ -196,7 +193,7 @@ impl EntityKind {
             Self::Eval => "eval",
             Self::EvalCase => "evalcase",
             Self::Session => "session",
-            Self::CheckRule | Self::Schedule | Self::SavedReport => return None,
+            Self::CheckRule | Self::Schedule => return None,
         })
     }
 
@@ -250,7 +247,6 @@ impl EntityKind {
             Self::Budget => &budgets::BUDGET_VIEW,
             Self::PaymentAccount | Self::PaymentPolicy => &payments::PAYMENT_VIEW,
             Self::Eval | Self::EvalCase => &evals::service::EVAL_VIEW,
-            Self::SavedReport => &reporting::REPORT_VIEW,
             // Session metadata is private to its participants, which a role
             // policy cannot express; `history list` also checks the session.
             Self::Session => &sessions::service::SESSION_VIEW,
@@ -298,7 +294,6 @@ impl EntityKind {
             Self::Budget => &budgets::BUDGET_MANAGE,
             Self::PaymentAccount | Self::PaymentPolicy => &payments::PAYMENT_MANAGE,
             Self::Eval | Self::EvalCase => &evals::service::EVAL_MANAGE,
-            Self::SavedReport => &reporting::REPORT_MANAGE,
             Self::Session => &sessions::service::SESSION_MANAGE,
         }
     }
@@ -353,7 +348,6 @@ impl EntityKind {
             Self::PaymentAccount => ("get_payment_account", "payment_account_id"),
             Self::PaymentPolicy => ("get_payment_policy", "payment_policy_id"),
             Self::Eval => ("get_eval", "eval_id"),
-            Self::SavedReport => ("get_saved_report", "report_id"),
             Self::Session => ("get_session", "session_id"),
             Self::CheckRule
             | Self::AgentChannel
@@ -702,7 +696,7 @@ pub fn declared(name: &str) -> Change {
         "update_payment_policy" => on(K::PaymentPolicy, Updated, ID),
         "disable_payment_policy" => on(K::PaymentPolicy, Disabled, Param("payment_policy_id")),
 
-        // Evaluation and reporting.
+        // Evaluation.
         "create_eval" => on(K::Eval, Created, ID),
         "update_eval" => on(K::Eval, Updated, ID),
         "delete_eval" => on(K::Eval, Deleted, Param("eval_id")),
@@ -731,16 +725,6 @@ pub fn declared(name: &str) -> Change {
         }
         "create_eval_run_share" | "revoke_eval_run_share" | "export_eval_run_dataset" => {
             Change::Exempt("sharing or exporting a run's results")
-        }
-
-        "create_saved_report" => on(K::SavedReport, Created, ID),
-        "update_saved_report" => on(K::SavedReport, Updated, ID),
-        "delete_saved_report" => on(K::SavedReport, Deleted, Param("report_id")),
-        "run_saved_report" | "run_report_query" | "export_report_query" | "export_saved_report" => {
-            Change::Exempt("running or exporting a report")
-        }
-        "run_reporting_projector" | "backfill_reporting" => {
-            Change::Exempt("reporting maintenance rebuilds derived data")
         }
 
         // Sessions: their metadata is recorded, their contents are not.
