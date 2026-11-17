@@ -42,6 +42,12 @@ pub struct PendingDelivery {
 /// Channel host persistence.
 #[async_trait]
 pub trait ChannelStore: Send + Sync {
+    /// Start delivery only after its durable state is committed. Transactional
+    /// stores override this to discard the task on rollback.
+    fn spawn_delivery(&self, task: futures::future::BoxFuture<'static, ()>) {
+        tokio::spawn(task);
+    }
+
     /// The session bound to `key` on `channel`.
     async fn session_for(&self, channel: &str, key: &str) -> Result<Option<String>, ChannelError>;
 
