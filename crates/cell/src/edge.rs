@@ -81,9 +81,12 @@ const RECORD: &[&str] = &[
     "fork",
     "run",
     "resume",
-    // The pinned sandbox's description, under its older name (`sandbox`
-    // reads are routed by method in `route_for`).
+    // The pinned sandbox: its description (also under its older name), and
+    // pausing, resuming or deleting it. The control plane pinned it and
+    // holds the provider account; the session's cell holds its state
+    // (`domains/session_sandbox/plane.rs` in the server).
     "environment",
+    "sandbox",
 ];
 /// The calls on one of a session's messages that the control plane serves
 /// (step 11.6): `messages/{id}/{call}`.
@@ -133,17 +136,9 @@ enum Route {
     Session(SessionId),
 }
 
-#[cfg(test)]
 fn route(path: &str) -> Route {
-    route_for(&Method::POST, path)
-}
-
-/// [`route`], for `method`: reading a session's primary sandbox is a record
-/// (the control plane pinned it), managing it is the data plane's.
-fn route_for(method: &Method, path: &str) -> Route {
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match parts.as_slice() {
-        ["v1", "sessions", _, "sandbox"] if method == Method::GET => Route::ControlPlane,
         ["v1", "sessions", _, "messages", _, call, ..] if MESSAGE_RECORD.contains(call) => {
             Route::ControlPlane
         }
@@ -403,7 +398,7 @@ async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
         let name = name.to_owned();
         return edge.command(name, request).await;
     }
-    let Route::Session(session) = route_for(request.method(), path) else {
+    let Route::Session(session) = route(path) else {
         return edge.to_control_plane(request).await;
     };
     let token = match edge.token_for(request.headers()).await {
@@ -642,12 +637,8 @@ mod tests {
             Route::ControlPlane
         );
         assert_eq!(
-            route_for(&Method::GET, &format!("/v1/sessions/{id}/sandbox")),
+            route(&format!("/v1/sessions/{id}/sandbox")),
             Route::ControlPlane
-        );
-        assert_eq!(
-            route_for(&Method::POST, &format!("/v1/sessions/{id}/sandbox")),
-            Route::Session(id)
         );
         assert_eq!(route(&format!("/v1/sessions/{id}/sse")), Route::Session(id));
         assert_eq!(

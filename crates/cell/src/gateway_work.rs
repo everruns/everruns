@@ -81,8 +81,10 @@ mod tests {
     use everruns_core::events::{EventContext, TurnCompletedData, TurnStartedData};
 
     fn started(session: SessionId, turn: TurnId) -> Event {
-        let mut context = EventContext::default();
-        context.turn_id = Some(turn);
+        let context = EventContext {
+            turn_id: Some(turn),
+            ..Default::default()
+        };
         Event::new(
             session,
             context,

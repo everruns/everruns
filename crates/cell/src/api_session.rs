@@ -39,6 +39,7 @@ pub fn router(node: Arc<Node>) -> Router {
             "/cell/sessions/{session}/storage",
             get(storage).post(change_storage),
         )
+        .route("/cell/sessions/{session}/secrets", get(secrets))
         .with_state(node)
 }
 
@@ -339,6 +340,20 @@ async fn storage(
         &node,
         id,
         crate::session_storage::listed,
+    )))
+}
+
+/// The session's secrets as stored, sealed (`session_storage.rs`), for
+/// the control plane.
+async fn secrets(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+) -> Result<Json<Lookup<Value>>, ApiError> {
+    let id = parse(&session)?;
+    Ok(Json(crate::api::lookup(
+        &node,
+        id,
+        crate::session_storage::sealed_secrets,
     )))
 }
 

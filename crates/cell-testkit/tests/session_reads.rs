@@ -145,7 +145,7 @@ async fn the_control_plane_reads_a_v2_session_and_records_a_reaction() {
         .await
         .unwrap();
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = read(&fleet, &cp, &session, "secrets").await;
+    let (status, _) = read(&fleet, &cp, &session, "passwords").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -183,6 +183,16 @@ async fn the_control_plane_reads_and_changes_a_v2_sessions_storage() {
     assert_eq!(listed["values"]["tool_approval/mode"], "auto", "{listed}");
     assert_eq!(listed["secrets"], json!(["TOKEN"]), "{listed}");
     assert!(!listed.to_string().contains("ciphertext"), "{listed}");
+    // The control plane alone reads the secrets, as sealed, to copy them
+    // into a fork or manage the session's sandbox.
+    let (status, stored) = read(&fleet, &cp, &session, "secrets").await;
+    assert_eq!(status, StatusCode::OK, "{stored}");
+    let stored = stored["secrets"]["TOKEN"].as_str().unwrap();
+    assert!(!stored.contains("hunter2"), "{stored}");
+    assert_eq!(
+        seal::open_session_secret(&DATA_KEY, DATA_KEY_ID, ORG, &session, "TOKEN", stored).unwrap(),
+        "hunter2"
+    );
 
     let (_, deleted) = storage(json!({ "kind": "delete_secret", "name": "TOKEN" })).await;
     assert_eq!(deleted, json!(true));

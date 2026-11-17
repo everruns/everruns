@@ -1923,11 +1923,14 @@ answers and MCP form questions (the answer is parked in the session's
 storage and the person's words follow as their message, since the model
 never made the engine's synthetic call), an MCP server's sign-in link
 consent, a fork (the parent's conversation up to the cut seeds the child,
-which is created on the same data plane, and its values are copied), and
-the whole run view (turns from the cell's trace rows). Known differences
-on v2: a cell keeps no timestamps for values and secrets; a fork carries
-messages with their text and media but not tool calls, secrets, files or
-databases; bound secrets are refused.
+which is created on the same data plane, and its values and secrets are
+copied, each secret opened and sealed again for the child), and the whole
+run view (turns from the cell's trace rows). A standalone cell (no control
+plane, so no data plane key) keeps session secrets as written: nothing
+seals them there. Known differences on v2: a cell keeps no timestamps for
+values and secrets; a fork carries messages with their text and media but
+not tool calls, files or databases (a workspace fork comes with the tree
+in the object store, [fs.md](fs.md) step 8); bound secrets are refused.
 
 **11.6 continued: attachments and the Work tab.** Uploads stay org records
 on the control plane. A message that refers to one (`image_file`, `file`)
@@ -1948,6 +1951,24 @@ control plane's rules; the work report is computed on the cell from the
 turn's events with the same reducer; a cell leases no resources, so the
 resources list is empty. Not served on v2 yet: task push-notification
 configs (no delivery on the data plane; the test org uses none).
+
+**11.6 continued: the sandbox panel and schedule spend caps.** Pausing,
+resuming and deleting a v2 session's sandbox is the control plane's, with
+the v1 lifecycle code: it pinned the sandbox and holds the provider
+account, and it starts from the state the agent's sandbox keeps on the
+cell as a sealed session secret, which it reads, opens and writes back
+sealed (`crates/server/src/domains/session_sandbox/plane.rs`). The
+executor's next sandbox call reads that state, so a paused sandbox resumes
+and a deleted one is replaced and restored from the workspace. Idle pause
+is the control plane's sweep: it pauses the sandbox of a v2 session whose
+last turn, from the turn summaries the data plane feeds back, ended longer
+ago than the sandbox's idle limit, once per idle spell
+(`crates/server/src/background/sandbox_idle_sweep.rs`). At 75k sessions a
+cell-owned idle timer may replace it; that is for the decision brief. A
+schedule's spend cap is kept with the schedule on the cell:
+what its latest run's model calls cost is added as their events commit,
+from the same cost the allowance settles, and the schedule stops with
+`budget_exhausted` when the cap is reached (`crates/cell/src/platform.rs`).
 
 ### Corrections after the architecture review (2026-11-09)
 

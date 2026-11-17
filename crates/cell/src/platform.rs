@@ -23,6 +23,11 @@
 //!   11.6): a reaction a person adds or removes. Only [`RECORDABLE`] types
 //!   are taken, so the control plane cannot write the agent's conversation,
 //!   and a retry finds its event by id.
+//! - A schedule's spend cap (`budget_usd`, step 11.6) is kept with the
+//!   schedule: what its runs' model calls cost is added as their events
+//!   commit ([`Platform::charge`]), from the same cost the allowance
+//!   settles, and the schedule stops when its cap is reached. Only its
+//!   latest run is charged, so the record stays one entry per schedule.
 //! - Limits: five active schedules per session, as on every host, checked
 //!   when the create applies, so two concurrent creates cannot both pass.
 //!   The org-wide cap needs a count across cells; it comes with the
@@ -34,7 +39,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::runtime::session_schedule::{
-    MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule, parse_session_cron, stop_reason,
+    MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleBudget, SessionSchedule, parse_session_cron,
+    stop_reason,
 };
 use everruns_contracts::typed_id::{EventId, MessageId, ScheduleId, SessionId};
 use serde::{Deserialize, Serialize};
@@ -56,11 +62,41 @@ pub struct Platform {
     /// Each task's message channel, oldest first.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub task_messages: BTreeMap<String, Vec<everruns_core::session_task::TaskMessage>>,
+    /// The latest run of each schedule with a spend cap: its message id
+    /// and the schedule's id, so what the run costs is charged to it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub charging: BTreeMap<String, String>,
 }
 
 impl Platform {
     pub fn is_empty(&self) -> bool {
         self.schedules.is_empty() && self.tasks.is_empty() && self.task_messages.is_empty()
+    }
+
+    /// Charge `micros` a committed model call cost to the schedule whose
+    /// run it belongs to; the schedule stops when its cap is reached.
+    /// Whether a schedule changed.
+    pub fn charge(&mut self, event: &everruns_core::events::Event, micros: i64) -> bool {
+        let Some(message) = event.context.input_message_id else {
+            return false;
+        };
+        let Some(id) = self.charging.get(&message.to_string()) else {
+            return false;
+        };
+        let Some(schedule) = self.schedules.get_mut(id) else {
+            return false;
+        };
+        let Some(budget) = schedule.budget.as_mut() else {
+            return false;
+        };
+        budget.spent_usd += micros as f64 / 1_000_000.0;
+        if budget.spent_usd >= budget.limit_usd && budget.status != BUDGET_EXHAUSTED {
+            budget.status = BUDGET_EXHAUSTED.to_owned();
+            schedule.enabled = false;
+            schedule.next_trigger_at = None;
+            schedule.stop_reason = Some(stop_reason::BUDGET_EXHAUSTED.to_owned());
+        }
+        true
     }
 
     /// Schedules due at `now_ms`, with the time each was due.
@@ -73,6 +109,24 @@ impl Platform {
 
     fn active(&self) -> u32 {
         self.schedules.values().filter(|s| live(s)).count() as u32
+    }
+}
+
+/// A spend cap's status once it is reached.
+const BUDGET_EXHAUSTED: &str = "exhausted";
+
+/// A schedule's spend cap set to `limit_usd`, keeping what it spent.
+fn budget(schedule: &SessionSchedule, limit_usd: f64) -> ScheduleBudget {
+    let spent_usd = schedule.budget.as_ref().map_or(0.0, |b| b.spent_usd);
+    let status = if spent_usd >= limit_usd {
+        BUDGET_EXHAUSTED
+    } else {
+        "active"
+    };
+    ScheduleBudget {
+        limit_usd,
+        spent_usd,
+        status: status.to_owned(),
     }
 }
 
@@ -136,6 +190,9 @@ pub struct ScheduleChange {
         skip_serializing_if = "Option::is_none"
     )]
     pub max_runs: Option<Option<u32>>,
+    /// Its spend cap in USD; what it spent so far is kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_usd: Option<f64>,
     /// Delete it: it stops for good and leaves the agent's view.
     #[serde(default)]
     pub deleted: bool,
@@ -290,6 +347,9 @@ impl CellState {
                 if let Some(max_runs) = change.max_runs {
                     schedule.max_runs = max_runs;
                 }
+                if let Some(limit) = change.budget_usd {
+                    schedule.budget = Some(budget(schedule, limit));
+                }
                 schedule.updated_at = now;
                 Response::Value {
                     value: json!(schedule),
@@ -387,6 +447,13 @@ fn fire(
         || schedule
             .max_runs
             .is_some_and(|max| schedule.trigger_count >= max);
+    if schedule
+        .budget
+        .as_ref()
+        .is_some_and(|b| b.status == BUDGET_EXHAUSTED)
+    {
+        return not_fired(stop_reason::BUDGET_EXHAUSTED);
+    }
     if advance && ended {
         schedule.enabled = false;
         schedule.next_trigger_at = None;
@@ -429,6 +496,12 @@ fn fire(
     if refused.is_none() {
         schedule.trigger_count = fired.trigger_count;
         schedule.last_triggered_at = Some(now);
+        if schedule.budget.is_some() {
+            let id = schedule.id.to_string();
+            let charging = &mut state.platform.charging;
+            charging.retain(|_, of| *of != id);
+            charging.insert(occurrence.to_string(), id);
+        }
     }
     schedule.updated_at = now;
     if advance {

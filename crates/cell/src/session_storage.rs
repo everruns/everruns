@@ -56,6 +56,14 @@ pub fn listed(state: &SessionState) -> Value {
     })
 }
 
+/// The session's secrets as stored, values included: on a data plane with
+/// a control plane every one is sealed with the org's data key, and only
+/// the control plane reads them, to copy them into a fork and to pause,
+/// resume or delete the session's sandbox with the state it keeps in one.
+pub fn sealed_secrets(state: &SessionState) -> Value {
+    json!({ "secrets": state.authority.secrets })
+}
+
 /// Why `op` may not change `session`'s storage, if it may not.
 pub fn refused(session: SessionId, op: &StorageOp) -> Option<String> {
     let (key, value) = match op {
@@ -159,6 +167,20 @@ mod tests {
         assert_eq!(listed["values"]["k"], "v");
         assert_eq!(listed["secrets"], json!(["TOKEN"]));
         assert!(!listed.to_string().contains("sealed"));
+    }
+
+    #[test]
+    fn sealed_secrets_are_read_as_stored() {
+        let mut state = SessionState::default();
+        assert_eq!(sealed_secrets(&state), json!({ "secrets": {} }));
+        state
+            .authority
+            .secrets
+            .insert("TOKEN".into(), "sealed-token".into());
+        assert_eq!(
+            sealed_secrets(&state),
+            json!({ "secrets": { "TOKEN": "sealed-token" } })
+        );
     }
 
     #[test]

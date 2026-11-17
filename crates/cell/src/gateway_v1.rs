@@ -749,8 +749,8 @@ async fn get_schedule(
 }
 
 /// `PATCH /v1/sessions/{id}/schedules/{schedule_id}`: the control plane's
-/// body; an empty one enables the schedule. A spend cap needs metering a
-/// cell does not have yet (11.6), so `budget_usd` is refused.
+/// body; an empty one enables the schedule. `budget_usd` caps what its
+/// runs spend (`platform.rs`).
 async fn update_schedule(
     State(gateway): State<Arc<Gateway>>,
     Path((session, schedule)): Path<(String, String)>,
@@ -758,15 +758,22 @@ async fn update_schedule(
 ) -> Result<Json<Value>, ApiError> {
     let session = parse(&session)?;
     let id = schedule_id(&schedule)?;
-    if body.get("budget_usd").is_some_and(|v| !v.is_null()) {
-        return Err((
-            StatusCode::NOT_IMPLEMENTED,
-            "a schedule budget is not available yet for sessions on a v2 data plane".into(),
-        ));
-    }
     let mut change: crate::platform::ScheduleChange =
         serde_json::from_value(body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    if change.enabled.is_none() && change.ends_at.is_none() && change.max_runs.is_none() {
+    if change
+        .budget_usd
+        .is_some_and(|limit| !limit.is_finite() || limit <= 0.0)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "budget_usd must be a positive amount in USD".into(),
+        ));
+    }
+    if change.enabled.is_none()
+        && change.ends_at.is_none()
+        && change.max_runs.is_none()
+        && change.budget_usd.is_none()
+    {
         change.enabled = Some(true);
     }
     change.deleted = false;

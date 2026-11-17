@@ -48,16 +48,35 @@ impl Command for ManageSessionSandbox {
 
     async fn execute(self, ctx: &Ctx) -> Result<ManageSessionSandboxResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session_access(ctx, session_id).await?;
-
         let service = q::session_sandbox_service(ctx)?;
-        let config = service
-            .config_for_session(session_id)
-            .await?
-            .ok_or_else(|| {
-                CommandError::bad_request("Session sandbox is not configured for this session")
-            })?;
-        let tool_context = service.tool_context(session_id).await;
+        // A v2 session: the pinned sandbox, its state on the session's cell
+        // (`plane.rs`).
+        let plane =
+            crate::domains::session_storage::plane::PlaneStorage::of(ctx, session_id).await?;
+        let (config, tool_context) = match plane {
+            Some(plane) => {
+                crate::domains::session_storage::queries::verify_session_ownership(
+                    &ctx.db,
+                    ctx.org_id(),
+                    session_id,
+                )
+                .await?;
+                let config = super::plane::config(&ctx.db, session_id).await?;
+                let storage = super::plane::PlaneSandboxStorage::new(plane);
+                (
+                    config,
+                    service.plane_tool_context(session_id, storage).await,
+                )
+            }
+            None => {
+                q::verify_session_access(ctx, session_id).await?;
+                let config = service.config_for_session(session_id).await?;
+                (config, service.tool_context(session_id).await)
+            }
+        };
+        let config = config.ok_or_else(|| {
+            CommandError::bad_request("Session sandbox is not configured for this session")
+        })?;
 
         match self.action {
             SessionSandboxAction::Pause => {

@@ -7,10 +7,13 @@
 //!   agent's messages with their text and media. Tool calls and their
 //!   results stay behind: a seeded call without its result would be
 //!   refused by a model provider.
-//! - The parent's values are copied into the child's storage on its cell.
-//!   Its secrets, files, databases and compaction checkpoints are not yet:
-//!   the fork starts without them (recorded in design.md as a v2
-//!   difference).
+//! - The parent's values and secrets are copied into the child's storage on
+//!   its cell; a secret is opened with the org's data key and sealed again
+//!   for the child, and the sandbox's state stays with the parent. Its
+//!   files, databases and compaction checkpoints are not yet: a workspace
+//!   fork comes with the workspace's tree in the object store (fs.md, step
+//!   8), and the fork starts without them until then (design.md records
+//!   it as a v2 difference).
 //! - Branching from a message stops where v1 stops: at the end of the turn
 //!   the message started, or at the message itself.
 
@@ -90,7 +93,7 @@ pub(crate) async fn cut_on_plane(
 }
 
 /// Seed `child` with `parent`'s conversation up to `cut` and copy its
-/// values; the fork's sequence (the last event copied from).
+/// values and secrets; the fork's sequence (the last event copied from).
 pub(crate) async fn seed_fork(
     db: &std::sync::Arc<crate::storage::StorageBackend>,
     org_id: i64,
@@ -129,6 +132,20 @@ pub(crate) async fn seed_fork(
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     for (key, value) in listed.values {
         to.set_value(&key, &value)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    }
+    // Secrets are opened here and sealed again for the child: each is bound
+    // to its session. The sandbox's state stays: the child gets its own.
+    let secrets = from
+        .secrets()
+        .await
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    for (name, value) in secrets {
+        if name == everruns_contracts::session_sandbox::SESSION_SANDBOX_SECRET_NAME {
+            continue;
+        }
+        to.set_secret(&name, &value)
             .await
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     }

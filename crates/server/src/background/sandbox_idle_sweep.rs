@@ -64,6 +64,7 @@ pub fn idle_sweep_job(pool: PgPool, service: Option<Arc<SessionSandboxService>>)
 
 async fn sweep(pool: &PgPool, service: &SessionSandboxService) {
     pause_overdue(pool, service).await;
+    pause_idle_on_data_planes(pool, service).await;
     delete_expired(pool, service).await;
 }
 
@@ -85,6 +86,34 @@ async fn delete_expired(pool: &PgPool, service: &SessionSandboxService) {
             Err(e) => {
                 warn!(session_id = %session_id, error = %e, "Sandbox retention delete failed")
             }
+        }
+    }
+}
+
+/// Sessions on a data plane: their sandbox's state is on their cell
+/// (`domains/session_sandbox/plane.rs`).
+async fn pause_idle_on_data_planes(pool: &PgPool, service: &SessionSandboxService) {
+    use crate::domains::session_sandbox::plane;
+    let idle = match plane::idle_on_data_planes(pool, SWEEP_PERIOD, SWEEP_BATCH).await {
+        Ok(idle) => idle,
+        Err(e) => {
+            warn!(error = %e, "Data plane sandbox idle sweep query failed");
+            return;
+        }
+    };
+    for (session, org_id, activity) in idle {
+        let session_id = everruns_contracts::typed_id::SessionId::from_uuid(session);
+        match plane::pause_idle(service, org_id, session_id).await {
+            Ok(true) => info!(session_id = %session_id, "Paused idle Sandbox on a data plane"),
+            Ok(false) => {}
+            Err(e) => {
+                warn!(session_id = %session_id, error = %e, "Data plane Sandbox idle pause failed")
+            }
+        }
+        // Handled for this idle spell even when it failed, so one sandbox
+        // whose provider keeps refusing never holds the batch.
+        if let Err(e) = plane::idle_handled(pool, session, activity).await {
+            warn!(session_id = %session_id, error = %e, "Sandbox idle mark failed");
         }
     }
 }

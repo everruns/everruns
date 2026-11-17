@@ -92,8 +92,10 @@ impl PlaneStorage {
             .map(|v| v.as_bool().unwrap_or(false))
     }
 
-    /// Seal `value` for this session and `name`, and store it.
-    pub async fn set_secret(&self, name: &str, value: &str) -> Result<(), CommandError> {
+    /// The org's data key and its id.
+    async fn data_key(
+        &self,
+    ) -> Result<(everruns_contracts::dataplane_seal::Key, String), CommandError> {
         let org = self
             .cp
             .db
@@ -104,9 +106,51 @@ impl PlaneStorage {
                 CommandError::internal(anyhow::anyhow!("the org is not on a data plane"))
             })?;
         let key = self.cp.data_key(&org).map_err(CommandError::internal)?;
+        Ok((key, org.data_key_id))
+    }
+
+    /// The session's secrets, opened: what a fork copies, and the
+    /// sandbox's state (`domains/session_sandbox/plane.rs`). Only the
+    /// control plane holds the org's data key; the cell hands them over
+    /// sealed.
+    pub async fn secrets(&self) -> Result<BTreeMap<String, String>, CommandError> {
+        #[derive(Deserialize)]
+        struct Stored {
+            #[serde(default)]
+            secrets: BTreeMap<String, String>,
+        }
+        let read = self
+            .plane
+            .read("secrets")
+            .await
+            .map_err(CommandError::internal)?;
+        let stored: Stored =
+            serde_json::from_value(read).map_err(|e| CommandError::internal(e.into()))?;
+        if stored.secrets.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let (key, key_id) = self.data_key().await?;
+        let org = org_public(self.org_id);
+        let session = self.plane.session.to_string();
+        stored
+            .secrets
+            .into_iter()
+            .map(|(name, sealed)| {
+                everruns_contracts::dataplane_seal::open_session_secret(
+                    &key, &key_id, &org, &session, &name, &sealed,
+                )
+                .map(|plain| (name, plain))
+                .map_err(|e| CommandError::internal(anyhow::anyhow!(e.to_string())))
+            })
+            .collect()
+    }
+
+    /// Seal `value` for this session and `name`, and store it.
+    pub async fn set_secret(&self, name: &str, value: &str) -> Result<(), CommandError> {
+        let (key, key_id) = self.data_key().await?;
         let sealed = everruns_contracts::dataplane_seal::seal_session_secret(
             &key,
-            &org.data_key_id,
+            &key_id,
             &org_public(self.org_id),
             &self.plane.session.to_string(),
             name,
