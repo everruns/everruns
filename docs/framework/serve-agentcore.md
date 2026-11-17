@@ -230,7 +230,7 @@ For `openai/<model>` agents, set `OPENAI_API_KEY`; optional `OPENAI_BASE_URL`
 selects a compatible Responses API endpoint. Serve strips only the first
 `openai/` prefix. An endpoint that expects `target/model` therefore needs an
 agent model of `openai/target/model`. An endpoint that expects
-`openai/gpt-6.1-sol` needs `openai/openai/gpt-6.1-sol` in the agent definition.
+`openai/gpt-6.2-sol` needs `openai/openai/gpt-6.2-sol` in the agent definition.
 Configure the endpoint's credential as `OPENAI_API_KEY`.
 
 Without an explicit OpenAI URL/key pair, `OPENROUTER_API_KEY` routes

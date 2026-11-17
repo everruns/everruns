@@ -1,5 +1,5 @@
 //! Smallest useful Everruns program: compose an agent, run a typed tool, inspect
-//! the turn, and observe its event stream with `gpt-6.1-sol`.
+//! the turn, and observe its event stream with `gpt-6.2-sol`.
 //!
 //! ```text
 //! cargo run -p everruns --features openai --example hello
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name("hello")
         .instructions("Use unix_time to answer time questions. Be terse.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .tool(unix_time())
         .build()?;
 

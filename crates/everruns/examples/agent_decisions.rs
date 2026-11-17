@@ -12,7 +12,7 @@ use everruns::{Agent, Engine, Jev, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("OpenAI gpt-6.1-sol, classifying through TypeSafe.\n");
+    println!("OpenAI gpt-6.2-sol, classifying through TypeSafe.\n");
 
     // The same tool the hosted capability contributes, attached to an agent you
     // build yourself. The key is the application's own.
@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              jev_decision and report the numbers rather than judging by eye.",
         )
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .capability(jev)
         .build()?;
 

@@ -2,7 +2,7 @@
 
 An Everruns agent that opens a browser on a Sandbox desktop and reviews the
 recent posts of an X account. It is the end-to-end check for desktops in
-Sandbox Templates: a real model (`gpt-6.1-sol`) drives a real Daytona, E2B or
+Sandbox Templates: a real model (`gpt-6.2-sol`) drives a real Daytona, E2B or
 Isolated sandbox desktop through the `computer` tool, with no scripted steps.
 
 The agent definition is [`desktop-x-review.md`](desktop-x-review.md). The
@@ -40,7 +40,7 @@ The first run saves the provider key as an organization account named
 `Desktop X review (daytona)` (or `e2b`) and creates the agent; later runs reuse
 both. `EVERRUNS_API_URL` (default `http://localhost:27100/api`),
 `EVERRUNS_API_KEY`, `EVERRUNS_ORG` and `EVERRUNS_MODEL` (default
-`gpt-6.1-sol`) point it elsewhere.
+`gpt-6.2-sol`) point it elsewhere.
 
 ## Expected outcome
 

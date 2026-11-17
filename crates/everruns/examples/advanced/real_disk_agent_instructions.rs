@@ -8,7 +8,7 @@
 //      never in the system prompt.
 //   2. Edit AGENTS.md on disk → the change appears on the next turn (the
 //      capability re-reads every `load_context`).
-//   3. A real model (OpenAI `gpt-6.1-sol`) follows whichever rules are on disk
+//   3. A real model (OpenAI `gpt-6.2-sol`) follows whichever rules are on disk
 //      at the time of each turn. Set `OPENAI_API_KEY`.
 //
 // Run with:
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
         .provider(everruns::OpenAI::from_env()?.into())
-        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
+        .default_model(ModelSpec::on("openai", "gpt-6.2-sol"))
         .harness(everruns_core::host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {

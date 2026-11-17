@@ -236,8 +236,8 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::openai_gpt54(OPENAI_GPT54)]
 // Include GPT-6 Astra in the reasoning-plus-tool-call scenario; its
 // reasoning artifacts can carry opaque replay state without summary text.
-#[case::openai_gpt6_astra(OPENAI_GPT6_ASTRA)]
-#[case::openai_gpt61_sol(OPENAI_GPT61_SOL)]
+#[case::openai_gpt62_astra(OPENAI_GPT62_ASTRA)]
+#[case::openai_gpt62_sol(OPENAI_GPT62_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 // Gemini binds a thoughtSignature to the function-call part it belongs to;

@@ -14,7 +14,7 @@ use everruns::{Agent, Engine, OpenAI};
 let agent = Agent::builder()
     .instructions("Answer in one short sentence.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .build()?;
 
 let engine = Engine::new();

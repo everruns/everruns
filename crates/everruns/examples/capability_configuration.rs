@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Use configured capabilities when relevant. Be terse.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .capability(CompactionConfig::new().budget_percent(0.85))
         .capability(ToolSearch::automatic())
         .capability(weather_definition)

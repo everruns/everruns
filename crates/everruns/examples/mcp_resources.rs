@@ -1,7 +1,7 @@
 //! Read an MCP server's resources: the agent lists what the server publishes
 //! with `list_mcp_resources`, then reads one with `read_mcp_resource`. Uses
 //! the MCP reference server (`@modelcontextprotocol/server-everything`, run
-//! with `npx`, so Node.js is required) and `gpt-6.1-sol`.
+//! with `npx`, so Node.js is required) and `gpt-6.2-sol`.
 //!
 //! ```text
 //! cargo run -p everruns --features openai,mcp-stdio --example mcp_resources
@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              reading, and say which resource URI each fact came from. Be terse.",
         )
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .mcp_server(everything)
         .build()?;
 

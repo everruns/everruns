@@ -600,14 +600,14 @@ pub const OPENAI_RECOMMENDED: everruns_contracts::recommended_models::ProviderRe
     everruns_contracts::recommended_models::ProviderRecommendedModels {
         provider: "openai",
         recommended_models: &[
-            "gpt-6.1-sol",
+            "gpt-6.2-sol",
             "gpt-6.1-terra",
             "gpt-6-luna",
-            "gpt-6-astra",
+            "gpt-6.2-astra",
             "gpt-6-luna-decisions",
         ],
-        coding_model: "gpt-6.1-sol",
-        research_model: "gpt-6-astra",
+        coding_model: "gpt-6.2-sol",
+        research_model: "gpt-6.2-astra",
         chat_model: "gpt-6-luna",
         small_model: "gpt-6-luna",
         decision_model: "gpt-6-luna-decisions",
@@ -633,7 +633,7 @@ pub const AZURE_OPENAI_RECOMMENDED:
     };
 
 /// Curated model recommendations for this provider (legacy completions endpoint,
-/// same GPT family).
+/// GPT-6.2 tool calling requires Responses, so retain compatible GPT-6.1/6 models here).
 pub const OPENAI_COMPLETIONS_RECOMMENDED:
     everruns_contracts::recommended_models::ProviderRecommendedModels =
     everruns_contracts::recommended_models::ProviderRecommendedModels {

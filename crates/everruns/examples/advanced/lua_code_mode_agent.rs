@@ -6,7 +6,7 @@
 //! them as ordinary tool calls — instead it drives them from inside a single
 //! `lua` script via the code-mode `tools.<name>(args)` table.
 //!
-//! The model is OpenAI `gpt-6.1-sol` (set `OPENAI_API_KEY`). Given an
+//! The model is OpenAI `gpt-6.2-sol` (set `OPENAI_API_KEY`). Given an
 //! arithmetic task, it writes a `lua` script that orchestrates the hidden math
 //! tools and saves the result to the workspace.
 //!
@@ -90,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
         .provider(everruns::OpenAI::from_env()?.into())
-        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
+        .default_model(ModelSpec::on("openai", "gpt-6.2-sol"))
         .harness(harness)
         .agent(agent)
         .session(session)

@@ -11,12 +11,12 @@ small external host application, not like an internal crate-local demo.
 - **a host answering the agent's questions** — an `AskUser` responder reading a
   real terminal, which is the half of `ask_user` an embedding host owns
 - seeded workspace files available inside a Framework session
-- an in-process turn on a real model (`gpt-6.1-sol` via OpenAI)
+- an in-process turn on a real model (`gpt-6.2-sol` via OpenAI)
 - how to inspect the resulting context and observe session events
 
 ## Credentials
 
-`OPENAI_API_KEY`. The agent runs on OpenAI's `gpt-6.1-sol`; the venue data is
+`OPENAI_API_KEY`. The agent runs on OpenAI's `gpt-6.2-sol`; the venue data is
 a hardcoded list in `src/lib.rs` and never leaves the process except as tool
 results the model reads.
 

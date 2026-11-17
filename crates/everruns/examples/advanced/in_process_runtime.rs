@@ -4,7 +4,7 @@
 //! Framework instead; this example is for advanced hosts that assemble the
 //! platform, capability registry, and per-type builders themselves.
 //!
-//! The agent runs against OpenAI `gpt-6.1-sol`; set `OPENAI_API_KEY`.
+//! The agent runs against OpenAI `gpt-6.2-sol`; set `OPENAI_API_KEY`.
 //!
 //! Run it:
 //!
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
         .provider(everruns::OpenAI::from_env()?.into())
-        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
+        .default_model(ModelSpec::on("openai", "gpt-6.2-sol"))
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
                 .with_capability("test_math")

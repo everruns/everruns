@@ -41,7 +41,7 @@ use the hosted gateway (`https://ai-gateway.vercel.sh/v1`).
 ## Models
 
 Model ids are namespaced by upstream provider — `anthropic/claude-opus-5`,
-`openai/gpt-6-astra` — and are passed through to the gateway unchanged. The
+`openai/gpt-6.2-astra` — and are passed through to the gateway unchanged. The
 [AI Gateway model catalog](https://vercel.com/ai-gateway/models) lists what is
 available. After a sync they appear in the model pickers; Everruns matches a
 namespaced id against its model profile registry for capability and cost

@@ -40,7 +40,7 @@ let client = AuthorityClient::new(
 let agent = Agent::builder()
     .instructions("Answer concisely.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .build()?;
 let build = AgentBuild::new("assistant", "immutable-build-v1");
 let engine = Engine::builder()

@@ -92,7 +92,7 @@ moving every research agent to a new flagship is one change.
 
 Left on **Automatic**, it resolves when used: Anthropic's recommended research
 model (Claude Fable 5.2) when an Anthropic provider is connected, else OpenAI's
-(GPT-6 Astra), else another connected provider's recommendation, else the
+(GPT-6.2 Astra), else another connected provider's recommendation, else the
 default model. The row shows what Automatic picks today.
 
 Use `PATCH /v1/orgs/{org_id}` to set `research_model_id`, or `null` to return

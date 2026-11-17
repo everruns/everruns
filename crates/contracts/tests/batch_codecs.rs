@@ -114,3 +114,34 @@ async fn malformed_successes_are_rejected_without_exposing_the_payload() {
     failed["status"] = json!("failed");
     assert!(responses.decode_batch_response(failed).await.is_err());
 }
+
+#[test]
+fn gpt_62_completions_batches_allow_text_but_reject_tools_and_tool_history() {
+    let driver = OpenAIProtocolChatDriver::new();
+    for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
+        let mut config = config();
+        config.model = model.into();
+        let messages = [Message::text(MessageRole::User, "Hello")];
+        let error = driver.encode_batch_request(&messages, &config).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("tool calling requires the Responses API")
+        );
+        config.tools.clear();
+        assert!(driver.encode_batch_request(&messages, &config).is_ok());
+        let history = [Message::text(MessageRole::Tool, "result")];
+        assert!(driver.encode_batch_request(&history, &config).is_err());
+        config.speed = Some("ultrafast".into());
+        assert!(
+            driver
+                .encode_batch_request_for_url(
+                    "https://eu.api.openai.com/v1/chat/completions",
+                    &messages,
+                    &config
+                )
+                .is_err()
+        );
+        assert!(driver.encode_batch_request(&messages, &config).is_ok());
+    }
+}

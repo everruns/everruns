@@ -85,6 +85,24 @@ Models are discovered when the provider is created and on each sync. OpenAI's
 `/models` listing carries only identifiers, so capability and cost metadata come
 from Everruns' built-in model profiles, matched by model id.
 
+### GPT-6.2 Astra and Sol
+
+Use `gpt-6.2-sol` for the current balanced model or `gpt-6.2-astra` for the
+flagship. Explicit previous model IDs remain available; the budget default is
+still `gpt-6-luna`.
+
+Both GPT-6.2 models require the **Responses API for function tools**. Reasoning
+levels are `low`, `medium` (the default), `high`, `xhigh`, and `max`; `none` and
+`minimal` are rejected before sending. Standard, Fast (`fast` or `priority`),
+and Ultrafast are supported, but Flex is not. Ultrafast requires a US processing
+endpoint and costs 3x Standard through February 28, 2027, then 6x from March 1
+Pacific time. Fast is 2x Standard.
+
+Keep prior conversation input and encrypted reasoning items unchanged. Append
+new instructions instead of rewriting earlier messages: GPT-6.2 may drop
+reasoning after prefix edits, model downgrades, or user/organization changes.
+See [OpenAI's migration guide](https://developers.openai.com/api/docs/guides/latest-model).
+
 ## Links
 
 - [OpenAI Platform](https://platform.openai.com/)

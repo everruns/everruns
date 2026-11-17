@@ -10,7 +10,7 @@ client metadata (`/v1/poppy/agent.json`, the URL that is its `client_id`) and
 its key (`/v1/poppy/jwks.json`). Companies fetch both to check the agent's
 assertions, so they must be reachable over HTTPS at a public address.
 
-It runs on OpenAI's `gpt-6.1-sol`. A run against
+It runs on OpenAI's `gpt-6.2-sol`. The following earlier run used `gpt-6.1-sol` against
 [pi-poppy](https://github.com/richardanaya/pi-poppy)'s company, which asks a
 signed-out person to sign in before it discusses an order:
 

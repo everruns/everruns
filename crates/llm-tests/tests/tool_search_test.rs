@@ -822,7 +822,7 @@ async fn test_anthropic_tool_reveal_keeps_prompt_cache(#[case] config: ProviderM
 /// The OpenAI counterpart: the reveal rides in an `additional_tools` item, so
 /// the request after it still reads the cached prefix.
 #[rstest]
-#[case::openai_gpt6_1_sol(OPENAI_GPT61_SOL)]
+#[case::openai_gpt6_2_sol(OPENAI_GPT62_SOL)]
 #[case::openai_gpt6_luna(OPENAI_GPT6_LUNA)]
 #[case::gpt56_terra(OPENAI_GPT56_TERRA)]
 #[tokio::test]

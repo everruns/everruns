@@ -106,7 +106,7 @@ impl Capability for RepoPolicy {
 let agent = Agent::builder()
     .instructions("You maintain this repository.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .host_services(HostServices::new().capability(RepoPolicy))
     .build()?;
 let session = Engine::new().create(agent);
@@ -142,7 +142,7 @@ let mut drivers = DriverRegistry::new();
 everruns::drivers::openai::register_driver(&mut drivers);
 let agent = Agent::builder()
     .instructions("You are concise.")
-    .model(Model::on("team-openai", "gpt-6.1-sol"))
+    .model(Model::on("team-openai", "gpt-6.2-sol"))
     .host_services(HostServices::new().providers(HostProviders::new(store, drivers)))
     .build()?;
 # let _ = agent;
@@ -177,7 +177,7 @@ let metadata = RequestMetadata::new()
 let agent = Agent::builder()
     .instructions("You are concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .host_services(HostServices::new().request_metadata(metadata))
     .build()?;
 let session = Engine::new().create(agent);

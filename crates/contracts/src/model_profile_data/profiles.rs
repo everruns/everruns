@@ -463,6 +463,18 @@ static REGISTRY: &[ModelDescriptor] = &[
         ModelVendor::OpenAi,
         OPENAI,
     ),
+    // GPT-6.2 supports text-only Chat Completions; tool calling requires Responses.
+    // Keep pricing/limits on that surface, with capabilities masked below.
+    md(
+        &["gpt-6.2-astra", "openai/gpt-6.2-astra"],
+        ModelVendor::OpenAi,
+        &["openai", "openrouter", "vercel", "openai_completions"],
+    ),
+    md(
+        &["gpt-6.2-sol", "openai/gpt-6.2-sol"],
+        ModelVendor::OpenAi,
+        &["openai", "openrouter", "vercel", "openai_completions"],
+    ),
     // Anthropic
     md(&["claude-fable-5-2"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-mythos-5-2"], ModelVendor::Anthropic, ANTHROPIC),
@@ -731,6 +743,12 @@ pub fn get_model_profile(provider_type: &str, model_id: &str) -> Option<ModelPro
     // so only the first-party OpenAI surface keeps the selector.
     if provider_type != "openai" {
         profile.verbosity = None;
+    }
+    if provider_type == "openai_completions"
+        && matches!(profile.family.as_str(), "gpt-6.2-astra" | "gpt-6.2-sol")
+    {
+        profile.tool_call = false;
+        profile.supported_parameters.clear();
     }
     image_profiles::mask_for_surface(provider_type, &mut profile);
     Some(profile)

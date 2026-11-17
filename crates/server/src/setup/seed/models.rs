@@ -6,6 +6,10 @@
 use super::seed_ids;
 use uuid::Uuid;
 
+// New seed identities must not replace existing saved-model identities.
+const GPT_6_2_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022f);
+const GPT_6_2_ASTRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000230);
+
 /// Seed LLM model definition
 pub(super) struct SeedModel {
     pub(super) id: Uuid,
@@ -62,14 +66,31 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         enabled: true, // Enabled by default
         is_favorite: false,
     },
+    // Current GPT-6.2 recommendations; retain previous IDs for saved sessions.
+    SeedModel {
+        id: GPT_6_2_SOL,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-6.2-sol",
+        display_name: "GPT-6.2 Sol",
+        enabled: true,
+        is_favorite: true,
+    },
+    SeedModel {
+        id: GPT_6_2_ASTRA,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-6.2-astra",
+        display_name: "GPT-6.2 Astra",
+        enabled: true,
+        is_favorite: true,
+    },
     // OpenAI GPT-6 series (Astra / Sol / Luna, and the GPT-6.1 Sol refresh)
     SeedModel {
         id: seed_ids::GPT_6_1_SOL,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-6.1-sol",
         display_name: "GPT-6.1 Sol",
-        enabled: true,     // Enabled by default
-        is_favorite: true, // Favorite model
+        enabled: true,      // Enabled by default
+        is_favorite: false, // Superseded by GPT-6.2 Sol
     },
     SeedModel {
         id: seed_ids::GPT_6_1_TERRA,
@@ -80,21 +101,20 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         is_favorite: false,
     },
     SeedModel {
-        // GPT-6 Astra is OpenAI's flagship, available as an enabled favorite
-        // for the hardest reasoning/agentic work.
+        // Retained for saved sessions, superseded by GPT-6.2 Astra.
         id: seed_ids::GPT_6_ASTRA,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-6-astra",
         display_name: "GPT-6 Astra",
-        enabled: true,     // Enabled by default
-        is_favorite: true, // Favorite model
+        enabled: true, // Enabled by default
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GPT_6_SOL,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-6-sol",
         display_name: "GPT-6 Sol",
-        // Keep the legacy model available without recommending it over GPT-6.1 Sol.
+        // Keep the legacy model available without recommending it over GPT-6.2 Sol.
         enabled: true,
         is_favorite: false,
     },
@@ -602,3 +622,40 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         is_favorite: false,
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gpt_62_refresh_preserves_model_identities_and_luna_default() {
+        let mut ids = std::collections::HashSet::new();
+        for model in SEED_MODELS {
+            assert!(
+                ids.insert(model.id),
+                "duplicate seed id: {}",
+                model.model_id
+            );
+        }
+        let openai = |id| {
+            SEED_MODELS
+                .iter()
+                .find(|model| {
+                    model.provider_id == seed_ids::OPENAI_PROVIDER && model.model_id == id
+                })
+                .expect("seed model exists")
+        };
+        for id in ["gpt-6.2-sol", "gpt-6.2-astra", "gpt-6-luna"] {
+            assert!(openai(id).enabled);
+            assert!(openai(id).is_favorite);
+        }
+        for (id, seed_id) in [
+            ("gpt-6.1-sol", seed_ids::GPT_6_1_SOL),
+            ("gpt-6-astra", seed_ids::GPT_6_ASTRA),
+        ] {
+            assert_eq!(openai(id).id, seed_id);
+            assert!(openai(id).enabled);
+            assert!(!openai(id).is_favorite);
+        }
+    }
+}

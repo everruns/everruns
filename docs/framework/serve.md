@@ -410,7 +410,7 @@ use serve::prelude::*;
 #[agent(default)]
 fn analyst() -> Agent {
     Agent::builder()
-        .model("openai/gpt-6.1-sol")
+        .model("openai/gpt-6.2-sol")
         .instructions(md!("instructions.md"))
         .member("reviewer")
         .build()

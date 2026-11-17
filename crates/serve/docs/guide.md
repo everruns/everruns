@@ -227,7 +227,7 @@ immediately with `curl -X POST localhost:3000/dev/schedules/weekly`.
 #[agent(default)]
 fn analyst() -> Agent {
     Agent::builder()
-        .model("openai/gpt-6.1-sol")
+        .model("openai/gpt-6.2-sol")
         .member("reviewer") // another #[agent] of this app
         .build()
 }

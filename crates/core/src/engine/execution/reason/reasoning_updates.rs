@@ -1,4 +1,4 @@
-//! Durable Astra effort snapshots and their ordered request projections.
+//! Durable OpenAI effort snapshots and their ordered request projections.
 //!
 //! Snapshots live on completed assistant events, so the immutable transcript is
 //! the source of truth across worker restarts. Checkpoints retain the same state
@@ -20,13 +20,14 @@ pub(super) struct ReasoningReplay {
     pub reset_continuation: bool,
 }
 
-fn snapshot(message: &RuntimeMessage) -> Option<ReasoningState> {
+fn snapshot(message: &RuntimeMessage, model: &str) -> Option<ReasoningState> {
     if message.role != RuntimeMessageRole::Agent {
         return None;
     }
     let metadata = message.metadata.as_ref()?;
     if metadata.get("provider")?.as_str()? != "openai"
-        || metadata.get("model")?.as_str()? != "gpt-6-astra"
+        || !supports_configuration_updates(model)
+        || metadata.get("model")?.as_str()? != model
     {
         return None;
     }
@@ -58,7 +59,7 @@ pub(super) fn prepare(
         .iter()
         .rposition(|message| message.role == RuntimeMessageRole::Agent);
     let prior = last_assistant
-        .and_then(|index| snapshot(messages[index]))
+        .and_then(|index| snapshot(messages[index], model))
         .or_else(|| {
             if last_assistant.is_none() {
                 checkpoint.cloned()
@@ -104,7 +105,7 @@ pub(super) fn prepare(
         if message.role != RuntimeMessageRole::Agent {
             continue;
         }
-        if let Some(saved) = snapshot(message).filter(|saved| saved.epoch == state.epoch) {
+        if let Some(saved) = snapshot(message, model).filter(|saved| saved.epoch == state.epoch) {
             if let Some(next) = saved.effective.filter(|next| Some(*next) != effort) {
                 // A pure resume can have no new input: in that case the update
                 // directly precedes the assistant output it configured.
@@ -185,6 +186,28 @@ mod tests {
         let restored = plan(&messages, Some(High), None);
         assert_eq!(restored.state.effective, Some(Max));
         assert_eq!(restored.state.pending, None);
+    }
+
+    #[test]
+    fn gpt_62_restores_only_the_same_models_reasoning_snapshot() {
+        for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
+            let first =
+                prepare(&[user(Some(Low))], "openai", model, Some(Low), None, None).unwrap();
+            let mut saved = completed(&first.state);
+            saved
+                .metadata
+                .as_mut()
+                .unwrap()
+                .insert("model".into(), serde_json::json!(model));
+            let restored =
+                prepare(&[saved.clone()], "openai", model, Some(Low), None, None).unwrap();
+            assert_eq!(restored.state.epoch, first.state.epoch);
+            assert!(!restored.reset_continuation);
+            let changed =
+                prepare(&[saved], "openai", "gpt-6-astra", Some(Low), None, None).unwrap();
+            assert_ne!(changed.state.epoch, first.state.epoch);
+            assert!(changed.reset_continuation);
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! The example against an independent company: pi-poppy's `CompanyServer`
 //! (github.com/richardanaya/pi-poppy), run by
-//! `scripts/poppy-interop/company.ts`, with `gpt-6.1-sol` as the personal
+//! `scripts/poppy-interop/company.ts`, with `gpt-6.2-sol` as the personal
 //! agent. Runs when `PI_POPPY_DIR` and `OPENAI_API_KEY` are both set
 //! (`doppler run -- scripts/poppy-interop.sh`).
 //!

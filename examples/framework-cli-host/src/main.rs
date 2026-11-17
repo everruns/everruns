@@ -18,7 +18,7 @@ use everruns_core::host::{
 use everruns_framework_cli_host::{Fleet, FleetCommands};
 use everruns_integrations::bashkit::BashkitShellCapability;
 
-const OPENAI_MODEL: &str = "gpt-6.1-sol";
+const OPENAI_MODEL: &str = "gpt-6.2-sol";
 const ANTHROPIC_MODEL: &str = "claude-sonnet-5-5";
 
 const INSTRUCTIONS: &str = "\
@@ -93,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .build(),
         );
 
-    // A real model: OpenAI's gpt-6.1-sol by default, or Anthropic when only
+    // A real model: OpenAI's gpt-6.2-sol by default, or Anthropic when only
     // that key is present. Tests script the same shell calls with a simulated
     // model in `tests/`; the example never does.
     let builder = match (

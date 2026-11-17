@@ -2,9 +2,11 @@
 
 Cut a release in a disposable repository through the sandboxed
 [Bashkit](https://bashkit.sh) shell, then verify every claimed change directly
-from the host. This is a real `gpt-6.1-sol` agent, not a scripted turn.
+from the host. This is a real `gpt-6.2-sol` agent, not a scripted turn.
 
 ![Bashkit Repo Agent terminal demo](demo/demo.gif)
+
+The recording and transcript retain the earlier `gpt-6.1-sol` run; new runs use `gpt-6.2-sol`.
 
 ## What you learn
 
@@ -50,7 +52,7 @@ cargo run -p everruns-bashkit-repo-agent -- /tmp/release-run
 cargo run -p everruns-bashkit-repo-agent -- --interactive /tmp/release-run
 ```
 
-The configured model is `gpt-6.1-sol`. Provider access and funded credits are
+The configured model is `gpt-6.2-sol`. Provider access and funded credits are
 required; missing credentials, unsuccessful turns, and failed disk assertions
 exit nonzero.
 

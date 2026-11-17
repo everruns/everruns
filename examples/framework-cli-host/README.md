@@ -32,7 +32,7 @@ $ everruns fleet scale api --replicas 4
 ## Run it
 
 ```bash
-# OpenAI's gpt-6.1-sol; ANTHROPIC_API_KEY alone selects Anthropic instead.
+# OpenAI's gpt-6.2-sol; ANTHROPIC_API_KEY alone selects Anthropic instead.
 OPENAI_API_KEY=... cargo run -p everruns-framework-cli-host
 
 # Any trailing words become the prompt, so you can drive a mutation and check

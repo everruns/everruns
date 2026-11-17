@@ -37,7 +37,7 @@ const gatewayPort=await listen(createServer(async(request,response)=>{
   let raw="";for await(const chunk of request)raw+=chunk;
   const input=JSON.parse(raw);modelCalls++;
   assert.ok(Array.isArray(input.input),"native OpenAI Responses request expected");
-  assert.equal(input.model,"gpt-6.1-sol","Serve removes the OpenAI routing prefix");
+  assert.equal(input.model,"gpt-6.2-sol","Serve removes the OpenAI routing prefix");
   const done=input.input.some(item=>item.type==="function_call_output");
   response.writeHead(200,{"content-type":"text/event-stream"});
   const emit=event=>response.write(`data: ${JSON.stringify(event)}\n\n`);

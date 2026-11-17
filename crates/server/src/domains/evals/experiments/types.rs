@@ -16,7 +16,7 @@ pub struct ExperimentVariantSpec {
     pub target: Option<EvalTarget>,
     /// Model for this variant, beating the target's model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-6.1-sol")]
+    #[schema(example = "gpt-6.2-sol")]
     pub model_override: Option<String>,
 }
 
@@ -62,7 +62,7 @@ pub struct ExperimentVariant {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-6.1-sol")]
+    #[schema(example = "gpt-6.2-sol")]
     pub model_override: Option<String>,
     pub status: EvalRunStatus,
     /// Set once the run finished.
@@ -89,7 +89,7 @@ pub struct ImportExperimentRef {
     pub name: String,
     /// The variant this import is. A later import with the same label
     /// replaces it.
-    #[schema(example = "gpt-6.1-sol")]
+    #[schema(example = "gpt-6.2-sol")]
     pub variant: String,
 }
 

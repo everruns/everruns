@@ -48,8 +48,8 @@ provider, a chat model, and on an active provider. An issue appears exactly when
 flags the setting. An agent without its own model is covered by the default's single issue,
 so a broken default opens one issue rather than one per agent. "Still listed" means the
 provider's last model list (read only at a model sync) includes the model under its id or
-under its registry identity: OpenRouter lists `openai/gpt-6.1-sol` for a row moved from
-the OpenAI provider as `gpt-6.1-sol`, and both are the same model. A model missing from
+under its registry identity: OpenRouter lists `openai/gpt-6.2-sol` for a row moved from
+the OpenAI provider as `gpt-6.2-sol`, and both are the same model. A model missing from
 that list is reported as what was observed, the list's date and the id looked up, never
 as "no longer listed", because the list can be days old on a deployment that never syncs
 on its own. Such an issue offers the provider's model sync as its fix, which separates an

@@ -4,7 +4,7 @@ A customer-hosted JavaScript agent, executed by Cloudflare Workers, with a priva
 D1 sales database. Everruns owns Agent/session identity, intake, actor leases,
 canonical events, Playground, Trace and channel delivery. The Worker owns model
 credentials, agent logic and database access. This example calls a real
-`gpt-6.1-sol` model; it does not require a Rust binary or a persistent poller.
+`gpt-6.2-sol` model; it does not require a Rust binary or a persistent poller.
 
 Requires an Everruns installation with `EXTERNAL_AGENTS_ENABLED=true`, encryption
 configured, and an outbound network policy that permits your HTTPS endpoint. This is opt-in experimental functionality;
