@@ -86,8 +86,9 @@ organization audit log as `agent.approval.auto_reviewed`.
 
 ## Who picks the mode
 
-The agent's config sets the mode. A person can change it for one session, and
-set their own default for all their sessions:
+The agent's config sets the mode. A person can change it for one session from
+the **Approvals** button in the session header, and set their own default for all
+their sessions in **Settings → My approvals**. The same from the API:
 
 ```bash
 everruns sessions approval-mode set --session-id $SESSION_ID --mode auto
@@ -100,7 +101,8 @@ Personal rules can only add caution (`ask` or `never`). A person cannot turn
 the gate off for an agent whose config turned it on: `off` runs as `auto`.
 
 Organization admins can limit the modes and add rules and trust notes for
-every agent with `tool_approval_policy` on `PATCH /v1/orgs/{org}`:
+every agent in **Settings → Approvals**, which also lists the reviewer's recent
+verdicts, or with `tool_approval_policy` on `PATCH /v1/orgs/{org}`:
 
 ```json
 {

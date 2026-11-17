@@ -20,6 +20,7 @@ import { submitToolApprovals, type ToolApprovalDecision } from "@/lib/api/sessio
 import { cn } from "@/lib/utils";
 import { ApprovalDisplayText } from "./approval-display-text";
 import { CredentialConsentSummary } from "./credential-consent-summary";
+import { useToolReviewsMap } from "./tool-review-mark";
 import type { ToolCompletedData } from "@/lib/api/types";
 
 export const TOOL_APPROVAL_TOOL = "approve_tool_call";
@@ -32,6 +33,10 @@ export interface ToolApprovalArguments {
   arguments_truncated?: boolean;
   risk?: string;
   expires_at?: string;
+  /** Why the auto reviewer handed this call to a person. */
+  review_note?: string;
+  /** The held-back call's own id, which `tool.reviewed` events carry. */
+  tool_call_id?: string;
 }
 
 export interface ToolApprovalRequest {
@@ -118,6 +123,7 @@ export function ToolApprovalRequests({
   const [submitted, setSubmitted] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reviews = useToolReviewsMap();
 
   if (requests.length === 0) return null;
 
@@ -211,6 +217,22 @@ export function ToolApprovalRequests({
                         value0: riskLine(args.risk),
                       })}
                 </p>
+                {args.review_note && !credentialConsent && (
+                  <p className="mt-2 text-xs text-foreground" data-testid="approval-review-note">
+                    <span className="font-medium">{ui("Why you're asked:")}</span>{" "}
+                    <ApprovalDisplayText>{args.review_note}</ApprovalDisplayText>
+                  </p>
+                )}
+                {args.tool_call_id && reviews?.get(args.tool_call_id)?.stage === "paused" && (
+                  <p
+                    className="mt-2 border-l-2 border-warning pl-2 text-xs text-foreground"
+                    data-testid="approval-review-paused"
+                  >
+                    {ui(
+                      "Auto review is paused after several blocked calls. Every call now waits for you until you approve one.",
+                    )}
+                  </p>
+                )}
                 {credentialConsent ? (
                   <CredentialConsentSummary value={args.arguments} />
                 ) : (

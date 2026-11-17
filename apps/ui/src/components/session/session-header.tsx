@@ -15,6 +15,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SessionForkButton } from "@/components/session/session-fork-button";
+import {
+  SessionApprovalModeSwitch,
+  agentApprovalMode,
+} from "@/components/session/session-approval-mode-switch";
 import { SessionInfoIcon } from "@/components/session/session-card";
 import {
   DropdownMenu,
@@ -451,6 +455,7 @@ export function SessionHeader({
         })
       : null;
   const agentReferenceStatus = session.agent_id != null ? (agent?.status ?? "deleted") : null;
+  const approvalMode = agentApprovalMode(agent);
   return (
     <div className="border-b border-border/70 bg-background/80 px-4 py-3 backdrop-blur-[1px]">
       {/* EVE-869: the breadcrumb names the owning group and keeps the way back —
@@ -515,6 +520,10 @@ export function SessionHeader({
           <SessionTraceBadge href={sessionTraceUrl} label={sessionTraceLabel} />
 
           <SessionStatusBadge status={effectiveStatus} session={session} />
+
+          {approvalMode && (
+            <SessionApprovalModeSwitch sessionId={sessionId} agentMode={approvalMode} />
+          )}
 
           <SessionRecordingActions
             sessionId={sessionId}

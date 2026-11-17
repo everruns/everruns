@@ -88,6 +88,8 @@ export const queryKeys = {
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,
     cost: (org?: string, sessionId?: string) => ["session", org, sessionId, "cost"] as const,
+    approvalMode: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "approval-mode"] as const,
     run: (org?: string, sessionId?: string) => ["session", org, sessionId, "run"] as const,
     work: (org?: string, sessionId?: string, turnId?: string) =>
       ["session", org, sessionId, "work", turnId ?? "latest"] as const,
