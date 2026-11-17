@@ -39,8 +39,8 @@ pub async fn invoke_scheduled_agent_trigger(
                 .scheduled_trigger_invocation(invocation_id, org_id, trigger)
                 .await?
             {
-                return Ok(serde_json::from_value(result)
-                    .map_err(|error| CommandError::internal(error.into()))?);
+                return serde_json::from_value(result)
+                    .map_err(|error| CommandError::internal(error.into()));
             }
             let result = invoke_agent_trigger(
                 db,
