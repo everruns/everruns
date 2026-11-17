@@ -75,10 +75,14 @@ impl Fixture {
     }
 
     async fn with_config(channel_type: &str, channel_config: serde_json::Value) -> Self {
+        Self::in_org(channel_type, channel_config, DEFAULT_ORG_ID).await
+    }
+
+    async fn in_org(channel_type: &str, channel_config: serde_json::Value, org: i64) -> Self {
         let db = Arc::new(StorageBackend::test_database());
         let harness = Uuid::now_v7();
-        db.create_test_harness(DEFAULT_ORG_ID, harness).await;
-        let agent = db.create_test_agent(DEFAULT_ORG_ID, Uuid::now_v7()).await;
+        db.create_test_harness(org, harness).await;
+        let agent = db.create_test_agent(org, Uuid::now_v7()).await;
         sqlx::query("UPDATE agents SET harness_id = $1 WHERE id = $2")
             .bind(harness)
             .bind(agent)
@@ -87,7 +91,7 @@ impl Fixture {
             .expect("move agent to the test harness");
         let row = db
             .create_agent_channel(
-                DEFAULT_ORG_ID,
+                org,
                 CreateAgentChannelRow {
                     agent_id: agent,
                     public_id: format!("appchan_{}", Uuid::now_v7().simple()),
@@ -729,5 +733,200 @@ async fn scheduled_channel_delivery_follows_transaction_commit_or_rollback() {
             .unwrap()
             .unwrap(),
         vec![pending],
+    );
+}
+
+/// What the stub data plane was asked: (session, command, body).
+type DpCommands = Arc<Mutex<Vec<(String, String, serde_json::Value)>>>;
+
+/// A data plane that takes session commands and streams a short turn.
+async fn stub_data_plane() -> (String, DpCommands) {
+    use axum::extract::{Path, State};
+    let seen = DpCommands::default();
+    async fn command(
+        State(seen): State<DpCommands>,
+        Path((_org, session, command)): Path<(String, String, String)>,
+        axum::Json(body): axum::Json<serde_json::Value>,
+    ) -> axum::Json<serde_json::Value> {
+        seen.lock().unwrap().push((session, command, body.clone()));
+        axum::Json(json!({ "id": body["id"], "status": "accepted", "disposition": "started" }))
+    }
+    async fn sse(
+        axum::extract::RawQuery(raw): axum::extract::RawQuery,
+    ) -> axum::response::Response {
+        // From the start: the turn's events, then the connection cycles. A
+        // reconnect after them finds nothing new.
+        let body = if raw
+            .as_deref()
+            .unwrap_or_default()
+            .contains("after_sequence=3")
+        {
+            "event: connected\ndata: {\"sequence\":3}\n\nevent: disconnecting\ndata: {}\n\n"
+                .to_owned()
+        } else {
+            let event = |seq: i32, kind: &str, data: serde_json::Value| {
+                let envelope = json!({
+                    "type": kind,
+                    "sequence": seq,
+                    "context": { "input_message_id": "message_1", "turn_id": "turn_1" },
+                    "data": data,
+                });
+                format!("event: {kind}\nid: event_{seq}\ndata: {envelope}\n\n")
+            };
+            [
+                "event: connected\ndata: {\"sequence\":0}\n\n".to_owned(),
+                event(1, "input.message", json!({ "message": { "id": "message_1" } })),
+                event(2, "output.message.completed", json!({ "message": { "content": [{ "type": "text", "text": "Hello from the cell." }] } })),
+                event(3, "turn.completed", json!({ "turn_id": "turn_1" })),
+                "event: disconnecting\ndata: {}\n\n".to_owned(),
+            ]
+            .concat()
+        };
+        axum::response::Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(axum::body::Body::from(body))
+            .unwrap()
+    }
+    let app = axum::Router::new()
+        .route(
+            "/dp/v1/orgs/{org}/sessions/{session}/sse",
+            axum::routing::get(sse),
+        )
+        .route(
+            "/dp/v1/orgs/{org}/sessions/{session}/{command}",
+            axum::routing::post(command),
+        )
+        .with_state(seen.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    (url, seen)
+}
+
+/// A channel's session on a v2 data plane (step 11.5): its messages (with
+/// the thread's metadata and the sender), cancel and prior conversation go
+/// to the data plane, never to the platform's workers, and its events come
+/// from the data plane's stream, followed across a cycled connection.
+#[tokio::test]
+async fn a_v2_channel_session_runs_on_its_data_plane() {
+    use crate::domains::data_plane::{ControlPlane, Link, enable_org};
+    // Org 2 is the data plane tests' org: no test keeps it on v1.
+    const ORG: i64 = 2;
+    let fixture = Fixture::in_org("slack", json!({}), ORG).await;
+    let session = fixture.session().await;
+    let (url, seen) = stub_data_plane().await;
+    let encryption = Arc::new(
+        crate::storage::EncryptionService::new(
+            "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            &[],
+        )
+        .unwrap(),
+    );
+    let cp = ControlPlane::new(
+        fixture.db.clone(),
+        Some(encryption),
+        Link {
+            token: None,
+            dp_key: Some(everruns_contracts::dataplane_seal::random_key()),
+        },
+    );
+    cp.db
+        .dp_upsert_data_plane("dp-1", &url, &url)
+        .await
+        .unwrap();
+    enable_org(&cp, ORG, "dp-1").await.unwrap();
+    let now = chrono::Utc::now();
+    cp.db
+        .dp_upsert_session_summary(crate::storage::DpSessionSummary {
+            session_id: &session,
+            org_id: ORG,
+            data_plane_id: "dp-1",
+            agent_id: "ak_x",
+            session_version: 0,
+            title: "",
+            status: "started",
+            turns: 0,
+            cost_micros: 0,
+            created_at: now,
+            last_activity_at: now,
+        })
+        .await
+        .unwrap();
+
+    let actor = everruns_contracts::runtime::channel::ExternalActor {
+        actor_id: "U1".into(),
+        actor_name: Some("Ann".into()),
+        source: "slack".into(),
+        metadata: None,
+    };
+    let message = InputMessage::user("what's new?")
+        .with_metadata("slack_thread_ts", json!("1700000000.0001"))
+        .with_external_actor(actor);
+    let outcome = fixture
+        .port
+        .send(&fixture.config(), &session, message)
+        .await
+        .unwrap();
+    assert!(
+        matches!(outcome, SendOutcome::Started { .. }),
+        "{outcome:?}"
+    );
+    assert!(
+        fixture.runner.started.lock().unwrap().is_empty(),
+        "no worker ran it"
+    );
+    fixture
+        .port
+        .control(&fixture.config(), &session, &ControlAction::Cancel)
+        .await
+        .unwrap();
+    fixture
+        .port
+        .seed(
+            &fixture.config(),
+            &session,
+            vec![InputMessage::user("earlier in the thread")],
+        )
+        .await
+        .unwrap();
+    {
+        let seen = seen.lock().unwrap();
+        let commands: Vec<&str> = seen.iter().map(|(_, c, _)| c.as_str()).collect();
+        assert_eq!(commands, ["messages", "cancel-turn", "seed"]);
+        let (to, _, body) = &seen[0];
+        assert_eq!(to, &session);
+        assert_eq!(body["text"], "what's new?");
+        assert_eq!(body["metadata"]["slack_thread_ts"], "1700000000.0001");
+        assert_eq!(body["external_actor"]["actor_id"], "U1", "{body}");
+        assert_eq!(
+            seen[2].2["messages"][0]["content"][0]["text"],
+            "earlier in the thread"
+        );
+    }
+
+    let mut events = fixture
+        .port
+        .events(&fixture.config(), &session, None)
+        .await
+        .unwrap();
+    let mut kinds = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while kinds.len() < 3 {
+            let event = events.next().await.expect("an event");
+            kinds.push(event.event_type.clone());
+            if event.event_type == "output.message.completed" {
+                assert_eq!(event.input_message_id.as_deref(), Some("message_1"));
+            }
+        }
+    })
+    .await
+    .expect("the turn's events");
+    assert_eq!(
+        kinds,
+        [
+            "input.message",
+            "output.message.completed",
+            "turn.completed"
+        ]
     );
 }

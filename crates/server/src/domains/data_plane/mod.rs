@@ -36,6 +36,7 @@ use serde_json::Value;
 use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 
 pub mod allowances;
+pub mod event_tap;
 pub mod feed;
 pub mod mcp;
 pub mod outbox;
@@ -43,6 +44,7 @@ pub mod providers;
 pub mod sandboxes;
 pub mod sessions;
 pub mod tokens;
+pub mod warehouse;
 
 #[cfg(test)]
 mod tests;
@@ -176,17 +178,28 @@ pub trait DataPlane: Send + Sync {
         initial_files: &[everruns_core::session_file::InitialFile],
         sandbox: Option<&Value>,
     ) -> anyhow::Result<()>;
-    /// `POST /dp/v1/orgs/{org}/sessions/{id}/messages`: admit a message
-    /// the control plane wrote itself (an agent trigger's run). A retry
-    /// with the same `message` id admits once.
-    async fn send_message(
+    /// `POST /dp/v1/orgs/{org}/sessions/{id}/{command}`: a command the
+    /// control plane runs on one of the org's sessions itself: `messages`
+    /// (an agent trigger's run, a channel's message; a retry with the same
+    /// message id admits once), `cancel-turn`, or `seed` (a channel's
+    /// prior conversation). The cell's answer.
+    async fn session_command(
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        message: everruns_contracts::typed_id::MessageId,
-        text: &str,
-        origin: &everruns_core::message::MessageOrigin,
-    ) -> anyhow::Result<()>;
+        command: &str,
+        body: &Value,
+    ) -> anyhow::Result<Value>;
+    /// `GET /dp/v1/orgs/{org}/sessions/{id}/sse`: the session's committed
+    /// events after `after_sequence`, then live, as event envelopes. The
+    /// stream ends when the data plane cycles the connection; the caller
+    /// reconnects from the last sequence it saw.
+    async fn events(
+        &self,
+        org: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        after_sequence: Option<i64>,
+    ) -> anyhow::Result<futures::stream::BoxStream<'static, Value>>;
 }
 
 /// v1: the org runs on the platform's own workers.
@@ -223,14 +236,22 @@ impl DataPlane for NoDataPlane {
         Ok(())
     }
 
-    async fn send_message(
+    async fn session_command(
         &self,
         _: &str,
         session: everruns_contracts::typed_id::SessionId,
-        _: everruns_contracts::typed_id::MessageId,
         _: &str,
-        _: &everruns_core::message::MessageOrigin,
-    ) -> anyhow::Result<()> {
+        _: &Value,
+    ) -> anyhow::Result<Value> {
+        anyhow::bail!("session {session} is not on a data plane")
+    }
+
+    async fn events(
+        &self,
+        _: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        _: Option<i64>,
+    ) -> anyhow::Result<futures::stream::BoxStream<'static, Value>> {
         anyhow::bail!("session {session} is not on a data plane")
     }
 }
@@ -329,27 +350,98 @@ impl DataPlane for HttpDataPlane {
         Ok(())
     }
 
-    async fn send_message(
+    async fn session_command(
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        message: everruns_contracts::typed_id::MessageId,
-        text: &str,
-        origin: &everruns_core::message::MessageOrigin,
-    ) -> anyhow::Result<()> {
+        command: &str,
+        body: &Value,
+    ) -> anyhow::Result<Value> {
         let url = format!(
-            "{}{}/orgs/{org}/sessions/{session}/messages",
+            "{}{}/orgs/{org}/sessions/{session}/{command}",
             self.row.url,
             dp::PREFIX
         );
-        let body = serde_json::json!({ "id": message, "text": text, "origin": origin });
-        self.request(reqwest::Method::POST, url)
-            .json(&body)
+        Ok(self
+            .request(reqwest::Method::POST, url)
+            .json(body)
             .send()
             .await?
-            .error_for_status()?;
-        Ok(())
+            .error_for_status()?
+            .json()
+            .await?)
     }
+
+    async fn events(
+        &self,
+        org: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        after_sequence: Option<i64>,
+    ) -> anyhow::Result<futures::stream::BoxStream<'static, Value>> {
+        let mut url = format!(
+            "{}{}/orgs/{org}/sessions/{session}/sse",
+            self.row.url,
+            dp::PREFIX
+        );
+        if let Some(after) = after_sequence {
+            url.push_str(&format!("?after_sequence={after}"));
+        }
+        // No overall timeout: the stream stays open until the data plane
+        // cycles it.
+        let mut request = self.http.get(url);
+        if let Some(token) = &self.token {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().await?.error_for_status()?;
+        Ok(sse_events(response.bytes_stream()))
+    }
+}
+
+/// The event envelopes of an SSE body: each `data:` line of an event
+/// other than the stream's own `connected`, `disconnecting` and heartbeats.
+fn sse_events<S, B, E>(body: S) -> futures::stream::BoxStream<'static, Value>
+where
+    S: futures::Stream<Item = Result<B, E>> + Send + 'static,
+    B: AsRef<[u8]>,
+{
+    use futures::StreamExt;
+    let lines = futures::stream::unfold(
+        (
+            Box::pin(body),
+            Vec::<u8>::new(),
+            std::collections::VecDeque::<String>::new(),
+        ),
+        |(mut body, mut buffer, mut ready)| async move {
+            loop {
+                if let Some(line) = ready.pop_front() {
+                    return Some((line, (body, buffer, ready)));
+                }
+                match body.next().await {
+                    Some(Ok(chunk)) => {
+                        buffer.extend_from_slice(chunk.as_ref());
+                        while let Some(at) = buffer.iter().position(|b| *b == b'\n') {
+                            let line: Vec<u8> = buffer.drain(..=at).collect();
+                            let line = String::from_utf8_lossy(&line);
+                            ready.push_back(line.trim_end_matches(['\r', '\n']).to_owned());
+                        }
+                    }
+                    _ => return None,
+                }
+            }
+        },
+    );
+    lines
+        .filter_map(|line| async move {
+            let data = line.strip_prefix("data:")?.trim_start();
+            let value: Value = serde_json::from_str(data).ok()?;
+            // Envelopes carry their type; the stream's own frames do not
+            // name an event of the session.
+            value["type"]
+                .as_str()
+                .is_some_and(|t| t.contains('.'))
+                .then_some(value)
+        })
+        .boxed()
 }
 
 /// The data plane `org_id` runs on: [`NoDataPlane`] for a v1 org.
@@ -388,7 +480,7 @@ pub async fn enable_org(
         .db
         .dp_insert_org(org_id, data_plane_id, &data_key_id, &stored)
         .await?;
-    put_policy(cp, org_id, &TenantPolicy::default()).await?;
+    event_tap::sync(&cp.db, org_id).await?;
     providers::sync(cp, org_id).await?;
     for key in cp.db.engine_agent_keys_for_edit(org_id, None).await? {
         if let Some((revision, _)) = cp.db.engine_agent_current(&key.agent_key).await? {
@@ -503,27 +595,21 @@ pub async fn put_connection(
 
 /// Set `org_id`'s tenant policy, whole.
 pub async fn put_policy(
-    cp: &ControlPlane,
+    db: &StorageBackend,
     org_id: i64,
     policy: &TenantPolicy,
 ) -> anyhow::Result<()> {
-    let revision = cp
-        .db
-        .dp_item(org_id, "policy", "policy")
-        .await?
-        .map_or(1, |item| item.revision + 1);
+    let current = db.dp_item(org_id, "policy", "policy").await?;
     let change = ConfigChange::Policy(policy.clone()).to_value();
     // An equal policy is not a change.
-    if cp
-        .db
-        .dp_item(org_id, "policy", "policy")
-        .await?
+    if current
+        .as_ref()
         .is_some_and(|item| item.body.as_ref() == Some(&change))
     {
         return Ok(());
     }
-    cp.db
-        .dp_put_item(org_id, "policy", "policy", revision, Some(&change))
+    let revision = current.map_or(1, |item| item.revision + 1);
+    db.dp_put_item(org_id, "policy", "policy", revision, Some(&change))
         .await?;
     Ok(())
 }

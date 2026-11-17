@@ -1850,6 +1850,37 @@ org-wide schedule cap and schedule budgets (11.6), a subagent running
 another agent of the org, blueprints and forks, saved-script triggers,
 cancelling or answering a task from the API, and push configs.
 
+**11.5 Channels, observers, trace exports and the warehouse.** A channel
+(Slack and the others) creates its session as for any org and then talks
+to it through the control plane's `/dp/v1/orgs/{org}/sessions/{id}/...`
+routes on the gateway (`gateway_dp.rs`): `messages` admits a message with
+its metadata (the platform's thread and channel ids) and its sender, and
+answers whether it started a turn or steered the running one, which tells
+the host whether a reply is owed; `seed` records history only while the
+session has no conversation; `cancel-turn`; and `sse` follows the
+session's stream, which the host resumes from the last sequence seen when
+the connection cycles (`crates/server/src/channels/host/data_plane.rs`).
+Attachments and reactions wait for the 11.6 sweep. Observers and trace
+exports need session events the control plane no longer has,
+so the org's policy names the types it uses (`TenantPolicy::events`,
+computed by `crates/server/src/domains/data_plane/event_tap.rs` and set
+again when an observer or trace destination changes; the directory cell
+hands the list to every cell on the tenants poll, so a change reaches a
+cell within one poll, about 2 s), the cell copies
+those committed events onto the feed (`crates/cell/src/tap.rs`, payloads
+over 512 KiB left out and named), and feed ingest hands each to the same
+listeners v1 runs, once, by feed position. Reports are deprecated and get
+nothing from v2 orgs; analytics come from the warehouse export, which is
+opt-in per org (`everruns-dataplane warehouse <org> on`): every event goes
+onto the feed and the control plane writes gzipped
+NDJSON per org, hour and batch under `warehouse/{org}/date=/hour=/` in its
+object storage before storing the batch, so an event lands at least once
+and readers dedupe on its id. Gate check (`cell-testkit/tests/integrations.rs`,
+debug build, two cells, 200 channel sessions, ten at a time, the directory
+cell's leader killed between rounds): reply p50 334 ms, p99 721 ms (gate
+5 s); tapped event to the control plane p99 468 ms (gate 2 min); all 400
+turns reached the listeners exactly once across the election (5.9 s).
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

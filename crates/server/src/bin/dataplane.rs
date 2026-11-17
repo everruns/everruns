@@ -22,6 +22,7 @@ USAGE:
     everruns-dataplane resume <org_public_id>
     everruns-dataplane secret <org_public_id> <secret_id>     (value on stdin)
     everruns-dataplane status <org_public_id>
+    everruns-dataplane warehouse <org_public_id> on|off
     everruns-dataplane diff <org_public_id>
     everruns-dataplane bump-epoch
     everruns-dataplane reconcile <org_public_id> [--keep | --drop]
@@ -32,11 +33,16 @@ database restore, run `diff` for every v2 org, resolve what it lists, then
 lacked the data plane sets aside: `reconcile` lists it, `--keep` sends it
 again as config, `--drop` forgets it. Running turns finish either way.
 
+`warehouse on` exports every event of the org's sessions as hourly gzipped
+NDJSON files under `warehouse/<org>/date=.../hour=.../` in the control
+plane's object storage (STORAGE_BLOB_BACKEND=s3).
+
 ENVIRONMENT:
     DATABASE_URL              PostgreSQL connection string (required)
     SECRETS_ENCRYPTION_KEY    The server's secrets key (stores org data keys)
     EVERRUNS_DP_KEY           The data plane's wrapping key (base64, 32 bytes)
     EVERRUNS_DP_TOKEN         The link's bearer token
+    STORAGE_BLOB_BACKEND      `s3` for the warehouse export (with the S3 settings)
 "#;
 
 fn org(arg: Option<&String>) -> Result<i64> {
@@ -59,7 +65,10 @@ async fn main() -> Result<()> {
     let pool = sqlx::PgPool::connect(&database_url)
         .await
         .context("could not connect to the database")?;
-    let db = Arc::new(StorageBackend::from_database(Database::new(pool)));
+    let db = Arc::new(
+        StorageBackend::from_database(Database::new(pool))
+            .with_blob_store(everruns_server::storage::blob_store::blob_store_from_env()?),
+    );
     let encryption = EncryptionService::from_env().ok().map(Arc::new);
     let cp = ControlPlane::new(db.clone(), encryption, Link::from_env()?);
     match command {
@@ -119,6 +128,20 @@ async fn main() -> Result<()> {
                     row.attempts,
                 ),
             }
+        }
+        "warehouse" => {
+            let org_id = org(args.get(1))?;
+            let on = match args.get(2).map(String::as_str) {
+                Some("on") => true,
+                Some("off") => false,
+                _ => anyhow::bail!("warehouse <org> on|off"),
+            };
+            data_plane::warehouse::set(&db, org_id, on).await?;
+            println!(
+                "warehouse export {} for {}",
+                if on { "on" } else { "off" },
+                data_plane::org_public(org_id)
+            );
         }
         "diff" => {
             let org_id = org(args.get(1))?;

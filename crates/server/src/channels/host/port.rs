@@ -30,6 +30,10 @@
 //!   echoing.
 //! - Files a channel received become org uploads, the same as a chat user's,
 //!   so message creation stages them into `/attachments`.
+//! - A session the org's data plane runs (v2) takes its messages, cancel
+//!   and seeded history there, and its events come from there
+//!   (`data_plane.rs`); participants, thread context and the title stay
+//!   with the control plane, which keeps the session's record.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -277,6 +281,9 @@ impl ChannelSessionPort for ServerChannelPort {
                 self.track_speaker(session, &thread, &actor).await;
             }
         }
+        if let Some(dp) = super::data_plane::find(&self.messages, context.org_id, session).await? {
+            return dp.send(&message).await;
+        }
         let tags = (!message.tags.is_empty()).then_some(message.tags);
         let created = self
             .messages
@@ -318,11 +325,17 @@ impl ChannelSessionPort for ServerChannelPort {
 
     async fn events(
         &self,
-        _channel: &ChannelConfig,
+        channel: &ChannelConfig,
         session: &str,
         after: Option<i64>,
     ) -> Result<ChannelEventStream, ChannelError> {
         let session = session_id(session)?;
+        if let Ok(ServerChannelScope { context, .. }) = scope(channel)
+            && let Some(dp) =
+                super::data_plane::find(&self.messages, context.org_id, session).await?
+        {
+            return dp.events(after).await;
+        }
         // Subscribe before replaying, so nothing written in between is lost.
         let subscription = self
             .messages
@@ -402,6 +415,11 @@ impl ChannelSessionPort for ServerChannelPort {
         let session = session_id(session)?;
         match action {
             ControlAction::Cancel => {
+                if let Some(dp) =
+                    super::data_plane::find(&self.messages, context.org_id, session).await?
+                {
+                    return dp.cancel().await;
+                }
                 crate::api::channel_api::cancel_session_turn_for(
                     &self.db,
                     &self.messages,
@@ -428,11 +446,15 @@ impl ChannelSessionPort for ServerChannelPort {
         reaction: &InboundReaction,
     ) -> Result<(), ChannelError> {
         let ServerChannelScope { context, .. } = scope(channel)?;
-        let Some(session) = self
-            .db
-            .get_session(context.org_id, session_id(&message.session_id)?)
+        let id = session_id(&message.session_id)?;
+        if super::data_plane::find(&self.messages, context.org_id, id)
             .await?
-        else {
+            .is_some()
+        {
+            tracing::debug!(session = %id, "channel host: reactions are not kept on a data plane session yet");
+            return Ok(());
+        }
+        let Some(session) = self.db.get_session(context.org_id, id).await? else {
             return Ok(());
         };
         // Attribution is the platform user the driver verified, never the
@@ -463,11 +485,18 @@ impl ChannelSessionPort for ServerChannelPort {
 
     async fn seed(
         &self,
-        _channel: &ChannelConfig,
+        channel: &ChannelConfig,
         session: &str,
         history: Vec<InputMessage>,
     ) -> Result<(), ChannelError> {
         let session = session_id(session)?;
+        let dp = match scope(channel) {
+            Ok(ServerChannelScope { context, .. }) => {
+                super::data_plane::find(&self.messages, context.org_id, session).await?
+            }
+            Err(_) => None,
+        };
+        let mut seeded = Vec::new();
         for message in history {
             let mut metadata = message.metadata.unwrap_or_default();
             let role = match metadata.remove(HISTORY_NOTICE) {
@@ -485,6 +514,10 @@ impl ChannelSessionPort for ServerChannelPort {
                 external_actor: message.external_actor,
                 created_at: chrono::Utc::now(),
             };
+            if dp.is_some() {
+                seeded.push(message);
+                continue;
+            }
             self.messages
                 .event_service()
                 .emit(EventRequest::new(
@@ -493,6 +526,9 @@ impl ChannelSessionPort for ServerChannelPort {
                     InputMessageData::new(message),
                 ))
                 .await?;
+        }
+        if let Some(dp) = dp {
+            dp.seed(seeded).await?;
         }
         Ok(())
     }
@@ -624,7 +660,14 @@ impl ServerChannelPort {
                 },
             )
             .await?;
-        self.messages.event_service().emit(event).await?;
+        // A data plane session's events live there; its record here is
+        // what the console reads its title from.
+        if super::data_plane::find(&self.messages, org_id, session)
+            .await?
+            .is_none()
+        {
+            self.messages.event_service().emit(event).await?;
+        }
         Ok(())
     }
 }

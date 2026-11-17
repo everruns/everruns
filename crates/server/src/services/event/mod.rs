@@ -125,6 +125,12 @@ impl EventService {
         Self::with_listeners(db, event_delivery, Vec::new())
     }
 
+    /// Every registered listener, for a caller that delivers events the
+    /// service did not store (a v2 data plane's, `data_plane::event_tap`).
+    pub fn listeners(&self) -> &[Arc<dyn EventListener>] {
+        &self.listeners
+    }
+
     /// Create an EventService with registered listeners
     pub fn with_listeners(
         db: Arc<StorageBackend>,

@@ -54,6 +54,8 @@ struct Ledger {
     sessions: HashMap<String, SessionSummary>,
     config_applied: Vec<(String, u64)>,
     org_events: Vec<(String, String)>,
+    /// Tapped session events: `(org, session, event)`.
+    events: Vec<(String, String, serde_json::Value)>,
     /// Secrets the data plane refreshed: (org, secret id, revision).
     refreshed: Vec<(String, String, u64)>,
     requests: usize,
@@ -260,6 +262,11 @@ impl FakeCp {
 
     pub fn org_events(&self) -> Vec<(String, String)> {
         self.ledger.lock().org_events.clone()
+    }
+
+    /// The session events the cells tapped onto the feed, in feed order.
+    pub fn tapped_events(&self) -> Vec<(String, String, serde_json::Value)> {
+        self.ledger.lock().events.clone()
     }
 
     pub fn refreshed(&self) -> Vec<(String, String, u64)> {
@@ -538,6 +545,11 @@ async fn feed(
                     ledger
                         .refreshed
                         .push((record.org_id.clone(), secret_id, revision));
+                }
+                Record::Event { session_id, event } => {
+                    ledger
+                        .events
+                        .push((record.org_id.clone(), session_id, event));
                 }
                 Record::Health { .. } | Record::Unknown => {}
             }

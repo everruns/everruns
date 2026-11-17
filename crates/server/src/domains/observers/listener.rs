@@ -19,6 +19,10 @@ use tracing::{error, instrument};
 use crate::domains::observers::matching::{SessionFacts, Slice, plan_scores};
 use crate::storage::StorageBackend;
 
+/// The event types observers score; a v2 org's data plane copies them onto
+/// the feed while the org has an active observer (`data_plane::event_tap`).
+pub const OBSERVED_EVENT_TYPES: &[&str] = &[TURN_COMPLETED, TOOL_COMPLETED, SESSION_IDLED];
+
 pub struct ObserverMatchListener {
     db: Arc<StorageBackend>,
     /// Wakes the scoring worker after enqueue for low-latency scoring.
@@ -87,7 +91,7 @@ impl EventListener for ObserverMatchListener {
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
-        Some(vec![TURN_COMPLETED, TOOL_COMPLETED, SESSION_IDLED])
+        Some(OBSERVED_EVENT_TYPES.to_vec())
     }
 
     fn name(&self) -> &'static str {

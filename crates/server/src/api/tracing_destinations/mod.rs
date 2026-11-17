@@ -231,6 +231,7 @@ pub async fn create_destination(
         .map_err(internal)?
         .ok_or_else(|| error(StatusCode::NOT_FOUND, "Destination not found"))?;
     journal.finish(&id.to_string()).await;
+    crate::domains::data_plane::event_tap::resync(&state.db, org.org_id).await;
     Ok((
         StatusCode::CREATED,
         Json(DestinationView::try_from(row).map_err(internal)?),
@@ -357,6 +358,7 @@ pub async fn delete_destination(
     }
     journal.finish(&id.to_string()).await;
     let _ = health::refresh(&state.db, org.org_id).await;
+    crate::domains::data_plane::event_tap::resync(&state.db, org.org_id).await;
     Ok(StatusCode::NO_CONTENT)
 }
 async fn checked_agent(state: &ApiState, org: &ResolvedOrg, agent: AgentId) -> Result<()> {

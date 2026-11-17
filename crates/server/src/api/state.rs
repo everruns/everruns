@@ -52,6 +52,15 @@ impl ApiState {
         }
     }
 
+    /// The event listeners the service graph registered (none in a basic
+    /// state).
+    pub fn event_listeners(&self) -> &[Arc<dyn everruns_core::EventListener>] {
+        self.template
+            .event_service
+            .as_deref()
+            .map_or(&[], |events| events.listeners())
+    }
+
     /// Share the services the MCP endpoint already wires, so a command sees
     /// the same context over REST and MCP.
     pub fn from_mcp(state: &super::mcp_endpoint::AppState) -> Self {

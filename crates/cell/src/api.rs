@@ -1135,6 +1135,13 @@ pub struct MessageBody {
     /// Who wrote it, when not the person (an agent trigger, step 11.4).
     #[serde(default)]
     pub origin: Option<everruns_contracts::message_origin::MessageOrigin>,
+    /// The message's own metadata (a channel's thread and platform ids,
+    /// step 11.5).
+    #[serde(default)]
+    pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// The channel participant who wrote it (step 11.5).
+    #[serde(default)]
+    pub external_actor: Option<everruns_core::ExternalActor>,
 }
 
 /// Admit a user message through Engine (`Session::send_with_id`): a retry
@@ -1160,14 +1167,28 @@ async fn send_message(
         }
     };
     let mut input = everruns::InputMessage::user(body.text);
+    input.metadata = body.metadata;
+    input.external_actor = body.external_actor;
     if let Some(origin) = &body.origin {
         origin.write(&mut input.metadata);
     }
     let reply = match handle.send_with_id(body.id, input).await {
-        Ok(_) => {
+        Ok(sent) => {
             node.prom.messages_admitted.inc(&[("status", "accepted")]);
+            // A channel delivers a started turn's reply itself; a steered
+            // message's reply comes in the turn already running.
+            let disposition = match sent.disposition {
+                everruns::SendDisposition::Started => "started",
+                everruns::SendDisposition::Steered => "steered",
+                _ => "pending",
+            };
             CellReply::Ok {
-                value: serde_json::json!({ "id": body.id, "session_id": id, "status": "accepted" }),
+                value: serde_json::json!({
+                    "id": body.id,
+                    "session_id": id,
+                    "status": "accepted",
+                    "disposition": disposition,
+                }),
             }
         }
         Err(error) => reply_of(error),

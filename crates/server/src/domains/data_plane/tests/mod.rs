@@ -118,7 +118,12 @@ fn test_encryption() -> Arc<crate::storage::EncryptionService> {
 }
 
 async fn control_plane() -> (ControlPlane, Stub, seal::Key) {
-    let db = Arc::new(StorageBackend::test_database());
+    control_plane_on(StorageBackend::test_database()).await
+}
+
+/// [`control_plane`] on `db`.
+async fn control_plane_on(db: StorageBackend) -> (ControlPlane, Stub, seal::Key) {
+    let db = Arc::new(db);
     let dp_key = seal::random_key();
     let link = Link {
         token: None,
@@ -329,16 +334,18 @@ async fn the_feed_is_stored_once_through_retries_and_a_replay() {
             ),
         ],
     );
-    let ack = feed::ingest(&cp, &budgets, first.clone()).await.unwrap();
+    let ack = feed::ingest(&cp, &budgets, &[], first.clone())
+        .await
+        .unwrap();
     assert_eq!(ack.stored_through, (3, 0));
     // The same batch again (a lost acknowledgement), then a replay under
     // another incarnation: positions and attempt ids keep it once.
-    feed::ingest(&cp, &budgets, first).await.unwrap();
+    feed::ingest(&cp, &budgets, &[], first).await.unwrap();
     let replay = batch(
         2,
         vec![record(1, usage("a1", 1_000)), record(2, summary(1, 0))],
     );
-    feed::ingest(&cp, &budgets, replay).await.unwrap();
+    feed::ingest(&cp, &budgets, &[], replay).await.unwrap();
     let journaled: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM usage_journal WHERE org_id = $1 AND source_type = 'data_plane'",
     )
@@ -482,7 +489,7 @@ async fn allowances_never_overspend_under_concurrency_and_retries() {
             incarnation: 1,
             records: vec![record(i as u64 + 1, usage(&format!("u{i}"), *used))],
         };
-        feed::ingest(&cp, &budgets, batch).await.unwrap();
+        feed::ingest(&cp, &budgets, &[], batch).await.unwrap();
     }
     let more = allowances::answer(&cp, ORG, &ask("after", cap, vec![]))
         .await
@@ -813,5 +820,6 @@ async fn the_consoles_chat_stays_on_the_control_plane() {
     assert!(!sessions::stays_on_control_plane(None));
 }
 
+mod event_tap;
 mod mcp;
 mod sandboxes;

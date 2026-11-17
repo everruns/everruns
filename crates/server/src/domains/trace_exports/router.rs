@@ -14,6 +14,24 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::{Semaphore, mpsc};
 use uuid::Uuid;
 
+/// The event types a trace export sends; a v2 org's data plane copies them
+/// onto the feed while the org has a destination (`data_plane::event_tap`).
+pub const TRACED_EVENT_TYPES: &[&str] = &[
+    "turn.started",
+    "turn.completed",
+    "turn.failed",
+    "turn.cancelled",
+    "reason.started",
+    "reason.completed",
+    "act.started",
+    "act.completed",
+    "llm.generation",
+    "tool.started",
+    "tool.completed",
+    "reason.thinking.started",
+    "reason.thinking.completed",
+];
+
 pub struct CustomerTracingListener {
     sender: mpsc::Sender<RouterMessage>,
     budget: Arc<Semaphore>,
@@ -193,21 +211,7 @@ impl EventListener for CustomerTracingListener {
         "CustomerTracing"
     }
     fn event_types(&self) -> Option<Vec<&'static str>> {
-        Some(vec![
-            "turn.started",
-            "turn.completed",
-            "turn.failed",
-            "turn.cancelled",
-            "reason.started",
-            "reason.completed",
-            "act.started",
-            "act.completed",
-            "llm.generation",
-            "tool.started",
-            "tool.completed",
-            "reason.thinking.started",
-            "reason.thinking.completed",
-        ])
+        Some(TRACED_EVENT_TYPES.to_vec())
     }
     async fn on_event(&self, event: &Event) {
         // THREAT[TM-DOS-001]: bound aggregate queued bytes, not just event count.

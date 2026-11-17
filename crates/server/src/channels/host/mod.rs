@@ -14,6 +14,7 @@
 //! and hands the host the resolved channel, so the host never sees a name it
 //! could confuse across tenants.
 
+mod data_plane;
 mod port;
 mod resolver;
 mod store;

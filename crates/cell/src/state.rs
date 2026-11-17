@@ -94,6 +94,10 @@ pub enum Command {
     },
     /// The control plane stored the feed through `(index, ordinal)`.
     FeedAcked { through: (u64, u32) },
+    /// The event types each org taps, as the directory holds them (`tap.rs`).
+    Taps {
+        taps: std::collections::BTreeMap<String, Vec<String>>,
+    },
     /// The leader's minute report for Monitoring: its node measurements;
     /// applying it counts the population and queues the feed record.
     Report { report: crate::control::NodeReport },
@@ -718,9 +722,9 @@ impl Change {
 }
 
 impl CellState {
-    /// Apply one committed command. Deterministic: same state and command,
-    /// same result, on every replica.
-    pub fn apply(&mut self, command: Command, changes: &mut Vec<Change>) -> Response {
+    /// [`CellState::apply`] without the event tap (`tap.rs`): nested
+    /// commands come through here so the tap sees each change once.
+    fn apply_command(&mut self, command: Command, changes: &mut Vec<Change>) -> Response {
         if let Some(at) = command.time()
             && at > self.clock_ms
         {
@@ -803,7 +807,7 @@ impl CellState {
                     };
                 };
                 match serde_json::from_str::<Command>(&assembly.data) {
-                    Ok(command) => self.apply(command, changes),
+                    Ok(command) => self.apply_command(command, changes),
                     Err(error) => Response::Rejected {
                         reason: format!("assembled command {id}: {error}"),
                     },
@@ -819,7 +823,7 @@ impl CellState {
                                 reason: "skipped: an earlier write of the epoch failed".into(),
                             };
                         }
-                        let response = self.apply(command, changes);
+                        let response = self.apply_command(command, changes);
                         failed = !matches!(response, Response::Value { .. } | Response::Ok);
                         response
                     })
@@ -829,7 +833,7 @@ impl CellState {
             Command::Batch { commands } => Response::Batch {
                 responses: commands
                     .into_iter()
-                    .map(|command| self.apply(command, changes))
+                    .map(|command| self.apply_command(command, changes))
                     .collect(),
             },
             Command::Host {
@@ -980,6 +984,7 @@ impl CellState {
                 let index = self.last_applied.map_or(0, |l| l.index);
                 crate::secrets::apply(&mut self.orgs, &mut self.feed, index, &org, request, now_ms)
             }
+            Command::Taps { taps } => self.set_taps(taps),
             Command::FeedAcked { through } => {
                 self.feed.ack(through);
                 Response::Ok
@@ -1440,7 +1445,7 @@ impl CellState {
             Applied::Done(value, events) => {
                 let index = self.last_applied.map_or(0, |l| l.index);
                 for event in &events {
-                    if let Some(micros) = generation_cost_micros(event) {
+                    if let Some(micros) = tap::generation_cost_micros(event) {
                         let tenant = self.sessions.get(&session).and_then(|s| s.tenant.clone());
                         self.allowances.settle(tenant.as_deref(), session, micros);
                     }
@@ -1467,23 +1472,11 @@ impl CellState {
     }
 }
 
-/// What a provider call cost, from its `llm.generation` event, in micro
-/// dollars (0 when the provider reported no cost).
-fn generation_cost_micros(event: &Event) -> Option<i64> {
-    let EventData::LlmGeneration(data) = &event.data else {
-        return None;
-    };
-    let usd = data
-        .metadata
-        .usage
-        .as_ref()
-        .and_then(|u| u.effective_cost_usd())
-        .unwrap_or(0.0);
-    Some((usd * 1_000_000.0).ceil() as i64)
-}
-
 #[path = "state_session.rs"]
 mod session;
+
+#[path = "tap.rs"]
+mod tap;
 
 #[cfg(test)]
 #[path = "state_tests.rs"]

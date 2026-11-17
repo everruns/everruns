@@ -5,6 +5,7 @@
 // Decision: The service is stateless (db only); scoring happens in the
 // background worker (worker.rs), triggered by the listener (listener.rs).
 
+use crate::domains::data_plane::event_tap;
 use crate::domains::observers::matching::{SessionFacts, Slice, plan_scores};
 use crate::domains::observers::record::*;
 use crate::domains::observers::types::{
@@ -254,6 +255,7 @@ impl ObserverService {
         };
 
         let row = self.db.create_observer(caller.org_id, input).await?;
+        event_tap::resync(&self.db, caller.org_id).await;
         row_to_observer(row)
     }
 
@@ -340,6 +342,7 @@ impl ObserverService {
             .db
             .update_observer(caller.org_id, existing.id, input)
             .await?;
+        event_tap::resync(&self.db, caller.org_id).await;
         row.map(row_to_observer).transpose()
     }
 
@@ -351,7 +354,9 @@ impl ObserverService {
         let Some(existing) = existing else {
             return Ok(false);
         };
-        self.db.delete_observer(caller.org_id, existing.id).await
+        let deleted = self.db.delete_observer(caller.org_id, existing.id).await?;
+        event_tap::resync(&self.db, caller.org_id).await;
+        Ok(deleted)
     }
 
     pub async fn list_scores(
