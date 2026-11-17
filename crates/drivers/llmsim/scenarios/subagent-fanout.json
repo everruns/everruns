@@ -1,0 +1,17 @@
+{
+  "name": "subagent-fanout",
+  "description": "A parent that delegates three subtasks to foreground subagents at once, each playing its own scenario, then merges their results. Needs an agent with the subagents capability.",
+  "defaults": { "timing": { "ttft_ms": [1500, 2500], "tokens_per_sec": 46 } },
+  "steps": [
+    { "turn": { "type": "mixed", "text": "I'll split this into three parallel subtasks.",
+                "calls": [
+                  { "name": "spawn_agent", "arguments": { "name": "Researcher", "mode": "foreground", "target": { "type": "subagent" },
+                    "instructions": "Answer briefly. [[llmsim:chat-short]]" } },
+                  { "name": "spawn_agent", "arguments": { "name": "Analyst", "mode": "foreground", "target": { "type": "subagent" },
+                    "instructions": "Think it through, then answer. [[llmsim:thinking]]" } },
+                  { "name": "spawn_agent", "arguments": { "name": "Writer", "mode": "foreground", "target": { "type": "subagent" },
+                    "instructions": "Write the long-form draft. [[llmsim:long-answer]]" } }
+                ] } },
+    { "turn": { "type": "assistant", "lorem_tokens": 400 } }
+  ]
+}

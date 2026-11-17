@@ -3,6 +3,7 @@
 ## 2026-11-17
 
 - [Load Testing](operations/load-testing.md): the llmsim driver simulates long-session and provider realism: a per-session prompt cache with prefill time, compaction summaries sized from their input, sized reasoning replay payloads, and the `-storm-`, `-busy-` and `-tpm-` markers for provider conditions shared by every session.
+- [Load Testing](operations/load-testing.md): the load driver can soak sessions with log-normal gaps and history reloads, herd idle sessions, mix client behavior (tabs, abandons, Poisson arrivals, model switches), verify persisted history, and compare against a saved baseline; the `subagent-fanout` scenario exercises subagents.
 
 ## 2026-11-16
 

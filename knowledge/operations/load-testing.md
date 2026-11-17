@@ -339,6 +339,19 @@ A long session behaves like it would against a hosted provider, so soak runs see
 | `-busy-{knee}` | Past `knee` calls in flight per worker, first token and token gaps grow with in-flight/knee. |
 | `-tpm-{n}` | Each worker gets a shared budget of `n` prompt tokens a minute. Calls past it fail as rate limited, with the wait until they fit. |
 
+`subagent-fanout` is an everruns scenario (`crates/drivers/llmsim/scenarios/`) added to llmsim's built-in set: a parent turn starts three foreground subagents at once, whose instructions carry their own markers, then merges their answers. Run it with an agent that has the `subagents` capability.
+
+### Long-lived clients
+
+`scripts/load-test.py` can also behave like the people behind long sessions; its docstring lists the flags. The choices that matter when reading results:
+
+- **Sizes and gaps are log-normal**, given as median and p99, and seeded per session, so a rerun with the same seed sends the same work. Real file sizes and idle times have long tails that a uniform range hides.
+- **Soak** (`--duration`) runs each session until a deadline instead of a message count. A gap longer than `--reopen-after` closes the session's streams; the session returns by loading its whole event history, then reconnecting, the way a reopened tab does. That reload time is reported on its own, because it grows with session age.
+- **Herds** (`--herd-every`, `--herd-fraction`) wake a share of idle sessions together, as after a deploy or a morning start, and their turns are summarized apart from the rest.
+- **Client mix**: extra tabs hold more streams per session, abandoned sessions send and close before the reply, Poisson arrivals replace an even ramp, and `--switch-model` alternates the session model, which empties the provider prompt cache.
+- **Integrity** (`--verify N`) puts a checksum nonce in each message of the first N sessions and checks after the run that each was persisted exactly once, in order. A run with a failure does not pass.
+- **Baselines** (`--save-baseline`, `--baseline`, `--tolerance`) compare p50 and p95 turn and first-delta latency with a saved run. Differences under 50 ms are noise and never fail a run.
+
 ## Load Testing a Hosted Deployment, and Baselines
 
 The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears. The [local stress bench](#local-stress-bench) adds a fourth that needs no deployment.

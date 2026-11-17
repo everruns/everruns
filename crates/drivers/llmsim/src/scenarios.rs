@@ -15,6 +15,9 @@
 //!   at timings measured on 2026-10-28 (Luna: first token 2.9 s, 108 tokens/s;
 //!   Sol: 2 s, 46 tokens/s; Muse Spark 1.3 Contributor in production: 12.7 s,
 //!   136 tokens/s), so a load test can ask how capacity changes with the model.
+//! - `subagent-fanout` lives here (`scenarios/`), not in llmsim, because it
+//!   drives everruns' own `spawn_agent` tool: three foreground subagents at
+//!   once, each playing a built-in scenario from its instructions' marker.
 //! - A step that needs a tool, played on a call that offers none (titles,
 //!   compaction and other side calls carry the user message but no tools),
 //!   falls back to the driver's normal answer instead of failing that call.
@@ -44,7 +47,19 @@ use llmsim::scenario::{
 use llmsim::scenario_stream::{Pacing, word_tokens};
 use llmsim::{SimError, SimTurn};
 
-static BUILTIN_SET: LazyLock<ScenarioSet> = LazyLock::new(ScenarioSet::builtin);
+/// Scenarios for everruns features llmsim does not know about, such as
+/// subagents. They are parsed by `local_scenarios_are_valid`.
+const LOCAL_SCENARIOS: [&str; 1] = [include_str!("../scenarios/subagent-fanout.json")];
+
+static BUILTIN_SET: LazyLock<ScenarioSet> = LazyLock::new(|| {
+    let mut set = ScenarioSet::builtin();
+    for json in LOCAL_SCENARIOS {
+        if let Ok(local) = ScenarioSet::from_json(json) {
+            set.extend_replacing(local);
+        }
+    }
+    set
+});
 
 /// Names of the built-in scenarios a marker can select.
 pub fn builtin_scenario_names() -> Vec<String> {
@@ -499,6 +514,43 @@ mod tests {
         let fresh = [messages[0].clone()];
         let replay = call(&fresh, &tools, &attempts).await.unwrap().unwrap();
         assert_eq!(tool_calls(&replay).len(), 1);
+    }
+
+    #[test]
+    fn local_scenarios_are_valid() {
+        for json in LOCAL_SCENARIOS {
+            ScenarioSet::from_json(json).unwrap();
+        }
+        assert!(
+            builtin_scenario_names()
+                .iter()
+                .any(|n| n == "subagent-fanout")
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn fanout_spawns_three_subagents_with_their_own_markers() {
+        let tools = vec![ToolDefinition::function(
+            "spawn_agent",
+            "Delegate a task",
+            serde_json::json!({"type": "object"}),
+        )];
+        let messages = [Message::text(
+            MessageRole::User,
+            "go [[llmsim:subagent-fanout]]",
+        )];
+        let attempts = Attempts::default();
+        let spawn = call(&messages, &tools, &attempts).await.unwrap().unwrap();
+        let calls = tool_calls(&spawn);
+        assert_eq!(calls.len(), 3);
+        for call in &calls {
+            assert_eq!(call.name, "spawn_agent");
+            let instructions = call.arguments["instructions"].as_str().unwrap();
+            assert!(
+                scenario::parse_marker(instructions).is_some(),
+                "{instructions}"
+            );
+        }
     }
 
     #[test]
