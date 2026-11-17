@@ -330,6 +330,30 @@ fn platform_commands_round_trip() {
 }
 
 #[test]
+fn a_schedule_due_soon_is_seen_until_it_fires() {
+    let (mut state, id) = session();
+    let due = T0 + 60_000;
+    let schedule = create(&mut state, id, None, Some(due));
+    let platform = &state.sessions[&id].platform;
+    assert!(!platform.due_before(due), "not due before its time");
+    assert!(platform.due_before(due + 1), "due within the window");
+
+    apply(
+        &mut state,
+        id,
+        Op::FireSchedule {
+            id: schedule.id,
+            due_ms: due,
+        },
+        due,
+    );
+    assert!(
+        !state.sessions[&id].platform.due_before(i64::MAX),
+        "a one-shot schedule that fired is not due again"
+    );
+}
+
+#[test]
 fn the_control_plane_records_only_reactions_of_the_session() {
     use everruns_core::events::{EventContext, EventData, EventRequest};
     let session = SessionId::new();

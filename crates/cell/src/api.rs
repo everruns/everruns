@@ -549,6 +549,15 @@ pub struct CellLoad {
 /// tool, a person, another session), not working.
 pub const WAITING_AFTER: chrono::Duration = chrono::Duration::seconds(30);
 
+/// An idle session whose schedule falls due within this is not moved.
+/// Decision: no cell fires a schedule while its session moves (the source
+/// is frozen, the target's copy only prepared), so a move that straddles
+/// the due time makes it late by the move. Under load a move takes seconds:
+/// main CI saw schedules fire 6.5 s late in `cell-testkit`'s 10 000
+/// schedules test while the rebalancer evened out idle sessions. Idle
+/// sessions are only moved to even out counts, so waiting costs nothing.
+pub const SCHEDULE_CLEAR: std::time::Duration = std::time::Duration::from_secs(30);
+
 impl CellLoad {
     /// What the cell's turns cost, in turn slots.
     ///
@@ -606,6 +615,7 @@ struct Movable {
 /// current turn has written.
 async fn movable(State(node): State<Arc<Node>>, Query(q): Query<Movable>) -> Json<Vec<SessionId>> {
     let since = chrono::Utc::now() - WAITING_AFTER;
+    let soon = crate::node::now_ms() + SCHEDULE_CLEAR.as_millis() as i64;
     let state = node.shared.state.read();
     let mut found: Vec<((bool, i64), SessionId)> = state
         .sessions
@@ -619,7 +629,11 @@ async fn movable(State(node): State<Arc<Node>>, Query(q): Query<Movable>) -> Jso
                 let waiting = s.events.last().is_some_and(|e| e.ts <= since);
                 Some(((waiting, -(progress as i64)), *id))
             }
-            (false, "idle") if s.queued() == 0 && !s.authority.runnable => Some(((false, 0), *id)),
+            (false, "idle")
+                if s.queued() == 0 && !s.authority.runnable && !s.platform.due_before(soon) =>
+            {
+                Some(((false, 0), *id))
+            }
             _ => None,
         })
         .collect();

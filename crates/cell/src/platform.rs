@@ -71,6 +71,16 @@ impl Platform {
         })
     }
 
+    /// Whether a live schedule falls due before `until_ms` (overdue ones
+    /// included).
+    pub fn due_before(&self, until_ms: i64) -> bool {
+        self.schedules.values().any(|s| {
+            live(s)
+                && s.next_trigger_at
+                    .is_some_and(|t| t.timestamp_millis() < until_ms)
+        })
+    }
+
     fn active(&self) -> u32 {
         self.schedules.values().filter(|s| live(s)).count() as u32
     }
