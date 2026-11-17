@@ -26,11 +26,11 @@ Running and archived sessions, their state and participants.
 | [`sessions list`](#sessions-list) | List sessions. |
 | [`sessions pin`](#sessions-pin) | Pin a session for the current user. |
 | [`sessions resume`](#sessions-resume) | Continue a session past a usage policy's ask step. |
-| [`sessions approval-mode get`](#sessions-approval-mode-get) | Show the tool approval mode a person picked for a session and the modes the organization allows. |
-| [`sessions approval-mode set`](#sessions-approval-mode-set) | Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. |
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
+| [`sessions approval-mode get`](#sessions-approval-mode-get) | Show the tool approval mode a person picked for a session and the modes the organization allows. |
+| [`sessions approval-mode set`](#sessions-approval-mode-set) | Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. |
 | [`sessions budget-check check`](#sessions-budget-check-check) | Check all budgets for a session. |
 | [`sessions budgets list`](#sessions-budgets-list) | List all budgets for a session. |
 | [`sessions cost get`](#sessions-cost-get) | Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time. |
@@ -377,45 +377,6 @@ Example:
 everruns sessions resume session_01h9 --reason 'Finish the report'
 ```
 
-## sessions approval-mode get
-
-Show the tool approval mode a person picked for a session and the modes the organization allows.
-
-```bash
-everruns sessions approval-mode get [OPTIONS] --session-id <session_id>
-```
-
-| Flag | Description |
-|---|---|
-| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
-
-Example:
-
-```bash
-# See which approval mode a session runs in
-everruns sessions approval-mode get --session-id session_01h9
-```
-
-## sessions approval-mode set
-
-Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.
-
-```bash
-everruns sessions approval-mode set [OPTIONS] --session-id <session_id>
-```
-
-| Flag | Description |
-|---|---|
-| `--mode <MODE>` | `off`, `auto`, `normal` or `protective`; `null` clears the switch so the session follows the ... |
-| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
-
-Example:
-
-```bash
-# Let a reviewer model answer routine approvals in a session
-everruns sessions approval-mode set --session-id session_01h9 --mode auto --reason 'Long refactor, review routine calls automatically'
-```
-
 ## sessions unarchive
 
 Restore an archived session to default lists.
@@ -480,6 +441,45 @@ everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify
 
 # Switch a running session to another model
 everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'
+```
+
+## sessions approval-mode get
+
+Show the tool approval mode a person picked for a session and the modes the organization allows.
+
+```bash
+everruns sessions approval-mode get [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# See which approval mode a session runs in
+everruns sessions approval-mode get --session-id session_01h9
+```
+
+## sessions approval-mode set
+
+Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.
+
+```bash
+everruns sessions approval-mode set [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--mode <MODE>` | `off`, `auto`, `normal` or `protective`; `null` clears the switch so the session follows the ... |
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+
+Example:
+
+```bash
+# Let a reviewer model answer routine approvals in a session
+everruns sessions approval-mode set --session-id session_01h9 --mode auto --reason 'Long refactor, review routine calls automatically'
 ```
 
 ## sessions budget-check check
