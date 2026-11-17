@@ -10,7 +10,7 @@ links:
   docs: [/features/agent-triggers/]
 ---
 
-Agent schedule triggers now reuse the result of a committed dispatch when a worker
+[Agent schedule triggers](/features/agent-triggers/) now reuse the result of a committed dispatch when a worker
 retries after losing its acknowledgement. The session, input and retry receipt
 commit together, so an interrupted dispatch can retry without leaving a second
 session or appending the same scheduled input again.
