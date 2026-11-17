@@ -323,6 +323,22 @@ A scenario marker (`[[llmsim:<name>]]` in the user message, see below) overrides
 
 Realistic turns stay open for seconds, so reaching a given turn rate needs many more concurrent sessions than the zero-latency model. Session creation is rate limited per organization (`RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE`), so ramp sessions up gradually or raise the limit for the run.
 
+### Long-session and provider realism
+
+A long session behaves like it would against a hosted provider, so soak runs see the costs that only appear after hundreds of turns. The details live in the driver (`crates/drivers/llmsim/src/`), one module each.
+
+- **Prompt cache** (`prompt_cache.rs`). Each session reuses the longest message prefix of its previous call: same model, under a 5 minute TTL, at least 1,024 tokens, counted in 128-token steps. Usage reports `cache_read_tokens` apart from `prompt_tokens`. Compaction, a model switch or an idle gap is a miss.
+- **Prefill.** Uncached prompt tokens add about 50 us each before the first token, and cached tokens a tenth of that. This applies on realistic profiles and on every scenario, so turn 900 starts later than turn 1, and a miss is slower than a hit.
+- **Compaction summaries** (`compaction.rs`). The runtime's summarization call gets a summary about a tenth of its input (256 to 1,200 tokens). In a scenario session it is paced like a hosted model, which takes 5 to 25 s. `-realistic-<family>` models report their family's real context window.
+- **Reasoning replay** (`replay.rs`). The opaque payload is about 6 bytes per reasoning token (1 to 64 KB), as stored and replayed by real providers.
+- **Provider conditions** (`weather.rs`). Markers in the model id apply to every session at once:
+
+| Marker | Effect |
+| --- | --- |
+| `-storm-{429,500,stall,slow}-{every}-{for}` | Every call fails, hangs or slows for `for` s out of every `every` s on the wall clock. A 429 carries `retry-after` until the window ends. |
+| `-busy-{knee}` | Past `knee` calls in flight per worker, first token and token gaps grow with in-flight/knee. |
+| `-tpm-{n}` | Each worker gets a shared budget of `n` prompt tokens a minute. Calls past it fail as rate limited, with the wait until they fit. |
+
 ## Load Testing a Hosted Deployment, and Baselines
 
 The October 2026 capacity work used three layers. Each answered a different question, and none is settled as the right method; replace any of them when a better one appears. The [local stress bench](#local-stress-bench) adds a fourth that needs no deployment.
