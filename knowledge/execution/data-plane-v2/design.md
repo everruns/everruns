@@ -807,7 +807,7 @@ stress` bench) checked in CI, so a later step can't silently undo it.
 | 8 | **Gateway, edge router, live streaming, local full v2** (`start-all` with a v2 data plane, real UI end to end). | Level 3: the whole stack locally, SSE first-delta latency and edge hop within budget | 6, 7 |
 | 9 | **Disaster recovery:** log shipping, snapshots, point-in-time restore, restore drill in the weekly tier. | Loss window under 2 s; cell rebuild under 10 min | 5 |
 | 10 | **Prove on EKS + operations.** Load Testing org, ramp to 75k agents with the llmsim mix and production-shaped conditions: cross-zone latency, realistic turn durations (including 30 s averages), cold caches, long histories, heavy streaming, S3 throttling, loss of a node and of a fraction of executors. Cell inspector CLI ("where is session X and what is it doing"), per-cell SLO dashboards, runbooks for leader loss, a stuck move and a drain. | 75k agents at the stated cost per agent and turn overhead, with spare capacity and recovery backlog measured, not just peak | 8, 9 |
-| 11 | **Stages 2 and 3 features, then the v1 → v2 org move** (session import format, cutover of in-flight turns). | Each feature lands with its own bench line | 10 |
+| 11 | **Stages 2 and 3 features, then the v1 → v2 org move** (session import format, cutover of in-flight turns). Before the first production v2 org: bucket protection (versioning, object lock, replication, multi-region KMS) and a cross-region restore drill, moved here from step 10. | Each feature lands with its own bench line | 10 |
 
 ### Step 0 measurements (2026-11-09)
 
@@ -1672,6 +1672,8 @@ executors killed after the ramp ("chaos").
 | 9 | 6 790 errors | The killed follower never caught up: the Raft router kept axum's 2 MB body limit, which refused 16 MB snapshot chunks, and its stale state answered "not found" | Body limit lifted; a follower far behind steps aside and refuses session requests until it catches up (`catchup.rs`, #5447) |
 | 10 | 31 399 errors | Every replica uploaded its own snapshot copies through a NAT instance whose burst ran out; S3 writes timed out in every cell at once and ship lag refused all work | Only the leader uploads snapshot copies (#5448); S3 through a VPC endpoint (SaaS) |
 | 11 | 720 770 turns, **0 errors**, 208 turns/s, ship lag max 2.7 s | The killed node was still killed out of memory five times while it rejoined | Below |
+| 12, overload | 716 700 turns, **0 errors**, 190 turns/s; bursts of 30 000 new agents, 2 KB messages, up to 46 563 inputs queued | No restarts; 1 893 requests refused for memory, all retried and done; none after the last burst while the queue drained | None needed |
+| 13, with the rejoin fix | 720 990 turns, **0 errors**, 202 turns/s | No out-of-memory kills; the killed node was back ~70 s after the kill and caught up 2 min later at 2.7 GB | None needed |
 
 **Rejoin memory.** A node kept its Raft commit index in memory only. On
 restart it re-applied nothing at startup; its log was applied only when
@@ -1687,7 +1689,15 @@ reached the disk. The same repro then peaks the restarted follower at
 
 Load runs also sample every cell, executor and driver pod's CPU and
 memory, and its machine's, with `cell-testnode usage` (`container.rs`),
-since the cluster runs no metrics server.
+since the cluster runs no metrics server. Run 13: cells 12.5 cores
+average (18.4 peak), executors 18.5 (27.2), drivers 0.6; the 48 vCPU
+machine 69% average, 96% peak, 118 of 189 GB used at peak.
+
+**Deferred to step 11** (user, 2026-11-17): bucket protection
+(versioning, object lock, replication, multi-region KMS) and the
+cross-region restore drill go on the production bucket of the first
+production v2 org, not on the 14-day load bucket: object lock cannot be
+turned off once on.
 
 ### Corrections after the architecture review (2026-11-09)
 
