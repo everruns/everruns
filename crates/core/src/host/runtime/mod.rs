@@ -829,19 +829,22 @@ impl InProcessRuntime {
     /// Build the shared MCP client over the platform egress boundary and the
     /// configured auth provider.
     #[cfg(feature = "mcp")]
-    fn mcp_client(&self) -> Arc<crate::mcp::McpClient> {
+    fn mcp_client(&self, session_id: SessionId) -> Arc<crate::mcp::McpClient> {
         // URL mode elicitation is relayed to the session's user through the
         // tool result rather than answered here — the runtime cannot block a
         // turn on a browser interaction. See `RelayUrlElicitations`.
-        Arc::new(crate::mcp::McpClient::with_url_elicitation(
-            self.extensions
-                .composition
-                .egress
-                .clone()
-                .unwrap_or_else(|| self.host_composition.egress_service()),
-            self.mcp_auth_provider.clone(),
-            Arc::new(crate::mcp::RelayUrlElicitations),
-        ))
+        Arc::new(
+            crate::mcp::McpClient::with_url_elicitation(
+                self.extensions
+                    .composition
+                    .egress
+                    .clone()
+                    .unwrap_or_else(|| self.host_composition.egress_service()),
+                self.mcp_auth_provider.clone(),
+                Arc::new(crate::mcp::RelayUrlElicitations),
+            )
+            .for_session(session_id.uuid()),
+        )
     }
 
     /// Resolve the effective scoped MCP servers for a session.
@@ -1177,7 +1180,7 @@ impl InProcessRuntime {
         #[cfg(feature = "mcp")]
         let mcp_tool_definitions = crate::host::mcp::discover_turn_tool_definitions(
             &self.mcp_discovery_cache,
-            self.mcp_client(),
+            self.mcp_client(session_id),
             session_id,
             &scoped_servers,
             self.storage_store.as_ref(),

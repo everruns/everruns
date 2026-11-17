@@ -86,7 +86,11 @@ pub async fn sync_logged(cp: &ControlPlane, org_id: i64) {
 }
 
 /// The key sealed as `org_id`'s secret `id` now, opened, if there is one.
-async fn sealed_key(cp: &ControlPlane, org_id: i64, id: &str) -> anyhow::Result<Option<Vec<u8>>> {
+pub(super) async fn sealed_key(
+    cp: &ControlPlane,
+    org_id: i64,
+    id: &str,
+) -> anyhow::Result<Option<Vec<u8>>> {
     let Some(body) = cp
         .db
         .dp_item(org_id, "secret", id)

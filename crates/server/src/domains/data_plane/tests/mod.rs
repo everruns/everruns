@@ -134,7 +134,7 @@ async fn a_v1_org_has_no_data_plane() {
     let cp = ControlPlane::new(db, Some(test_encryption()), Link::default());
     assert!(for_org(&cp, 3).await.unwrap().id().is_none());
     // A v1 org's agents never reach the outbox.
-    agent_published(&cp.db, "ak_x", 3, "r1").await.unwrap();
+    agent_published(&cp, "ak_x", 3, "r1").await.unwrap();
     assert!(cp.db.dp_items_live(3).await.unwrap().is_empty());
 }
 
@@ -749,3 +749,5 @@ async fn the_consoles_chat_stays_on_the_control_plane() {
     assert!(!sessions::stays_on_control_plane(Some(&other)));
     assert!(!sessions::stays_on_control_plane(None));
 }
+
+mod mcp;

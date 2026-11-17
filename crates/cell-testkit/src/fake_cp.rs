@@ -54,6 +54,8 @@ struct Ledger {
     sessions: HashMap<String, SessionSummary>,
     config_applied: Vec<(String, u64)>,
     org_events: Vec<(String, String)>,
+    /// Secrets the data plane refreshed: (org, secret id, revision).
+    refreshed: Vec<(String, String, u64)>,
     requests: usize,
     /// Feed records that arrived again under an id already stored.
     duplicates: usize,
@@ -258,6 +260,10 @@ impl FakeCp {
 
     pub fn org_events(&self) -> Vec<(String, String)> {
         self.ledger.lock().org_events.clone()
+    }
+
+    pub fn refreshed(&self) -> Vec<(String, String, u64)> {
+        self.ledger.lock().refreshed.clone()
     }
 
     pub fn config_applied(&self) -> Vec<(String, u64)> {
@@ -524,7 +530,16 @@ async fn feed(
                 Record::OrgEvent { kind, .. } => {
                     ledger.org_events.push((record.org_id.clone(), kind));
                 }
-                Record::SecretRefreshed { .. } | Record::Health { .. } | Record::Unknown => {}
+                Record::SecretRefreshed {
+                    secret_id,
+                    revision,
+                    ..
+                } => {
+                    ledger
+                        .refreshed
+                        .push((record.org_id.clone(), secret_id, revision));
+                }
+                Record::Health { .. } | Record::Unknown => {}
             }
         }
     }

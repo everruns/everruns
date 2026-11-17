@@ -76,7 +76,9 @@ pub use backend::{
     CONFIG_ROWS_CHANNEL, ConfigRowCache, ConfigRowChange, ORG_FEATURE_FLAGS_CHANNEL,
     OrgFeatureFlagCache,
 };
-pub use connection_resolver::{DbConnectionResolver, GitHubAppTokenMinter, NoopConnectionResolver};
+pub use connection_resolver::{
+    DataPlaneGrant, DbConnectionResolver, GitHubAppTokenMinter, NoopConnectionResolver,
+};
 pub use encryption::{
     ENCRYPTED_COLUMNS, EncryptedColumn, EncryptedPayload, EncryptionService,
     generate_encryption_key,

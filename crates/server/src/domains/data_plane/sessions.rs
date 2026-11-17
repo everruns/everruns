@@ -75,7 +75,7 @@ pub async fn created(
         return Ok(());
     }
     let (key, revision) = key_for(&cp.db, org_id, harness_id, agent_id).await?;
-    agent_published(&cp.db, &key, org_id, &revision).await?;
+    agent_published(cp, &key, org_id, &revision).await?;
     let plane = for_org(cp, org_id).await?;
     let public = org_public(org_id);
     let mut last = None;

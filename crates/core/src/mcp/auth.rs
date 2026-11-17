@@ -47,6 +47,10 @@ pub struct McpAuthRequest<'a> {
     pub server_name: &'a str,
     pub auth_mode: McpServerAuthMode,
     pub oauth_provider_id: Option<&'a str>,
+    /// The session the request is made for, when the host's runtime runs
+    /// one: a provider serving several tenants picks their credentials by
+    /// it. `None` outside a session (a probe, a standalone client).
+    pub session_id: Option<uuid::Uuid>,
 }
 
 /// Resolves (and, in stateful implementations, refreshes) MCP credentials.
@@ -124,6 +128,7 @@ mod tests {
                 server_url: Some("https://docs.example/mcp"),
                 auth_mode: McpServerAuthMode::ApiKey,
                 oauth_provider_id: None,
+                session_id: None,
             })
             .await
             .unwrap()
@@ -140,6 +145,7 @@ mod tests {
                 server_url: Some("https://other.example/mcp"),
                 auth_mode: McpServerAuthMode::ApiKey,
                 oauth_provider_id: None,
+                session_id: None,
             })
             .await
             .unwrap();

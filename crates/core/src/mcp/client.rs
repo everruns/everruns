@@ -23,6 +23,8 @@ pub struct McpClient {
     #[cfg(feature = "mcp-stdio")]
     stdio: Arc<crate::mcp::stdio::StdioTransport>,
     auth: Arc<dyn McpAuthProvider>,
+    /// The session this client calls for, passed to the auth provider.
+    session: Option<uuid::Uuid>,
 }
 
 impl McpClient {
@@ -72,7 +74,15 @@ impl McpClient {
             #[cfg(feature = "mcp-stdio")]
             stdio: Arc::new(crate::mcp::stdio::StdioTransport),
             auth,
+            session: None,
         }
+    }
+
+    /// Name the session this client's calls are made for, so the auth
+    /// provider can tell whose credentials a request needs.
+    pub fn for_session(mut self, session: uuid::Uuid) -> Self {
+        self.session = Some(session);
+        self
     }
 
     fn transport_for(&self, connection: &McpConnection) -> &dyn McpTransport {
@@ -94,6 +104,7 @@ impl McpClient {
                 },
                 auth_mode: connection.auth_mode.clone(),
                 oauth_provider_id: connection.oauth_provider_id.as_deref(),
+                session_id: self.session,
             })
             .await
     }

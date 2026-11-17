@@ -64,7 +64,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
             let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
             crate::host::mcp::discover_turn_tool_definitions(
                 &self.mcp_discovery_cache,
-                self.mcp_client(),
+                self.mcp_client(session_id),
                 session_id,
                 &scoped_servers,
                 self.storage_store.as_ref(),
@@ -399,7 +399,7 @@ impl InProcessRuntime {
             None => None,
         };
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
-        crate::host::mcp::build_executor(self.mcp_client(), &scoped_servers)
+        crate::host::mcp::build_executor(self.mcp_client(session_id), &scoped_servers)
             .map(|executor| executor as Arc<dyn crate::McpToolInvoker>)
     }
 

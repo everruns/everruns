@@ -85,6 +85,13 @@ pub enum Command {
         command: crate::control::AdminCommand,
         now_ms: i64,
     },
+    /// An executor leasing or refreshing `org`'s secret (directory cell,
+    /// `secrets.rs`).
+    Secret {
+        org: String,
+        request: crate::secrets::SecretOp,
+        now_ms: i64,
+    },
     /// The control plane stored the feed through `(index, ordinal)`.
     FeedAcked { through: (u64, u32) },
     /// The leader's minute report for Monitoring: its node measurements;
@@ -308,6 +315,7 @@ impl Command {
             Command::Host { now_ms, .. }
             | Command::Config { now_ms, .. }
             | Command::Admin { now_ms, .. }
+            | Command::Secret { now_ms, .. }
             | Command::Reserve { now_ms, .. }
             | Command::Claim { now_ms, .. }
             | Command::Renew { now_ms, .. }
@@ -936,53 +944,24 @@ impl CellState {
                 update,
                 now_ms,
             } => {
-                let ack = self.orgs.apply(&org, &update);
-                if let crate::dp::ConfigAck::Ok { applied_version } = ack {
-                    let index = self.last_applied.map_or(0, |l| l.index);
-                    self.feed.push(
-                        index,
-                        &org,
-                        now_ms,
-                        crate::dp::Record::ConfigApplied {
-                            version: applied_version,
-                        },
-                    );
-                }
-                Response::Value {
-                    value: serde_json::to_value(ack).unwrap_or_default(),
-                }
+                let index = self.last_applied.map_or(0, |l| l.index);
+                crate::control::config(&mut self.orgs, &mut self.feed, index, &org, &update, now_ms)
             }
             Command::Admin {
                 org,
                 command,
                 now_ms,
             } => {
-                let suspends = matches!(
-                    &command,
-                    crate::control::AdminCommand::State(c)
-                        if c.state == crate::dp::OrgState::Suspended
-                );
-                let fresh = self
-                    .orgs
-                    .orgs
-                    .get(&org)
-                    .is_none_or(|c| c.command(command.command_id()).is_none());
-                let ack = self.orgs.admin(&org, command);
-                if suspends && fresh && ack.accepted {
-                    let index = self.last_applied.map_or(0, |l| l.index);
-                    self.feed.push(
-                        index,
-                        &org,
-                        now_ms,
-                        crate::dp::Record::OrgEvent {
-                            kind: "suspended".into(),
-                            detail: String::new(),
-                        },
-                    );
-                }
-                Response::Value {
-                    value: serde_json::to_value(ack).unwrap_or_default(),
-                }
+                let index = self.last_applied.map_or(0, |l| l.index);
+                crate::control::admin(&mut self.orgs, &mut self.feed, index, &org, command, now_ms)
+            }
+            Command::Secret {
+                org,
+                request,
+                now_ms,
+            } => {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                crate::secrets::apply(&mut self.orgs, &mut self.feed, index, &org, request, now_ms)
             }
             Command::FeedAcked { through } => {
                 self.feed.ack(through);

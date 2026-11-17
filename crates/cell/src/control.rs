@@ -67,6 +67,9 @@ pub struct OrgConfig {
     /// for an operator to keep or drop (`everruns-dataplane reconcile`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leftovers: Option<crate::dp::ConfigLeftovers>,
+    /// Secrets an executor is refreshing now (`secrets.rs`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub refreshing: BTreeMap<String, crate::secrets::Lease>,
 }
 
 /// An org's data key as `OrgEnable` delivered it.
@@ -456,6 +459,59 @@ pub struct Feed {
     /// `(index, ordinal)` of the last record acknowledged.
     #[serde(default)]
     pub acked: (u64, u32),
+}
+
+/// Apply a config update in the directory cell; a new version goes on
+/// the feed as `ConfigApplied`.
+pub fn config(
+    orgs: &mut Orgs,
+    feed: &mut Feed,
+    index: u64,
+    org: &str,
+    update: &ConfigUpdate,
+    now_ms: i64,
+) -> crate::state::Response {
+    let ack = orgs.apply(org, update);
+    if let ConfigAck::Ok { applied_version } = ack {
+        let record = Record::ConfigApplied {
+            version: applied_version,
+        };
+        feed.push(index, org, now_ms, record);
+    }
+    crate::state::Response::Value {
+        value: serde_json::to_value(ack).unwrap_or_default(),
+    }
+}
+
+/// Apply an admin command in the directory cell; a suspension goes on the
+/// feed once.
+pub fn admin(
+    orgs: &mut Orgs,
+    feed: &mut Feed,
+    index: u64,
+    org: &str,
+    command: AdminCommand,
+    now_ms: i64,
+) -> crate::state::Response {
+    let suspends = matches!(
+        &command,
+        AdminCommand::State(c) if c.state == crate::dp::OrgState::Suspended
+    );
+    let fresh = orgs
+        .orgs
+        .get(org)
+        .is_none_or(|c| c.command(command.command_id()).is_none());
+    let ack = orgs.admin(org, command);
+    if suspends && fresh && ack.accepted {
+        let record = Record::OrgEvent {
+            kind: "suspended".into(),
+            detail: String::new(),
+        };
+        feed.push(index, org, now_ms, record);
+    }
+    crate::state::Response::Value {
+        value: serde_json::to_value(ack).unwrap_or_default(),
+    }
 }
 
 impl Feed {
