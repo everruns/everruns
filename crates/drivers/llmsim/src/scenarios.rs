@@ -34,7 +34,9 @@ use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use futures::StreamExt;
 use futures::stream::{self, BoxStream};
-use llmsim::latency::LatencyProfile;
+
+use crate::prompt_cache::PromptUsage;
+use llmsim::latency::{DEFAULT_PREFILL_US_PER_TOKEN, LatencyProfile};
 use llmsim::scenario::{
     self, AttemptOutcome, AttemptTracker, ConversationMessage, ResolveError, ScenarioSet,
     StepError, ToolSpec,
@@ -59,6 +61,7 @@ pub(crate) fn play(
     tools: &[ToolDefinition],
     model: &str,
     latency: LatencyProfile,
+    prompt: PromptUsage,
     attempts: &Attempts,
 ) -> Option<Result<BoxStream<'static, Result<LlmStreamEvent>>>> {
     let conversation: Vec<ConversationMessage> = messages.iter().map(conversation).collect();
@@ -132,7 +135,7 @@ pub(crate) fn play(
                         .into(),
                 )),
             ));
-            return Some(Ok(play_plan(plan)));
+            return Some(Ok(play_plan(with_prefill(plan, prompt))));
         }
         // Close the reasoning block before the first answer token.
         if reasoning_open && matches!(event, LlmStreamEvent::TextDelta(_)) {
@@ -156,13 +159,28 @@ pub(crate) fn play(
         ));
     }
     let mut metadata = LlmCompletionMetadata::default();
+    metadata.prompt_tokens = Some(prompt.prompt_tokens());
+    metadata.cache_read_tokens = prompt.cache_read_tokens();
     metadata.completion_tokens = Some(completion_tokens);
-    metadata.total_tokens = Some(completion_tokens);
+    metadata.total_tokens = Some(prompt.uncached + prompt.cached + completion_tokens);
     metadata.model = Some(model.to_string());
     metadata.response_model = Some(model.to_string());
     metadata.finish_reason = Some("stop".to_string());
     plan.push((Duration::ZERO, Ok(LlmStreamEvent::Done(Box::new(metadata)))));
-    Some(Ok(play_plan(plan)))
+    Some(Ok(play_plan(with_prefill(plan, prompt))))
+}
+
+/// Reading the prompt comes before anything the model writes. Scenarios model
+/// hosted providers, so they use llmsim's default prefill rate even on the
+/// instant `llmsim-default` model.
+fn with_prefill(
+    mut plan: Vec<(Duration, Result<LlmStreamEvent>)>,
+    prompt: PromptUsage,
+) -> Vec<(Duration, Result<LlmStreamEvent>)> {
+    if let Some((wait, _)) = plan.first_mut() {
+        *wait += prompt.prefill(DEFAULT_PREFILL_US_PER_TOKEN);
+    }
+    plan
 }
 
 /// Time a model spends writing tool calls: their arguments are output tokens
@@ -291,6 +309,7 @@ mod tests {
             tools,
             "llmsim-default",
             LatencyProfile::instant(),
+            PromptUsage::default(),
             attempts,
         )?;
         Some(match played {
@@ -636,5 +655,51 @@ mod tests {
             .count();
         assert_eq!(deltas, 400);
         assert_eq!(item + 1, first_text);
+    }
+
+    /// A long prompt is read before the first token, and the scenario reports
+    /// it as prompt and cache-read tokens.
+    #[tokio::test(start_paused = true)]
+    async fn prompts_are_prefilled_and_billed() {
+        let messages = vec![Message::text(MessageRole::User, "hi [[llmsim:chat-short]]")];
+        let mut times = Vec::new();
+        for prompt in [
+            PromptUsage::default(),
+            PromptUsage {
+                uncached: 100_000,
+                cached: 0,
+            },
+            PromptUsage {
+                uncached: 0,
+                cached: 100_000,
+            },
+        ] {
+            let started = tokio::time::Instant::now();
+            let events: Vec<_> = play(
+                &messages,
+                &[],
+                "llmsim-default",
+                LatencyProfile::instant(),
+                prompt,
+                &Attempts::default(),
+            )
+            .unwrap()
+            .unwrap()
+            .collect()
+            .await;
+            times.push(started.elapsed());
+            let Some(Ok(LlmStreamEvent::Done(metadata))) = events.last() else {
+                panic!("no metadata");
+            };
+            assert_eq!(metadata.prompt_tokens, Some(prompt.uncached));
+            assert_eq!(metadata.cache_read_tokens, prompt.cache_read_tokens());
+        }
+        // 100k cold tokens at 50 us each add 5 s; cached ones a tenth of that.
+        assert!(times[1] >= times[0] + Duration::from_secs(5), "{times:?}");
+        assert!(
+            times[2] >= times[0] + Duration::from_millis(500),
+            "{times:?}"
+        );
+        assert!(times[2] < times[1], "{times:?}");
     }
 }

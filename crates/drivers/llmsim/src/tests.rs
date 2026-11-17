@@ -585,3 +585,54 @@ fn test_resolve_latency_profile_from_model_name() {
     let profile = driver.resolve_latency_profile("llmsim-default");
     assert!(profile.sample_ttft().as_nanos() > 0);
 }
+
+#[tokio::test]
+async fn a_long_session_reports_cache_reads_like_a_hosted_provider() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    let mut config = make_config();
+    config
+        .metadata
+        .insert("session_id".into(), "long-session".into());
+    // About 5,000 tokens of system prompt, then a growing conversation.
+    let mut messages = vec![system_message(&"x".repeat(20_000)), user_message("hi")];
+
+    let first = driver
+        .chat_completion(messages.clone(), &config)
+        .await
+        .unwrap()
+        .metadata;
+    assert_eq!(first.cache_read_tokens, None);
+    let first_prompt = first.prompt_tokens.unwrap();
+    assert!(first_prompt >= 5_000);
+
+    messages.push(Message::text(MessageRole::Assistant, "ok"));
+    messages.push(user_message("and then?"));
+    let second = driver
+        .chat_completion(messages, &config)
+        .await
+        .unwrap()
+        .metadata;
+    let cached = second.cache_read_tokens.unwrap();
+    assert!(cached >= 4_992, "cached {cached}");
+    // Billed prompt tokens exclude the cache read; the total includes it.
+    assert!(second.prompt_tokens.unwrap() < 200);
+    assert_eq!(
+        second.total_tokens.unwrap(),
+        second.prompt_tokens.unwrap() + cached + second.completion_tokens.unwrap()
+    );
+}
+
+#[tokio::test]
+async fn calls_without_a_session_are_never_cached() {
+    let driver = LlmSimDriver::new(LlmSimConfig::fixed("ok"));
+    let messages = vec![system_message(&"x".repeat(20_000))];
+    for _ in 0..2 {
+        let metadata = driver
+            .chat_completion(messages.clone(), &make_config())
+            .await
+            .unwrap()
+            .metadata;
+        assert_eq!(metadata.cache_read_tokens, None);
+        assert!(metadata.prompt_tokens.unwrap() >= 5_000);
+    }
+}

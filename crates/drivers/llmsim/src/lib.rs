@@ -21,6 +21,7 @@
 
 mod demo_scripts;
 mod model_names;
+mod prompt_cache;
 pub mod realtime;
 mod scenarios;
 
@@ -475,6 +476,8 @@ pub struct LlmSimDriver {
     tool_call_counter: Arc<AtomicUsize>,
     /// Attempt counts for scenario steps that fail first
     scenario_attempts: scenarios::Attempts,
+    /// Simulated provider prompt cache, per session.
+    prompt_cache: Arc<prompt_cache::PromptCache>,
     // Registered Agents share one driver; sequence state belongs to each session.
     session_counters: Arc<std::sync::Mutex<SessionSequenceCounters>>,
 }
@@ -493,6 +496,7 @@ impl LlmSimDriver {
             response_counter: Arc::new(AtomicUsize::new(0)),
             tool_call_counter: Arc::new(AtomicUsize::new(0)),
             scenario_attempts: scenarios::Attempts::default(),
+            prompt_cache: Arc::default(),
             session_counters: Arc::default(),
         }
     }
@@ -721,12 +725,6 @@ impl LlmSimDriver {
             LatencyProfile::instant()
         }
     }
-
-    /// Estimate token count for text
-    fn estimate_tokens(text: &str) -> u32 {
-        // Simple estimation: ~4 chars per token
-        (text.len() / 4).max(1) as u32
-    }
 }
 
 #[async_trait]
@@ -773,6 +771,14 @@ impl ChatDriver for LlmSimDriver {
             tokio::time::sleep(delay).await;
         }
 
+        // Every call reads its prompt through the session's prompt cache, so
+        // usage and prefill time follow the cache like a hosted provider's.
+        let prompt = self.prompt_cache.usage(
+            config.metadata.get("session_id").map(String::as_str),
+            &config.model,
+            &messages,
+        );
+
         // A scenario marker in the user message (or an `llmsim-scenario-*`
         // model) takes over the whole call, pacing included.
         if let Some(played) = scenarios::play(
@@ -780,6 +786,7 @@ impl ChatDriver for LlmSimDriver {
             &config.tools,
             &config.model,
             self.resolve_latency_profile(&config.model),
+            prompt,
             &self.scenario_attempts,
         ) {
             return played;
@@ -814,14 +821,17 @@ impl ChatDriver for LlmSimDriver {
         let tool_calls = generated_turn.tool_calls;
         let model_name = config.model.clone();
         let response_id_for_done = self.config.response_id.clone();
-        let latency_profile = self.resolve_latency_profile(&model_name);
+        let mut latency_profile = self.resolve_latency_profile(&model_name);
+        // Prefill: a longer or colder prompt starts later. Profiles without a
+        // prefill rate (instant, fast) stay unchanged.
+        let prefill = prompt.prefill(latency_profile.prefill_us_per_token);
+        latency_profile.ttft_mean_ms = latency_profile
+            .ttft_mean_ms
+            .saturating_add(prefill.as_millis() as u64);
 
-        // Calculate token estimates
-        let prompt_tokens: u32 = messages
-            .iter()
-            .map(|m| Self::estimate_tokens(&m.content_as_text()))
-            .sum();
-        let completion_tokens = Self::estimate_tokens(&response_text);
+        let prompt_tokens = prompt.prompt_tokens();
+        let cache_read_tokens = prompt.cache_read_tokens();
+        let completion_tokens = prompt_cache::estimate_tokens(&response_text);
 
         // TokenStreamBuilder handles TTFT and inter-token delays via LatencyProfile.
         let usage = Usage {
@@ -898,8 +908,10 @@ impl ChatDriver for LlmSimDriver {
             }
             tail.push(Ok(LlmStreamEvent::Done(Box::new({
                 let mut metadata = LlmCompletionMetadata::default();
-                metadata.total_tokens = Some(prompt_tokens + completion_tokens);
+                metadata.total_tokens =
+                    Some(prompt_tokens + cache_read_tokens.unwrap_or(0) + completion_tokens);
                 metadata.prompt_tokens = Some(prompt_tokens);
+                metadata.cache_read_tokens = cache_read_tokens;
                 metadata.completion_tokens = Some(completion_tokens);
                 metadata.model = Some(model_name_done);
                 metadata.response_model = Some(self.config.model_name.clone());
