@@ -198,9 +198,10 @@ pub struct TenantPolicy {
     #[serde(default)]
     pub features: Vec<String>,
     /// The session event types the control plane wants copied onto the
-    /// feed as `Record::Event`, for observers, trace exports and reports;
-    /// `*` is every type. Empty: none.
-    #[serde(default)]
+    /// feed as `Record::Event`, for observers, trace exports and the
+    /// warehouse export; `*` is every type. Empty: none, and left out of
+    /// the change so an org that taps nothing keeps the policy it had.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub events: Vec<String>,
 }
 
@@ -638,6 +639,11 @@ mod tests {
             json!({
                 "kind": "Policy", "limits": {}, "egress": {},
                 "placement": { "kind": "Dedicated", "pool": "p" }, "features": ["s1"]
+            }),
+            json!({
+                "kind": "Policy", "limits": {}, "egress": {},
+                "placement": { "kind": "Dedicated", "pool": "p" }, "features": [],
+                "events": ["turn.completed"]
             }),
             json!({ "kind": "Removal", "of": "agent", "id": "a" }),
         ] {
