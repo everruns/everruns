@@ -222,6 +222,9 @@ const ORG_SESSION_COMMANDS: &[&str] = &[
     "tool-results",
     "record",
     "storage",
+    // A session's files: the control plane copies a message's uploads
+    // there before it sends the message (`gateway_input.rs`).
+    "fs",
 ];
 
 /// The org's session `session`, or 404.

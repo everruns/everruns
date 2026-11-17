@@ -33,6 +33,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/sessions/{session}/seed", post(seed))
         .route("/cell/sessions/{session}/schedules", post(schedules))
         .route("/cell/sessions/{session}/tasks", post(tasks))
+        .route("/cell/sessions/{session}/task", post(task))
         .route("/cell/sessions/{session}/record", post(record))
         .route(
             "/cell/sessions/{session}/storage",
@@ -387,6 +388,33 @@ async fn tasks(
         Lookup::Moved { cell } => CellReply::Moved { cell },
         Lookup::Missing => CellReply::NotFound,
     }))
+}
+
+/// Cancel one of the session's tasks, or send it a person's message
+/// (`tasks::api_op`); answers the task or the message, null for a task the
+/// session does not have.
+async fn task(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(write): Json<crate::tasks::ApiWrite>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    let kind = match crate::api::lookup(&node, id, |s| crate::tasks::kind_of(s, &write.task)) {
+        Lookup::Here(Some(kind)) => kind,
+        Lookup::Here(None) => {
+            return Ok(Json(CellReply::Ok {
+                value: serde_json::Value::Null,
+            }));
+        }
+        Lookup::Moved { cell } => return Ok(Json(CellReply::Moved { cell })),
+        Lookup::Missing => return Ok(Json(CellReply::NotFound)),
+    };
+    match crate::tasks::api_op(write, &kind) {
+        Ok(op) => Ok(Json(
+            platform(&node, id, crate::platform::Op::Task(op)).await?,
+        )),
+        Err(reason) => Ok(Json(CellReply::Refused { reason })),
+    }
 }
 
 #[cfg(test)]

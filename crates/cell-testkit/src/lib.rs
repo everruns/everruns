@@ -288,6 +288,51 @@ impl everruns::ChatDriver for StampSim {
     }
 }
 
+/// A model that says what the person's last message showed it: each
+/// image's data URL prefix (`data:image/png;base64`, or the URL) and each
+/// file's name, so a test sees what a turn's request carried.
+struct EyesSim;
+
+#[async_trait::async_trait]
+impl everruns::ChatDriver for EyesSim {
+    async fn chat_completion_stream(
+        &self,
+        endpoint: &everruns::ProviderEndpoint,
+        messages: Vec<everruns_contracts::Message>,
+        config: &everruns::LlmCallConfig,
+    ) -> everruns_contracts::Result<everruns::LlmResponseStream> {
+        use everruns_contracts::{LlmContentPart, MessageContent, MessageRole};
+        let mut seen = Vec::new();
+        let last = messages.iter().rev().find(|m| m.role == MessageRole::User);
+        if let Some(MessageContent::Parts(parts)) = last.map(|m| &m.content) {
+            for part in parts {
+                match part {
+                    LlmContentPart::Image { url } => {
+                        let head = url.split(',').next().unwrap_or_default();
+                        seen.push(format!("image {head}"));
+                    }
+                    LlmContentPart::File { filename, .. } => {
+                        seen.push(format!("file {}", filename.clone().unwrap_or_default()));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let answer = if seen.is_empty() {
+            "Saw nothing.".to_owned()
+        } else {
+            format!("Saw {}.", seen.join("; "))
+        };
+        everruns_llmsim::LlmSimDriver::new(LlmSimConfig::scripted(vec![SimTurn::Assistant(answer)]))
+            .chat_completion_stream(endpoint, messages, config)
+            .await
+    }
+}
+
+fn eyes_model() -> Model {
+    Model::new("eyes", everruns::Provider::new("llmsim", EyesSim))
+}
+
 fn stamp_model() -> Model {
     Model::new("stamp", everruns::Provider::new("llmsim", StampSim))
 }
@@ -589,6 +634,7 @@ pub fn host() -> StandardHost {
                 "blob" => blob_model(),
                 "files" => files_model(),
                 "stamp" => stamp_model(),
+                "eyes" => eyes_model(),
                 "approve" => approve_model("guarded"),
                 "gate" => approve_model("note"),
                 // A plain answer that takes `CELL_MODEL_DELAY_MS`: a turn
@@ -658,6 +704,8 @@ pub fn definition(name: &str) -> Option<Value> {
         "echo" => agent("echo", "Answer.", "echo", &[]),
         // Deltas stamped with the time they were made (the latency bench).
         "stamp" => agent("stamp", "Answer.", "stamp", &[]),
+        // Says which images and files the person's message showed it.
+        "eyes" => agent("eyes", "Answer.", "eyes", &[]),
         // Calls a tool that waits for a person's approval.
         "approve" => agent("approve", "Ask, then change.", "approve", &["guarded"]),
         // Its `tool_approval` capability gates a state-changing tool.

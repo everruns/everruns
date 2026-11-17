@@ -7,9 +7,10 @@
 //!   control plane's filters and cursors), the SSE stream, cancelling the
 //!   running turn, tool approvals and client-side tool results; the
 //!   session's files are `gateway_fs.rs` (step 11.1), and its schedules
-//!   are here since step 11.4 (`platform.rs`), with its tasks to read
-//!   (`tasks.rs`; cancelling a task, answering one and push configs come
-//!   with 11.6). Every other call on a
+//!   are here since step 11.4 (`platform.rs`), with its tasks (`tasks.rs`;
+//!   cancelling and messaging one since 11.6, push configs not yet), its
+//!   images and files (`gateway_input.rs`) and its Work tab reads
+//!   (`gateway_work.rs`). Every other call on a
 //!   session answers 501 with the feature's name, and the console hides
 //!   those features for a v2 org, so a client never gets half a shape.
 //! - The session record itself (get, list, title, pin, archive) stays with
@@ -60,6 +61,22 @@ pub fn routes() -> Router<Arc<Gateway>> {
         )
         .route("/v1/sessions/{session}/tasks", get(list_tasks))
         .route("/v1/sessions/{session}/tasks/{task}", get(get_task))
+        .route(
+            "/v1/sessions/{session}/tasks/{task}/cancel",
+            post(cancel_task),
+        )
+        .route(
+            "/v1/sessions/{session}/work",
+            get(crate::gateway_work::work),
+        )
+        .route(
+            "/v1/sessions/{session}/resources",
+            get(crate::gateway_work::resources),
+        )
+        .route(
+            "/v1/sessions/{session}/tasks/{task}/messages",
+            post(message_task),
+        )
         .route("/v1/sessions/{session}/{*feature}", any(not_yet))
 }
 
@@ -101,18 +118,46 @@ struct SendBody {
     metadata: Option<Value>,
 }
 
-/// The text of an input message's content, or the kind of the first part
-/// that is not text: anything but text parts is a stage 2 feature.
-fn input_text(message: &Value) -> Result<String, String> {
-    let parts = message["content"].as_array().cloned().unwrap_or_default();
-    let mut text = Vec::new();
-    for part in &parts {
-        match part["type"].as_str() {
-            Some("text") => text.push(part["text"].as_str().unwrap_or_default().to_owned()),
-            other => return Err(other.unwrap_or("unknown").to_owned()),
+/// An input message's parts, inline images written to the session's
+/// files first (`gateway_input.rs`).
+async fn input_parts(
+    gateway: &Gateway,
+    session: SessionId,
+    message: &Value,
+) -> Result<Vec<everruns_core::ContentPart>, Response> {
+    use crate::gateway_input::{Part, Refused};
+    let parts = match crate::gateway_input::parts(message) {
+        Ok(parts) => parts,
+        Err(Refused::Kind(kind)) => return Err(unsupported_content(&kind)),
+        Err(Refused::Invalid(reason)) => {
+            return Err((StatusCode::BAD_REQUEST, reason).into_response());
+        }
+    };
+    let mut content = Vec::with_capacity(parts.len());
+    for part in parts {
+        match part {
+            Part::Ready(part) => content.push(part),
+            Part::Inline(part, file) => {
+                let op = json!({ "op": "seed", "files": [file] });
+                let reply = gateway
+                    .session_command(session, "fs", &op)
+                    .await
+                    .map_err(IntoResponse::into_response)?;
+                if reply["result"] == "failed" {
+                    let status = reply["status"]
+                        .as_u64()
+                        .and_then(|s| StatusCode::from_u16(s as u16).ok())
+                        .unwrap_or(StatusCode::BAD_REQUEST);
+                    let message = reply["message"]
+                        .as_str()
+                        .unwrap_or("the image was not kept");
+                    return Err((status, message.to_owned()).into_response());
+                }
+                content.push(part);
+            }
         }
     }
-    Ok(text.join("\n"))
+    Ok(content)
 }
 
 /// 501 for an input content kind the data plane does not take yet.
@@ -146,21 +191,29 @@ async fn send(
     if raw.as_deref().is_some_and(|q| q.contains("wait=true")) {
         return not_yet(Method::POST, Path((String::new(), "messages?wait".into()))).await;
     }
-    let text = match (body.text, &body.message) {
-        (Some(text), _) => text,
-        (None, Some(message)) => match input_text(message) {
-            Ok(text) => text,
-            Err(kind) => return unsupported_content(&kind),
+    let id = match body.id.map(|id| MessageId::parse(&id)).transpose() {
+        Ok(id) => id.unwrap_or_default(),
+        Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    };
+    let parts = match (body.text, &body.message) {
+        (Some(text), _) => vec![everruns_core::ContentPart::text(text)],
+        (None, Some(message)) => match input_parts(&gateway, session, message).await {
+            Ok(parts) => parts,
+            Err(refused) => return refused,
         },
         (None, None) => {
             return (StatusCode::BAD_REQUEST, "message or text required").into_response();
         }
     };
-    let id = match body.id.map(|id| MessageId::parse(&id)).transpose() {
-        Ok(id) => id.unwrap_or_default(),
-        Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    let admitted = match crate::gateway_input::text_only(&parts) {
+        Some(text) => gateway.admit(session, text, Some(id)).await,
+        None => {
+            gateway
+                .admit_parts(session, String::new(), parts.clone(), Some(id))
+                .await
+        }
     };
-    match gateway.admit(session, text.clone(), Some(id)).await {
+    match admitted {
         Ok(_) => (
             StatusCode::CREATED,
             Json(json!({
@@ -168,7 +221,7 @@ async fn send(
                 "session_id": session,
                 "sequence": 0,
                 "role": "user",
-                "content": [{ "type": "text", "text": text }],
+                "content": parts,
                 "metadata": body.metadata,
                 "created_at": chrono::Utc::now(),
                 "status": "accepted",
@@ -808,4 +861,43 @@ async fn get_task(
         return Err((StatusCode::NOT_FOUND, "Task not found".into()));
     }
     Ok(Json(detail))
+}
+
+/// A task write (`tasks::api_op`) on the session's cell; 404 for a task
+/// the session does not have.
+async fn write_task(
+    gateway: &Gateway,
+    session: &str,
+    body: Value,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(session)?;
+    let written = gateway.session_command(session, "task", &body).await?;
+    if written.is_null() {
+        return Err((StatusCode::NOT_FOUND, "Session task not found".into()));
+    }
+    Ok(Json(written))
+}
+
+/// `POST /v1/sessions/{id}/tasks/{task_id}/cancel`: request the task's
+/// cooperative cancel; answers the task.
+async fn cancel_task(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    write_task(&gateway, &session, json!({ "task": task, "cancel": true })).await
+}
+
+/// `POST /v1/sessions/{id}/tasks/{task_id}/messages`: a person's message
+/// to the task (`text` or `content`, `in_reply_to`); answers the message.
+async fn message_task(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task)): Path<(String, String)>,
+    Json(mut body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    if !body.is_object() {
+        return Err((StatusCode::BAD_REQUEST, "a JSON object is required".into()));
+    }
+    body["task"] = json!(task);
+    body["cancel"] = json!(false);
+    write_task(&gateway, &session, body).await
 }

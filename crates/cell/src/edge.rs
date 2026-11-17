@@ -81,6 +81,9 @@ const RECORD: &[&str] = &[
     "fork",
     "run",
     "resume",
+    // The pinned sandbox's description, under its older name (`sandbox`
+    // reads are routed by method in `route_for`).
+    "environment",
 ];
 /// The calls on one of a session's messages that the control plane serves
 /// (step 11.6): `messages/{id}/{call}`.
@@ -411,7 +414,49 @@ async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
     if !edge.on_data_plane(session).await {
         return edge.to_control_plane(request).await;
     }
+    // A message that refers to uploads goes through the control plane,
+    // which keeps them and copies them into the session's files first
+    // (`gateway_input.rs`); every other message goes straight to the cell.
+    let request = if request.method() == Method::POST && is_messages(path) {
+        let (parts, body) = request.into_parts();
+        let Ok(bytes) = axum::body::to_bytes(body, crate::gateway::max_request_bytes()).await
+        else {
+            return (StatusCode::PAYLOAD_TOO_LARGE, "message too large").into_response();
+        };
+        let uploads = refers_to_uploads(&bytes);
+        let request = Request::from_parts(parts, Body::from(bytes));
+        if uploads {
+            return edge.to_control_plane(request).await;
+        }
+        request
+    } else {
+        request
+    };
     edge.to_data_plane(request, &token).await
+}
+
+/// `/v1/sessions/{id}/messages`.
+fn is_messages(path: &str) -> bool {
+    matches!(
+        path.trim_matches('/')
+            .split('/')
+            .collect::<Vec<_>>()
+            .as_slice(),
+        ["v1", "sessions", _, "messages"]
+    )
+}
+
+/// Whether a message body (`{"message": {"content": [...]}}`) refers to
+/// an upload (an `image_file` or `file` part).
+fn refers_to_uploads(body: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return false;
+    };
+    value["message"]["content"].as_array().is_some_and(|parts| {
+        parts
+            .iter()
+            .any(|part| matches!(part["type"].as_str(), Some("image_file" | "file")))
+    })
 }
 
 impl Edge {
@@ -551,6 +596,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_a_message_that_refers_to_uploads_goes_through_the_control_plane() {
+        let id = SessionId::new();
+        assert!(is_messages(&format!("/v1/sessions/{id}/messages")));
+        assert!(!is_messages(&format!(
+            "/v1/sessions/{id}/messages/x/feedback"
+        )));
+        let body = |parts: serde_json::Value| {
+            serde_json::to_vec(&serde_json::json!({ "message": { "content": parts } })).unwrap()
+        };
+        assert!(refers_to_uploads(&body(serde_json::json!([
+            { "type": "text", "text": "see" },
+            { "type": "image_file", "image_id": "img_1" },
+        ]))));
+        assert!(refers_to_uploads(&body(
+            serde_json::json!([{ "type": "file", "file_id": "file_1" }])
+        )));
+        assert!(!refers_to_uploads(&body(serde_json::json!([
+            { "type": "text", "text": "hi" },
+            { "type": "image", "base64": "AA==" },
+        ]))));
+        assert!(!refers_to_uploads(b"{\"text\": \"hi\"}"));
+        assert!(!refers_to_uploads(b"not json"));
+    }
+
+    #[test]
     fn records_stay_with_the_control_plane_and_data_calls_route_to_the_session() {
         let id = SessionId::new();
         assert_eq!(route("/v1/sessions"), Route::ControlPlane);
@@ -599,6 +669,7 @@ mod tests {
             "fork",
             "run",
             "resume",
+            "environment",
         ] {
             assert_eq!(
                 route(&format!("/v1/sessions/{id}/{call}")),

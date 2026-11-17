@@ -275,3 +275,29 @@ fn task_commands_round_trip() {
         crate::platform::Op::Task(TaskOp::RequestCancel { .. })
     ));
 }
+
+#[test]
+fn a_person_cancels_a_task_or_messages_one_the_api_may_message() {
+    let write = |body: serde_json::Value| -> ApiWrite { serde_json::from_value(body).unwrap() };
+    assert!(matches!(
+        api_op(write(json!({ "task": "task_1", "cancel": true })), "subagent"),
+        Ok(TaskOp::RequestCancel { task_id }) if task_id == "task_1"
+    ));
+    let Ok(TaskOp::Message {
+        message,
+        expected_attempt,
+    }) = api_op(
+        write(json!({ "task": "task_1", "text": "use staging", "in_reply_to": "" })),
+        "background",
+    )
+    else {
+        panic!("a message to a background task is taken");
+    };
+    assert_eq!(message.direction, TaskMessageDirection::Inbound);
+    assert_eq!(message.in_reply_to, None);
+    assert_eq!(expected_attempt, None);
+    for kind in ["subagent", "agent_handoff", "assignment"] {
+        assert!(api_op(write(json!({ "task": "t", "text": "hi" })), kind).is_err());
+    }
+    assert!(api_op(write(json!({ "task": "t", "text": "  " })), "background").is_err());
+}

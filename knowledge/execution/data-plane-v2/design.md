@@ -1929,6 +1929,26 @@ on v2: a cell keeps no timestamps for values and secrets; a fork carries
 messages with their text and media but not tool calls, secrets, files or
 databases; bound secrets are refused.
 
+**11.6 continued: attachments and the Work tab.** Uploads stay org records
+on the control plane. A message that refers to one (`image_file`, `file`)
+goes through the control plane: the edge looks at the body of a v2
+session's `POST messages` and passes such a message there, while text keeps
+going straight to the cell. The control plane copies each upload into the
+session's files on the cell at the path a v1 session uses
+(`/attachments/<id>/<name>`, read-only, a zip unpacked next to it), then
+admits the message with its parts (`crates/server/src/domains/data_plane/attachments.rs`).
+Channels (Slack) do the same before they send. An inline image sent to the
+cell is written to the session's files by the gateway and referred to by id,
+so the bytes stay out of the log (`crates/cell/src/gateway_input.rs`). The
+executor reads an attachment's bytes back from the session's files, so a
+cell never asks the control plane for them during a turn, and a node refuses
+a message naming an attachment its session does not hold. The Work tab:
+task cancel and a person's message to a task are cell commands with the
+control plane's rules; the work report is computed on the cell from the
+turn's events with the same reducer; a cell leases no resources, so the
+resources list is empty. Not served on v2 yet: task push-notification
+configs (no delivery on the data plane; the test org uses none).
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
