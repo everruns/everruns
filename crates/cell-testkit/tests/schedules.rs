@@ -116,14 +116,26 @@ async fn a_session_schedules_its_own_next_run() {
     .await;
     assert_eq!(status, 200, "{patched}");
     assert_eq!(patched["max_runs"], 5);
-    let (status, refused) = call(
+    // A spend cap is kept with the schedule; a cap that is no amount is
+    // refused.
+    let (status, capped) = call(
         &fleet,
         reqwest::Method::PATCH,
         &path,
         json!({ "budget_usd": 1.0 }),
     )
     .await;
-    assert_eq!(status, 501, "{refused}");
+    assert_eq!(status, 200, "{capped}");
+    assert_eq!(capped["budget"]["limit_usd"], 1.0, "{capped}");
+    assert_eq!(capped["budget"]["status"], "active", "{capped}");
+    let (status, refused) = call(
+        &fleet,
+        reqwest::Method::PATCH,
+        &path,
+        json!({ "budget_usd": -1.0 }),
+    )
+    .await;
+    assert_eq!(status, 400, "{refused}");
     let (status, _) = call(&fleet, reqwest::Method::DELETE, &path, Value::Null).await;
     assert_eq!(status, 204);
     assert!(schedules(&fleet, &session).await.is_empty());

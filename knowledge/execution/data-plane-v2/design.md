@@ -1970,6 +1970,29 @@ what its latest run's model calls cost is added as their events commit,
 from the same cost the allowance settles, and the schedule stops with
 `budget_exhausted` when the cap is reached (`crates/cell/src/platform.rs`).
 
+**11.6b: which capabilities a cell runs (2026-11-17).** A test names every
+capability in the hosted catalog (`docs/api/capability-catalog.json`) on
+an agent, builds it on the cell's host and runs a turn on a fleet
+(`crates/cell-testkit/tests/capabilities.rs`). The outcome per capability
+is checked into `crates/cell-testkit/tests/capability_matrix.json`, so a
+capability the cell starts or stops serving shows up as a diff. The
+first run found 40 of 102: the cell's host had only the Framework's
+runtime catalog and the platform capabilities it implements (approvals,
+sandbox, schedules, subagents), not the hosted catalog the v1 worker
+registers. The cell's host now registers that catalog, with the worker's
+features, for the capabilities an agent names
+(`crates/cell/src/host.rs`, `hosted_capabilities`), and 96 of 102 build
+and complete a turn. The rest: `container_sandbox`, `docker_container` and
+`parallel` are behind feature flags that are off by default, as on a
+worker; `dreaming` and `sandbox_desktop` need their config (and the
+control plane replaces `sandbox_desktop` with the pinned sandbox);
+`sandbox_fleet` fails its turn. A turn on the simulated model calls no
+tool, so "runs" means the capability builds and activates in a cell turn.
+What its tools need at call time (an org's keys, the control plane's
+stores such as knowledge, memory, the platform API) is the live check's
+(11.6c); a tool whose store a cell lacks answers with an error, as on a
+v1 host without it.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
