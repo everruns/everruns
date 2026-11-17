@@ -555,7 +555,14 @@ mod tests {
 
     #[test]
     fn builtin_set_has_the_agent_scenarios() {
-        for name in ["luna-agent", "sol-agent", "muse-agent", "long-tool"] {
+        for name in [
+            "luna-agent",
+            "sol-agent",
+            "muse-agent",
+            "long-tool",
+            "coding-agent",
+            "tool-trouble",
+        ] {
             assert!(builtin_scenario_names().iter().any(|n| n == name), "{name}");
         }
     }

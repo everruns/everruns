@@ -339,6 +339,8 @@ A long session behaves like it would against a hosted provider, so soak runs see
 | `-busy-{knee}` | Past `knee` calls in flight per worker, first token and token gaps grow with in-flight/knee. |
 | `-tpm-{n}` | Each worker gets a shared budget of `n` prompt tokens a minute. Calls past it fail as rate limited, with the wait until they fit. |
 
+`coding-agent` plays a 48-step agentic turn with parallel tool fan-out, and `tool-trouble` a turn whose tools fail, time out or miss files before retries succeed; both come from llmsim 0.9.0, which also accepts log-normal sizes (`{"median": m, "p99": n}`).
+
 `subagent-fanout` is an everruns scenario (`crates/drivers/llmsim/scenarios/`) added to llmsim's built-in set: a parent turn starts three foreground subagents at once, whose instructions carry their own markers, then merges their answers. Run it with an agent that has the `subagents` capability.
 
 ### Long-lived clients
