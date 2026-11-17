@@ -1,6 +1,6 @@
 ---
 title: Use in AI Tools
-description: Give Claude Code, Codex, Cursor or Gemini CLI the Everruns skill so your coding agent can build with the Framework, install Everruns, and build, run, debug and ship agents.
+description: Give Claude Code, Codex, Cursor or Gemini CLI the Everruns skill so your coding agent can use the Framework, install Everruns, and build, run and ship agents.
 ---
 
 The `everruns` skill teaches a coding agent to work with Everruns: build agents
