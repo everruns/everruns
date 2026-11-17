@@ -5,7 +5,7 @@ license: MIT
 compatibility: Framework work needs Rust 1.94+. Platform work needs the everruns CLI, an Everruns MCP connection, or HTTP access to an Everruns deployment.
 metadata:
   category: platform
-  version: "6.0"
+  version: "6.1"
   homepage: https://everruns.com
   docs: https://everruns.com/docs/
   repository: https://github.com/everruns/everruns
@@ -58,9 +58,10 @@ install first; offer the demo only as a way to look around.
 ## Rules for every task
 
 - **The person's own Everruns first.** Use the deployment the person names, or
-  the one the CLI is signed in to (`everruns status`), or
-  `http://localhost:9300` when `curl -fsS http://localhost:9300/health`
-  answers. Ask when none is clear.
+  the Everruns MCP server already connected in this session, or the one the
+  CLI is signed in to (`everruns status`), or `http://localhost:9300` when
+  `curl -fsS http://localhost:9300/health` answers. Ask only when none of these
+  applies; a connected server is the person's choice, so work with it.
 - **Trust the installed version, not memory.** Everruns changes quickly. Check
   `everruns --version` or the server's `/health`, read `everruns <noun> --help`
   or MCP `discover` before using a command, and read docs.rs for the crate

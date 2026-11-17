@@ -47,14 +47,19 @@ session has. Other filters: see `--help`
 4. **A question or approval nobody answered**: the session waits on the user.
    Over MCP, `everruns_home` shows what is pending.
 
-## 4. Check whether the agent changed
+## 4. Check what changed just before
+
+Do this before you report a cause. A failure that starts suddenly, especially
+an auth error (401, 403, `connection_required`) or a tool that used to work,
+usually follows a change: read the history of the agent and of whatever the
+failing tool depends on (its capability, MCP server, or provider).
 
 ```bash
 everruns history list <agent_id> --limit 10
-everruns history diff --help
+everruns history list <mcp_server_or_provider_id> --limit 10
 ```
 
-A recent change with a `reason` often explains a new behavior. `history
+Name the change, who made it, when, and its `reason` in the report. `history
 restore` can roll back, but that is a change: confirm with the user first.
 
 ## 5. Fix it and keep it fixed
@@ -66,9 +71,9 @@ wrong ([evaluate-agent.md](evaluate-agent.md)), and run it.
 
 ## 6. Report
 
-Lead with the cause in one or two sentences, with the event or change that
-shows it, then the fix (instructions, capability, credential, model) and
-whether you applied it. Then say how to catch it next time: offer the eval case
+Lead with the cause in one or two sentences, with the event and the change
+from step 4 that explain it, then the fix (instructions, capability,
+credential, model) and whether you applied it. Then say how to catch it next time: offer the eval case
 from step 5, or an observer that scores live sessions for the same failure
 ([evaluate-agent.md](evaluate-agent.md)). Link the session with the `ui_link` a read returns.
 
