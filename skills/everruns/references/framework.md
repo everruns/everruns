@@ -1,41 +1,48 @@
----
-name: everruns-framework
-description: Build Rust applications with the Everruns Framework or compose advanced execution hosts with everruns_core::host. Use for in-process agents, providers, tools, scoped MCP clients, and capability authoring. For product concepts use everruns; for platform operations use everruns-cli or everruns-mcp, and for agent definitions use everruns-agent-authoring.
-license: MIT
-compatibility: Rust 1.94+ (edition 2024)
-metadata:
-  category: agent-framework
-  version: "3.4"
-  homepage: https://everruns.com
-  docs: https://everruns.com/docs/framework/
-  api-reference: https://docs.rs/everruns
-  repository: https://github.com/everruns/everruns
----
-
 # Everruns Framework and advanced hosts
 
 Start new Rust applications with the application-facing `everruns` Framework.
 The engine runs in process without a database, server, or worker. Enable the
-provider you intend to call and supply its credentials:
+provider you intend to call and supply its credentials; `everruns` does not
+re-export Tokio, so add it for `#[tokio::main]`:
 
 ```bash
 cargo add everruns --features openai
+cargo add tokio --features macros,rt-multi-thread
+export OPENAI_API_KEY=...   # the person sets it in their shell, never in chat
 ```
+
+A typed tool is an async function marked `#[everruns::tool]`: the macro derives
+its JSON schema from the signature and doc comment, and `.tool(name())` adds it.
 
 ```rust
 use everruns::{Agent, Engine, OpenAI};
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
-let agent = Agent::builder()
-    .instructions("Answer in one short sentence.")
-    .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
-    .build()?;
-let turn = Engine::new().create(agent).run("Say hello.").await?;
-println!("{}", turn.response);
-# Ok(())
-# }
+/// Return the current Unix time in seconds.
+#[everruns::tool]
+async fn unix_time() -> Result<u64, String> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .map_err(|error| error.to_string())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let agent = Agent::builder()
+        .instructions("Use unix_time when asked about time. Answer in one sentence.")
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.1-sol")
+        .tool(unix_time())
+        .build()?;
+    let turn = Engine::new().create(agent).run("What time is it?").await?;
+    println!("{}", turn.response);
+    Ok(())
+}
 ```
+
+The API changes between releases. Check the version `cargo add` resolved and
+read that version's examples on <https://docs.rs/everruns> (or the crate's
+README in the Cargo registry) rather than relying on memory.
 
 ## Choose the dependency path
 
@@ -84,7 +91,7 @@ lives in `everruns_core::engine`; do not add retired host, engine, or MCP crates
 
 For an HTTP agent application with routes, tools, and approvals, see
 [Everruns serve](https://everruns.com/docs/framework/serve/). Applications that
-only call a hosted Everruns agent use an SDK; the plugin's `everruns-sdk` guide
+only call a hosted Everruns agent use an SDK; [sdk.md](sdk.md)
 covers Python, TypeScript, and Rust clients.
 
 ## Advanced host boundary
@@ -115,5 +122,5 @@ mutable-history paths are not execution inputs.
 - [Custom backends](https://everruns.com/docs/framework/custom-backends/)
 - [Framework API](https://docs.rs/everruns)
 - [Host API](https://docs.rs/everruns-core/latest/everruns_core/host/)
-- [Focused crate catalog](references/crates.md)
-- [Domain-language glossary](references/glossary.md)
+- [Focused crate catalog](framework-crates.md)
+- [Domain-language glossary](framework-glossary.md)

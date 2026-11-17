@@ -62,13 +62,11 @@ next step with:
 For a change, put `reason` and the manager-context `context_revision` beside
 `params`, rather than inside the entity payload.
 
-Workspace builds also ship three read-only skills with this capability:
-
-| Skill | Purpose |
-|---|---|
-| `everruns` | Product concepts, Cloud and self-hosted entry points, and documentation links |
-| `everruns-cli` | Command usage, scripting examples, and differences between installed CLI, session shell, and MCP |
-| `everruns-agent-authoring` | Agent design, configuration, dependencies, and behavioral verification |
+Workspace builds also ship the read-only `everruns` skill with this capability:
+product concepts and documentation links in `SKILL.md`, with task guides beside
+it, such as `references/cli.md` (command usage, scripting, and how the CLI,
+session shell, and MCP differ) and `references/agent-authoring.md` (agent
+design, configuration, dependencies, and behavioral verification).
 
 The capability enables [Agent Skills](/capabilities/agent-skills/) for discovery
 and activation. Use `list_skills` and `activate_skill`; full instructions load
@@ -78,9 +76,8 @@ grants no additional command permissions. Like embedded docs, these product
 files are included from the repository at build time; standalone crate builds
 without the repository skills tree omit them.
 
-The external [MCP endpoint](/features/mcp/#skills-for-mcp-clients) serves these
-three skills plus `everruns-mcp`. Rust development guidance is maintained
-separately in the installable `everruns-framework` skill.
+The external [MCP endpoint](/features/mcp/#skills-for-mcp-clients) serves the
+same skill.
 
 ## Tools
 

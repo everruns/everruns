@@ -309,10 +309,15 @@ fn render_llms_txt(state: &AppState) -> String {
          - [MCP server card]({root}/.well-known/mcp/server-card.json): transport, \
          capabilities, and how to authenticate\n\n\
          ## Coding agents\n\n\
+         - Everruns skill: this server's MCP endpoint serves it as \
+         `skill://everruns/SKILL.md`, matching this server's version, with a guide \
+         per task (CLI, MCP, building, running, debugging, evaluating, and shipping \
+         agents). Elsewhere: `npx skills add everruns/everruns`, or \
+         `everruns agent-skill install` from the CLI.\n\
          - [Everruns plugin]({PLUGIN_URL}): official plugin for Claude Code, Codex, \
-         Cursor, and Gemini CLI. It connects the hosted Everruns MCP server \
-         (<https://app.everruns.com/mcp>) and adds skills for running, \
-         building, debugging, evaluating, and shipping Everruns agents. \
+         Cursor, and Gemini CLI with the same skill. Its MCP connection defaults to \
+         the demo instance; register this server's MCP endpoint ({root}/mcp) under \
+         the name `everruns` to use it here. \
          Claude Code: \
          `/plugin marketplace add everruns/plugins`, then \
          `/plugin install everruns@everruns`. Codex: \

@@ -39,3 +39,9 @@ for discovery, file reads, and host verification.
 The catalog now also includes `everruns` for product concepts and `everruns-cli`
 for command usage and examples. Rust development guidance is separately
 installable as `everruns-framework`.
+
+## Update 2026-11-17
+
+The separate skills are now one `everruns` skill with these guides under
+`references/`, served as `skill://everruns/SKILL.md`. See
+[One Everruns skill for every coding agent](/changelog/2026-11-17-one-everruns-skill/).

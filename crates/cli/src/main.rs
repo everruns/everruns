@@ -119,6 +119,12 @@ pub enum Commands {
         command: commands::k8s::K8sCommand,
     },
 
+    /// The Everruns skill for coding agents, as shipped with this CLI
+    AgentSkill {
+        #[command(subcommand)]
+        command: commands::agent_skill::AgentSkillCommand,
+    },
+
     /// Send a message and stream the response
     Chat {
         /// Message text to send
@@ -247,6 +253,12 @@ async fn run() -> anyhow::Result<()> {
             };
             return Box::pin(commands::k8s::run(command)).await;
         }
+        Commands::AgentSkill { .. } => {
+            let Commands::AgentSkill { command } = cli.command else {
+                unreachable!()
+            };
+            return commands::agent_skill::run(command);
+        }
         _ => {}
     }
 
@@ -333,7 +345,8 @@ async fn run() -> anyhow::Result<()> {
         | Commands::Status
         | Commands::Orgs { .. }
         | Commands::Docker { .. }
-        | Commands::K8s { .. } => {
+        | Commands::K8s { .. }
+        | Commands::AgentSkill { .. } => {
             unreachable!()
         }
     }

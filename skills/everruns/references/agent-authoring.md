@@ -1,14 +1,3 @@
----
-name: everruns-agent-authoring
-description: Create or revise Everruns platform agents through MCP, including instructions, harnesses, capabilities, model selection, portable packages, and behavioral verification. Use when changing an agent definition; use everruns-mcp for running an existing agent or inspecting sessions.
-license: MIT
-compatibility: A connected Everruns MCP endpoint with discover, query, and execute tools and permission to manage agents.
-metadata:
-  category: platform
-  version: "1.0"
-  docs: https://everruns.com/docs/reference/cli/agents/
----
-
 # Author an Everruns agent
 
 Use the connected MCP server's `discover`, `query`, and `execute` tools.

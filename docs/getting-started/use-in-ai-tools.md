@@ -1,78 +1,94 @@
 ---
 title: Use in AI Tools
-description: Install the Everruns plugin in Claude Code, Codex, Cursor or Gemini CLI so your coding agent can build, run, debug and ship Everruns agents.
+description: Give Claude Code, Codex, Cursor or Gemini CLI the Everruns skill so your coding agent can build with the Framework, install Everruns, and build, run, debug and ship agents.
 ---
 
-The [Everruns plugin](https://github.com/everruns/plugins) lets a coding agent
-work with Everruns for you. It connects the Everruns MCP server at
-`https://app.everruns.com/mcp` (you sign in with OAuth in the browser) and adds
-skills that load only when a task needs them:
+The `everruns` skill teaches a coding agent to work with Everruns: build agents
+into a Rust application, install and run your own Everruns, and create, run,
+debug, evaluate and ship agents on it. It is one skill: a short `SKILL.md` that
+maps each task to a guide in `references/`, so the agent reads only what the
+task needs.
 
-| Skill | Your agent can |
+| Task | Guide |
 |---|---|
-| `everruns` | Understand product concepts, find documentation and Cloud, and choose the right workflow skill |
-| `everruns-cli` | Use the CLI and session shell, discover commands, script operations, and verify changes |
-| `everruns-mcp` | Use an external MCP connection, run sessions, handle questions and connections, and read resources |
-| `everruns-agent-authoring` | Design and revise agent behavior, harnesses, capabilities, identities, packages, and verification |
-| `everruns-run-agent` | Hand a task to an existing agent, follow it, exchange files, and bring back the result |
-| `everruns-build-agent` | Build or improve an agent from a plain-language brief, add knowledge and tools, and smoke-test it |
-| `everruns-debug-session` | Diagnose failed, stalled, or poor-quality sessions and verify fixes |
-| `everruns-evaluate-agent` | Build regression evals, compare models, and score live traffic |
-| `everruns-ship-agent` | Expose agents through channels and triggers, with budgets and controls for stopping them |
-| `everruns-operate` | Investigate organization spending, health, and change history |
-| `everruns-agents-as-files` | Keep agent packages in a repository and validate, compare, import, or export them |
-| `everruns-sdk` | Call hosted agents from Python, TypeScript, or Rust applications |
-| `everruns-framework` | Develop Rust applications that run agents themselves and compose advanced execution hosts |
+| Build agents into a Rust application | `framework.md` |
+| Install, upgrade, or remove your own Everruns | `install.md` |
+| Use the CLI, or connect over MCP | `cli.md`, `mcp.md` |
+| Call a deployment over HTTP or from Python, TypeScript or Rust | `api.md`, `sdk.md` |
+| Build an agent from a brief, or revise its definition | `build-agent.md`, `agent-authoring.md` |
+| Hand a task to an agent | `run-agent.md` |
+| Find out why a session failed | `debug-session.md` |
+| Evaluate an agent, or compare models | `evaluate-agent.md` |
+| Put an agent on Slack, the web, A2A, webhooks or a schedule | `ship-agent.md` |
+| Check spending, health and change history | `operate.md` |
+| Keep agent definitions in a repository | `agents-as-files.md` |
 
-## Install
+## Install the skill
 
-In the Everruns user menu, choose **Connect your coding agent**, copy the setup
-prompt and paste it into your coding agent. It reads the maintained plugin
-instructions and guides you through installation and browser sign-in. The same
-dialog is available after organisation setup and on an empty Agents page.
+Pick one. They install the same skill.
 
-In **Settings → AI clients**, you can refresh
-approvals or revoke access. It records OAuth
-approval and last use, not local plugin installation.
+- **Any agent that reads skills** (Claude Code, Codex, Cursor, Gemini CLI and
+  others):
 
-For manual installation:
+  ```bash
+  npx skills add everruns/everruns
+  ```
 
-**Claude Code**:
+- **The Everruns CLI** writes the copy that matches its version into the
+  project, or into your user folders with `--global`:
 
-```text
-/plugin install everruns --marketplace everruns/plugins
-```
+  ```bash
+  everruns agent-skill install
+  ```
 
-On Claude Code older than 2.1.275, run `/plugin marketplace add everruns/plugins`
-first, then `/plugin install everruns@everruns`.
+- **The Everruns plugin** adds the skill and an MCP connection. In Claude Code:
 
-**Codex**:
+  ```text
+  /plugin install everruns --marketplace everruns/plugins
+  ```
+
+  On Claude Code older than 2.1.275, run `/plugin marketplace add everruns/plugins`
+  first, then `/plugin install everruns@everruns`. In Codex:
+
+  ```bash
+  codex plugin marketplace add everruns/plugins
+  codex plugin add everruns@everruns
+  ```
+
+  Or open `/plugins` in Codex and pick **Everruns**, then start a new session.
+  In Cursor, open **Settings > Plugins**, paste
+  `https://github.com/everruns/plugins`, and install **Everruns**. In Gemini
+  CLI: `gemini extensions install https://github.com/everruns/plugins`.
+
+  ![Everruns Codex plugin](codex-everruns-plugin.png)
+
+- **Without installing**: add
+  `Instructions: https://everruns.com/.well-known/agent-skills/everruns/SKILL.md`
+  to your prompt.
+
+Every Everruns MCP server also serves the skill as `skill://everruns/SKILL.md`,
+matching that server's version.
+
+## Connect to your Everruns
+
+The skill works with the Everruns you run. After `everruns docker up` or
+`everruns k8s up` the CLI is already signed in, and the agent uses it. For MCP,
+register your server's endpoint, for example with Claude Code:
 
 ```bash
-codex plugin marketplace add everruns/plugins
-codex plugin add everruns@everruns
+claude mcp add --transport http everruns http://localhost:9300/mcp
 ```
 
-Or open `/plugins` in Codex and pick **Everruns**. Start a new session afterwards.
-
-![Everruns Codex plugin](codex-everruns-plugin.png)
-
-**Cursor**: open **Settings > Plugins**, paste `https://github.com/everruns/plugins`,
-and install **Everruns**.
-
-**Gemini CLI**:
-
-```bash
-gemini extensions install https://github.com/everruns/plugins
-```
-
-**Other agents**: hosts that read the [Agent Plugins](https://agent-plugins.org)
-format can load `plugins/everruns/` from the repository directly. Any MCP client
-can add `https://app.everruns.com/mcp` as a remote server named `everruns`.
+The plugin's built-in MCP connection points at the
+[demo instance](/getting-started/cloud/), because a plugin cannot know your
+address; register your own endpoint as above to use your install. In the
+Everruns UI, the user menu's **Connect your coding agent** gives a setup prompt
+with your deployment's address already in it. **Settings → AI clients** shows
+OAuth approvals and lets you revoke them.
 
 ## First run
 
-1. Ask your agent "Who am I on Everruns?" and complete the sign-in in your browser.
+1. Ask your agent "Who am I on Everruns?" and complete the sign-in if asked.
 2. Ask for real work, for example "create a Hacker News summarizer agent and run
    it" or "why did this session fail?" with a session link.
 
@@ -81,29 +97,14 @@ Every change the agent makes is recorded in the entity's
 
 Your coding-agent subscription does not configure model access inside Everruns.
 Running Everruns agents, including Platform Chat, requires a model provider in
-**Models → Providers**. An existing Cloud-managed provider can satisfy that need.
-If you skip provider setup, you can still connect your coding agent for setup
-and management; onboarding keeps an **Add a model provider** action visible.
+**Models → Providers**, or one set during install
+(`everruns docker up --provider ...`).
 
 ## Use the CLI too
 
-The plugin's skills speak the same commands as the
+The skill speaks the same commands as the
 [`everruns` CLI](/features/cli/). When the CLI is installed and signed in, the
 agent runs commands there directly, which is faster than going through MCP.
-
-## Use a self-hosted deployment
-
-The plugin points at the Everruns demo instance. For your own deployment, keep the plugin's
-skills and register your server's MCP endpoint under the same name, for
-example with Claude Code:
-
-```bash
-claude mcp add --transport http everruns http://localhost:9300/mcp
-```
-
-For the CLI, use `everruns --api-url http://localhost:9300/api login` or set
-`EVERRUNS_API_URL`. The [Docker Compose](/getting-started/docker-compose/) stack
-serves both on port 9300.
 
 ## Read the docs as text
 

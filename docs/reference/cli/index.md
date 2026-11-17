@@ -36,6 +36,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 
 | Group | What it manages |
 |---|---|
+| [`agent-skill`](/reference/cli/agent-skill/) | The Everruns skill for coding agents, as shipped with this CLI |
 | [`agents`](/reference/cli/agents/) | Agent definitions and their configuration |
 | [`budgets`](/reference/cli/budgets/) | Usage policies: limits on what sessions, agents, people and the organization use. |
 | [`capabilities`](/reference/cli/capabilities/) | Capabilities agents can use, including declarative ones you define. |

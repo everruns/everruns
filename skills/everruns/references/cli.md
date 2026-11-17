@@ -1,13 +1,3 @@
----
-name: everruns-cli
-description: Use the everruns command tree to inspect and manage agents, sessions, integrations, triggers, and other platform resources. Use for CLI usage, shell scripting, and Platform Chat operations; use everruns-agent-authoring for agent design.
-license: MIT
-metadata:
-  category: platform
-  version: "1.2"
-  docs: https://everruns.com/docs/features/cli/
----
-
 # Work with the Everruns command line
 
 Use the command tree exposed by the current host. Check its help and returned
@@ -33,7 +23,7 @@ authorized management caller. Do not log in, select another organization, pass
 Shell files, pipes, loops, `jq`, and redirection are available.
 
 **MCP or the three-tool platform interface.** For an external MCP connection,
-load `everruns-mcp` when offered for identity, organization arguments, session
+read [mcp.md](mcp.md) for identity, organization arguments, session
 tools, and human interactions. A session-bound Platform capability already has
 its organization and caller. In either interface, `query` runs read-only
 commands and `execute` runs authorized writes; pass
@@ -86,7 +76,7 @@ write failure, inspect current state before repeating it.
   on update to retain the choice, or use `default` to restore the driver default.
   Verify the saved provider after the authorized change. Keep credentials in
   the existing secure setup flow. Older deployments may not expose this field.
-- **Create or change an agent:** activate `everruns-agent-authoring`. Use the
+- **Create or change an agent:** activate [agent-authoring.md](agent-authoring.md). Use the
   current host's command surface for its examples. In Platform Chat, its MCP
   transport instructions apply only to external clients: keep using the bound
   shell, without MCP tools or organization arguments.

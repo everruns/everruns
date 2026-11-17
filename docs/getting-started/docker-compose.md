@@ -12,10 +12,11 @@ these steps for you. On a cluster, use the [Helm chart](/getting-started/kuberne
 
 ```text wrap
 Install Everruns on my server with Docker Compose.
-Instructions: https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+Instructions: https://everruns.com/.well-known/agent-skills/everruns/SKILL.md
 ```
 
-Prefer to do it yourself? The steps follow.
+With the skill installed (`npx skills add everruns/everruns`), leave out the
+link. Prefer to do it yourself? The steps follow.
 :::
 
 ## Prerequisites

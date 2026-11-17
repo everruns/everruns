@@ -10,6 +10,7 @@ pub(crate) fn expand_json_string_list(values: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+pub mod agent_skill;
 pub mod agents;
 pub mod api;
 pub mod chat;

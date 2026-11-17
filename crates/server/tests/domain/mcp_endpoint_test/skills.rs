@@ -15,13 +15,10 @@ async fn public_skill_can_be_loaded_over_streamable_http() {
     let (_server, base_url) = TestServer::serving_in_memory().await;
     let client = reqwest::Client::new();
     for (method, mut params) in [
-        (
-            "skills/get",
-            json!({"uri": "skill://everruns-mcp/SKILL.md"}),
-        ),
+        ("skills/get", json!({"uri": "skill://everruns/SKILL.md"})),
         (
             "resources/read",
-            json!({"uri": "skill://everruns-mcp/SKILL.md"}),
+            json!({"uri": "skill://everruns/SKILL.md"}),
         ),
     ] {
         params["_meta"] = json!({
@@ -47,7 +44,7 @@ async fn public_skill_can_be_loaded_over_streamable_http() {
         if method == "skills/get" {
             assert_eq!(
                 response["result"]["skill"]["frontmatter"]["name"],
-                "everruns-mcp"
+                "everruns"
             );
         } else {
             assert!(
@@ -111,19 +108,14 @@ async fn public_skills_round_trip_with_complete_verified_manifests() {
     assert_eq!(list["result"]["cacheScope"], "public");
     assert!(list["result"]["ttlMs"].as_u64().is_some());
     let skills = list["result"]["skills"].as_array().expect("skills");
-    assert_eq!(skills.len(), 4);
-    assert_eq!(
-        skills
-            .iter()
-            .map(|s| s["frontmatter"]["name"].as_str().unwrap())
-            .collect::<std::collections::BTreeSet<_>>(),
-        std::collections::BTreeSet::from([
-            "everruns",
-            "everruns-cli",
-            "everruns-mcp",
-            "everruns-agent-authoring"
-        ])
-    );
+    // One product skill; its task guides are references beside SKILL.md.
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0]["frontmatter"]["name"], "everruns");
+    let manifest = skills[0]["resources"].as_array().expect("manifest");
+    for guide in ["mcp", "cli", "agent-authoring", "install", "framework"] {
+        let uri = format!("skill://everruns/references/{guide}.md");
+        assert!(manifest.iter().any(|file| file["uri"] == uri), "{uri}");
+    }
     for skill in skills {
         let get = call(&server, "skills/get", json!({"uri": skill["uri"]})).await;
         assert_eq!(get["result"]["skill"], *skill);
@@ -169,21 +161,18 @@ async fn skill_lookup_is_direct_and_rejects_unknown_or_traversing_uris() {
     let get = call(
         &server,
         "skills/get",
-        json!({"uri": "skill://everruns-mcp/SKILL.md"}),
+        json!({"uri": "skill://everruns/SKILL.md"}),
     )
     .await;
-    assert_eq!(
-        get["result"]["skill"]["frontmatter"]["name"],
-        "everruns-mcp"
-    );
+    assert_eq!(get["result"]["skill"]["frontmatter"]["name"], "everruns");
     for uri in [
         "skill://missing/SKILL.md",
-        "skill://everruns-framework/SKILL.md",
+        // Retired per-task skills are references of `everruns` now.
+        "skill://everruns-mcp/SKILL.md",
         "skill://everruns-framework/references/crates.md",
         "skill://everruns-framework",
-        "skill://everruns-framework/references",
-        "skill://everruns-mcp/../everruns/SKILL.md",
-        "skill://everruns-mcp/%2e%2e/everruns/SKILL.md",
+        "skill://everruns/references/../../everruns-mcp/SKILL.md",
+        "skill://everruns/references/%2e%2e/SKILL.md",
         "file:///etc/passwd",
     ] {
         for method in ["skills/get", "resources/read", "resources/directory/read"] {
@@ -220,20 +209,18 @@ async fn skill_directories_return_only_direct_children_and_are_2026_only() {
     let result = call(
         &server,
         "resources/directory/read",
-        json!({"uri": "skill://everruns-mcp"}),
+        json!({"uri": "skill://everruns"}),
     )
     .await;
     let children = result["result"]["resources"].as_array().unwrap();
-    assert_eq!(children.len(), 1);
-    assert_eq!(children[0]["name"], "SKILL.md");
-    assert_eq!(children[0]["uri"], "skill://everruns-mcp/SKILL.md");
+    let names: Vec<_> = children
+        .iter()
+        .map(|child| child["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["SKILL.md", "references"]);
+    assert_eq!(children[0]["uri"], "skill://everruns/SKILL.md");
     for method in ["skills/list", "skills/get", "resources/directory/read"] {
-        let legacy = mcp_call(
-            &server,
-            method,
-            json!({"uri": "skill://everruns-mcp/SKILL.md"}),
-        )
-        .await;
+        let legacy = mcp_call(&server, method, json!({"uri": "skill://everruns/SKILL.md"})).await;
         assert_eq!(legacy["error"]["code"], -32601);
     }
     let legacy = mcp_call(&server, "initialize", json!({})).await;

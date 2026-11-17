@@ -44,13 +44,12 @@ Direction matters relative to existing specs:
   on its own schedule, hosts do not clone the monorepo to read a 1 KB catalog,
   and its skills defer to the server (`--help`, `discover`, server
   instructions) instead of restating the API.
-  Shared product guides (`everruns`, `everruns-cli`, `everruns-mcp`,
-  `everruns-agent-authoring`, and `everruns-framework`) are authored in the core
-  repository's [`skills/`](../../skills/) tree and distributed as complete
-  copies in the outbound plugin. The general `everruns` guide stays independent
-  of the invoking host; interface procedures live in the CLI and MCP skills.
-  The plugin repository owns its additional task guides, release version, and
-  generated skill listings.
+  The one product skill, `everruns` with its task guides under `references/`,
+  is authored in the core repository's [`skills/`](../../skills/) tree and
+  distributed as a complete copy in the outbound plugin; the plugin owns no
+  skill text. `SKILL.md` stays independent of the invoking host; interface
+  procedures live in the CLI and MCP guides. The plugin repository owns its
+  MCP configuration, release version, and generated listings.
 - This spec is **inbound**: Everruns consuming plugins in the same format.
   The outbound plugin doubles as the first dogfood content: `everruns`
   must install cleanly into Everruns itself, from the default marketplace.

@@ -16,21 +16,14 @@ fn main() {
 fn embed_skills() {
     let root = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../../skills");
     let mut files = Vec::new();
-    // Publish only product and platform operating guidance. Framework and contributor skills
-    // have different audiences; adding a repo skill must not publish it here.
-    for name in [
-        "everruns",
-        "everruns-cli",
-        "everruns-mcp",
-        "everruns-agent-authoring",
-    ] {
-        let dir = root.join(name);
-        assert!(
-            dir.join("SKILL.md").is_file(),
-            "missing public skill: {name}"
-        );
-        collect_skill_files(&dir, &mut files);
-    }
+    // Publish the one public product skill (its references cover every task). Contributor
+    // skills have a different audience; adding a repo skill must not publish it here.
+    let dir = root.join("everruns");
+    assert!(
+        dir.join("SKILL.md").is_file(),
+        "missing public skill: everruns"
+    );
+    collect_skill_files(&dir, &mut files);
     files.sort();
     let mut source = String::from("&[\n");
     for path in files {
