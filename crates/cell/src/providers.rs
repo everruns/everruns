@@ -81,12 +81,18 @@ pub trait OrgMaterial: Send + Sync {
         let _ = (org, secret_id);
         anyhow::bail!("this node does not open org secrets")
     }
+    /// Whether session secrets are sealed here: false on a standalone cell,
+    /// which has no data plane key because no control plane wraps keys.
+    fn seals(&self) -> bool {
+        false
+    }
     /// `org`'s data key, unwrapped, with its id: what session secrets are
-    /// sealed with (`session_secrets.rs`).
+    /// sealed with (`hosting_ports.rs`); `None` where nothing seals them (a
+    /// standalone cell).
     async fn data_key(
         &self,
         org: &str,
-    ) -> anyhow::Result<(everruns_contracts::dataplane_seal::Key, String)> {
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
         let _ = org;
         anyhow::bail!("this node does not open session secrets")
     }

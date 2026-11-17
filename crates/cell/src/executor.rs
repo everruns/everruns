@@ -213,15 +213,16 @@ impl Executor {
         }))
     }
 
-    /// `org`'s data key from the directory cell, unwrapped in memory.
+    /// `org`'s data key from the directory cell, unwrapped in memory;
+    /// `None` on a standalone cell, which has no data plane key
+    /// (`CELL_DP_KEY`) because no control plane wraps keys for it.
     pub async fn data_key(
         &self,
         org: &str,
-    ) -> anyhow::Result<(everruns_contracts::dataplane_seal::Key, String)> {
-        let dp_key = self
-            .dp_key
-            .lock()
-            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
+        let Some(dp_key) = *self.dp_key.lock() else {
+            return Ok(None);
+        };
         let directory = self.cfg.topology.read()?.directory_cell;
         let wrapped: Option<crate::control::WrappedKey> = self
             .remote
@@ -239,7 +240,7 @@ impl Executor {
             &wrapped.data_key_id,
             &wrapped.wrapped,
         )?;
-        Ok((key, wrapped.data_key_id))
+        Ok(Some((key, wrapped.data_key_id)))
     }
 
     /// Lease or write `org`'s secret in the directory cell.
@@ -628,10 +629,14 @@ impl crate::providers::OrgMaterial for Executor {
         Executor::secret_op(self, org, op).await
     }
 
+    fn seals(&self) -> bool {
+        self.dp_key.lock().is_some()
+    }
+
     async fn data_key(
         &self,
         org: &str,
-    ) -> anyhow::Result<(everruns_contracts::dataplane_seal::Key, String)> {
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
         Executor::data_key(self, org).await
     }
 }

@@ -193,6 +193,6 @@ async fn the_control_plane_reads_and_changes_a_v2_sessions_storage() {
 
     // The executor opens the org's data key that session secrets are
     // sealed with.
-    let (key, id) = org_executor(&fleet).data_key(ORG).await.unwrap();
+    let (key, id) = org_executor(&fleet).data_key(ORG).await.unwrap().unwrap();
     assert_eq!((key, id.as_str()), (DATA_KEY, DATA_KEY_ID));
 }
