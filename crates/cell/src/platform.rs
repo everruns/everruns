@@ -19,6 +19,10 @@
 //!   missed runs when it comes back.
 //! - An occurrence the session refuses (it is suspended, say) is skipped: the
 //!   schedule moves on, so the leader does not propose it again every tick.
+//! - The control plane records a few events on a session itself (step
+//!   11.6): a reaction a person adds or removes. Only [`RECORDABLE`] types
+//!   are taken, so the control plane cannot write the agent's conversation,
+//!   and a retry finds its event by id.
 //! - Limits: five active schedules per session, as on every host, checked
 //!   when the create applies, so two concurrent creates cannot both pass.
 //!   The org-wide cap needs a count across cells; it comes with the
@@ -97,7 +101,19 @@ pub enum Op {
     Call(crate::detach::CallOp),
     /// A change to the session's tasks (`tasks.rs`).
     Task(crate::tasks::TaskOp),
+    /// An event the control plane records on the session: one of
+    /// [`RECORDABLE`].
+    Record {
+        event_id: EventId,
+        request: Box<everruns_core::events::EventRequest>,
+    },
 }
+
+/// The event types the control plane may record on a session.
+pub const RECORDABLE: &[&str] = &[
+    everruns_core::MESSAGE_REACTION_ADDED,
+    everruns_core::MESSAGE_REACTION_REMOVED,
+];
 
 /// What a person or the agent changes on a schedule (the control plane's
 /// `PATCH` shape: an `ends_at` or `max_runs` of null removes it).
@@ -211,6 +227,9 @@ impl CellState {
         if let Op::Task(op) = op {
             return crate::tasks::apply(state, session, op, now_ms, seed, changes);
         }
+        if let Op::Record { event_id, request } = op {
+            return record(state, session, event_id, *request, changes);
+        }
         let now = at(now_ms);
         let schedules = &mut state.platform.schedules;
         let response = match op {
@@ -289,11 +308,57 @@ impl CellState {
                 }
                 fire(state, session, schedule, now_ms, seed, changes, false)
             }
-            Op::Call(_) | Op::Task(_) => return Response::Ok,
+            Op::Call(_) | Op::Task(_) | Op::Record { .. } => return Response::Ok,
         };
         changes.push(Change::Session(session));
         response
     }
+}
+
+/// Whether the control plane may record `request` on `session`: one of
+/// [`RECORDABLE`], of that session, with the data its type names.
+pub(crate) fn recordable(
+    session: SessionId,
+    request: &everruns_core::events::EventRequest,
+) -> Result<(), String> {
+    let kind = request.event_type.as_str();
+    if !RECORDABLE.contains(&kind) || request.data.event_type() != kind {
+        return Err(format!("{kind} is not an event the control plane records"));
+    }
+    if request.session_id != session {
+        return Err("the event names another session".into());
+    }
+    Ok(())
+}
+
+/// Journal `request` on `session` as `event_id`, when it is [`RECORDABLE`].
+fn record(
+    state: &mut SessionState,
+    session: SessionId,
+    event_id: EventId,
+    request: everruns_core::events::EventRequest,
+    changes: &mut Vec<Change>,
+) -> Response {
+    if let Err(reason) = recordable(session, &request) {
+        return Response::Rejected { reason };
+    }
+    // A retry finds its event near the tail.
+    if let Some(event) = state
+        .events
+        .iter()
+        .rev()
+        .take(256)
+        .find(|e| e.id == event_id)
+    {
+        return Response::Value {
+            value: json!(event),
+        };
+    }
+    let event = state.journal(request, event_id);
+    let value = json!(event);
+    changes.push(Change::Event(session, Arc::new(event)));
+    changes.push(Change::Session(session));
+    Response::Value { value }
 }
 
 /// Admit `schedule`'s occurrence into `state` and, when `advance`, move it

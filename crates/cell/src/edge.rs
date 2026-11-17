@@ -61,7 +61,19 @@ const RECORD: &[&str] = &[
     "participants",
     "commands",
     "run-requests",
+    // Served by the control plane for both planes with one code path,
+    // reading the session's events from its cell and sending outcomes back
+    // as session commands (step 11.6, `session_plane.rs` on the server).
+    "trace",
+    "question-answers",
+    "reactions",
+    "feedback",
+    "context-report",
+    "export",
 ];
+/// The calls on one of a session's messages that the control plane serves
+/// (step 11.6): `messages/{id}/{call}`.
+const MESSAGE_RECORD: &[&str] = &["reactions", "feedback"];
 /// How long "not on a data plane" is believed.
 const NOT_V2_FOR: Duration = Duration::from_secs(60);
 /// How long "the data plane does not know this session" is believed.
@@ -118,6 +130,9 @@ fn route_for(method: &Method, path: &str) -> Route {
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match parts.as_slice() {
         ["v1", "sessions", _, "sandbox"] if method == Method::GET => Route::ControlPlane,
+        ["v1", "sessions", _, "messages", _, call, ..] if MESSAGE_RECORD.contains(call) => {
+            Route::ControlPlane
+        }
         ["v1", "sessions", id, first, ..] if !RECORD.contains(first) => {
             match SessionId::parse(id) {
                 Ok(id) => Route::Session(id),
@@ -557,6 +572,16 @@ mod tests {
         assert_eq!(
             route(&format!("/v1/sessions/{id}/messages")),
             Route::Session(id)
+        );
+        for call in ["reactions/%F0%9F%91%8D", "feedback"] {
+            assert_eq!(
+                route(&format!("/v1/sessions/{id}/messages/message_1/{call}")),
+                Route::ControlPlane
+            );
+        }
+        assert_eq!(
+            route(&format!("/v1/sessions/{id}/reactions")),
+            Route::ControlPlane
         );
         assert_eq!(
             route(&format!("/v1/sessions/{id}/fs/a.md")),

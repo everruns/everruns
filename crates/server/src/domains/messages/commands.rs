@@ -289,16 +289,16 @@ impl Command for ExportSessionMessages {
             .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
+        let plane = crate::domains::data_plane::session_plane::SessionPlane::of(
+            &ctx.db,
+            ctx.org_id(),
+            session_id,
+        )
+        .await?;
         if self.format == SessionExportFormat::Atif {
             // Fold the full event log into one ATIF trajectory document.
             // Secret scrubbing is always applied by the ATIF builder.
-            let event_service = crate::services::EventService::new(
-                ctx.db.clone(),
-                crate::live_updates::event_delivery::EventDelivery::in_memory(),
-            );
-            let events = event_service
-                .list(session_id.uuid(), None, None, &[], &[], None, None)
-                .await?;
+            let events = session_log(ctx, session_id, plane.as_ref()).await?;
             let trajectory = crate::atif::build_trajectory(
                 Some(&session_id.to_string()),
                 &events,
@@ -313,7 +313,24 @@ impl Command for ExportSessionMessages {
             });
         }
 
-        let messages = q::message_service(ctx)?.list(session_id.uuid()).await?;
+        let messages = match &plane {
+            Some(plane) => plane
+                .log()
+                .await?
+                .into_iter()
+                .filter_map(|event| {
+                    let data = serde_json::to_value(&event.data).ok()?;
+                    crate::domains::messages::service::MessageService::event_to_message(
+                        session_id.uuid(),
+                        &data,
+                        &event.event_type,
+                        event.sequence.unwrap_or(0),
+                    )
+                    .ok()
+                })
+                .collect(),
+            None => q::message_service(ctx)?.list(session_id.uuid()).await?,
+        };
 
         let mut body = String::new();
         for message in &messages {
@@ -328,6 +345,25 @@ impl Command for ExportSessionMessages {
             atif_images_omitted: 0,
         })
     }
+}
+
+/// A session's whole event log for an export: from the control plane's
+/// event index, or from the session's own log on its data plane (step 11.6).
+async fn session_log(
+    ctx: &Ctx,
+    session_id: SessionId,
+    plane: Option<&crate::domains::data_plane::session_plane::SessionPlane>,
+) -> Result<Vec<everruns_core::events::Event>, CommandError> {
+    if let Some(plane) = plane {
+        return Ok(plane.log().await?);
+    }
+    let event_service = crate::services::EventService::new(
+        ctx.db.clone(),
+        crate::live_updates::event_delivery::EventDelivery::in_memory(),
+    );
+    Ok(event_service
+        .list(session_id.uuid(), None, None, &[], &[], None, None)
+        .await?)
 }
 
 /// One byte-bounded segment of a segmented ATIF session export, ready for the
@@ -374,13 +410,13 @@ pub async fn export_session_segment(
         })?;
     }
 
-    let event_service = crate::services::EventService::new(
-        ctx.db.clone(),
-        crate::live_updates::event_delivery::EventDelivery::in_memory(),
-    );
-    let events = event_service
-        .list(session_id.uuid(), None, None, &[], &[], None, None)
-        .await?;
+    let plane = crate::domains::data_plane::session_plane::SessionPlane::of(
+        &ctx.db,
+        ctx.org_id(),
+        session_id,
+    )
+    .await?;
+    let events = session_log(ctx, session_id, plane.as_ref()).await?;
 
     let segment = crate::atif::build_segment(
         &session_id.to_string(),
