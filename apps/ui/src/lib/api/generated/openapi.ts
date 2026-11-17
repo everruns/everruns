@@ -18495,6 +18495,19 @@ export interface components {
        */
       passed: number;
     };
+    /** @description A link to the step that makes a blocked fixer available. */
+    FixerUnblock: {
+      /**
+       * @description A path inside the Everruns console, never an external URL.
+       * @example /settings/slack
+       */
+      href: string;
+      /**
+       * @description Button text.
+       * @example Reconnect Slack workspace
+       */
+      label: string;
+    };
     /**
      * @description Spacing between successive forecast values.
      * @enum {string}
@@ -19933,9 +19946,9 @@ export interface components {
       steps: string[];
       /** @description Why it cannot run now, and what unlocks it. Absent when it can run. */
       unavailable_reason?: string | null;
+      unblock?: components["schemas"]["FixerUnblock"] | null;
       /** @description Whether the fix can be undone from the finding. */
       undoable: boolean;
-      unblock?: components["schemas"]["FixerUnblock"] | null;
     };
     /** @description Key-value entry info (key and timestamps, no value) */
     KeyValueInfo: {
@@ -38816,19 +38829,6 @@ export interface components {
      * @example session_01933b5a000070008000000000000001
      */
     sessionId: string;
-    /** @description A link to the step that makes a blocked fixer available. */
-    FixerUnblock: {
-      /**
-       * @description A path inside the Everruns console, never an external URL.
-       * @example /settings/slack
-       */
-      href: string;
-      /**
-       * @description Button text.
-       * @example Reconnect Slack workspace
-       */
-      label: string;
-    };
   };
   responses: never;
   parameters: never;
