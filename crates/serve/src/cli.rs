@@ -232,7 +232,9 @@ fn banner(host: &Arc<Host>, mode: Mode, port: u16, data_dir: &std::path::Path, m
     for connection in &manifest.connections {
         println!("  connect  {} ({})", connection.name, connection.kind);
     }
-    println!("  sandbox  {}", manifest.sandbox.kind);
+    for agent in &manifest.agents {
+        println!("  sandbox  {} · {}", agent.name, agent.sandbox.kind);
+    }
     if !missing.is_empty() {
         println!(
             "  secrets  missing: {} (features using them are off in dev)",
@@ -500,10 +502,10 @@ fn deploy_plan(app: &App) {
         };
         println!("  4. secret {} ({state})", secret.name);
     }
-    println!(
-        "  5. provision DATABASE_URL, NATS_URL and the `{}` sandbox adapter",
-        manifest.sandbox.kind
-    );
+    println!("  5. provision DATABASE_URL, NATS_URL and sandbox adapters:");
+    for agent in &manifest.agents {
+        println!("     {}: {}", agent.name, agent.sandbox.kind);
+    }
     for model in &manifest.models {
         println!(
             "  6. configure model `{model}` with OPENAI_API_KEY (optionally OPENAI_BASE_URL) or OPENROUTER_API_KEY"

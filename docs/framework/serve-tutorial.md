@@ -145,7 +145,7 @@ The first build takes a few minutes. Then the app prints what it found:
 
   agent    support (default) · openai/gpt-6.1-sol → openai
   tool     order_status
-  sandbox  none
+  sandbox  support · none
 
   data     .serve
   listen   http://localhost:3000

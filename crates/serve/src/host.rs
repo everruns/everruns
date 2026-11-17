@@ -298,7 +298,7 @@ impl Host {
             } else if self.native_authority.get().is_some()
                 // An explicit microVM adapter owns its mounted workspace.
                 // SQLite journal placement must not replace that binding.
-                && !(matches!(self.app.inner.config.sandbox.kind, SandboxKind::Microvm)
+                && !(matches!(entry.spec.sandbox_kind(&self.app.inner.config), SandboxKind::Microvm)
                     && self.microvm.get().is_some())
             {
                 let root = self

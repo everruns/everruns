@@ -21,6 +21,7 @@ description = "Compiles the Rust code blocks in the Everruns Framework docs"
 # Doctests link the package's dev-dependencies, so these are the crates the
 # snippets import, with the facade features the pages tell readers to enable.
 [dev-dependencies]
+everruns-serve.workspace = true
 everruns-contracts = { workspace = true, default-features = false, features = ["http"] }
 everruns-integrations = { workspace = true, features = ["brave-search", "openai-decisions"] }
 

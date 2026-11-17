@@ -10,16 +10,15 @@ fn assistant() -> Agent {
     Agent::builder()
         .model("openai/gpt-6-luna")
         .instructions(md!("instructions.md"))
-        .customize(|builder| {
-            // Workspaces default to read-only. Only this disposable subtree
-            // needs writes; selecting the shell does not grant write access.
-            builder.workspace_policy(
-                everruns::WorkspacePolicy::builder()
-                    .allow_read("/")
-                    .allow_write("/workspace/demo")
-                    .build()
-                    .expect("valid demo workspace policy"),
-            )
-        })
+        .sandbox(SandboxKind::Bashkit)
+        // Only this disposable subtree needs writes; selecting the shell
+        // does not grant write access.
+        .workspace_policy(
+            everruns::WorkspacePolicy::builder()
+                .allow_read("/")
+                .allow_write("/workspace/demo")
+                .build()
+                .expect("valid demo workspace policy"),
+        )
         .build()
 }

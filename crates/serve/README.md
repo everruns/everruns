@@ -116,7 +116,7 @@ credential chain whenever `AWS_REGION` is set.
 revenue-analyst/
   Cargo.toml
   build.rs                 # serve_build::embed()
-  serve.toml               # name, sandbox, extra secrets, deploy target
+  serve.toml               # name, extra secrets, deploy target
   agent/
     instructions.md        # always-on prompt (hot-reloads in dev)
     skills/sql-style/SKILL.md

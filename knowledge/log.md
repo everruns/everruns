@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-16
+
+- [Serve](framework/serve.md): declare sandbox selection and workspace policy on each agent; preserve the app-wide sandbox fallback and host resource bindings.
+
 ## 2026-11-15
 
 - [MCP Apps](ui/mcp-apps.md): separate data tools from explicit session rendering, preserve drafts and navigation on repeated entry results, version shell resources, and bound bridge lifecycles with connection recovery.

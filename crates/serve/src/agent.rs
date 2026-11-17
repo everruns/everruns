@@ -92,6 +92,8 @@ pub struct Agent {
     pub(crate) instructions: Option<Instructions>,
     pub(crate) description: Option<String>,
     pub(crate) tools: Option<Vec<String>>,
+    pub(crate) sandbox: Option<crate::SandboxKind>,
+    pub(crate) workspace_policy: Option<everruns::WorkspacePolicy>,
     pub(crate) offline: Option<LlmSimConfig>,
     pub(crate) customize: Option<Customize>,
     pub(crate) package: Option<everruns::AgentPackage>,
@@ -162,6 +164,8 @@ impl Agent {
                 instructions: None,
                 description: None,
                 tools: None,
+                sandbox: None,
+                workspace_policy: None,
                 offline: None,
                 customize: None,
                 package: None,
@@ -174,6 +178,10 @@ impl Agent {
     pub fn model(&self) -> &str {
         &self.model
     }
+
+    pub(crate) fn sandbox_kind(&self, config: &crate::AppConfig) -> crate::SandboxKind {
+        self.sandbox.unwrap_or(config.sandbox.kind)
+    }
 }
 
 /// Builder for [`Agent`].
@@ -183,6 +191,25 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
+    /// Select this agent's shell/filesystem capability. Overrides the legacy
+    /// app-wide `[sandbox]` default, including when explicitly set to `None`.
+    /// Selecting a sandbox does not grant workspace writes. MicroVM adapters
+    /// remain host-provided; without one, Serve substitutes Bashkit.
+    pub fn sandbox(mut self, kind: crate::SandboxKind) -> Self {
+        self.agent.sandbox = Some(kind);
+        self
+    }
+
+    /// Set this agent's workspace read/write policy. Defaults to read-only.
+    /// Explicit permissions also cap grants from host adapters and `customize`;
+    /// host restrictions still apply. Selecting a sandbox alone grants no writes.
+    /// This governs Framework filesystem operations, not direct host I/O from
+    /// custom tools or OS shells, which require host-enforced containment.
+    pub fn workspace_policy(mut self, policy: everruns::WorkspacePolicy) -> Self {
+        self.agent.workspace_policy = Some(policy);
+        self
+    }
+
     /// A gateway model string, `provider/model`. The host resolves it; the
     /// app carries no provider keys. `"sim"` always uses the simulator.
     pub fn model(mut self, model: impl Into<String>) -> Self {

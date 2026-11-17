@@ -10,6 +10,246 @@ fn profile_app() -> crate::App {
 use crate::{app::Mode, host::NewSession, hosting::Server};
 use everruns::hosting::{MemoryHosting, SqliteHosting};
 
+#[test]
+fn agent_sandbox_overrides_app_default_and_changes_manifest_identity() {
+    let mut app = profile_app();
+    let original = app.manifest().build_id;
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.config.sandbox.kind = crate::SandboxKind::Bashkit;
+    inner.agents[0].spec.sandbox = Some(crate::SandboxKind::None);
+    let disabled_name = inner.agents[0].name.clone();
+    let manifest = app.manifest();
+    for agent in &manifest.agents {
+        assert_eq!(
+            agent.sandbox.kind,
+            if agent.name == disabled_name {
+                "none"
+            } else {
+                "bashkit"
+            }
+        );
+    }
+    assert_ne!(manifest.build_id, original);
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents[0].spec.sandbox = Some(crate::SandboxKind::Local);
+    assert_ne!(app.manifest().build_id, manifest.build_id);
+    let before_policy = app.manifest().build_id;
+    std::sync::Arc::get_mut(&mut app.inner).unwrap().agents[0]
+        .spec
+        .workspace_policy = Some(everruns::WorkspacePolicy::read_write());
+    assert_ne!(app.manifest().build_id, before_policy);
+}
+
+#[tokio::test]
+async fn agents_in_one_host_resolve_sandbox_defaults_independently() {
+    let mut app = profile_app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents.retain(|agent| agent.name == "tester");
+    inner.config.sandbox.kind = crate::SandboxKind::Bashkit;
+    inner.agents[0].spec = crate::Agent::builder()
+        .model("sim")
+        .offline(crate::sim::script([
+            crate::sim::call(
+                "bash",
+                serde_json::json!({"commands": "echo enabled", "output": "full"}),
+            ),
+            crate::sim::reply("done"),
+        ]))
+        .build();
+    let mut disabled = inner.agents[0].clone();
+    disabled.name = "no_shell".into();
+    disabled.default = false;
+    disabled.spec.sandbox = Some(crate::SandboxKind::None);
+    inner.agents.push(disabled);
+    let server = Server::builder(app, Mode::Eval).build().unwrap();
+    for (name, enabled) in [("tester", true), ("no_shell", false)] {
+        let id = server
+            .host
+            .create_session(NewSession {
+                agent: Some(name.into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let session = server.host.session(&id).await.unwrap();
+        assert!(
+            session
+                .send_and_wait("use the shell")
+                .await
+                .unwrap()
+                .success
+        );
+        let events = session.events_after(0).await.unwrap();
+        let result = events
+            .iter()
+            .map(|event| event.canonical_json())
+            .find(|event| event["type"] == "tool.completed")
+            .unwrap();
+        assert_eq!(result["data"]["success"], enabled, "{name}: {result}");
+    }
+    server
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+}
+
+#[tokio::test]
+async fn agent_microvm_preserves_adapter_workspace_with_a_native_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    let mounted = dir.path().join("adapter");
+    std::fs::create_dir(&mounted).unwrap();
+    std::fs::write(mounted.join("marker.txt"), "adapter workspace\n").unwrap();
+    let mut app = profile_app();
+    let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+    inner.agents.retain(|agent| agent.name == "tester");
+    inner.agents[0].spec = crate::Agent::builder()
+        .model("sim")
+        .sandbox(crate::SandboxKind::Microvm)
+        .offline(crate::sim::script([
+            crate::sim::call(
+                "bash",
+                serde_json::json!({"commands": "cat /marker.txt", "output": "full"}),
+            ),
+            crate::sim::reply("done"),
+        ]))
+        .build();
+    let mut virtual_agent = inner.agents[0].clone();
+    virtual_agent.name = "virtual".into();
+    virtual_agent.default = false;
+    virtual_agent.spec.sandbox = Some(crate::SandboxKind::Bashkit);
+    inner.agents.push(virtual_agent);
+    let server = Server::builder(app, Mode::Eval)
+        .data_dir(dir.path().join("journal"))
+        .microvm(move |builder| {
+            builder
+                .workspace(&mounted)
+                .capability(everruns::BashkitShell::new())
+        })
+        .build()
+        .unwrap();
+    for (name, sees_mount) in [("tester", true), ("virtual", false)] {
+        let id = server
+            .host
+            .create_session(NewSession {
+                agent: Some(name.into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let session = server.host.session(&id).await.unwrap();
+        assert!(session.send_and_wait("read").await.unwrap().success);
+        let events = session.events_after(0).await.unwrap();
+        let event = events
+            .iter()
+            .map(|event| event.canonical_json())
+            .find(|event| event["type"] == "tool.completed")
+            .unwrap();
+        let result: serde_json::Value =
+            serde_json::from_str(event["data"]["result"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(result["exit_code"] == 0, sees_mount, "{name}: {result}");
+        if sees_mount {
+            assert_eq!(result["stdout"], "adapter workspace\n");
+        }
+    }
+    server
+        .engine()
+        .shutdown(std::time::Duration::from_secs(5))
+        .await;
+}
+
+#[tokio::test]
+async fn agent_workspace_permissions_preserve_defaults_and_intersect_host_restrictions() {
+    // Neither an adapter grant nor an agent grant can widen the other policy.
+    for (kind, agent_policy, host_policy, widen_in_customize) in [
+        (
+            crate::SandboxKind::Bashkit,
+            None,
+            everruns::WorkspacePolicy::read_write(),
+            false,
+        ),
+        (
+            crate::SandboxKind::Microvm,
+            Some(everruns::WorkspacePolicy::read_only()),
+            everruns::WorkspacePolicy::read_write(),
+            false,
+        ),
+        (
+            crate::SandboxKind::Microvm,
+            Some(everruns::WorkspacePolicy::read_write()),
+            everruns::WorkspacePolicy::read_only(),
+            false,
+        ),
+        (
+            crate::SandboxKind::Microvm,
+            Some(everruns::WorkspacePolicy::read_write()),
+            everruns::WorkspacePolicy::read_only(),
+            true,
+        ),
+        (
+            crate::SandboxKind::Microvm,
+            Some(everruns::WorkspacePolicy::read_only()),
+            everruns::WorkspacePolicy::read_write(),
+            true,
+        ),
+    ] {
+        let mut app = profile_app();
+        let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
+        inner.agents.retain(|agent| agent.name == "tester");
+        inner.agents[0].spec = crate::Agent::builder()
+            .model("sim")
+            .sandbox(kind)
+            .offline(crate::sim::script([
+                crate::sim::call(
+                    "bash",
+                    serde_json::json!({
+                        "commands": "printf forbidden > /blocked.txt", "output": "full"
+                    }),
+                ),
+                crate::sim::reply("done"),
+            ]))
+            .build();
+        inner.agents[0].spec.workspace_policy = agent_policy;
+        if widen_in_customize {
+            inner.agents[0].spec.customize = Some(std::sync::Arc::new(|builder| {
+                builder.workspace_policy(everruns::WorkspacePolicy::read_write())
+            }));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let server = Server::builder(app, Mode::Eval)
+            .data_dir(dir.path())
+            .microvm(move |builder| {
+                builder
+                    .workspace_policy(host_policy.clone())
+                    .capability(everruns::BashkitShell::new())
+            })
+            .build()
+            .unwrap();
+        let id = server
+            .host
+            .create_session(NewSession::default())
+            .await
+            .unwrap();
+        let session = server.host.session(&id).await.unwrap();
+        assert!(session.send_and_wait("write").await.unwrap().success);
+        let events = session.events_after(0).await.unwrap();
+        let result = events
+            .iter()
+            .map(|event| event.canonical_json())
+            .find(|event| event["type"] == "tool.completed")
+            .unwrap();
+        let result: serde_json::Value =
+            serde_json::from_str(result["data"]["result"][0]["text"].as_str().unwrap()).unwrap();
+        assert_ne!(result["exit_code"], 0, "{result}");
+        assert!(
+            result.to_string().to_lowercase().contains("denied"),
+            "{result}"
+        );
+        server
+            .engine()
+            .shutdown(std::time::Duration::from_secs(5))
+            .await;
+    }
+}
 /// The Bashkit example's persistence contract, without a provider credential.
 /// Only the model is scripted; Serve, Bashkit and directory storage are real.
 #[tokio::test]
@@ -19,19 +259,17 @@ async fn bashkit_files_survive_turns_and_host_restart_but_shell_state_and_sessio
     fn app() -> crate::App {
         let mut app = profile_app();
         let inner = std::sync::Arc::get_mut(&mut app.inner).unwrap();
-        inner.config.sandbox.kind = crate::config::SandboxKind::Bashkit;
         inner.agents.retain(|agent| agent.name == "tester");
         inner.agents[0].spec = crate::Agent::builder()
             .model("sim")
-            .customize(|builder| {
-                builder.workspace_policy(
-                    everruns::WorkspacePolicy::builder()
-                        .allow_read("/")
-                        .allow_write("/workspace/demo")
-                        .build()
-                        .unwrap(),
-                )
-            })
+            .sandbox(crate::SandboxKind::Bashkit)
+            .workspace_policy(
+                everruns::WorkspacePolicy::builder()
+                    .allow_read("/")
+                    .allow_write("/workspace/demo")
+                    .build()
+                    .unwrap(),
+            )
             .offline(crate::sim::script([
                 crate::sim::call(
                     "bash",
@@ -401,11 +639,9 @@ async fn pre_authority_child_sessions_move_with_their_parent() {
 async fn pre_authority_sessions_move_under_a_microvm_adapter() {
     let microvm_app = || {
         let mut app = profile_app();
-        std::sync::Arc::get_mut(&mut app.inner)
-            .unwrap()
-            .config
-            .sandbox
-            .kind = crate::config::SandboxKind::Microvm;
+        for agent in &mut std::sync::Arc::get_mut(&mut app.inner).unwrap().agents {
+            agent.spec.sandbox = Some(crate::SandboxKind::Microvm);
+        }
         app
     };
     let dir = tempfile::tempdir().unwrap();

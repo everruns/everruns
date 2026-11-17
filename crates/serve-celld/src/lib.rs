@@ -126,7 +126,13 @@ pub async fn start(app: App) -> serve::Result {
 pub fn router(app: App, options: Options) -> serve::Result<Router> {
     // THREAT[TM-DURABLE-012]: uncontained agent commands could read the native
     // Engine's authority credentials. Workspace persistence is not a sandbox.
-    if options.microvm.is_none() && app.manifest().sandbox.kind == "microvm" {
+    if options.microvm.is_none()
+        && app
+            .manifest()
+            .agents
+            .iter()
+            .any(|agent| agent.sandbox.kind == "microvm")
+    {
         anyhow::bail!(
             "celld native OS tools require an explicit isolated sandbox adapter; a workspace directory alone cannot isolate authority credentials"
         );
@@ -159,4 +165,41 @@ pub fn router(app: App, options: Options) -> serve::Result<Router> {
         32,
     )?;
     Ok(server.router().merge(executor.router()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[serve::agent]
+    fn needs_microvm() -> serve::Agent {
+        serve::Agent::builder()
+            .model("sim")
+            .sandbox(serve::SandboxKind::Microvm)
+            .build()
+    }
+
+    #[test]
+    fn agent_declared_microvm_requires_an_isolated_adapter() -> serve::Result {
+        let app = App::builder().discover().build();
+        assert_eq!(app.manifest().sandbox.kind, "none");
+        let options = Options::new(
+            Mode::Eval,
+            AuthorityClient::new(
+                "https://authority.example",
+                "test",
+                &"test-only-authority-".repeat(2),
+            )?,
+            "test-only-executor-".repeat(2),
+        );
+        let error = router(app, options)
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("missing adapter must fail before startup"))?;
+        assert!(
+            error
+                .to_string()
+                .contains("explicit isolated sandbox adapter")
+        );
+        Ok(())
+    }
 }

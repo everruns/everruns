@@ -393,6 +393,20 @@ impl AgentBuilder {
         self
     }
 
+    /// Inspect the configured workspace policy. A host can retain this policy
+    /// and reapply it with [`Self::restrict_workspace_policy`] after later
+    /// application customization, without losing its restrictions.
+    pub fn current_workspace_policy(&self) -> &crate::WorkspacePolicy {
+        &self.workspace_policy
+    }
+
+    /// Further restrict the current workspace policy. An operation must be
+    /// allowed by both policies; this never grants additional access.
+    pub fn restrict_workspace_policy(mut self, policy: crate::WorkspacePolicy) -> Self {
+        self.workspace_policy = self.workspace_policy.compose(policy);
+        self
+    }
+
     /// Also allow writes at and below `path` on top of the current workspace
     /// policy, for a folder the application opts into (for example where
     /// image generation saves its outputs). Hidden and denied paths stay

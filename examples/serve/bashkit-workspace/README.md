@@ -27,27 +27,26 @@ that directory's binary path instead.
 
 ## How Bashkit is configured
 
-Select the runtime in `serve.toml`:
+Select Bashkit and its write scope together in [`src/agent.rs`](src/agent.rs):
 
-```toml
-[sandbox]
-kind = "bashkit"
+```rust
+Agent::builder()
+    .model("openai/gpt-6-luna")
+    .sandbox(SandboxKind::Bashkit)
+    .workspace_policy(
+        everruns::WorkspacePolicy::builder()
+            .allow_read("/")
+            .allow_write("/workspace/demo")
+            .build()
+            .expect("valid demo workspace policy"),
+    )
+    .build()
 ```
 
 Serve installs `BashkitShell::new()` and supplies the session filesystem.
-The Framework's default workspace policy is **read-only**. `src/agent.rs`
-explicitly permits writes only under `/workspace/demo` through Serve's
-`.customize(...)` hook:
-
-```rust
-builder.workspace_policy(
-    everruns::WorkspacePolicy::builder()
-        .allow_read("/")
-        .allow_write("/workspace/demo")
-        .build()
-        .expect("valid demo workspace policy"),
-)
-```
+Selecting Bashkit does not grant writes: the Framework defaults to read-only.
+This agent permits writes only under `/workspace/demo`. `serve.toml` names
+this app; it no longer selects the agent's capabilities.
 
 There is no custom shell tool, Docker container, external database, or host
 shell execution in the agent. Bashkit implements shell commands in process;

@@ -18,7 +18,8 @@ provides it. The user never writes infrastructure config.
   and **connections** (MCP URL or type);
 - **secrets**: every `Secret::named` that a connection or channel declares,
   plus `serve.toml [secrets] required`;
-- **sandbox** kind, **models** for the gateway, **evals**, and **routes**;
+- each agent's effective **sandbox** kind (the top-level sandbox is the legacy
+  app default), **models** for the gateway, **evals**, and **routes**;
 - **build_id**: a hash of all of the above plus the embedded `agent/**`
   files, so editing a prompt produces a new build.
 
