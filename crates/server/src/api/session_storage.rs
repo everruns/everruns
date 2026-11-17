@@ -2,6 +2,7 @@
 // Routes for listing session key-value storage and secrets
 // Secrets are returned without their values for security
 
+use crate::api::command_http::CommandRouterExt;
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
 use crate::domains::common::Command;
@@ -34,6 +35,8 @@ pub fn routes(state: ApiState) -> Router {
             "/v1/sessions/{session_id}/storage/secrets/{name}",
             axum::routing::delete(delete_secret),
         )
+        .command::<crate::domains::session_storage::GetSessionApprovalMode>()
+        .command::<crate::domains::session_storage::SetSessionApprovalMode>()
         .with_state(state)
 }
 
