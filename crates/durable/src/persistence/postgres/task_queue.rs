@@ -840,45 +840,6 @@ impl TaskQueue for PostgresWorkflowEventStore {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::persistence::db_failure::capture::capture;
-    use sqlx::postgres::PgPoolOptions;
-
-    /// EVERRUNS-2T: a heartbeat that cannot reach the database must be
-    /// reported through the shared classifier, so a pool exhaustion groups
-    /// with every other starved subsystem instead of opening its own issue.
-    #[test]
-    fn heartbeat_failure_is_reported_through_the_shared_classifier() {
-        // Nothing listens on port 1, so every acquire fails without a database.
-        let emitted = capture(|| {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            runtime.block_on(async {
-                let pool = PgPoolOptions::new()
-                    .max_connections(1)
-                    .acquire_timeout(Duration::from_millis(200))
-                    .connect_lazy("postgres://durable@127.0.0.1:1/durable")
-                    .unwrap();
-                let store = PostgresWorkflowEventStore::new(pool);
-                let result = store.heartbeat_task(Uuid::now_v7(), "worker-1", None).await;
-                assert!(matches!(result, Err(StoreError::Database(_))), "{result:?}");
-            });
-        });
-
-        let reported: Vec<_> = emitted.iter().filter(|e| !e.subsystem.is_empty()).collect();
-        assert_eq!(reported.len(), 1, "{emitted:#?}");
-        assert_eq!(reported[0].subsystem, "durable.tasks.heartbeat");
-        assert!(
-            reported[0].db_failure.starts_with("database."),
-            "{emitted:#?}"
-        );
-    }
-}
-
 impl PostgresWorkflowEventStore {
     pub(super) async fn enqueue_task_on(
         &self,
@@ -977,5 +938,44 @@ impl PostgresWorkflowEventStore {
 
         debug!(%task_id, activity_type = %task.activity_type, "enqueued task");
         Ok(task_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persistence::db_failure::capture::capture;
+    use sqlx::postgres::PgPoolOptions;
+
+    /// EVERRUNS-2T: a heartbeat that cannot reach the database must be
+    /// reported through the shared classifier, so a pool exhaustion groups
+    /// with every other starved subsystem instead of opening its own issue.
+    #[test]
+    fn heartbeat_failure_is_reported_through_the_shared_classifier() {
+        // Nothing listens on port 1, so every acquire fails without a database.
+        let emitted = capture(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                let pool = PgPoolOptions::new()
+                    .max_connections(1)
+                    .acquire_timeout(Duration::from_millis(200))
+                    .connect_lazy("postgres://durable@127.0.0.1:1/durable")
+                    .unwrap();
+                let store = PostgresWorkflowEventStore::new(pool);
+                let result = store.heartbeat_task(Uuid::now_v7(), "worker-1", None).await;
+                assert!(matches!(result, Err(StoreError::Database(_))), "{result:?}");
+            });
+        });
+
+        let reported: Vec<_> = emitted.iter().filter(|e| !e.subsystem.is_empty()).collect();
+        assert_eq!(reported.len(), 1, "{emitted:#?}");
+        assert_eq!(reported[0].subsystem, "durable.tasks.heartbeat");
+        assert!(
+            reported[0].db_failure.starts_with("database."),
+            "{emitted:#?}"
+        );
     }
 }
