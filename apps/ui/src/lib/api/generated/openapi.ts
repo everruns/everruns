@@ -16509,7 +16509,7 @@ export interface components {
       id: string;
       /**
        * @description Model that wrote the proposals.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**
@@ -17468,7 +17468,7 @@ export interface components {
       cost_per_case_usd?: number | null;
       /** @example candidate */
       label: string;
-      /** @example gpt-6.1-sol */
+      /** @example gpt-6.2-sol */
       model_override?: string | null;
       /**
        * @description Set when the variant ran outside Everruns and was imported: the system
@@ -17494,7 +17494,7 @@ export interface components {
       label: string;
       /**
        * @description Model for this variant, beating the target's model.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model_override?: string | null;
       target?: components["schemas"]["EvalTarget"] | null;
@@ -18388,7 +18388,7 @@ export interface components {
       dismissed_at?: string | null;
       /**
        * @description The model that wrote it.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**
@@ -19750,7 +19750,7 @@ export interface components {
       /**
        * @description The variant this import is. A later import with the same label
        *     replaces it.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       variant: string;
     };
@@ -34389,7 +34389,7 @@ export interface components {
       kind: string;
       /**
        * @description Model that served the call, for model steps.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**
@@ -38466,7 +38466,7 @@ export interface components {
       headline: string;
       /**
        * @description Model of the latest generation.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**

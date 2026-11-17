@@ -49720,7 +49720,7 @@
               "null"
             ],
             "description": "Model that wrote the proposals.",
-            "example": "gpt-6.1-sol"
+            "example": "gpt-6.2-sol"
           },
           "proposals": {
             "type": "integer",
@@ -51486,7 +51486,7 @@
               "string",
               "null"
             ],
-            "example": "gpt-6.1-sol"
+            "example": "gpt-6.2-sol"
           },
           "run_elsewhere": {
             "type": [
@@ -51545,7 +51545,7 @@
               "null"
             ],
             "description": "Model for this variant, beating the target's model.",
-            "example": "gpt-6.1-sol"
+            "example": "gpt-6.2-sol"
           },
           "target": {
             "oneOf": [
@@ -53267,7 +53267,7 @@
               "null"
             ],
             "description": "The model that wrote it.",
-            "example": "gpt-6.1-sol"
+            "example": "gpt-6.2-sol"
           },
           "severity": {
             "type": [
@@ -55727,7 +55727,7 @@
           "variant": {
             "type": "string",
             "description": "The variant this import is. A later import with the same label\nreplaces it.",
-            "example": "gpt-6.1-sol"
+            "example": "gpt-6.2-sol"
           }
         }
       },
@@ -81924,7 +81924,7 @@
               "null"
             ],
             "description": "Model that served the call, for model steps.",
-            "example": "gpt-6.1-sol"
+            "example": "gpt-6.2-sol"
           },
           "name": {
             "type": [
@@ -89294,7 +89294,7 @@
               "null"
             ],
             "description": "Model of the latest generation.",
-            "example": "gpt-6.1-sol"
+            "example": "gpt-6.2-sol"
           },
           "omitted_steps": {
             "type": "integer",

@@ -16,15 +16,19 @@ older Astra/Sol recommendations on Responses providers; explicit older model
 IDs remain supported. Luna remains the budget default.
 
 In Framework code, select the current balanced model (requires the `openai`
-feature):
+feature and `OPENAI_API_KEY`):
 
 ```rust
-use everruns::Agent;
+use everruns::{Agent, OpenAI};
 
-let agent = Agent::builder()
-    .model("gpt-6.2-sol")
-    .instructions("Answer concisely.")
-    .build();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _agent = Agent::builder()
+        .provider(OpenAI::from_env()?)
+        .model("gpt-6.2-sol")
+        .instructions("Answer concisely.")
+        .build()?;
+    Ok(())
+}
 ```
 
 Use Responses for function tools. Neither model accepts `none` reasoning or
