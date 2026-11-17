@@ -378,3 +378,54 @@ impl Database {
         Ok(result.rows_affected())
     }
 }
+
+impl Database {
+    pub async fn lock_scheduled_trigger_invocation(&self, task_id: Uuid) -> Result<()> {
+        anyhow::ensure!(
+            crate::storage::transaction::in_transaction(),
+            "scheduled invocation requires a transaction"
+        );
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("scheduled-trigger:{task_id}"))
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn scheduled_trigger_invocation(
+        &self,
+        task_id: Uuid,
+        org_id: i64,
+        trigger_id: TriggerId,
+    ) -> Result<Option<serde_json::Value>> {
+        Ok(sqlx::query_scalar("SELECT result FROM scheduled_trigger_invocations WHERE task_id = $1 AND org_id = $2 AND trigger_id = $3")
+            .bind(task_id).bind(org_id).bind(trigger_id).fetch_optional(&self.pool).await?)
+    }
+
+    pub async fn record_scheduled_trigger_invocation(
+        &self,
+        task_id: Uuid,
+        org_id: i64,
+        trigger_id: TriggerId,
+        result: serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query("INSERT INTO scheduled_trigger_invocations (task_id, org_id, trigger_id, result) VALUES ($1, $2, $3, $4)")
+            .bind(task_id).bind(org_id).bind(trigger_id).bind(result).execute(&self.pool).await?;
+        Ok(())
+    }
+}
+
+impl Database {
+    pub async fn scheduled_trigger_task_matches(
+        &self,
+        task_id: Uuid,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<bool> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM durable_task_queue WHERE id = $1 AND activity_type = 'invoke_agent_trigger' AND input->>'org_id' = $2 AND input->>'agent_id' = $3 AND input->>'trigger_id' = $4)")
+            .bind(task_id).bind(org_id.to_string()).bind(agent_id).bind(trigger_id)
+            .fetch_one(&self.pool).await?)
+    }
+}

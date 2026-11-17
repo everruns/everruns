@@ -900,9 +900,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         org_id: i64,
         agent_id: &str,
         trigger_id: &str,
+        invocation_id: uuid::Uuid,
     ) -> Result<serde_json::Value> {
         self.client
-            .invoke_agent_trigger(org_id, agent_id, trigger_id)
+            .invoke_agent_trigger(org_id, agent_id, trigger_id, invocation_id)
             .await
     }
 

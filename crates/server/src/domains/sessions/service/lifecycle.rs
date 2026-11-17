@@ -336,7 +336,10 @@ impl SessionService {
                 .ok(),
             agent_id,
         };
-        everruns_core::lifecycle_hooks::run_session_lifecycle_hooks(&hooks, &ctx, data).await;
+        crate::storage::transaction::after_commit(async move {
+            everruns_core::lifecycle_hooks::run_session_lifecycle_hooks(&hooks, &ctx, data).await;
+        })
+        .await;
     }
 
     /// Resolve the effective capability configs for a session (harness chain +

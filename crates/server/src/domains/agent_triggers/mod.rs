@@ -15,6 +15,8 @@ pub mod mcp_event;
 pub mod queries;
 pub mod record;
 mod schedule_invocation;
+mod scheduled_invocation;
+pub use scheduled_invocation::invoke_scheduled_agent_trigger;
 mod script_target;
 pub mod types;
 pub mod webhook;

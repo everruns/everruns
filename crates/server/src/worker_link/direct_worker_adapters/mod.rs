@@ -1405,6 +1405,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         org_id: i64,
         agent_id: &str,
         trigger_id: &str,
+        invocation_id: uuid::Uuid,
     ) -> Result<serde_json::Value> {
         let runner = self
             .runner
@@ -1422,7 +1423,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             self.event_service.event_delivery().clone(),
         );
 
-        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+        let result = crate::domains::agent_triggers::invoke_scheduled_agent_trigger(
             &self.db,
             &session_service,
             &message_service,
@@ -1431,6 +1432,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             org_id,
             agent_id,
             trigger_id,
+            invocation_id,
         )
         .await
         .map_err(|error| store_error(format!("Failed to invoke agent trigger: {error}")))?;

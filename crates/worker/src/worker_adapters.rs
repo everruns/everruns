@@ -761,6 +761,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         org_id: i64,
         agent_id: &str,
         trigger_id: &str,
+        invocation_id: uuid::Uuid,
     ) -> Result<serde_json::Value>;
 
     /// Claim due leased resources for cleanup work.

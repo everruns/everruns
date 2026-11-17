@@ -56,7 +56,7 @@ impl WorkerServiceImpl {
             self.event_service.event_delivery().clone(),
         );
 
-        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+        let result = crate::domains::agent_triggers::invoke_scheduled_agent_trigger(
             &self.db,
             &self.session_service,
             &message_service,
@@ -65,6 +65,9 @@ impl WorkerServiceImpl {
             req.org_id,
             &req.agent_id,
             &req.trigger_id,
+            req.invocation_id
+                .parse()
+                .map_err(|_| Status::invalid_argument("invocation_id must be a UUID"))?,
         )
         .await
         .map_err(command_error_to_status)?;

@@ -391,7 +391,7 @@ impl StorageBackend {
         {
             let db = self.database();
             let result=sqlx::query("INSERT INTO runtime_invocations (input_message_id,org_id,session_id,virtual_user_id,management_user_id,responder_agent_id) SELECT $1,$2,$3,$4,$5,$6 FROM sessions WHERE id=$3 AND org_id=$2 ON CONFLICT (input_message_id) DO UPDATE SET input_message_id=EXCLUDED.input_message_id WHERE runtime_invocations.org_id=EXCLUDED.org_id AND runtime_invocations.session_id=EXCLUDED.session_id AND runtime_invocations.virtual_user_id IS NOT DISTINCT FROM EXCLUDED.virtual_user_id AND runtime_invocations.management_user_id IS NOT DISTINCT FROM EXCLUDED.management_user_id AND runtime_invocations.responder_agent_id IS NOT DISTINCT FROM EXCLUDED.responder_agent_id")
-                .bind(message_id).bind(org_id).bind(session_id).bind(subject).bind(management_user_id).bind(responder_agent_id).execute(db.pool()).await?;
+                .bind(message_id).bind(org_id).bind(session_id).bind(subject).bind(management_user_id).bind(responder_agent_id).execute(db.tx_pool()).await?;
             if result.rows_affected() != 1 {
                 bail!("Invocation not found or identity cannot be changed");
             }

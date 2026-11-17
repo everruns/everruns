@@ -186,3 +186,16 @@ never checks. Each review records a
 - [Slack Integration](/capabilities/slack/), publish an Agent to an inbound messaging endpoint.
 - [Session participants](/features/session-participants/), understand the host agent used by a trigger-created session.
 - [API reference](/api/), exact trigger schemas and responses.
+
+### Schedule retry behavior
+
+Platform scheduled agent triggers use the durable task ID as their dispatch
+identity. Retrying that task returns its committed session and input rather than
+starting another invocation. An interrupted dispatch rolls back its local records
+and can retry. A later scheduled occurrence and a manual fire remain new
+invocations.
+
+Activity scheduling persists the queued task, execution record and next-trigger
+time atomically. These guarantees concern dispatch, not exactly-once side effects
+inside tools or external services; tools still need their own idempotency keys.
+Server and worker must both be upgraded with the associated database migration.
