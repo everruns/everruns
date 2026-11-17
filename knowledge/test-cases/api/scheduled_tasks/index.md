@@ -5,3 +5,5 @@
 * [TC003: Durable Schedules - Platform Access](TC003_platform_access.md) - Verify durable schedules require explicit platform-user access rather than organization ownership, and read-only credentials cannot mutate them.
 * [TC005: Durable Schedules - Cron Validation](TC005_cron_validation.md) - Verify five-field normalization, seven-field acceptance, invalid cron rejection, and unchanged persisted state after rejected updates.
 * [TC008: Horizontal Scaling with Multiple Scheduler Instances](TC008_horizontal_scaling.md) - Verify that multiple scheduler instances can run concurrently without duplicate triggers, race conditions, or missed schedules.
+
+* [TC009: Scheduled activity crash and retry boundaries](TC009_crash_retry_idempotency.md) - Verify atomic dispatch and invocation replay without provider calls.
