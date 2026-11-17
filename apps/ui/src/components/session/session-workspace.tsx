@@ -47,7 +47,7 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
   const { displayLocale } = useLocale();
 
   const ui = useUiTranslations();
-  const { data, isLoading } = useSessionStorage(sessionId);
+  const { data, isLoading } = useSessionStorage(sessionId, true);
 
   return (
     <div className="p-4">
