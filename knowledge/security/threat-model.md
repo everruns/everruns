@@ -576,6 +576,8 @@ Serve's explicit agent workspace policy caps host adapter and customization gran
 by intersection; host restrictions remain effective. Sandbox selection alone
 retains the read-only default. Per-agent declarations drive both capability
 assembly and workspace binding; the manifest reports their effective selections.
+When an agent declares a policy, Serve retains the adapter's policy before
+customization so a later policy setter cannot erase the adapter's restrictions.
 
 Policy is intentionally split from storage. `WorkspacePolicy` decides which
 model-facing paths are visible or mutable, while the selected provider decides

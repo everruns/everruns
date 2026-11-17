@@ -115,6 +115,7 @@ impl Host {
         if let Some(policy) = &spec.workspace_policy {
             builder = builder.workspace_policy(policy.clone());
         }
+        let mut adapter_policy = None;
         builder = match spec.sandbox_kind(&self.app.inner.config) {
             SandboxKind::None => builder,
             SandboxKind::Local => builder.capability(everruns::FileSystem),
@@ -122,7 +123,17 @@ impl Host {
             // A hosting target supplies the microVM adapter; without one
             // (dev, self-hosted start) bashkit stands in.
             SandboxKind::Microvm => match self.microvm.get() {
-                Some(microvm) => microvm(builder),
+                Some(microvm) => {
+                    let bound = microvm(builder);
+                    // An explicit agent policy opts into intersecting agent,
+                    // adapter and customization permissions. Retain the
+                    // adapter's ceiling before a later setter can replace it.
+                    // Legacy customize-only declarations keep their ordering.
+                    if spec.workspace_policy.is_some() {
+                        adapter_policy = Some(bound.current_workspace_policy().clone());
+                    }
+                    bound
+                }
                 None => builder.capability(BashkitShell::new()),
             },
         };
@@ -146,6 +157,9 @@ impl Host {
         }
         // Explicit agent permissions cap adapter/customization grants, while
         // composing with (rather than replacing) any host restrictions.
+        if let Some(policy) = adapter_policy {
+            builder = builder.restrict_workspace_policy(policy);
+        }
         if let Some(policy) = &spec.workspace_policy {
             builder = builder.restrict_workspace_policy(policy.clone());
         }

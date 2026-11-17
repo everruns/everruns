@@ -160,21 +160,36 @@ async fn agent_microvm_preserves_adapter_workspace_with_a_native_journal() {
 #[tokio::test]
 async fn agent_workspace_permissions_preserve_defaults_and_intersect_host_restrictions() {
     // Neither an adapter grant nor an agent grant can widen the other policy.
-    for (kind, agent_policy, host_policy) in [
+    for (kind, agent_policy, host_policy, widen_in_customize) in [
         (
             crate::SandboxKind::Bashkit,
             None,
             everruns::WorkspacePolicy::read_write(),
+            false,
         ),
         (
             crate::SandboxKind::Microvm,
             Some(everruns::WorkspacePolicy::read_only()),
             everruns::WorkspacePolicy::read_write(),
+            false,
         ),
         (
             crate::SandboxKind::Microvm,
             Some(everruns::WorkspacePolicy::read_write()),
             everruns::WorkspacePolicy::read_only(),
+            false,
+        ),
+        (
+            crate::SandboxKind::Microvm,
+            Some(everruns::WorkspacePolicy::read_write()),
+            everruns::WorkspacePolicy::read_only(),
+            true,
+        ),
+        (
+            crate::SandboxKind::Microvm,
+            Some(everruns::WorkspacePolicy::read_only()),
+            everruns::WorkspacePolicy::read_write(),
+            true,
         ),
     ] {
         let mut app = profile_app();
@@ -194,6 +209,11 @@ async fn agent_workspace_permissions_preserve_defaults_and_intersect_host_restri
             ]))
             .build();
         inner.agents[0].spec.workspace_policy = agent_policy;
+        if widen_in_customize {
+            inner.agents[0].spec.customize = Some(std::sync::Arc::new(|builder| {
+                builder.workspace_policy(everruns::WorkspacePolicy::read_write())
+            }));
+        }
         let dir = tempfile::tempdir().unwrap();
         let server = Server::builder(app, Mode::Eval)
             .data_dir(dir.path())

@@ -98,7 +98,9 @@ runtime.
   per-agent choice wins, including disabling the tools. The manifest reports
   effective per-agent selections and policy changes affect declaration identity.
   Host-provided storage and MicroVM adapters retain their binding precedence;
-  selecting a shell does not grant workspace writes. See the
+  selecting a shell does not grant workspace writes. Explicit agent policies
+  retain the adapter's permission ceiling across later customization; legacy
+  customize-only declarations keep their existing ordering. See the
   [builder](../../crates/serve/src/agent.rs) and
   [configuration guide](../../crates/serve/docs/guide.md#10-the-sandbox).
 - **Apps name models; hosts own keys.** Model routing uses the standard provider
