@@ -91,6 +91,14 @@ fn query_string(query: &StreamQuery, cursor: Option<&Cursor>) -> String {
     out.finish()
 }
 
+/// How long [`connect`] keeps looking for a stream node that answers.
+/// Decision: a create commits on a quorum, so the session's stream node can
+/// be the one member that has not applied it yet. It answers 421 and the
+/// next in rank redirects back to it; a fixed handful of back-to-back rounds
+/// gave up within milliseconds of a create on a busy host. Retry on a short
+/// pause until this deadline instead.
+const CONNECT_WAIT: Duration = Duration::from_secs(10);
+
 /// Open the session's stream on its stream node: the first in rank order
 /// that answers, following redirects and moves.
 async fn connect(
@@ -98,7 +106,10 @@ async fn connect(
     session: SessionId,
     query: &str,
 ) -> Result<reqwest::Response, ApiError> {
-    for _ in 0..4 {
+    let deadline = tokio::time::Instant::now() + CONNECT_WAIT;
+    let mut rounds = 0u32;
+    while rounds < 4 || tokio::time::Instant::now() < deadline {
+        rounds += 1;
         let cell = gateway.locate(session).await?;
         let seeds = gateway.nodes(cell)?;
         let view = gateway
@@ -156,6 +167,10 @@ async fn connect(
         if !again {
             // Nobody answered: read the view again before the next round.
             gateway.views.view(&gateway.http, cell, &seeds, true).await;
+        }
+        // A redirect retries at once for the first few rounds; past those,
+        // the stream node is still applying the session, so pause.
+        if !again || rounds >= 4 {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
