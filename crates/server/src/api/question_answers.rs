@@ -122,8 +122,15 @@ pub(crate) fn pending_from_events(
     events: &[crate::storage::EventRow],
     tool_call_id: Option<&str>,
 ) -> Option<PendingQuestions> {
-    let event = events.last()?;
-    let tool_calls = event.data.get("tool_calls")?.as_array()?;
+    pending_from_requested(&events.last()?.data, tool_call_id)
+}
+
+/// [`pending_from_events`] on the newest `tool.call_requested` payload.
+pub(crate) fn pending_from_requested(
+    data: &serde_json::Value,
+    tool_call_id: Option<&str>,
+) -> Option<PendingQuestions> {
+    let tool_calls = data.get("tool_calls")?.as_array()?;
     for call in tool_calls {
         let id = call.get("id").and_then(|v| v.as_str())?;
         if let Some(wanted) = tool_call_id
@@ -232,6 +239,17 @@ pub(crate) async fn resolve_question_answers_with_source(
         // THREAT[TM-AGENT-017]: do not expose whether another user's Platform
         // Chat session is currently waiting, let alone mutate or resume it.
         return Err(ResolveError::NoPendingQuestions);
+    }
+    // A v2 session's question and its parked turn are in its cell.
+    if let Some(plane) = crate::domains::data_plane::session_plane::SessionPlane::of(
+        state.db,
+        caller.org_id,
+        session_id,
+    )
+    .await
+    .map_err(|error| ResolveError::Internal(error.to_string()))?
+    {
+        return resolve_on_data_plane(&plane, tool_call_id, status, answered_by, submitted).await;
     }
 
     let requested = state
@@ -417,6 +435,69 @@ pub(crate) async fn resolve_question_answers_with_source(
     );
 
     Ok(result)
+}
+
+/// [`resolve_question_answers_with_source`] for a session on a data plane
+/// (step 11.6): the question set comes from the cell's events, is checked
+/// here as for any session, and its result goes back as the parked call's
+/// tool result, which the cell records and resumes the turn with. The cell
+/// refuses a call that is no longer pending, so the first answer wins.
+async fn resolve_on_data_plane(
+    plane: &crate::domains::data_plane::session_plane::SessionPlane,
+    tool_call_id: Option<&str>,
+    status: AskUserStatus,
+    answered_by: AskUserAnsweredBy,
+    submitted: &[AskUserAnswer],
+) -> Result<AskUserResult, ResolveError> {
+    let internal = |error: anyhow::Error| ResolveError::Internal(error.to_string());
+    let requested = plane
+        .events(1, i32::MAX, &["tool.call_requested"], Some(1))
+        .await
+        .map_err(internal)?;
+    let data = &requested
+        .last()
+        .ok_or(ResolveError::NoPendingQuestions)?
+        .data;
+    let pending =
+        pending_from_requested(data, tool_call_id).ok_or(ResolveError::WrongPendingCall)?;
+    if pending.elicitation.is_some() {
+        // Its answer is parked in session storage for the retried call;
+        // the data plane does not take MCP form elicitation yet.
+        return Err(ResolveError::Invalid(
+            "an MCP server's questions cannot be answered on a data plane yet".into(),
+        ));
+    }
+    let answers = if matches!(status, AskUserStatus::Answered | AskUserStatus::TimedOut) {
+        validate_answers(&pending.questions, submitted).map_err(ResolveError::Invalid)?
+    } else {
+        Vec::new()
+    };
+    if answers.iter().any(|answer| answer.secret_ref.is_some()) {
+        return Err(ResolveError::Invalid(
+            "secret answers cannot be stored on a data plane session yet".into(),
+        ));
+    }
+    let result = build_result_with_source(status, answered_by, answers);
+    let payload = serde_json::to_value(&result).map_err(|e| internal(e.into()))?;
+    // Keyed by the call: a retried answer is the same command.
+    let command = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, pending.tool_call_id.as_bytes());
+    let body = serde_json::json!({
+        "command": command,
+        "tool_results": [{ "tool_call_id": pending.tool_call_id, "result": payload }],
+    });
+    match plane.command("tool-results", &body).await {
+        Ok(_) => Ok(result),
+        // The cell refuses a call that is not pending any more.
+        Err(error)
+            if error
+                .downcast_ref::<reqwest::Error>()
+                .and_then(reqwest::Error::status)
+                == Some(reqwest::StatusCode::CONFLICT) =>
+        {
+            Err(ResolveError::AlreadyResolved)
+        }
+        Err(error) => Err(internal(error)),
+    }
 }
 
 /// What an answered MCP form elicitation leaves behind: the record the retried

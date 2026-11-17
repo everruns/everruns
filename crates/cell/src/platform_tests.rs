@@ -328,3 +328,31 @@ fn platform_commands_round_trip() {
         matches!(back, Command::Platform { action: Op::UpdateSchedule { change, .. }, .. } if change.deleted)
     );
 }
+
+#[test]
+fn the_control_plane_records_only_reactions_of_the_session() {
+    use everruns_core::events::{EventContext, EventData, EventRequest};
+    let session = SessionId::new();
+    let data: everruns_core::MessageReactionData = serde_json::from_value(json!({
+        "message_id": "message_1",
+        "emoji": "👍",
+        "actor": { "kind": "user", "id": "user_1" },
+    }))
+    .unwrap();
+    let reaction = EventRequest::new(
+        session,
+        EventContext::empty(),
+        EventData::message_reaction(data, true),
+    );
+    assert!(recordable(session, &reaction).is_ok());
+    assert!(recordable(SessionId::new(), &reaction).is_err());
+    let mut forged = reaction.clone();
+    forged.event_type = "input.message".into();
+    assert!(recordable(session, &forged).is_err());
+    let mut renamed = reaction;
+    renamed.event_type = everruns_core::MESSAGE_REACTION_REMOVED.into();
+    assert!(
+        recordable(session, &renamed).is_err(),
+        "its data names another type"
+    );
+}

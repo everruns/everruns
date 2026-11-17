@@ -1,7 +1,8 @@
 //! A node's session commands behind the Everruns `/v1` session API
 //! (`gateway_v1.rs`): answering tool approvals, client-side tool results,
-//! cancelling the running turn, the session's schedules, and a channel's
-//! prior conversation (step 11.5). Each answers
+//! cancelling the running turn, the session's schedules, a channel's
+//! prior conversation (step 11.5), and the events the control plane records
+//! on a session (11.6). Each answers
 //! a [`CellReply`], so the gateway follows moves and freezes the same way
 //! it does for admissions.
 
@@ -32,6 +33,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/sessions/{session}/seed", post(seed))
         .route("/cell/sessions/{session}/schedules", post(schedules))
         .route("/cell/sessions/{session}/tasks", post(tasks))
+        .route("/cell/sessions/{session}/record", post(record))
         .with_state(node)
 }
 
@@ -293,6 +295,33 @@ async fn platform(
         },
         Err(error) => return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string())),
     })
+}
+
+#[derive(Deserialize)]
+struct Record {
+    /// The event's id, which makes a retry find it.
+    event_id: everruns_contracts::typed_id::EventId,
+    event: everruns_core::events::EventRequest,
+}
+
+/// Record an event the control plane produced on the session (a reaction,
+/// `platform::RECORDABLE`); answers the event.
+async fn record(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<Record>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    // Checked again when the command applies; refused here so an event the
+    // control plane may not write never enters the log.
+    if let Err(reason) = crate::platform::recordable(id, &body.event) {
+        return Ok(Json(CellReply::Refused { reason }));
+    }
+    let action = crate::platform::Op::Record {
+        event_id: body.event_id,
+        request: Box::new(body.event),
+    };
+    Ok(Json(platform(&node, id, action).await?))
 }
 
 #[derive(Deserialize)]

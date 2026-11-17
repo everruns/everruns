@@ -52,7 +52,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         )
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/{command}",
-            post(org_session_command),
+            post(org_session_command).get(org_session_read),
         )
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
@@ -206,9 +206,12 @@ async fn org_session(
 
 /// The session commands the control plane runs on an org's session
 /// itself: admitting a message it produced (an agent trigger's run, step
-/// 11.4, or a channel's message, 11.5), cancelling the running turn, and a
-/// channel's prior conversation. The cell checks each body.
-const ORG_SESSION_COMMANDS: &[&str] = &["messages", "cancel-turn", "seed"];
+/// 11.4, or a channel's message, 11.5), cancelling the running turn, a
+/// channel's prior conversation, the result of a parked call the control
+/// plane resolved (a question set's answers, 11.6), and an event it
+/// records (a reaction, 11.6). The cell checks each body.
+const ORG_SESSION_COMMANDS: &[&str] =
+    &["messages", "cancel-turn", "seed", "tool-results", "record"];
 
 /// The org's session `session`, or 404.
 async fn owned_session(
@@ -242,6 +245,22 @@ async fn org_session_command(
     let session = owned_session(&gateway, &org, &session).await?;
     Ok(Json(
         gateway.session_command(session, &command, &body).await?,
+    ))
+}
+
+/// `GET /dp/v1/orgs/{org}/sessions/{session}/{read}`: one of
+/// [`crate::gateway_reads::READS`] on one of the org's sessions (step 11.6).
+async fn org_session_read(
+    State(gateway): State<Arc<Gateway>>,
+    Path((org, session, read)): Path<(String, String, String)>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if !crate::gateway_reads::READS.contains(&read.as_str()) {
+        return Err((StatusCode::NOT_FOUND, format!("no session read {read}")));
+    }
+    let session = owned_session(&gateway, &org, &session).await?;
+    Ok(Json(
+        crate::gateway_reads::read(&gateway, session, &read, raw.as_deref()).await?,
     ))
 }
 

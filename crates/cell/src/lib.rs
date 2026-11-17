@@ -43,6 +43,7 @@ pub mod files;
 pub mod gateway;
 pub mod gateway_dp;
 pub mod gateway_fs;
+pub mod gateway_reads;
 pub mod gateway_sse;
 pub mod gateway_v1;
 pub mod host;

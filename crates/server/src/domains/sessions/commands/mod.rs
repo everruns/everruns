@@ -714,20 +714,39 @@ impl Command for GetSessionContextReport {
     async fn execute(self, ctx: &Ctx) -> Result<SessionContextReport, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let session = q::get_session(ctx, session_id, ctx.caller.user_id).await?;
-        let rows = ctx
-            .db
-            .list_events(
-                session_id,
-                None,
-                None,
-                &[LLM_GENERATION.to_string()],
-                &[],
-                None,
-                Some(1),
-            )
-            .await?;
+        // A v2 session's generations are in its own log on its data plane
+        // (step 11.6).
+        let plane = crate::domains::data_plane::session_plane::SessionPlane::of(
+            &ctx.db,
+            ctx.org_id(),
+            session.id,
+        )
+        .await?;
+        let latest = match plane {
+            Some(plane) => plane
+                .events(1, i32::MAX, &[LLM_GENERATION], Some(1))
+                .await?
+                .into_iter()
+                .next()
+                .map(|row| (row.event_type, row.data)),
+            None => ctx
+                .db
+                .list_events(
+                    session_id,
+                    None,
+                    None,
+                    &[LLM_GENERATION.to_string()],
+                    &[],
+                    None,
+                    Some(1),
+                )
+                .await?
+                .into_iter()
+                .next()
+                .map(|row| (row.event_type, row.data)),
+        };
 
-        let Some(row) = rows.into_iter().next() else {
+        let Some((event_type, event_data)) = latest else {
             return Ok(SessionContextReport {
                 session_id: session.id.to_string(),
                 model: "unknown".to_string(),
@@ -739,8 +758,7 @@ impl Command for GetSessionContextReport {
             });
         };
 
-        let EventData::LlmGeneration(data) = deserialize_event_data(&row.event_type, row.data)
-        else {
+        let EventData::LlmGeneration(data) = deserialize_event_data(&event_type, event_data) else {
             return Err(CommandError::internal(anyhow::anyhow!(
                 "latest llm.generation event could not be decoded"
             )));

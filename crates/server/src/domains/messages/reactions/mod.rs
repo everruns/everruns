@@ -20,7 +20,10 @@
 // - Rights: reacting takes SESSION_MANAGE, like sending a message; reading
 //   takes SESSION_VIEW. Execution API callers react in their own sessions.
 
+mod log;
+
 use crate::domains::common::*;
+use crate::domains::data_plane::session_plane::SessionPlane;
 use crate::domains::messages::service::{CreateMessageContext, MessageService};
 use crate::storage::{Database, ReactedMessageRow, ReactionEventRow, SessionRow, StorageBackend};
 use chrono::{DateTime, Utc};
@@ -32,6 +35,7 @@ use everruns_core::{
     EventContext, EventData, EventRequest, MESSAGE_REACTION_ADDED, MessageReactionData,
     ReactionActor, ReactionActorKind, normalize_reaction_emoji,
 };
+use log::ReactionLog;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -201,7 +205,16 @@ pub(crate) async fn pending_reaction_note(
     session_id: Uuid,
     agent_id: Option<Uuid>,
 ) -> anyhow::Result<Option<ReactionNote>> {
-    let events = db.list_reaction_events(session_id).await?;
+    pending_note(&ReactionLog::Indexed(db), db, session_id, agent_id).await
+}
+
+async fn pending_note(
+    log: &ReactionLog<'_>,
+    db: &Database,
+    session_id: Uuid,
+    agent_id: Option<Uuid>,
+) -> anyhow::Result<Option<ReactionNote>> {
+    let events = log.reaction_events(session_id).await?;
     let Some(latest) = events
         .iter()
         .filter(|row| {
@@ -212,7 +225,7 @@ pub(crate) async fn pending_reaction_note(
     else {
         return Ok(None);
     };
-    let told_through = db.reactions_told_through(session_id).await?;
+    let told_through = log.told_through(session_id).await?;
     if told_through.is_some_and(|through| through >= latest) {
         return Ok(None);
     }
@@ -226,7 +239,7 @@ pub(crate) async fn pending_reaction_note(
         .collect();
     ids.sort();
     ids.dedup();
-    let agent_messages: HashMap<String, String> = db
+    let agent_messages: HashMap<String, String> = log
         .reacted_messages(session_id, &ids)
         .await?
         .into_iter()
@@ -259,13 +272,14 @@ pub struct Reactor {
 /// the running one. Best-effort; a failure leaves the reactions for the next
 /// turn.
 async fn tell_now(
+    log: &ReactionLog<'_>,
     messages: &MessageService,
     session: &SessionRow,
     reactor: &Reactor,
 ) -> anyhow::Result<()> {
     let session_uuid = session.id.uuid();
     let agent_uuid = session.agent_id.map(|id| id.uuid());
-    let Some(note) = pending_reaction_note(messages.db(), session_uuid, agent_uuid).await? else {
+    let Some(note) = pending_note(log, messages.db(), session_uuid, agent_uuid).await? else {
         return Ok(());
     };
     let Some(harness_id) = session.harness_id else {
@@ -281,8 +295,7 @@ async fn tell_now(
         event_metadata: None,
         request_id: None,
     };
-    messages.create_reaction_message(ctx, note).await?;
-    Ok(())
+    log.tell(messages, ctx, note).await
 }
 
 // ============================================================================
@@ -316,13 +329,18 @@ pub async fn set_reaction(
     let db = messages.db();
     let emoji = normalize_reaction_emoji(emoji).map_err(CommandError::bad_request)?;
     let session_uuid = session.id.uuid();
-    let message = db
+    let plane = SessionPlane::with(&messages.data_plane(), session.org_id, session.id).await?;
+    let log = match plane {
+        Some(plane) => ReactionLog::DataPlane(plane),
+        None => ReactionLog::Indexed(db),
+    };
+    let message = log
         .reacted_messages(session_uuid, &[message_id.to_string()])
         .await?
         .into_iter()
         .next()
         .ok_or_else(|| CommandError::not_found("Message"))?;
-    let events = db.list_reaction_events(session_uuid).await?;
+    let events = log.reaction_events(session_uuid).await?;
     let state = fold(&events, None);
     let key = ReactionKey {
         message_id: message_id.to_string(),
@@ -359,14 +377,15 @@ pub async fn set_reaction(
         actor: reactor.actor.clone(),
         source: Some(reactor.source.to_string()),
     };
-    messages
-        .event_service()
-        .emit(EventRequest::new(
+    log.record(
+        messages,
+        EventRequest::new(
             session.id,
             EventContext::empty(),
             EventData::message_reaction(data, add),
-        ))
-        .await?;
+        ),
+    )
+    .await?;
 
     // Tell the agent now when it is mid-turn or asked to be woken. Everything
     // else waits for the next message (`pending_reaction_note`).
@@ -378,7 +397,7 @@ pub async fn set_reaction(
             ReactionDelivery::StartTurn => true,
             ReactionDelivery::NextTurn => session.status == "active",
         };
-        if now && let Err(error) = tell_now(messages, session, &reactor).await {
+        if now && let Err(error) = tell_now(&log, messages, session, &reactor).await {
             tracing::warn!(
                 session_id = %session.id,
                 error = %error,
@@ -436,12 +455,16 @@ pub struct MessageReactions {
 /// `viewer` marks the caller's own reactions; agent reactions are named after
 /// the session's agent.
 pub async fn list_reactions(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     session: &SessionRow,
     message_id: Option<&str>,
     viewer: Option<(ReactionActorKind, &str)>,
 ) -> anyhow::Result<Vec<MessageReactions>> {
-    let events = db.list_reaction_events(session.id.uuid()).await?;
+    let log = match SessionPlane::of(db, session.org_id, session.id).await? {
+        Some(plane) => ReactionLog::DataPlane(plane),
+        None => ReactionLog::Indexed(db),
+    };
+    let events = log.reaction_events(session.id.uuid()).await?;
     let state = fold(&events, None);
     let has_agent = state
         .iter()
@@ -505,7 +528,7 @@ pub async fn list_reactions(
         }
     }
     let ids: Vec<String> = out.iter().map(|m| m.message_id.clone()).collect();
-    for row in db.reacted_messages(session.id.uuid(), &ids).await? {
+    for row in log.reacted_messages(session.id.uuid(), &ids).await? {
         if let Some(message) = out.iter_mut().find(|m| m.message_id == row.message_id) {
             let author = if is_agent_reply(&row) {
                 "agent"
