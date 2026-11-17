@@ -162,6 +162,7 @@ const sessionFixture = {
 // it must read the Sandbox and nothing else.
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: () => true,
+  useOptionalFeatureFlags: () => null,
 }));
 
 jest.mock("../app/(main)/sessions/[sessionId]/session-context", () => ({
