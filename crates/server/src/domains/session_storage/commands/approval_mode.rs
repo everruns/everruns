@@ -33,7 +33,7 @@ pub struct GetSessionApprovalMode {
 #[command(
     name = "get_session_approval_mode",
     category = "sessions",
-    description = "Show the tool approval mode a person picked for a session and the modes the organization allows.",
+    description = "Get a session's tool approval mode.",
     method = "GET",
     path = "/v1/sessions/{session_id}/approval-mode",
     policy = crate::domains::sessions::SESSION_VIEW,
@@ -63,7 +63,7 @@ pub struct SetSessionApprovalMode {
 #[command(
     name = "set_session_approval_mode",
     category = "sessions",
-    description = "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
+    description = "Set or clear a session's tool approval mode.",
     method = "PUT",
     path = "/v1/sessions/{session_id}/approval-mode",
     policy = crate::domains::sessions::SESSION_MANAGE,

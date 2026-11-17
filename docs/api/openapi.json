@@ -29521,7 +29521,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Show the tool approval mode a person picked for a session and the modes the organization allows",
+        "summary": "Get a session's tool approval mode",
         "operationId": "get_session_approval_mode",
         "parameters": [
           {
@@ -29557,8 +29557,7 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null",
-        "description": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
+        "summary": "Set or clear a session's tool approval mode",
         "operationId": "set_session_approval_mode",
         "parameters": [
           {

@@ -29,8 +29,8 @@ Running and archived sessions, their state and participants.
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
-| [`sessions approval-mode get`](#sessions-approval-mode-get) | Show the tool approval mode a person picked for a session and the modes the organization allows. |
-| [`sessions approval-mode set`](#sessions-approval-mode-set) | Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. |
+| [`sessions approval-mode get`](#sessions-approval-mode-get) | Get a session's tool approval mode. |
+| [`sessions approval-mode set`](#sessions-approval-mode-set) | Set or clear a session's tool approval mode. |
 | [`sessions budget-check check`](#sessions-budget-check-check) | Check all budgets for a session. |
 | [`sessions budgets list`](#sessions-budgets-list) | List all budgets for a session. |
 | [`sessions cost get`](#sessions-cost-get) | Show what a session spent: totals by cost category (uncached prompt, cache read, cache write, output), spend per hour and per turn, what started the turns, tool calls, and sandbox running time. |
@@ -445,7 +445,7 @@ everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000
 
 ## sessions approval-mode get
 
-Show the tool approval mode a person picked for a session and the modes the organization allows.
+Get a session's tool approval mode.
 
 ```bash
 everruns sessions approval-mode get [OPTIONS] --session-id <session_id>
@@ -464,7 +464,7 @@ everruns sessions approval-mode get --session-id session_01h9
 
 ## sessions approval-mode set
 
-Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.
+Set or clear a session's tool approval mode.
 
 ```bash
 everruns sessions approval-mode set [OPTIONS] --session-id <session_id>

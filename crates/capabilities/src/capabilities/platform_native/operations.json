@@ -13262,7 +13262,7 @@
     "read_only": true
   },
   {
-    "description": "Show the tool approval mode a person picked for a session and the modes the organization allows.",
+    "description": "Get a session's tool approval mode.",
     "input_schema": {
       "properties": {
         "session_id": {
@@ -20289,7 +20289,7 @@
     "read_only": false
   },
   {
-    "description": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
+    "description": "Set or clear a session's tool approval mode.",
     "input_schema": {
       "properties": {
         "mode": {

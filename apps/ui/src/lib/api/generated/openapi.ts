@@ -7689,12 +7689,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Show the tool approval mode a person picked for a session and the modes the organization allows */
+    /** Get a session's tool approval mode */
     get: operations["get_session_approval_mode"];
-    /**
-     * Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null
-     * @description Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.
-     */
+    /** Set or clear a session's tool approval mode */
     put: operations["set_session_approval_mode"];
     post?: never;
     delete?: never;

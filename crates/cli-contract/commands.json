@@ -14155,7 +14155,7 @@
       "approval-mode"
     ],
     "verb": "get",
-    "description": "Show the tool approval mode a person picked for a session and the modes the organization allows.",
+    "description": "Get a session's tool approval mode.",
     "method": "GET",
     "http_path": "/v1/sessions/{session_id}/approval-mode",
     "args": [
@@ -14181,7 +14181,7 @@
       "approval-mode"
     ],
     "verb": "set",
-    "description": "Switch a session's tool approval mode (off, auto, normal, protective), or clear the switch with null. Applies from the next tool call.",
+    "description": "Set or clear a session's tool approval mode.",
     "method": "PUT",
     "http_path": "/v1/sessions/{session_id}/approval-mode",
     "args": [
