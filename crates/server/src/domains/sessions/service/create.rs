@@ -614,6 +614,13 @@ impl SessionService {
             .into());
         }
         let row = self.db.create_session(input).await?;
+        // Pinned before a data plane creates the session: it runs the
+        // pinned sandbox (`data_plane::sandboxes`).
+        if let Some(sandbox) = &resolved_sandbox {
+            self.db
+                .pin_primary_sandbox(row.id, &sandbox.name, &sandbox.spec)
+                .await?;
+        }
         if on_data_plane
             && let Err(error) = crate::domains::data_plane::sessions::created(
                 &data_plane,
@@ -633,11 +640,6 @@ impl SessionService {
             )
             .with_code("data_plane_unavailable")
             .into());
-        }
-        if let Some(sandbox) = &resolved_sandbox {
-            self.db
-                .pin_primary_sandbox(row.id, &sandbox.name, &sandbox.spec)
-                .await?;
         }
         let row = if requested_goal.is_some() {
             self.db

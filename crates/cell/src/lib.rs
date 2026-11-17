@@ -62,6 +62,7 @@ pub mod providers;
 pub mod remote;
 pub mod restore;
 pub mod restore_points;
+pub mod sandbox;
 pub mod secrets;
 pub mod ship;
 pub mod sm;

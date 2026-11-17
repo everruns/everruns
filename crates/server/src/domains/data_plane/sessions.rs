@@ -18,6 +18,8 @@
 //!   taken (step 11.1): the data plane writes them into the session's
 //!   workspace with the create, only where absent, so a retried create
 //!   never puts back a file the agent changed.
+//! - Its pinned managed sandbox goes with the create (step 11.3,
+//!   `sandboxes.rs`), so the record is pinned before the create.
 
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session_file::InitialFile;
@@ -76,6 +78,9 @@ pub async fn created(
     }
     let (key, revision) = key_for(&cp.db, org_id, harness_id, agent_id).await?;
     agent_published(cp, &key, org_id, &revision).await?;
+    // Sealed before the config is delivered below, so the data plane holds
+    // the sandbox's key when the session first calls it.
+    let sandbox = super::sandboxes::pinned(cp, org_id, session).await?;
     let plane = for_org(cp, org_id).await?;
     let public = org_public(org_id);
     let mut last = None;
@@ -97,7 +102,7 @@ pub async fn created(
             }
         }
         match plane
-            .create_session(&public, session, &key, initial_files)
+            .create_session(&public, session, &key, initial_files, sandbox.as_ref())
             .await
         {
             Ok(()) => {

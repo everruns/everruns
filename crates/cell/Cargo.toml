@@ -21,6 +21,11 @@ libc = "0.2"
 everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs", "mcp"] }
 everruns-core = { workspace = true, features = ["host"] }
 everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
+# Managed sandboxes (step 11.3): the `session_sandbox` capability and the
+# same providers as the worker, so an agent's sandbox runs the same way on an
+# executor.
+everruns-capabilities = { workspace = true }
+everruns-integrations = { workspace = true, features = ["daytona", "e2b", "boxd", "modal", "kubernetes-sandbox"] }
 openraft = { version = "=0.9.25", features = ["serde", "storage-v2"] }
 tokio.workspace = true
 tokio-stream = { workspace = true, features = ["sync"] }

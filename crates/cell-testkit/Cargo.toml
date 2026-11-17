@@ -16,7 +16,8 @@ workspace = true
 everruns-cell = { path = "../cell" }
 everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs"] }
 everruns-core = { workspace = true, features = ["host"] }
-everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
+everruns-contracts = { workspace = true, features = ["dataplane-seal", "session-sandbox", "runtime"] }
+inventory = { workspace = true }
 everruns-llmsim = { workspace = true, features = ["host"] }
 async-trait.workspace = true
 tokio.workspace = true

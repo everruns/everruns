@@ -7,12 +7,16 @@ use super::{
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
 
-const STATE_KEY: &str = "everruns_workspace_seed";
+pub(super) const STATE_KEY: &str = "everruns_workspace_seed";
 const PENDING: &str = "pending";
-const COMPLETE: &str = "complete";
+pub(super) const COMPLETE: &str = "complete";
 
 pub(super) fn mark_pending(instance: &mut SessionSandboxInstance) {
     instance.metadata[STATE_KEY] = json!(PENDING);
+}
+
+pub(super) fn is_pending(instance: &SessionSandboxInstance) -> bool {
+    instance.metadata[STATE_KEY] == PENDING
 }
 
 fn provider_workspace_path(instance: &SessionSandboxInstance, session_path: &str) -> String {

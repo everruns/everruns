@@ -9,6 +9,7 @@
 //! free.
 
 pub mod fake_cp;
+pub mod local_sandbox;
 pub mod signer;
 
 use std::io::Write;
@@ -206,7 +207,11 @@ impl everruns::ChatDriver for FilesSim {
                         json!({ "path": path, "content": content.unwrap_or_default() }),
                     ),
                     (Some("read"), Some(path), _) => call("read_file", json!({ "path": path })),
-                    _ => SimTurn::Assistant("Say write or read.".into()),
+                    (Some("sh"), Some(_), _) => {
+                        let command = text.trim().trim_start_matches("sh").trim();
+                        call("bash", json!({ "command": command }))
+                    }
+                    _ => SimTurn::Assistant("Say write, read or sh.".into()),
                 }
             }
         };
@@ -616,6 +621,8 @@ fn agent(name: &str, instructions: &str, model: &str, tool_names: &[&str]) -> Va
 /// - `chat`: answers, with context compaction (for long sessions);
 /// - `files`: writes and reads its workspace (`write <path> <text>`,
 ///   `read <path>`);
+/// - `sandbox`: the same in a managed sandbox on this machine, and runs
+///   `sh <command>` there;
 /// - `lead`: hands each message to its bundled member `worker3`.
 pub fn definition(name: &str) -> Option<Value> {
     Some(match name {
@@ -667,6 +674,13 @@ pub fn definition(name: &str) -> Option<Value> {
             let mut files = agent("files", "Use the files.", "files", &[]);
             files["capabilities"] = json!([{ "ref": "session_file_system" }]);
             files
+        }
+        "sandbox" => {
+            // A managed sandbox on this machine (`local_sandbox`): `sh
+            // <command>` runs in it, `write`/`read` use its file tools.
+            let mut sandbox = agent("sandbox", "Use the sandbox.", "files", &[]);
+            sandbox["capabilities"] = json!([local_sandbox::capability(0, 0)]);
+            sandbox
         }
         "lead" => {
             let mut lead = agent("lead", "Delegate, then report.", "lead", &["delegate"]);

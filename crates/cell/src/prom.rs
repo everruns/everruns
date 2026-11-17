@@ -83,6 +83,14 @@ impl Histograms {
         b.sum += secs;
         b.count += 1;
     }
+
+    /// Observations under `labels` and their sum in seconds (benches).
+    pub fn total(&self, labels: &[(&str, &str)]) -> (u64, f64) {
+        self.0
+            .lock()
+            .get(&render(labels))
+            .map_or((0, 0.0), |b| (b.count, b.sum))
+    }
 }
 
 /// The last minute of one SLO's samples, for its p99 gauge (`cell_slo_*`).

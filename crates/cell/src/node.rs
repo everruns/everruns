@@ -251,6 +251,7 @@ impl Node {
             .build()?;
         let node = Arc::new_cyclic(|weak: &std::sync::Weak<Node>| {
             let hosting = crate::hosting::RaftHosting::new(weak.clone());
+            hosting.set_sandboxes(Default::default());
             // Nodes build org agents but never open an org's key: those turns run
             // on executors (`providers.rs`).
             let orgs = Arc::new(crate::providers::OrgProviders::default());

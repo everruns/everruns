@@ -107,9 +107,17 @@ enum Route {
     Session(SessionId),
 }
 
+#[cfg(test)]
 fn route(path: &str) -> Route {
+    route_for(&Method::POST, path)
+}
+
+/// [`route`], for `method`: reading a session's primary sandbox is a record
+/// (the control plane pinned it), managing it is the data plane's.
+fn route_for(method: &Method, path: &str) -> Route {
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match parts.as_slice() {
+        ["v1", "sessions", _, "sandbox"] if method == Method::GET => Route::ControlPlane,
         ["v1", "sessions", id, first, ..] if !RECORD.contains(first) => {
             match SessionId::parse(id) {
                 Ok(id) => Route::Session(id),
@@ -366,7 +374,7 @@ async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
         let name = name.to_owned();
         return edge.command(name, request).await;
     }
-    let Route::Session(session) = route(path) else {
+    let Route::Session(session) = route_for(request.method(), path) else {
         return edge.to_control_plane(request).await;
     };
     let token = match edge.token_for(request.headers()).await {
@@ -536,6 +544,14 @@ mod tests {
         assert_eq!(
             route(&format!("/v1/sessions/{id}/participants")),
             Route::ControlPlane
+        );
+        assert_eq!(
+            route_for(&Method::GET, &format!("/v1/sessions/{id}/sandbox")),
+            Route::ControlPlane
+        );
+        assert_eq!(
+            route_for(&Method::POST, &format!("/v1/sessions/{id}/sandbox")),
+            Route::Session(id)
         );
         assert_eq!(route(&format!("/v1/sessions/{id}/sse")), Route::Session(id));
         assert_eq!(

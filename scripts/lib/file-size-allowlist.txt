@@ -12,7 +12,6 @@
 apps/ui/src/lib/api/legacy-api-types.ts
 crates/capabilities/src/capabilities/a2a_delegation/mod.rs
 crates/capabilities/src/capabilities/subagents.rs
-crates/capabilities/src/session_sandbox.rs
 crates/core/src/builtins/compaction.rs
 crates/core/src/builtins/guardrails.rs
 crates/core/src/builtins/infinity_context.rs

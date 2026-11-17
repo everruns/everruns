@@ -138,6 +138,16 @@ impl CellFiles {
         self.inner.read(session, |s| s.files.entries.clone()).await
     }
 
+    /// The workspace's version and entries, read together.
+    pub(crate) async fn snapshot(
+        &self,
+        session: SessionId,
+    ) -> Result<(u64, BTreeMap<String, Entry>)> {
+        self.inner
+            .read(session, |s| (s.files.version, s.files.entries.clone()))
+            .await
+    }
+
     pub(crate) async fn content(&self, entry: &Entry) -> Result<Option<String>> {
         match &entry.content {
             Content::None => Ok(None),
