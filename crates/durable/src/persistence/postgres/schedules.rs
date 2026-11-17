@@ -281,6 +281,102 @@ impl Schedules for PostgresWorkflowEventStore {
         Ok(schedules)
     }
 
+    async fn dispatch_scheduled_activity(
+        &self,
+        schedule_id: Uuid,
+        scheduled_at: DateTime<Utc>,
+        next: DateTime<Utc>,
+        task: TaskDefinition,
+    ) -> Result<Option<Uuid>, StoreError> {
+        let db_error = |e: sqlx::Error| StoreError::Database(e.to_string());
+        let mut tx = self.pool.begin().await.map_err(db_error)?;
+        let row = sqlx::query(
+            r#"SELECT enabled, next_trigger_at, max_concurrent
+               FROM durable_schedules WHERE id = $1 FOR UPDATE"#,
+        )
+        .bind(schedule_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db_error)?
+        .ok_or(StoreError::ScheduleNotFound(schedule_id))?;
+        if !row.get::<bool, _>("enabled")
+            || row.get::<Option<DateTime<Utc>>, _>("next_trigger_at") != Some(scheduled_at)
+        {
+            return Ok(None);
+        }
+        let running: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM durable_schedule_executions
+               WHERE schedule_id = $1 AND status = 'running'"#,
+        )
+        .bind(schedule_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db_error)?;
+        let pending: Option<bool> = sqlx::query_scalar(
+            r#"SELECT t.status = 'pending'
+               FROM durable_schedule_executions e
+               JOIN durable_task_queue t ON t.id = e.task_id
+               WHERE e.schedule_id = $1 AND e.task_id IS NOT NULL
+               ORDER BY e.created_at DESC LIMIT 1"#,
+        )
+        .bind(schedule_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db_error)?;
+        let reason = if row
+            .get::<Option<i32>, _>("max_concurrent")
+            .is_some_and(|max| running >= i64::from(max))
+        {
+            Some("max_concurrent limit reached")
+        } else if pending.unwrap_or(false) {
+            Some("previous task still pending")
+        } else {
+            None
+        };
+        let task_id = if reason.is_none() {
+            Some(self.enqueue_task_on(&mut tx, task).await?)
+        } else {
+            None
+        };
+        sqlx::query(
+            r#"INSERT INTO durable_schedule_executions
+               (id, schedule_id, scheduled_at, status, task_id, error, completed_at, duration_ms)
+               VALUES ($1, $2, $3, $4, $5, $6, NOW(), 0)"#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(schedule_id)
+        .bind(scheduled_at)
+        .bind(if reason.is_some() {
+            "skipped"
+        } else {
+            "completed"
+        })
+        .bind(task_id)
+        .bind(reason)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_error)?;
+        sqlx::query(
+            r#"UPDATE durable_schedules
+               SET next_trigger_at = $2, last_triggered_at = NOW(),
+                   claimed_by = NULL, claimed_at = NULL, updated_at = NOW()
+               WHERE id = $1"#,
+        )
+        .bind(schedule_id)
+        .bind(next)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_error)?;
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_schedule_dispatch_before_commit", |_| {
+            Err(StoreError::Database(
+                "injected: before schedule dispatch commit".into(),
+            ))
+        });
+        tx.commit().await.map_err(db_error)?;
+        Ok(task_id)
+    }
+
     #[instrument(skip(self))]
     async fn update_next_trigger(
         &self,

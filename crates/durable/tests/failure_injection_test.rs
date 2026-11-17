@@ -292,3 +292,82 @@ async fn test_circuit_breaker_state_fetch_failure() {
     cleanup_circuit_breaker(&store, &cb_key).await;
     scenario.teardown();
 }
+
+#[tokio::test]
+async fn scheduled_activity_rolls_back_everything_before_commit() {
+    use everruns_durable::{CreateScheduleRow, ScheduleTargetType, Schedules};
+    let scenario = FailScenario::setup();
+    let store = create_test_store().await;
+    let name = format!("atomic_schedule_{}", Uuid::now_v7());
+    let id = store
+        .create_schedule(CreateScheduleRow {
+            name: name.clone(),
+            description: None,
+            cron_expression: "@every 600s".into(),
+            timezone: "UTC".into(),
+            target_type: ScheduleTargetType::Activity,
+            target_name: name.clone(),
+            target_input: json!({}),
+            enabled: true,
+            max_concurrent: Some(1),
+            catch_up_missed: false,
+            max_catch_up: None,
+            retry_policy: None,
+            next_trigger_at: Some(Utc::now()),
+        })
+        .await
+        .unwrap();
+    let due = store
+        .get_schedule(id)
+        .await
+        .unwrap()
+        .next_trigger_at
+        .unwrap();
+    let next = due + chrono::Duration::seconds(600);
+    let task = || TaskDefinition {
+        workflow_id: None,
+        activity_id: name.clone(),
+        activity_type: name.clone(),
+        input: json!({}),
+        options: ActivityOptions::default(),
+    };
+    fail::cfg("postgres_schedule_dispatch_before_commit", "return").unwrap();
+    assert!(
+        store
+            .dispatch_scheduled_activity(id, due, next, task())
+            .await
+            .is_err()
+    );
+    fail::remove("postgres_schedule_dispatch_before_commit");
+    assert_eq!(
+        store.get_schedule_stats(id).await.unwrap().total_executions,
+        0
+    );
+    assert_eq!(
+        store.get_schedule(id).await.unwrap().next_trigger_at,
+        Some(due)
+    );
+    let queued: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM durable_task_queue WHERE activity_type = $1")
+            .bind(&name)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(queued, 0);
+    assert!(
+        store
+            .dispatch_scheduled_activity(id, due, next, task())
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        store.get_schedule_stats(id).await.unwrap().total_executions,
+        1
+    );
+    assert_eq!(
+        store.get_schedule(id).await.unwrap().next_trigger_at,
+        Some(next)
+    );
+    drop(scenario);
+}

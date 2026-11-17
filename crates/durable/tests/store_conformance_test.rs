@@ -136,6 +136,7 @@ conformance!(
     ensure_schedule_converges_on_the_spec,
     concurrent_schedule_ensures_create_one_schedule,
     a_due_schedule_fires_once_across_schedulers,
+    replayed_activity_occurrence_is_a_noop_after_claim,
     concurrent_reaps_settle_a_dead_task_once,
     registration_keeps_what_the_worker_reports,
     self_checks_replace_the_previous_report,
@@ -872,5 +873,65 @@ async fn concurrent_reaps_settle_a_dead_task_once<H: Harness>(h: H) {
     assert_eq!(
         h.store().get_workflow_status(wf).await.expect("status"),
         WorkflowStatus::Failed
+    );
+}
+
+async fn replayed_activity_occurrence_is_a_noop_after_claim<H: Harness>(h: H) {
+    use everruns_durable::{CreateScheduleRow, ScheduleTargetType, Schedules};
+    let ty = activity_type();
+    let id = h
+        .store()
+        .create_schedule(CreateScheduleRow {
+            name: ty.clone(),
+            description: None,
+            cron_expression: "@every 600s".into(),
+            timezone: "UTC".into(),
+            target_type: ScheduleTargetType::Activity,
+            target_name: ty.clone(),
+            target_input: json!({}),
+            enabled: true,
+            max_concurrent: Some(1),
+            catch_up_missed: false,
+            max_catch_up: None,
+            retry_policy: None,
+            next_trigger_at: Some(chrono::Utc::now()),
+        })
+        .await
+        .unwrap();
+    let due = h
+        .store()
+        .get_schedule(id)
+        .await
+        .unwrap()
+        .next_trigger_at
+        .unwrap();
+    let next = due + chrono::Duration::seconds(600);
+    let (a, b) = tokio::join!(
+        h.store()
+            .dispatch_scheduled_activity(id, due, next, task(None, &ty, "first")),
+        h.store()
+            .dispatch_scheduled_activity(id, due, next, task(None, &ty, "concurrent")),
+    );
+    let ids: Vec<_> = [a.unwrap(), b.unwrap()].into_iter().flatten().collect();
+    assert_eq!(ids.len(), 1, "one enqueue wins concurrent dispatch");
+    let first = ids[0];
+    let worker = worker(&h, &ty).await;
+    assert_eq!(claim(&h, &worker, &ty, 10).await, vec![first]);
+    // A scheduler that lost the successful commit acknowledgement retries its
+    // old snapshot after a worker has already claimed the enqueued task.
+    assert_eq!(
+        h.store()
+            .dispatch_scheduled_activity(id, due, next, task(None, &ty, "retry"))
+            .await
+            .unwrap(),
+        None
+    );
+    assert!(claim(&h, &worker, &ty, 10).await.is_empty());
+    let stats = h.store().get_schedule_stats(id).await.unwrap();
+    assert_eq!(stats.total_executions, 1);
+    assert_eq!(stats.successful_executions, 1);
+    assert_eq!(
+        h.store().get_schedule(id).await.unwrap().next_trigger_at,
+        Some(next)
     );
 }

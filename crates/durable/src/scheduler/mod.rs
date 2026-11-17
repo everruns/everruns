@@ -230,6 +230,23 @@ impl DurableScheduler {
         schedule_name = %schedule.name,
     ))]
     async fn trigger_schedule(&self, schedule: &ScheduleRow) -> Result<(), SchedulerError> {
+        if schedule.target_type == ScheduleTargetType::Activity {
+            let scheduled_at = schedule.next_trigger_at.unwrap_or_else(Utc::now);
+            let next = self.calculate_next_trigger(schedule)?;
+            let task = Self::scheduled_activity(schedule);
+            if let Err(error) = self
+                .store
+                .dispatch_scheduled_activity(schedule.id, scheduled_at, next, task)
+                .await
+            {
+                // The transaction kept this occurrence due. Release its lease so
+                // a transient enqueue failure can be retried on the next poll.
+                let _ = self.store.release_schedule(schedule.id).await;
+                return Err(error.into());
+            }
+            return Ok(());
+        }
+
         // Check max_concurrent limit
         if let Some(max) = schedule.max_concurrent {
             let running = self.store.count_running_executions(schedule.id).await?;
@@ -244,21 +261,6 @@ impl DurableScheduler {
                     .await?;
                 return Ok(());
             }
-        }
-
-        // Decision: an activity schedule whose last task is still unclaimed
-        // skips its trigger. Its tasks share one input, so a second copy adds
-        // nothing, and without this a schedule no worker pool claims (a job
-        // retired in code whose schedule row lives on) enqueued one task per
-        // trigger until the standalone queue hit its global cap and every
-        // other schedule failed with it (prod, 2026-11-01).
-        if schedule.target_type == ScheduleTargetType::Activity
-            && self.store.last_scheduled_task_pending(schedule.id).await?
-        {
-            debug!("skipping trigger: the previous task is still pending");
-            self.skip_and_update_next(schedule, "previous task still pending")
-                .await?;
-            return Ok(());
         }
 
         // Get scheduled_at time (or now if missing)
@@ -276,10 +278,7 @@ impl DurableScheduler {
                 self.trigger_workflow(schedule, execution_id, scheduled_at)
                     .await
             }
-            ScheduleTargetType::Activity => {
-                self.trigger_activity(schedule, execution_id, scheduled_at)
-                    .await
-            }
+            ScheduleTargetType::Activity => unreachable!("activities use atomic dispatch"),
         };
 
         // Update execution and schedule based on result
@@ -360,15 +359,10 @@ impl DurableScheduler {
         Ok(workflow_id)
     }
 
-    /// Trigger an activity (standalone task)
-    async fn trigger_activity(
-        &self,
-        schedule: &ScheduleRow,
-        _execution_id: Uuid,
-        _scheduled_at: DateTime<Utc>,
-    ) -> Result<Uuid, SchedulerError> {
-        // Standalone activity: no parent workflow (generic queue semantics)
-        let task = TaskDefinition {
+    /// Build a standalone activity. The store commits its task, execution record
+    /// and next tick together, so no externally visible enqueue/advance gap exists.
+    fn scheduled_activity(schedule: &ScheduleRow) -> TaskDefinition {
+        TaskDefinition {
             workflow_id: None,
             activity_id: format!("scheduled-{}", Uuid::now_v7()),
             activity_type: schedule.target_name.clone(),
@@ -378,13 +372,7 @@ impl DurableScheduler {
                 .clone()
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
-        };
-
-        let task_id = self.store.enqueue_task(task).await?;
-
-        debug!(%task_id, "enqueued activity from schedule");
-
-        Ok(task_id)
+        }
     }
 
     /// Skip current trigger and update next trigger time
@@ -590,7 +578,7 @@ mod tests {
         let schedule = CreateScheduleRow {
             name: "activity-schedule".to_string(),
             description: None,
-            cron_expression: "* * * * *".to_string(),
+            cron_expression: "0 * * * * * *".to_string(),
             timezone: "UTC".to_string(),
             target_type: ScheduleTargetType::Activity,
             target_name: "cleanup-activity".to_string(),
@@ -615,6 +603,7 @@ mod tests {
 
         let stats = store.get_schedule_stats(schedule_id).await.unwrap();
         assert_eq!(stats.total_executions, 1);
+        assert_eq!(stats.successful_executions, 1);
     }
 
     #[tokio::test]
