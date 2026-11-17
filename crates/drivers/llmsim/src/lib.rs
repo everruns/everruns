@@ -24,6 +24,7 @@ mod demo_scripts;
 mod model_names;
 mod prompt_cache;
 pub mod realtime;
+mod replay;
 mod scenarios;
 
 pub use demo_scripts::{
@@ -888,7 +889,7 @@ impl ChatDriver for LlmSimDriver {
             let part = everruns_contracts::reasoning::ReasoningContentPart::opaque("llmsim")
                 .with_item_id("rs_llmsim_0")
                 .with_signature("llmsim-signature-opaque")
-                .with_encrypted("llmsim-encrypted-opaque")
+                .with_encrypted(replay::encrypted_payload(8))
                 .with_text(everruns_contracts::reasoning::ReasoningText::Plain {
                     text: LLMSIM_REASONING_TEXT.to_string(),
                 })

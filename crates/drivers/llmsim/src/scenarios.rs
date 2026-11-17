@@ -242,6 +242,7 @@ fn reasoning_item(text: &str) -> LlmStreamEvent {
     LlmStreamEvent::ReasoningItem(
         ReasoningContentPart::opaque("llmsim")
             .with_item_id("rs_llmsim_scenario")
+            .with_encrypted(crate::replay::encrypted_payload(word_tokens(text).len()))
             .with_text(ReasoningText::Plain {
                 text: text.to_string(),
             }),
