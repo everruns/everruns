@@ -14,6 +14,10 @@ use serde_json::{Value, json};
 use super::Fleet;
 
 pub const ORG: &str = "org-a";
+/// `ORG`'s data key, as the control plane keeps it.
+pub const DATA_KEY: seal::Key = [7; 32];
+/// Its id.
+pub const DATA_KEY_ID: &str = "dk-1";
 
 /// A fleet with `ORG` enabled, running the `echo` agent as `helper`, its
 /// policy tapping `events`; and an executor.
@@ -23,20 +27,14 @@ pub async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
     let mut fleet = Fleet::start_with_cp(Some(ControlPlane::new(cp.url.clone()))).await;
     let base = fleet.base();
     let dp_key = seal::random_key();
-    let wrapped = seal::wrap_data_key(
-        &dp_key,
-        ORG,
-        "dk-1",
-        &seal::random_key(),
-        seal::random_nonce(),
-    )
-    .unwrap();
+    let wrapped =
+        seal::wrap_data_key(&dp_key, ORG, DATA_KEY_ID, &DATA_KEY, seal::random_nonce()).unwrap();
     let (status, ack) = cp
         .call(
             &base,
             Method::PUT,
             &format!("/dp/v1/orgs/{ORG}"),
-            &json!({ "command_id": "enable-1", "wrapped_data_key": wrapped, "data_key_id": "dk-1" }),
+            &json!({ "command_id": "enable-1", "wrapped_data_key": wrapped, "data_key_id": DATA_KEY_ID }),
         )
         .await
         .unwrap();
@@ -69,6 +67,11 @@ pub async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
     // view, once a poll.
     tokio::time::sleep(everruns_cell::tenants::POLL * 2).await;
     (fleet, cp)
+}
+
+/// The executor [`org_fleet`] started.
+pub fn org_executor(fleet: &Fleet) -> std::sync::Arc<everruns_cell::executor::Executor> {
+    fleet.executors[&1].0.clone()
 }
 
 /// A session of `ORG`, created as the control plane does.

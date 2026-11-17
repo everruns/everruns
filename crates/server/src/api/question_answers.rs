@@ -241,7 +241,7 @@ pub(crate) async fn resolve_question_answers_with_source(
         return Err(ResolveError::NoPendingQuestions);
     }
     // A v2 session's question and its parked turn are in its cell.
-    if let Some(plane) = crate::domains::data_plane::session_plane::SessionPlane::of(
+    if let Some(storage) = crate::domains::session_storage::plane::PlaneStorage::on(
         state.db,
         caller.org_id,
         session_id,
@@ -249,7 +249,7 @@ pub(crate) async fn resolve_question_answers_with_source(
     .await
     .map_err(|error| ResolveError::Internal(error.to_string()))?
     {
-        return resolve_on_data_plane(&plane, tool_call_id, status, answered_by, submitted).await;
+        return resolve_on_data_plane(&storage, tool_call_id, status, answered_by, submitted).await;
     }
 
     let requested = state
@@ -441,15 +441,20 @@ pub(crate) async fn resolve_question_answers_with_source(
 /// (step 11.6): the question set comes from the cell's events, is checked
 /// here as for any session, and its result goes back as the parked call's
 /// tool result, which the cell records and resumes the turn with. The cell
-/// refuses a call that is no longer pending, so the first answer wins.
+/// refuses a call that is no longer pending, so the first answer wins. An
+/// MCP server's form answer is parked in the session's storage on its cell
+/// for the retried call, and what the person said follows as their message.
 async fn resolve_on_data_plane(
-    plane: &crate::domains::data_plane::session_plane::SessionPlane,
+    storage: &crate::domains::session_storage::plane::PlaneStorage,
     tool_call_id: Option<&str>,
     status: AskUserStatus,
     answered_by: AskUserAnsweredBy,
     submitted: &[AskUserAnswer],
 ) -> Result<AskUserResult, ResolveError> {
+    let plane = storage.plane();
     let internal = |error: anyhow::Error| ResolveError::Internal(error.to_string());
+    let stored =
+        |error: crate::domains::common::CommandError| ResolveError::Internal(error.to_string());
     let requested = plane
         .events(1, i32::MAX, &["tool.call_requested"], Some(1))
         .await
@@ -460,24 +465,53 @@ async fn resolve_on_data_plane(
         .data;
     let pending =
         pending_from_requested(data, tool_call_id).ok_or(ResolveError::WrongPendingCall)?;
-    if pending.elicitation.is_some() {
-        // Its answer is parked in session storage for the retried call;
-        // the data plane does not take MCP form elicitation yet.
-        return Err(ResolveError::Invalid(
-            "an MCP server's questions cannot be answered on a data plane yet".into(),
-        ));
-    }
+    // As for a v1 session: an MCP server's silence declines.
+    let status = if pending.elicitation.is_some() && status == AskUserStatus::TimedOut {
+        AskUserStatus::Declined
+    } else {
+        status
+    };
     let answers = if matches!(status, AskUserStatus::Answered | AskUserStatus::TimedOut) {
         validate_answers(&pending.questions, submitted).map_err(ResolveError::Invalid)?
     } else {
         Vec::new()
     };
+    // The client stores a secret answer's value first, sealed into the
+    // session's storage on its cell, and only then answers the card.
     if answers.iter().any(|answer| answer.secret_ref.is_some()) {
-        return Err(ResolveError::Invalid(
-            "secret answers cannot be stored on a data plane session yet".into(),
-        ));
+        let names = storage.listed().await.map_err(stored)?.secrets;
+        for question in &pending.questions {
+            if question.kind != AskUserQuestionKind::Secret {
+                continue;
+            }
+            let name = question.secret_name.as_deref().unwrap_or_default();
+            if !names.iter().any(|stored| stored == name) {
+                return Err(ResolveError::Invalid(format!(
+                    "secret {name:?} has not been stored on this session"
+                )));
+            }
+        }
     }
     let result = build_result_with_source(status, answered_by, answers);
+    let spoken = match &pending.elicitation {
+        Some(elicitation) => {
+            let (record, spoken) =
+                form_elicitation_resolution(elicitation, &result, chrono::Utc::now());
+            let record = serde_json::to_string(&record).map_err(|e| internal(e.into()))?;
+            storage
+                .set_value(
+                    &everruns_core::mcp::form_answer_storage_key(
+                        &elicitation.server,
+                        &elicitation.tool,
+                    ),
+                    &record,
+                )
+                .await
+                .map_err(stored)?;
+            Some(spoken)
+        }
+        None => None,
+    };
     let payload = serde_json::to_value(&result).map_err(|e| internal(e.into()))?;
     // Keyed by the call: a retried answer is the same command.
     let command = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, pending.tool_call_id.as_bytes());
@@ -486,7 +520,17 @@ async fn resolve_on_data_plane(
         "tool_results": [{ "tool_call_id": pending.tool_call_id, "result": payload }],
     });
     match plane.command("tool-results", &body).await {
-        Ok(_) => Ok(result),
+        Ok(_) => {
+            if let Some(spoken) = spoken {
+                // The model never made the engine's synthetic call, so the
+                // tool result alone does not reach it; the person's words do.
+                plane
+                    .say(&format!("form.{}", pending.tool_call_id), &spoken)
+                    .await
+                    .map_err(internal)?;
+            }
+            Ok(result)
+        }
         // The cell refuses a call that is not pending any more.
         Err(error)
             if error

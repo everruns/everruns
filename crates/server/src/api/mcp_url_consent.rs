@@ -148,6 +148,16 @@ pub async fn submit_elicitation_consent(
         return Err(ErrorResponse::not_found("Session"));
     }
 
+    // A v2 session's elicitation and its parked turn are in its cell, which
+    // checks that the call is still pending.
+    if let Some(storage) =
+        crate::domains::session_storage::plane::PlaneStorage::on(&state.db, org.org_id, session_id)
+            .await
+            .log_internal_error_json("find the session's data plane")?
+    {
+        return consent_on_data_plane(&storage, &req).await;
+    }
+
     if session.status != SessionStatus::WaitingForToolResults {
         return Err(ErrorResponse::new(format!(
             "Session is not waiting for tool results (current status: {})",
@@ -181,28 +191,7 @@ pub async fn submit_elicitation_consent(
 
     // What the model reads. On an accept it needs to know the retry is now
     // worth making; on a decline it needs to stop asking.
-    let summary = match req.action {
-        ConsentAction::Accept => serde_json::json!({
-            "action": "accept",
-            "server": pending.server,
-            "host": pending.host,
-            "message": format!(
-                "The user opened {} and completed what {} asked for. Call '{}' again now; \
-                 do not ask them to open the link again.",
-                pending.host, pending.server, pending.retry_tool
-            ),
-        }),
-        ConsentAction::Decline => serde_json::json!({
-            "action": "decline",
-            "server": pending.server,
-            "host": pending.host,
-            "message": format!(
-                "The user declined to open {}, so '{}' cannot run. Continue without it and \
-                 do not ask again.",
-                pending.host, pending.retry_tool
-            ),
-        }),
-    };
+    let summary = consent_summary(req.action, &pending);
 
     let completed = ToolCompletedData::success(
         req.tool_call_id.clone(),
@@ -222,16 +211,7 @@ pub async fn submit_elicitation_consent(
     // Written the way the user would say it, without internal tool ids: the
     // model already knows which call it just made, and this line is read by a
     // person in the transcript.
-    let spoken = match req.action {
-        ConsentAction::Accept => format!(
-            "I opened {} and finished what {} asked for — go ahead.",
-            pending.host, pending.server
-        ),
-        ConsentAction::Decline => format!(
-            "I'd rather not open {}. Carry on without it, and don't ask again.",
-            pending.host
-        ),
-    };
+    let spoken = consent_spoken(req.action, &pending);
 
     // Inherit the run's controls. A turn's model can be pinned per message, and
     // a decision that arrived without them would resume the turn on whatever the
@@ -355,8 +335,20 @@ async fn find_pending_elicitation(
         )
         .await?;
 
-    for event in events.iter().rev() {
-        let Some(tool_calls) = event.data.get("tool_calls").and_then(|v| v.as_array()) else {
+    Ok(pending_in(
+        events.iter().rev().map(|e| &e.data),
+        tool_call_id,
+    ))
+}
+
+/// The pending elicitation `tool_call_id` among `tool.call_requested`
+/// payloads, newest first.
+fn pending_in<'a>(
+    payloads: impl Iterator<Item = &'a serde_json::Value>,
+    tool_call_id: &str,
+) -> Option<PendingElicitation> {
+    for data in payloads {
+        let Some(tool_calls) = data.get("tool_calls").and_then(|v| v.as_array()) else {
             continue;
         };
         for call in tool_calls {
@@ -364,7 +356,7 @@ async fn find_pending_elicitation(
                 continue;
             }
             if call.get("name").and_then(|v| v.as_str()) != Some(CONFIRM_URL_ELICITATION_TOOL) {
-                return Ok(None);
+                return None;
             }
             let arguments = call.get("arguments").cloned().unwrap_or_default();
             let field = |name: &str| {
@@ -376,16 +368,132 @@ async fn find_pending_elicitation(
             let (Some(server), Some(tool), Some(host)) =
                 (field("server"), field("tool"), field("url_host"))
             else {
-                return Ok(None);
+                return None;
             };
-            return Ok(Some(PendingElicitation {
+            return Some(PendingElicitation {
                 retry_tool: field("retry_tool").unwrap_or_else(|| tool.clone()),
                 server,
                 tool,
                 host,
                 url: field("url").unwrap_or_default(),
-            }));
+            });
         }
     }
-    Ok(None)
+    None
+}
+
+/// What the model reads: on an accept, that the retry is now worth making;
+/// on a decline, to stop asking.
+fn consent_summary(action: ConsentAction, pending: &PendingElicitation) -> serde_json::Value {
+    match action {
+        ConsentAction::Accept => serde_json::json!({
+            "action": "accept",
+            "server": pending.server,
+            "host": pending.host,
+            "message": format!(
+                "The user opened {} and completed what {} asked for. Call '{}' again now; \
+                 do not ask them to open the link again.",
+                pending.host, pending.server, pending.retry_tool
+            ),
+        }),
+        ConsentAction::Decline => serde_json::json!({
+            "action": "decline",
+            "server": pending.server,
+            "host": pending.host,
+            "message": format!(
+                "The user declined to open {}, so '{}' cannot run. Continue without it and \
+                 do not ask again.",
+                pending.host, pending.retry_tool
+            ),
+        }),
+    }
+}
+
+/// The decision as the person would say it, without internal tool ids.
+fn consent_spoken(action: ConsentAction, pending: &PendingElicitation) -> String {
+    match action {
+        ConsentAction::Accept => format!(
+            "I opened {} and finished what {} asked for — go ahead.",
+            pending.host, pending.server
+        ),
+        ConsentAction::Decline => format!(
+            "I'd rather not open {}. Carry on without it, and don't ask again.",
+            pending.host
+        ),
+    }
+}
+
+/// [`submit_elicitation_consent`] for a session on a data plane (step
+/// 11.6): the pending elicitation comes from the cell's events, an accept's
+/// consent goes into the session's storage on its cell for the retried
+/// call, the card's call is answered with the summary, and the decision
+/// follows as the person's message (the model never made the synthetic
+/// call, so its result alone would not reach it). The cell refuses a call
+/// that is not pending any more.
+async fn consent_on_data_plane(
+    storage: &crate::domains::session_storage::plane::PlaneStorage,
+    req: &ElicitationConsentRequest,
+) -> ApiResult<ElicitationConsentResponse> {
+    let plane = storage.plane();
+    let requested = plane
+        .events(
+            1,
+            i32::MAX,
+            &["tool.call_requested"],
+            Some(ELICITATION_LOOKBACK_EVENTS as usize),
+        )
+        .await
+        .log_internal_error_json("read session events")?;
+    let pending = pending_in(requested.iter().rev().map(|e| &e.data), &req.tool_call_id)
+        .ok_or_not_found_json("Pending URL elicitation")?;
+    if req.action == ConsentAction::Accept {
+        let record = StoredConsent::new(
+            &pending.server,
+            &pending.tool,
+            &pending.host,
+            chrono::Utc::now(),
+        );
+        let record = serde_json::to_string(&record).log_internal_error_json("record consent")?;
+        storage
+            .set_value(
+                &consent_storage_key(&pending.server, &pending.tool),
+                &record,
+            )
+            .await
+            .map_err(|error| {
+                ErrorResponse::new(error.to_string())
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+    }
+    let command = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, req.tool_call_id.as_bytes());
+    let body = serde_json::json!({
+        "command": command,
+        "tool_results": [{
+            "tool_call_id": req.tool_call_id,
+            "result": consent_summary(req.action, &pending),
+        }],
+    });
+    if let Err(error) = plane.command("tool-results", &body).await {
+        let status = error
+            .downcast_ref::<reqwest::Error>()
+            .and_then(reqwest::Error::status);
+        if status == Some(reqwest::StatusCode::CONFLICT) {
+            return Err(
+                ErrorResponse::new("Session is not waiting for this elicitation")
+                    .into_response(StatusCode::CONFLICT),
+            );
+        }
+        return Err(error).log_internal_error_json("resolve URL elicitation consent");
+    }
+    plane
+        .say(
+            &format!("consent.{}", req.tool_call_id),
+            &consent_spoken(req.action, &pending),
+        )
+        .await
+        .log_internal_error_json("say the decision")?;
+    Ok(Json(ElicitationConsentResponse {
+        host: pending.host,
+        status: "active".to_string(),
+    }))
 }

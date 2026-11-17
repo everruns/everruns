@@ -107,6 +107,9 @@ pub enum Op {
         event_id: EventId,
         request: Box<everruns_core::events::EventRequest>,
     },
+    /// A person's change to the session's storage
+    /// (`session_storage.rs`).
+    Storage(crate::session_storage::StorageOp),
 }
 
 /// The event types the control plane may record on a session.
@@ -230,6 +233,9 @@ impl CellState {
         if let Op::Record { event_id, request } = op {
             return record(state, session, event_id, *request, changes);
         }
+        if let Op::Storage(op) = op {
+            return crate::session_storage::apply(state, session, op, changes);
+        }
         let now = at(now_ms);
         let schedules = &mut state.platform.schedules;
         let response = match op {
@@ -308,7 +314,9 @@ impl CellState {
                 }
                 fire(state, session, schedule, now_ms, seed, changes, false)
             }
-            Op::Call(_) | Op::Task(_) | Op::Record { .. } => return Response::Ok,
+            Op::Call(_) | Op::Task(_) | Op::Record { .. } | Op::Storage(_) => {
+                return Response::Ok;
+            }
         };
         changes.push(Change::Session(session));
         response

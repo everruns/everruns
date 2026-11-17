@@ -68,6 +68,7 @@ pub mod restore;
 pub mod restore_points;
 pub mod sandbox;
 pub mod secrets;
+pub mod session_storage;
 pub mod ship;
 pub mod sm;
 pub mod state;

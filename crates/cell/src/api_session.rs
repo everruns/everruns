@@ -2,7 +2,7 @@
 //! (`gateway_v1.rs`): answering tool approvals, client-side tool results,
 //! cancelling the running turn, the session's schedules, a channel's
 //! prior conversation (step 11.5), and the events the control plane records
-//! on a session (11.6). Each answers
+//! on a session and its storage (11.6). Each answers
 //! a [`CellReply`], so the gateway follows moves and freezes the same way
 //! it does for admissions.
 
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use everruns::hosting::SessionHosting as _;
 use everruns_contracts::execution_api::ToolApprovalAnswer;
@@ -34,6 +34,10 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/sessions/{session}/schedules", post(schedules))
         .route("/cell/sessions/{session}/tasks", post(tasks))
         .route("/cell/sessions/{session}/record", post(record))
+        .route(
+            "/cell/sessions/{session}/storage",
+            get(storage).post(change_storage),
+        )
         .with_state(node)
 }
 
@@ -321,6 +325,33 @@ async fn record(
         event_id: body.event_id,
         request: Box::new(body.event),
     };
+    Ok(Json(platform(&node, id, action).await?))
+}
+
+/// The session's values and secret names (`session_storage.rs`).
+async fn storage(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+) -> Result<Json<Lookup<Value>>, ApiError> {
+    let id = parse(&session)?;
+    Ok(Json(crate::api::lookup(
+        &node,
+        id,
+        crate::session_storage::listed,
+    )))
+}
+
+/// A person's change to the session's storage, through the control plane.
+async fn change_storage(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(op): Json<crate::session_storage::StorageOp>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    if let Some(reason) = crate::session_storage::refused(id, &op) {
+        return Ok(Json(CellReply::Refused { reason }));
+    }
+    let action = crate::platform::Op::Storage(op);
     Ok(Json(platform(&node, id, action).await?))
 }
 

@@ -12,6 +12,8 @@
 //! - Event payloads go out in their public form, as the session stream and
 //!   the feed serve them, and only for the range the control plane asks.
 //!   `log` pages through the whole log for an export, 1000 events a page.
+//! - `storage` is the session's values and secret names, never a secret's
+//!   value (`session_storage.rs`).
 //! - THREAT[TM-TENANT]: each read is of one of the path org's sessions
 //!   (`gateway_dp::owned_session`).
 
@@ -29,7 +31,7 @@ use crate::gateway::Gateway;
 type ApiError = (StatusCode, String);
 
 /// The reads `GET /dp/v1/orgs/{org}/sessions/{id}/{read}` serves.
-pub const READS: &[&str] = &["trace", "events", "log"];
+pub const READS: &[&str] = &["trace", "events", "log", "storage"];
 
 /// Events one `events` or `log` read returns at most.
 const MAX_EVENTS: usize = 1_000;
@@ -59,6 +61,22 @@ pub async fn read(
             let after = log_after(query)?;
             let events = crate::gateway_v1::read_events(gateway, session, after).await?;
             json(serde_json::to_value(log_page(events)))
+        }
+        "storage" => {
+            let gw = gateway.clone();
+            gateway
+                .with_cell(session, |cell| {
+                    let gw = gw.clone();
+                    async move {
+                        gw.call::<crate::api::Lookup<Value>>(
+                            cell,
+                            &format!("/cell/sessions/{session}/storage"),
+                            None,
+                        )
+                        .await
+                    }
+                })
+                .await
         }
         _ => Err((StatusCode::NOT_FOUND, format!("no session read {read}"))),
     }

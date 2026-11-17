@@ -118,6 +118,17 @@ impl SessionPlane {
             .await
     }
 
+    /// Admit a person's message `text` on the session, once per `key`
+    /// (retry-safe: the same key is the same message).
+    pub async fn say(&self, key: &str, text: &str) -> anyhow::Result<Value> {
+        let id = everruns_contracts::typed_id::MessageId::from_uuid(uuid::Uuid::new_v5(
+            &self.session.uuid(),
+            format!("everruns.said.{key}").as_bytes(),
+        ));
+        let body = serde_json::json!({ "id": id, "text": text });
+        self.command("messages", &body).await
+    }
+
     /// A session command on the session (`tool-results`, ...): the cell's
     /// answer.
     pub async fn command(&self, command: &str, body: &Value) -> anyhow::Result<Value> {

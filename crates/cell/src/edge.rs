@@ -70,6 +70,17 @@ const RECORD: &[&str] = &[
     "feedback",
     "context-report",
     "export",
+    // The session's storage: the control plane reads and changes it on the
+    // cell (`session_storage.rs`), with its policy and secret sealing.
+    "storage",
+    "approval-mode",
+    // Answered by the control plane on the session's cell (step 11.6): an
+    // MCP server's sign-in link, a fork, the whole run, and continuing past
+    // a usage policy (a budget record).
+    "mcp-elicitation-consent",
+    "fork",
+    "run",
+    "resume",
 ];
 /// The calls on one of a session's messages that the control plane serves
 /// (step 11.6): `messages/{id}/{call}`.
@@ -579,10 +590,21 @@ mod tests {
                 Route::ControlPlane
             );
         }
-        assert_eq!(
-            route(&format!("/v1/sessions/{id}/reactions")),
-            Route::ControlPlane
-        );
+        for call in [
+            "reactions",
+            "storage/keys",
+            "storage/secrets/TOKEN",
+            "approval-mode",
+            "mcp-elicitation-consent",
+            "fork",
+            "run",
+            "resume",
+        ] {
+            assert_eq!(
+                route(&format!("/v1/sessions/{id}/{call}")),
+                Route::ControlPlane
+            );
+        }
         assert_eq!(
             route(&format!("/v1/sessions/{id}/fs/a.md")),
             Route::Session(id)

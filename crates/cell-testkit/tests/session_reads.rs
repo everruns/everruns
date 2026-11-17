@@ -3,7 +3,8 @@
 //! reactions, ratings, context meter and export for a v2 session from the
 //! session's events here, and records a reaction on the session's own log.
 //! The session's own `/v1` events take the console's search filters and
-//! summary.
+//! summary, and its storage is read and changed by the control plane, with
+//! secrets that arrive sealed.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -15,7 +16,7 @@ use everruns_core::{EventContext, EventData, EventRequest, MessageReactionData};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use support::Fleet;
-use support::org::{ORG, command, org_fleet, session};
+use support::org::{DATA_KEY, DATA_KEY_ID, ORG, command, org_executor, org_fleet, session};
 
 /// One of the session's reads, as the control plane asks it.
 async fn read(fleet: &Fleet, cp: &FakeCp, session: &str, read: &str) -> (StatusCode, Value) {
@@ -146,4 +147,52 @@ async fn the_control_plane_reads_a_v2_session_and_records_a_reaction() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = read(&fleet, &cp, &session, "secrets").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_control_plane_reads_and_changes_a_v2_sessions_storage() {
+    use everruns_contracts::dataplane_seal as seal;
+    let (fleet, cp) = org_fleet(&[]).await;
+    let session = session(&fleet, &cp).await;
+    let storage = |body: Value| command(&fleet, &cp, ORG, &session, "storage", body);
+
+    let (status, set) =
+        storage(json!({ "kind": "set_value", "key": "tool_approval/mode", "value": "auto" })).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+    let sealed =
+        seal::seal_session_secret(&DATA_KEY, DATA_KEY_ID, ORG, &session, "TOKEN", "hunter2")
+            .unwrap();
+    let (status, set) =
+        storage(json!({ "kind": "set_secret", "name": "TOKEN", "sealed": sealed })).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+
+    // A secret that is not sealed for this session never enters its log.
+    let (status, _) =
+        storage(json!({ "kind": "set_secret", "name": "PLAIN", "sealed": "hunter2" })).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let other = self::session(&fleet, &cp).await;
+    let elsewhere =
+        seal::seal_session_secret(&DATA_KEY, DATA_KEY_ID, ORG, &other, "TOKEN", "x").unwrap();
+    let (status, _) =
+        storage(json!({ "kind": "set_secret", "name": "TOKEN", "sealed": elsewhere })).await;
+    assert_eq!(status, StatusCode::CONFLICT, "sealed for another session");
+
+    // Values and secret names, never a secret's value.
+    let (status, listed) = read(&fleet, &cp, &session, "storage").await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed["values"]["tool_approval/mode"], "auto", "{listed}");
+    assert_eq!(listed["secrets"], json!(["TOKEN"]), "{listed}");
+    assert!(!listed.to_string().contains("ciphertext"), "{listed}");
+
+    let (_, deleted) = storage(json!({ "kind": "delete_secret", "name": "TOKEN" })).await;
+    assert_eq!(deleted, json!(true));
+    let (_, deleted) = storage(json!({ "kind": "delete_secret", "name": "TOKEN" })).await;
+    assert_eq!(deleted, json!(false));
+    let (_, listed) = read(&fleet, &cp, &session, "storage").await;
+    assert_eq!(listed["secrets"], json!([]), "{listed}");
+
+    // The executor opens the org's data key that session secrets are
+    // sealed with.
+    let (key, id) = org_executor(&fleet).data_key(ORG).await.unwrap();
+    assert_eq!((key, id.as_str()), (DATA_KEY, DATA_KEY_ID));
 }

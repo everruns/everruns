@@ -1903,8 +1903,31 @@ search filters and summary in the cell (`q` is a case-insensitive substring
 over the event's data, the control plane's in-memory fallback). Known
 differences on v2: a subagent's child session in the trace is found from
 the call's result; a reaction left for the agent's next turn reaches it only
-with a message the control plane admits; MCP form questions and secret
-answers are refused.
+with a message the control plane admits.
+
+**11.6 continued: the session's storage and the actions on it.** A v2
+session's values and secrets stay in its authority on the cell, where its
+agent's tools read them. The control plane keeps the Storage API (keys,
+secrets, the approval mode switch, which is a reserved key) for both planes
+with one code path, policy and validation: it reads them with the `storage`
+read and changes them with the `storage` session command
+(`crates/cell/src/session_storage.rs`,
+`crates/server/src/domains/session_storage/plane.rs`). Session secrets are
+sealed with the org's data key, bound to the session and the name
+(`dataplane_seal::seal_session_secret`): the control plane seals what a
+person stores, an executor seals what the agent stores and opens what it
+reads, and a cell node, the log and its shipped copies hold ciphertext only;
+the node refuses a secret that does not arrive sealed for its session. With
+storage in place, the control plane also answers on the cell: secret
+answers and MCP form questions (the answer is parked in the session's
+storage and the person's words follow as their message, since the model
+never made the engine's synthetic call), an MCP server's sign-in link
+consent, a fork (the parent's conversation up to the cut seeds the child,
+which is created on the same data plane, and its values are copied), and
+the whole run view (turns from the cell's trace rows). Known differences
+on v2: a cell keeps no timestamps for values and secrets; a fork carries
+messages with their text and media but not tool calls, secrets, files or
+databases; bound secrets are refused.
 
 ### Corrections after the architecture review (2026-11-09)
 

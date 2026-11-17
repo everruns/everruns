@@ -174,10 +174,46 @@ impl Command for GetSessionRun {
         let rows: Vec<_> = rows.into_iter().take(MAX_RUN_SESSIONS as usize).collect();
         let ids: Vec<Uuid> = rows.iter().map(|row| row.id.uuid()).collect();
         // Turns come from the trace index; bring each session's up to date.
-        for id in &ids {
-            ctx.db.database().catch_up_session_trace_fully(*id).await?;
+        // A v2 session's turns come from its cell's trace rows instead.
+        let cp = crate::domains::data_plane::ControlPlane::from_env(ctx.db.clone());
+        let mut indexed = Vec::with_capacity(ids.len());
+        let mut turns = Vec::new();
+        for (id, row) in ids.iter().zip(&rows) {
+            match crate::domains::data_plane::session_plane::SessionPlane::with(&cp, org, row.id)
+                .await
+                .map_err(CommandError::internal)?
+            {
+                Some(plane) => {
+                    let trace: everruns_contracts::dataplane::SessionTraceRows =
+                        serde_json::from_value(
+                            plane.read("trace").await.map_err(CommandError::internal)?,
+                        )
+                        .map_err(|e| CommandError::internal(e.into()))?;
+                    turns.extend(trace.turns.into_iter().map(|turn| {
+                        crate::storage::backend::session_cost::RunTurnRow {
+                            session_id: *id,
+                            turn_no: turn.turn_no,
+                            turn_id: turn.turn_id,
+                            started_at: turn.started_at,
+                            ended_at: turn.ended_at,
+                            status: turn.status,
+                        }
+                    }));
+                }
+                None => {
+                    ctx.db.database().catch_up_session_trace_fully(*id).await?;
+                    indexed.push(*id);
+                }
+            }
         }
-        let turns = ctx.db.run_turns(&ids, MAX_RUN_TURNS + 1).await?;
+        if !indexed.is_empty() {
+            turns.extend(ctx.db.run_turns(&indexed, MAX_RUN_TURNS + 1).await?);
+        }
+        // Oldest first, the newest MAX_RUN_TURNS + 1 kept, as the index
+        // query returns them.
+        turns.sort_by_key(|turn| turn.started_at);
+        let over = turns.len().saturating_sub(MAX_RUN_TURNS as usize + 1);
+        turns.drain(..over);
         truncated |= turns.len() as i64 > MAX_RUN_TURNS;
         let costs: HashMap<(Uuid, Uuid), f64> = ctx
             .db
