@@ -289,7 +289,7 @@ impl Schedules for PostgresWorkflowEventStore {
         task: TaskDefinition,
     ) -> Result<Option<Uuid>, StoreError> {
         let db_error = |e: sqlx::Error| StoreError::Database(e.to_string());
-        let mut tx = self.pool.begin().await.map_err(db_error)?;
+        let mut tx = begin_transaction(&self.pool).await.map_err(db_error)?;
         let row = sqlx::query(
             r#"SELECT enabled, next_trigger_at, max_concurrent
                FROM durable_schedules WHERE id = $1 FOR UPDATE"#,
@@ -373,7 +373,7 @@ impl Schedules for PostgresWorkflowEventStore {
                 "injected: before schedule dispatch commit".into(),
             ))
         });
-        tx.commit().await.map_err(db_error)?;
+        crate::commit_transaction(tx).await.map_err(db_error)?;
         Ok(task_id)
     }
 
