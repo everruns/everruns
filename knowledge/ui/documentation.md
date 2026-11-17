@@ -496,11 +496,11 @@ Workers static assets would answer 307, which tells search engines the move is t
 
 The docs site must ship a single `sitemap.xml` file at the docs root.
 
-1. The landing site's `robots.txt` (everruns.com owns `/robots.txt`) must reference the docs sitemap index, `https://everruns.com/docs/sitemap-index.xml`
+1. everruns.com owns `/robots.txt`; it references the landing sitemap index `https://everruns.com/sitemap.xml`, which lists `https://everruns.com/docs/sitemap.xml`
 2. `sitemap.xml` must include both hand-authored docs pages and OpenAPI-generated API reference pages
-3. Every `<url>` entry must include a `<lastmod>` value
+3. `<lastmod>` is the date the page's content last changed in git ([git-lastmod.mjs](../../apps/docs/integrations/git-lastmod.mjs)), never the build date (user decision, 2026-11-17): a build-date stamp tells crawlers every page changed on every deploy
 4. `apps/docs/integrations/sitemap-enhance.mjs` is responsible for post-processing Astro's generated sitemap into the final `sitemap.xml`
-5. `lastmod` currently uses the docs build date rather than git history so builds remain deterministic on shallow CI clones
+5. A page git cannot date, and every page on a shallow clone (PR CI), gets no `<lastmod>`; the deploy job checks out full history (commits and trees only) so production is dated
 6. Explicitly redirected announcements are excluded from the sitemap; their successors remain canonical. The Worker and sitemap build share the [redirect rules](../../apps/docs/redirects.mjs), so live checks continue to require 200 responses for every listed page.
 
 ### Agent-Readable Output Requirements
