@@ -77,3 +77,10 @@ updates:
       # openapi-typescript supports it.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # The docs patch these two (apps/docs/pnpm-workspace.yaml
+      # `patchedDependencies`, keyed by exact version). Dependabot cannot move
+      # the patch with the version, so every attempt fails with
+      # dependency_file_not_resolvable and marks main red. Bump them by hand
+      # and rebase the patch.
+      - dependency-name: "starlight-openapi"
+      - dependency-name: "starlight-llms-txt"
