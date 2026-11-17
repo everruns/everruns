@@ -574,6 +574,35 @@ pub struct FeedReplay {
     pub from_index: u64,
 }
 
+// ------------------------------------------------------- session reads
+
+/// `GET /dp/v1/orgs/{org}/sessions/{id}/trace`: the trace rows of one
+/// session, computed by the data plane from its events with the fold the
+/// control plane keeps for a v1 session, so the control plane serves the
+/// Trace view of both with one code path.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SessionTraceRows {
+    pub turn_count: i32,
+    /// In turn order.
+    pub turns: Vec<crate::trace::TraceTurnRow>,
+    /// In `(turn_no, step_no)` order.
+    pub steps: Vec<crate::trace::TraceStepRow>,
+    /// Child sessions of `spawn_agent` calls, by tool call id.
+    #[serde(default)]
+    pub children: Vec<(String, String)>,
+}
+
+/// `GET /dp/v1/orgs/{org}/sessions/{id}/events?from=&to=`: one committed
+/// event of a session, as the session stream serves it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionEventRow {
+    pub id: String,
+    pub sequence: i32,
+    pub event_type: String,
+    pub ts: chrono::DateTime<chrono::Utc>,
+    pub data: Value,
+}
+
 // ------------------------------------------------------------ org tokens
 
 /// The claims of an org token: an EdDSA JWT the control plane signs and

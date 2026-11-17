@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use super::cache_reset;
 use super::plan::{PlannedRow, plan_turn};
+use super::source::{DataPlaneTrace, TraceSource};
 use super::types::*;
 use crate::domains::common::*;
 use crate::domains::sessions::SESSION_VIEW;
@@ -45,7 +46,10 @@ const NEW_MESSAGES: usize = 50;
 /// Characters of a request message preview.
 const MESSAGE_PREVIEW_CHARS: usize = 300;
 
-async fn session_uuid(ctx: &Ctx, raw: &str) -> Result<Uuid, CommandError> {
+async fn session_uuid<'a>(
+    ctx: &'a Ctx,
+    raw: &str,
+) -> Result<(Uuid, TraceSource<'a>), CommandError> {
     let session_id: SessionId = raw
         .parse()
         .map_err(|e| CommandError::bad_request(format!("Invalid session ID: {e}")))?;
@@ -58,14 +62,27 @@ async fn session_uuid(ctx: &Ctx, raw: &str) -> Result<Uuid, CommandError> {
         return Err(CommandError::not_found("Session"));
     }
     let id = session_id.uuid();
+    // A v2 session's events are in its cell (`source.rs`).
+    if let Some(plane) = crate::domains::data_plane::session_plane::SessionPlane::of(
+        &ctx.db,
+        ctx.org_id(),
+        session_id,
+    )
+    .await?
+    {
+        let trace = DataPlaneTrace::read(plane).await?;
+        return Ok((id, TraceSource::DataPlane(Box::new(trace))));
+    }
     ctx.db.database().catch_up_session_trace_fully(id).await?;
-    Ok(id)
+    Ok((id, TraceSource::Indexed(ctx.db.database())))
 }
 
-async fn turn_row(ctx: &Ctx, session: Uuid, turn: i32) -> Result<TraceTurnRow, CommandError> {
-    ctx.db
-        .database()
-        .list_trace_turns(session, turn, turn)
+async fn turn_row(
+    db: &TraceSource<'_>,
+    session: Uuid,
+    turn: i32,
+) -> Result<TraceTurnRow, CommandError> {
+    db.list_trace_turns(session, turn, turn)
         .await?
         .into_iter()
         .next()
@@ -127,7 +144,7 @@ fn turn_out(row: &TraceTurnRow, items: Vec<TraceItem>) -> TraceTurn {
 
 /// Child sessions for the `spawn_agent` steps among `steps`.
 async fn children(
-    ctx: &Ctx,
+    db: &TraceSource<'_>,
     session: Uuid,
     steps: &[TraceStepRow],
 ) -> Result<HashMap<String, Uuid>, CommandError> {
@@ -136,9 +153,7 @@ async fn children(
         .filter(|s| s.kind == "agent")
         .filter_map(|s| s.tool_call_id.clone())
         .collect();
-    Ok(ctx
-        .db
-        .database()
+    Ok(db
         .trace_child_sessions(session, &ids)
         .await?
         .into_iter()
@@ -226,8 +241,7 @@ impl Command for GetSessionTrace {
     type Output = TraceOverview;
 
     async fn execute(self, ctx: &Ctx) -> Result<TraceOverview, CommandError> {
-        let session = session_uuid(ctx, &self.session_id).await?;
-        let db = ctx.db.database();
+        let (session, db) = session_uuid(ctx, &self.session_id).await?;
         let totals = db.trace_totals(session).await?;
         let wanted = i64::from(
             self.buckets
@@ -318,8 +332,7 @@ impl Command for ListSessionTraceTurns {
                 "Use one of before, after, around or sequence",
             ));
         }
-        let session = session_uuid(ctx, &self.session_id).await?;
-        let db = ctx.db.database();
+        let (session, db) = session_uuid(ctx, &self.session_id).await?;
         let limit = self.limit.unwrap_or(DEFAULT_TURNS).clamp(1, MAX_TURNS);
         let turn_count = i32::try_from(db.trace_totals(session).await?.turn_count).unwrap_or(0);
 
@@ -378,7 +391,7 @@ impl Command for ListSessionTraceTurns {
         let failures = db
             .trace_failures_in_ranges(session, &ranges, BATCH_FAILURES)
             .await?;
-        let children = children(ctx, session, &steps).await?;
+        let children = children(&db, session, &steps).await?;
         let starts: HashMap<i32, DateTime<Utc>> =
             turns.iter().map(|t| (t.turn_no, t.started_at)).collect();
         let mut steps_by_key: HashMap<(i32, i32), TraceStepRow> = steps
@@ -507,14 +520,12 @@ impl Command for ListSessionTraceSteps {
     type Output = TraceStepsPage;
 
     async fn execute(self, ctx: &Ctx) -> Result<TraceStepsPage, CommandError> {
-        let session = session_uuid(ctx, &self.session_id).await?;
-        let turn = turn_row(ctx, session, self.turn).await?;
+        let (session, db) = session_uuid(ctx, &self.session_id).await?;
+        let turn = turn_row(&db, session, self.turn).await?;
         let limit = self.limit.unwrap_or(DEFAULT_STEPS).clamp(1, MAX_STEPS);
         let from = self.from_step.unwrap_or(1).max(1);
         let to = self.to_step.unwrap_or(turn.step_count).min(turn.step_count);
-        let mut rows = ctx
-            .db
-            .database()
+        let mut rows = db
             .trace_steps_page(
                 session,
                 turn.turn_no,
@@ -530,7 +541,7 @@ impl Command for ListSessionTraceSteps {
         } else {
             None
         };
-        let children = children(ctx, session, &rows).await?;
+        let children = children(&db, session, &rows).await?;
         Ok(TraceStepsPage {
             steps: rows
                 .into_iter()
@@ -582,9 +593,8 @@ impl Command for GetSessionTraceStep {
     type Output = TraceStepDetail;
 
     async fn execute(self, ctx: &Ctx) -> Result<TraceStepDetail, CommandError> {
-        let session = session_uuid(ctx, &self.session_id).await?;
-        let turn = turn_row(ctx, session, self.turn).await?;
-        let db = ctx.db.database();
+        let (session, db) = session_uuid(ctx, &self.session_id).await?;
+        let turn = turn_row(&db, session, self.turn).await?;
         let row = db
             .trace_steps_by_key(session, &[(self.turn, self.step)])
             .await?
@@ -644,7 +654,7 @@ impl Command for GetSessionTraceStep {
                 .collect();
         } else {
             if let Some((_, data)) = db.trace_event_data(session, row.start_sequence).await? {
-                let previous = previous_call(ctx, session, &row).await?;
+                let previous = previous_call(&db, session, &row).await?;
                 let new_from = previous
                     .as_ref()
                     .and_then(|(prev, _)| prev.message_count)
@@ -670,7 +680,7 @@ impl Command for GetSessionTraceStep {
                 .collect();
         }
 
-        let children = children(ctx, session, std::slice::from_ref(&row)).await?;
+        let children = children(&db, session, std::slice::from_ref(&row)).await?;
         let child = child_of(&children, &row);
         Ok(TraceStepDetail {
             step: step_out(row, turn.started_at, child),
@@ -928,11 +938,10 @@ fn request_usage(data: &Value) -> Option<TraceRequestUsage> {
 
 /// The model call before `row` and its stored `llm.generation` payload.
 async fn previous_call(
-    ctx: &Ctx,
+    db: &TraceSource<'_>,
     session: Uuid,
     row: &TraceStepRow,
 ) -> Result<Option<(TraceStepRow, Value)>, CommandError> {
-    let db = ctx.db.database();
     let Some(previous) = db
         .trace_previous_model_step(session, row.turn_no, row.step_no)
         .await?
@@ -1098,8 +1107,7 @@ impl Command for ListSessionTraceRequest {
     type Output = TraceRequestPage;
 
     async fn execute(self, ctx: &Ctx) -> Result<TraceRequestPage, CommandError> {
-        let session = session_uuid(ctx, &self.session_id).await?;
-        let db = ctx.db.database();
+        let (session, db) = session_uuid(ctx, &self.session_id).await?;
         let row = db
             .trace_steps_by_key(session, &[(self.turn, self.step)])
             .await?
@@ -1115,7 +1123,7 @@ impl Command for ListSessionTraceRequest {
             .ok_or_else(|| CommandError::not_found("Model call event"))?;
         let all = messages(&data);
         let names = tool_names(all);
-        let previous = previous_call(ctx, session, &row).await?;
+        let previous = previous_call(&db, session, &row).await?;
         let new_from = previous
             .as_ref()
             .and_then(|(prev, _)| prev.message_count)
@@ -1212,16 +1220,14 @@ impl Command for ListSessionTraceTurnEvents {
     type Output = TraceEventsPage;
 
     async fn execute(self, ctx: &Ctx) -> Result<TraceEventsPage, CommandError> {
-        let session = session_uuid(ctx, &self.session_id).await?;
-        let turn = turn_row(ctx, session, self.turn).await?;
+        let (session, db) = session_uuid(ctx, &self.session_id).await?;
+        let turn = turn_row(&db, session, self.turn).await?;
         let limit = i64::from(self.limit.unwrap_or(500).clamp(1, 500));
         let from = self
             .after_sequence
             .map_or(turn.start_sequence, |s| (s + 1).max(turn.start_sequence));
         let to = turn.end_sequence.unwrap_or(i32::MAX);
-        let mut rows = ctx
-            .db
-            .database()
+        let mut rows = db
             .trace_events_in_range(
                 session,
                 from,

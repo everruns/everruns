@@ -1881,6 +1881,31 @@ cell's leader killed between rounds): reply p50 334 ms, p99 721 ms (gate
 5 s); tapped event to the control plane p99 468 ms (gate 2 min); all 400
 turns reached the listeners exactly once across the election (5.9 s).
 
+**11.6 A full org on a v2 data plane: the session's reads.** The control
+plane keeps serving the session features its own tables answer for a v1
+session (the Trace view, reactions, ratings, question answers, the context
+meter, export) for a v2 session too, with the same code: one implementation
+per feature keeps validation, attribution and policy in one place. It
+reads the session's events from the cell through the gateway's
+`GET /dp/v1/orgs/{org}/sessions/{id}/{read}` (`crates/cell/src/gateway_reads.rs`:
+`trace` folds the committed events with `everruns_core::session_trace`, the
+fold the control plane's own index uses; `events` selects a sequence range by
+type or message id, public form, at most 1000; `log` pages the whole log for
+an export) through `SessionPlane`
+(`crates/server/src/domains/data_plane/session_plane.rs`), and sends an
+outcome back as a session command: `tool-results` for a question set's
+answers, `record` for a person's reaction, which the cell journals only for
+the event types it lets the control plane write (`platform::RECORDABLE`).
+The edge sends these calls to the control plane (`edge.rs` `RECORD`). A cell
+keeps no trace index: rows are recomputed on each read, which costs nothing
+for an idle session. The session's own `/v1` events take the console's
+search filters and summary in the cell (`q` is a case-insensitive substring
+over the event's data, the control plane's in-memory fallback). Known
+differences on v2: a subagent's child session in the trace is found from
+the call's result; a reaction left for the agent's next turn reaches it only
+with a message the control plane admits; MCP form questions and secret
+answers are refused.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

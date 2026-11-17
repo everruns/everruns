@@ -880,7 +880,7 @@ impl MessageService {
     /// Handles two formats:
     /// - Legacy format: full Event struct with id, type, data, etc.
     /// - New format: EventData directly (InputMessageData, OutputMessageCompletedData, etc.)
-    fn event_to_message(
+    pub(crate) fn event_to_message(
         session_id: Uuid,
         data: &serde_json::Value,
         event_type: &str,
