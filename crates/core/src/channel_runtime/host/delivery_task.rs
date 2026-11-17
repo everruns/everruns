@@ -5,9 +5,8 @@ pub(super) async fn run_delivery(
     inner: Arc<Inner>,
     turn: Delivery,
     mut events: ChannelEventStream,
-    pending_saved: bool,
 ) {
-    if !admission::prepare_delivery(&inner, &turn, pending_saved).await {
+    if !admission::prepare_delivery(&inner, &turn).await {
         return;
     }
     let Delivery {

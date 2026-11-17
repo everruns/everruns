@@ -1003,7 +1003,8 @@ impl ChannelHost {
                 pending.target,
                 events,
                 true,
-            );
+            )
+            .await?;
             resumed += 1;
         }
         Ok(resumed)
@@ -1256,7 +1257,8 @@ impl ChannelHost {
                 decision.reply_to.clone(),
                 events,
                 false,
-            );
+            )
+            .await?;
         }
         Ok(ChannelResponse::accepted(&decision.session_id))
     }
@@ -1314,13 +1316,14 @@ impl ChannelHost {
                 target,
                 events,
                 false,
-            );
+            )
+            .await?;
         }
         Ok(outcome)
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn spawn_delivery(
+    async fn spawn_delivery(
         &self,
         channel: ResolvedChannel,
         driver: Arc<dyn ChannelDriver>,
@@ -1329,9 +1332,27 @@ impl ChannelHost {
         target: DeliveryTarget,
         events: ChannelEventStream,
         pending_saved: bool,
-    ) {
+    ) -> Result<(), ChannelError> {
+        if !pending_saved {
+            // Keep the recovery record in the caller's transaction, before a
+            // scheduled invocation can commit its deduplication receipt.
+            self.inner
+                .store
+                .save_pending(
+                    &PendingDelivery {
+                        channel: channel.config.name.clone(),
+                        session_id: session_id.clone(),
+                        input_message_id: input_message_id.clone(),
+                        target: target.clone(),
+                        after_sequence: 0,
+                    },
+                    &self.inner.holder,
+                    self.inner.lease,
+                )
+                .await?;
+        }
         let inner = self.inner.clone();
-        tokio::spawn(async move {
+        self.inner.store.spawn_delivery(Box::pin(async move {
             delivery_task::run_delivery(
                 inner,
                 Delivery {
@@ -1342,10 +1363,10 @@ impl ChannelHost {
                     target,
                 },
                 events,
-                pending_saved,
             )
             .await;
-        });
+        }));
+        Ok(())
     }
 }
 

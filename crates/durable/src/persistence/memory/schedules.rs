@@ -177,6 +177,92 @@ impl Schedules for InMemoryWorkflowEventStore {
         Ok(claimed)
     }
 
+    async fn dispatch_scheduled_activity(
+        &self,
+        schedule_id: Uuid,
+        scheduled_at: chrono::DateTime<Utc>,
+        next: chrono::DateTime<Utc>,
+        task: TaskDefinition,
+    ) -> Result<Option<Uuid>, StoreError> {
+        let mut schedules = self.schedules.write();
+        let schedule = schedules
+            .get_mut(&schedule_id)
+            .ok_or(StoreError::ScheduleNotFound(schedule_id))?;
+        if !schedule.row.enabled || schedule.row.next_trigger_at != Some(scheduled_at) {
+            return Ok(None);
+        }
+        let mut executions = self.schedule_executions.write();
+        let mut tasks = self.tasks.write();
+        let running = executions
+            .values()
+            .filter(|e| {
+                e.row.schedule_id == schedule_id && e.row.status == ScheduleExecutionStatus::Running
+            })
+            .count();
+        let pending = executions
+            .values()
+            .filter(|e| e.row.schedule_id == schedule_id && e.row.task_id.is_some())
+            .max_by_key(|e| e.row.created_at)
+            .and_then(|e| e.row.task_id)
+            .and_then(|id| tasks.get(&id))
+            .is_some_and(|task| task.status == TaskStatus::Pending);
+        let reason = if schedule
+            .row
+            .max_concurrent
+            .is_some_and(|max| running >= max as usize)
+        {
+            Some("max_concurrent limit reached")
+        } else if pending {
+            Some("previous task still pending")
+        } else {
+            None
+        };
+        let task_id = if reason.is_none() {
+            let pending = tasks.pending_count(None);
+            if pending >= DEFAULT_MAX_PENDING_STANDALONE_TASKS {
+                return Err(StoreError::StandaloneTaskQueueLimitExceeded {
+                    current: pending,
+                    limit: DEFAULT_MAX_PENDING_STANDALONE_TASKS,
+                });
+            }
+            let id = Uuid::now_v7();
+            tasks.insert(id, TaskState::scheduled(task));
+            Some(id)
+        } else {
+            None
+        };
+        let now = Utc::now();
+        let id = Uuid::now_v7();
+        executions.insert(
+            id,
+            ScheduleExecutionMemState {
+                row: ScheduleExecutionRow {
+                    id,
+                    schedule_id,
+                    scheduled_at,
+                    started_at: now,
+                    completed_at: Some(now),
+                    status: if reason.is_some() {
+                        ScheduleExecutionStatus::Skipped
+                    } else {
+                        ScheduleExecutionStatus::Completed
+                    },
+                    workflow_id: None,
+                    task_id,
+                    error: reason.map(str::to_owned),
+                    duration_ms: Some(0),
+                    created_at: now,
+                },
+            },
+        );
+        schedule.row.next_trigger_at = Some(next);
+        schedule.row.last_triggered_at = Some(now);
+        schedule.row.updated_at = now;
+        schedule.row.claimed_by = None;
+        schedule.row.claimed_at = None;
+        Ok(task_id)
+    }
+
     async fn update_next_trigger(
         &self,
         id: Uuid,

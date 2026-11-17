@@ -644,3 +644,90 @@ async fn an_existing_shared_a2a_session_keeps_its_conversation() {
         Some(shared.to_string())
     );
 }
+
+#[tokio::test]
+async fn scheduled_channel_delivery_follows_transaction_commit_or_rollback() {
+    use crate::storage::transaction;
+
+    let fixture = Fixture::new("ag_ui").await;
+    let store = fixture.store();
+    let session = fixture.session().await;
+    let pending = PendingDelivery {
+        channel: fixture.name(),
+        session_id: session,
+        input_message_id: "scheduled_input".into(),
+        target: DeliveryTarget::new("C1", "thread"),
+        after_sequence: 0,
+    };
+
+    let (rolled_back, receiver) = tokio::sync::oneshot::channel();
+    let result: anyhow::Result<()> = transaction::scope(
+        &fixture.db,
+        async {
+            store.save_pending(&pending, "owner", LEASE).await?;
+            store.spawn_delivery(Box::pin(async move {
+                let _ = rolled_back.send(());
+            }));
+            anyhow::bail!("injected receipt failure");
+        },
+        anyhow::Error::from,
+    )
+    .await;
+    assert!(result.is_err());
+    assert!(
+        receiver.await.is_err(),
+        "rollback must discard delivery work"
+    );
+    assert!(
+        store
+            .claim_pending("recovery", LEASE)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let (committed, mut receiver) = tokio::sync::oneshot::channel();
+    let committed_store = fixture.store();
+    let committed_pending = pending.clone();
+    let result: anyhow::Result<()> = transaction::scope(
+        &fixture.db,
+        async {
+            store.save_pending(&pending, "owner", LEASE).await?;
+            store.spawn_delivery(Box::pin(async move {
+                // A different task sees the recovery row only after commit.
+                committed_store
+                    .release_pending(
+                        &committed_pending.session_id,
+                        &committed_pending.input_message_id,
+                        "owner",
+                    )
+                    .await
+                    .unwrap();
+                let rows = committed_store
+                    .claim_pending("recovery", LEASE)
+                    .await
+                    .unwrap();
+                let _ = committed.send(rows);
+            }));
+            tokio::task::yield_now().await;
+            assert!(
+                matches!(
+                    receiver.try_recv(),
+                    Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+                ),
+                "delivery must not run inside the transaction"
+            );
+            Ok(())
+        },
+        anyhow::Error::from,
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), receiver)
+            .await
+            .unwrap()
+            .unwrap(),
+        vec![pending],
+    );
+}

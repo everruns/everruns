@@ -1056,7 +1056,7 @@ impl Command for TriggerAgentTriggerNow {
 // invoke_agent_trigger — execution activity (mirrors invoke_scheduled_legacy_alias_channel)
 // ============================================================================
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AgentTriggerInvocationResult {
     /// Session's prefixed public identifier.
     pub session_id: SessionId,
@@ -1112,6 +1112,17 @@ pub async fn invoke_agent_trigger(
         && requested.to_string() != agent.public_id
     {
         return Err(CommandError::not_found("Agent trigger"));
+    }
+
+    // Local schedule input cannot run on the remote data plane. Reject before
+    // either the ordinary or channel path allocates a non-transactional session.
+    let plane = crate::domains::data_plane::ControlPlane::from_env(db.clone());
+    if !crate::domains::data_plane::sessions::stays_on_control_plane(Some(&agent))
+        && crate::domains::data_plane::sessions::on_data_plane(&plane, org_id).await?
+    {
+        return Err(CommandError::bad_request(
+            "Scheduled agent triggers cannot create a session on a data plane",
+        ));
     }
 
     let outcome = super::schedule_invocation::dispatch_schedule(
@@ -1471,7 +1482,9 @@ pub(super) fn emit_agent_trigger_audit_event(
         .detail("session_id", session_id.to_string())
         .detail("created_session", created_session)
         .detail("owner_principal_id", owner_principal_id.to_string());
-    audit::emit_event(db, event.build());
+    crate::storage::transaction::spawn_after_commit(async move {
+        audit::emit_event(db, event.build());
+    });
 }
 
 #[cfg(test)]

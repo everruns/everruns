@@ -1017,6 +1017,17 @@ pub trait Schedules: Send + Sync + 'static {
         limit: u32,
     ) -> Result<Vec<ScheduleRow>, StoreError>;
 
+    /// Atomically enqueue an activity occurrence, record its execution and advance
+    /// its schedule. A stale occurrence is a no-op. Concurrent/pending limits
+    /// record a skipped execution in the same transaction.
+    async fn dispatch_scheduled_activity(
+        &self,
+        schedule_id: Uuid,
+        scheduled_at: DateTime<Utc>,
+        next: DateTime<Utc>,
+        task: TaskDefinition,
+    ) -> Result<Option<Uuid>, StoreError>;
+
     /// Update next trigger time after successful trigger
     async fn update_next_trigger(&self, id: Uuid, _next: DateTime<Utc>) -> Result<(), StoreError>;
 

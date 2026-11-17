@@ -1415,3 +1415,6 @@ async fn a_reaction_on_a_linked_message_reaches_its_session() {
         ]
     );
 }
+
+#[path = "host_delivery_tests.rs"]
+mod delivery_tests;

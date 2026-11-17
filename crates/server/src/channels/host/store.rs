@@ -45,6 +45,10 @@ fn session_string(session_id: Uuid) -> String {
 
 #[async_trait]
 impl ChannelStore for PgChannelStore {
+    fn spawn_delivery(&self, task: futures::future::BoxFuture<'static, ()>) {
+        crate::storage::transaction::spawn_after_commit(task);
+    }
+
     async fn session_for(&self, channel: &str, key: &str) -> Result<Option<String>, ChannelError> {
         let Ok(channel_id) = channel_id(channel) else {
             return Ok(None);

@@ -712,9 +712,15 @@ impl SessionService {
             .await?;
 
         if let Some(service) = &self.session_sandbox_service {
-            service
-                .auto_start_for_capabilities(session.id, &effective_capabilities)
-                .await;
+            let service = service.clone();
+            let session_id = session.id;
+            let capabilities = effective_capabilities.clone();
+            crate::storage::transaction::after_commit(async move {
+                service
+                    .auto_start_for_capabilities(session_id, &capabilities)
+                    .await;
+            })
+            .await;
         }
 
         // session_start lifecycle hooks (advisory). Fire after the session row,

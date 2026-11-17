@@ -25,6 +25,7 @@ mod changes_only_tests;
 mod github_everruns_app_tests;
 mod manual_fire_tests;
 mod schedule_config_tests;
+mod scheduled_invocation_tests;
 mod script_target_tests;
 
 // Serializes the env-mutating cap tests.

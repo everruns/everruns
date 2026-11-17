@@ -155,7 +155,7 @@ async fn run_activity<A: WorkerAdapters>(
         activity_types::INVOKE_AGENT_TRIGGER => {
             let input: ScheduledAgentTriggerInput = input(task)?;
             adapters
-                .invoke_agent_trigger(input.org_id, &input.agent_id, &input.trigger_id)
+                .invoke_agent_trigger(input.org_id, &input.agent_id, &input.trigger_id, task.id)
                 .await
                 .map_err(anyhow::Error::from)
         }

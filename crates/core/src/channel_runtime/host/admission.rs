@@ -1,24 +1,7 @@
 //! Delivery waits for authority assignment without delaying inbound acknowledgement.
 use super::*;
 
-pub(super) async fn prepare_delivery(inner: &Inner, turn: &Delivery, saved: bool) -> bool {
-    if !saved {
-        let pending = PendingDelivery {
-            channel: turn.channel.config.name.clone(),
-            session_id: turn.session_id.clone(),
-            input_message_id: turn.input_message_id.clone(),
-            target: turn.target.clone(),
-            after_sequence: 0,
-        };
-        if let Err(error) = inner
-            .store
-            .save_pending(&pending, &inner.holder, inner.lease)
-            .await
-        {
-            warn!(%error, "channel: could not retain admitted delivery");
-            return false;
-        }
-    }
+pub(super) async fn prepare_delivery(inner: &Inner, turn: &Delivery) -> bool {
     let mut renewed = tokio::time::Instant::now();
     loop {
         let status = tokio::time::timeout(

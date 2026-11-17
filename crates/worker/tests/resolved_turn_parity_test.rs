@@ -343,6 +343,7 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _agent_id: &str,
                 _trigger_id: &str,
+                _invocation_id: uuid::Uuid,
             ) -> CoreResult<serde_json::Value> {
                 unimplemented!()
             }

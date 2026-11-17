@@ -6,98 +6,12 @@ use super::*;
 impl TaskQueue for PostgresWorkflowEventStore {
     #[instrument(skip(self, task))]
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError> {
-        // Check pending task limits: per-workflow for workflow tasks, global for standalone
-        if let Some(wf_id) = task.workflow_id {
-            let limit = self.max_pending_tasks_per_workflow;
-            let pending_count: i64 = sqlx::query_scalar(
-                r#"
-                SELECT COUNT(*) FROM durable_task_queue
-                WHERE workflow_id = $1 AND status = 'pending'
-                "#,
-            )
-            .bind(wf_id)
-            .fetch_one(&self.pool)
+        let mut connection = self
+            .pool
+            .acquire()
             .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to count pending tasks");
-                StoreError::Database(e.to_string())
-            })?;
-            if pending_count >= limit as i64 {
-                return Err(StoreError::TaskQueueLimitExceeded {
-                    workflow_id: wf_id,
-                    current: pending_count as u32,
-                    limit,
-                });
-            }
-        } else {
-            // Standalone task: check global standalone limit
-            let limit = crate::persistence::store::DEFAULT_MAX_PENDING_STANDALONE_TASKS;
-            let pending_count: i64 = sqlx::query_scalar(
-                r#"
-                SELECT COUNT(*) FROM durable_task_queue
-                WHERE workflow_id IS NULL AND status = 'pending'
-                "#,
-            )
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| {
-                error!(error = %e, "Failed to count standalone pending tasks");
-                StoreError::Database(e.to_string())
-            })?;
-
-            if pending_count >= limit as i64 {
-                return Err(StoreError::StandaloneTaskQueueLimitExceeded {
-                    current: pending_count as u32,
-                    limit,
-                });
-            }
-        }
-        let task_id = Uuid::now_v7();
-        let task_input = sanitize_json_null_bytes(task.input.clone());
-        let options_json = serde_json::to_value(&task.options)
-            .map(sanitize_json_null_bytes)
-            .map_err(|e| StoreError::Serialization(e.to_string()))?;
-
-        sqlx::query(
-            r#"
-            INSERT INTO durable_task_queue (
-                id, workflow_id, activity_id, activity_type, input, options,
-                max_attempts, priority, visible_at,
-                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
-                queue
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11, $13)
-            "#,
-        )
-        .bind(task_id)
-        .bind(task.workflow_id)
-        .bind(&task.activity_id)
-        .bind(&task.activity_type)
-        .bind(&task_input)
-        .bind(&options_json)
-        .bind(task.options.retry_policy.max_attempts as i32)
-        .bind(task.options.priority)
-        .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
-        .bind(task.options.start_to_close_timeout.as_millis() as i64)
-        .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
-        .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
-        .bind(task.options.queue.as_deref())
-        .execute(&self.pool)
-        .await
-        .map_err(|e| {
-            error!(error = %e, "Failed to enqueue task");
-            StoreError::Database(e.to_string())
-        })?;
-
-        #[cfg(feature = "failpoints")]
-        fail_point!("postgres_enqueue_task_after_insert", |_| {
-            Err(StoreError::Database(
-                "injected: after enqueue insert".into(),
-            ))
-        });
-
-        debug!(%task_id, activity_type = %task.activity_type, "enqueued task");
-        Ok(task_id)
+            .map_err(|e| StoreError::Database(e.to_string()))?;
+        self.enqueue_task_on(&mut connection, task).await
     }
 
     #[instrument(skip(self, activity_types))]
@@ -923,6 +837,107 @@ impl TaskQueue for PostgresWorkflowEventStore {
             .collect();
 
         Ok(tasks)
+    }
+}
+
+impl PostgresWorkflowEventStore {
+    pub(super) async fn enqueue_task_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        task: TaskDefinition,
+    ) -> Result<Uuid, StoreError> {
+        // Check pending task limits: per-workflow for workflow tasks, global for standalone
+        if let Some(wf_id) = task.workflow_id {
+            let limit = self.max_pending_tasks_per_workflow;
+            let pending_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM durable_task_queue
+                WHERE workflow_id = $1 AND status = 'pending'
+                "#,
+            )
+            .bind(wf_id)
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to count pending tasks");
+                StoreError::Database(e.to_string())
+            })?;
+            if pending_count >= limit as i64 {
+                return Err(StoreError::TaskQueueLimitExceeded {
+                    workflow_id: wf_id,
+                    current: pending_count as u32,
+                    limit,
+                });
+            }
+        } else {
+            // Standalone task: check global standalone limit
+            let limit = crate::persistence::store::DEFAULT_MAX_PENDING_STANDALONE_TASKS;
+            let pending_count: i64 = sqlx::query_scalar(
+                r#"
+                SELECT COUNT(*) FROM durable_task_queue
+                WHERE workflow_id IS NULL AND status = 'pending'
+                "#,
+            )
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(|e| {
+                error!(error = %e, "Failed to count standalone pending tasks");
+                StoreError::Database(e.to_string())
+            })?;
+
+            if pending_count >= limit as i64 {
+                return Err(StoreError::StandaloneTaskQueueLimitExceeded {
+                    current: pending_count as u32,
+                    limit,
+                });
+            }
+        }
+        let task_id = Uuid::now_v7();
+        let task_input = sanitize_json_null_bytes(task.input.clone());
+        let options_json = serde_json::to_value(&task.options)
+            .map(sanitize_json_null_bytes)
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO durable_task_queue (
+                id, workflow_id, activity_id, activity_type, input, options,
+                max_attempts, priority, visible_at,
+                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
+                queue
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11, $13)
+            "#,
+        )
+        .bind(task_id)
+        .bind(task.workflow_id)
+        .bind(&task.activity_id)
+        .bind(&task.activity_type)
+        .bind(&task_input)
+        .bind(&options_json)
+        .bind(task.options.retry_policy.max_attempts as i32)
+        .bind(task.options.priority)
+        .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
+        .bind(task.options.start_to_close_timeout.as_millis() as i64)
+        .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
+        .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
+        .bind(task.options.queue.as_deref())
+        .execute(&mut *connection)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "Failed to enqueue task");
+            StoreError::Database(e.to_string())
+        })?;
+
+        #[cfg(feature = "failpoints")]
+        fail_point!("postgres_enqueue_task_after_insert", |_| {
+            Err(StoreError::Database(
+                "injected: after enqueue insert".into(),
+            ))
+        });
+
+        debug!(%task_id, activity_type = %task.activity_type, "enqueued task");
+        Ok(task_id)
     }
 }
 
