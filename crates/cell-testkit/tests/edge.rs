@@ -153,7 +153,8 @@ async fn a_v2_orgs_session_calls_reach_the_data_plane_and_records_the_control_pl
         assert!(from_control_plane(&body), "{path}: {body}");
         assert_eq!(body["authorization"], "Bearer user-org-a");
     }
-    // A stage 2 call is the data plane's, which says it does not serve it.
+    // A session's files are the data plane's too: a file the session does
+    // not have is the data plane's 404, not the control plane's.
     let (status, body) = s
         .call(
             Method::GET,
@@ -162,7 +163,8 @@ async fn a_v2_orgs_session_calls_reach_the_data_plane_and_records_the_control_pl
             None,
         )
         .await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{body}");
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert!(!from_control_plane(&body), "{body}");
     assert_eq!(s.cp.exchanges(), 1, "the exchanged token is reused");
 
     // An org that is not on a data plane, and a session the data plane
