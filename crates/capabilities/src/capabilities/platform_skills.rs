@@ -83,8 +83,9 @@ mod tests {
                 .iter()
                 .filter(|mount| mount.path.starts_with("/.agents/skills/"))
                 .collect();
-            assert_eq!(mounts.len(), 3);
-            for name in ["everruns", "everruns-cli", "everruns-agent-authoring"] {
+            assert_eq!(mounts.len(), 1);
+            {
+                let name = "everruns";
                 let mount = mounts
                     .iter()
                     .find(|mount| mount.path == format!("/.agents/skills/{name}"))
@@ -94,6 +95,10 @@ mod tests {
                 let MountSource::InlineDirectory { entries } = &mount.source else {
                     panic!("expected inline skill directory");
                 };
+                assert!(
+                    entries.contains_key("references/mcp.md"),
+                    "skill references are mounted"
+                );
                 let MountSource::InlineFile { content, .. } = &entries["SKILL.md"].source else {
                     panic!("expected skill text");
                 };

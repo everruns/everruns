@@ -1,23 +1,11 @@
----
-name: everruns-mcp
-description: Connect to and use the Everruns MCP endpoint to find agents, run and continue sessions, inspect results, and manage platform resources. Use for MCP connection setup and work through an Everruns MCP server; for authoring agents, also load everruns-agent-authoring. Use everruns-cli for command usage and examples, everruns for product concepts, and everruns-framework for Rust development.
-license: MIT
-compatibility: An MCP client and an Everruns server, using OAuth or a personal access token. Skills discovery requires MCP 2026-07-28.
-metadata:
-  category: platform
-  version: "1.4"
-  docs: https://everruns.com/docs/features/mcp/
----
-
 # Work through Everruns MCP
 
 Use the connected server's tools and resources. A local Everruns installation
 or shell is unnecessary: `query` and `execute` run the `everruns` command tree
 inside the server's sandbox. Tool names may carry a client-assigned prefix.
 
-For command-tree usage and scripting examples, load
-`skill://everruns-cli/SKILL.md` through the host's skill loader. General product
-concepts and documentation links are in `skill://everruns/SKILL.md`. The MCP
+For command-tree usage and scripting examples, read [cli.md](cli.md). General
+product concepts and documentation links are in the skill's `SKILL.md`. The MCP
 identity and transport rules below still apply.
 
 ## Connect and load guidance
@@ -40,20 +28,13 @@ Each deployment serves its own authentication guidance at `/auth.md`
 discovery and guidance take precedence. A local install started with
 `--auth none` needs no credentials.
 
-The MCP server exposes these four shared skills through `skills/list` and
-`skills/get` under protocol `2026-07-28`:
-
-| Skill URI | Purpose |
-|---|---|
-| `skill://everruns/SKILL.md` | Product concepts, documentation, and companion skills. |
-| `skill://everruns-cli/SKILL.md` | Command usage, examples, and scripting. |
-| `skill://everruns-agent-authoring/SKILL.md` | Agent design, harnesses, capabilities, and verification. |
-| `skill://everruns-mcp/SKILL.md` | Connection setup and MCP workflows, including this guide. |
-
-Use the host's skill loader to activate them. File content is also available
-through `resources/read`, including for older protocol versions; fetching a file
-alone does not activate a skill. Trust the connected server's catalog for the
-guidance available in its deployed version.
+The MCP server exposes this skill through `skills/list` and `skills/get` under
+protocol `2026-07-28`, as `skill://everruns/SKILL.md` with its references beside
+it (for example `skill://everruns/references/cli.md`). Use the host's skill
+loader to activate it. File content is also available through `resources/read`,
+including for older protocol versions; fetching a file alone does not activate
+a skill. The connected server's copy matches its deployed version, so prefer it
+to an older local copy.
 
 ## Select the organization and operation
 
@@ -150,7 +131,5 @@ the write: a retry can create a second agent or session. Read back the affected
 entity or session and report what completed, what is still running, and any
 action the user needs to take.
 
-For creating or changing an agent's behavior, load
-`skill://everruns-agent-authoring/SKILL.md` from this same server through the
-host's skill loader. Reading the file as an ordinary resource does not activate
-the skill.
+For creating or changing an agent's behavior, read
+[agent-authoring.md](agent-authoring.md).

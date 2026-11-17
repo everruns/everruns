@@ -21,8 +21,8 @@ use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
 
-const SKILLS_PROMPT: &str = "Built-in skills: activate `everruns` for product concepts, \
-`everruns-cli` for command usage, and `everruns-agent-authoring` for agent design. \
+const SKILLS_PROMPT: &str = "Built-in skill: activate `everruns` for product concepts; \
+its `references/cli.md` covers command usage and `references/agent-authoring.md` agent design. \
 Use the current session's platform interface when following their examples. \
 MCP-client transport instructions in a skill apply only to external MCP clients: \
 this session is already organization-bound, so do not select an organization or \

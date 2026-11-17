@@ -13,21 +13,33 @@ tags:
 
 `skills/` in this repository is the only place a public Everruns skill is
 authored. Every other copy is generated from it and is never edited by hand.
-A skill that teaches an agent to work with Everruns from outside (install it,
-connect to it, author agents, call it) belongs here, not in a consumer.
+
+There is one public skill, [`everruns`](../../skills/everruns/SKILL.md). Its
+`SKILL.md` is a short map; every task guide (Framework, install, CLI, MCP, API,
+SDKs, building, running, debugging, evaluating and shipping agents, operations,
+agents as files) is a file under `references/`. Decision (2026-11-17): one skill
+instead of fourteen, following the one-product-skill-per-repository pattern
+(`npx skills add <owner>/<repo>` installs it without flags). One name to
+install, one folder to copy, and the agent reads only the guides a task needs.
+The cost is triggering: a host picks a skill by its description, so that one
+description must name every job; the plugin evals check it.
+
+Contributor skills live in `.agents/skills/` and carry `metadata.internal:
+true`, so skill installers hide them.
 
 ## Consumers
 
-| Consumer | What it carries | How the copy is made | Drift guard |
-|---|---|---|---|
-| This server | `everruns`, `everruns-cli`, `everruns-mcp`, `everruns-agent-authoring`, served over MCP `skills/get` | embedded at build time, [`crates/server/build.rs`](../../crates/server/build.rs) | build fails on a missing skill |
-| [everruns/plugins](https://github.com/everruns/plugins) | the catalog's `sharedSkills`, shipped inside the coding-agent plugin | its `scripts/sync-shared-skills.mjs --bump` | its CI compares with a fresh clone of main, on push and weekly |
-| [everruns/landing](https://github.com/everruns/landing) | every skill listed in its `scripts/sync-agent-skills.mjs`, served at `everruns.com/.well-known/agent-skills/<name>/SKILL.md` and listed in `llms.txt` | its `scripts/sync-agent-skills.mjs` | its CI compares with a fresh clone of main, on push and weekly |
+| Consumer | How the copy is made | Drift guard |
+|---|---|---|
+| `npx skills add everruns/everruns` | reads `skills/everruns/` from main | none needed |
+| This server: MCP `skills/get` and `skill://everruns/...`, Platform Chat mounts | embedded at build time, [`crates/server/build.rs`](../../crates/server/build.rs), [`crates/capabilities/build.rs`](../../crates/capabilities/build.rs) | build fails on a missing skill |
+| The CLI: `everruns agent-skill install/show` | embedded at build time, [`crates/cli/build.rs`](../../crates/cli/build.rs); a crates.io build has no workspace and points at `npx skills add` | built from the same tree |
+| [everruns/plugins](https://github.com/everruns/plugins) | its `scripts/sync-shared-skills.mjs --bump` | its CI compares with a fresh clone of main, on push and weekly |
+| [everruns/landing](https://github.com/everruns/landing), `everruns.com/.well-known/agent-skills/everruns/` (with `references/` beside `SKILL.md`) | its `scripts/sync-agent-skills.mjs` | its CI compares with a fresh clone of main, on push and weekly |
 
-Each consumer owns the list of skills it carries, so adding a skill here does
-not publish it anywhere until a consumer lists it. Plugin-only workflow skills
-(`everruns-run-agent`, `everruns-ship-agent`, ...) are authored in plugins
-because nothing else ships them.
+The server and CLI copies match their release; npx, the plugin and landing
+follow main. The skill therefore tells agents to trust the installed version's
+`--help`, `discover` and docs.rs over remembered flags.
 
 ## Propagation
 
@@ -61,15 +73,9 @@ settings the PR stays open and landing's drift check keeps reporting it.
 
 ## Getting-started journeys
 
-Getting-started pages lead with one example prompt that links the skill doing
-the work, then the manual steps. The prompt carries the full skill URL, so the
-agent learns where the skill lives and nothing else needs maintaining.
-
-| Journey | Skill |
-|---|---|
-| Run it on this machine, a server, or Kubernetes; upgrade; remove | `everruns-install` |
-| Connect a coding agent to a deployment | `everruns-plugin` (landing), plugins README |
-| Build an agent into a Rust application | `everruns-framework` |
-| Create and revise agents on a deployment | `everruns-agent-authoring` |
-| Drive a deployment over HTTP | `everruns-api` |
-| Contribute or fork | `AGENTS.md`, `CONTRIBUTING.md` (no skill) |
+Getting-started pages lead with one example prompt, then the manual steps. The
+prompt links `https://everruns.com/.well-known/agent-skills/everruns/SKILL.md`
+so it works without installing anything, and the box notes that with the skill
+installed (`npx skills add everruns/everruns`) the link can go. The skill's map
+sends each journey to its guide: install, framework, build-agent, api, mcp.
+Contributing or forking stays with `AGENTS.md` and `CONTRIBUTING.md` (no skill).

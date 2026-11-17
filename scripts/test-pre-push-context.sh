@@ -34,7 +34,7 @@ PRE_PUSH_CHANGED_FILES=$'apps/ui/src/app/page.tsx'
 assert_true "UI source selects UI checks" pre_push_ui_changed
 assert_false "UI source does not select Rust checks" pre_push_rust_changed
 
-PRE_PUSH_CHANGED_FILES=$'skills/everruns-mcp/SKILL.md'
+PRE_PUSH_CHANGED_FILES=$'skills/everruns/references/mcp.md'
 assert_true "embedded skills select Rust checks" pre_push_rust_changed
 assert_false "skill content does not refresh the Cargo graph" pre_push_cargo_graph_changed
 

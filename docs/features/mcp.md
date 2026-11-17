@@ -47,17 +47,20 @@ With protocol `2026-07-28`, `server/discover` advertises
 to discover complete entries or `skills/get` to look up a known `SKILL.md` URI
 directly, then read instructions and supporting files with `resources/read`.
 
-| Skill | Use it for |
+The server publishes one skill, `skill://everruns/SKILL.md`: product concepts
+and a map of task guides beside it, matching the server's version. For example:
+
+| File | Use it for |
 |---|---|
-| `skill://everruns/SKILL.md` | Product concepts, getting started, and documentation links |
-| `skill://everruns-cli/SKILL.md` | Command usage and examples across CLI, session shell, and MCP |
-| `skill://everruns-mcp/SKILL.md` | Connection setup, finding agents, running sessions, inspecting results, and managing resources through MCP |
-| `skill://everruns-agent-authoring/SKILL.md` | Creating or revising agent definitions, selecting capabilities and harnesses, and verifying behavior |
+| `skill://everruns/references/mcp.md` | Connection setup, finding agents, running sessions, inspecting results, and managing resources through MCP |
+| `skill://everruns/references/cli.md` | Command usage and examples across CLI, session shell, and MCP |
+| `skill://everruns/references/agent-authoring.md` | Creating or revising agent definitions, selecting capabilities and harnesses, and verifying behavior |
+| `skill://everruns/references/debug-session.md` | Finding out why a session failed or stalled |
 
 Each entry preserves all authored frontmatter and includes every file's URI,
 SHA-256 digest, and byte size. Supporting references resolve relative to the
 skill directory. `resources/directory/read` lists direct children of a directory,
-for example `skill://everruns-mcp`, without a trailing slash. Unknown
+for example `skill://everruns/references`, without a trailing slash. Unknown
 skills, files, directories, and cursors return JSON-RPC `-32602`.
 
 These files ship with the server and are identical for every organization.

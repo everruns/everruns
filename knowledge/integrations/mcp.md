@@ -208,17 +208,16 @@ Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs`.
 
 ## Public Skills extension
 
-The endpoint distributes four maintained product and workflow skills from [`skills/`](../../skills/)
-through the official [Skills extension](https://modelcontextprotocol.io/extensions/skills/overview).
-[`everruns`](../../skills/everruns/SKILL.md) introduces the product;
-[`everruns-cli`](../../skills/everruns-cli/SKILL.md) owns command usage and examples;
-[`everruns-mcp`](../../skills/everruns-mcp/SKILL.md) guides connection setup, MCP transport, and platform operation;
-[`everruns-agent-authoring`](../../skills/everruns-agent-authoring/SKILL.md) guides
-agent definition changes. CLI guidance distinguishes installed-client conveniences
-from the server command catalog; MCP-only work needs no local CLI.
-The `everruns-framework` skill targets local Rust application development and stays separately
-installable. Organization-owned Skills registry records and contributor workflows
-also have different audiences and owners.
+The endpoint distributes the one public product skill, [`everruns`](../../skills/everruns/SKILL.md),
+through the official [Skills extension](https://modelcontextprotocol.io/extensions/skills/overview),
+with every task guide under `references/`: [`cli.md`](../../skills/everruns/references/cli.md)
+owns command usage and examples, [`mcp.md`](../../skills/everruns/references/mcp.md) connection
+setup, MCP transport, and platform operation, and
+[`agent-authoring.md`](../../skills/everruns/references/agent-authoring.md) agent definition
+changes. CLI guidance distinguishes installed-client conveniences from the server command
+catalog; MCP-only work needs no local CLI. The server's copy matches its version, which is
+why clients should prefer it to an older local copy. Organization-owned Skills registry
+records and contributor workflows have different audiences and owners.
 
 Publication uses an explicit build-time allowlist: adding a repository skill does
 not automatically expose it. Excluded skills must be absent from discovery,

@@ -1,12 +1,3 @@
----
-name: everruns-api
-description: Create agents, open sessions, and stream events over the Everruns REST API with a personal access token. Use for server-to-server automation where no browser or MCP client is available; use everruns-cli for shell work and everruns-mcp for MCP clients.
-license: MIT
-metadata:
-  category: platform
-  version: "2.0"
----
-
 # Drive Everruns over the REST API
 
 Everruns is API-first: everything the UI does is available over HTTP, with

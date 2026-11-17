@@ -22,6 +22,17 @@ events) and differ in what you operate.
 Pages across these docs carry an **Applies to** row under the title that names
 which of the three the page covers.
 
+:::tip[Set it up with your agent]
+Give your coding agent the Everruns skill, then ask it to install Everruns or
+build with the Framework. It covers all three ways.
+
+```bash
+npx skills add everruns/everruns
+```
+
+More options: [Use in AI Tools](/getting-started/use-in-ai-tools/).
+:::
+
 ## Framework
 
 Embed agents in a Rust process with the `everruns` crate. The agent runs inside
@@ -80,8 +91,8 @@ tokens, the SDK, CLI and AI-tool setup, and how credit works.
 
 - [Concepts](/getting-started/concepts/): agents, sessions, harnesses,
   capabilities, and events.
-- [Use in AI Tools](/getting-started/use-in-ai-tools/): drive Everruns from
-  Claude Code, Codex, or Cursor.
+- [Use in AI Tools](/getting-started/use-in-ai-tools/): give Claude Code,
+  Codex, Cursor or Gemini CLI the Everruns skill.
 - [Build your first agent](/tutorials/building-agents-using-sdk/): a guided SDK
   lesson for the self-hosted Platform or Everruns Demo.
 - [Capabilities](/capabilities/): the tools an agent can use, each marked with

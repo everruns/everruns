@@ -1,13 +1,3 @@
----
-name: everruns-install
-description: Install, upgrade, check, or remove a self-hosted Everruns on the person's own machine, server, or Kubernetes cluster with the everruns CLI. Use when the person asks to install, run, upgrade, or troubleshoot their own Everruns. Not for the demo instance or for Rust framework use (everruns-framework).
-license: MIT
-compatibility: A shell on the person's machine. Docker for a laptop or server; kubectl and helm for Kubernetes.
-metadata:
-  category: platform
-  version: "1.0"
----
-
 # Install Everruns
 
 Everruns is free, MIT-licensed, and runs on infrastructure the person controls.
@@ -28,9 +18,10 @@ their machine or cluster, so the rules below are not optional.
 2. **Keep secrets out of the conversation.** Never ask the person to paste an
    API key, database URL with a password, or token into chat. Ask them to export
    it in their own shell (`OPENAI_API_KEY`, `DATABASE_URL`) and pass it by name:
-   `--database-url "$DATABASE_URL"`. Do not print generated passwords; tell the
+   `--database-url "$DATABASE_URL"`. Do not repeat generated passwords; tell the
    person which command shows them (`everruns k8s password`, or the `.env` path
-   `docker up` reports).
+   `docker up` reports). `docker up` prints the admin password in its summary:
+   do not quote it back, point the person at that summary or the `.env` file.
 3. **Use `--yes` only after the person approved the plan**, and always together
    with explicit flags for every value they chose, so `--yes` never picks a
    cluster or database for them.
@@ -42,7 +33,12 @@ their machine or cluster, so the rules below are not optional.
 Check `everruns --version`. If missing:
 
 - macOS or Linux with Homebrew: `brew tap everruns/tap && brew install everruns`
-- Otherwise: `cargo install --git https://github.com/everruns/everruns everruns-cli`
+- Otherwise download the binary for the platform from the latest release,
+  <https://github.com/everruns/everruns/releases/latest>
+  (`everruns-<target>.tar.gz`, with a `.sha256` beside it: check it), and put
+  `everruns` on the `PATH`. Targets: `x86_64-unknown-linux-gnu`,
+  `aarch64-apple-darwin`, `x86_64-apple-darwin`.
+- Last resort, needs Rust: `cargo install --git https://github.com/everruns/everruns everruns-cli`
 
 ## 1. Pick the target
 
@@ -125,8 +121,10 @@ become ready, run `everruns k8s status` and `everruns k8s logs <component>
 2. `everruns whoami` answers as the admin email.
 3. The person opens the URL and signs in. Tell them which command prints the password.
 
-Then suggest one next step without doing it: connect their coding agent
-(`everruns-mcp`), or build a first agent (`everruns-build-agent`).
+Then suggest one next step without doing it: connect their coding agent to
+the new install ([mcp.md](mcp.md), endpoint `<url>/mcp`), or build a first
+agent ([build-agent.md](build-agent.md)), which works through the CLI that
+`up` just signed in.
 
 ## Reference
 

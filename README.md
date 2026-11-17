@@ -100,25 +100,29 @@ loop explicit and embeddable:
 
 ### Set it up with your agent
 
-Example prompts a person gives their coding agent:
+Give your coding agent the Everruns skill. It covers the Framework, installing
+and running your own Everruns, and building, running, debugging and shipping
+agents on it:
 
-```text
-Install Everruns on this machine with Docker and sign me in. Instructions:
-https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+```bash
+npx skills add everruns/everruns
 ```
 
+Then ask for what you want, for example:
+
 ```text
-Install Everruns on my Kubernetes cluster. Instructions:
-https://everruns.com/.well-known/agent-skills/everruns-install/SKILL.md
+Install Everruns on this machine with Docker and sign me in.
 ```
 
 ```text
 Add an Everruns agent with a typed tool to this Rust project and run it once.
-Instructions: https://everruns.com/.well-known/agent-skills/everruns-framework/SKILL.md
 ```
 
-The [Everruns plugin](https://github.com/everruns/plugins) includes these
-skills, so with it installed the links are optional.
+The same skill comes with the [Everruns plugin](https://github.com/everruns/plugins)
+for Claude Code, Codex, Cursor and Gemini CLI, and with the CLI
+(`everruns agent-skill install`). Without installing anything, add
+`Instructions: https://everruns.com/.well-known/agent-skills/everruns/SKILL.md`
+to the prompt.
 
 No server to spare? Look around the [demo instance](https://app.everruns.com)
 ([quickstart](https://everruns.com/docs/getting-started/cloud/)). It runs the

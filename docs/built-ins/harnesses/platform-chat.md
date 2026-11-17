@@ -109,9 +109,8 @@ Platform Chat uses native `platform_<wire_name>` functions for individual operat
 with bounded `tool_search` to find and reveal schemas as needed. Its `everruns` command
 and session shell remain available for loops, filtering, and aggregation across many
 operations. Product docs are mounted read-only at `/workspace/docs`. The Platform capability also supplies
-`everruns`, `everruns-cli`, and `everruns-agent-authoring` skills for product
-orientation, command workflows, and agent design. Discover and activate them
-through [Agent Skills](/capabilities/agent-skills/) as needed.
+the `everruns` skill for product orientation, with guides for command workflows
+and agent design. Discover and activate it through [Agent Skills](/capabilities/agent-skills/) as needed.
 
 `/memory/user` is private to the conversation owner. `/memory/shared` contains durable
 notes shared across Platform Chat conversations in the organization. Sharing requires

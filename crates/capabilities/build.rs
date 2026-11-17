@@ -43,14 +43,13 @@ fn embed_platform_skills(manifest_dir: &Path) {
     let mut files = Vec::new();
     if root.is_dir() {
         println!("cargo:rustc-cfg=everruns_has_workspace_skills");
-        for name in ["everruns", "everruns-cli", "everruns-agent-authoring"] {
-            let dir = root.join(name);
-            assert!(
-                dir.join("SKILL.md").is_file(),
-                "missing platform skill: {name}"
-            );
-            collect_files(&dir, &mut files);
-        }
+        // One product skill; its task guides are files under `references/`.
+        let dir = root.join("everruns");
+        assert!(
+            dir.join("SKILL.md").is_file(),
+            "missing platform skill: everruns"
+        );
+        collect_files(&dir, &mut files);
     }
     files.sort();
     let mut source = String::from("&[\n");

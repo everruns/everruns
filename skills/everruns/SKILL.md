@@ -1,10 +1,11 @@
 ---
 name: everruns
-description: Understand Everruns, its core concepts, and where to find documentation. Use for product questions, getting started, or choosing between the Rust Framework, a self-hosted Platform, and the demo instance.
+description: Everruns, the open-source runtime for durable AI agents. Build agents into Rust applications with the everruns crate; install, upgrade, or remove a self-hosted Everruns with Docker or Kubernetes; and create, run, debug, evaluate, and ship agents on it through the everruns CLI, the MCP server, the REST API, or the SDKs. Use for any Everruns task, from product questions and getting started to agent definitions, sessions, channels, triggers, costs, and health.
 license: MIT
+compatibility: Framework work needs Rust 1.94+. Platform work needs the everruns CLI, an Everruns MCP connection, or HTTP access to an Everruns deployment.
 metadata:
   category: platform
-  version: "5.0"
+  version: "6.0"
   homepage: https://everruns.com
   docs: https://everruns.com/docs/
   repository: https://github.com/everruns/everruns
@@ -12,18 +13,68 @@ metadata:
 
 # Everruns
 
-Everruns is a free, MIT-licensed, community project: an agent framework,
-durable runtime, and control plane. People run it themselves:
+Everruns is a free, MIT-licensed community project: an agent framework, a
+durable runtime, and a control plane. People run it themselves, in one of two
+ways:
 
-- the [Rust Framework](https://everruns.com/docs/framework/) runs agents inside
-  their own application, with no services;
-- the [self-hosted Platform](https://everruns.com/docs/getting-started/introduction/#self-hosted)
-  runs the shared runtime, UI, and API on their machine (`everruns docker up`),
-  a server, or Kubernetes (`everruns k8s up`); load `everruns-install` to set
-  one up;
-- the [demo instance](https://app.everruns.com) runs the same code so people
-  can look around in a browser. It is a demo, not a hosted service: use it only
-  when the person asks for it.
+- **Framework**: the `everruns` Rust crate runs agents inside the person's own
+  application. No server, database, or worker.
+- **Platform**: the shared runtime, workers, UI, and API on the person's
+  machine (`everruns docker up`), a server, or Kubernetes (`everruns k8s up`).
+  People and other programs reach it through the UI, the `everruns` CLI, MCP,
+  the REST API, and SDKs.
+
+A demo instance at <https://app.everruns.com> runs the same code so people can
+look around in a browser. It is a demo, not a hosted service: use it only when
+the person asks for it, and never as a fallback for their own install.
+
+## Read the guide for the task
+
+This file is the map. Each task has a guide under `references/`; read the ones
+the task needs before acting, and nothing else.
+
+| The person wants to | Read |
+|---|---|
+| Build agents into a Rust application | [framework.md](references/framework.md), then [framework-crates.md](references/framework-crates.md) and [framework-glossary.md](references/framework-glossary.md) for advanced hosts |
+| Install, upgrade, check, or remove their own Everruns | [install.md](references/install.md) |
+| Use the `everruns` CLI or a session shell; script operations | [cli.md](references/cli.md) |
+| Connect a coding agent or MCP client; work through MCP tools | [mcp.md](references/mcp.md) |
+| Call a deployment over HTTP with a token | [api.md](references/api.md) |
+| Call Platform agents from Python, TypeScript, or Rust code | [sdk.md](references/sdk.md) |
+| Build or improve an agent from a plain-language brief | [build-agent.md](references/build-agent.md) |
+| Design or revise an agent definition: harness, capabilities, model, packages | [agent-authoring.md](references/agent-authoring.md) |
+| Hand a task to an existing agent and bring back the result | [run-agent.md](references/run-agent.md) |
+| Find out why a session failed, stalled, or answered badly | [debug-session.md](references/debug-session.md) |
+| Build regression evals, compare models, score live traffic | [evaluate-agent.md](references/evaluate-agent.md) |
+| Put an agent on Slack, the web, A2A, webhooks, or a schedule | [ship-agent.md](references/ship-agent.md) |
+| Check spending, health, or who changed what | [operate.md](references/operate.md) |
+| Keep agent definitions as files in a repository | [agents-as-files.md](references/agents-as-files.md) |
+
+If the person only says they want to start with Everruns, ask whether they are
+adding agents to a Rust application (Framework) or want a running Platform
+(install). If they want to build an agent but have no deployment, offer the
+install first; offer the demo only as a way to look around.
+
+## Rules for every task
+
+- **The person's own Everruns first.** Use the deployment the person names, or
+  the one the CLI is signed in to (`everruns status`), or
+  `http://localhost:9300` when `curl -fsS http://localhost:9300/health`
+  answers. Ask when none is clear.
+- **Trust the installed version, not memory.** Everruns changes quickly. Check
+  `everruns --version` or the server's `/health`, read `everruns <noun> --help`
+  or MCP `discover` before using a command, and read docs.rs for the crate
+  version Cargo resolved. Guides here show the shape of a task, not every flag.
+- **Ask before changing anything outside the conversation**: installs, agents,
+  channels, schedules, budgets. Read-only checks need no approval.
+- **Keep secrets out of the conversation.** API keys and tokens go in the
+  person's shell or an Everruns setup page, never in chat, files, or commands
+  you echo back.
+- **Every change carries a reason.** Platform changes are recorded in the
+  entity's history: read the manager context first (`everruns context get
+  <id>`), then pass `--reason` and `--context-revision`.
+- **End with a check the person can see**: a health check, a session result, a
+  link. Saved configuration is not proof that an agent works.
 
 ## Core concepts
 
@@ -44,57 +95,22 @@ durable runtime, and control plane. People run it themselves:
 - **Organization**: the boundary for shared platform resources and permissions.
   Personal connections and private memory retain their own access rules.
 
-## Find authoritative guidance
+## Documentation
 
-Start with the [documentation](https://everruns.com/docs/) for product behavior
-and configuration. For an agent-readable index, use
-[llms.txt](https://everruns.com/docs/llms.txt), then read the relevant topic or
-page. Consult documentation for the version in use; current organization state
-comes from the connected deployment's list/get operations.
+- [Documentation](https://everruns.com/docs/), and its agent-readable index
+  [llms.txt](https://everruns.com/docs/llms.txt). Request any page with
+  `Accept: text/markdown` to get Markdown.
+- [Start here](https://everruns.com/docs/getting-started/introduction/) and
+  [core concepts](https://everruns.com/docs/getting-started/concepts/)
+- [Framework](https://everruns.com/docs/framework/) and the
+  [crate API](https://docs.rs/everruns)
+- [CLI reference](https://everruns.com/docs/reference/cli/),
+  [MCP](https://everruns.com/docs/features/mcp/), and
+  [REST API](https://everruns.com/docs/api/)
+- A deployment's own `/llms.txt` and `/auth.md` describe that deployment.
 
-Useful starting points:
-
-- [Getting started](https://everruns.com/docs/getting-started/introduction/)
-  and [core concepts](https://everruns.com/docs/getting-started/concepts/)
-- [Harnesses](https://everruns.com/docs/features/harnesses/)
-- [Capabilities](https://everruns.com/docs/capabilities/)
-- [CLI usage](https://everruns.com/docs/features/cli/) and
-  [command reference](https://everruns.com/docs/reference/cli/)
-- [MCP](https://everruns.com/docs/features/mcp/); a deployment's own
-  `/auth.md` says how to authenticate against it
-- [Agent packages](https://everruns.com/docs/how-to/define-agents-as-files/)
-- [Agent Triggers](https://everruns.com/docs/features/agent-triggers/)
-- [Rust Framework](https://everruns.com/docs/framework/)
-
-## Choose a workflow skill
-
-Use the host's skill loader to activate the guide that matches the task:
-
-| Skill | When to load it |
-|---|---|
-| `everruns-install` | Install, upgrade, check, or remove the person's own Everruns on their machine, a server, or Kubernetes. Asks before changing anything. |
-| `everruns-api` | Drive a deployment over the REST API with a personal access token, where no CLI or MCP client is available. |
-| `everruns-cli` | Use the installed CLI or an agent's command shell; discover commands, script operations, inspect resources, and verify changes. Explains how CLI, session-shell, and MCP invocation differ. |
-| `everruns-mcp` | Connect through an external Everruns MCP server; select an organization, run and follow sessions, handle questions and connections, and use MCP resources. Refers to `everruns-cli` for command usage. |
-| `everruns-agent-authoring` | Create or revise an agent's behavior, choose its harness, capabilities, model, and identity, work with portable packages, and verify the result. |
-| `everruns-framework` | Develop Rust applications that run agents in process with the `everruns` crate, or compose advanced execution hosts with `everruns_core::host`. Includes crate-selection and domain-language references. |
-
-Activate only skills offered by the current host and relevant to the task.
-This guide provides orientation; companion skills supply the procedures for
-working through a CLI, MCP connection, application SDK, or Rust runtime.
-
-### Additional coding-agent plugin workflows
-
-The [Everruns plugin](https://github.com/everruns/plugins) also provides focused
-task guides. Activate them when installed and relevant:
-
-| Skill | When to load it |
-|---|---|
-| `everruns-run-agent` | Hand a self-contained task to an existing agent, follow progress, exchange files, and bring back the result. |
-| `everruns-build-agent` | Build or improve an agent from a plain-language brief, select tools and knowledge, and smoke-test it. Complements the shared authoring guide. |
-| `everruns-debug-session` | Diagnose a failed, stalled, or poor-quality session and verify the fix. |
-| `everruns-evaluate-agent` | Build regression evals from real sessions, compare models, and score live traffic. |
-| `everruns-ship-agent` | Expose an agent through channels and triggers, with budgets and controls for stopping it. |
-| `everruns-operate` | Investigate organization spending, health, and change history. |
-| `everruns-agents-as-files` | Keep agent packages in a repository and validate, compare, import, or export them. |
-| `everruns-sdk` | Call hosted Everruns agents from Python, TypeScript, or Rust application code. Use `everruns-framework` when the Rust application runs the agent itself. |
+This skill is published in [everruns/everruns](https://github.com/everruns/everruns/tree/main/skills/everruns),
+installable with `npx skills add everruns/everruns`, bundled in the
+[Everruns plugin](https://github.com/everruns/plugins), served by every
+Everruns MCP server as `skill://everruns/SKILL.md`, and written into a project
+by `everruns skill install`.

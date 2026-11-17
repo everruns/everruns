@@ -33,3 +33,9 @@ existing MCP workflows. The [coding-agent plugin](/getting-started/use-in-ai-too
 distributes all five shared skills, including Framework references, and keeps
 its additional task guides for running, debugging, evaluating, and shipping
 agents.
+
+## Update 2026-11-17
+
+The separate skills are now one `everruns` skill with these guides under
+`references/`, served as `skill://everruns/SKILL.md`. See
+[One Everruns skill for every coding agent](/changelog/2026-11-17-one-everruns-skill/).

@@ -151,7 +151,7 @@ records, which belong to `everruns-server`.
 
 The inventory covers the public [repository README](../../README.md),
 [core README](../../crates/core/README.md),
-[Everruns Framework skill](../../skills/everruns-framework/SKILL.md), and
+[Everruns Framework guide](../../skills/everruns/references/framework.md), and
 [custom backends guide](../../docs/framework/custom-backends.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples
 under [the host examples](../../crates/everruns/examples/advanced/in_process_runtime.rs)
