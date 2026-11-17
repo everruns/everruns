@@ -181,7 +181,7 @@ describe("buildSessionNavigation", () => {
 });
 
 describe("buildSessionNavigation on a data plane", () => {
-  it("hides files, changes and work, which a data plane does not serve yet", () => {
+  it("shows files but hides changes and work, which a data plane does not serve yet", () => {
     const features = new Set(["file_system", "repositories", "schedules", "leased_resources"]);
     const keys = buildSessionNavigation({
       basePath: "/sessions/session_1",
@@ -190,7 +190,7 @@ describe("buildSessionNavigation on a data plane", () => {
       taskCount: 2,
       dataPlane: true,
     }).map((item) => item.key);
-    expect(keys).not.toContain("files");
+    expect(keys).toContain("files");
     expect(keys).not.toContain("changes");
     expect(keys).not.toContain("work");
     expect(keys).toContain("trace");
@@ -200,5 +200,26 @@ describe("buildSessionNavigation on a data plane", () => {
       fileCount: 3,
     }).map((item) => item.key);
     expect(v1).toEqual(expect.arrayContaining(["files", "changes", "work"]));
+  });
+
+  it("shows files for a session that declares no file feature", () => {
+    const keys = buildSessionNavigation({
+      basePath: "/sessions/session_1",
+      features: new Set(),
+      dataPlane: true,
+    }).map((item) => item.key);
+    expect(keys).toContain("files");
+  });
+
+  it("keeps only the files pane on the Files tab", () => {
+    const features = new Set(["key_value", "secrets", "schedules"]);
+    expect(sessionRecordPanes({ features, hasSchedules: true, dataPlane: true })).toEqual([
+      "files",
+    ]);
+    expect(sessionRecordPanes({ features, hasSchedules: true })).toEqual([
+      "files",
+      "values",
+      "schedules",
+    ]);
   });
 });

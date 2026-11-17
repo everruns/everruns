@@ -1699,6 +1699,43 @@ cross-region restore drill go on the production bucket of the first
 production v2 org, not on the 14-day load bucket: object lock cannot be
 turned off once on.
 
+### Step 11 progress (2026-11-17)
+
+Step 11 makes a whole org work on v2 (stages 2 and 3), then runs 75k
+agents with that feature mix before the v1/v2 decision. Sub-steps, each
+its own PR with its own bench line: 11.1 session files, 11.2 MCP servers
+and OAuth tokens, 11.3 sandboxes, 11.4 schedules, triggers, detached calls
+and subagents, 11.5 Slack and channels, observers and evals, trace and
+analytics export, 11.6 a full test org on a v2 data plane next to
+production, 11.7 75k with the feature mix and the decision brief.
+
+**11.1 Session files.** The console's file API runs on the cell
+([fs.md](fs.md), "API and UI"): `/v1/workspaces/{id}/fs` and the older
+`/v1/sessions/{id}/fs` routes on the gateway, one operation each on the
+session's cell, linearizable reads through a read index, create, move and
+copy that refuse an existing target inside the commit, starter files with
+the control plane's create, and the console's Files tab shown for a v2
+org (values, schedules and the sandbox panel stay hidden until their
+steps). Bench (`scripts/cell/files_bench.py`, one 3-node cell, calls
+through a rotating node so follower reads pay the read barrier):
+
+| Call, 16 at a time | 1 KiB p50 / p99 | 16 KiB | 64 KiB | 1 MiB |
+| --- | --- | --- | --- | --- |
+| Upload | 14.7 / 40.3 ms | 15.0 / 52.5 ms | 16.6 / 46.0 ms | 24.4 / 47.3 ms |
+| Download | 8.3 / 26.9 ms | 9.5 / 30.6 ms | 11.7 / 24.9 ms | 18.3 / 44.0 ms |
+| Read (JSON) | 8.8 / 26.8 ms | 10.7 / 33.5 ms | 11.2 / 28.5 ms | 20.4 / 54.2 ms |
+
+A directory listing: 9.1 / 25.9 ms. The gate (upload and download p99
+under 200 ms up to 1 MiB) holds. Chaos: 40 s of uploads while the leader
+and then a follower were killed and restarted: 22 369 uploads
+acknowledged, all read back byte for byte, none lost (the 2 308 failed
+calls went to a node while it was down; through the edge a client retries
+another).
+
+Still 501 after 11.1: attachments in a message (images, PDFs), which need
+the executor to read the control plane's file store; they go with the
+11.6 parity sweep.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

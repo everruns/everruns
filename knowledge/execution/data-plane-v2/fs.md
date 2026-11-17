@@ -102,7 +102,17 @@ Either way, after every tool call the sandbox and the workspace hold the same fi
 
 ### API and UI
 
-The gateway serves the same `/v1/workspaces/{id}/fs/*` routes. Reads resolve through the cell and the chunk cache. Uploads write contents through the chunk cache and then commit. Downloads stream from the chunk cache.
+The gateway serves the same `/v1/workspaces/{id}/fs/*` routes (and the older `/v1/sessions/{id}/fs/*` aliases), so the console's Files tab, uploads, downloads and the HTML preview work unchanged for a v2 org. A session's workspace has the session's id, as on the control plane; the edge sends `/v1/workspaces/{id}/fs` to the data plane when the session is there, and the workspace record (get, rename, archive) stays with the control plane.
+
+Each call is one operation on the session's cell (`crates/cell/src/api_files.rs`, routes in `gateway_fs.rs`):
+
+- Reads are linearizable: the node that answers first takes the leader's read index and waits until its replica applied it, so an upload followed by a listing through another node sees the upload.
+- Writes are unfenced, like every gateway write: a person's upload is not an executor's write.
+- Create, move and copy refuse an existing target inside the commit, so of two writers racing for one path exactly one wins. Move and copy carry the content by reference; a blob is not copied.
+- Binary content is stored base64, as the control plane stores it, and an entry's size is the decoded size.
+- A session's own starter files (`initial_files` on `POST /v1/sessions`) go to the data plane with the create and are written only where absent, in one commit.
+
+Until the chunk cache tier exists, uploads go to the object store directly and downloads are read whole (files are capped at 32 MiB per call); `Range` is answered from that read.
 
 ## Fork, snapshots, undo
 
@@ -143,7 +153,7 @@ These are estimates to be checked in the stress bench (plan steps 5 and 6) and t
 
 1. **Step 5 (cell crate):** workspace tree types, commit command, delta, compaction, fork. The simulated executor writes files in chaos tests. Checks: no lost committed write, forks independent, quota never exceeded.
 2. **Step 6 (cell executor):** `SessionFileSystem` over the cell, executor cache, grep.
-3. **Stage 2 (gateway):** `/fs` routes, uploads, downloads. Moved from step 8, which kept stage 1 to chat (design.md, "Step 8 progress").
+3. **Stage 2 (gateway):** `/fs` routes, uploads, downloads, starter files. Moved from step 8, which kept stage 1 to chat (design.md, "Step 8 progress"). Done in step 11.1 (design.md, "Step 11 progress").
 4. **Stage 2 features**, after the core proof, not part of it: `everruns-fs` for sandboxes (sync mode first, then mount mode), local-only paths, the chunk cache tier, Memories as shared volumes.
 5. **Stage 3:** External volume capability (Archil, S3), trigram index.
 

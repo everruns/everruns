@@ -5,9 +5,10 @@
 //! Decisions:
 //! - Stage 1 is chat: send and list messages, list events (with the
 //!   control plane's filters and cursors), the SSE stream, cancelling the
-//!   running turn, tool approvals and client-side tool results. Every other
-//!   call on a session answers 501 with the feature's name, and the console
-//!   hides those features for a v2 org, so a client never gets half a shape.
+//!   running turn, tool approvals and client-side tool results; the
+//!   session's files are `gateway_fs.rs` (step 11.1). Every other call on a
+//!   session answers 501 with the feature's name, and the console hides
+//!   those features for a v2 org, so a client never gets half a shape.
 //! - The session record itself (get, list, title, pin, archive) stays with
 //!   the control plane, which keeps it for every session it creates; the
 //!   edge sends those calls there. A cell knows only what it runs.

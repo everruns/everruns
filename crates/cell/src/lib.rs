@@ -23,6 +23,7 @@
 
 pub mod allowance;
 pub mod api;
+pub mod api_files;
 pub mod api_session;
 pub mod authority;
 pub mod batch;
@@ -40,6 +41,7 @@ pub mod executor;
 pub mod files;
 pub mod gateway;
 pub mod gateway_dp;
+pub mod gateway_fs;
 pub mod gateway_sse;
 pub mod gateway_v1;
 pub mod host;

@@ -787,6 +787,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
             axum::routing::delete(remove_node),
         )
         .merge(crate::gateway_v1::routes())
+        .merge(crate::gateway_fs::routes())
         .layer(axum::extract::DefaultBodyLimit::max(max_request_bytes()))
         .layer(axum::middleware::from_fn_with_state(
             gateway.clone(),
@@ -837,6 +838,14 @@ async fn check_org_token(
             )
         }),
         ["v1", "sessions", session, ..] => match parse(session) {
+            Err(error) => Some(error),
+            Ok(id) => match gateway.session_tenant(id).await {
+                Err(error) => Some(error),
+                Ok(tenant) => (!claims.may_drive(tenant.as_deref()))
+                    .then(|| (StatusCode::NOT_FOUND, format!("no session {id}"))),
+            },
+        },
+        ["v1", "workspaces", workspace, ..] => match crate::gateway_fs::session_of(workspace) {
             Err(error) => Some(error),
             Ok(id) => match gateway.session_tenant(id).await {
                 Err(error) => Some(error),

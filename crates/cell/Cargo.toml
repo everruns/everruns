@@ -49,6 +49,7 @@ zstd.workspace = true
 base64.workspace = true
 jsonwebtoken.workspace = true
 regex.workspace = true
+mime_guess = "2"
 tower.workspace = true
 # The same drivers as the worker, so an org's provider runs the same way on
 # an executor (and the workspace builds them once).

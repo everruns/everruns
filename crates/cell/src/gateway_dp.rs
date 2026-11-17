@@ -148,6 +148,9 @@ struct OrgSession {
     id: everruns_contracts::typed_id::SessionId,
     /// The org's agent, at its current revision.
     agent_ref: String,
+    /// The session's own starter files, written where absent.
+    #[serde(default)]
+    initial_files: Vec<everruns_core::session_file::InitialFile>,
 }
 
 /// `POST /dp/v1/orgs/{org}/sessions`: the control plane creating an org's
@@ -161,6 +164,22 @@ async fn org_session(
     let created = gateway
         .create(revision.package, None, Some(body.id), Some(org))
         .await?;
+    if !body.initial_files.is_empty() {
+        let seed = crate::api_files::FsOp::Seed {
+            files: body.initial_files,
+        };
+        let seed = serde_json::to_value(seed)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let reply = gateway.session_command(body.id, "fs", &seed).await?;
+        if let Ok(crate::api_files::FsResult::Failed { status, message }) =
+            serde_json::from_value(reply)
+        {
+            return Err((
+                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST),
+                message,
+            ));
+        }
+    }
     Ok((StatusCode::CREATED, Json(created)))
 }
 

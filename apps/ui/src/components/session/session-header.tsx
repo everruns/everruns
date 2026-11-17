@@ -194,12 +194,16 @@ export function sessionRecordPanes({
   features,
   hasSchedules,
   hasValues,
+  dataPlane,
 }: {
   features: Set<string>;
   hasSchedules: boolean;
   hasValues?: boolean;
+  /** A data plane serves the session's files, not yet its values or schedules. */
+  dataPlane?: boolean;
 }): SessionRecordPane[] {
   const panes: SessionRecordPane[] = ["files"];
+  if (dataPlane) return panes;
   if (hasValues || features.has("key_value") || features.has("secrets")) panes.push("values");
   if (hasSchedules || features.has("schedules")) panes.push("schedules");
   return panes;
@@ -228,8 +232,9 @@ export function buildSessionNavigation({
   /** Another agent handed this session its work. */
   inRun?: boolean;
   /**
-   * The org's sessions run on a data plane, which serves chat only for now:
-   * no session files, repositories, or background work to show.
+   * The org's sessions run on a data plane, which serves chat and the
+   * session's files for now: no repositories or background work to show.
+   * Every session there has its own durable workspace, so Files always shows.
    */
   dataPlane?: boolean;
 }): SessionNavItem[] {
@@ -242,7 +247,7 @@ export function buildSessionNavigation({
       hasFeature("schedules") ||
       (taskCount ?? 0) > 0 ||
       (activeScheduleCount ?? 0) > 0);
-  const hasFiles = !dataPlane && sessionShowsFiles(features, fileCount);
+  const hasFiles = dataPlane || sessionShowsFiles(features, fileCount);
   // Agents shows the whole run: on a session that can hand work to other
   // agents, and on one another agent handed work to.
   const hasAgents = hasFeature("agent_handoffs") || !!inRun;

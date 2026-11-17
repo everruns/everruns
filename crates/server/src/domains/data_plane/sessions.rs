@@ -13,11 +13,14 @@
 //!   running session would take messages nothing answers. The data plane's
 //!   create is idempotent, so a retry is safe.
 //! - A session with overrides the Engine cannot express (its own prompt,
-//!   tools, MCP servers, files, network access, capabilities) is refused
-//!   for a v2 org rather than silently run without them (stage 1 is chat
-//!   only).
+//!   tools, MCP servers, network access, capabilities) is refused for a v2
+//!   org rather than silently run without them. Its own starter files are
+//!   taken (step 11.1): the data plane writes them into the session's
+//!   workspace with the create, only where absent, so a retried create
+//!   never puts back a file the agent changed.
 
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::session_file::InitialFile;
 
 use super::{ControlPlane, agent_published, for_org, org_public, outbox};
 use crate::domains::agent_definitions::key_for;
@@ -49,7 +52,8 @@ pub fn unsupported(row: &CreateSessionRow, own_capabilities: bool) -> Option<&'s
         system_prompt: row.system_prompt.as_deref(),
         tools: &row.tools,
         mcp_servers: &row.mcp_servers,
-        initial_files: &row.initial_files,
+        // Seeded by the data plane with the create (`created`).
+        initial_files: &serde_json::Value::Null,
         network_access: row.network_access.as_ref(),
         max_iterations: row.max_iterations.is_some(),
         parallel_tool_calls: row.parallel_tool_calls.is_some(),
@@ -65,6 +69,7 @@ pub async fn created(
     session: SessionId,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
+    initial_files: &[InitialFile],
 ) -> anyhow::Result<()> {
     if !on_data_plane(cp, org_id).await? {
         return Ok(());
@@ -91,7 +96,10 @@ pub async fn created(
                 continue;
             }
         }
-        match plane.create_session(&public, session, &key).await {
+        match plane
+            .create_session(&public, session, &key, initial_files)
+            .await
+        {
             Ok(()) => {
                 // Marks the session as the data plane's: its messages go
                 // there, never to the platform's workers. The feed's

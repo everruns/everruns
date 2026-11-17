@@ -3925,6 +3925,7 @@ dependencies = [
  "hex",
  "jsonwebtoken",
  "libc",
+ "mime_guess",
  "object_store 0.14.2",
  "openraft",
  "parking_lot",
