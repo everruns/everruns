@@ -14,9 +14,9 @@ Sandboxes across providers: state, history, usage.
 |---|---|
 | [`sandboxes diagnose`](#sandboxes-diagnose) | Explain why a Sandbox is in its state: its record against what the provider reports, the pinned lifecycle policy and its deadlines, whether its session is running or stuck in a turn, the latest lifecycle decisions and failures, as findings with what to do. |
 | [`sandboxes get`](#sandboxes-get) | Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines. |
-| [`sandboxes provider get`](#sandboxes-provider-get) | Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. |
-| [`sandboxes events list`](#sandboxes-events-list) | List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history. |
 | [`sandboxes list`](#sandboxes-list) | List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters. |
+| [`sandboxes events list`](#sandboxes-events-list) | List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history. |
+| [`sandboxes provider get`](#sandboxes-provider-get) | Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. |
 | [`sandboxes stats get`](#sandboxes-stats-get) | Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention. |
 | [`sandboxes timeline get`](#sandboxes-timeline-get) | Show when each Sandbox was running, paused or lost over a time window, with how many ran at once. |
 
@@ -58,47 +58,6 @@ Example:
 everruns sandboxes get sandbox_01h9
 ```
 
-## sandboxes provider get
-
-Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.
-
-```bash
-everruns sandboxes provider get [OPTIONS] [ID]
-```
-
-| Flag | Description |
-|---|---|
-| `--id <ID>` | Logical Sandbox id. |
-
-Example:
-
-```bash
-# Check whether Daytona stopped a Sandbox on its own
-everruns sandboxes provider get sandbox_01h9
-```
-
-## sandboxes events list
-
-List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.
-
-```bash
-everruns sandboxes events list [OPTIONS] [ID]
-```
-
-| Flag | Description |
-|---|---|
-| `--id <ID>` | Logical Sandbox id. |
-| `--from <FROM>` | Window start (RFC 3339). |
-| `--limit <LIMIT>` | Most events, 1 to 500 (the newest when there are more). |
-| `--to <TO>` | Window end (RFC 3339). |
-
-Example:
-
-```bash
-# See who paused a Sandbox and why, since a given time
-everruns sandboxes events list sandbox_01h9 --from 2026-11-09T02:25:00Z
-```
-
 ## sandboxes list
 
 List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters.
@@ -124,6 +83,47 @@ Example:
 ```bash
 # Find Sandboxes that need attention
 everruns sandboxes list --needs-attention true
+```
+
+## sandboxes events list
+
+List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.
+
+```bash
+everruns sandboxes events list [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Logical Sandbox id. |
+| `--from <FROM>` | Window start (RFC 3339). |
+| `--limit <LIMIT>` | Most events, 1 to 500 (the newest when there are more). |
+| `--to <TO>` | Window end (RFC 3339). |
+
+Example:
+
+```bash
+# See who paused a Sandbox and why, since a given time
+everruns sandboxes events list sandbox_01h9 --from 2026-11-09T02:25:00Z
+```
+
+## sandboxes provider get
+
+Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.
+
+```bash
+everruns sandboxes provider get [OPTIONS] [ID]
+```
+
+| Flag | Description |
+|---|---|
+| `--id <ID>` | Logical Sandbox id. |
+
+Example:
+
+```bash
+# Check whether Daytona stopped a Sandbox on its own
+everruns sandboxes provider get sandbox_01h9
 ```
 
 ## sandboxes stats get

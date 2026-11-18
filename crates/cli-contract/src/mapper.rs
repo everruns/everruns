@@ -338,6 +338,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "sandboxes",
         "Sandboxes across providers: state, history, usage.",
     ),
+    (
+        "sandboxes events",
+        "Why a sandbox paused, resumed or was deleted, or was left alone.",
+    ),
+    (
+        "sandboxes provider",
+        "What the sandbox's provider reports about it now.",
+    ),
     ("sandboxes stats", "Sandbox counts by state and provider."),
     (
         "sandboxes timeline",
