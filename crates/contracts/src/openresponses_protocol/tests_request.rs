@@ -901,3 +901,46 @@ fn unconfigured_cache_defaults_require_native_model_and_endpoint() {
         }
     }
 }
+
+/// GPT-6.2 caches only at explicit breakpoints: an implicit-mode request
+/// reads and writes nothing (live probe 2026-11-18: GPT-6.1 Sol wrote and
+/// re-read a 6.5k-token prefix, GPT-6.2 Sol and Astra wrote 0 implicitly
+/// and 6.5k with a breakpoint). `Auto` must place the prefix breakpoint
+/// there, configured or by the native-endpoint default.
+#[test]
+fn auto_cache_places_explicit_breakpoints_for_models_without_implicit_caching() {
+    use crate::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
+    let original = json!({"instructions":"policy", "input":[{"role":"user","content":"q"}]});
+    for model in ["gpt-6.2-sol", "gpt-6.2-astra"] {
+        let mut configured = LlmCallConfig::new(model);
+        configured.prompt_cache = Some(PromptCacheConfig {
+            enabled: true,
+            strategy: PromptCacheStrategy::Auto,
+            ..Default::default()
+        });
+        for config in [configured, LlmCallConfig::new(model)] {
+            let mut body = original.clone();
+            apply_cache_options(&mut body, &config, true, true);
+            assert_eq!(body["prompt_cache_options"]["mode"], "explicit", "{model}");
+            assert!(body.get("instructions").is_none(), "{model}");
+            assert_eq!(
+                body["input"][0]["content"][0]["prompt_cache_breakpoint"],
+                json!({"mode":"explicit"}),
+                "{model}"
+            );
+            assert!(uses_explicit_breakpoints(&config, true, true), "{model}");
+        }
+    }
+    // Models that cache implicitly keep implicit mode under `Auto`.
+    let config = LlmCallConfig::new("gpt-6.1-sol");
+    let mut body = original.clone();
+    apply_cache_options(&mut body, &config, true, true);
+    assert_eq!(body["prompt_cache_options"]["mode"], "implicit");
+    assert!(!uses_explicit_breakpoints(&config, true, true));
+    // Gateways get no cache options at all, so nothing moves.
+    assert!(!uses_explicit_breakpoints(
+        &LlmCallConfig::new("gpt-6.2-sol"),
+        false,
+        true
+    ));
+}

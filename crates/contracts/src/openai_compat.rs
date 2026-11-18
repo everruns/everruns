@@ -31,6 +31,16 @@ pub fn supports_cache_options(model: &str) -> bool {
     })
 }
 
+/// GPT-6.2 models cache only at explicit `prompt_cache_breakpoint`s. An
+/// implicit-mode request reads and writes nothing, so the `Auto` strategy
+/// places breakpoints for them (live probe 2026-11-18: GPT-6.1 Sol cached a
+/// 6.5k-token prefix implicitly; GPT-6.2 Sol and Astra cached 0 without a
+/// breakpoint and all of it with one).
+pub fn requires_explicit_cache(model: &str) -> bool {
+    crate::model_profiles::get_model_profile_key(&DriverId::OpenAI, model)
+        .is_some_and(|key| matches!(key.as_str(), "openai/gpt-6.2-astra" | "openai/gpt-6.2-sol"))
+}
+
 #[cfg(feature = "http")]
 pub(crate) fn validate_config(config: &LlmCallConfig) -> Result<()> {
     if let Some(profile) = get_model_profile(&DriverId::OpenAI, &config.model) {
