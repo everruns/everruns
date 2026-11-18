@@ -91,6 +91,7 @@ async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
     );
 
     assert!(lookups::allowed("worker_get_connection_token"));
+    assert!(lookups::allowed("worker_knowledge"));
     for command in [
         "worker_get_sandbox_connection_token",
         "worker_get_mcp_connection_token",

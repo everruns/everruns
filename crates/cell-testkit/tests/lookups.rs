@@ -89,6 +89,33 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     );
     assert_eq!(cp.lookups().len(), 2);
 
+    // The org's knowledge, for the `knowledge` tools, the same way.
+    cp.set_lookup(
+        "worker_knowledge",
+        LookupAnswer::Value(json!({ "results": [], "warnings": ["empty"], "truncated": false })),
+    );
+    let backends = everruns_cell::lookups::attach(
+        everruns_core::host::HostBackends::in_memory(),
+        Arc::new(NoKeys),
+        Some(&Arc::downgrade(&material)),
+        id,
+    );
+    let factory = backends
+        .tool_context_extensions_factory
+        .expect("knowledge installed");
+    let knowledge = factory(0, id)
+        .get::<everruns_contracts::knowledge::KnowledgeRuntimeExt>()
+        .expect("the knowledge runtime");
+    let query: everruns_contracts::knowledge::KnowledgeQuery =
+        serde_json::from_value(json!({ "query": "refunds" })).unwrap();
+    let found = knowledge.0.search(id, query).await.unwrap();
+    assert_eq!(found.warnings, vec!["empty".to_owned()]);
+    let asked = cp.lookups();
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    assert_eq!(asked[2].1, "worker_knowledge");
+    assert_eq!(asked[2].2["operation"], json!("search"));
+    assert_eq!(asked[2].2["query"]["query"], json!("refunds"));
+
     // A session the executor does not know is no org's: nothing is asked.
     let stranger = SessionId::new();
     let resolver = everruns_cell::lookups::connections(
@@ -103,5 +130,5 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
             .unwrap(),
         None
     );
-    assert_eq!(cp.lookups().len(), 2);
+    assert_eq!(cp.lookups().len(), 3);
 }

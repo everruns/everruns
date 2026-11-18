@@ -19,7 +19,7 @@ use everruns_internal_protocol::commands::{call, call_secret, decode, failure, i
 
 mod credentials;
 pub mod dreaming;
-pub mod knowledge;
+pub use everruns_internal_protocol::commands::knowledge;
 mod leased_resources;
 mod org_egress_allowlist;
 mod poppy;
