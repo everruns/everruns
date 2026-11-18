@@ -2034,7 +2034,14 @@ control plane, for a message a person sent through it); a schedule's run
 or a task wake acts as the last person who wrote, as v1 copies the
 previous turn's record; a channel, trigger or webhook message acts as no
 one, so its platform calls are refused. The shell's `everruns` builtin is
-not installed on a cell yet.
+not installed on a cell yet. The `slack` tools' actions (react, update,
+upload, look up a user) go over too, run by the control plane as the bot
+of the endpoint the session came through, so the bot token stays there.
+The conversation sender a v1 worker installs with them is left out: a
+post binds to the turn's input event, which lives in the cell, and the
+channel host already delivers the turn's messages from the session's
+stream. Cells embed the product docs, so a platform agent finds them at
+`/docs` as on a worker.
 
 ### Corrections after the architecture review (2026-11-09)
 
