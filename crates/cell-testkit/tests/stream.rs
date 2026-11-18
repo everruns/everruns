@@ -96,13 +96,43 @@ impl Sse {
 }
 
 /// The ids of `session`'s committed events, read from the API.
-async fn all_ids(fleet: &Fleet, session: &str) -> Vec<String> {
-    fleet
-        .events(session)
-        .await
+/// The ids of every committed event, once a read shows `turns` completed
+/// turns and, when given, the event `last`.
+///
+/// Decision: wait for both. The gateway spreads reads over the cell's
+/// members and each answers from its own applied log, so a member that
+/// restarted and still catches up answers with an older prefix of the log.
+async fn all_ids(fleet: &Fleet, session: &str, turns: usize, last: Option<&str>) -> Vec<String> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let events = fleet.events(session).await;
+        let ids: Vec<String> = events
+            .iter()
+            .filter_map(|e| e["id"].as_str().map(str::to_string))
+            .collect();
+        let finished = events
+            .iter()
+            .filter(|e| e["type"] == "turn.completed")
+            .count();
+        if finished >= turns && last.is_none_or(|last| ids.iter().any(|id| id == last)) {
+            return ids;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "no read of {session} showed {turns} turns and {last:?}: {ids:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// `all` from `from` through the stream's last event, so a read that runs
+/// ahead of the stream does not count as a gap.
+fn span<'a>(all: &'a [String], from: usize, streamed: &[String]) -> &'a [String] {
+    let to = all
         .iter()
-        .filter_map(|e| e["id"].as_str().map(str::to_string))
-        .collect()
+        .position(|id| Some(id) == streamed.last())
+        .unwrap();
+    &all[from..=to]
 }
 
 /// Read on until the stream carried `last` (events committed after the
@@ -337,7 +367,7 @@ async fn a_restarted_stream_node_lags_and_the_stream_has_no_gap() {
     fleet.say(&session, "three").await;
     frames.extend(sse.until(|f| completed(f) >= 1).await);
     fleet.turns(&session, 3).await;
-    let all = all_ids(&fleet, &session).await;
+    let all = all_ids(&fleet, &session, 3, None).await;
     through(&mut sse, &mut frames, all.last().unwrap()).await;
 
     assert_eq!(
@@ -347,10 +377,11 @@ async fn a_restarted_stream_node_lags_and_the_stream_has_no_gap() {
     );
     assert_eq!(completed(&frames), 3, "{frames:?}");
     let streamed = ids(&frames);
+    let all = all_ids(&fleet, &session, 3, streamed.last().map(String::as_str)).await;
     let from = all.iter().position(|id| *id == streamed[0]).unwrap();
     assert_eq!(
         streamed,
-        all[from..],
+        span(&all, from, &streamed),
         "every committed event once, in order"
     );
 }
@@ -383,7 +414,7 @@ async fn a_move_between_replay_and_live_keeps_one_stream() {
     fleet.say(&session, "four").await;
     frames.extend(sse.until(|f| completed(f) >= 4).await);
     fleet.turns(&session, 4).await;
-    let all = all_ids(&fleet, &session).await;
+    let all = all_ids(&fleet, &session, 4, None).await;
     through(&mut sse, &mut frames, all.last().unwrap()).await;
 
     assert!(
@@ -393,10 +424,11 @@ async fn a_move_between_replay_and_live_keeps_one_stream() {
     assert_eq!(frames.iter().filter(|f| f.event == "connected").count(), 1);
     assert_eq!(completed(&frames), 4, "{frames:?}");
     let streamed = ids(&frames);
+    let all = all_ids(&fleet, &session, 4, streamed.last().map(String::as_str)).await;
     let from = all.iter().position(|id| *id == since).unwrap() + 1;
     assert_eq!(
         streamed,
-        all[from..],
+        span(&all, from, &streamed),
         "every event after since_id once, in order"
     );
 }
