@@ -41,6 +41,11 @@ case "$COMMAND" in
         echo "Re-encryption completed successfully"
         ;;
 
+    dataplane)
+        # The CLI checks DATABASE_URL itself, after `help`.
+        exec /app/everruns-dataplane "$@"
+        ;;
+
     shell)
         echo "Starting interactive shell..."
         exec /bin/bash
@@ -57,6 +62,7 @@ COMMANDS:
     migrate         Run database migrations
     migrate-info    Show migration status
     reencrypt       Re-encrypt secrets with new key
+    dataplane       Operate data planes (everruns-dataplane; `dataplane help`)
     shell           Start interactive shell (for debugging)
     help            Show this help message
 
