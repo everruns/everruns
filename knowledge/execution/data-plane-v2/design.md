@@ -2041,7 +2041,11 @@ The conversation sender a v1 worker installs with them is left out: a
 post binds to the turn's input event, which lives in the cell, and the
 channel host already delivers the turn's messages from the session's
 stream. Cells embed the product docs, so a platform agent finds them at
-`/docs` as on a worker.
+`/docs` as on a worker. A session's SQL databases (the `sql_database`
+tools) stay in the control plane's store, as for a v1 session, so the
+console's Databases panel shows what a cell session's tools wrote; each
+operation goes over the channel for the session's own databases only, and
+keeps its error kind (a timeout, a blocked statement, a missing database).
 
 ### Corrections after the architecture review (2026-11-09)
 

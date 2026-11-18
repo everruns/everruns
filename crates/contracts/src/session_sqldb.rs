@@ -31,8 +31,9 @@ pub struct SqlQueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<serde_json::Value>>,
     pub row_count: usize,
-    /// True if results were truncated due to limits
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    /// True if results were truncated due to limits. Absent means false, so
+    /// a result read back from the wire (a data plane's lookup) keeps it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub truncated: bool,
 }
 
@@ -65,7 +66,11 @@ pub struct ColumnSchema {
 ///
 /// Tool-visible errors (validation, not found, limits) vs internal errors
 /// are distinguished by the caller when converting to ToolExecutionResult.
-#[derive(Debug, thiserror::Error)]
+///
+/// Serializable so a data plane's lookup carries it back intact
+/// (`everruns_contracts::dataplane::SESSION_SQL_DB`).
+#[derive(Debug, thiserror::Error, Serialize, Deserialize)]
+#[serde(tag = "error", content = "detail", rename_all = "snake_case")]
 pub enum SessionSqlDbError {
     #[error("database not found: {0}")]
     DatabaseNotFound(String),

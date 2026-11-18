@@ -402,8 +402,8 @@ pub struct AllowanceGrant {
 /// knowledge the session's agent attaches (search and browse), and the
 /// session's Poppy calls (the owner's keys and conversations stay in the
 /// control plane), the org's egress grants, the platform tools' calls
-/// ([`PLATFORM_COMMAND_SURFACE`]) and the session's Slack actions
-/// ([`SLACK_ACTION`]).
+/// ([`PLATFORM_COMMAND_SURFACE`]), the session's Slack actions
+/// ([`SLACK_ACTION`]) and its SQL databases ([`SESSION_SQL_DB`]).
 ///
 /// Decision (step 11.6b): these are the v1 worker's own commands, run as
 /// the org's internal caller with the same checks (the session belongs to
@@ -422,7 +422,16 @@ pub const LOOKUP_COMMANDS: &[&str] = &[
     "worker_poppy_call",
     PLATFORM_COMMAND_SURFACE,
     SLACK_ACTION,
+    SESSION_SQL_DB,
 ];
+
+/// The lookup that runs one operation on a session's SQL databases, which
+/// live in the control plane as for a v1 session, so the console's
+/// Databases panel reads the same ones. Its params name the session and
+/// the operation (`op`: `create`, `list`, `get`, `delete`, `execute`,
+/// `query`, `schema`) with its `name`, `sql` or `table`; the answer is
+/// `{"ok": ...}` or `{"error": ...}` (`session_sqldb::SessionSqlDbError`).
+pub const SESSION_SQL_DB: &str = "session_sql_db";
 
 /// The lookup that performs a Slack action (post, react, update, upload,
 /// look up a user) as the bot of the Slack endpoint the session came
