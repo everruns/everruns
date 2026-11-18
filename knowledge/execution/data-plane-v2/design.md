@@ -1993,6 +1993,25 @@ stores such as knowledge, memory, the platform API) is the live check's
 (11.6c); a tool whose store a cell lacks answers with an error, as on a
 v1 host without it.
 
+**11.6b: lookups at call time (2026-11-18).** The org answers a tool
+looks up as it runs (a session's connection token, a GitHub token for
+one use, the agent's service API key, web search settings and account
+keys, the tool approval policy) reach a v1 worker as internal commands.
+A cell runs the same commands with the same client
+(`everruns_internal_protocol::commands`, moved out of the worker so both
+share it): the executor asks its directory cell, the cell forwards the
+request to the control plane over the link (`POST
+/dp/v1/tenants/{org}/lookups`), and the control plane runs the command
+as the org's internal caller and seals the answer with the org's data
+key under the request's own id, so the cell in between passes on
+ciphertext (`crates/cell/src/lookups.rs`,
+`crates/server/src/domains/data_plane/lookups.rs`). Only those six
+commands go over: sandbox keys and MCP credentials are already sealed
+org secrets on the data plane, and a cell leases nothing to clean up. A
+standalone cell, with no control plane, keeps the answers of a host
+without org settings; a lookup that cannot reach the control plane fails
+the tool call rather than falling back to a default.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

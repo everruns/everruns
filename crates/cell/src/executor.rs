@@ -265,6 +265,44 @@ impl Executor {
         }
     }
 
+    /// Ask the control plane one of `org`'s call-time lookups, through the
+    /// directory cell; the answer comes sealed with the org's data key and
+    /// is opened here (`lookups.rs`).
+    pub async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+        use everruns_contracts::dataplane::{LookupRequest, SealedSecret, lookup_secret};
+        let request = uuid::Uuid::new_v4().to_string();
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let sealed: SealedSecret = self
+            .remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/lookups"),
+                &LookupRequest {
+                    request: request.clone(),
+                    command: command.to_owned(),
+                    params,
+                },
+                Duration::from_secs(15),
+            )
+            .await?;
+        // The seal binds the secret id; the id must be this request's, or
+        // an answer to another lookup could stand in for this one.
+        if sealed.secret_id != lookup_secret(&request) || sealed.revision != 0 {
+            anyhow::bail!("the control plane answered another lookup");
+        }
+        let (key, _) = self
+            .data_key(org)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
+        let plain = everruns_contracts::dataplane_seal::unseal(&key, org, &sealed)?;
+        Ok(serde_json::from_slice(&plain)?)
+    }
+
     /// `org`'s connection `id`, from the directory cell.
     pub async fn connection(
         &self,
@@ -631,6 +669,21 @@ impl crate::providers::OrgMaterial for Executor {
 
     fn seals(&self) -> bool {
         self.dp_key.lock().is_some()
+    }
+
+    fn looks_up(&self) -> bool {
+        // A data plane key means a control plane wraps this cell's keys,
+        // so it is the one lookups go to.
+        self.dp_key.lock().is_some()
+    }
+
+    async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+        Executor::lookup(self, org, command, params).await
     }
 
     async fn data_key(

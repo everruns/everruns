@@ -39,6 +39,7 @@ pub mod allowances;
 pub mod attachments;
 pub mod event_tap;
 pub mod feed;
+pub mod lookups;
 pub mod mcp;
 pub mod outbox;
 pub mod providers;
