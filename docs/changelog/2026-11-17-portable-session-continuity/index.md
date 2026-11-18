@@ -30,3 +30,8 @@ checkpoints retain their provider-specific compatibility. Raw history stays
 queryable. Summary calls are billed and traced separately; summary fidelity still
 depends on the model. The compaction divider shows available token measurements
 instead of treating unchanged message counts as a failure.
+
+Recorded skill and tool catalog updates also stay ahead of live-only continuation
+facts, keeping those updates in the replayable prompt prefix on the next turn.
+Restoring portable continuity also avoids treating the generated note as a new
+input that would regenerate historical facts.

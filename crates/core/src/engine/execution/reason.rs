@@ -488,8 +488,8 @@ impl ReasonAtom {
         let mut context_messages = context_messages;
 
         // 9d. Replay reference-data changes at their recorded positions.
-        let context_updates = context_updates::apply(&mut context_messages, &turn_agent);
-        let volatile_suffix_len = context_updates.volatile_suffix_len(volatile_suffix_len);
+        let context_updates =
+            context_updates::apply(&mut context_messages, &turn_agent, volatile_suffix_len);
 
         // 10. Resolve images from image_file references (if any)
         //

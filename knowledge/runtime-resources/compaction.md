@@ -38,6 +38,28 @@ change; opaque native content is never translated. Current working-context size
 and raw evidence since the checkpoint trigger reduction; cumulative lifetime
 usage alone cannot rearm a checkpoint. See the [public contract](../../docs/advanced/compaction.md).
 
+## Cache and provenance regression analogies
+
+[Eve #6498](https://github.com/vercel/eve/pull/6498) motivates testing persistent
+announcements together with ephemeral context. The local continuation regression
+in [context update tests](../../crates/core/src/engine/execution/reason/context_updates/tests.rs)
+reproduced a catalog update following live-only facts. Recorded updates now
+precede that volatile tail; their driver-request prefix survives a tool step and
+the next turn, including when portable continuity is present. This checks request
+shape, not provider cache-hit rates. A separate regression excludes runtime-marked
+portable continuity from facts-bearing inputs: its restore-time timestamp must
+not regenerate historical facts when the raw suffix starts with an answer.
+An ordinary user quoting the same text remains a facts-bearing input.
+
+[PydanticAI #13615](https://github.com/pydantic/pydantic-ai/pull/13615) motivates
+preserving non-user provenance during reinjection. Everruns has no general
+user/tool/model `pin()` API: its exact pins come from recorded `activate_skill`
+results. [Continuity tests](../../crates/core/src/engine/execution/reason/context_plan_tests.rs)
+verify that quoted pin markers from users, model text and file results do not
+create pins through repeated summaries, and that restored continuity remains
+framed reference data. No equivalent pin-selection bug was observed; these
+structural checks do not prove that a model will resist instruction laundering.
+
 ## Request budget invariant
 
 Proactive pressure includes model-visible tool declarations after discovery and
