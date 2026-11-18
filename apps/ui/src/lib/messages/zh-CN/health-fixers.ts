@@ -31,4 +31,20 @@ export const messages: Readonly<Record<string, string>> = {
     "Slack 已批准更改。Everruns 已再次检查该应用。",
   "Slack did not finish the approval. Try the fix again.": "Slack 未完成批准。请重试修复。",
   "Slack approval needed": "需要在 Slack 中批准",
+  "One step before the fix": "修复前还需一步",
+  "Fix not available here": "此处无法修复",
+  "Open the app in Slack": "在 Slack 中打开该应用",
+  "Open your Slack apps": "打开你的 Slack 应用",
+  " and go to OAuth & Permissions.": "，然后进入 OAuth & Permissions。",
+  ", choose this agent's app, and go to OAuth & Permissions.":
+    "，选择此代理的应用，然后进入 OAuth & Permissions。",
+  "Under Bot Token Scopes, add": "在 Bot Token Scopes 下添加",
+  "Click Reinstall to Workspace in the banner at the top and approve. Your workspace may need an administrator to approve it.":
+    "点击顶部横幅中的 Reinstall to Workspace 并批准。你的工作区可能需要管理员批准。",
+  "The bot token stays the same, so there is nothing to paste back.":
+    "机器人令牌保持不变，无需粘贴回来。",
+  "If Slack shows a new Bot User OAuth Token, save it in":
+    "如果 Slack 显示新的 Bot User OAuth Token，请将其保存到",
+  "integration settings": "集成设置",
+  "Come back here and click Check again.": "回到这里并点击“再次检查”。",
 };

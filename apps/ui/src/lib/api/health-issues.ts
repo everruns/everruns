@@ -30,6 +30,15 @@ export async function runHealthIssueFixer(id: string, kind: string) {
   return (await api.post<HealthIssueFixOutcome>(`/v1/health-issues/${id}/fix`, { kind })).data;
 }
 
+/**
+ * A blocked fixer's unblock link, only when it stays inside the console: a
+ * path, never another origin (`//host` or `/\\host` would leave it).
+ */
+export function safeConsolePath(raw: string | null | undefined): string | null {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  return raw;
+}
+
 /** The provider pages a fixer may send the browser to, and nothing else. */
 export function safeConsentUrl(raw: string | null | undefined): URL | null {
   if (!raw) return null;

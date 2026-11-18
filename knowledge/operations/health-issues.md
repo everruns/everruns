@@ -109,6 +109,15 @@ recorded once per episode as a finding action, so the issue shows who fixed it.
 - **Model missing from its provider's list** (`models.sync`): syncs that provider's
   models. Unavailable, with the reason, when the provider has no key.
 
+A fixer that cannot run carries `unavailable_reason`, and `unblock` when a page in
+Everruns removes the block: a missing or rejected organization Slack connection links to
+the Slack workspaces settings, a model sync to the provider. The card then shows that
+link as its action instead of a disabled fix button, which left people with no way
+forward. `unblock.href` is a console path; the browser refuses anything else. Every
+Slack permission issue also lists the manual steps (add the scopes under Bot Token
+Scopes, Reinstall to Workspace, check again), including for apps Everruns created,
+linking straight to the app's OAuth page when its id is known.
+
 When several open issues offer the same fixer, the Health page walks through them one
 at a time, since Slack approves each app separately. Detectors without a fixer keep
 their links and **Check again**. Automatic repair without a click remains out of scope:

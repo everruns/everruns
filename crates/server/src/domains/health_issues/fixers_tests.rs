@@ -158,14 +158,57 @@ async fn fix_is_unavailable_until_the_workspace_is_connected() {
         .unavailable_reason
         .clone()
         .expect("unavailable");
-    assert!(reason.contains("Connect this Slack workspace"), "{reason}");
+    assert!(reason.contains("Connect the workspace"), "{reason}");
+    let unblock = issue.fixers[0].unblock.clone().expect("unblock link");
+    assert_eq!(unblock.label, "Connect Slack workspace");
+    assert_eq!(unblock.href, "/settings/slack");
     let refused = fixers::run_fixer(&ctx, issue.id, SLACK_ADD_PERMISSIONS, "http://127.0.0.1:9")
         .await
         .unwrap_err();
     assert!(
-        refused.to_string().contains("Connect this Slack workspace"),
+        refused.to_string().contains("Connect the workspace"),
         "{refused}"
     );
+}
+
+/// The Kids Duties case: the workspace is connected, but Slack rejected the
+/// connection's credential on renewal. The fix points at the reconnect page
+/// instead of leaving only a disabled button.
+#[tokio::test]
+async fn rejected_workspace_connection_links_to_reconnect() {
+    let (db, ctx, row) = fixture().await;
+    db.observe_health_issue(observation(&row, "open"))
+        .await
+        .unwrap();
+    connect_workspace(&db, ctx.org_id()).await;
+    let connection = db
+        .list_org_slack_connections(ctx.org_id())
+        .await
+        .unwrap()
+        .remove(0);
+    let claimed = db
+        .claim_org_slack_connection_rotation(connection.id, connection.token_generation)
+        .await
+        .unwrap()
+        .expect("claimed");
+    assert!(
+        db.mark_org_slack_reconnect_required(claimed.id, claimed.token_generation)
+            .await
+            .unwrap()
+    );
+    let ctx = ctx.with_slack_provisioner(Some(Arc::new(Provisioner::default())));
+    let issue = ListHealthIssues::default()
+        .run(&ctx)
+        .await
+        .unwrap()
+        .data
+        .remove(0);
+    let fixer = &issue.fixers[0];
+    let reason = fixer.unavailable_reason.as_deref().expect("blocked");
+    assert!(reason.contains("Slack stopped accepting it"), "{reason}");
+    let unblock = fixer.unblock.clone().expect("unblock link");
+    assert_eq!(unblock.label, "Reconnect Slack workspace");
+    assert_eq!(unblock.href, "/settings/slack");
 }
 
 #[tokio::test]
@@ -181,6 +224,8 @@ async fn deployment_without_provisioning_offers_manual_steps_only() {
         .data
         .remove(0);
     assert!(issue.fixers[0].unavailable_reason.is_some());
+    // Nothing in Everruns unlocks it; the card falls back to the manual steps.
+    assert_eq!(issue.fixers[0].unblock, None);
 }
 
 #[tokio::test]
