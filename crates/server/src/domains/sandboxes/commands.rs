@@ -413,7 +413,7 @@ pub struct GetSandbox {
 #[command(
     name = "get_sandbox",
     category = "sandboxes",
-    description = "Get one Sandbox with its provider resources and full state history.",
+    description = "Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines.",
     summary = "Get a Sandbox with its resources and state history",
     method = "GET",
     path = "/v1/sandboxes/{id}",
@@ -444,10 +444,16 @@ impl Command for GetSandbox {
             .db
             .list_sandbox_transitions(ctx.org_id(), Some(id.uuid()), row.created_at, Utc::now())
             .await?;
+        let lifecycle = ctx
+            .db
+            .get_sandbox_lifecycle_inputs(ctx.org_id(), id.uuid())
+            .await?
+            .and_then(|inputs| super::diagnose::lifecycle_status(&inputs));
         Ok(SandboxFleetDetail {
             sandbox: SandboxFleetItem::from(row),
             incarnations: incarnations.into_iter().map(Into::into).collect(),
             history: history.into_iter().map(Into::into).collect(),
+            lifecycle,
         })
     }
 }

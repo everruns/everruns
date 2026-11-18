@@ -851,6 +851,54 @@ impl SessionSandboxProvider for KubernetesSandboxProvider {
             .collect())
     }
 
+    async fn describe_by_id(
+        &self,
+        token: &str,
+        external_id: &str,
+    ) -> Result<everruns_contracts::session_sandbox::ProviderSandboxView, SandboxAdminError> {
+        use everruns_contracts::session_sandbox::ProviderSandboxView;
+        let selector = BTreeMap::from([(LABEL_SANDBOX.to_string(), external_id.to_string())]);
+        let Some(found) = self
+            .list_owned(token, &selector)
+            .await?
+            .into_iter()
+            .find(|sandbox| sandbox.external_id == external_id)
+        else {
+            return Ok(ProviderSandboxView::missing(external_id));
+        };
+        let backend = self.backend().await.map_err(SandboxAdminError::Provider)?;
+        // The pod's own trouble (image pull, crash loop, eviction), if any.
+        let error = match backend.pods().get_opt(external_id).await {
+            Ok(Some(pod)) => pod.status.and_then(|status| {
+                let waiting = status
+                    .container_statuses
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find_map(|container| {
+                        let waiting = container.state?.waiting?;
+                        Some(match waiting.message {
+                            Some(message) => {
+                                format!("{}: {message}", waiting.reason.unwrap_or_default())
+                            }
+                            None => waiting.reason?,
+                        })
+                    });
+                waiting.or(status.reason)
+            }),
+            _ => None,
+        };
+        Ok(ProviderSandboxView {
+            external_id: found.external_id,
+            exists: true,
+            state: found.state,
+            active: Some(found.active),
+            error,
+            created_at: found.created_at,
+            labels: ProviderSandboxView::everruns_labels(found.labels),
+            ..ProviderSandboxView::default()
+        })
+    }
+
     async fn stop_by_id(&self, _token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
         let backend = self.backend().await.map_err(SandboxAdminError::Provider)?;
         backend

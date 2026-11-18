@@ -36,10 +36,10 @@ pub const SANDBOX_IDLE_SWEEP_SCHEDULE: &str = "sandbox-idle-sweep";
 /// Activity type the Sandbox idle sweep schedule enqueues.
 pub const SANDBOX_IDLE_SWEEP_ACTIVITY: &str = "sandbox_idle_sweep";
 
-const SWEEP_PERIOD: Duration = Duration::from_secs(60);
+pub const SWEEP_PERIOD: Duration = Duration::from_secs(60);
 /// How long a sandbox of an `active` session may go unused before it counts
 /// as idle.
-const STALE_TURN: Duration = Duration::from_secs(6 * 3600);
+pub const STALE_TURN: Duration = Duration::from_secs(6 * 3600);
 /// Most sandboxes paused per run; the next run picks up the rest.
 const SWEEP_BATCH: i64 = 50;
 

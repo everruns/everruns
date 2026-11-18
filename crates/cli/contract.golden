@@ -354,8 +354,11 @@ sandbox-templates builds discard	--context-revision --id! --reason
 sandbox-templates builds get	--context-revision --id! --reason
 sandbox-templates builds list	--context-revision --id! --offset --reason
 sandbox-templates builds start	--build-network --context-revision --id! --install-script! --metadata-path --reason --source-revision-id! --timeout-seconds --verification-command
+sandboxes diagnose	--context-revision --id --reason <id>
+sandboxes events list	--context-revision --from --id --limit --reason --to <id>
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
+sandboxes provider get	--context-revision --id --reason <id>
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
 sandboxes timeline get	--agent-id --context-revision --from --include-in-process --limit --needs-attention --provider --reason --sandbox-template-id --search --state --to
 sessions approval-mode get	--context-revision --reason --session-id!

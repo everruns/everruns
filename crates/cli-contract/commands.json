@@ -13483,12 +13483,86 @@
     ]
   },
   {
+    "wire_name": "diagnose_sandbox",
+    "path": [
+      "sandboxes"
+    ],
+    "verb": "diagnose",
+    "description": "Explain why a Sandbox is in its state: its record against what the provider reports, the pinned lifecycle policy and its deadlines, whether its session is running or stuck in a turn, the latest lifecycle decisions and failures, as findings with what to do. Deterministic. The provider is asked only for organization admins.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/{id}/diagnosis",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Logical Sandbox id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find out why a Sandbox did not pause",
+        "command": "everruns sandboxes diagnose sandbox_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_sandbox_events",
+    "path": [
+      "sandboxes",
+      "events"
+    ],
+    "verb": "list",
+    "description": "List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/{id}/events",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Logical Sandbox id."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Window start (RFC 3339)."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Most events, 1 to 500 (the newest when there are more)."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Window end (RFC 3339)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See who paused a Sandbox and why, since a given time",
+        "command": "everruns sandboxes events list sandbox_01h9 --from 2026-11-09T02:25:00Z"
+      }
+    ]
+  },
+  {
     "wire_name": "get_sandbox",
     "path": [
       "sandboxes"
     ],
     "verb": "get",
-    "description": "Get one Sandbox with its provider resources and full state history.",
+    "description": "Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines.",
     "method": "GET",
     "http_path": "/v1/sandboxes/{id}",
     "args": [
@@ -13586,6 +13660,33 @@
       {
         "intent": "Find Sandboxes that need attention",
         "command": "everruns sandboxes list --needs-attention true"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_sandbox_provider_state",
+    "path": [
+      "sandboxes",
+      "provider"
+    ],
+    "verb": "get",
+    "description": "Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/{id}/provider",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Logical Sandbox id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether Daytona stopped a Sandbox on its own",
+        "command": "everruns sandboxes provider get sandbox_01h9"
       }
     ]
   },

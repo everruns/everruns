@@ -28064,7 +28064,7 @@
           "sandboxes"
         ],
         "summary": "Get a Sandbox with its resources and state history",
-        "description": "Get one Sandbox with its provider resources and full state history.",
+        "description": "Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines.",
         "operationId": "get_sandbox",
         "parameters": [
           {
@@ -28090,6 +28090,165 @@
           },
           "404": {
             "description": "Sandbox not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/diagnosis": {
+      "get": {
+        "tags": [
+          "sandboxes"
+        ],
+        "summary": "Explain why a Sandbox is in its state",
+        "description": "Explain why a Sandbox is in its state: its record against what the provider reports, the pinned lifecycle policy and its deadlines, whether its session is running or stuck in a turn, the latest lifecycle decisions and failures, as findings with what to do. Deterministic. The provider is asked only for organization admins.",
+        "operationId": "diagnose_sandbox",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxDiagnosis"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/events": {
+      "get": {
+        "tags": [
+          "sandboxes"
+        ],
+        "summary": "List the decisions behind a Sandbox's states",
+        "description": "List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.",
+        "operationId": "list_sandbox_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Window start (RFC 3339). Defaults to the Sandbox's creation.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Window end (RFC 3339). Defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Most events, 1 to 500 (the newest when there are more). Defaults to 200.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxEventList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "operations-billing",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/sandboxes/{id}/provider": {
+      "get": {
+        "tags": [
+          "sandboxes"
+        ],
+        "summary": "Ask the provider about a Sandbox now",
+        "description": "Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.",
+        "operationId": "get_sandbox_provider_state",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderSandboxState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found"
+          },
+          "503": {
+            "description": "The provider could not be asked"
           }
         },
         "x-docs": {
@@ -68548,6 +68707,138 @@
           }
         }
       },
+      "ProviderSandboxState": {
+        "type": "object",
+        "description": "What the provider reports about the sandbox now. Built from an allowlist of\nfields; never the provider's raw object.",
+        "required": [
+          "provider",
+          "external_id",
+          "checked_at",
+          "exists",
+          "state",
+          "labels",
+          "details"
+        ],
+        "properties": {
+          "active": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether it holds compute (and so bills for it), when known."
+          },
+          "auto_archive_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "auto_delete_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "auto_stop_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The provider's own idle stop in minutes (0 is off). It acts on its own,\nindependently of Everruns' idle pause."
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "desired_state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "details": {
+            "type": "object",
+            "description": "Size, region, image and similar non-secret details.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "ends_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the provider ends the sandbox on its own."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider's own error or exit reason."
+          },
+          "exists": {
+            "type": "boolean",
+            "description": "Whether the provider still knows the sandbox."
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "description": "Labels Everruns set on it.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "last_activity_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "provider": {
+            "type": "string",
+            "example": "daytona"
+          },
+          "recoverable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "description": "Provider-native state, such as `started`, `stopped` or `archived`.",
+            "example": "stopped"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "ProviderStatus": {
         "type": "string",
         "description": "LLM provider status",
@@ -71598,6 +71889,83 @@
           }
         }
       },
+      "SandboxDiagnosis": {
+        "type": "object",
+        "description": "Everything known about why a Sandbox is in its state.",
+        "required": [
+          "generated_at",
+          "status",
+          "sandbox",
+          "work",
+          "findings",
+          "recent_events"
+        ],
+        "properties": {
+          "cell_sandbox": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The sandbox as its cell records it (v2 sessions)."
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxFinding"
+            },
+            "description": "Problems and warnings first."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lifecycle": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SandboxLifecycleStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProviderSandboxState",
+                "description": "What the provider says now; absent when it was not asked."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider_note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the provider was not asked, or what went wrong asking it."
+          },
+          "recent_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxEvent"
+            },
+            "description": "The latest recorded causes, oldest first."
+          },
+          "sandbox": {
+            "$ref": "#/components/schemas/SandboxFleetItem"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus",
+            "description": "The worst status of any finding."
+          },
+          "work": {
+            "$ref": "#/components/schemas/SandboxSessionWork"
+          }
+        }
+      },
       "SandboxDurability": {
         "type": "string",
         "description": "What survives physical compute loss.",
@@ -71616,6 +71984,96 @@
           "auto"
         ]
       },
+      "SandboxEvent": {
+        "type": "object",
+        "description": "One recorded cause: who acted on the Sandbox (or decided not to), and why.",
+        "required": [
+          "at",
+          "generation",
+          "actor",
+          "action",
+          "outcome",
+          "reason",
+          "message",
+          "detail"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "`pause`, `resume` or `delete`.",
+            "example": "pause"
+          },
+          "actor": {
+            "type": "string",
+            "description": "`idle_timer`, `idle_sweep`, `retention_sweep` or `person`.",
+            "example": "idle_sweep"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "detail": {
+            "type": "object"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Incarnation the event applied to."
+          },
+          "message": {
+            "type": "string",
+            "description": "What happened, in one sentence."
+          },
+          "outcome": {
+            "type": "string",
+            "description": "`done`, `skipped` or `failed`.",
+            "example": "skipped"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Stable reason code, such as `idle_limit`, `stale_turn`, `session_active`,\n`idle_pause_off`, `retention`, `idle_action_delete` or `provider_error`.",
+            "example": "session_active"
+          }
+        }
+      },
+      "SandboxEventList": {
+        "type": "object",
+        "description": "A Sandbox's decisions and states over a window.",
+        "required": [
+          "sandbox_id",
+          "from",
+          "to",
+          "events",
+          "states"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxEvent"
+            },
+            "description": "Recorded causes, oldest first."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sandbox_id": {
+            "type": "string"
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxStateSpan"
+            },
+            "description": "States over the same window, oldest first. A state change with no\nevent beside it was made by an agent's sandbox call or found on the\nprovider (a lost sandbox), not by a lifecycle decision."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "SandboxFilesystemPolicy": {
         "type": "object",
         "description": "Filesystem paths the target permits command execution to mutate.",
@@ -71626,6 +72084,44 @@
               "type": "string"
             },
             "description": "Absolute roots the runtime may mutate; empty means provider default."
+          }
+        }
+      },
+      "SandboxFinding": {
+        "type": "object",
+        "description": "One finding: what is true, why it matters, how to fix it.",
+        "required": [
+          "id",
+          "status",
+          "title",
+          "summary"
+        ],
+        "properties": {
+          "fix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable identifier, such as `provider.state` or `lifecycle.overdue`.",
+            "example": "provider.auto_stop"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "why": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -71654,6 +72150,17 @@
                   "$ref": "#/components/schemas/SandboxIncarnation"
                 },
                 "description": "Provider resources, newest first."
+              },
+              "lifecycle": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SandboxLifecycleStatus",
+                    "description": "Lifecycle policy pinned when the Session was created, with the\ndeadlines it sets now. `sandboxes events list` holds the decisions\ntaken under it; `sandboxes diagnose` explains the state."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             }
           }
@@ -72055,6 +72562,74 @@
           }
         }
       },
+      "SandboxLifecycleStatus": {
+        "type": "object",
+        "description": "The lifecycle policy pinned when the Session was created, and what it\nmeans for this Sandbox now.",
+        "required": [
+          "idle_after_seconds",
+          "idle_action",
+          "idle_since"
+        ],
+        "properties": {
+          "delete_after_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How long a paused Sandbox is kept before deletion; `null` keeps it.",
+            "minimum": 0
+          },
+          "delete_due_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the retention sweep deletes the provider sandbox (paused only)."
+          },
+          "idle_action": {
+            "type": "string",
+            "description": "`checkpoint_and_stop`, `stop`, `keep_running` or `delete`.",
+            "example": "checkpoint_and_stop"
+          },
+          "idle_after_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Inactivity before the idle action.",
+            "minimum": 0
+          },
+          "idle_since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last activity, from which every deadline counts."
+          },
+          "pause_due_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the in-process idle timer pauses it (running only)."
+          },
+          "stale_turn_pause_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the sweep pauses it although its session claims a running turn."
+          },
+          "sweep_pause_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the sweep pauses it if the timer did not (running only)."
+          }
+        }
+      },
       "SandboxNetworkPolicy": {
         "oneOf": [
           {
@@ -72171,6 +72746,84 @@
           }
         ],
         "description": "Session-level selection: use an Agent template binding or provide an inline specification."
+      },
+      "SandboxSessionWork": {
+        "type": "object",
+        "description": "The session's work, as the runtime sees it.",
+        "required": [
+          "data_plane"
+        ],
+        "properties": {
+          "attempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "cancel_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "claim_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "claimed": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether a worker holds the turn right now."
+          },
+          "data_plane": {
+            "type": "boolean",
+            "description": "The session runs on a v2 data plane (a cell)."
+          },
+          "pending_inputs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Inputs admitted but not yet taken by a turn."
+          },
+          "phase": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where the turn is: `idle`, `queued`, `running`, ..."
+          },
+          "phase_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "queued_since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Waiting for a worker since."
+          },
+          "session_status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`active` means a turn is running."
+          }
+        }
       },
       "SandboxStateSpan": {
         "type": "object",

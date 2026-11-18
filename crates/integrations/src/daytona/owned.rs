@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use crate::daytona::api::management::types::SandboxListItem;
 use crate::daytona::client::DaytonaClient;
-use everruns_contracts::session_sandbox::{OwnedSandbox, SandboxAdminError};
+use everruns_contracts::session_sandbox::{OwnedSandbox, ProviderSandboxView, SandboxAdminError};
 
 /// Daytona states that hold no compute. A sandbox in one of these needs no
 /// stop, only the eventual delete.
@@ -76,6 +76,73 @@ pub async fn delete(client: &DaytonaClient, external_id: &str) -> Result<(), San
     match client.delete_sandbox(external_id).await {
         Err(err) if !is_not_found(&err) => Err(SandboxAdminError::Provider(err)),
         _ => Ok(()),
+    }
+}
+
+fn timestamp(at: Option<&str>) -> Option<chrono::DateTime<chrono::Utc>> {
+    at.and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .map(|at| at.with_timezone(&chrono::Utc))
+}
+
+fn minutes(value: Option<f64>) -> Option<i64> {
+    value.map(|v| v.round() as i64)
+}
+
+/// The allowlisted view of one Daytona sandbox. The record also carries the
+/// agent's `env`, the egress proxy URL with its credential and the toolbox
+/// URL; none of them is copied.
+pub(crate) fn view(
+    sandbox: crate::daytona::api::management::types::Sandbox,
+) -> ProviderSandboxView {
+    let state = sandbox
+        .state
+        .map(|state| state.0)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let mut details = BTreeMap::new();
+    let mut put = |key: &str, value: Option<String>| {
+        if let Some(value) = value.filter(|v| !v.is_empty()) {
+            details.insert(key.to_string(), value);
+        }
+    };
+    put("cpu", sandbox.cpu.map(|v| v.to_string()));
+    put("memory_gb", sandbox.memory.map(|v| v.to_string()));
+    put("disk_gb", sandbox.disk.map(|v| v.to_string()));
+    put("gpu", sandbox.gpu.map(|v| v.to_string()));
+    put("target", sandbox.target);
+    put("snapshot", sandbox.snapshot);
+    put("runner_id", sandbox.runner_id);
+    ProviderSandboxView {
+        external_id: sandbox.id.unwrap_or_default(),
+        exists: !GONE_STATES.contains(&state.as_str()),
+        active: Some(
+            !INACTIVE_STATES.contains(&state.as_str()) && !GONE_STATES.contains(&state.as_str()),
+        ),
+        state,
+        desired_state: sandbox.desired_state.map(|s| s.0.to_ascii_lowercase()),
+        error: sandbox.error_reason.filter(|e| !e.is_empty()),
+        recoverable: sandbox.recoverable,
+        created_at: timestamp(sandbox.created_at.as_deref()),
+        updated_at: timestamp(sandbox.updated_at.as_deref()),
+        last_activity_at: timestamp(sandbox.last_activity_at.as_deref()),
+        auto_stop_minutes: minutes(sandbox.auto_stop_interval),
+        auto_archive_minutes: minutes(sandbox.auto_archive_interval),
+        auto_delete_minutes: minutes(sandbox.auto_delete_interval),
+        ends_at: None,
+        labels: ProviderSandboxView::everruns_labels(sandbox.labels.unwrap_or_default()),
+        details,
+    }
+}
+
+/// `GET /sandbox/{id}`: what Daytona reports about one sandbox.
+pub async fn describe(
+    client: &DaytonaClient,
+    external_id: &str,
+) -> Result<ProviderSandboxView, SandboxAdminError> {
+    match client.get_sandbox_record(external_id).await {
+        Ok(sandbox) => Ok(view(sandbox)),
+        Err(err) if is_not_found(&err) => Ok(ProviderSandboxView::missing(external_id)),
+        Err(err) => Err(SandboxAdminError::Provider(err)),
     }
 }
 
@@ -199,5 +266,71 @@ mod tests {
         stop(&client, "sb-1").await.unwrap();
         delete(&client, "sb-gone").await.unwrap();
         assert!(delete(&client, "sb-err").await.is_err());
+    }
+
+    // Daytona's record carries the agent's env, the egress proxy URL with its
+    // credential and the toolbox URL; describe must copy none of them.
+    #[tokio::test]
+    async fn describe_reports_lifecycle_and_never_copies_secrets() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sandbox/dtn-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "dtn-1", "organizationId": "org", "name": "dtn-1", "user": "daytona",
+                "state": "stopped", "desiredState": "stopped",
+                "errorReason": null, "recoverable": false,
+                "cpu": 2, "gpu": 0, "memory": 4, "disk": 10, "target": "us",
+                "public": false, "snapshot": "everruns-base",
+                "autoStopInterval": 15, "autoArchiveInterval": 10080, "autoDeleteInterval": -1,
+                "createdAt": "2026-11-09T02:00:00.000Z", "updatedAt": "2026-11-09T02:25:00.000Z",
+                "lastActivityAt": "2026-11-09T02:10:00.000Z",
+                "env": {"OPENAI_API_KEY": "sk-env-secret-value-1234567890"},
+                "outboundProxyUrl": "https://user:proxy-secret@egress.example.com",
+                "toolboxProxyUrl": "https://toolbox-secret.example.com",
+                "labels": {"everruns": "true", "everruns.org_id": "org_1", "team": "x"}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let view = describe(&client(&server), "dtn-1").await.unwrap();
+        assert!(view.exists);
+        assert_eq!(view.state, "stopped");
+        assert_eq!(view.active, Some(false));
+        assert_eq!(view.auto_stop_minutes, Some(15));
+        assert_eq!(
+            view.labels.len(),
+            2,
+            "only everruns labels: {:?}",
+            view.labels
+        );
+        assert_eq!(
+            view.last_activity_at.unwrap().to_rfc3339(),
+            "2026-11-09T02:10:00+00:00"
+        );
+        let text = serde_json::to_string(&view).unwrap();
+        for secret in [
+            "sk-env-secret",
+            "proxy-secret",
+            "toolbox-secret",
+            "OPENAI_API_KEY",
+        ] {
+            assert!(!text.contains(secret), "{secret} leaked: {text}");
+        }
+    }
+
+    #[tokio::test]
+    async fn describe_reports_a_missing_sandbox() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sandbox/gone"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+                "statusCode": 404, "message": "Sandbox not found"
+            })))
+            .mount(&server)
+            .await;
+        let view = describe(&client(&server), "gone").await.unwrap();
+        assert!(!view.exists);
+        assert_eq!(view.external_id, "gone");
     }
 }

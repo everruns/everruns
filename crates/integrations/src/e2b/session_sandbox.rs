@@ -159,6 +159,14 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         super::owned::stop(&E2BClient::new(token.to_string()), external_id).await
     }
 
+    async fn describe_by_id(
+        &self,
+        token: &str,
+        external_id: &str,
+    ) -> Result<everruns_contracts::session_sandbox::ProviderSandboxView, SandboxAdminError> {
+        super::owned::describe(&E2BClient::new(token.to_string()), external_id).await
+    }
+
     async fn delete_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
         super::owned::delete(&E2BClient::new(token.to_string()), external_id).await
     }

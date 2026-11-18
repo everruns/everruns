@@ -35,6 +35,10 @@ pub fn router(node: Arc<Node>) -> Router {
             "/cell/sessions/{session}/inspect",
             get(crate::inspect::session),
         )
+        .route(
+            "/cell/sessions/{session}/sandbox",
+            get(crate::inspect::sandbox),
+        )
         .route("/metrics", get(metrics))
         .route("/cell/metrics/reset", post(reset_metrics))
         .route("/cell/snapshot", post(trigger_snapshot))

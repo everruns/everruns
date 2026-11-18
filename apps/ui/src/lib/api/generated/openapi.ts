@@ -7328,9 +7328,69 @@ export interface paths {
     };
     /**
      * Get a Sandbox with its resources and state history
-     * @description Get one Sandbox with its provider resources and full state history.
+     * @description Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines.
      */
     get: operations["get_sandbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/{id}/diagnosis": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Explain why a Sandbox is in its state
+     * @description Explain why a Sandbox is in its state: its record against what the provider reports, the pinned lifecycle policy and its deadlines, whether its session is running or stuck in a turn, the latest lifecycle decisions and failures, as findings with what to do. Deterministic. The provider is asked only for organization admins.
+     */
+    get: operations["diagnose_sandbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/{id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the decisions behind a Sandbox's states
+     * @description List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.
+     */
+    get: operations["list_sandbox_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/{id}/provider": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Ask the provider about a Sandbox now
+     * @description Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.
+     */
+    get: operations["get_sandbox_provider_state"];
     put?: never;
     post?: never;
     delete?: never;
@@ -27150,6 +27210,59 @@ export interface components {
       slug?: string | null;
     };
     /**
+     * @description What the provider reports about the sandbox now. Built from an allowlist of
+     *     fields; never the provider's raw object.
+     */
+    ProviderSandboxState: {
+      /** @description Whether it holds compute (and so bills for it), when known. */
+      active?: boolean | null;
+      /** Format: int64 */
+      auto_archive_minutes?: number | null;
+      /** Format: int64 */
+      auto_delete_minutes?: number | null;
+      /**
+       * Format: int64
+       * @description The provider's own idle stop in minutes (0 is off). It acts on its own,
+       *     independently of Everruns' idle pause.
+       */
+      auto_stop_minutes?: number | null;
+      /** Format: date-time */
+      checked_at: string;
+      /** Format: date-time */
+      created_at?: string | null;
+      desired_state?: string | null;
+      /** @description Size, region, image and similar non-secret details. */
+      details: {
+        [key: string]: string;
+      };
+      /**
+       * Format: date-time
+       * @description When the provider ends the sandbox on its own.
+       */
+      ends_at?: string | null;
+      /** @description The provider's own error or exit reason. */
+      error?: string | null;
+      /** @description Whether the provider still knows the sandbox. */
+      exists: boolean;
+      external_id: string;
+      /** @description Labels Everruns set on it. */
+      labels: {
+        [key: string]: string;
+      };
+      /** Format: date-time */
+      last_activity_at?: string | null;
+      /** @example daytona */
+      provider: string;
+      recoverable?: boolean | null;
+      /**
+       * @description Provider-native state, such as `started`, `stopped` or `archived`.
+       * @example stopped
+       */
+      state: string;
+      /** Format: date-time */
+      updated_at?: string | null;
+    };
+    /**
      * @description LLM provider status
      * @enum {string}
      */
@@ -28856,6 +28969,25 @@ export interface components {
       /** @example running */
       key: string;
     };
+    /** @description Everything known about why a Sandbox is in its state. */
+    SandboxDiagnosis: {
+      /** @description The sandbox as its cell records it (v2 sessions). */
+      cell_sandbox?: Record<string, unknown> | null;
+      /** @description Problems and warnings first. */
+      findings: components["schemas"]["SandboxFinding"][];
+      /** Format: date-time */
+      generated_at: string;
+      lifecycle?: components["schemas"]["SandboxLifecycleStatus"] | null;
+      provider?: components["schemas"]["ProviderSandboxState"] | null;
+      /** @description Why the provider was not asked, or what went wrong asking it. */
+      provider_note?: string | null;
+      /** @description The latest recorded causes, oldest first. */
+      recent_events: components["schemas"]["SandboxEvent"][];
+      sandbox: components["schemas"]["SandboxFleetItem"];
+      /** @description The worst status of any finding. */
+      status: components["schemas"]["CheckStatus"];
+      work: components["schemas"]["SandboxSessionWork"];
+    };
     /**
      * @description What survives physical compute loss.
      * @enum {string}
@@ -28866,10 +28998,73 @@ export interface components {
      * @enum {string}
      */
     SandboxEscalation: "never" | "approval" | "auto";
+    /** @description One recorded cause: who acted on the Sandbox (or decided not to), and why. */
+    SandboxEvent: {
+      /**
+       * @description `pause`, `resume` or `delete`.
+       * @example pause
+       */
+      action: string;
+      /**
+       * @description `idle_timer`, `idle_sweep`, `retention_sweep` or `person`.
+       * @example idle_sweep
+       */
+      actor: string;
+      /** Format: date-time */
+      at: string;
+      detail: Record<string, unknown>;
+      /**
+       * Format: int64
+       * @description Incarnation the event applied to.
+       */
+      generation: number;
+      /** @description What happened, in one sentence. */
+      message: string;
+      /**
+       * @description `done`, `skipped` or `failed`.
+       * @example skipped
+       */
+      outcome: string;
+      /**
+       * @description Stable reason code, such as `idle_limit`, `stale_turn`, `session_active`,
+       *     `idle_pause_off`, `retention`, `idle_action_delete` or `provider_error`.
+       * @example session_active
+       */
+      reason: string;
+    };
+    /** @description A Sandbox's decisions and states over a window. */
+    SandboxEventList: {
+      /** @description Recorded causes, oldest first. */
+      events: components["schemas"]["SandboxEvent"][];
+      /** Format: date-time */
+      from: string;
+      sandbox_id: string;
+      /**
+       * @description States over the same window, oldest first. A state change with no
+       *     event beside it was made by an agent's sandbox call or found on the
+       *     provider (a lost sandbox), not by a lifecycle decision.
+       */
+      states: components["schemas"]["SandboxStateSpan"][];
+      /** Format: date-time */
+      to: string;
+    };
     /** @description Filesystem paths the target permits command execution to mutate. */
     SandboxFilesystemPolicy: {
       /** @description Absolute roots the runtime may mutate; empty means provider default. */
       writable_roots?: string[];
+    };
+    /** @description One finding: what is true, why it matters, how to fix it. */
+    SandboxFinding: {
+      fix?: string | null;
+      /**
+       * @description Stable identifier, such as `provider.state` or `lifecycle.overdue`.
+       * @example provider.auto_stop
+       */
+      id: string;
+      status: components["schemas"]["CheckStatus"];
+      summary: string;
+      title: string;
+      why?: string | null;
     };
     /** @description One Sandbox with its incarnations and lifecycle history. */
     SandboxFleetDetail: components["schemas"]["SandboxFleetItem"] & {
@@ -28877,6 +29072,7 @@ export interface components {
       history: components["schemas"]["SandboxStateSpan"][];
       /** @description Provider resources, newest first. */
       incarnations: components["schemas"]["SandboxIncarnation"][];
+      lifecycle?: components["schemas"]["SandboxLifecycleStatus"] | null;
     };
     /** @description One logical Sandbox in the organization. */
     SandboxFleetItem: {
@@ -29086,6 +29282,52 @@ export interface components {
       /** @description Durable logical Sandbox identifier, when hosted persistence is available. */
       sandbox_id?: string | null;
     };
+    /**
+     * @description The lifecycle policy pinned when the Session was created, and what it
+     *     means for this Sandbox now.
+     */
+    SandboxLifecycleStatus: {
+      /**
+       * Format: int64
+       * @description How long a paused Sandbox is kept before deletion; `null` keeps it.
+       */
+      delete_after_seconds?: number | null;
+      /**
+       * Format: date-time
+       * @description When the retention sweep deletes the provider sandbox (paused only).
+       */
+      delete_due_at?: string | null;
+      /**
+       * @description `checkpoint_and_stop`, `stop`, `keep_running` or `delete`.
+       * @example checkpoint_and_stop
+       */
+      idle_action: string;
+      /**
+       * Format: int64
+       * @description Inactivity before the idle action.
+       */
+      idle_after_seconds: number;
+      /**
+       * Format: date-time
+       * @description Last activity, from which every deadline counts.
+       */
+      idle_since: string;
+      /**
+       * Format: date-time
+       * @description When the in-process idle timer pauses it (running only).
+       */
+      pause_due_at?: string | null;
+      /**
+       * Format: date-time
+       * @description When the sweep pauses it although its session claims a running turn.
+       */
+      stale_turn_pause_at?: string | null;
+      /**
+       * Format: date-time
+       * @description When the sweep pauses it if the timer did not (running only).
+       */
+      sweep_pause_at?: string | null;
+    };
     /** @description Outbound network policy the target must actually enforce. */
     SandboxNetworkPolicy:
       | {
@@ -29125,6 +29367,35 @@ export interface components {
           use: string;
         }
       | components["schemas"]["SandboxTemplateSpec"];
+    /** @description The session's work, as the runtime sees it. */
+    SandboxSessionWork: {
+      /** Format: int32 */
+      attempts?: number | null;
+      /** Format: date-time */
+      cancel_requested_at?: string | null;
+      /** Format: date-time */
+      claim_expires_at?: string | null;
+      /** @description Whether a worker holds the turn right now. */
+      claimed?: boolean | null;
+      /** @description The session runs on a v2 data plane (a cell). */
+      data_plane: boolean;
+      /**
+       * Format: int64
+       * @description Inputs admitted but not yet taken by a turn.
+       */
+      pending_inputs?: number | null;
+      /** @description Where the turn is: `idle`, `queued`, `running`, ... */
+      phase?: string | null;
+      /** Format: date-time */
+      phase_since?: string | null;
+      /**
+       * Format: date-time
+       * @description Waiting for a worker since.
+       */
+      queued_since?: string | null;
+      /** @description `active` means a turn is running. */
+      session_status?: string | null;
+    };
     /** @description A span of time a Sandbox spent in one state. */
     SandboxStateSpan: {
       /** @description The Sandbox is still in this state. */
@@ -56071,6 +56342,110 @@ export interface operations {
       };
       /** @description Sandbox not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  diagnose_sandbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxDiagnosis"];
+        };
+      };
+      /** @description Sandbox not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_sandbox_events: {
+    parameters: {
+      query?: {
+        /** @description Window start (RFC 3339). Defaults to the Sandbox's creation. */
+        from?: string;
+        /** @description Window end (RFC 3339). Defaults to now. */
+        to?: string;
+        /** @description Most events, 1 to 500 (the newest when there are more). Defaults to 200. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxEventList"];
+        };
+      };
+      /** @description Sandbox not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_sandbox_provider_state: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderSandboxState"];
+        };
+      };
+      /** @description Sandbox not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The provider could not be asked */
+      503: {
         headers: {
           [name: string]: unknown;
         };

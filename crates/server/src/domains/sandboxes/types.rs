@@ -227,6 +227,10 @@ pub struct SandboxFleetDetail {
     pub incarnations: Vec<SandboxIncarnation>,
     /// State history, oldest first.
     pub history: Vec<SandboxStateSpan>,
+    /// Lifecycle policy pinned when the Session was created, with the
+    /// deadlines it sets now. `sandboxes events list` holds the decisions
+    /// taken under it; `sandboxes diagnose` explains the state.
+    pub lifecycle: Option<super::diagnose::SandboxLifecycleStatus>,
 }
 
 /// One Sandbox's lane on the timeline.
