@@ -5,8 +5,10 @@
  * - Write-like file mutations should stay inline, matching bash/read_file instead of reopening the grouped activity chrome.
  * - Structured JSON tool output is reduced to a compact status line so file writes read like transcript events, not raw payload dumps.
  * - When a write tool returns freeform text instead of metadata, keep an expandable fallback instead of forcing JSON-only handling.
+ * - edit_file diffs render as a highlighted diff (EditDiffView) and the collapsed line leads with +/− counts.
  */
 
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, FilePenLine, Loader2 } from "lucide-react";
 import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
@@ -18,6 +20,21 @@ import { formatFileSize } from "@/lib/formatting";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
+import { DiffCounts } from "./edit-diff";
+
+function PlainOutput({ text }: { text: string }) {
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
+      {text}
+    </pre>
+  );
+}
+
+// The diff renderer and its highlighter load the first time an edit is expanded.
+const EditDiffView = dynamic(() => import("./edit-diff-view"), {
+  ssr: false,
+  loading: () => null,
+});
 
 // Re-export from centralized registry for backward-compatible imports.
 export { isWriteLikeTool } from "@/lib/tool-registry";
@@ -44,6 +61,8 @@ interface ParsedWriteFileResult {
   appliedEdits?: number;
   firstChangedLine?: number;
   diffTruncated: boolean;
+  /** True when textContent is the unified diff the tool returned. */
+  isDiff: boolean;
   textContent: string | null;
 }
 
@@ -70,6 +89,7 @@ function parseWriteFilePayload(
         firstChangedLine:
           typeof parsed.first_changed_line === "number" ? parsed.first_changed_line : undefined,
         diffTruncated: parsed.diff_truncated === true,
+        isDiff: typeof parsed.diff === "string" && parsed.diff.length > 0,
         textContent: typeof parsed.diff === "string" && parsed.diff.length > 0 ? parsed.diff : null,
       };
     }
@@ -84,6 +104,7 @@ function parseWriteFilePayload(
     appliedEdits: undefined,
     firstChangedLine: undefined,
     diffTruncated: false,
+    isDiff: false,
     textContent: rawText || null,
   };
 }
@@ -220,17 +241,25 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
       />
 
       {!hasError && preview && !isExpanded && (
-        <div className="ml-[22px] mt-0.5 truncate text-[10px] opacity-70">
-          {[preview, detailLabel].filter(Boolean).join(" · ")}
+        <div className="ml-[22px] mt-0.5 truncate text-[10px]">
+          {parsed.isDiff && parsed.textContent && (
+            <>
+              <DiffCounts diff={parsed.textContent} />
+              <span className="opacity-70"> · </span>
+            </>
+          )}
+          <span className="opacity-70">{[preview, detailLabel].filter(Boolean).join(" · ")}</span>
         </div>
       )}
 
       {!hasError && isExpanded && parsed.textContent && (
         <div className="ml-[22px] mt-1.5">
           {detailLabel && <div className="mb-1 text-[10px] opacity-60">{detailLabel}</div>}
-          <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/85">
-            {parsed.textContent}
-          </pre>
+          {parsed.isDiff ? (
+            <EditDiffView diff={parsed.textContent} />
+          ) : (
+            <PlainOutput text={parsed.textContent} />
+          )}
         </div>
       )}
     </div>
