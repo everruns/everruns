@@ -2047,6 +2047,21 @@ console's Databases panel shows what a cell session's tools wrote; each
 operation goes over the channel for the session's own databases only, and
 keeps its error kind (a timeout, a blocked statement, a missing database).
 
+**11.7 The feature mix for the 75k run (2026-11-18).** `cell-drive load
+--agent mix` gives one session in two a chat agent (the llmsim mix the
+step 10 runs used) and the rest a platform feature, by repetition over
+twenty sessions: session files (three in twenty write a note on odd turns
+and read it back on even ones), a one-shot schedule a minute after the
+session's last turn (two), a foreground subagent on the first turn (two),
+an MCP server's tool on every turn (two) and a managed sandbox from the
+test node's local provider, 1.5 s to create and 50 ms a call (one). Each
+feature's turn latency is reported on its own. The MCP server is a stub
+the test node answers in process behind the agents' egress
+(`HostServices::egress`, `crates/cell-testkit/src/stub_mcp.rs`), since
+the MCP transport refuses a server whose address is private, which an
+in-cluster one would be. `crates/cell-testkit/tests/mix.rs` runs the mix on
+a fleet and checks what each kind of session answered.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

@@ -26,6 +26,7 @@ inspection.
 | Provider resolution through a host `ProviderStore` and `DriverRegistry` | The Environment-selected session filesystem and its containment |
 | Provider retry and stream-stall budgets | Canonical history: observers only observe |
 | Call-time MCP credentials | Framework capability ids, aliases and tool names |
+| The outbound boundary for runtime traffic (MCP servers, web tools) | The address checks the MCP transport makes before a request reaches that boundary |
 | Credential-free provider-request metadata and OpenRouter attribution | Request correlation ids such as `session_id` and `turn_id` |
 
 There is no callback that receives a runtime builder, and no runtime handle to
@@ -334,6 +335,13 @@ Host listeners receive the same committed canonical envelopes as
 slow, full or failing listener cannot fail a turn or delay other listeners, and
 nothing a listener does is written to session history. Drops are counted in
 `Engine::observer_stats`. `McpAuthProvider` requires the `mcp` feature.
+
+`HostServices::egress` replaces the Framework's direct, policy-aware transport
+for the Agent's runtime traffic with the host's own `EgressService`: a proxy
+the host already routes through, or a test host that answers a stub server in
+process. The MCP transport still validates and pins a server's address before
+its request reaches the egress, so an address that is private or does not
+resolve is refused either way.
 
 For outbound MCP OAuth login, `everruns_core::mcp::oauth::prepare_login_with_options`
 accepts `LoginOptions` with an optional `client_metadata_url`. Publish your

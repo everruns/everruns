@@ -161,6 +161,7 @@ pub struct HostServices {
     pub(crate) mcp_auth: Option<Arc<dyn McpAuthProvider>>,
     #[cfg(feature = "mcp")]
     pub(crate) mcp_discovery_cache: Option<Arc<everruns_core::host::McpDiscoveryCache>>,
+    pub(crate) egress: Option<Arc<dyn everruns_core::EgressService>>,
 }
 
 #[derive(Clone)]
@@ -300,6 +301,15 @@ impl HostServices {
         self
     }
 
+    /// Send the runtime's outbound calls (MCP servers, web tools, HTTP
+    /// capabilities) through `egress` instead of the Framework's direct,
+    /// policy-aware transport. A host that routes traffic through its own
+    /// boundary, or a test host that answers some addresses itself, sets it.
+    pub fn egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
+    }
+
     /// Ids of the registered host capabilities, in registration order.
     pub fn capability_ids(&self) -> Vec<String> {
         self.capabilities
@@ -427,6 +437,7 @@ impl fmt::Debug for HostServices {
             .field("request_metadata", &self.request_metadata);
         #[cfg(feature = "mcp")]
         debug.field("mcp_auth", &self.mcp_auth.is_some());
+        debug.field("egress", &self.egress.is_some());
         debug.finish()
     }
 }

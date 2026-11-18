@@ -829,6 +829,10 @@ impl Agent {
             backends = self.native_services.apply(backends);
         }
         let host_services = self.host_services.as_deref();
+        // The host's own outbound boundary, when it brings one.
+        let egress = host_services
+            .and_then(|services| services.egress.clone())
+            .unwrap_or_else(crate::batteries::runtime_egress_service);
         if let Some(providers) = host_services.and_then(|services| services.providers.as_ref()) {
             // Resolve before execution: an unknown host provider is a
             // configuration failure, never a fallback to another provider.
@@ -994,7 +998,7 @@ impl Agent {
             .host_composition(
                 everruns_core::host::HostComposition::builder()
                     .capability_registry(framework_capability_registry(false))
-                    .egress_service(crate::batteries::runtime_egress_service())
+                    .egress_service(egress.clone())
                     .session_file_system_factory(Arc::new(
                         everruns_core::host::InMemorySessionFileSystemFactory,
                     ))
@@ -1048,7 +1052,7 @@ impl Agent {
             let platform = everruns_core::host::HostComposition::builder()
                 .capability_registry(registry)
                 .driver_registry(everruns_contracts::driver_registry::DriverRegistry::new())
-                .egress_service(crate::batteries::runtime_egress_service())
+                .egress_service(egress.clone())
                 .session_file_system_factory(Arc::new(
                     everruns_core::host::FixedSessionFileSystemFactory::new(
                         environment.workspace_head().file_system(),
@@ -1085,7 +1089,7 @@ impl Agent {
                 let platform = everruns_core::host::HostComposition::builder()
                     .capability_registry(registry)
                     .driver_registry(everruns_contracts::DriverRegistry::new())
-                    .egress_service(crate::batteries::runtime_egress_service())
+                    .egress_service(egress.clone())
                     .session_file_system_factory(Arc::new(
                         everruns_core::host::RealDiskSessionFileSystemFactory::new(root),
                     ))
