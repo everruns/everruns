@@ -6,7 +6,9 @@ import vm from "node:vm";
 import os from "node:os";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { findSources, patchInstalled, patchedSource, upstreamSource, isCompatibilitySource, compatibilityImports } from "./patch-zod-v3.mjs";
+import { findSources, patchInstalled, patchedSource, upstreamSource, isCompatibilitySource, compatibilityImports, hash } from "./patch-zod-v3.mjs";
+
+const PLAYWRIGHT_1_65_BUNDLE = "897440163be29ea4c73c6203ce2fc244aebb2916839d37b8591a94b72d929a0a";
 
 async function verifyBounds(z) {
   let visited = 0;
@@ -192,7 +194,10 @@ test("every installed legacy engine is patched, including ESM, CJS and bundled t
         const element = string.refine(() => { visited++; return true; });
         const array = isPlaywright ? element.array() : before.ZodArray.create(element);
         array.max(2).safeParse(["a", "b", "c"]);
-        assert.equal(visited, 3, "published v3 reproduces the original unnecessary element walk");
+        // Playwright 1.65.0 bundles a Zod that already checks the bound
+        // before walking elements; the guard still applies, as a no-op there.
+        const upstreamBounded = hash(upstreamSource(source)) === PLAYWRIGHT_1_65_BUNDLE;
+        assert.equal(visited, upstreamBounded ? 0 : 3, "published v3 reproduces the original unnecessary element walk");
         fs.rmSync(fixture);
         fs.writeFileSync(fixture, patched, { flag: "wx" });
         // CJS module caching uses the physical filename, unlike ESM query keys.

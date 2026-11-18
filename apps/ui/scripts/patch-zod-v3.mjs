@@ -44,6 +44,7 @@ const legacyV4Hashes = new Set([
   "1493aad710c85598540c34abc02a5e383a7b1ca491da83b387498df32fd92dfe", // license-verifier ESM
   "2d1ccc01d21b7d54ca99a6305991d7fb6e072ea4e725d7fec5eb6184188c52c9", // Playwright 1.63.0 protocol bundle
   "75f1431ea7ee00b2b291a0a72d4fa1c07ae04d999f21a00cd03b8f454a5840fc", // Playwright 1.64.1 protocol bundle
+  "897440163be29ea4c73c6203ce2fc244aebb2916839d37b8591a94b72d929a0a", // Playwright 1.65.0 protocol bundle
 ]);
 // Next compiles its private v3 copy into a single CJS module. Use its own
 // exported parser primitives; do not rewrite minified code or swap engines.
