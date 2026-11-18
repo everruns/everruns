@@ -28,7 +28,7 @@ everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
 everruns-capabilities = { workspace = true, features = ["embedded-platform-docs", "environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-integrations = { workspace = true, features = ["daytona", "e2b", "boxd", "modal", "kubernetes-sandbox"] }
-openraft = { version = "=0.9.25", features = ["serde", "storage-v2"] }
+openraft = { version = "=0.9.26", features = ["serde", "storage-v2"] }
 tokio.workspace = true
 tokio-stream = { workspace = true, features = ["sync"] }
 futures.workspace = true
