@@ -83,7 +83,7 @@ dotenvy.workspace = true
 clap.workspace = true
 jsonwebtoken.workspace = true
 # Validates `json_schema` eval scorers (already linked through everruns-core).
-jsonschema = { version = "0.60.1", default-features = false }
+jsonschema = { version = "0.61.0", default-features = false }
 rand.workspace = true
 sha2.workspace = true
 hmac.workspace = true
