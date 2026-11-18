@@ -384,7 +384,7 @@ impl Planner<'_> {
             if transcript.len().div_ceil(4) + self.policy.summarization_prompt().len().div_ceil(4)
                 > summary_input_budget
             {
-                return Err(AgentLoopError::store(
+                return Err(AgentLoopError::config(
                     "continuity source page exceeds summary input budget; history was not replaced",
                 ));
             }
@@ -403,6 +403,7 @@ impl Planner<'_> {
             let candidate = self.store.get_latest_format(self.session_id, PROVIDER, CANDIDATE_MODEL, FORMAT).await?
                 .filter(|c| c.source_sequence == boundary && matches!(&c.payload,
                     CompactionCheckpointPayload::Portable { continuity } if continuity.source_fingerprint == source_fingerprint));
+            let reuse_candidate = candidate.is_some();
             let checkpoint = if let Some(mut candidate) = candidate {
                 candidate.id = Uuid::now_v7();
                 candidate.model = MODEL.to_string();
@@ -474,13 +475,13 @@ impl Planner<'_> {
                     ))
                     .await?;
                 if !valid_summary(&response) {
-                    return Err(AgentLoopError::store(
+                    return Err(AgentLoopError::config(
                         "continuity summary was empty, truncated, or requested tools; history was not replaced",
                     ));
                 }
                 let text =
                     crate::attachment_labels::summary_with_attachment_list(&response.text, &wire);
-                let checkpoint = CompactionCheckpoint {
+                CompactionCheckpoint {
                     id: Uuid::now_v7(),
                     session_id: self.session_id,
                     source_sequence: boundary,
@@ -499,14 +500,7 @@ impl Planner<'_> {
                                 .map_err(|e| AgentLoopError::store(e.to_string()))?,
                         },
                     },
-                };
-                // Save a completed candidate before installation. Replaying an
-                // identical source after an installation failure reuses it.
-                let mut candidate = checkpoint.clone();
-                candidate.id = Uuid::now_v7();
-                candidate.model = CANDIDATE_MODEL.to_string();
-                self.store.install(candidate).await?;
-                checkpoint
+                }
             };
             let after_tokens = match &checkpoint.payload {
                 CompactionCheckpointPayload::Portable { continuity } => {
@@ -523,9 +517,17 @@ impl Planner<'_> {
                 (tokens(prefix) + previous.len().div_ceil(4) + previous_pinned_tokens) as u64,
                 after_tokens as u64,
             ) {
-                return Err(AgentLoopError::store(
+                return Err(AgentLoopError::config(
                     "continuity summary did not materially reduce its source; history was not replaced",
                 ));
+            }
+            // Only a validated reduction is reusable after an installation
+            // failure. A rejected candidate must not poison the next attempt.
+            if !reuse_candidate {
+                let mut candidate = checkpoint.clone();
+                candidate.id = Uuid::now_v7();
+                candidate.model = CANDIDATE_MODEL.to_string();
+                self.store.install(candidate).await?;
             }
             if !self.store.install(checkpoint.clone()).await? {
                 // Another worker advanced the canonical boundary; reload it.

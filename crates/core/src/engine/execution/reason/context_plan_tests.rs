@@ -69,6 +69,27 @@ mod lifecycle_tests {
             })
         }
     }
+    struct NonReducingSummarizer;
+    #[async_trait::async_trait]
+    impl ChatDriver for NonReducingSummarizer {
+        async fn chat_completion_stream(
+            &self,
+            _: &crate::engine::ProviderEndpoint,
+            _: Vec<Message>,
+            _: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            let mut metadata = LlmCompletionMetadata::default();
+            metadata.finish_reason = Some("stop".into());
+            Ok(LlmResponse {
+                text: "unreduced evidence ".repeat(5000),
+                tool_calls: None,
+                reasoning: vec![],
+                metadata,
+            }
+            .into_stream())
+        }
+    }
+
     struct Summarizer {
         calls: AtomicUsize,
         finish: &'static str,
@@ -166,6 +187,63 @@ mod lifecycle_tests {
     }
 
     #[tokio::test]
+    async fn a_non_reducing_summary_is_not_cached_as_a_reusable_candidate() {
+        let store: Arc<dyn CompactionCheckpointStore> =
+            Arc::new(InMemoryCompactionCheckpointStore::default());
+        let journal = history(100);
+        let session = SessionId::new();
+        let emitter = TestEventEmitter::new();
+        let error = Planner {
+            store: &store,
+            retriever: &journal,
+            driver: &NonReducingSummarizer,
+            policy: policy().as_ref(),
+            emitter: &emitter,
+            event_context: &EventContext::empty(),
+            session_id: session,
+            provider: "test",
+            model: "test",
+            reason: crate::events::CompactionReason::ProactiveBudget,
+            source_sequence: 100,
+            budget: 4096,
+            summary_input_budget: 16_000,
+        }
+        .run()
+        .await
+        .unwrap_err();
+        assert!(error.is_non_retryable());
+        assert!(
+            store
+                .get_latest_format(session, PROVIDER, CANDIDATE_MODEL, FORMAT)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let good = Summarizer {
+            calls: AtomicUsize::new(0),
+            finish: "stop",
+        };
+        run(&store, &journal, &good, &emitter, session, 100)
+            .await
+            .unwrap();
+        assert!(good.calls.load(Ordering::SeqCst) > 0);
+        assert!(
+            store
+                .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
     async fn truncated_summary_is_billed_but_never_replaces_history() {
         let store: Arc<dyn CompactionCheckpointStore> =
             Arc::new(InMemoryCompactionCheckpointStore::default());
@@ -175,10 +253,12 @@ mod lifecycle_tests {
         };
         let emitter = TestEventEmitter::new();
         let session = SessionId::new();
+        let error = run(&store, &history(100), &driver, &emitter, session, 100)
+            .await
+            .unwrap_err();
         assert!(
-            run(&store, &history(100), &driver, &emitter, session, 100)
-                .await
-                .is_err()
+            error.is_non_retryable(),
+            "rejected summaries must not be paid for again automatically"
         );
         assert!(
             store
@@ -538,17 +618,19 @@ mod lifecycle_tests {
         let mut journal = history(100);
         journal.0[0] = RuntimeMessage::user("unabridged requirement ".repeat(5000));
         let session = SessionId::new();
+        let error = run(
+            &store,
+            &journal,
+            &driver,
+            &TestEventEmitter::new(),
+            session,
+            100,
+        )
+        .await
+        .unwrap_err();
         assert!(
-            run(
-                &store,
-                &journal,
-                &driver,
-                &TestEventEmitter::new(),
-                session,
-                100
-            )
-            .await
-            .is_err()
+            error.is_non_retryable(),
+            "an oversized source cannot self-heal by retrying the same input"
         );
         assert_eq!(driver.calls.load(Ordering::SeqCst), 0);
         assert!(
