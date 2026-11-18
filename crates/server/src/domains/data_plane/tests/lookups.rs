@@ -19,12 +19,22 @@ fn internal_ctx(cp: &ControlPlane, org_id: i64) -> crate::domains::common::Ctx {
 }
 
 async fn ask(cp: &ControlPlane, org_id: i64, command: &str, params: Value) -> LookupAnswer {
+    ask_as(cp, &internal_ctx(cp, org_id), command, params).await
+}
+
+/// [`ask`] as `ctx`.
+async fn ask_as(
+    cp: &ControlPlane,
+    ctx: &crate::domains::common::Ctx,
+    command: &str,
+    params: Value,
+) -> LookupAnswer {
     let row = cp.db.dp_org(ORG).await.unwrap().unwrap();
     let request = uuid::Uuid::now_v7().to_string();
     let sealed = lookups::answer(
         cp,
         &row,
-        &internal_ctx(cp, org_id),
+        ctx,
         LookupRequest {
             request: request.clone(),
             command: command.into(),
@@ -96,6 +106,7 @@ async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
     assert!(lookups::allowed("worker_get_org_egress_allowlist"));
     assert!(lookups::allowed("slack_action"));
     assert!(lookups::allowed("platform_command_surface"));
+    assert!(lookups::allowed("session_sql_db"));
     for command in [
         "worker_get_sandbox_connection_token",
         "worker_get_mcp_connection_token",
@@ -252,4 +263,99 @@ async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
         json!("invalid_argument"),
         "{answer}"
     );
+}
+
+#[tokio::test]
+async fn a_sessions_sql_databases_are_the_control_planes_and_the_orgs_only() {
+    use everruns_contracts::dataplane::SESSION_SQL_DB;
+
+    let (cp, _, _) = control_plane().await;
+    let backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
+    let store: Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore> =
+        Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(backend));
+    let ctx = internal_ctx(&cp, ORG).with_sqldb_store(store.clone());
+    let mine = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(ORG))
+        .await
+        .unwrap()
+        .id;
+    let stranger = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(
+            everruns_core::DEFAULT_ORG_ID,
+        ))
+        .await
+        .unwrap()
+        .id;
+    let op = |session: everruns_contracts::typed_id::SessionId, op: &str, extra: Value| {
+        let mut params = json!({ "session_id": session.to_string(), "op": op });
+        params
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        params
+    };
+    let value = |answer: LookupAnswer| match answer {
+        LookupAnswer::Value(value) => value,
+        other => panic!("an SQL answer is a value: {other:?}"),
+    };
+
+    let created = value(
+        ask_as(
+            &cp,
+            &ctx,
+            SESSION_SQL_DB,
+            op(mine, "create", json!({ "name": "notes" })),
+        )
+        .await,
+    );
+    assert_eq!(created["ok"]["name"], json!("notes"), "{created}");
+    let done = value(
+        ask_as(
+            &cp,
+            &ctx,
+            SESSION_SQL_DB,
+            op(
+                mine,
+                "execute",
+                json!({ "name": "notes", "sql": "CREATE TABLE t (n INTEGER)" }),
+            ),
+        )
+        .await,
+    );
+    assert!(done.get("ok").is_some(), "{done}");
+    // The console reads the same store the cell's tools wrote.
+    let listed = store.list_databases(mine).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, "notes");
+
+    // A missing database keeps its kind for the tool.
+    let missing = value(
+        ask_as(
+            &cp,
+            &ctx,
+            SESSION_SQL_DB,
+            op(mine, "query", json!({ "name": "nope", "sql": "SELECT 1" })),
+        )
+        .await,
+    );
+    assert_eq!(
+        missing["error"]["error"],
+        json!("database_not_found"),
+        "{missing}"
+    );
+
+    // Another org's session is never reached, its store untouched.
+    let refused = value(
+        ask_as(
+            &cp,
+            &ctx,
+            SESSION_SQL_DB,
+            op(stranger, "create", json!({ "name": "x" })),
+        )
+        .await,
+    );
+    assert_eq!(refused["error"]["error"], json!("internal"), "{refused}");
+    assert!(store.list_databases(stranger).await.unwrap().is_empty());
 }

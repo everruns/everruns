@@ -303,6 +303,96 @@ async fn a_slack_action_runs_as_the_sessions_endpoint_and_keeps_its_error() {
     assert!(slack(&standalone, session).is_none());
 }
 
+/// The SQL database store `attach` installs for `session`, when it installs one.
+fn sqldb(
+    material: &Arc<Material>,
+    session: SessionId,
+) -> Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>> {
+    let material: Arc<dyn OrgMaterial> = material.clone();
+    let backends = super::attach(
+        everruns_core::host::HostBackends::in_memory(),
+        Arc::new(Keys),
+        Some(&Arc::downgrade(&material)),
+        session,
+    );
+    let factory = backends.tool_context_extensions_factory?;
+    factory(0, session)
+        .get::<everruns_contracts::session_sqldb::SessionSqlDbStoreExt>()
+        .map(|ext| ext.0.clone())
+}
+
+#[tokio::test]
+async fn a_sql_database_lives_in_the_control_plane_and_keeps_its_error_kind() {
+    use everruns_contracts::session_sqldb::SessionSqlDbError;
+    let session = SessionId::new();
+    let rows = Material::new(
+        true,
+        Ok(LookupAnswer::Value(json!({
+            // As the control plane writes it: `truncated` left out when false.
+            "ok": { "columns": ["n"], "rows": [[1]], "row_count": 1 }
+        }))),
+    );
+    let result = sqldb(&rows, session)
+        .expect("installed")
+        .sql_query(session, "notes", "SELECT 1 AS n")
+        .await
+        .unwrap();
+    assert_eq!(result.columns, vec!["n".to_owned()]);
+    assert_eq!(result.rows, vec![vec![json!(1)]]);
+    {
+        let asked = rows.asked.lock();
+        assert_eq!(asked[0].0, "org-a");
+        assert_eq!(asked[0].1, everruns_contracts::dataplane::SESSION_SQL_DB);
+        assert_eq!(
+            asked[0].2,
+            json!({
+                "session_id": session.to_string(),
+                "op": "query",
+                "name": "notes",
+                "sql": "SELECT 1 AS n",
+            })
+        );
+    }
+
+    // A timeout stays a timeout, so the tool tells the model what v1 does.
+    let slow = Material::new(
+        true,
+        Ok(LookupAnswer::Value(
+            json!({ "error": SessionSqlDbError::QueryTimeout(5) }),
+        )),
+    );
+    let error = sqldb(&slow, session)
+        .unwrap()
+        .sql_execute(session, "notes", "DELETE FROM t")
+        .await;
+    assert!(
+        matches!(error, Err(SessionSqlDbError::QueryTimeout(5))),
+        "{error:?}"
+    );
+
+    // Another session's databases are refused before the call leaves.
+    let other = Material::new(true, Ok(LookupAnswer::Value(json!({ "ok": [] }))));
+    let error = sqldb(&other, session)
+        .unwrap()
+        .list_databases(SessionId::new())
+        .await;
+    assert!(
+        matches!(error, Err(SessionSqlDbError::Internal(_))),
+        "{error:?}"
+    );
+    assert!(other.asked.lock().is_empty());
+
+    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    let error = sqldb(&down, session).unwrap().list_databases(session).await;
+    assert!(
+        matches!(error, Err(SessionSqlDbError::Internal(_))),
+        "{error:?}"
+    );
+
+    let standalone = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
+    assert!(sqldb(&standalone, session).is_none());
+}
+
 #[tokio::test]
 async fn a_company_refusal_reaches_the_model_and_anything_else_is_unavailable() {
     let call = || -> everruns_capabilities::capabilities::PoppyCall {

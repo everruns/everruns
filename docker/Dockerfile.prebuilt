@@ -84,6 +84,8 @@ COPY --chmod=0755 bin/${TARGETARCH}/sqlx /usr/local/bin/sqlx
 COPY --chmod=0755 bin/${TARGETARCH}/reencrypt-secrets /app/reencrypt-secrets
 # Adopts the migration baseline; sqlx-cli cannot.
 COPY --chmod=0755 bin/${TARGETARCH}/everruns-migrate /app/everruns-migrate
+# Operates data planes (register one, put an org on one).
+COPY --chmod=0755 bin/${TARGETARCH}/everruns-dataplane /app/everruns-dataplane
 COPY crates/server/migrations /app/migrations
 COPY --chmod=755 docker/admin-entrypoint.sh /app/entrypoint.sh
 

@@ -40,6 +40,7 @@ use everruns_contracts::runtime::organization::org_public_id_from_internal;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::runtime::{OrgEgressAllowlist, OrgEgressGrant};
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
+use everruns_contracts::session_sqldb::SessionSqlDbStoreExt;
 use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionInvokerExt, SlackActionOutcome,
 };
@@ -143,8 +144,9 @@ fn with_lookups(
 /// `backends` for one activation of `session`: its connection resolver
 /// ([`connections`]) and, when the control plane is reached, the org's
 /// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`), the
-/// session's Poppy client (`PoppyInvokerExt`) and its Slack actions
-/// (`SlackActionInvokerExt`), as a v1 worker installs them.
+/// session's Poppy client (`PoppyInvokerExt`), its Slack actions
+/// (`SlackActionInvokerExt`) and its SQL databases (`SessionSqlDbStoreExt`),
+/// as a v1 worker installs them.
 ///
 /// Decision: automatic knowledge context (evidence added to a turn's input)
 /// stays off on a cell: the control plane records each retrieval against
@@ -185,6 +187,11 @@ pub fn attach(
                     lookups: lookups.clone(),
                     session,
                 },
+            ))));
+            // The `sql_database` tools' store: the session's databases in
+            // the control plane, where the console reads them.
+            extensions.insert(Arc::new(SessionSqlDbStoreExt(Arc::new(
+                crate::sqldb::CellSqlDb::new(lookups.clone(), session),
             ))));
             extensions
         }));
