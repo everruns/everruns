@@ -34,6 +34,7 @@ pub(super) fn model_card_url(canonical: &str) -> Option<&'static str> {
         "claude-sonnet-4-6" => "https://www.anthropic.com/claude-sonnet-4-6-system-card",
         "claude-opus-4-5" => ANTHROPIC_OPUS_4_5,
         "claude-haiku-4-5" => ANTHROPIC_HAIKU_4_5,
+        "gpt-6.2-astra" | "gpt-6.2-sol" => "https://deploymentsafety.openai.com/gpt-6-2-astra-sol",
         "gpt-6-astra" => "https://deploymentsafety.openai.com/gpt-6-astra",
         "gpt-6.1-sol" => "https://deploymentsafety.openai.com/gpt-6-1-sol",
         "gpt-6-sol" | "gpt-6-luna" => OPENAI_GPT_6_OCTOBER,

@@ -370,6 +370,21 @@ impl DaytonaClient {
         Ok(sandbox_info(sandbox))
     }
 
+    /// The whole management record of one sandbox, for diagnostics
+    /// (`owned::describe`, which copies only allowlisted fields out of it).
+    pub async fn get_sandbox_record(
+        &self,
+        sandbox_id: &str,
+    ) -> Result<management::types::Sandbox, String> {
+        self.management
+            .get_sandbox()
+            .sandbox_id_or_name(sandbox_id)
+            .send()
+            .await
+            .or_api_error(DAYTONA)
+            .await
+    }
+
     /// Bake the stopped sandbox's filesystem, never its memory or live sessions.
     pub async fn create_sandbox_snapshot(
         &self,

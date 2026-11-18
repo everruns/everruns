@@ -35,7 +35,6 @@ const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   knowledge_index: "Knowledge Indexes",
   plugin: "Plugins",
   observer: "Observers",
-  report: "Reports",
   organization: "Organizations",
   id: "Go to",
 };
@@ -56,7 +55,6 @@ const CATEGORY_ORDER: SearchResultCategory[] = [
   "knowledge_index",
   "plugin",
   "observer",
-  "report",
 ];
 
 function groupResults(results: SearchResult[]) {

@@ -20,6 +20,9 @@ tags:
 
 1. In an organization that never opted into anything, open `/chats`. Confirm Main chat,
    the **Side chats +** sidebar group, and **Threads** in the conversation header.
+   With no threads and with existing threads, confirm no standalone **+** (New side chat)
+   appears between **Back to page** and **Threads**. **Open session** and **Back to page**
+   remain available.
 2. With no side chats, confirm the sidebar still exposes **New side chat**. Open it and
    confirm no session is created until first send.
 3. Ask Main chat for longer work. Confirm it says it is starting a thread, the Threads panel

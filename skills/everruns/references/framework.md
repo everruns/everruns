@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Use unix_time when asked about time. Answer in one sentence.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .tool(unix_time())
         .build()?;
     let turn = Engine::new().create(agent).run("What time is it?").await?;

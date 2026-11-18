@@ -8,7 +8,7 @@ shared workspace, keeps a checklist, and finishes with a summary. Each finished
 thread wakes the coordinator with an automatic update, and the person resolves
 a thread by asking the coordinator.
 
-It runs on OpenAI's `gpt-6.1-sol`, so the wording and the drafts vary from run
+It runs on OpenAI's `gpt-6.2-sol`, so the wording and the drafts vary from run
 to run. A typical run:
 
 ```console

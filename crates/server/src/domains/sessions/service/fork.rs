@@ -87,12 +87,14 @@ impl SessionService {
         // Branch from a message: resolve where history stops before anything
         // is created, so an unknown message fails without leaving a session.
         let fork_up_to_sequence = match overrides.up_to_message_id.as_deref() {
-            Some(message_id) => Some(
-                self.db
-                    .fork_cut_sequence(parent_id, message_id)
-                    .await?
-                    .ok_or_else(|| ResourceNotFoundError::new("Message"))?,
-            ),
+            Some(message_id) => {
+                // A v2 parent's history is in its cell.
+                let cut = match super::fork_plane::plane_of(&self.db, org_id, parent_id).await? {
+                    Some(plane) => super::fork_plane::cut_on_plane(&plane, message_id).await?,
+                    None => self.db.fork_cut_sequence(parent_id, message_id).await?,
+                };
+                Some(cut.ok_or_else(|| ResourceNotFoundError::new("Message"))?)
+            }
             None => None,
         };
         let harness_uuid = parent.harness_id.uuid();

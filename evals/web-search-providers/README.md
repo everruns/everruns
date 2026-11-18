@@ -9,7 +9,7 @@ question that matters for picking a default: can an agent answer from the list?
 
 ```text
 dataset.jsonl ──► provider axis ──► shipped SearchDriver ──► LLM judge ──► scorers
- (59 agent-style   free, brave,      (direct egress)          gpt-6.1-sol    answerable
+ (59 agent-style   free, brave,      (direct egress)          gpt-6.2-sol    answerable
   queries + need)  parallel,         native: OpenAI           grades each    relevance (nDCG@5)
                    ceramic, exa,     Responses web_search     hit 0-3        current
                    linkup, native    on gpt-6-luna                           returned

@@ -58,8 +58,8 @@ pub const EVAL_RUN: Policy = Policy {
 
 /// Policy: Export reward-labeled trajectory datasets from eval runs.
 ///
-/// Distinct from `EVAL_VIEW`/`REPORT_VIEW` because this surface exports raw
-/// model-view message content (more sensitive than aggregate reporting). Gated
+/// Distinct from `EVAL_VIEW` because this surface exports raw model-view
+/// message content (more sensitive than aggregate results). Gated
 /// more tightly than read-only eval viewing by requiring both agent- and
 /// session-management permissions, matching the privilege of starting runs.
 pub const DATASET_EXPORT: Policy = Policy {

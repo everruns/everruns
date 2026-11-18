@@ -90,14 +90,8 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
     (
         "evaluation-reporting",
         "Evaluation & reporting",
-        "Inspect agent quality, health, observers, semantic reports and notifications.",
-        &[
-            "evals",
-            "observers",
-            "health-issues",
-            "reporting",
-            "notifications",
-        ],
+        "Inspect agent quality, health, observers and notifications.",
+        &["evals", "observers", "health-issues", "notifications"],
     ),
     (
         "operations-billing",

@@ -453,3 +453,124 @@ async fn retention_sweep_selects_paused_sandboxes_past_their_limit() {
         "an unprofiled Sandbox would be hard-deleted, losing its history"
     );
 }
+
+/// Sandbox events land on the Session's primary Sandbox, secrets in their
+/// text are scrubbed, a repeated `skipped` decision writes one row, and the
+/// pinned lifecycle reads back for diagnosis.
+#[tokio::test]
+async fn sandbox_events_record_causes_once() {
+    use everruns_server::storage::backend::sandbox_events::NewSandboxEvent;
+
+    let (_pool, backend, session_id) = setup("fleet-events").await;
+    let skipped = || {
+        NewSandboxEvent::new(
+            "idle_sweep",
+            "pause",
+            "skipped",
+            "session_active",
+            "Not paused: its session is running a turn.",
+        )
+    };
+    assert!(
+        !backend
+            .record_sandbox_event_for_session(session_id.uuid(), &skipped())
+            .await
+            .expect("record"),
+        "a Session without a Sandbox records nothing"
+    );
+
+    let pinned = backend
+        .pin_primary_sandbox(session_id, "build", &managed_spec())
+        .await
+        .expect("pin");
+    let record = |event: NewSandboxEvent| {
+        let backend = backend.clone();
+        async move {
+            backend
+                .record_sandbox_event_for_session(session_id.uuid(), &event)
+                .await
+                .expect("record")
+        }
+    };
+    assert!(record(skipped()).await);
+    assert!(!record(skipped()).await, "a repeated skip is one row");
+    assert!(
+        record(
+            NewSandboxEvent::new(
+                "idle_sweep",
+                "pause",
+                "failed",
+                "provider_error",
+                "Idle pause failed: api_key=sk-abcdefghijklmnopqrstuvwx",
+            )
+            .with_detail(json!({"proxy": "https://user:pw-secret@egress.example.com"}))
+        )
+        .await
+    );
+    assert!(record(skipped()).await, "a skip after another event is new");
+    assert!(
+        record(NewSandboxEvent::new(
+            "idle_sweep",
+            "pause",
+            "done",
+            "idle_limit",
+            "Paused"
+        ))
+        .await
+    );
+    assert!(
+        record(NewSandboxEvent::new(
+            "idle_sweep",
+            "pause",
+            "done",
+            "idle_limit",
+            "Paused"
+        ))
+        .await,
+        "done is never deduplicated"
+    );
+
+    let events = backend
+        .list_sandbox_events(
+            DEFAULT_ORG_ID,
+            pinned.id,
+            Utc::now() - Duration::hours(1),
+            Utc::now() + Duration::minutes(1),
+            100,
+        )
+        .await
+        .expect("list");
+    let outcomes: Vec<_> = events.iter().map(|e| e.outcome.as_str()).collect();
+    assert_eq!(outcomes, ["skipped", "failed", "skipped", "done", "done"]);
+    let failed = &events[1];
+    assert!(
+        !failed.message.contains("sk-abcdefghijklmnopqrstuvwx"),
+        "{}",
+        failed.message
+    );
+    assert!(
+        !failed.detail.to_string().contains("pw-secret"),
+        "{}",
+        failed.detail
+    );
+
+    let other_org = backend
+        .list_sandbox_events(
+            DEFAULT_ORG_ID + 1,
+            pinned.id,
+            Utc::now() - Duration::hours(1),
+            Utc::now() + Duration::minutes(1),
+            100,
+        )
+        .await
+        .expect("list");
+    assert!(other_org.is_empty(), "events are org-scoped");
+
+    let inputs = backend
+        .get_sandbox_lifecycle_inputs(DEFAULT_ORG_ID, pinned.id)
+        .await
+        .expect("inputs")
+        .expect("found");
+    assert!(inputs.lifecycle.is_some());
+    assert!(inputs.profile.is_some());
+}

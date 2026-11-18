@@ -131,6 +131,7 @@ it("uses a full-width drawer when the sidebar leaves insufficient room for split
 it("lists the chat's threads on the right, grouped by what they need", () => {
   render(<ChatWorkspace />);
   expect(screen.getByTestId("conversation-permanent")).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "New side chat" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Threads" })).not.toBeInTheDocument();
   // Needs you and Ready for review are open; the button counts them.
   const toggle = screen.getByRole("button", { name: /^Threads/ });
@@ -210,6 +211,8 @@ it("opens the panel by itself when the chat starts a new thread", () => {
 it("explains how threads start when the chat has none", () => {
   mockTasks = [];
   render(<ChatWorkspace />);
+  expect(screen.queryByRole("link", { name: "New side chat" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Threads$/ })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /^Threads/ }));
   expect(
     screen.getByText("No threads yet. Ask this chat for longer work and it starts one."),
@@ -225,7 +228,7 @@ it("replaces the main conversation when selecting a side chat", () => {
   fireEvent.click(screen.getByRole("button", { name: /^Threads/ }));
   fireEvent.click(screen.getByRole("button", { name: "Close threads" }));
   expect(mockPush).not.toHaveBeenCalled();
-  expect(screen.getByRole("link", { name: "New side chat" })).toHaveAttribute("href", "/chats/new");
+  expect(screen.queryByRole("link", { name: "New side chat" })).not.toBeInTheDocument();
 });
 it("opens a fresh draft as the only conversation", () => {
   mockPath = "/chats/new";

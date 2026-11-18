@@ -8,6 +8,10 @@
 // - Capability config is resolved through the Sandbox Template domain, which owns
 //   the effective harness + agent + session merge.
 
+use crate::domains::sandbox_templates::record::{DEFAULT_DELETE_AFTER_SECONDS, SandboxIdleAction};
+use crate::domains::sandboxes::events::{
+    NewSandboxEvent, action, actor, event, outcome, pause_outcome, reason, short_error,
+};
 use crate::services::EventService;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use async_trait::async_trait;
@@ -129,6 +133,16 @@ impl SessionSandboxService {
             return;
         };
         if !config.idle_pause_enabled {
+            self.record(
+                session_id,
+                event(
+                    actor::IDLE_TIMER,
+                    outcome::SKIPPED,
+                    reason::IDLE_PAUSE_OFF,
+                    "The session went idle, but idle pause is off in this sandbox's pinned configuration, so no idle timer was armed.",
+                ),
+            )
+            .await;
             return;
         }
 
@@ -140,16 +154,36 @@ impl SessionSandboxService {
             // another server replica; a session running a turn keeps its
             // sandbox, and goes idle (and arms a timer) again later.
             if service.session_is_active(session_id).await {
+                service.record(session_id, event(
+                    actor::IDLE_TIMER,
+                    outcome::SKIPPED,
+                    reason::SESSION_ACTIVE,
+                    format!("The idle timer fired after {timeout}s, but the session was running a turn; the timer is armed again when it goes idle."),
+                ))
+                .await;
                 service.idle_tasks.lock().await.remove(&session_id);
                 return;
             }
-            if let Err(err) = service.pause_for_session(session_id, &config).await {
+            let result = service.pause_for_session(session_id, &config).await;
+            if let Err(err) = &result {
                 tracing::warn!(
                     session_id = %session_id,
                     error = ?err,
                     "Failed to auto-pause session sandbox"
                 );
             }
+            service
+                .record(
+                    session_id,
+                    pause_outcome(
+                        actor::IDLE_TIMER,
+                        reason::IDLE_LIMIT,
+                        format!("Paused after {timeout}s without activity."),
+                        &result,
+                    )
+                    .with_detail(serde_json::json!({ "idle_after_seconds": timeout })),
+                )
+                .await;
             service.idle_tasks.lock().await.remove(&session_id);
         });
         self.idle_tasks.lock().await.insert(session_id, handle);
@@ -171,12 +205,41 @@ impl SessionSandboxService {
             return Ok(false);
         };
         if !config.idle_pause_enabled {
+            self.record(
+                session_id,
+                event(
+                    actor::IDLE_SWEEP,
+                    outcome::SKIPPED,
+                    reason::IDLE_PAUSE_OFF,
+                    "Past its idle limit, but idle pause is off in this sandbox's pinned configuration.",
+                ),
+            )
+            .await;
             return Ok(false);
         }
         self.cancel_idle_pause(session_id).await;
-        self.pause_for_session(session_id, &config)
-            .await
-            .map_err(|err| anyhow::anyhow!("{err:?}"))?;
+        // The sweep only picks an `active` session's sandbox once it has gone
+        // unused for the stale-turn limit.
+        let (why, message) = if self.session_is_active(session_id).await {
+            (
+                reason::STALE_TURN,
+                "Paused: its session still claims a running turn, but the sandbox went unused for 6 hours (a worker likely stopped mid-turn).",
+            )
+        } else {
+            (
+                reason::IDLE_LIMIT,
+                "Paused past its idle limit by the sweep (the in-process idle timer did not act).",
+            )
+        };
+        let result = self.pause_for_session(session_id, &config).await;
+        self.record(
+            session_id,
+            pause_outcome(actor::IDLE_SWEEP, why, message.to_string(), &result).with_detail(
+                serde_json::json!({ "idle_after_seconds": config.idle_pause_after_seconds }),
+            ),
+        )
+        .await;
+        result.map_err(|err| anyhow::anyhow!("{err:?}"))?;
         Ok(true)
     }
 
@@ -188,10 +251,60 @@ impl SessionSandboxService {
             return Ok(false);
         };
         self.cancel_idle_pause(session_id).await;
-        let context = self.tool_context(session_id).await;
-        everruns_capabilities::session_sandbox::delete_session_sandbox(&context, &config)
+        let lifecycle = self
+            .db
+            .get_primary_sandbox(session_id)
             .await
-            .map_err(|err| anyhow::anyhow!("{err:?}"))
+            .ok()
+            .flatten()
+            .map(|sandbox| sandbox.spec.lifecycle);
+        let (why, message) = match &lifecycle {
+            Some(l) if l.idle_action == SandboxIdleAction::Delete => (
+                reason::IDLE_ACTION_DELETE,
+                "Deleted after its idle pause: the pinned idle action is delete. The record stays."
+                    .to_string(),
+            ),
+            Some(l) => (
+                reason::RETENTION,
+                format!(
+                    "Deleted: paused longer than its retention ({}s since last activity). The record stays.",
+                    l.delete_after_seconds
+                        .unwrap_or(DEFAULT_DELETE_AFTER_SECONDS)
+                ),
+            ),
+            None => (
+                reason::RETENTION,
+                "Deleted: paused longer than its retention. The record stays.".to_string(),
+            ),
+        };
+        let context = self.tool_context(session_id).await;
+        let result =
+            everruns_capabilities::session_sandbox::delete_session_sandbox(&context, &config).await;
+        let recorded = match &result {
+            Ok(false) => None,
+            Ok(true) => Some(NewSandboxEvent::new(
+                actor::RETENTION_SWEEP,
+                action::DELETE,
+                outcome::DONE,
+                why,
+                message,
+            )),
+            Err(err) => Some(NewSandboxEvent::new(
+                actor::RETENTION_SWEEP,
+                action::DELETE,
+                outcome::FAILED,
+                reason::PROVIDER_ERROR,
+                format!("Retention delete failed: {}", short_error(err)),
+            )),
+        };
+        if let Some(recorded) = recorded {
+            self.record(session_id, recorded).await;
+        }
+        result.map_err(|err| anyhow::anyhow!("{err:?}"))
+    }
+
+    async fn record(&self, session_id: SessionId, event: NewSandboxEvent) {
+        crate::domains::sandboxes::events::record(&self.db, session_id, event).await;
     }
 
     async fn ensure_started(
@@ -229,6 +342,21 @@ impl SessionSandboxService {
             return Ok(None);
         };
         session_sandbox_config_from_capabilities(&capabilities).map_err(|err| anyhow::anyhow!(err))
+    }
+
+    /// [`Self::tool_context`] for a session on a data plane: its storage is
+    /// the session's cell (`plane.rs`), and no hosted state store or
+    /// resource lease is installed, since the cell keeps the sandbox's state.
+    pub(crate) async fn plane_tool_context(
+        &self,
+        session_id: SessionId,
+        storage: Arc<dyn SessionStorageStore>,
+    ) -> ToolContext {
+        let mut context = ToolContext::new(session_id);
+        context.egress_service = self.session_egress(session_id).await;
+        context.storage_store = Some(storage);
+        context.connection_resolver = self.connection_resolver.clone();
+        context
     }
 
     pub(crate) async fn tool_context(&self, session_id: SessionId) -> ToolContext {

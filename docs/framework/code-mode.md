@@ -45,7 +45,7 @@ let agent = Agent::builder()
          then do the work in one script and print only what you need.",
     )
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .capability(BashkitShell::new())
     .capability(
         CapabilityRef::new("shell_code_mode")

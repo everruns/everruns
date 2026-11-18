@@ -4,7 +4,7 @@ use everruns::{
     Agent, BuildError, ContainmentMode, HostShell, Provider, SandboxLauncher, WorkspacePolicy,
 };
 
-pub const MODEL: &str = "gpt-6.1-sol";
+pub const MODEL: &str = "gpt-6.2-sol";
 
 /// The argument this binary routes into the containment worker.
 ///

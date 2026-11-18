@@ -40,6 +40,7 @@ const COMMANDS: &[(&str, &str, &str)] = &[
     ("create_message", "POST", "messages"),
     ("list_messages", "GET", "messages"),
     ("list_events", "GET", "events"),
+    ("events_summary", "GET", "events/summary"),
     ("cancel_session", "POST", "cancel"),
     ("submit_tool_results", "POST", "tool-results"),
 ];

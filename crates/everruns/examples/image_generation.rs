@@ -1,6 +1,6 @@
 //! Ask an agent for an animated GIF and save it next to you.
 //!
-//! The agent runs on GPT-6.1 Sol and draws with GPT Image 2.6 Flare through
+//! The agent runs on GPT-6.2 Sol and draws with GPT Image 2.6 Flare through
 //! the `image_generation` capability. Generated images land in the session
 //! workspace, here a real directory, so the GIF is a file you can open.
 //!
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              then reply with one sentence about what moves.",
         )
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .capability(CapabilityRef::with_config(
             "image_generation",
             serde_json::json!({

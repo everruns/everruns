@@ -29,8 +29,8 @@ sequence.
 | `task_count` | `sessions` | `session_tasks` rows the session owns | migration 125 |
 | `file_count` | `workspaces` | non-directory `workspace_files` rows | migration 125 |
 
-`turn_count` and `tool_call_count` exist for the `fact_session` reporting projection, which
-would otherwise rescan the full event log on every snapshot upsert. `event_count`, `task_count`
+`turn_count` and `tool_call_count` were added for the Reports projection (removed 2026-11-17);
+eval proposals still read `turn_count` to skip sessions that never ran a turn. `event_count`, `task_count`
 and `file_count` exist for the session detail tab badges.
 
 ## Why the file counter lives on `workspaces`
@@ -54,8 +54,7 @@ and token totals for the same session wait on. Since migration 191 the event ins
   `allocate_event_sequence` (only tests do) is invisible to the count.
 * **Turn counters move at turn end.** A row trigger with a `WHEN` clause fires only for a
   turn's terminal event, bumps `turn_count`, moves `last_turn_*`, and adds the `tool.completed`
-  events since the previous terminal event to `tool_call_count`. Its one reader, the
-  `fact_session` projection, runs after turns finish. A tool call outside any turn is counted
+  events since the previous terminal event to `tool_call_count`. A tool call outside any turn is counted
   with the next turn that finishes.
 
 ## Contract

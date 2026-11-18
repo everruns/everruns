@@ -4,7 +4,7 @@
 //! each thread keeps a checklist and finishes with a summary, and every
 //! finished thread wakes the coordinator with an automatic update.
 //!
-//! The example runs on a real model (`gpt-6.1-sol`). The tests drive
+//! The example runs on a real model (`gpt-6.2-sol`). The tests drive
 //! [`coordinator`] with a scripted stand-in that lives only in `tests/`.
 
 use std::time::Duration;
@@ -14,7 +14,7 @@ use everruns::providers::openai::{OpenAI, OpenAIError};
 use everruns::{Agent, AgentLoopError, BuildError, LocalConfig, Model, Session, WorkspacePolicy};
 
 /// The model the example runs on.
-pub const MODEL: &str = "gpt-6.1-sol";
+pub const MODEL: &str = "gpt-6.2-sol";
 
 pub const INSTRUCTIONS: &str = "\
 You coordinate a small launch team. Do not do focused work yourself: start one \
@@ -46,7 +46,7 @@ pub fn coordinator(model: Model, workspace: &std::path::Path) -> Result<Agent, B
         .build()
 }
 
-/// OpenAI's `gpt-6.1-sol`, keyed by `OPENAI_API_KEY`.
+/// OpenAI's `gpt-6.2-sol`, keyed by `OPENAI_API_KEY`.
 pub fn openai_model() -> Result<Model, OpenAIError> {
     Ok(Model::new(MODEL, OpenAI::from_env()?))
 }

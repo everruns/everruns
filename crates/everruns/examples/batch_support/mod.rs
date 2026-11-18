@@ -35,7 +35,7 @@ pub fn provider() -> Result<(Provider, String, &'static str), Box<dyn Error>> {
             #[cfg(feature = "openai")]
             "openai" => (
                 everruns::providers::openai::OpenAI::from_env()?.into(),
-                "gpt-6.1-sol",
+                "gpt-6.2-sol",
             ),
             #[cfg(feature = "gemini")]
             "gemini" => (

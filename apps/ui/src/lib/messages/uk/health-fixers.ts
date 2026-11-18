@@ -34,4 +34,20 @@ export const messages: Readonly<Record<string, string>> = {
   "Slack did not finish the approval. Try the fix again.":
     "Slack не завершив схвалення. Спробуйте виправлення ще раз.",
   "Slack approval needed": "Потрібне схвалення в Slack",
+  "One step before the fix": "Один крок перед виправленням",
+  "Fix not available here": "Виправлення тут недоступне",
+  "Open the app in Slack": "Відкрийте застосунок у Slack",
+  "Open your Slack apps": "Відкрийте свої застосунки Slack",
+  " and go to OAuth & Permissions.": " і перейдіть до OAuth & Permissions.",
+  ", choose this agent's app, and go to OAuth & Permissions.":
+    ", виберіть застосунок цього агента і перейдіть до OAuth & Permissions.",
+  "Under Bot Token Scopes, add": "У Bot Token Scopes додайте",
+  "Click Reinstall to Workspace in the banner at the top and approve. Your workspace may need an administrator to approve it.":
+    "Натисніть Reinstall to Workspace у банері вгорі та підтвердьте. Ваш робочий простір може вимагати схвалення адміністратора.",
+  "The bot token stays the same, so there is nothing to paste back.":
+    "Токен бота не змінюється, тож нічого вставляти не потрібно.",
+  "If Slack shows a new Bot User OAuth Token, save it in":
+    "Якщо Slack показує новий Bot User OAuth Token, збережіть його в",
+  "integration settings": "налаштуваннях інтеграції",
+  "Come back here and click Check again.": "Поверніться сюди й натисніть «Перевірте ще раз».",
 };

@@ -70,7 +70,7 @@ impl StorageBackend {
     }
 
     /// The session's org, from the same cache. Listeners ask for it on nearly
-    /// every event (reporting, sandbox capabilities). Like the rest of the
+    /// every event (sandbox capabilities). Like the rest of the
     /// lineage, a deleted session's org can still be served until its entry
     /// expires; callers that must see a deletion read the row.
     pub async fn session_org_id(&self, id: SessionId) -> Result<Option<i64>> {

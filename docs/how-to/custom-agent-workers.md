@@ -180,7 +180,7 @@ fn build_sales_agent(database: PathBuf, provider: Provider) -> anyhow::Result<Ag
     Ok(Agent::builder()
         .name("private-sales-agent")
         .provider(provider)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .instructions("Use sales_summary for sales questions. Never invent numbers.")
         .max_iterations(8)
         .tool(tool)

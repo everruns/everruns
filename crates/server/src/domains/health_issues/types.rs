@@ -101,7 +101,7 @@ pub struct FindingInvestigation {
     #[schema(example = 3)]
     pub cluster_open: Option<i64>,
     /// The model that wrote it.
-    #[schema(example = "gpt-6.1-sol")]
+    #[schema(example = "gpt-6.2-sol")]
     pub model: Option<String>,
     /// When the write-up was finished.
     #[schema(example = "2026-10-18T21:40:00Z")]

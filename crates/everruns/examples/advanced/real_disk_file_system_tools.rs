@@ -11,7 +11,7 @@
 //   3. No bespoke per-embedder filesystem code: the in-tree capability is
 //      the only thing wired up.
 //
-// The agent is a real model (OpenAI `gpt-6.1-sol`) that decides to call the
+// The agent is a real model (OpenAI `gpt-6.2-sol`) that decides to call the
 // file tools from a plain-language request. Set `OPENAI_API_KEY`.
 //
 // Run with:
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
         .provider(everruns::OpenAI::from_env()?.into())
-        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
+        .default_model(ModelSpec::on("openai", "gpt-6.2-sol"))
         .harness(everruns_core::host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {

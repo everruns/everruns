@@ -35,7 +35,7 @@ pub struct EvalBuilderRun {
     pub completed_at: Option<DateTime<Utc>>,
     /// Model that wrote the proposals.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-6.1-sol")]
+    #[schema(example = "gpt-6.2-sol")]
     pub model: Option<String>,
     /// What the model call cost, when the provider reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]

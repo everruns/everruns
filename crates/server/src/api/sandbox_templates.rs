@@ -167,6 +167,9 @@ pub fn routes(state: AppState) -> Router {
         .command::<GetSandboxFleetStats>()
         .command::<GetSandboxTimeline>()
         .command::<GetSandbox>()
+        .command::<crate::domains::sandboxes::diagnose::ListSandboxEvents>()
+        .command::<crate::domains::sandboxes::diagnose::GetSandboxProviderState>()
+        .command::<crate::domains::sandboxes::diagnose::DiagnoseSandbox>()
         .route(
             "/v1/sandbox-templates",
             get(list_sandbox_templates).post(create_sandbox_template),

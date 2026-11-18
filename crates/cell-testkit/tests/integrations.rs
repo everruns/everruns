@@ -17,109 +17,13 @@ mod support;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use everruns_cell::dp::{ConfigAck, ConfigChange, ConfigUpdate};
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell_testkit::fake_cp::FakeCp;
-use everruns_contracts::dataplane::TenantPolicy;
-use everruns_contracts::dataplane_seal as seal;
-use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_contracts::typed_id::MessageId;
 use futures::StreamExt;
-use reqwest::{Method, StatusCode};
+use reqwest::StatusCode;
 use serde_json::{Value, json};
 use support::{Fleet, answers};
 
-const ORG: &str = "org-a";
-
-/// A fleet with `ORG` enabled, running the `echo` agent as `helper`, its
-/// policy tapping `events`; and an executor.
-async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
-    let cp = FakeCp::start().await.unwrap();
-    cp.set_balance(ORG, 1_000_000_000);
-    let mut fleet = Fleet::start_with_cp(Some(ControlPlane::new(cp.url.clone()))).await;
-    let base = fleet.base();
-    let dp_key = seal::random_key();
-    let wrapped = seal::wrap_data_key(
-        &dp_key,
-        ORG,
-        "dk-1",
-        &seal::random_key(),
-        seal::random_nonce(),
-    )
-    .unwrap();
-    let (status, ack) = cp
-        .call(
-            &base,
-            Method::PUT,
-            &format!("/dp/v1/orgs/{ORG}"),
-            &json!({ "command_id": "enable-1", "wrapped_data_key": wrapped, "data_key_id": "dk-1" }),
-        )
-        .await
-        .unwrap();
-    assert_eq!(status, StatusCode::OK, "{ack}");
-    let mut package = everruns_cell_testkit::definition("echo").unwrap();
-    package["name"] = json!("helper");
-    let policy = TenantPolicy {
-        events: events.iter().map(|t| t.to_string()).collect(),
-        ..TenantPolicy::default()
-    };
-    let ack = cp
-        .push_config(
-            &base,
-            ORG,
-            &ConfigUpdate {
-                epoch: 1,
-                version: 1,
-                base_version: 0,
-                changes: vec![
-                    ConfigChange::Policy(policy).to_value(),
-                    json!({ "kind": "Agent", "agent_id": "helper", "revision": 1, "package": package }),
-                ],
-            },
-        )
-        .await
-        .unwrap();
-    assert_eq!(ack, ConfigAck::Ok { applied_version: 1 });
-    fleet.executor(1).set_dp_key(dp_key);
-    // Every cell's leader reads the org's tapped types with the tenants
-    // view, once a poll.
-    tokio::time::sleep(everruns_cell::tenants::POLL * 2).await;
-    (fleet, cp)
-}
-
-/// A session of `ORG`, created as the control plane does.
-async fn session(fleet: &Fleet, cp: &FakeCp) -> String {
-    let id = SessionId::new();
-    let (status, created) = cp
-        .call(
-            &fleet.base(),
-            Method::POST,
-            &format!("/dp/v1/orgs/{ORG}/sessions"),
-            &json!({ "id": id, "agent_ref": "helper" }),
-        )
-        .await
-        .unwrap();
-    assert_eq!(status, StatusCode::CREATED, "{created}");
-    id.to_string()
-}
-
-/// One of the session commands a channel sends; its status and answer.
-async fn command(
-    fleet: &Fleet,
-    cp: &FakeCp,
-    org: &str,
-    session: &str,
-    command: &str,
-    body: Value,
-) -> (StatusCode, Value) {
-    cp.call(
-        &fleet.base(),
-        Method::POST,
-        &format!("/dp/v1/orgs/{org}/sessions/{session}/{command}"),
-        &body,
-    )
-    .await
-    .unwrap()
-}
+use support::org::{ORG, command, org_fleet, session};
 
 /// The session's events after `after`, as a channel follows them, until
 /// one of type `until`.

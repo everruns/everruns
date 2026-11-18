@@ -310,19 +310,6 @@ providers models list	--context-revision --provider-id! --reason
 providers models review	--context-revision --id! --reason
 providers sync-models sync	--context-revision --id! --reason
 providers update	--api --api-key --base-url --context-revision --id! --name --provider-type --reason --request-options --status --trace
-reports admin backfill	--context-revision --limit --reason
-reports admin diagnostics get	--context-revision --reason
-reports catalog get	--context-revision --reason
-reports projector run	--context-revision --limit --reason
-reports query export	--context-revision --format --query! --reason
-reports query run	--context-revision --dataset! --dimensions... --filters --limit --measures... --order-by --reason --time-range!
-reports saved create	--context-revision --dashboard --description --name! --query! --reason
-reports saved delete	--context-revision --reason --report-id!
-reports saved export	--context-revision --reason --report-id! --request!
-reports saved get	--context-revision --reason --report-id!
-reports saved list	--context-revision --reason
-reports saved run	--context-revision --reason --report-id!
-reports saved update	--context-revision --reason --report-id! --request!
 resources grants grant	--constraints --consumer-id --consumer-scope! --context-revision --expires-at --id! --reason --usage!
 resources grants list	--context-revision --id! --reason
 resources grants revoke	--context-revision --grant-id! --id! --reason
@@ -367,8 +354,11 @@ sandbox-templates builds discard	--context-revision --id! --reason
 sandbox-templates builds get	--context-revision --id! --reason
 sandbox-templates builds list	--context-revision --id! --offset --reason
 sandbox-templates builds start	--build-network --context-revision --id! --install-script! --metadata-path --reason --source-revision-id! --timeout-seconds --verification-command
+sandboxes diagnose	--context-revision --id --reason <id>
+sandboxes events list	--context-revision --from --id --limit --reason --to <id>
 sandboxes get	--context-revision --id --reason <id>
 sandboxes list	--agent-id --context-revision --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
+sandboxes provider get	--context-revision --id --reason <id>
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
 sandboxes timeline get	--agent-id --context-revision --from --include-in-process --limit --needs-attention --provider --reason --sandbox-template-id --search --state --to
 sessions approval-mode get	--context-revision --reason --session-id!

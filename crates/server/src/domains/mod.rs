@@ -42,7 +42,6 @@ pub mod payments;
 pub mod plugins;
 pub mod poppy_agent;
 pub mod providers;
-pub mod reporting;
 pub mod resource_access;
 pub mod rooms;
 pub mod sandbox_templates;

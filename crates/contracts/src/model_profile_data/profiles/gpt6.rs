@@ -1,5 +1,5 @@
 // GPT-6 series profiles: Astra (flagship), Sol (balanced), Luna (fast/cheap),
-// and the GPT-6.1 Sol refresh.
+// and the GPT-6.1 / GPT-6.2 refreshes.
 //
 // All of them share a 1.05M context, 128K output, and a tier that bills prompts
 // above 272K input tokens at 2x input/cache and 1.5x output for the whole
@@ -98,6 +98,49 @@ pub(super) fn profile_data(model_id: &str) -> Option<ModelProfile> {
             terra.supported_parameters.clear();
             terra.speed = None;
             Some(terra)
+        }
+        // Verified against models.dev and the official model pages (2026-11-17):
+        // developers.openai.com/api/docs/models/gpt-6.2-{astra,sol}
+        "gpt-6.2-astra" | "gpt-6.2-sol" => {
+            let astra = model_id == "gpt-6.2-astra";
+            let mut model = profile(
+                if astra {
+                    "GPT-6.2 Astra"
+                } else {
+                    "GPT-6.2 Sol"
+                },
+                model_id,
+                if astra {
+                    "OpenAI's most capable model for complex end-to-end work."
+                } else {
+                    "OpenAI's balanced model for coding and agents at scale."
+                },
+                "2026-11-17",
+                if astra { "2026-05-18" } else { "2026-06-01" },
+                if astra {
+                    [8.0, 40.0, 0.4]
+                } else {
+                    [2.0, 10.0, 0.1]
+                },
+                efforts(&ALL_EFFORTS[1..]),
+            );
+            if let Some(limits) = model.limits.as_mut() {
+                limits.input = Some(922_000);
+            }
+            // Flex is not offered. Fast and priority are wire aliases.
+            model.speed = Some(SpeedConfig {
+                values: vec![
+                    priced_speed(Speed::Default, "Standard", 1.0),
+                    priced_speed(Speed::Fast, "Fast", 2.0),
+                    priced_speed(
+                        Speed::Ultrafast,
+                        "Ultrafast",
+                        ultrafast_multiplier(chrono::Utc::now().timestamp()),
+                    ),
+                ],
+                default: Speed::Default,
+            });
+            Some(model)
         }
         _ => None,
     }
@@ -200,5 +243,28 @@ fn profile(
         model_card_url: None,
         decisions: None,
         images: None,
+    }
+}
+
+// The introductory rate ends at 2027-03-01 00:00 Pacific (08:00 UTC).
+// Evaluate the current catalog rate rather than leaving a stale promotional
+// price after the deadline. Persisted usage costs are not recalculated here.
+fn ultrafast_multiplier(unix_seconds: i64) -> f64 {
+    if unix_seconds < 1_803_888_000 {
+        3.0
+    } else {
+        6.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn ultrafast_promotion_ends_at_pacific_midnight() {
+        let boundary = chrono::DateTime::parse_from_rfc3339("2027-03-01T08:00:00Z")
+            .unwrap()
+            .timestamp();
+        assert_eq!(super::ultrafast_multiplier(boundary - 1), 3.0);
+        assert_eq!(super::ultrafast_multiplier(boundary), 6.0);
     }
 }

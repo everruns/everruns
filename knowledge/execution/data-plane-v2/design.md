@@ -1869,8 +1869,8 @@ hands the list to every cell on the tenants poll, so a change reaches a
 cell within one poll, about 2 s), the cell copies
 those committed events onto the feed (`crates/cell/src/tap.rs`, payloads
 over 512 KiB left out and named), and feed ingest hands each to the same
-listeners v1 runs, once, by feed position. Reports are deprecated and get
-nothing from v2 orgs; analytics come from the warehouse export, which is
+listeners v1 runs, once, by feed position. Reports were removed
+(2026-11-17); analytics come from the warehouse export, which is
 opt-in per org (`everruns-dataplane warehouse <org> on`): every event goes
 onto the feed and the control plane writes gzipped
 NDJSON per org, hour and batch under `warehouse/{org}/date=/hour=/` in its
@@ -1880,6 +1880,168 @@ debug build, two cells, 200 channel sessions, ten at a time, the directory
 cell's leader killed between rounds): reply p50 334 ms, p99 721 ms (gate
 5 s); tapped event to the control plane p99 468 ms (gate 2 min); all 400
 turns reached the listeners exactly once across the election (5.9 s).
+
+**11.6 A full org on a v2 data plane: the session's reads.** The control
+plane keeps serving the session features its own tables answer for a v1
+session (the Trace view, reactions, ratings, question answers, the context
+meter, export) for a v2 session too, with the same code: one implementation
+per feature keeps validation, attribution and policy in one place. It
+reads the session's events from the cell through the gateway's
+`GET /dp/v1/orgs/{org}/sessions/{id}/{read}` (`crates/cell/src/gateway_reads.rs`:
+`trace` folds the committed events with `everruns_core::session_trace`, the
+fold the control plane's own index uses; `events` selects a sequence range by
+type or message id, public form, at most 1000; `log` pages the whole log for
+an export) through `SessionPlane`
+(`crates/server/src/domains/data_plane/session_plane.rs`), and sends an
+outcome back as a session command: `tool-results` for a question set's
+answers, `record` for a person's reaction, which the cell journals only for
+the event types it lets the control plane write (`platform::RECORDABLE`).
+The edge sends these calls to the control plane (`edge.rs` `RECORD`). A cell
+keeps no trace index: rows are recomputed on each read, which costs nothing
+for an idle session. The session's own `/v1` events take the console's
+search filters and summary in the cell (`q` is a case-insensitive substring
+over the event's data, the control plane's in-memory fallback). Known
+differences on v2: a subagent's child session in the trace is found from
+the call's result; a reaction left for the agent's next turn reaches it only
+with a message the control plane admits.
+
+**11.6 continued: the session's storage and the actions on it.** A v2
+session's values and secrets stay in its authority on the cell, where its
+agent's tools read them. The control plane keeps the Storage API (keys,
+secrets, the approval mode switch, which is a reserved key) for both planes
+with one code path, policy and validation: it reads them with the `storage`
+read and changes them with the `storage` session command
+(`crates/cell/src/session_storage.rs`,
+`crates/server/src/domains/session_storage/plane.rs`). Session secrets are
+sealed with the org's data key, bound to the session and the name
+(`dataplane_seal::seal_session_secret`): the control plane seals what a
+person stores, an executor seals what the agent stores and opens what it
+reads, and a cell node, the log and its shipped copies hold ciphertext only;
+the node refuses a secret that does not arrive sealed for its session. With
+storage in place, the control plane also answers on the cell: secret
+answers and MCP form questions (the answer is parked in the session's
+storage and the person's words follow as their message, since the model
+never made the engine's synthetic call), an MCP server's sign-in link
+consent, a fork (the parent's conversation up to the cut seeds the child,
+which is created on the same data plane, and its values and secrets are
+copied, each secret opened and sealed again for the child), and the whole
+run view (turns from the cell's trace rows). A standalone cell (no control
+plane, so no data plane key) keeps session secrets as written: nothing
+seals them there. Known differences on v2: a cell keeps no timestamps for
+values and secrets; a fork carries messages with their text and media but
+not tool calls, files or databases (a workspace fork comes with the tree
+in the object store, [fs.md](fs.md) step 8); bound secrets are refused.
+
+**11.6 continued: attachments and the Work tab.** Uploads stay org records
+on the control plane. A message that refers to one (`image_file`, `file`)
+goes through the control plane: the edge looks at the body of a v2
+session's `POST messages` and passes such a message there, while text keeps
+going straight to the cell. The control plane copies each upload into the
+session's files on the cell at the path a v1 session uses
+(`/attachments/<id>/<name>`, read-only, a zip unpacked next to it), then
+admits the message with its parts (`crates/server/src/domains/data_plane/attachments.rs`).
+Channels (Slack) do the same before they send. An inline image sent to the
+cell is written to the session's files by the gateway and referred to by id,
+so the bytes stay out of the log (`crates/cell/src/gateway_input.rs`). The
+executor reads an attachment's bytes back from the session's files, so a
+cell never asks the control plane for them during a turn, and a node refuses
+a message naming an attachment its session does not hold. The Work tab:
+task cancel and a person's message to a task are cell commands with the
+control plane's rules; the work report is computed on the cell from the
+turn's events with the same reducer; a cell leases no resources, so the
+resources list is empty. Not served on v2 yet: task push-notification
+configs (no delivery on the data plane; the test org uses none).
+
+**11.6 continued: the sandbox panel and schedule spend caps.** Pausing,
+resuming and deleting a v2 session's sandbox is the control plane's, with
+the v1 lifecycle code: it pinned the sandbox and holds the provider
+account, and it starts from the state the agent's sandbox keeps on the
+cell as a sealed session secret, which it reads, opens and writes back
+sealed (`crates/server/src/domains/session_sandbox/plane.rs`). The
+executor's next sandbox call reads that state, so a paused sandbox resumes
+and a deleted one is replaced and restored from the workspace. Idle pause
+is the control plane's sweep: it pauses the sandbox of a v2 session whose
+last turn, from the turn summaries the data plane feeds back, ended longer
+ago than the sandbox's idle limit, once per idle spell
+(`crates/server/src/background/sandbox_idle_sweep.rs`). At 75k sessions a
+cell-owned idle timer may replace it; that is for the decision brief. A
+schedule's spend cap is kept with the schedule on the cell:
+what its latest run's model calls cost is added as their events commit,
+from the same cost the allowance settles, and the schedule stops with
+`budget_exhausted` when the cap is reached (`crates/cell/src/platform.rs`).
+
+**11.6b: which capabilities a cell runs (2026-11-17).** A test names every
+capability in the hosted catalog (`docs/api/capability-catalog.json`) on
+an agent, builds it on the cell's host and runs a turn on a fleet
+(`crates/cell-testkit/tests/capabilities.rs`). The outcome per capability
+is checked into `crates/cell-testkit/tests/capability_matrix.json`, so a
+capability the cell starts or stops serving shows up as a diff. The
+first run found 40 of 102: the cell's host had only the Framework's
+runtime catalog and the platform capabilities it implements (approvals,
+sandbox, schedules, subagents), not the hosted catalog the v1 worker
+registers. The cell's host now registers that catalog, with the worker's
+features, for the capabilities an agent names
+(`crates/cell/src/host.rs`, `hosted_capabilities`), and 96 of 102 build
+and complete a turn. The rest: `container_sandbox`, `docker_container` and
+`parallel` are behind feature flags that are off by default, as on a
+worker; `dreaming` and `sandbox_desktop` need their config (and the
+control plane replaces `sandbox_desktop` with the pinned sandbox);
+`sandbox_fleet` fails its turn. A turn on the simulated model calls no
+tool, so "runs" means the capability builds and activates in a cell turn.
+What its tools need at call time (an org's keys, the control plane's
+stores such as knowledge, memory, the platform API) is the live check's
+(11.6c); a tool whose store a cell lacks answers with an error, as on a
+v1 host without it.
+
+**11.6b: lookups at call time (2026-11-18).** The org answers a tool
+looks up as it runs (a session's connection token, a GitHub token for
+one use, the agent's service API key, web search settings and account
+keys, the tool approval policy) reach a v1 worker as internal commands.
+A cell runs the same commands with the same client
+(`everruns_internal_protocol::commands`, moved out of the worker so both
+share it): the executor asks its directory cell, the cell forwards the
+request to the control plane over the link (`POST
+/dp/v1/tenants/{org}/lookups`), and the control plane runs the command
+as the org's internal caller and seals the answer with the org's data
+key under the request's own id, so the cell in between passes on
+ciphertext (`crates/cell/src/lookups.rs`,
+`crates/server/src/domains/data_plane/lookups.rs`). Only those six
+commands go over: sandbox keys and MCP credentials are already sealed
+org secrets on the data plane, and a cell leases nothing to clean up. A
+standalone cell, with no control plane, keeps the answers of a host
+without org settings; a lookup that cannot reach the control plane fails
+the tool call rather than falling back to a default. The `knowledge`
+tools (search and browse the org's collections an agent attaches) go the
+same way, with the v1 worker's knowledge client. Automatic knowledge
+context stays off on a cell: the control plane records each retrieval
+against the turn's input message, which lives in the cell. Poppy calls
+go over too: the session owner's company accounts, keys and conversations
+stay in the control plane, as on v1. So do the org's egress grants (open
+egress, allowlist extension): a session's turns run as its tenant's org,
+so its tools' requests carry that org to the egress boundary, which asks
+the control plane and caches the answer for a minute; a failed lookup
+grants nothing.
+
+Platform Chat's tools (`platform_discover`, `platform_query`,
+`platform_execute`) go over the same channel, but run as a person, not
+the org: the call names only the session and the turn's input message,
+the forwarding cell asks the session's cell who sent that message and
+sets the person, and the control plane re-derives the `platform`
+capability and the person's membership and current role, as for a v1
+worker's call. The session's cell records a sender only from a trusted
+admission path (the gateway, from a verified org token's subject; the
+control plane, for a message a person sent through it); a schedule's run
+or a task wake acts as the last person who wrote, as v1 copies the
+previous turn's record; a channel, trigger or webhook message acts as no
+one, so its platform calls are refused. The shell's `everruns` builtin is
+not installed on a cell yet. The `slack` tools' actions (react, update,
+upload, look up a user) go over too, run by the control plane as the bot
+of the endpoint the session came through, so the bot token stays there.
+The conversation sender a v1 worker installs with them is left out: a
+post binds to the turn's input event, which lives in the cell, and the
+channel host already delivers the turn's messages from the session's
+stream. Cells embed the product docs, so a platform agent finds them at
+`/docs` as on a worker.
 
 ### Corrections after the architecture review (2026-11-09)
 

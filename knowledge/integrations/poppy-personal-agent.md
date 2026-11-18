@@ -82,7 +82,7 @@ our client metadata, assertions and proofs; it runs from
 `scripts/poppy-interop.sh` and in the same CI step as the channel checks.
 `examples/poppy-personal-agent` runs its Framework agent against the same
 company in `tests/pi_poppy.rs`. A third domain test,
-`real_model_asks_pi_poppy_company`, runs when `OPENAI_API_KEY` is set too: gpt-6.1-sol gets the `poppy_client` tools and a person's question, and
+`real_model_asks_pi_poppy_company`, runs when `OPENAI_API_KEY` is set too: gpt-6.2-sol gets the `poppy_client` tools and a person's question, and
 its calls go through the worker's invoker and the server's command to the
 same company, so it checks that a real model uses the tools as described and
 relays the company's answer.

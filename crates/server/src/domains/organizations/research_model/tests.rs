@@ -31,20 +31,30 @@ fn pick(models: &[ModelWithProviderRow]) -> Option<ModelId> {
 
 #[test]
 fn automatic_prefers_anthropic_research_model_over_openai() {
-    let astra = model("openai", "gpt-6-astra");
+    let astra = model("openai", "gpt-6.2-astra");
     let fable = model("anthropic", "claude-fable-5-2");
-    let models = [model("openai", "gpt-6.1-sol"), astra, fable.clone()];
+    let models = [model("openai", "gpt-6.2-sol"), astra, fable.clone()];
     assert_eq!(pick(&models), Some(fable.id));
 }
 
 #[test]
 fn automatic_uses_openai_when_anthropic_is_missing_or_unusable() {
-    let astra = model("openai", "gpt-6-astra");
+    let astra = model("openai", "gpt-6.2-astra");
     let mut no_key = model("anthropic", "claude-fable-5-2");
     no_key.provider_api_key_set = false;
     let mut disabled = model("anthropic", "claude-fable-5-2");
     disabled.enabled = false;
     assert_eq!(pick(&[no_key, disabled, astra.clone()]), Some(astra.id));
+}
+
+#[test]
+fn automatic_uses_current_research_recommendation_not_legacy_flagship() {
+    let legacy = model("openai", "gpt-6-astra");
+    let current = model("openai", "gpt-6.2-astra");
+    assert_eq!(pick(&[legacy.clone(), current.clone()]), Some(current.id));
+    // No currently recommended model: Automatic falls back to the org default.
+    // Explicit org selections bypass automatic_pick and retain their saved ID.
+    assert_eq!(pick(&[legacy]), None);
 }
 
 #[test]
@@ -61,7 +71,7 @@ fn automatic_falls_back_to_other_providers_then_none() {
 
 #[test]
 fn automatic_skips_personal_providers() {
-    assert_eq!(pick(&[model("chatgpt", "gpt-6-astra")]), None);
+    assert_eq!(pick(&[model("chatgpt", "gpt-6.2-astra")]), None);
 }
 
 #[test]

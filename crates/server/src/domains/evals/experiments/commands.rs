@@ -34,7 +34,7 @@ pub struct CreateEvalExperiment {
     summary = "Start an eval experiment",
     description = "Start an experiment: run an eval's cases against one to four variants and compare them case by case.",
     method = "POST",
-    cli = CliRoute::new(&["evals", "experiments"], "create").with_examples(&[CliExample::new("Compare two models on the same cases, three trials each, within $10", "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.1-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'")]),
+    cli = CliRoute::new(&["evals", "experiments"], "create").with_examples(&[CliExample::new("Compare two models on the same cases, three trials each, within $10", "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.2-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'")]),
     path = "/v1/evals/{eval_id}/experiments",
     policy = crate::domains::evals::EVAL_RUN,
     http = created,

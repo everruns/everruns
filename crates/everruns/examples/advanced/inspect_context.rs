@@ -4,7 +4,7 @@
 //! Ordinary applications use `Session::inspect` from `everruns`; this example
 //! shows the equivalent at the `everruns-core::host` boundary.
 //!
-//! The turn between the two inspections runs against OpenAI `gpt-6.1-sol`;
+//! The turn between the two inspections runs against OpenAI `gpt-6.2-sol`;
 //! set `OPENAI_API_KEY`.
 //!
 //! Run it:
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = everruns::batteries::runtime_builder()
         .host_composition(platform)
         .provider(everruns::OpenAI::from_env()?.into())
-        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
+        .default_model(ModelSpec::on("openai", "gpt-6.2-sol"))
         .harness(everruns_core::host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {

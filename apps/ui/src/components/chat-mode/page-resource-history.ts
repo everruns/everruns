@@ -26,7 +26,6 @@ const definitions = [
   ["plugin_marketplaces", "plugin_marketplace", "Plugin marketplace"],
   ["workspaces", "workspace", "Workspace"],
   ["durable/schedules", "schedule", "Schedule"],
-  ["reports/saved", "saved_report", "Report"],
   ["orgs", "organization", "Organization"],
 ] as const;
 
@@ -84,7 +83,6 @@ export function formResource(type: string, id?: string, formId?: string): PageRe
   if (!id || ["new", "builder", "page"].includes(id)) return;
   const aliases: Record<string, string> = {
     knowledge_collection: "knowledge",
-    report: "saved_report",
     web_search_defaults: "organization",
     model_defaults: "organization",
     profile: "user_profile",

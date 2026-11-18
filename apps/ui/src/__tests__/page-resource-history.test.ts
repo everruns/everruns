@@ -19,7 +19,6 @@ const routes = [
   ["plugin_marketplaces", "plugin_marketplace"],
   ["workspaces", "workspace"],
   ["durable/schedules", "schedule"],
-  ["reports/saved", "saved_report"],
   ["sandbox-templates", "sandbox_template"],
   ["orgs", "organization"],
 ];

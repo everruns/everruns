@@ -15,7 +15,7 @@
 //! each AG-UI thread to a session with `AgUiThreads`, and streams the run as
 //! SSE. One `InterruptGate` answers every session's `ask_user` questions and
 //! tool approvals through AG-UI interrupts. The agent answers with
-//! `gpt-6.1-sol`; set `OPENAI_API_KEY` before running it. With the `local` feature, pass
+//! `gpt-6.2-sol`; set `OPENAI_API_KEY` before running it. With the `local` feature, pass
 //! `SqliteThreadStore::local(&config)` and an agent on that `LocalConfig` to
 //! keep threads across restarts.
 
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("You are a helpful assistant.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .ask_user(gate.clone())
         .approver(gate.clone())
         .build()?;

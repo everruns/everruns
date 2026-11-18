@@ -5,6 +5,7 @@
 
 pub use crate::services::command_catalog::catalog::CatalogContext;
 use crate::services::command_catalog::{catalog, cli_tree, positional};
+use everruns_internal_protocol::proto::command_error::Kind as CommandErrorKind;
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +18,63 @@ pub enum Operation {
     /// `everruns` builtin of `Execute` without the script around it: the same
     /// exposure rule, validation, `Command::run` and output.
     Run,
+}
+
+impl Operation {
+    /// The operation a data plane names (`discover`, `query`, `execute`,
+    /// `run`).
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "discover" => Some(Self::Discover),
+            "query" => Some(Self::Query),
+            "execute" => Some(Self::Execute),
+            "run" => Some(Self::Run),
+            _ => None,
+        }
+    }
+}
+
+/// Whether the session's effective capability set carries `platform`.
+///
+/// Resolves exactly as a worker does when it decides to install the
+/// catalog command source: fold harness -> agent -> session, then expand
+/// dependencies and canonicalise aliases. Any cheaper approximation (the
+/// union of the three declared lists, say) drifts from the worker, and a
+/// gate that disagrees with the surface it guards is worse than none.
+/// Shared by the worker RPC and the data plane's lookups.
+pub async fn session_has_platform_capability(
+    db: &std::sync::Arc<crate::storage::StorageBackend>,
+    registry: &everruns_core::capabilities::CapabilityRegistry,
+    org_id: i64,
+    session: &crate::domains::sessions::record::Session,
+) -> anyhow::Result<bool> {
+    // The same inheritance fold the worker's harness store runs, so an
+    // inherited `platform` resolves identically on both sides.
+    let harness =
+        crate::harness_chain::resolve_effective_harness(db, org_id, session.harness_id.uuid())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Harness not found"))?;
+    let agent = match session.agent_id {
+        Some(agent_id) => {
+            crate::domains::agents::queries::get_for_execution(db, org_id, &agent_id.to_string())
+                .await?
+        }
+        None => None,
+    };
+    let agent_definition = agent.as_ref().map(|agent| agent.definition());
+    let resolved = everruns_core::runtime_context::resolve_runtime_capabilities(
+        &harness.definition(),
+        agent_definition.as_ref(),
+        &session.execution_session(),
+        registry,
+    );
+    Ok(resolved
+        .resolved_capability_configs
+        .iter()
+        .any(|capability| {
+            capability.capability_id()
+                == everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID
+        }))
 }
 
 pub async fn invoke(
@@ -393,6 +451,117 @@ fn sanitize_script_error(message: &str) -> String {
     message.to_string()
 }
 
+/// A platform tool's call from a data plane (Platform Chat), run on the
+/// command catalog as the person its forwarding cell names.
+///
+/// THREAT[TM-AGENT-017]: the executor that runs the turn names only the
+/// session and its input message; `acting_user` is set by the cell that
+/// forwards the call, from the session's own record of who sent that
+/// message (`everruns-cell` `senders.rs`). Here, as for a v1 worker's
+/// call, the session must be the org's and resolve the `platform`
+/// capability, and the person must still be a member of the org; the call
+/// runs with their current role.
+pub async fn data_plane_call(
+    internal: &crate::domains::common::Ctx,
+    params: &Value,
+) -> Result<String, (CommandErrorKind, String)> {
+    let db = internal.db.clone();
+    let refused = |kind: CommandErrorKind, message: &str| (kind, message.to_owned());
+    let session_id = params["session_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
+        .ok_or_else(|| refused(CommandErrorKind::BadRequest, "Invalid session_id"))?;
+    let operation = params["operation"]
+        .as_str()
+        .and_then(Operation::parse)
+        .ok_or_else(|| {
+            refused(
+                CommandErrorKind::BadRequest,
+                "Invalid platform command operation",
+            )
+        })?;
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    if !arguments.is_object() {
+        return Err(refused(
+            CommandErrorKind::BadRequest,
+            "Platform command arguments must be a JSON object",
+        ));
+    }
+    let org_id = internal.org_id();
+    let session = crate::domains::sessions::SessionService::new(db.clone())
+        .get(&internal.caller, session_id.uuid(), None)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %session_id, org_id, "Failed to load Platform command session");
+            refused(
+                CommandErrorKind::Internal,
+                "Failed to load Platform command session",
+            )
+        })?
+        .ok_or_else(|| refused(CommandErrorKind::NotFound, "Session not found"))?;
+    let has_platform = session_has_platform_capability(
+        &db,
+        internal.capability_service.registry(),
+        org_id,
+        &session,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, %session_id, org_id, "Failed to resolve Platform command capability");
+        refused(CommandErrorKind::Internal, "Failed to resolve the session's capabilities")
+    })?;
+    if !has_platform {
+        return Err(refused(
+            CommandErrorKind::Forbidden,
+            "Platform command execution requires the platform capability",
+        ));
+    }
+    let user = params["acting_user"]
+        .as_str()
+        .and_then(|user| uuid::Uuid::parse_str(user).ok())
+        .ok_or_else(|| {
+            refused(
+                CommandErrorKind::Forbidden,
+                "Management-authorized invocation required",
+            )
+        })?;
+    let caller = crate::auth::caller_resolution::caller_for_user(&db, org_id, user)
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, %session_id, org_id, %user, "Failed to resolve Platform command caller");
+            refused(
+                CommandErrorKind::Forbidden,
+                "Failed to resolve Platform command caller",
+            )
+        })?;
+    // Same public base the workers link with.
+    let ui_base = everruns_core::config::env_string_any(
+        &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
+        "http://localhost:9300",
+    );
+    let intent = crate::domains::change_history::ChangeIntent {
+        via_session_id: Some(session.id.uuid()),
+        via_agent_id: session.agent_id.map(|agent| agent.to_string()),
+        ..crate::domains::change_history::ChangeIntent::on(
+            crate::domains::change_history::ChangeSurface::Platform,
+        )
+    };
+    let context = CatalogContext {
+        domain_ctx: crate::domains::common::Ctx {
+            caller,
+            ..internal.clone()
+        }
+        .with_change_intent(intent),
+        link_builder: crate::api::common::UrlBuilder::new(&ui_base, &ui_base),
+    };
+    invoke(operation, &arguments, context)
+        .await
+        .map_err(|message| (CommandErrorKind::BadRequest, message))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,7 +624,6 @@ mod tests {
             voice: true,
             observers: true,
             public_chat: true,
-            reports: true,
             machine_payments: true,
             engine_hosting: false,
             integrations: Default::default(),
@@ -480,7 +648,6 @@ mod tests {
                 voice: true,
                 observers: true,
                 public_chat: true,
-                reports: true,
                 machine_payments: true,
                 engine_hosting: false,
                 integrations: Default::default(),

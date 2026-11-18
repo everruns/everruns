@@ -230,43 +230,14 @@ impl WorkerServiceImpl {
         org_id: i64,
         session: &crate::domains::sessions::record::Session,
     ) -> Result<bool, Status> {
-        // The same inheritance fold the worker's harness store runs, so an
-        // inherited `platform` resolves identically on both sides.
-        let harness = crate::harness_chain::resolve_effective_harness(
+        crate::worker_link::platform_command_surface::session_has_platform_capability(
             &self.db,
+            self.capability_service.registry(),
             org_id,
-            session.harness_id.uuid(),
+            session,
         )
         .await
-        .map_err(|error| internal_status("Failed to load Platform command harness", error))?
-        .ok_or_else(|| Status::not_found("Harness not found"))?;
-
-        let agent = match session.agent_id {
-            Some(agent_id) => crate::domains::agents::queries::get_for_execution(
-                &self.db,
-                org_id,
-                &agent_id.to_string(),
-            )
-            .await
-            .map_err(|error| internal_status("Failed to load Platform command agent", error))?,
-            None => None,
-        };
-
-        let agent_definition = agent.as_ref().map(|agent| agent.definition());
-        let resolved = everruns_core::runtime_context::resolve_runtime_capabilities(
-            &harness.definition(),
-            agent_definition.as_ref(),
-            &session.execution_session(),
-            self.capability_service.registry(),
-        );
-
-        Ok(resolved
-            .resolved_capability_configs
-            .iter()
-            .any(|capability| {
-                capability.capability_id()
-                    == everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID
-            }))
+        .map_err(|error| internal_status("Failed to resolve the session's capabilities", error))
     }
 
     pub(crate) async fn handle_invoke_platform_command_surface(

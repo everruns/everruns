@@ -10,7 +10,7 @@ use everruns::{Agent, Model, services::ApiKey};
 
 let agent = Agent::builder()
     .instructions("Delegate coding tasks, inspect results, and clean up resources when done.")
-    .model(Model::new("gpt-6.1-sol", everruns::OpenAI::from_env()?))
+    .model(Model::new("gpt-6.2-sol", everruns::OpenAI::from_env()?))
     .cursor(ApiKey::new(std::env::var("CURSOR_API_KEY")?))
     .browserless(ApiKey::new(std::env::var("BROWSERLESS_API_TOKEN")?))
     .e2b(ApiKey::new(std::env::var("E2B_API_KEY")?))

@@ -40,7 +40,6 @@ const resources: Record<string, { type: string; roots: string[] }> = {
   sandboxes: { type: "sandbox", roots: ["sandboxes", "sandbox-templates", "sandbox-accounts"] },
   evals: { type: "eval", roots: ["evals", "eval", "eval-runs", "eval-run"] },
   observers: { type: "observer", roots: ["observers", "observer"] },
-  reports: { type: "report", roots: ["reporting"] },
   monitoring: { type: "monitoring", roots: ["monitoring"] },
   durable: { type: "durable", roots: ["durable"] },
   settings: { type: "settings", roots: [] },
@@ -203,7 +202,7 @@ export function isPageQuery(key: readonly unknown[], page: ChatPageContext, org:
   const root = page.route.split("/")[1]?.split("?")[0];
   const allowed = resources[root]?.roots ?? [];
   if (typeof key[0] !== "string" || !allowed.includes(key[0])) return false;
-  // CRUD hooks append the org. Session/report/stat factories put it at a
+  // CRUD hooks append the org. Session/stat factories put it at a
   // documented position; a search term equal to an org id is not tenancy.
   const scoped =
     key.at(-1) === org ||
@@ -212,7 +211,6 @@ export function isPageQuery(key: readonly unknown[], page: ChatPageContext, org:
       "harness",
       "session",
       "sessions",
-      "reporting",
       "model-profiles",
       "decision-default",
       "knowledge",

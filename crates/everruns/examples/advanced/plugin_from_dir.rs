@@ -4,7 +4,7 @@
 //   - compiles the everruns-core testdata/plugins/microsoft-docs fixture
 //   - builds a runtime with a single session whose agent enables the plugin
 //   - calls `load_context` to inspect the assembled context
-//   - runs one turn against OpenAI `gpt-6.1-sol` so the model reports what the
+//   - runs one turn against OpenAI `gpt-6.2-sol` so the model reports what the
 //     plugin contributed (set `OPENAI_API_KEY`)
 //
 // Run with:
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load and compile the plugin. Compilation errors surface here.
     let builder = everruns::batteries::runtime_builder()
         .provider(everruns::OpenAI::from_env()?.into())
-        .default_model(ModelSpec::on("openai", "gpt-6.1-sol"))
+        .default_model(ModelSpec::on("openai", "gpt-6.2-sol"))
         .with_plugin_dir(plugin_dir)?;
 
     // Retrieve the hydrated capability config so we can attach it to the agent.

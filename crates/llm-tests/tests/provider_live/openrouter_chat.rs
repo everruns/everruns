@@ -34,7 +34,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         &OpenRouterRoutingConfig {
             models: vec![
                 "openai/gpt-6-luna".to_string(),
-                "openai/gpt-6.1-sol".to_string(),
+                "openai/gpt-6.2-sol".to_string(),
             ],
             route: Some(OpenRouterRoute::Fallback),
             ..Default::default()

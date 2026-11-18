@@ -8,7 +8,7 @@ the token and the permission checks come from `everruns::control` (feature
 
 ## Run it
 
-Terminal 1, the host. It runs OpenAI `gpt-6.1-sol` and also takes prompts on
+Terminal 1, the host. It runs OpenAI `gpt-6.2-sol` and also takes prompts on
 its own stdin:
 
 ```bash

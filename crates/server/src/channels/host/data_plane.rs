@@ -9,8 +9,10 @@
 //!   platform's thread and channel ids) and its sender, under a fresh id.
 //!   The cell answers whether it started a turn or steered the running one,
 //!   which is what the host needs to know whether this message owes a reply.
-//! - Text only, as the v2 chat is: a picture or file a channel received is
-//!   named in a note instead (attachments on v2 come with the 11.6 sweep).
+//! - A picture or file a channel received is an upload; it is copied into
+//!   the session's files on the data plane before the message is sent with
+//!   its parts (`data_plane::attachments`, step 11.6), so the agent sees it
+//!   as on v1.
 //! - Events are the session's stream on the data plane, followed from the
 //!   last sequence seen when the data plane cycles the connection, so the
 //!   host sees one stream as it does on v1.
@@ -22,7 +24,6 @@
 use std::time::Duration;
 
 use everruns_contracts::runtime::channel::ChannelError;
-use everruns_contracts::runtime::message::ContentPart;
 use everruns_contracts::runtime::message_retriever::InputMessage;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::RuntimeMessage;
@@ -39,6 +40,8 @@ const RECONNECT_AFTER: Duration = Duration::from_millis(200);
 /// One of the org's sessions that its data plane runs.
 pub(super) struct DpSession {
     plane: std::sync::Arc<dyn DataPlane>,
+    db: std::sync::Arc<crate::storage::StorageBackend>,
+    org_id: i64,
     org: String,
     session: SessionId,
 }
@@ -64,34 +67,18 @@ pub(super) async fn find(
     let plane = for_org(&cp, org_id).await.map_err(other)?;
     Ok(Some(DpSession {
         plane: std::sync::Arc::from(plane),
+        db: cp.db.clone(),
+        org_id,
         org: org_public(org_id),
         session,
     }))
-}
-
-/// The message's text, with each part a v2 session cannot take yet named.
-fn text_of(content: &[ContentPart]) -> String {
-    content
-        .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text(text) => Some(text.text.clone()),
-            ContentPart::Image(_) | ContentPart::ImageFile(_) => {
-                Some("[An image was attached; this session cannot open it yet.]".into())
-            }
-            ContentPart::File(_) => {
-                Some("[A file was attached; this session cannot open it yet.]".into())
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 /// The body of the data plane's `messages` command for `message`.
 pub(super) fn message_body(id: MessageId, message: &InputMessage) -> Value {
     json!({
         "id": id,
-        "text": text_of(&message.content),
+        "parts": message.content,
         "metadata": message.metadata,
         "external_actor": message.external_actor,
     })
@@ -109,6 +96,16 @@ pub(super) fn outcome(id: MessageId, reply: &Value) -> SendOutcome {
 
 impl DpSession {
     pub(super) async fn send(&self, message: &InputMessage) -> Result<SendOutcome, ChannelError> {
+        crate::domains::data_plane::attachments::stage(
+            &self.db,
+            self.plane.as_ref(),
+            &self.org,
+            self.org_id,
+            self.session,
+            &message.content,
+        )
+        .await
+        .map_err(|error| other(error.context("the attachments were not copied to the session")))?;
         let id = MessageId::new();
         let reply = self
             .plane
@@ -201,9 +198,10 @@ impl DpSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::runtime::message::ContentPart;
 
     #[test]
-    fn a_message_goes_with_its_thread_and_sender_and_names_what_it_cannot_carry() {
+    fn a_message_goes_with_its_thread_sender_and_attachments() {
         let mut message =
             InputMessage::user("look at this").with_metadata("thread_ts", json!("1700000000.0001"));
         message.content.push(ContentPart::file(
@@ -211,8 +209,8 @@ mod tests {
         ));
         let body = message_body(MessageId::new(), &message);
         assert_eq!(body["metadata"]["thread_ts"], "1700000000.0001");
-        let text = body["text"].as_str().unwrap_or_default();
-        assert!(text.starts_with("look at this\n["), "{text}");
+        assert_eq!(body["parts"][0]["text"], "look at this");
+        assert_eq!(body["parts"][1]["type"], "file");
     }
 
     #[test]

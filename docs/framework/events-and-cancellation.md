@@ -13,7 +13,7 @@ use everruns::{Agent, Engine, OpenAI};
 let agent = Agent::builder()
     .instructions("Be concise.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .build()?;
 let session = Engine::new().create(agent);
 let mut events = session.events();
@@ -159,7 +159,7 @@ use everruns::prelude::*;
 let agent = Agent::builder()
     .instructions("Answer concisely.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .build()?;
 let engine = Engine::new();
 let mut session = engine.create(agent);

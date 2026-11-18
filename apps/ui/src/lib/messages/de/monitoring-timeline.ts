@@ -31,7 +31,6 @@ export const messages: Readonly<Record<string, string>> = {
   "No finished turns": "Keine abgeschlossenen Turns",
   "No turns started in this window.": "In diesem Zeitraum wurden keine Turns gestartet.",
   "No worker reports in this range.": "Keine Worker-Berichte in diesem Zeitraum.",
-  "Open Reports →": "Berichte öffnen →",
   "Parallel sessions": "Parallele Sitzungen",
   "Parallel sessions against capacity": "Parallele Sitzungen im Verhältnis zur Kapazität",
   "Parallel sessions over time": "Parallele Sitzungen im Zeitverlauf",

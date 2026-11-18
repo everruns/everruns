@@ -9,9 +9,9 @@ type ExampleError = Box<dyn std::error::Error + Send + Sync>;
 type ExampleResult<T> = Result<T, ExampleError>;
 
 /// The model the concierge runs on. Examples run against a real LLM.
-pub const MODEL: &str = "gpt-6.1-sol";
+pub const MODEL: &str = "gpt-6.2-sol";
 
-/// OpenAI's `gpt-6.1-sol`, keyed by `OPENAI_API_KEY`.
+/// OpenAI's `gpt-6.2-sol`, keyed by `OPENAI_API_KEY`.
 pub fn default_model() -> ExampleResult<Model> {
     Ok(Model::new(MODEL, OpenAI::from_env()?))
 }

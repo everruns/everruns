@@ -150,6 +150,7 @@ pub(crate) struct ScopedMemoryContext {
 mod capabilities;
 mod create;
 mod fork;
+mod fork_plane;
 mod lifecycle;
 mod mounts;
 mod query;

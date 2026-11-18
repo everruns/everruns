@@ -95,8 +95,7 @@ one step the inspector shows.
 
 Rejected: an expression index on `context->>'turn_id'` alone. It finds a turn's events but
 still reads every payload to build the step list. Rejected: deriving steps on read with a
-cache. The first open of a large session would still read everything. Rejected: the
-reporting fact tables. They are org-scoped, filled asynchronously and have no session index.
+cache. The first open of a large session would still read everything.
 
 ### 2. Reads are bounded, the browser renders a window
 

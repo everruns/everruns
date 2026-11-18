@@ -18,7 +18,6 @@ use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::PrincipalId;
 use everruns_contracts::typed_id::VirtualUserId;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
-use tracing::warn;
 use uuid::Uuid;
 
 /// Columns projected by every session detail/list query.
@@ -405,29 +404,6 @@ impl Database {
 
         tx.commit().await?;
 
-        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
-        // The canonical session row is durable; no reconciler exists yet
-        // (tracked separately), so on failure the corresponding fact will
-        // remain stale until reconciliation lands or the session row is
-        // updated again and the next enqueue succeeds.
-        if let Err(e) = self
-            .enqueue_reporting_outbox(
-                row.org_id,
-                "session",
-                &row.id.uuid().to_string(),
-                Some(&row.updated_at.to_rfc3339()),
-                "session_snapshot",
-            )
-            .await
-        {
-            warn!(
-                session_id = %row.id.uuid(),
-                org_id = row.org_id,
-                error = %e,
-                "reporting outbox enqueue failed for session create; projection may remain stale until reconciliation lands"
-            );
-        }
-
         Ok(row)
     }
 
@@ -571,12 +547,6 @@ impl Database {
     /// with every *other* filter applied but its own excluded — that is what
     /// makes a multi-select rail usable (selecting one source must not zero the
     /// remaining source counts).
-    ///
-    /// Aggregating `sessions` rather than the `fact_session` projection is
-    /// deliberate: the projection is an eventually-consistent mirror of the
-    /// same row that carries neither `source` nor the last-turn outcome, so it
-    /// could not answer these filters and would report stale counts next to a
-    /// live page. See the PR notes on EVE-731.
     pub async fn session_facets(
         &self,
         org_id: i64,

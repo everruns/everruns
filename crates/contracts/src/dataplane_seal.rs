@@ -175,6 +175,61 @@ pub fn unseal(data_key: &Key, org: &str, secret: &SealedSecret) -> Result<Vec<u8
     )
 }
 
+/// The secret id a session secret is sealed under: binds its ciphertext
+/// to the session and the name, so it opens nowhere else.
+pub fn session_secret_id(session: &str, name: &str) -> String {
+    format!("session/{session}/{name}")
+}
+
+/// Seal a session secret's value as it is kept in the session's state on
+/// its cell (design.md, "Session secrets ... sealed with the same org data
+/// key"): the JSON of its [`SealedSecret`]. Whoever writes it (the control
+/// plane for a person, an executor for the agent) seals; cell nodes only
+/// store it.
+pub fn seal_session_secret(
+    data_key: &Key,
+    data_key_id: &str,
+    org: &str,
+    session: &str,
+    name: &str,
+    plain: &str,
+) -> Result<String, SealError> {
+    let sealed = seal(
+        data_key,
+        data_key_id,
+        org,
+        &session_secret_id(session, name),
+        0,
+        plain.as_bytes(),
+        random_nonce(),
+    )?;
+    serde_json::to_string(&sealed).map_err(|e| err(e.to_string()))
+}
+
+/// Open a session secret kept by [`seal_session_secret`].
+pub fn open_session_secret(
+    data_key: &Key,
+    data_key_id: &str,
+    org: &str,
+    session: &str,
+    name: &str,
+    stored: &str,
+) -> Result<String, SealError> {
+    let sealed: SealedSecret =
+        serde_json::from_str(stored).map_err(|_| err("the session secret is not sealed"))?;
+    if sealed.secret_id != session_secret_id(session, name) {
+        return Err(err("the session secret belongs elsewhere"));
+    }
+    if sealed.data_key_id != data_key_id {
+        return Err(err(format!(
+            "the session secret is sealed under {}, the org's key is {data_key_id}",
+            sealed.data_key_id
+        )));
+    }
+    let plain = unseal(data_key, org, &sealed)?;
+    String::from_utf8(plain).map_err(|_| err("the session secret is not UTF-8"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,6 +254,26 @@ mod tests {
     const WRAPPED_VECTOR: &str =
         "AQEBAQEBAQEBAQEBf+iAvpm25QfY3dUoeT55OKHyHf0RnjIaUThKa2+9P7LM/2DOuniNe7JR+6A/sqga";
     const SEALED_VECTOR: &str = "kmGIADswov2BWSgZp49ypfnv8VXO8zU=";
+
+    #[test]
+    fn a_session_secret_opens_only_in_its_session_under_its_name() {
+        let key = random_key();
+        let stored = seal_session_secret(&key, "k1", "org-a", "s1", "TOKEN", "hunter2").unwrap();
+        assert!(!stored.contains("hunter2"));
+        assert_eq!(
+            open_session_secret(&key, "k1", "org-a", "s1", "TOKEN", &stored).unwrap(),
+            "hunter2"
+        );
+        for (org, session, name, key_id) in [
+            ("org-b", "s1", "TOKEN", "k1"),
+            ("org-a", "s2", "TOKEN", "k1"),
+            ("org-a", "s1", "OTHER", "k1"),
+            ("org-a", "s1", "TOKEN", "k2"),
+        ] {
+            assert!(open_session_secret(&key, key_id, org, session, name, &stored).is_err());
+        }
+        assert!(open_session_secret(&key, "k1", "org-a", "s1", "TOKEN", "plain").is_err());
+    }
 
     #[test]
     fn a_ciphertext_opens_only_where_it_belongs() {

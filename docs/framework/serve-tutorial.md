@@ -18,7 +18,7 @@ This is a guided lesson, so it makes the choices for you. The
 ## What you need
 
 - Rust 1.94 or later, with `cargo`.
-- An OpenAI API key in `OPENAI_API_KEY`. The agent uses `openai/gpt-6.1-sol`.
+- An OpenAI API key in `OPENAI_API_KEY`. The agent uses `openai/gpt-6.2-sol`.
 - For the client: Python 3.10 or later, Node.js 22 or later, or Rust.
 - `curl` and `jq` for the checks along the way.
 
@@ -112,7 +112,7 @@ use serve::prelude::*;
 #[agent]
 fn support() -> Agent {
     Agent::builder()
-        .model("openai/gpt-6.1-sol")
+        .model("openai/gpt-6.2-sol")
         .instructions(md!("instructions.md"))
         .build()
 }
@@ -143,7 +143,7 @@ The first build takes a few minutes. Then the app prints what it found:
   serve · order-desk 0.1.0 · Dev · build b49b68ee33c43b82d
   ⚠ experimental proof of concept; APIs will change
 
-  agent    support (default) · openai/gpt-6.1-sol → openai
+  agent    support (default) · openai/gpt-6.2-sol → openai
   tool     order_status
   sandbox  support · none
 

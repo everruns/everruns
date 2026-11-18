@@ -36,12 +36,15 @@ use serde_json::Value;
 use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 
 pub mod allowances;
+pub mod attachments;
 pub mod event_tap;
 pub mod feed;
+pub mod lookups;
 pub mod mcp;
 pub mod outbox;
 pub mod providers;
 pub mod sandboxes;
+pub mod session_plane;
 pub mod sessions;
 pub mod tokens;
 pub mod warehouse;
@@ -190,6 +193,16 @@ pub trait DataPlane: Send + Sync {
         command: &str,
         body: &Value,
     ) -> anyhow::Result<Value>;
+    /// `GET /dp/v1/orgs/{org}/sessions/{id}/{read}?{query}`: a view of one
+    /// of the org's sessions the control plane builds from its events
+    /// (`trace`, `events`; step 11.6).
+    async fn session_read(
+        &self,
+        org: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        read: &str,
+        query: &str,
+    ) -> anyhow::Result<Value>;
     /// `GET /dp/v1/orgs/{org}/sessions/{id}/sse`: the session's committed
     /// events after `after_sequence`, then live, as event envelopes. The
     /// stream ends when the data plane cycles the connection; the caller
@@ -244,6 +257,16 @@ impl DataPlane for NoDataPlane {
         _: &Value,
     ) -> anyhow::Result<Value> {
         anyhow::bail!("session {session} is not on a data plane")
+    }
+
+    async fn session_read(
+        &self,
+        _: &str,
+        _: everruns_contracts::typed_id::SessionId,
+        _: &str,
+        _: &str,
+    ) -> anyhow::Result<Value> {
+        anyhow::bail!("the org has no data plane")
     }
 
     async fn events(
@@ -365,6 +388,31 @@ impl DataPlane for HttpDataPlane {
         Ok(self
             .request(reqwest::Method::POST, url)
             .json(body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?)
+    }
+
+    async fn session_read(
+        &self,
+        org: &str,
+        session: everruns_contracts::typed_id::SessionId,
+        read: &str,
+        query: &str,
+    ) -> anyhow::Result<Value> {
+        let mut url = format!(
+            "{}{}/orgs/{org}/sessions/{session}/{read}",
+            self.row.url,
+            dp::PREFIX
+        );
+        if !query.is_empty() {
+            url.push('?');
+            url.push_str(query);
+        }
+        Ok(self
+            .request(reqwest::Method::GET, url)
             .send()
             .await?
             .error_for_status()?

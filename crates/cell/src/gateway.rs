@@ -644,9 +644,35 @@ impl Gateway {
         text: String,
         id: Option<MessageId>,
     ) -> Result<Value, ApiError> {
+        self.admit_parts(session, text, Vec::new(), id).await
+    }
+
+    /// [`Gateway::admit`] for a message with parts other than text (an
+    /// image, a file); `parts` replace `text` when given.
+    pub async fn admit_parts(
+        &self,
+        session: SessionId,
+        text: String,
+        parts: Vec<everruns_core::ContentPart>,
+        id: Option<MessageId>,
+    ) -> Result<Value, ApiError> {
+        self.admit_from(session, text, parts, id, None).await
+    }
+
+    /// [`Gateway::admit_parts`] for a message `sender` (a user id, from the
+    /// caller's verified org token) wrote, so the session's turns can act
+    /// as them (`senders.rs`).
+    pub async fn admit_from(
+        &self,
+        session: SessionId,
+        text: String,
+        parts: Vec<everruns_core::ContentPart>,
+        id: Option<MessageId>,
+        sender: Option<String>,
+    ) -> Result<Value, ApiError> {
         let started = Instant::now();
         let message_id = id.unwrap_or_default();
-        let body = json!({ "text": text, "id": message_id });
+        let body = json!({ "text": text, "parts": parts, "id": message_id, "sender": sender });
         let value = self.session_command(session, "messages", &body).await?;
         self.admitted.inc(&[("status", "accepted")]);
         self.admit_window.observe(started.elapsed());
@@ -868,7 +894,7 @@ async fn check_org_token(
 
 /// The largest request body the gateway takes (`CELL_MAX_REQUEST_MB`,
 /// default 2 MB).
-fn max_request_bytes() -> usize {
+pub(crate) fn max_request_bytes() -> usize {
     std::env::var("CELL_MAX_REQUEST_MB")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())

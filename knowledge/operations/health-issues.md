@@ -48,8 +48,8 @@ provider, a chat model, and on an active provider. An issue appears exactly when
 flags the setting. An agent without its own model is covered by the default's single issue,
 so a broken default opens one issue rather than one per agent. "Still listed" means the
 provider's last model list (read only at a model sync) includes the model under its id or
-under its registry identity: OpenRouter lists `openai/gpt-6.1-sol` for a row moved from
-the OpenAI provider as `gpt-6.1-sol`, and both are the same model. A model missing from
+under its registry identity: OpenRouter lists `openai/gpt-6.2-sol` for a row moved from
+the OpenAI provider as `gpt-6.2-sol`, and both are the same model. A model missing from
 that list is reported as what was observed, the list's date and the id looked up, never
 as "no longer listed", because the list can be days old on a deployment that never syncs
 on its own. Such an issue offers the provider's model sync as its fix, which separates an
@@ -108,6 +108,15 @@ recorded once per episode as a finding action, so the issue shows who fixed it.
   undo, also offered as a fix.
 - **Model missing from its provider's list** (`models.sync`): syncs that provider's
   models. Unavailable, with the reason, when the provider has no key.
+
+A fixer that cannot run carries `unavailable_reason`, and `unblock` when a page in
+Everruns removes the block: a missing or rejected organization Slack connection links to
+the Slack workspaces settings, a model sync to the provider. The card then shows that
+link as its action instead of a disabled fix button, which left people with no way
+forward. `unblock.href` is a console path; the browser refuses anything else. Every
+Slack permission issue also lists the manual steps (add the scopes under Bot Token
+Scopes, Reinstall to Workspace, check again), including for apps Everruns created,
+linking straight to the app's OAuth page when its id is known.
 
 When several open issues offer the same fixer, the Health page walks through them one
 at a time, since Slack approves each app separately. Detectors without a fixer keep

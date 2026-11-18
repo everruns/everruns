@@ -30,7 +30,7 @@ a working default; each row links to the section that documents it.
 | [`KUBERNETES_SANDBOX_*`](#isolated-sandboxes) | API and workers | Only for Isolated sandboxes | The Isolated sandbox target is off. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration), [`SERVER_SHUTDOWN_*`](#server-shutdown) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits, a 5 s linger and 20 s drain on shutdown. |
-| [`EVENT_GROUP_COMMIT`](#throughput-tuning), [`SESSION_ACTOR_STICKY_GRACE_MS`](#throughput-tuning), [`REPORTING_BACKGROUND_ENABLED`](#throughput-tuning) | API | No | Event writes share commits over 4 lanes, a session waits 300 ms for the worker that ran its last turn, reports are built. |
+| [`EVENT_GROUP_COMMIT`](#throughput-tuning), [`SESSION_ACTOR_STICKY_GRACE_MS`](#throughput-tuning) | API | No | Event writes share commits over 4 lanes, a session waits 300 ms for the worker that ran its last turn. |
 | [`MONITORING_DETAIL`](#monitoring-detail), [`MONITORING_DETAIL_URL`](#monitoring-detail) | API | No | Monitoring keeps its one-minute history in PostgreSQL, without 10-second cell detail. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
 
@@ -703,7 +703,6 @@ deployment that needs another trade.
 | `EVENT_GROUP_COMMIT` | on | Events that arrive while a commit is in flight are stored together in the next transaction, so many turns share one WAL flush. Each write is answered after its commit, so it is as durable as a lone write. `off`, `0` or `false` stores each append in its own transaction. |
 | `EVENT_GROUP_COMMIT_LANES` | `4` | Parallel commit lanes per API instance. A session always uses the same lane, so its events keep their order. |
 | `SESSION_ACTOR_STICKY_GRACE_MS` | `300` | How long a session's next turn waits for the worker that ran its last turn, which still holds its history in memory, before any worker may take it. `0` turns this off. |
-| `REPORTING_BACKGROUND_ENABLED` | `true` | Builds the Reports pages from session events. `false` stops the projector and the repair job and the event writes that feed them; nothing is deleted, and recent missed events are picked up when it is turned back on. |
 
 ## SSE Streaming Configuration
 

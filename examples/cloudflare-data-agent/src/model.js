@@ -4,7 +4,7 @@
 // forwarded.
 import { runtimeMessage } from "./protocol.js";
 
-export const MODEL = "gpt-6.1-sol";
+export const MODEL = "gpt-6.2-sol";
 const RESPONSES_URL = "https://api.openai.com/v1/responses";
 const TIMEOUT_MS = 60_000;
 

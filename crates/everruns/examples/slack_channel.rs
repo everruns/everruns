@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "For actions needing consent, ask with request_approval, ",
             "then stop and wait for their response.",
         ))
-        .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+        .model(Model::new("gpt-6.2-sol", OpenAI::from_env()?))
         .capability("soft_approval")
         .build()?;
     let engine = Engine::new();

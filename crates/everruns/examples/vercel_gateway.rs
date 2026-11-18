@@ -17,7 +17,7 @@
 //! pointed at a different vendor without touching the code:
 //!
 //! ```text
-//! cargo run -p everruns --features vercel --example vercel_gateway -- openai/gpt-6-astra
+//! cargo run -p everruns --features vercel --example vercel_gateway -- openai/gpt-6.2-astra
 //! ```
 
 use everruns::{Agent, Engine, Vercel};

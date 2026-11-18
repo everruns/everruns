@@ -96,7 +96,7 @@ are filtered by the organisation-effective flag when listed and when a connectio
 Payment management honours the organisation flag rather than overriding it based on router
 availability. Payment execution re-reads durable overrides immediately before spending,
 so a loaded tool cannot bypass a revocation. Existing domain command gates remain the authority for their feature-owned
-operations. A flag's scope is the surface it owns; reporting aggregation and existing session
+operations. A flag's scope is the surface it owns; existing session
 recordings remain infrastructure rather than being deleted when a UI feature is unavailable.
 
 The runtime receives resolved booleans, not rollout-management records. The

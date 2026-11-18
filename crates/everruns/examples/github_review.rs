@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             distinguish missing context from established findings. If the diff is truncated, read the relevant \
             files before deciding. Give the review to the user; do not post to GitHub.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .capability(GitHub::from_env()?)
         .max_iterations(12)
         .build()?;

@@ -191,7 +191,7 @@ pub struct TraceStep {
     pub tool_call_id: Option<String>,
     /// Model that served the call, for model steps.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = "gpt-6.1-sol")]
+    #[schema(example = "gpt-6.2-sol")]
     pub model: Option<String>,
     /// Prompt tokens of a model call.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Read the requested pull request and its diff. Report concrete bugs with evidence.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .capability(GitHub::from_env()?)
         .max_iterations(12)
         .build()?;

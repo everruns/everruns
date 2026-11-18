@@ -35,7 +35,7 @@ type HistoryResult = Result<Json<Vec<EntityChange>>, (StatusCode, Json<ErrorResp
 #[into_params(parameter_in = Query)]
 pub struct EntityHistoryQuery {
     /// Entity kind, needed only for kinds whose ids have no prefix
-    /// (`schedule`, `saved_report`, `check_rule`).
+    /// (`schedule`, `check_rule`).
     pub kind: Option<String>,
     /// Only this action (`created`, `updated`, `deleted`, ...).
     pub action: Option<String>,

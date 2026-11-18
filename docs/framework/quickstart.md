@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("You are a concise assistant.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .build()?;
 
     let engine = Engine::new();
@@ -73,7 +73,7 @@ async fn stock_level(sku: String) -> Result<u32, String> {
 let agent = Agent::builder()
     .instructions("Answer inventory questions. Use the tool rather than guessing.")
     .provider(OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .tool(stock_level())
     .build()?;
 # let _ = agent;

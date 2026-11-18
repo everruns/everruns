@@ -5,14 +5,14 @@ use serde_json::json;
 
 use crate::acme;
 
-/// `gpt-6.1-sol`, through OpenRouter when `OPENROUTER_API_KEY` is set and
+/// `gpt-6.2-sol`, through OpenRouter when `OPENROUTER_API_KEY` is set and
 /// straight from OpenAI otherwise.
 pub fn provider() -> Result<(Provider, &'static str), Box<dyn std::error::Error>> {
     if std::env::var_os("OPENROUTER_API_KEY").is_some() {
         let openrouter = everruns::providers::openrouter::OpenRouter::from_env()?;
-        return Ok((openrouter.into(), "openai/gpt-6.1-sol"));
+        return Ok((openrouter.into(), "openai/gpt-6.2-sol"));
     }
-    Ok((everruns::OpenAI::from_env()?.into(), "gpt-6.1-sol"))
+    Ok((everruns::OpenAI::from_env()?.into(), "gpt-6.2-sol"))
 }
 
 /// `server_command` is the program that serves the Acme MCP server over stdio.
@@ -47,6 +47,6 @@ mod tests {
     #[test]
     fn builds_without_contacting_the_provider_or_the_server() {
         let provider: Provider = everruns::OpenAI::new("test-key").into();
-        assert!(build(provider, "gpt-6.1-sol", "/nonexistent/acme").is_ok());
+        assert!(build(provider, "gpt-6.2-sol", "/nonexistent/acme").is_ok());
     }
 }

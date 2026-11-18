@@ -7,9 +7,10 @@
 //!   control plane's filters and cursors), the SSE stream, cancelling the
 //!   running turn, tool approvals and client-side tool results; the
 //!   session's files are `gateway_fs.rs` (step 11.1), and its schedules
-//!   are here since step 11.4 (`platform.rs`), with its tasks to read
-//!   (`tasks.rs`; cancelling a task, answering one and push configs come
-//!   with 11.6). Every other call on a
+//!   are here since step 11.4 (`platform.rs`), with its tasks (`tasks.rs`;
+//!   cancelling and messaging one since 11.6, push configs not yet), its
+//!   images and files (`gateway_input.rs`) and its Work tab reads
+//!   (`gateway_work.rs`). Every other call on a
 //!   session answers 501 with the feature's name, and the console hides
 //!   those features for a v2 org, so a client never gets half a shape.
 //! - The session record itself (get, list, title, pin, archive) stays with
@@ -42,6 +43,7 @@ pub fn routes() -> Router<Arc<Gateway>> {
     Router::new()
         .route("/v1/sessions/{session}/messages", post(send).get(messages))
         .route("/v1/sessions/{session}/events", get(events))
+        .route("/v1/sessions/{session}/events/summary", get(events_summary))
         .route("/v1/sessions/{session}/sse", get(sse))
         .route("/v1/sessions/{session}/cancel", post(cancel_turn))
         .route("/v1/sessions/{session}/tool-approvals", post(approvals))
@@ -59,6 +61,22 @@ pub fn routes() -> Router<Arc<Gateway>> {
         )
         .route("/v1/sessions/{session}/tasks", get(list_tasks))
         .route("/v1/sessions/{session}/tasks/{task}", get(get_task))
+        .route(
+            "/v1/sessions/{session}/tasks/{task}/cancel",
+            post(cancel_task),
+        )
+        .route(
+            "/v1/sessions/{session}/work",
+            get(crate::gateway_work::work),
+        )
+        .route(
+            "/v1/sessions/{session}/resources",
+            get(crate::gateway_work::resources),
+        )
+        .route(
+            "/v1/sessions/{session}/tasks/{task}/messages",
+            post(message_task),
+        )
         .route("/v1/sessions/{session}/{*feature}", any(not_yet))
 }
 
@@ -100,18 +118,46 @@ struct SendBody {
     metadata: Option<Value>,
 }
 
-/// The text of an input message's content, or the kind of the first part
-/// that is not text: anything but text parts is a stage 2 feature.
-fn input_text(message: &Value) -> Result<String, String> {
-    let parts = message["content"].as_array().cloned().unwrap_or_default();
-    let mut text = Vec::new();
-    for part in &parts {
-        match part["type"].as_str() {
-            Some("text") => text.push(part["text"].as_str().unwrap_or_default().to_owned()),
-            other => return Err(other.unwrap_or("unknown").to_owned()),
+/// An input message's parts, inline images written to the session's
+/// files first (`gateway_input.rs`).
+async fn input_parts(
+    gateway: &Gateway,
+    session: SessionId,
+    message: &Value,
+) -> Result<Vec<everruns_core::ContentPart>, Response> {
+    use crate::gateway_input::{Part, Refused};
+    let parts = match crate::gateway_input::parts(message) {
+        Ok(parts) => parts,
+        Err(Refused::Kind(kind)) => return Err(unsupported_content(&kind)),
+        Err(Refused::Invalid(reason)) => {
+            return Err((StatusCode::BAD_REQUEST, reason).into_response());
+        }
+    };
+    let mut content = Vec::with_capacity(parts.len());
+    for part in parts {
+        match part {
+            Part::Ready(part) => content.push(part),
+            Part::Inline(part, file) => {
+                let op = json!({ "op": "seed", "files": [file] });
+                let reply = gateway
+                    .session_command(session, "fs", &op)
+                    .await
+                    .map_err(IntoResponse::into_response)?;
+                if reply["result"] == "failed" {
+                    let status = reply["status"]
+                        .as_u64()
+                        .and_then(|s| StatusCode::from_u16(s as u16).ok())
+                        .unwrap_or(StatusCode::BAD_REQUEST);
+                    let message = reply["message"]
+                        .as_str()
+                        .unwrap_or("the image was not kept");
+                    return Err((status, message.to_owned()).into_response());
+                }
+                content.push(part);
+            }
         }
     }
-    Ok(text.join("\n"))
+    Ok(content)
 }
 
 /// 501 for an input content kind the data plane does not take yet.
@@ -136,6 +182,7 @@ async fn send(
     State(gateway): State<Arc<Gateway>>,
     Path(session): Path<String>,
     RawQuery(raw): RawQuery,
+    claims: Option<axum::Extension<crate::org_token::OrgTokenClaims>>,
     Json(body): Json<SendBody>,
 ) -> Response {
     let session = match parse(&session) {
@@ -145,21 +192,39 @@ async fn send(
     if raw.as_deref().is_some_and(|q| q.contains("wait=true")) {
         return not_yet(Method::POST, Path((String::new(), "messages?wait".into()))).await;
     }
-    let text = match (body.text, &body.message) {
-        (Some(text), _) => text,
-        (None, Some(message)) => match input_text(message) {
-            Ok(text) => text,
-            Err(kind) => return unsupported_content(&kind),
+    let id = match body.id.map(|id| MessageId::parse(&id)).transpose() {
+        Ok(id) => id.unwrap_or_default(),
+        Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    };
+    let parts = match (body.text, &body.message) {
+        (Some(text), _) => vec![everruns_core::ContentPart::text(text)],
+        (None, Some(message)) => match input_parts(&gateway, session, message).await {
+            Ok(parts) => parts,
+            Err(refused) => return refused,
         },
         (None, None) => {
             return (StatusCode::BAD_REQUEST, "message or text required").into_response();
         }
     };
-    let id = match body.id.map(|id| MessageId::parse(&id)).transpose() {
-        Ok(id) => id.unwrap_or_default(),
-        Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    // The person the verified org token names (the control plane mints
+    // `sub` as the user id, for a console session or the user's API key),
+    // so the turn's platform tools act as them.
+    let sender = claims
+        .and_then(|axum::Extension(claims)| uuid::Uuid::parse_str(&claims.sub).ok())
+        .map(|user| user.to_string());
+    let admitted = match crate::gateway_input::text_only(&parts) {
+        Some(text) => {
+            gateway
+                .admit_from(session, text, Vec::new(), Some(id), sender)
+                .await
+        }
+        None => {
+            gateway
+                .admit_from(session, String::new(), parts.clone(), Some(id), sender)
+                .await
+        }
     };
-    match gateway.admit(session, text.clone(), Some(id)).await {
+    match admitted {
         Ok(_) => (
             StatusCode::CREATED,
             Json(json!({
@@ -167,7 +232,7 @@ async fn send(
                 "session_id": session,
                 "sequence": 0,
                 "role": "user",
-                "content": [{ "type": "text", "text": text }],
+                "content": parts,
                 "metadata": body.metadata,
                 "created_at": chrono::Utc::now(),
                 "status": "accepted",
@@ -179,7 +244,7 @@ async fn send(
 }
 
 /// Every committed event of `session` after `after`.
-async fn read_events(
+pub(crate) async fn read_events(
     gateway: &Arc<Gateway>,
     session: SessionId,
     after: i32,
@@ -238,6 +303,16 @@ async fn messages(
     Ok(Json(json!({ "data": data })))
 }
 
+/// Longest `q` taken, as on the control plane.
+const MAX_Q_BYTES: usize = 512;
+
+/// An RFC 3339 time.
+fn timestamp(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|t| t.with_timezone(&chrono::Utc))
+}
+
 /// `GET /v1/sessions/{id}/events`'s query, as the control plane takes it.
 #[derive(Debug, Default)]
 struct EventsQuery {
@@ -245,6 +320,91 @@ struct EventsQuery {
     limit: Option<usize>,
     before_sequence: Option<i32>,
     order_desc: bool,
+    search: Search,
+}
+
+/// The control plane's debugging filters (`ListEvents`), applied to the
+/// session's events here (step 11.6). `q` is a case-insensitive substring
+/// match over the event's data, the control plane's in-memory fallback for
+/// its full-text search.
+#[derive(Debug, Default)]
+struct Search {
+    around: Option<String>,
+    window: Option<usize>,
+    from_ts: Option<chrono::DateTime<chrono::Utc>>,
+    to_ts: Option<chrono::DateTime<chrono::Utc>>,
+    turn_id: Option<String>,
+    exec_id: Option<String>,
+    trace_id: Option<String>,
+    tags: Vec<String>,
+    tool_name: Option<String>,
+    q: Option<String>,
+}
+
+/// Events on each side of `around` by default, and at most.
+const AROUND_WINDOW: usize = 50;
+const MAX_AROUND_WINDOW: usize = 500;
+
+impl Search {
+    fn passes(&self, event: &Event) -> bool {
+        let context = &event.context;
+        let text = |id: Option<String>, want: &Option<String>| {
+            want.as_ref().is_none_or(|want| id.as_deref() == Some(want))
+        };
+        self.from_ts.is_none_or(|from| event.ts >= from)
+            && self.to_ts.is_none_or(|to| event.ts <= to)
+            && text(context.turn_id.map(|t| t.to_string()), &self.turn_id)
+            && text(context.exec_id.map(|t| t.to_string()), &self.exec_id)
+            && text(context.trace_id.clone(), &self.trace_id)
+            && (self.tags.is_empty()
+                || event
+                    .tags
+                    .as_ref()
+                    .is_some_and(|tags| tags.iter().any(|t| self.tags.contains(t))))
+            && self.data_passes(event)
+    }
+
+    fn data_passes(&self, event: &Event) -> bool {
+        if self.tool_name.is_none() && self.q.is_none() {
+            return true;
+        }
+        let Ok(data) = serde_json::to_value(&event.data) else {
+            return false;
+        };
+        if let Some(tool) = &self.tool_name {
+            let named = data["tool_name"]
+                .as_str()
+                .or_else(|| data["tool_call"]["name"].as_str());
+            if named != Some(tool.as_str()) {
+                return false;
+            }
+        }
+        match &self.q {
+            Some(q) => data.to_string().to_lowercase().contains(&q.to_lowercase()),
+            None => true,
+        }
+    }
+
+    /// `events` cut to the window around the anchor, when one is named.
+    fn around(&self, events: Vec<Event>) -> Result<Vec<Event>, ApiError> {
+        let Some(anchor) = &self.around else {
+            return Ok(events);
+        };
+        let at = events
+            .iter()
+            .position(|e| e.id.to_string() == *anchor)
+            .ok_or((StatusCode::NOT_FOUND, format!("event {anchor} not found")))?;
+        let window = self
+            .window
+            .unwrap_or(AROUND_WINDOW)
+            .clamp(1, MAX_AROUND_WINDOW);
+        let end = (at + window + 1).min(events.len());
+        Ok(events
+            .into_iter()
+            .take(end)
+            .skip(at.saturating_sub(window))
+            .collect())
+    }
 }
 
 impl EventsQuery {
@@ -261,15 +421,17 @@ impl EventsQuery {
                     query.before_sequence = Some(value.parse().map_err(|_| bad("before_sequence"))?)
                 }
                 "order_desc" => query.order_desc = value == "true",
-                // Stage 2 filters: answered by the control plane's trace,
-                // not by a cell.
-                "around" | "from_ts" | "to_ts" | "turn_id" | "exec_id" | "trace_id" | "tags"
-                | "tool_name" | "q" => {
-                    return Err((
-                        StatusCode::NOT_IMPLEMENTED,
-                        format!("the {key} filter is not available yet on a v2 data plane"),
-                    ));
-                }
+                "around" => query.search.around = Some(value.into_owned()),
+                "window" => query.search.window = Some(value.parse().map_err(|_| bad("window"))?),
+                "from_ts" => query.search.from_ts = Some(timestamp(&value).ok_or(bad("from_ts"))?),
+                "to_ts" => query.search.to_ts = Some(timestamp(&value).ok_or(bad("to_ts"))?),
+                "turn_id" => query.search.turn_id = Some(value.into_owned()),
+                "exec_id" => query.search.exec_id = Some(value.into_owned()),
+                "trace_id" => query.search.trace_id = Some(value.into_owned()),
+                "tags" | "tags[]" => query.search.tags.push(value.into_owned()),
+                "tool_name" => query.search.tool_name = Some(value.into_owned()),
+                "q" if value.len() > MAX_Q_BYTES => return Err(bad("q: too long")),
+                "q" => query.search.q = Some(value.into_owned()),
                 _ => {}
             }
         }
@@ -283,6 +445,7 @@ impl EventsQuery {
         let mut chosen: Vec<Event> = events
             .into_iter()
             .filter(|e| self.stream.passes(&e.event_type))
+            .filter(|e| self.search.passes(e))
             .filter(|e| {
                 self.before_sequence
                     .is_none_or(|before| e.sequence.is_some_and(|s| s < before))
@@ -320,6 +483,7 @@ async fn events(
                 .ok_or((StatusCode::BAD_REQUEST, format!("unknown since_id {since}")))?;
             events.drain(..=at);
         }
+        let events = query.search.around(events)?;
         let total = events.len();
         let chosen = query.select(events);
         let mut headers = HeaderMap::new();
@@ -333,6 +497,45 @@ async fn events(
         Ok::<_, ApiError>((headers, Json(json!({ "data": chosen }))).into_response())
     };
     run.await.unwrap_or_else(IntoResponse::into_response)
+}
+
+/// `GET /v1/sessions/{id}/events/summary`: counts by type (by name), first
+/// and last times, turns and errors, as the control plane's
+/// `events_summary` counts them.
+async fn events_summary(
+    State(gateway): State<Arc<Gateway>>,
+    Path(session): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    let events = read_events(&gateway, session, 0).await?;
+    Ok(Json(summary(&events)))
+}
+
+fn summary(events: &[Event]) -> Value {
+    let mut by_type: std::collections::BTreeMap<&str, i64> = Default::default();
+    for event in events {
+        *by_type.entry(event.event_type.as_str()).or_default() += 1;
+    }
+    let turn_count = by_type.get("turn.started").copied().unwrap_or(0);
+    let error_count: i64 = by_type
+        .iter()
+        .filter(|(kind, _)| {
+            matches!(**kind, "turn.failed" | "tool.failed" | "subagent.failed")
+                || kind.ends_with(".error")
+        })
+        .map(|(_, count)| count)
+        .sum();
+    json!({
+        "total": events.len(),
+        "by_type": by_type
+            .iter()
+            .map(|(kind, count)| json!({ "event_type": kind, "count": count }))
+            .collect::<Vec<_>>(),
+        "first_ts": events.iter().map(|e| e.ts).min(),
+        "last_ts": events.iter().map(|e| e.ts).max(),
+        "turn_count": turn_count,
+        "error_count": error_count,
+    })
 }
 
 /// `POST /v1/sessions/{id}/cancel`: cancel the running turn.
@@ -471,11 +674,40 @@ mod tests {
     }
 
     #[test]
-    fn stage_two_filters_are_refused() {
+    fn summary_counts_by_type() {
+        let summary = summary(&events(3));
+        assert_eq!(summary["total"], 3);
+        assert_eq!(summary["by_type"][0]["event_type"], "session.activated");
+        assert_eq!(summary["by_type"][0]["count"], 3);
+        assert_eq!(summary["turn_count"], 0);
+    }
+
+    #[test]
+    fn search_filters_match_the_control_planes() {
+        let all = events(3);
+        let anchor = all[1].id.to_string();
+        let query = EventsQuery::parse(Some(&format!("around={anchor}&window=1"))).unwrap();
         assert_eq!(
-            EventsQuery::parse(Some("q=hello")).unwrap_err().0,
-            StatusCode::NOT_IMPLEMENTED
+            seqs(&query.search.around(all.clone()).unwrap()),
+            vec![1, 2, 3]
         );
+        let query = EventsQuery::parse(Some(&format!("around={anchor}&window=0"))).unwrap();
+        assert_eq!(
+            seqs(&query.search.around(all.clone()).unwrap()),
+            vec![1, 2, 3]
+        );
+        let turn = serde_json::to_value(&all[1].data).unwrap()["turn_id"]
+            .as_str()
+            .unwrap()
+            .to_uppercase();
+        let query = EventsQuery::parse(Some(&format!("q={turn}"))).unwrap();
+        assert_eq!(seqs(&query.select(all.clone())), vec![2]);
+        let query = EventsQuery::parse(Some("turn_id=turn_x")).unwrap();
+        assert!(query.select(all.clone()).is_empty());
+        let query = EventsQuery::parse(Some("from_ts=2000-01-01T00:00:00Z")).unwrap();
+        assert_eq!(query.select(all.clone()).len(), 3);
+        assert!(EventsQuery::parse(Some("from_ts=yesterday")).is_err());
+        assert!(EventsQuery::parse(Some(&format!("q={}", "a".repeat(513)))).is_err());
     }
 }
 
@@ -528,8 +760,8 @@ async fn get_schedule(
 }
 
 /// `PATCH /v1/sessions/{id}/schedules/{schedule_id}`: the control plane's
-/// body; an empty one enables the schedule. A spend cap needs metering a
-/// cell does not have yet (11.6), so `budget_usd` is refused.
+/// body; an empty one enables the schedule. `budget_usd` caps what its
+/// runs spend (`platform.rs`).
 async fn update_schedule(
     State(gateway): State<Arc<Gateway>>,
     Path((session, schedule)): Path<(String, String)>,
@@ -537,15 +769,22 @@ async fn update_schedule(
 ) -> Result<Json<Value>, ApiError> {
     let session = parse(&session)?;
     let id = schedule_id(&schedule)?;
-    if body.get("budget_usd").is_some_and(|v| !v.is_null()) {
-        return Err((
-            StatusCode::NOT_IMPLEMENTED,
-            "a schedule budget is not available yet for sessions on a v2 data plane".into(),
-        ));
-    }
     let mut change: crate::platform::ScheduleChange =
         serde_json::from_value(body).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    if change.enabled.is_none() && change.ends_at.is_none() && change.max_runs.is_none() {
+    if change
+        .budget_usd
+        .is_some_and(|limit| !limit.is_finite() || limit <= 0.0)
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "budget_usd must be a positive amount in USD".into(),
+        ));
+    }
+    if change.enabled.is_none()
+        && change.ends_at.is_none()
+        && change.max_runs.is_none()
+        && change.budget_usd.is_none()
+    {
         change.enabled = Some(true);
     }
     change.deleted = false;
@@ -640,4 +879,43 @@ async fn get_task(
         return Err((StatusCode::NOT_FOUND, "Task not found".into()));
     }
     Ok(Json(detail))
+}
+
+/// A task write (`tasks::api_op`) on the session's cell; 404 for a task
+/// the session does not have.
+async fn write_task(
+    gateway: &Gateway,
+    session: &str,
+    body: Value,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(session)?;
+    let written = gateway.session_command(session, "task", &body).await?;
+    if written.is_null() {
+        return Err((StatusCode::NOT_FOUND, "Session task not found".into()));
+    }
+    Ok(Json(written))
+}
+
+/// `POST /v1/sessions/{id}/tasks/{task_id}/cancel`: request the task's
+/// cooperative cancel; answers the task.
+async fn cancel_task(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    write_task(&gateway, &session, json!({ "task": task, "cancel": true })).await
+}
+
+/// `POST /v1/sessions/{id}/tasks/{task_id}/messages`: a person's message
+/// to the task (`text` or `content`, `in_reply_to`); answers the message.
+async fn message_task(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task)): Path<(String, String)>,
+    Json(mut body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    if !body.is_object() {
+        return Err((StatusCode::BAD_REQUEST, "a JSON object is required".into()));
+    }
+    body["task"] = json!(task);
+    body["cancel"] = json!(false);
+    write_task(&gateway, &session, body).await
 }

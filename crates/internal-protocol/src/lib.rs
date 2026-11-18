@@ -13,6 +13,7 @@
 
 pub mod blob_wire;
 mod capability_wire;
+pub mod commands;
 pub use capability_wire::encode_configs as encode_capability_configs;
 mod credential_fingerprint;
 mod json_wire;

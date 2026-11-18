@@ -300,22 +300,6 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("providers models", "Models offered by one provider."),
     ("providers sync-models", "Refresh a provider's model list."),
-    (
-        "reports",
-        "Usage and cost reporting: queries, saved reports, catalog.",
-    ),
-    ("reports admin", "Maintenance for the reporting pipeline."),
-    (
-        "reports admin diagnostics",
-        "Reporting pipeline lag and failures.",
-    ),
-    (
-        "reports catalog",
-        "Datasets, measures and filters reports can use.",
-    ),
-    ("reports projector", "Process pending reporting work."),
-    ("reports query", "Ad-hoc reporting queries."),
-    ("reports saved", "Saved report definitions."),
     ("resources", "Access to credentials and connections."),
     (
         "resources grants",
@@ -353,6 +337,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "sandboxes",
         "Sandboxes across providers: state, history, usage.",
+    ),
+    (
+        "sandboxes events",
+        "Why a sandbox paused, resumed or was deleted, or was left alone.",
+    ),
+    (
+        "sandboxes provider",
+        "What the sandbox's provider reports about it now.",
     ),
     ("sandboxes stats", "Sandbox counts by state and provider."),
     (

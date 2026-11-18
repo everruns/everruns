@@ -418,6 +418,72 @@ impl std::fmt::Display for SandboxAdminError {
 
 impl std::error::Error for SandboxAdminError {}
 
+/// What a provider reports about one of its sandboxes, for diagnostics.
+///
+/// Decision: providers build this field by field from an allowlist and never
+/// pass their raw object through. Provider objects carry secrets next to
+/// state: Daytona's sandbox has the agent's `env` and an `outboundProxyUrl`
+/// holding the egress proxy credential, E2B's has `envdAccessToken`. Free text
+/// (`error`) is scrubbed by the caller before it is stored or returned.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProviderSandboxView {
+    pub external_id: String,
+    /// Whether the provider still knows the sandbox. `false` when it answered
+    /// "not found"; every other field is then empty.
+    pub exists: bool,
+    /// Provider-native state, lowercase (`started`, `stopped`, `paused`, ...).
+    pub state: String,
+    /// Whether the sandbox holds compute (and so bills for it), when known.
+    pub active: Option<bool>,
+    /// The state the provider itself is moving toward, when it reports one.
+    pub desired_state: Option<String>,
+    /// The provider's own error or exit reason.
+    pub error: Option<String>,
+    /// Whether the provider says it can recover from `error`.
+    pub recoverable: Option<bool>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Last activity the provider recorded.
+    pub last_activity_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The provider's own idle stop, in minutes; `Some(0)` is off. It acts
+    /// independently of Everruns' idle pause.
+    pub auto_stop_minutes: Option<i64>,
+    pub auto_archive_minutes: Option<i64>,
+    pub auto_delete_minutes: Option<i64>,
+    /// When the provider will end the sandbox on its own (E2B timeout).
+    pub ends_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Labels Everruns set (`everruns*` keys only).
+    pub labels: std::collections::BTreeMap<String, String>,
+    /// Allowlisted, non-secret provider details: size, region, image.
+    pub details: std::collections::BTreeMap<String, String>,
+}
+
+impl ProviderSandboxView {
+    /// The provider answered "not found".
+    pub fn missing(external_id: &str) -> Self {
+        Self {
+            external_id: external_id.to_string(),
+            exists: false,
+            state: "not_found".to_string(),
+            ..Self::default()
+        }
+    }
+
+    /// Keep only the labels Everruns sets.
+    pub fn everruns_labels<I, K, V>(labels: I) -> std::collections::BTreeMap<String, String>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        labels
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .filter(|(k, _)| k == LABEL_EVERRUNS || k.starts_with("everruns."))
+            .collect()
+    }
+}
+
 /// Provider trait implemented by integration crates.
 #[async_trait::async_trait]
 pub trait SessionSandboxProvider: Send + Sync {
@@ -447,6 +513,17 @@ pub trait SessionSandboxProvider: Send + Sync {
         _token: &str,
         _external_id: &str,
     ) -> Result<(), SandboxAdminError> {
+        Err(SandboxAdminError::Unsupported)
+    }
+
+    /// Read-only: what the provider reports about one sandbox right now.
+    /// A sandbox that is gone answers `Ok(ProviderSandboxView::missing)`.
+    /// Takes the provider credential directly, like the orphan-scan calls.
+    async fn describe_by_id(
+        &self,
+        _token: &str,
+        _external_id: &str,
+    ) -> Result<ProviderSandboxView, SandboxAdminError> {
         Err(SandboxAdminError::Unsupported)
     }
 

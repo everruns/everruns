@@ -10,7 +10,8 @@
 //   SESSION_VIEW. Only your own ratings are returned; Session Trace reads all
 //   of them later.
 // - The message must be a user or agent message of that session, so a rating
-//   never points at nothing.
+//   never points at nothing. A v2 session's messages are read from its data
+//   plane; its ratings are kept here like any other (step 11.6).
 
 use super::queries as q;
 use crate::domains::common::*;
@@ -97,6 +98,24 @@ async fn visible_session(ctx: &Ctx, session_id: &str) -> Result<uuid::Uuid, Comm
     Ok(session_id.uuid())
 }
 
+/// Whether `message_id` is a user or agent message of the session: in the
+/// control plane's event index, or in the session's own log on its data
+/// plane (step 11.6). The ratings stay in the control plane for both.
+async fn has_message(
+    ctx: &Ctx,
+    session_id: uuid::Uuid,
+    message_id: &str,
+) -> Result<bool, CommandError> {
+    let id = everruns_contracts::typed_id::SessionId::from_uuid(session_id);
+    let plane =
+        crate::domains::data_plane::session_plane::SessionPlane::of(&ctx.db, ctx.org_id(), id)
+            .await?;
+    Ok(match plane {
+        Some(plane) => !plane.messages(&[message_id.to_owned()]).await?.is_empty(),
+        None => ctx.db.session_has_message(session_id, message_id).await?,
+    })
+}
+
 // ============================================================================
 // SetMessageFeedback
 // ============================================================================
@@ -135,11 +154,7 @@ impl Command for SetMessageFeedback {
     async fn execute(self, ctx: &Ctx) -> Result<MessageFeedback, CommandError> {
         let user_id = require_user_id(ctx)?;
         let session_id = visible_session(ctx, &self.session_id).await?;
-        if !ctx
-            .db
-            .session_has_message(session_id, &self.message_id)
-            .await?
-        {
+        if !has_message(ctx, session_id, &self.message_id).await? {
             return Err(CommandError::not_found("Message"));
         }
         let comment = self

@@ -27,7 +27,6 @@
     "observers/[observerId]/edit/page.tsx",
     "observers/new/page.tsx",
     "playground/new/page.tsx",
-    "reports/page.tsx",
     "sandboxes/(tabs)/accounts/page.tsx",
     "sandboxes/templates/[sandboxTemplateId]/page.tsx",
     "sandboxes/templates/new/page.tsx",

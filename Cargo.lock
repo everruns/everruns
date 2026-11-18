@@ -3924,6 +3924,7 @@ dependencies = [
  "everruns-core",
  "everruns-drivers",
  "everruns-integrations",
+ "everruns-internal-protocol",
  "futures",
  "hex",
  "jsonwebtoken",
@@ -4504,6 +4505,7 @@ dependencies = [
 name = "everruns-internal-protocol"
 version = "0.53.1"
 dependencies = [
+ "async-trait",
  "chrono",
  "everruns-contracts",
  "everruns-core",
@@ -4513,6 +4515,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",

@@ -5,7 +5,7 @@ description: Package a Framework agent with private database tools and connect i
 
 This example turns an ordinary Framework agent into an experimental
 customer-hosted worker. Its `sales_summary` function reads its own SQLite
-database. An OpenAI `gpt-6.1-sol` model chooses the tool arguments and composes the
+database. An OpenAI `gpt-6.2-sol` model chooses the tool arguments and composes the
 answer. Users talk to the Everruns control plane, not to the worker directly.
 
 Follow [Run a custom agent worker](/how-to/custom-agent-workers/) for complete

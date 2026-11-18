@@ -71,8 +71,7 @@ const specs = [
       "crates/server/src/background/session_scheduler.rs",
       "crates/server/src/background/tool_result_timeout.rs",
       "crates/server/src/background/event_retention.rs",
-      "crates/server/src/background/blob_gc.rs",
-      "crates/server/src/domains/reporting/background.rs"
+      "crates/server/src/background/blob_gc.rs"
     ],
     "requires": {
       "tech": [
@@ -81,7 +80,7 @@ const specs = [
     },
     "patterns": [
       {
-        "source": "^pub\\s+fn\\s+spawn_(?:session_scheduler|tool_result_timeout_sweep|retention_task|blob_gc_task|reporting_background_task)\\s*\\(",
+        "source": "^pub\\s+fn\\s+spawn_(?:session_scheduler|tool_result_timeout_sweep|retention_task|blob_gc_task)\\s*\\(",
         "flags": "m",
         "label": "Periodic background-task registration"
       }
@@ -90,8 +89,7 @@ const specs = [
       "pub fn spawn_session_scheduler(",
       "pub fn spawn_tool_result_timeout_sweep(",
       "pub fn spawn_retention_task(",
-      "pub fn spawn_blob_gc_task(",
-      "pub fn spawn_reporting_background_task("
+      "pub fn spawn_blob_gc_task("
     ],
     "closesSurfaceIds": [
       "scheduled-background-jobs"

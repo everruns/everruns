@@ -50,7 +50,6 @@
 * [Playground](playground/) - Manual UI cases.
 * [Plugins](plugins/) - Manual UI cases.
 * [Sandbox provider accounts](sandbox_provider_accounts/) - Manual UI cases.
-* [Reports](reports/) - Manual UI cases.
 * [Scheduled tasks](scheduled_tasks/) - Manual UI cases.
 * [Session participants](session_participants/) - Manual UI cases.
 * [Session sandbox](session_sandbox/) - Manual UI cases.

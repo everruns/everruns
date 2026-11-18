@@ -237,7 +237,7 @@ pub struct GetManagerContext {
     /// The entity's public id, e.g. `agent_01933b5a...`.
     pub entity_ref: String,
     /// Entity kind, needed only for ids without a prefix (`schedule`,
-    /// `saved_report`, `check_rule`).
+    /// `check_rule`).
     pub kind: Option<String>,
 }
 

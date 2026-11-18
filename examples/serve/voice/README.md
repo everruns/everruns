@@ -21,7 +21,7 @@ key stays on the server; the browser exchanges its WebRTC offer through
 `POST /v1/channels/concierge/voice/calls` and audio flows straight to OpenAI.
 
 `OPENAI_API_KEY` is required: it carries both the agent's model
-(`openai/gpt-6.1-sol`) and the realtime speech.
+(`openai/gpt-6.2-sol`) and the realtime speech.
 
 Uncomment `mode = "cascaded"` in `serve.toml` to run the same agent in
 cascaded mode: `gpt-4o-transcribe` listens, `gpt-4o-mini-tts` speaks, and the

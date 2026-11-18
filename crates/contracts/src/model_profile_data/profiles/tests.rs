@@ -806,3 +806,88 @@ fn gemini_decision_1_is_a_decision_profile_on_gemini_and_openrouter() {
     );
     assert!(get_model_profile("openai", "gemini-decision-1").is_none());
 }
+
+#[test]
+fn gpt_62_profiles_cover_pricing_controls_and_gateway_identity() {
+    for (model, input, output, cache, cutoff) in [
+        ("gpt-6.2-astra", 8.0, 40.0, 0.4, "2026-05-18"),
+        ("gpt-6.2-sol", 2.0, 10.0, 0.1, "2026-06-01"),
+    ] {
+        let profile = get_model_profile("openai", model).unwrap();
+        let cost = profile.cost.as_ref().unwrap();
+        assert_eq!(
+            (cost.input, cost.output, cost.cache_read),
+            (input, output, Some(cache))
+        );
+        assert_eq!(cost.cache_write, Some(input * 1.25));
+        assert_eq!(cost.cost_tiers[0].above_tokens, 272_000);
+        assert_eq!(cost.cost_tiers[0].input, input * 2.0);
+        assert_eq!(cost.cost_tiers[0].output, output * 1.5);
+        let limits = profile.limits.as_ref().unwrap();
+        assert_eq!(
+            (limits.context, limits.input, limits.output),
+            (1_050_000, Some(922_000), 128_000)
+        );
+        assert_eq!(profile.knowledge.as_deref(), Some(cutoff));
+        let efforts = profile.reasoning_effort.as_ref().unwrap();
+        assert_eq!(efforts.default, ReasoningEffort::Medium);
+        assert!(
+            !efforts
+                .values
+                .iter()
+                .any(|e| e.value == ReasoningEffort::None)
+        );
+        assert!(
+            efforts
+                .values
+                .iter()
+                .any(|e| e.value == ReasoningEffort::Max)
+        );
+        assert!(profile.tool_call && profile.tool_search && profile.supports_phases);
+        assert!(!profile.temperature);
+        let speed = profile.speed.as_ref().unwrap();
+        assert_eq!(speed.default, crate::model::Speed::Default);
+        assert!(
+            !speed
+                .values
+                .iter()
+                .any(|s| s.value == crate::model::Speed::Flex)
+        );
+        assert!(
+            speed
+                .values
+                .iter()
+                .any(|s| s.value == crate::model::Speed::Ultrafast)
+        );
+        let wire = format!("openai/{model}");
+        assert_eq!(provider_model_id("openrouter", &wire), Some(wire.as_str()));
+        assert_eq!(provider_model_id("vercel", &wire), Some(wire.as_str()));
+        let vercel = get_model_profile("vercel", &wire).unwrap();
+        assert_eq!(vercel.cost, profile.cost);
+        assert!(vercel.speed.is_none() && !vercel.supports_phases && !vercel.tool_search);
+        let gateway = get_model_profile("openrouter", &wire).unwrap();
+        assert_eq!(gateway.cost, profile.cost);
+        assert!(!gateway.tool_search && !gateway.supports_phases);
+        assert!(gateway.speed.is_none());
+        let completions = get_model_profile("openai_completions", model).unwrap();
+        assert_eq!(completions.cost, profile.cost);
+        assert_eq!(completions.limits, profile.limits);
+        assert_eq!(completions.reasoning_effort, profile.reasoning_effort);
+        assert!(!completions.tool_call && !completions.tool_search && !completions.supports_phases);
+        assert!(completions.supported_parameters.is_empty());
+        assert!(completions.speed.is_none());
+        assert!(get_model_profile("azure_openai", model).is_none());
+        assert!(get_model_profile("openrouter", &format!("untrusted/{model}")).is_none());
+        assert!(get_model_profile("openai", &format!("{model}-pro")).is_none());
+    }
+    // New profiles never alias explicit prior models to the new generation.
+    assert_eq!(
+        get_model_profile("openai", "gpt-6-astra")
+            .unwrap()
+            .cost
+            .unwrap()
+            .input,
+        10.0
+    );
+    assert!(get_model_profile("openai", "gpt-6.1-sol").is_some());
+}
