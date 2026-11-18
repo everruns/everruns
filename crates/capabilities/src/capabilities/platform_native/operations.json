@@ -10551,6 +10551,24 @@
     "read_only": false
   },
   {
+    "description": "Explain why a Sandbox is in its state: its record against what the provider reports, the pinned lifecycle policy and its deadlines, whether its session is running or stuck in a turn, the latest lifecycle decisions and failures, as findings with what to do. Deterministic. The provider is asked only for organization admins.",
+    "input_schema": {
+      "description": "Explain a Sandbox's state.",
+      "properties": {
+        "id": {
+          "description": "Logical Sandbox id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "diagnose_sandbox",
+    "read_only": true
+  },
+  {
     "description": "Compare an agent package with an existing agent by name without applying changes.",
     "input_schema": {
       "additionalProperties": false,
@@ -12506,7 +12524,7 @@
     "read_only": true
   },
   {
-    "description": "Get one Sandbox with its provider resources and full state history.",
+    "description": "Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines.",
     "input_schema": {
       "description": "One Sandbox with its provider resources and state history.",
       "properties": {
@@ -12575,6 +12593,24 @@
       "type": "object"
     },
     "name": "get_sandbox_fleet_stats",
+    "read_only": true
+  },
+  {
+    "description": "Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.",
+    "input_schema": {
+      "description": "Ask a Sandbox's provider what it reports now.",
+      "properties": {
+        "id": {
+          "description": "Logical Sandbox id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "get_sandbox_provider_state",
     "read_only": true
   },
   {
@@ -15866,6 +15902,47 @@
       "type": "object"
     },
     "name": "list_rooms",
+    "read_only": true
+  },
+  {
+    "description": "List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.",
+    "input_schema": {
+      "properties": {
+        "from": {
+          "description": "Window start (RFC 3339). Defaults to the Sandbox's creation.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "Logical Sandbox id.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Most events, 1 to 500 (the newest when there are more). Defaults to 200.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "to": {
+          "description": "Window end (RFC 3339). Defaults to now.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "list_sandbox_events",
     "read_only": true
   },
   {

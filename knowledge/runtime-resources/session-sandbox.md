@@ -273,6 +273,41 @@ Provider-owned remote resources should also register leased resources so the
 session resource registry and cleanup infrastructure can see them. Daytona does
 this through the existing leased-resource store.
 
+### Causes and diagnosis
+
+`sandbox_state_transitions` records what state a Sandbox was in, not who moved
+it or why, and a decision to do nothing leaves no row. `sandbox_events`
+([`storage/backend/sandbox_events.rs`](../../crates/server/src/storage/backend/sandbox_events.rs))
+holds those causes: the idle timer, the idle sweep, the retention sweep and a
+person through the API record each pause, resume and delete, each failure, and
+each decision not to act (session running a turn, idle pause off). Decisions:
+
+- The actor writes the event, not a trigger, because only the actor knows why.
+- A `skipped` event is written only when it differs from the Sandbox's latest
+  event, so a sweep that looks at the same Sandbox every minute writes one row.
+- Free text is secret-scrubbed before insert; recording never fails the action.
+
+`sandboxes diagnose <id>`
+([`domains/sandboxes/diagnose`](../../crates/server/src/domains/sandboxes/diagnose/mod.rs))
+is the read an operator or Platform Chat runs first. It joins the record, the
+pinned lifecycle turned into deadlines (`pause_due_at`, `sweep_pause_at`,
+`stale_turn_pause_at`, `delete_due_at`, also on `sandboxes get`), recent events,
+the session's queued and running work, orphan-scan sightings and, for org
+admins, the provider's own view, and returns ordered findings with a fix each.
+Findings are pure functions of those inputs so they test without a database.
+
+The provider's view comes from `SessionSandboxProvider::describe_by_id`
+(Daytona, E2B, Modal, boxd, Kubernetes), also exposed as
+`sandboxes provider get` (org admins). It is built from an allowlist: provider
+records carry the agent's environment, egress proxy URLs with credentials and
+access tokens, and none of them is copied. Error text is scrubbed again. Its
+most useful fields are provider-side auto-stop and last activity, which explain
+a provider stopping a Sandbox before the Everruns idle limit.
+
+Data plane v2 sessions are managed by their cell, not by the control plane's
+idle timer and sweep. Diagnosis reads their work and Sandbox state through the
+cell gateway (`sandbox` read) and says so in a `data_plane.lifecycle` finding.
+
 ### Orphaned sandbox scan
 
 Records can still lose a provider sandbox (a create whose state save failed, a

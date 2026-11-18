@@ -31,7 +31,7 @@ use crate::gateway::Gateway;
 type ApiError = (StatusCode, String);
 
 /// The reads `GET /dp/v1/orgs/{org}/sessions/{id}/{read}` serves.
-pub const READS: &[&str] = &["trace", "events", "log", "storage", "secrets"];
+pub const READS: &[&str] = &["trace", "events", "log", "storage", "secrets", "sandbox"];
 
 /// Events one `events` or `log` read returns at most.
 const MAX_EVENTS: usize = 1_000;
@@ -62,7 +62,8 @@ pub async fn read(
             let events = crate::gateway_v1::read_events(gateway, session, after).await?;
             json(serde_json::to_value(log_page(events)))
         }
-        "storage" | "secrets" => {
+        // `sandbox` is the session's sandbox and work, for `sandboxes diagnose`.
+        "storage" | "secrets" | "sandbox" => {
             let gw = gateway.clone();
             let read = read.to_owned();
             gateway

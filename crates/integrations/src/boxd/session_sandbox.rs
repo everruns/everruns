@@ -276,6 +276,14 @@ impl SessionSandboxProvider for BoxdSessionSandboxProvider {
         super::owned::hibernate(&admin_client(token)?, external_id).await
     }
 
+    async fn describe_by_id(
+        &self,
+        token: &str,
+        external_id: &str,
+    ) -> Result<everruns_contracts::session_sandbox::ProviderSandboxView, SandboxAdminError> {
+        super::owned::describe(&admin_client(token)?, external_id).await
+    }
+
     async fn delete_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
         super::owned::destroy(&admin_client(token)?, external_id).await
     }

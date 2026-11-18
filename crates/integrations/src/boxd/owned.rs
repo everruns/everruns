@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use everruns_contracts::session_sandbox::{OwnedSandbox, SandboxAdminError};
+use everruns_contracts::session_sandbox::{OwnedSandbox, ProviderSandboxView, SandboxAdminError};
 
 use super::MachineRef;
 use super::client::{BoxdClient, Machine, is_not_found};
@@ -79,6 +79,37 @@ pub async fn destroy(client: &BoxdClient, external_id: &str) -> Result<(), Sandb
     match client.destroy(&machine.region, &machine.id).await {
         Err(err) if !is_not_found(&err) => Err(SandboxAdminError::Provider(err)),
         _ => Ok(()),
+    }
+}
+
+/// What boxd reports about one machine. Egress rules and the access URL
+/// stay out: only state, size labels and region.
+pub async fn describe(
+    client: &BoxdClient,
+    external_id: &str,
+) -> Result<ProviderSandboxView, SandboxAdminError> {
+    let machine_ref = parse(external_id)?;
+    match client
+        .get_machine(&machine_ref.region, &machine_ref.id)
+        .await
+    {
+        Ok(machine) => {
+            let owned = owned(&machine_ref.region, machine);
+            Ok(ProviderSandboxView {
+                external_id: owned.external_id,
+                exists: true,
+                active: Some(owned.active),
+                error: (owned.state == "failed")
+                    .then(|| "boxd reports the machine failed".to_string()),
+                state: owned.state,
+                created_at: owned.created_at,
+                labels: ProviderSandboxView::everruns_labels(owned.labels),
+                details: BTreeMap::from([("region".to_string(), machine_ref.region)]),
+                ..ProviderSandboxView::default()
+            })
+        }
+        Err(err) if is_not_found(&err) => Ok(ProviderSandboxView::missing(external_id)),
+        Err(err) => Err(SandboxAdminError::Provider(err)),
     }
 }
 

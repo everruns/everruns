@@ -176,6 +176,24 @@ and its files at the provider, not the Session. The Sandbox's record and history
 
 Set `delete_after_seconds` to `null` to keep paused Sandboxes until the Session is deleted.
 
+## Why did my Sandbox stop?
+
+Each Sandbox keeps a log of who paused, resumed or deleted it and why, including the times
+Everruns decided not to act, for example because the session was running a turn. Ask for a
+diagnosis to see the deadlines its pinned lifecycle sets, its recent events, the session's queued
+work and, for organization admins, what the provider itself reports:
+
+```bash
+everruns sandboxes diagnose sandbox_...
+everruns sandboxes events list sandbox_... --from 2026-11-09T00:00:00Z
+everruns sandboxes provider get sandbox_...   # organization admins
+```
+
+Each finding names what is wrong and how to fix it. A common one is a provider-side auto-stop
+shorter than **Idle after**: the provider stops the Sandbox before Everruns would. Platform Chat
+runs the same commands when you ask it why a Sandbox stopped. The provider view never includes
+the Sandbox's environment variables, proxy credentials or access tokens.
+
 ## Outbound network
 
 Daytona, E2B, boxd and Modal templates can limit what the Sandbox reaches on the network. Under
@@ -314,7 +332,8 @@ Select a declared binding in Playground when the mode is `selectable` or `config
 
 Use `GET /v1/sandbox-targets` to discover available targets,
 `GET /v1/sessions/{session_id}/sandbox` to inspect the resolved Sandbox, and
-`GET /v1/sandbox-templates` to list reusable templates.
+`GET /v1/sandbox-templates` to list reusable templates. `GET /v1/sandboxes/{id}/diagnosis`,
+`/events` and `/provider` back the commands in [Why did my Sandbox stop?](#why-did-my-sandbox-stop).
 
 ## Resource Sandbox fleets
 
