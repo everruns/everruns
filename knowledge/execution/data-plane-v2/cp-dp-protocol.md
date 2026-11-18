@@ -21,7 +21,7 @@ Status: approved 2026-11-09; implemented in plan step 7 (2026-11-11). Part of [d
 | **Feed** | data → control | Usage, session summaries, refreshed tokens, org events, health | Batched, at least once, deduplicated by cursor |
 | **Keys** | data ← control | Public keys that verify org tokens | The data plane pulls JWKS and caches it |
 
-**Transport:** HTTPS with JSON bodies, mTLS between the planes (until step 10, a bearer token per link: `EVERRUNS_DP_TOKEN` on the control plane, `CELL_DP_TOKEN` on the data plane, checked on both sides). This is the same stack as the public `/v1` API (axum, serde types, OpenAPI). Traffic is low volume (config on edits, feed batches about once a second), so nothing here needs streaming. Both sides serve an internal `/dp/v1` prefix that the edge router never exposes publicly.
+**Transport:** HTTPS with JSON bodies, mTLS between the planes (until step 10, a bearer token per link: `EVERRUNS_DP_TOKEN` on the control plane, `CELL_DP_TOKEN` on the data plane, checked on both sides; a control plane with no token configured refuses every `/dp/v1` call). This is the same stack as the public `/v1` API (axum, serde types, OpenAPI). Traffic is low volume (config on edits, feed batches about once a second), so nothing here needs streaming. Both sides serve an internal `/dp/v1` prefix that the edge router never exposes publicly.
 
 **Session traffic is not part of this protocol.** Messages, SSE and webhooks go from the edge router straight to the data plane. If the control plane is down, running sessions continue; edits and new orgs wait until it is back.
 
