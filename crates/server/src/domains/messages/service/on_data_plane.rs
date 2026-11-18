@@ -60,6 +60,10 @@ pub(super) async fn create(
                 "parts": content,
                 "metadata": metadata,
                 "external_actor": req.external_actor,
+                // The person who sent it, so the turn's platform tools act
+                // as them; none for a platform message (the cell's
+                // `senders.rs`), as v1 records the invocation.
+                "sender": ctx.event_metadata.is_none().then_some(ctx.user_id).flatten(),
             }),
         )
         .await?;

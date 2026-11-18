@@ -290,3 +290,36 @@ async fn an_orgs_egress_grants_come_from_the_control_plane_as_that_org() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn a_platform_call_names_its_turn_and_never_a_person() {
+    let material = Material::new(true, Ok(LookupAnswer::Value(json!("3 agents"))));
+    let session = SessionId::new();
+    let weak: Arc<dyn OrgMaterial> = material.clone();
+    let lookups = super::org_lookups(Some(&Arc::downgrade(&weak)), session).unwrap();
+    let calls = crate::platform_calls::PlatformCalls::new(lookups, session);
+
+    // Outside a turn there is no person to act as.
+    let error = calls
+        .call("discover", json!({ "query": "agents" }))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("within a turn"), "{error}");
+    assert!(material.asked.lock().is_empty());
+
+    let input = everruns_contracts::typed_id::MessageId::new();
+    let output = calls
+        .bound(input)
+        .call("discover", json!({ "query": "agents" }))
+        .await
+        .unwrap();
+    assert_eq!(output, "3 agents");
+    let asked = material.asked.lock();
+    assert_eq!(
+        asked[0].1,
+        everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE
+    );
+    assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
+    assert_eq!(asked[0].2["input_message_id"], json!(input.to_string()));
+    assert!(asked[0].2.get("acting_user").is_none());
+}

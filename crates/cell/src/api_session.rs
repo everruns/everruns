@@ -40,6 +40,7 @@ pub fn router(node: Arc<Node>) -> Router {
             get(storage).post(change_storage),
         )
         .route("/cell/sessions/{session}/secrets", get(secrets))
+        .route("/cell/sessions/{session}/sender", post(sender))
         .with_state(node)
 }
 
@@ -258,6 +259,12 @@ async fn schedules(
     Json(body): Json<Schedules>,
 ) -> Result<Json<CellReply>, ApiError> {
     let id = parse(&session)?;
+    // Senders are recorded only with the message (`api.rs` `send_message`).
+    if matches!(body.action, Some(crate::platform::Op::Sender { .. })) {
+        return Ok(Json(CellReply::Refused {
+            reason: "a sender is recorded with its message".into(),
+        }));
+    }
     let Some(action) = body.action else {
         let listed = crate::api::lookup(&node, id, |s| {
             let live: Vec<_> = s
@@ -278,7 +285,7 @@ async fn schedules(
 }
 
 /// Propose a platform change to `id`, as a [`CellReply`].
-async fn platform(
+pub(crate) async fn platform(
     node: &Node,
     id: SessionId,
     action: crate::platform::Op,
@@ -472,4 +479,29 @@ mod tests {
         events.push(started(session, second, b));
         assert_eq!(running_input(&events), Some(b));
     }
+}
+
+#[derive(Deserialize)]
+struct SenderOf {
+    message: MessageId,
+}
+
+/// Who sent the session's input message `message` (`senders.rs`):
+/// `{"user": <user id or null>}`.
+async fn sender(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<SenderOf>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    let found = crate::api::lookup(&node, id, |s| {
+        s.platform.senders.of(body.message).map(str::to_owned)
+    });
+    Ok(Json(match found {
+        Lookup::Here(user) => CellReply::Ok {
+            value: json!({ "user": user }),
+        },
+        Lookup::Moved { cell } => CellReply::Moved { cell },
+        Lookup::Missing => CellReply::NotFound,
+    }))
 }

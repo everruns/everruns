@@ -2022,6 +2022,20 @@ so its tools' requests carry that org to the egress boundary, which asks
 the control plane and caches the answer for a minute; a failed lookup
 grants nothing.
 
+Platform Chat's tools (`platform_discover`, `platform_query`,
+`platform_execute`) go over the same channel, but run as a person, not
+the org: the call names only the session and the turn's input message,
+the forwarding cell asks the session's cell who sent that message and
+sets the person, and the control plane re-derives the `platform`
+capability and the person's membership and current role, as for a v1
+worker's call. The session's cell records a sender only from a trusted
+admission path (the gateway, from a verified org token's subject; the
+control plane, for a message a person sent through it); a schedule's run
+or a task wake acts as the last person who wrote, as v1 copies the
+previous turn's record; a channel, trigger or webhook message acts as no
+one, so its platform calls are refused. The shell's `everruns` builtin is
+not installed on a cell yet.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

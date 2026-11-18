@@ -245,6 +245,7 @@ fn wake(
     message.created_at = at(now_ms);
     message.metadata = Some(everruns_core::message::task_wake_message_metadata());
     everruns_core::causal::task_causal_context(task).write_metadata(&mut message.metadata);
+    state.platform.senders.inherit(message.id);
     let admit = SessionCommand::Admit {
         message: Box::new(message),
         cancelled: false,

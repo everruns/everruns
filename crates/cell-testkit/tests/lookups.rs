@@ -11,8 +11,9 @@ use std::sync::Arc;
 
 use everruns_cell::dp::LookupAnswer;
 use everruns_cell::providers::OrgMaterial;
+use everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::connection_services::UserConnectionResolver;
 use serde_json::json;
 use support::org::{DATA_KEY, DATA_KEY_ID, ORG, org_executor, org_fleet, session};
@@ -131,4 +132,77 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
         None
     );
     assert_eq!(cp.lookups().len(), 3);
+}
+
+/// Admit `text` as `id` on `session` with `sender`, as a trusted admission
+/// path does (the gateway from a verified org token, or the control plane),
+/// on whichever node holds the session.
+async fn send_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &str) {
+    let mut replies = Vec::new();
+    for base in fleet.bases() {
+        let reply = fleet
+            .http
+            .post(format!("{base}/cell/sessions/{session}/messages"))
+            .json(&json!({ "text": "list my agents", "id": id, "sender": sender }))
+            .send()
+            .await
+            .unwrap();
+        let status = reply.status();
+        let text = reply.text().await.unwrap();
+        let body: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        if body["reply"] == "ok" {
+            return;
+        }
+        replies.push(format!("{status} {text}"));
+    }
+    panic!("no node took the message: {replies:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(
+        PLATFORM_COMMAND_SURFACE,
+        LookupAnswer::Value(json!("3 agents")),
+    );
+    let session = session(&fleet, &cp).await;
+    fleet.say(&session, "ping").await;
+    fleet.turns(&session, 1).await;
+
+    let person = uuid::Uuid::new_v4().to_string();
+    let theirs = MessageId::new();
+    send_as(&fleet, &session, theirs, &person).await;
+    fleet.turns(&session, 2).await;
+
+    // The executor asks with a person of its own choosing: the cell that
+    // forwards the call replaces it with the one who sent the message.
+    let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
+    let ask = |message: MessageId| {
+        json!({
+            "session_id": session,
+            "input_message_id": message,
+            "operation": "discover",
+            "arguments": { "query": "agents" },
+            "acting_user": "someone-else",
+        })
+    };
+    let answer = material
+        .lookup(ORG, PLATFORM_COMMAND_SURFACE, ask(theirs))
+        .await
+        .unwrap();
+    assert_eq!(answer, LookupAnswer::Value(json!("3 agents")));
+    let asked = cp.lookups();
+    assert_eq!(asked[0].1, PLATFORM_COMMAND_SURFACE);
+    assert_eq!(asked[0].2["acting_user"], json!(person));
+    assert_eq!(asked[0].2["operation"], json!("discover"));
+
+    // A message no one is recorded for (the first, sent without a verified
+    // token) acts as no one.
+    let first = MessageId::new();
+    material
+        .lookup(ORG, PLATFORM_COMMAND_SURFACE, ask(first))
+        .await
+        .unwrap();
+    assert_eq!(cp.lookups()[1].2["acting_user"], serde_json::Value::Null);
 }

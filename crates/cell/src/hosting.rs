@@ -306,6 +306,11 @@ impl Inner {
 pub(crate) struct Port(Arc<Inner>);
 
 impl Port {
+    /// The executor's org material, when it has one.
+    pub(crate) fn material(&self) -> Option<&Weak<dyn crate::providers::OrgMaterial>> {
+        self.0.material.get()
+    }
+
     /// Propose `command`; its value, or why it was refused.
     pub(crate) async fn propose(&self, session: SessionId, command: Command) -> Result<Value> {
         match self.0.propose(session, command).await? {

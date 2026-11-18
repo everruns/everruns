@@ -14,6 +14,11 @@
 //!   the org's feature flags: the same caller, checks and failures a v1
 //!   worker's `ExecuteCommand` gets (a session of another org is not
 //!   found).
+//! - A platform tool's call ([`PLATFORM_COMMAND_SURFACE`], Platform Chat)
+//!   runs on the command catalog as the person the forwarding cell names
+//!   (`acting_user`), never as the internal caller: the session must
+//!   resolve `platform` and the person must still be an org member, with
+//!   their current role (THREAT[TM-AGENT-017]).
 //! - Every answer, a refusal included, is sealed with the org's data key
 //!   as the request's own secret (`lookup:{request}`, revision 0): the
 //!   cells that pass it on hold ciphertext only, and an answer cannot pass
@@ -23,7 +28,9 @@
 //!   the control plane, as on v1.
 
 use everruns_contracts::dataplane::SealedSecret;
-use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer, LookupRequest, lookup_secret};
+use everruns_contracts::dataplane::{
+    LOOKUP_COMMANDS, LookupAnswer, LookupRequest, PLATFORM_COMMAND_SURFACE, lookup_secret,
+};
 use everruns_contracts::dataplane_seal as seal;
 
 use super::{ControlPlane, org_public};
@@ -43,6 +50,23 @@ pub async fn answer(
     ctx: &Ctx,
     request: LookupRequest,
 ) -> anyhow::Result<SealedSecret> {
+    // A platform tool's call (Platform Chat) is not an internal command: it
+    // runs on the command catalog as the person the forwarding cell names.
+    if request.command == PLATFORM_COMMAND_SURFACE {
+        let answer = match crate::worker_link::platform_command_surface::data_plane_call(
+            ctx,
+            &request.params,
+        )
+        .await
+        {
+            Ok(output) => LookupAnswer::Value(serde_json::Value::String(output)),
+            Err((kind, message)) => LookupAnswer::Error {
+                kind: kind as i32,
+                message,
+            },
+        };
+        return seal_answer(cp, org, &request.request, &answer);
+    }
     let answer = match crate::domains::common::dispatch(&request.command, request.params, ctx).await
     {
         Ok(json) => LookupAnswer::Value(serde_json::from_str(&json)?),
