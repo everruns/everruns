@@ -146,6 +146,48 @@ where
     .await
 }
 
+/// OpenAI-compatible request correlation, without retaining other response headers.
+/// Reconnects replace the identifier, including clearing it if the final response
+/// has no header. This is not an accounting ledger for failed attempts.
+pub(crate) async fn connect_sse_with_request_id<C, Fut>(
+    retry_config: &LlmRetryConfig,
+    driver_name: &str,
+    mut connect: C,
+) -> Result<(SseStream, RetryMetadata, Option<String>), AgentLoopError>
+where
+    C: FnMut(u32) -> Fut,
+    Fut: Future<
+        Output = Result<(crate::http_transport::HttpResponse, RetryMetadata), AgentLoopError>,
+    >,
+{
+    let request_id = std::sync::Mutex::new(None);
+    let (stream, retries) = connect_sse_with_reconnect(retry_config, driver_name, |attempts| {
+        let pending = connect(attempts);
+        let request_id = &request_id;
+        async move {
+            let (response, retries) = pending.await?;
+            *request_id
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner()) =
+                provider_request_id(response.headers());
+            Ok((response, retries))
+        }
+    })
+    .await?;
+    let request_id = request_id
+        .into_inner()
+        .unwrap_or_else(|poison| poison.into_inner());
+    Ok((stream, retries, request_id))
+}
+
+pub(crate) fn provider_request_id(headers: &http::HeaderMap) -> Option<String> {
+    headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
+}
+
 async fn connect_sse_with_reconnect_timeout<C, Fut, R>(
     retry_config: &LlmRetryConfig,
     driver_name: &str,
@@ -810,6 +852,38 @@ mod tests {
         reqwest::Response::from(http::Response::builder().status(200).body(body).unwrap())
     }
 
+    #[tokio::test]
+    async fn request_id_tracks_final_connection_and_clears_missing_header() {
+        for final_id in [Some("req_final"), None] {
+            let mut calls = 0;
+            let (events, retries, request_id) =
+                connect_sse_with_request_id(&fast_config(2), "test", |_| {
+                    calls += 1;
+                    let failed = calls == 1;
+                    let mut response: crate::http_transport::HttpResponse =
+                        synthetic_response(failed).into();
+                    if let Some(id) = if failed { Some("req_failed") } else { final_id } {
+                        response
+                            .headers
+                            .insert("x-request-id", http::HeaderValue::from_static(id));
+                    }
+                    async move { Ok((response, RetryMetadata::default())) }
+                })
+                .await
+                .unwrap();
+            assert_eq!(request_id.as_deref(), final_id);
+            assert_eq!(retries.attempts, 1);
+            assert_eq!(calls, 2);
+            assert_eq!(
+                events
+                    .map(|event| event.unwrap().data)
+                    .collect::<Vec<_>>()
+                    .await,
+                ["first", "second"]
+            );
+        }
+    }
+
     #[tokio::test(start_paused = true)]
     async fn exhausted_header_budget_cannot_restart_the_first_item_timeout() {
         for sse in [true, false] {
@@ -949,5 +1023,25 @@ mod tests {
             assert_eq!(metadata.total_retry_wait, Duration::from_secs(1));
             assert_eq!(metadata.total_retry_elapsed, Duration::from_secs(1));
         }
+    }
+}
+
+#[cfg(test)]
+mod request_id_tests {
+    use super::provider_request_id;
+
+    #[test]
+    fn ignores_missing_blank_and_non_utf8_headers() {
+        let mut headers = http::HeaderMap::new();
+        assert_eq!(provider_request_id(&headers), None);
+        for value in [b" ".as_slice(), b"\xff".as_slice()] {
+            headers.insert(
+                "x-request-id",
+                http::HeaderValue::from_bytes(value).unwrap(),
+            );
+            assert_eq!(provider_request_id(&headers), None);
+        }
+        headers.insert("X-Request-Id", http::HeaderValue::from_static("req_case"));
+        assert_eq!(provider_request_id(&headers).as_deref(), Some("req_case"));
     }
 }

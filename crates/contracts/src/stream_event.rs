@@ -130,6 +130,10 @@ pub struct LlmCompletionMetadata {
     /// Provider's response ID (e.g., OpenAI response ID from response.completed).
     /// Used for `previous_response_id` chaining and OTel tracing.
     pub response_id: Option<String>,
+    /// HTTP request identifier returned by the provider (OpenAI `x-request-id`).
+    /// Distinct from the response resource ID; absent when transport does not expose it.
+    /// For retries, identifies the successful connection, not every billable attempt.
+    pub provider_request_id: Option<String>,
     /// Execution phase from the provider's response (e.g., "commentary", "final_answer").
     /// When present, this value should be preserved on the assistant message and sent
     /// back as-is in subsequent requests. Only set by providers with native phase support.

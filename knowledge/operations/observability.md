@@ -477,3 +477,24 @@ Tests verify delivery and mapping correctness:
 8. **session grouping metadata**: root turn spans carry stable `session_id` and session-ordering metadata
 
 Both test suites must cover the task worker's DEV_MODE direct-store and full-mode gRPC-store execution paths.
+
+## Logical provider-call attribution
+
+Assistant-message events are not a complete cost ledger: auxiliary completion
+reviews can call the same provider without producing an assistant message. The
+opt-in [driver-boundary observer](../../crates/contracts/src/call_ledger.rs)
+records those chat invocations under a shared call identity, with bounded,
+allowlisted correlation metadata and provider-reported usage. It never copies
+prompts, tool arguments, credentials, endpoint URLs or raw errors. Missing usage
+means unknown, not free; dropped streams have an incomplete terminal state.
+
+The optional [JSONL sink](../../crates/contracts/src/call_ledger_jsonl.rs) creates
+private new files, flushes each record and exposes a sticky storage-failure flag.
+It never retries a paid request because a ledger write failed. Hosts must surface
+that flag and incomplete start/terminal pairs. This source-level facility is not
+automatically enabled in a deployed host and is not invoice reconciliation.
+Registry installation covers drivers obtained from that registry; direct driver
+users must explicitly wrap their driver. Native batch and compaction accounting
+and physical retry attempts remain outside this chat-call hook. Do not sum its
+terminal records with assistant-message or reason totals, which can describe the
+same work. Provider response identifiers and HTTP request identifiers are distinct.

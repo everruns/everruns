@@ -43,7 +43,7 @@ struct Call {
 
 impl Call {
     fn is_review(&self) -> bool {
-        self.metadata.contains_key("purpose")
+        self.metadata.get("purpose").map(String::as_str) == Some("completion_review")
     }
 }
 
@@ -265,6 +265,7 @@ async fn a_curated_completion_sends_exactly_the_host_envelope_on_both_lanes() {
         let fixture = Fixture::new();
         let session = Engine::new().create(fixture.agent(lane, vec![]));
         assert!(session.run("original request").await.unwrap().success);
+        assert_eq!(fixture.log.calls()[0].metadata["purpose"], "reason");
         let before = canonical(&session).await;
 
         let answer = session.complete(review()).await.expect("review");
@@ -476,6 +477,7 @@ async fn timed_out_and_abandoned_completions_leave_the_session_usable() {
         let fixture = Fixture::new();
         let session = Engine::new().create(fixture.agent(lane, vec![]));
         assert!(session.run("original request").await.unwrap().success);
+        assert_eq!(fixture.log.calls()[0].metadata["purpose"], "reason");
         let before = canonical(&session).await;
         fixture.log.hang.store(true, Ordering::SeqCst);
 

@@ -22,6 +22,7 @@ use super::*;
 #[derive(Clone, Default)]
 pub struct DriverRegistry {
     descriptors: HashMap<DriverId, DriverDescriptor>,
+    call_observer: Option<Arc<dyn crate::call_ledger::CallObserver>>,
     providers: crate::runtime_provider::RuntimeProviderRegistry,
 }
 
@@ -30,7 +31,33 @@ impl DriverRegistry {
     pub fn new() -> Self {
         Self {
             descriptors: HashMap::new(),
+            call_observer: None,
             providers: crate::runtime_provider::RuntimeProviderRegistry::new(),
+        }
+    }
+
+    /// Opt in to logical-call attribution for every created chat driver, including
+    /// auxiliary calls that do not produce assistant-message events.
+    pub fn with_call_observer(
+        mut self,
+        observer: Arc<dyn crate::call_ledger::CallObserver>,
+    ) -> Self {
+        self.call_observer = Some(observer);
+        self
+    }
+
+    fn observe(
+        &self,
+        driver: BoxedChatDriver,
+        provider: &crate::runtime_provider::ProviderKey,
+    ) -> BoxedChatDriver {
+        match &self.call_observer {
+            Some(observer) => Box::new(crate::call_ledger::ObservedChatDriver::new(
+                provider.to_string(),
+                Arc::from(driver),
+                observer.clone(),
+            )),
+            None => driver,
         }
     }
 
@@ -126,9 +153,12 @@ impl DriverRegistry {
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
     pub fn create_chat_driver(&self, config: &ProviderConfig) -> Result<BoxedChatDriver> {
         if let Some(provider) = self.providers.get(&config.provider) {
-            return Ok(RequestOptionsDriver::wrap(
-                (*provider).clone().into_boxed_driver(),
-                &config.request_options,
+            return Ok(self.observe(
+                RequestOptionsDriver::wrap(
+                    (*provider).clone().into_boxed_driver(),
+                    &config.request_options,
+                ),
+                &config.provider,
             ));
         }
         let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
@@ -162,7 +192,10 @@ impl DriverRegistry {
         }
         let credential_errors = descriptor.credential_schema.validate(&credential_fields);
         if credential_errors.is_empty() {
-            Ok(RequestOptionsDriver::wrap(driver, &config.request_options))
+            Ok(self.observe(
+                RequestOptionsDriver::wrap(driver, &config.request_options),
+                &config.provider,
+            ))
         } else {
             let message = if descriptor.credential_schema.fields.len() == 1
                 && descriptor.credential_schema.fields[0].name == "api_key"

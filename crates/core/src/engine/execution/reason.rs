@@ -601,13 +601,13 @@ impl ReasonAtom {
             llm_config_builder = llm_config_builder.verbosity(verbosity);
         }
 
-        // Inject embedder metadata first; system keys added below take precedence
+        // Purpose defaults to reasoning; embedders may identify auxiliary calls.
+        llm_config_builder = llm_config_builder.with_metadata("purpose", "reason");
         for (k, v) in &embedder_metadata {
             llm_config_builder = llm_config_builder.with_metadata(k, v.clone());
         }
 
         // Correlation ids, stamped after embedder metadata (RESERVED_COMPLETION_METADATA_KEYS)
-        // TypedId::to_string() produces prefixed format (e.g., "session_abc123")
         llm_config_builder = llm_config_builder
             .with_metadata("session_id", session_id.to_string())
             .with_metadata("harness_id", harness_id.to_string())
