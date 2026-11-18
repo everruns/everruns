@@ -116,6 +116,10 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
     // The default org, where the built-in harness the v1 worker's test uses
     // lives; the answer is still sealed for ORG's data plane.
     let org = everruns_core::DEFAULT_ORG_ID;
+    // A session without a harness reads as the org's base harness.
+    crate::setup::org_init::initialize_org_harnesses(&cp.db, org)
+        .await
+        .unwrap();
     let member = cp.db.create_test_user(uuid::Uuid::now_v7()).await;
     cp.db
         .ensure_membership(member, org, "member")
