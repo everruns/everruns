@@ -94,8 +94,20 @@ jest.mock("@/components/chat/chat-thread-view", () => ({
   ),
 }));
 jest.mock("@/app/(main)/chats/new/new-chat-page-client", () => ({
-  ChatDraft: ({ threadMode }: { threadMode?: boolean }) => (
-    <div>{threadMode ? "New thread draft" : "New side chat draft"}</div>
+  ChatDraft: ({
+    threadMode,
+    extraActions,
+    onCreated,
+  }: {
+    threadMode?: boolean;
+    extraActions?: React.ReactNode;
+    onCreated?: (id: string) => void;
+  }) => (
+    <div>
+      {threadMode ? "New thread draft" : "New side chat draft"}
+      {extraActions}
+      {onCreated && <button onClick={() => onCreated("side_new")}>Send first message</button>}
+    </div>
   ),
 }));
 jest.mock("@/components/chat/chat-thread-work-detail", () => ({
@@ -275,4 +287,26 @@ it("closes a drawer portal when page-side Chat is hidden", () => {
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   rerender(<ChatWorkspace pageAware visible={false} />);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it("shows a new side chat draft beside the page with the pane's header actions", () => {
+  mockPath = "/agents/agent_1";
+  const onNewChatCreated = jest.fn();
+  render(
+    <ChatWorkspace
+      pageAware
+      activeChatId="side_1"
+      newChat={1}
+      onNewChatCreated={onNewChatCreated}
+      extraActions={<button>Hide chat</button>}
+    />,
+  );
+  expect(screen.getByText("New side chat draft")).toBeInTheDocument();
+  expect(screen.queryByTestId("conversation-side_1")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Hide chat" })).toBeInTheDocument();
+  // An unsent draft has no threads yet.
+  expect(screen.queryByRole("button", { name: /^Threads/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Send first message" }));
+  expect(onNewChatCreated).toHaveBeenCalledWith("side_new");
+  expect(mockPush).not.toHaveBeenCalled();
 });

@@ -123,6 +123,8 @@ export interface ChatPanelProps {
     images: Array<{ imageId: string; filename?: string }>,
     files: Array<{ fileId: string; filename?: string }>,
     controls?: Controls,
+    /** Page context of a draft beside a page, as later page-aware sends carry it. */
+    metadata?: Record<string, unknown>,
   ) => Promise<void>;
   /** Hosts with their own context rail may hide the shared participant rail. */
   showParticipants?: boolean;
@@ -560,38 +562,42 @@ export function ChatPanel({
       return;
     }
 
+    // Beside a page every send, a draft's first one included, tells the chat
+    // which page it sits on and what the person did there since the last send.
+    const pageMetadata =
+      pageAware && chatMode
+        ? {
+            page_context: {
+              ...chatMode.page,
+              ...(chatMode.pageAdapter && { draft: chatMode.pageAdapter.describe() }),
+            },
+            page_actions: chatMode.actions.slice(
+              Math.max(0, chatMode.actions.findIndex((action) => action.id === sentActionId) + 1),
+            ),
+          }
+        : undefined;
     try {
       if (onDraftSubmit) {
         setDraftSending(true);
-        await onDraftSubmit(inputValue.trim(), uploadedImageIds, uploadedFileIds, controls);
+        await onDraftSubmit(
+          inputValue.trim(),
+          uploadedImageIds,
+          uploadedFileIds,
+          controls,
+          pageMetadata,
+        );
         clearImages();
         clearFiles();
       } else {
         // The turn status row takes over from Enter: the composer clears now,
         // and a send that fails shows "Not delivered" with Retry on its row.
-        const pageActions =
-          pageAware && chatMode
-            ? chatMode.actions.slice(
-                Math.max(0, chatMode.actions.findIndex((action) => action.id === sentActionId) + 1),
-              )
-            : [];
         const send = chatSends.submit({
           text: inputValue.trim(),
           images: hasImages ? uploadedImageIds : [],
           files: hasFiles ? uploadedFileIds : [],
           controls,
           addressedParticipantId,
-          ...(pageAware && chatMode
-            ? {
-                metadata: {
-                  page_context: {
-                    ...chatMode.page,
-                    ...(chatMode.pageAdapter && { draft: chatMode.pageAdapter.describe() }),
-                  },
-                  page_actions: pageActions,
-                },
-              }
-            : {}),
+          ...(pageMetadata ? { metadata: pageMetadata } : {}),
         });
         if (pageAware) {
           setSentActionId(chatMode?.actions.at(-1)?.id);

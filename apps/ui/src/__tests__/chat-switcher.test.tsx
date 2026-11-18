@@ -55,6 +55,7 @@ it("switches chats and opens the open chat's unresolved threads", async () => {
       activeChatId="main"
       onSelectChat={onSelectChat}
       onSelectThread={onSelectThread}
+      onNewChat={jest.fn()}
     />,
   );
   const trigger = screen.getByRole("button", { name: "Switch chat" });
@@ -69,10 +70,39 @@ it("switches chats and opens the open chat's unresolved threads", async () => {
   await screen.findByRole("menu");
   // Main chat is listed once, at the top, not again among side chats.
   expect(screen.getAllByRole("menuitem", { name: /Main chat|^Chat$/ })).toHaveLength(1);
-  expect(screen.getByRole("menuitem", { name: "New side chat" })).toHaveAttribute(
-    "href",
-    "/chats/new",
-  );
   fireEvent.click(screen.getByRole("menuitem", { name: "Pricing wording" }));
   expect(onSelectChat).toHaveBeenCalledWith("side");
+});
+
+it("starts a new side chat beside the page instead of opening full-screen Chat", async () => {
+  const onNewChat = jest.fn();
+  render(
+    <ChatSwitcher
+      mainChatId="main"
+      activeChatId="side"
+      onSelectChat={jest.fn()}
+      onSelectThread={jest.fn()}
+      onNewChat={onNewChat}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Switch chat" }));
+  await screen.findByRole("menu");
+  const item = screen.getByRole("menuitem", { name: "New side chat" });
+  expect(item).not.toHaveAttribute("href");
+  fireEvent.click(item);
+  expect(onNewChat).toHaveBeenCalledTimes(1);
+});
+
+it("names the new side chat while it is an unsent draft", () => {
+  render(
+    <ChatSwitcher
+      mainChatId="main"
+      activeChatId="side"
+      drafting
+      onSelectChat={jest.fn()}
+      onSelectThread={jest.fn()}
+      onNewChat={jest.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Switch chat" })).toHaveTextContent("New side chat");
 });

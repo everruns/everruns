@@ -100,7 +100,10 @@ always mounted, so nothing animates open or closed.
 - **Main chat ▾** in the conversation header
   ([`ChatSwitcher`](../../apps/ui/src/components/chat/chat-switcher.tsx))
   switches between Main chat and side chats and starts a new side chat. The page
-  stays as it is. The chosen chat is kept for the browser tab's session.
+  stays as it is: a new side chat is an empty draft in the same pane, not a trip
+  to full-screen `/chats/new`, and its first send carries the page context like
+  later sends. The chosen chat is kept for the browser tab's
+  session. Floating and docked Chat in Classic use the same switcher.
 - Links in a reply open in the page pane; they never replace the conversation.
 - **Full screen** in the conversation header goes to `/chats` or `/chats/{id}`;
   **Show beside page** returns to the last page.
