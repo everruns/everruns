@@ -95,6 +95,7 @@ impl GrpcAdapter {
             message_limit,
             after_sequence,
             skip_total_count: Some(skip_total_count),
+            ..Default::default()
         };
 
         let response = client

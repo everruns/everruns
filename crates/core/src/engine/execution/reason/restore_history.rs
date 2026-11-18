@@ -30,6 +30,8 @@ pub(super) struct Request<'a> {
     pub(super) native_reasoning_compaction: bool,
     /// Assembly loaded only the history after this sequence.
     pub(super) message_floor: Option<i64>,
+    pub(super) allow_portable: bool,
+    pub(super) prefer_portable: bool,
 }
 
 pub(super) struct Restored {
@@ -52,9 +54,11 @@ pub(super) async fn restore(request: Request<'_>) -> Result<Option<Restored>> {
         )
     };
     let format = super::super::provider_checkpoint::format_version(request.provider_managed);
+    let mut selected = None;
     if request.compaction
         && let Some(store) = request.store
-        && let Some(checkpoint) = store
+    {
+        selected = store
             .get_latest_format(
                 request.session_id,
                 request.provider_type,
@@ -62,23 +66,56 @@ pub(super) async fn restore(request: Request<'_>) -> Result<Option<Restored>> {
                 format,
             )
             .await?
-        && super::super::provider_checkpoint::is_restorable(
-            &checkpoint,
-            request.driver,
-            request.provider_type,
-            request.model,
-            request.provider_managed,
-            request.native_reasoning_compaction,
-        )
-    {
+            .filter(|checkpoint| {
+                super::super::provider_checkpoint::is_restorable(
+                    checkpoint,
+                    request.driver,
+                    request.provider_type,
+                    request.model,
+                    request.provider_managed,
+                    request.native_reasoning_compaction,
+                )
+            });
+        if request.allow_portable {
+            use crate::compaction_checkpoint::{
+                PORTABLE_COMPACTION_FORMAT_VERSION as FORMAT, PORTABLE_COMPACTION_MODEL as MODEL,
+                PORTABLE_COMPACTION_PROVIDER as PROVIDER,
+            };
+            if let Some(portable) = store
+                .get_latest_format(request.session_id, PROVIDER, MODEL, FORMAT)
+                .await?
+                .filter(CompactionCheckpoint::is_portable)
+                && selected.as_ref().is_none_or(|native| {
+                    request.prefer_portable
+                        || native.source_sequence < portable.source_sequence
+                        || matches!(native.payload, CompactionCheckpointPayload::Trimmed)
+                })
+            {
+                selected = Some(portable);
+            }
+        }
+    }
+    if let Some(checkpoint) = selected {
         let filters = filters();
         let mut query =
             MessageQuery::new(request.session_id).after_sequence(checkpoint.source_sequence);
         filters.apply_message_filters(&mut query);
-        let history = request.retriever.load_filtered_history(query).await?;
+        // A replacement covers exactly its prefix; never silently skip part of
+        // the suffix through a bootstrap candidate limit.
+        query.limit = None;
+        query.keep_head = None;
+        query.prepend_transform = None;
+        let history = if checkpoint.is_portable() {
+            super::context_plan::load_suffix(request.retriever, query).await?
+        } else {
+            request.retriever.load_filtered_history(query).await?
+        };
         let mut messages = history.messages;
         let suffix_message_count = messages.len();
         filters.apply_post_load_filters(&mut messages);
+        if let CompactionCheckpointPayload::Portable { continuity } = &checkpoint.payload {
+            messages.insert(0, super::context_plan::continuity_message(continuity));
+        }
         if let CompactionCheckpointPayload::Summary { text } = &checkpoint.payload {
             messages.insert(
                 0,

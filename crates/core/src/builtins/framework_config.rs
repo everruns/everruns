@@ -40,6 +40,7 @@ pub struct CompactionConfig {
     strategy: CompactionStrategy,
     proactive: bool,
     budget_percent: f32,
+    context_budget_tokens: usize,
 }
 
 impl CompactionConfig {
@@ -60,6 +61,12 @@ impl CompactionConfig {
         self
     }
 
+    /// Set the working history target independently of the provider's hard window.
+    pub fn context_budget_tokens(mut self, tokens: usize) -> Self {
+        self.context_budget_tokens = tokens;
+        self
+    }
+
     /// Set the proactive trigger as a fraction of the model context budget.
     ///
     /// The capability validator accepts values from 0.1 through 1.0.
@@ -75,6 +82,7 @@ impl Default for CompactionConfig {
             strategy: CompactionStrategy::Auto,
             proactive: true,
             budget_percent: 0.85,
+            context_budget_tokens: 64_000,
         }
     }
 }
@@ -86,6 +94,7 @@ impl IntoCapability for CompactionConfig {
                 "strategy": self.strategy.as_str(),
                 "proactive": self.proactive,
                 "budget_percent": self.budget_percent,
+                "context_budget_tokens": self.context_budget_tokens,
             }))
             .into()
     }

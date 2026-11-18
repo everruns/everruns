@@ -7,6 +7,7 @@
  * - Native compaction replaces the transcript with the provider's output items, and
  *   `messages_after` counts those items, not messages, so it can exceed `messages_before`.
  *   Show its token counts instead, and no message counts when tokens are missing.
+ * - Prefer token measurements for every strategy; label local estimates explicitly.
  */
 "use client";
 
@@ -27,7 +28,7 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
   const native = data.strategy_used.split("+").includes("native");
   const tokensKnown = data.tokens_before != null && data.tokens_after != null;
   const saved = data.messages_before - data.messages_after;
-  const countsKnown = !native && (data.messages_before > 0 || data.messages_after > 0);
+  const countsKnown = !native && saved > 0;
   // `steps` is omitted on the wire when empty (provider-managed compaction has none).
   const steps = data.steps ?? [];
 
@@ -35,16 +36,18 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
     <div className="space-y-1">
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
         className="flex w-full cursor-pointer items-center gap-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-sm"
       >
         <div className="h-px flex-1 bg-border" />
-        <span className="whitespace-nowrap">
+        <span className="text-center">
           {ui("Context compacted")}
-          {countsKnown && ` · ${data.messages_before} → ${data.messages_after} messages`}
-          {native &&
-            tokensKnown &&
-            ` · ${formatCompactNumber(data.tokens_before!)} → ${formatCompactNumber(data.tokens_after!)} tokens`}
+          {countsKnown &&
+            !tokensKnown &&
+            ` · ${data.messages_before} → ${data.messages_after} messages`}
+          {tokensKnown &&
+            ` · ${formatCompactNumber(data.tokens_before!)} → ${formatCompactNumber(data.tokens_after!)} ${ui(native ? "tokens" : "estimated tokens")}`}
           {data.strategy_used !== "none" && ` · ${data.strategy_used}`}
         </span>
         <span className="text-[10px]">{expanded ? "▲" : "▼"}</span>

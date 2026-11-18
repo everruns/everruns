@@ -594,12 +594,17 @@ message LoadMessagesRequest {
     // Leave `total_count` at 0 instead of counting the session's messages.
     // A worker extending its cached history sets it with `after_sequence`.
     optional bool skip_total_count = 4;
+    optional int64 before_sequence = 5;
+    bool oldest_first = 6;
+    optional string search = 7;
+    optional int64 offset = 8;
 }
 
 message LoadMessagesResponse {
     repeated Message messages = 1;
     int32 total_count = 2;
     optional int64 source_sequence = 3;
+    map<string, int64> message_sequences = 4;
 }
 
 message CompactionCheckpoint {
@@ -616,10 +621,13 @@ message GetCompactionCheckpointRequest {
     Uuid session_id = 1;
     string provider_type = 2;
     string model = 3;
+    optional uint32 format_version = 4;
+    bool source_sequence_only = 5;
 }
 
 message GetCompactionCheckpointResponse {
     optional CompactionCheckpoint checkpoint = 1;
+    optional int64 latest_source_sequence = 2;
 }
 
 message InstallCompactionCheckpointRequest {

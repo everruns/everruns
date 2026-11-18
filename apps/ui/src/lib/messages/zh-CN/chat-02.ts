@@ -1,5 +1,7 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  "estimated tokens": "估算令牌",
+  tokens: "令牌",
   "Discovery state at the last turn": "上一轮的工具发现状态",
   "Discovery pending": "等待发现工具",
   "Tools need sign-in": "工具需要登录",

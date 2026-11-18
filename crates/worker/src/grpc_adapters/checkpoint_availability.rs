@@ -82,6 +82,7 @@ impl GrpcClient {
                 session_id: Some(uuid_to_proto(uuid::Uuid::now_v7())),
                 provider_type: String::new(),
                 model: String::new(),
+                ..Default::default()
             })
             .await;
         match result {

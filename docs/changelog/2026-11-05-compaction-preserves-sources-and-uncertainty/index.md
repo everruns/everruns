@@ -31,3 +31,10 @@ The same guidance applies to the local fallback in `auto`. Repeated summaries
 retain the full previous summary, including late qualifiers and Active Skills.
 Results still depend on the model and available evidence. Provider-native opaque
 compaction is unchanged.
+
+## Update 2026-11-17
+
+[Portable session continuity](/changelog/2026-11-17-portable-session-continuity/)
+adds durable local checkpoints and separate usage accounting. Exact activated
+skill sources are carried outside generated prose; semantic summary accuracy
+remains model-dependent.

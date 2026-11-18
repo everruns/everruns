@@ -8,6 +8,36 @@ tags:
 ---
 # Compaction
 
+## Managed continuity
+
+`compaction` is the public long-session capability. Its compatibility dependency
+supplies `query_history` and bootstrap loading; builders no longer need to enable
+`infinity_context` separately. The legacy entry used alone remains a free window
+policy. Runtime coordination, checkpoint durability and provider replay remain
+core responsibilities rather than independent capability reducers.
+
+The [context planner](../../crates/core/src/engine/execution/reason/context_plan.rs)
+folds contiguous bounded journal pages into portable continuity. Its checkpoint
+namespace and format are independent of provider/model-native records, sharing
+the existing encrypted persistence and atomic installation path. Coverage uses
+exact message-event cursors, never a masked or candidate-limited prompt. Successful
+summary candidates persist separately before canonical installation. Their source
+fingerprint permits reuse after installation failure; candidates do not advance
+the assembly floor. Arrivals after the fixed snapshot remain in the suffix.
+
+Generated continuity is reference data. Active skill source text is carried
+verbatim outside generated prose, while current instructions, permissions and
+runtime authority continue to come from current execution state. The summarizer
+must finish without truncation or tool calls. Its paid usage is a separate traced
+generation. Mechanical validity does not establish semantic fidelity; long-session
+replay qualification is required.
+
+Native epochs preserve canonical output order and their provider compatibility.
+They bypass competing model-view masking. Portable summaries may bridge a model
+change; opaque native content is never translated. Current working-context size
+and raw evidence since the checkpoint trigger reduction; cumulative lifetime
+usage alone cannot rearm a checkpoint. See the [public contract](../../docs/advanced/compaction.md).
+
 ## Request budget invariant
 
 Proactive pressure includes model-visible tool declarations after discovery and

@@ -127,6 +127,28 @@ impl super::ReasonAtom {
     }
 }
 
+impl super::ReasonAtom {
+    pub(super) async fn resolve_compacted_messages(
+        &self,
+        messages: &[RuntimeMessage],
+        system_prompt: Option<&str>,
+    ) -> Vec<crate::engine::driver_registry::Message> {
+        use crate::engine::driver_registry::{Message, MessageRole};
+        let images = self.resolve_images(messages).await;
+        let files = self.resolve_files(messages).await;
+        let mut wire = Vec::new();
+        if let Some(system_prompt) = system_prompt {
+            wire.push(Message::text(MessageRole::System, system_prompt));
+        }
+        wire.extend(messages.iter().map(|message| {
+            crate::llm_conversions::llm_message_from_message_with_attachments(
+                message, &images, &files,
+            )
+        }));
+        crate::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(wire, false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

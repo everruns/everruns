@@ -60,7 +60,17 @@ Truncated or missing evidence is unavailable, not proof of success or failure.
 </provenance_and_uncertainty>
 
 <format>
-Produce a structured summary. Use sections. Be concise but complete.
+Produce a structured continuation record. Use these sections and omit empty ones:
+- Active task: current goal, scope, and the latest user steering. Separate older tasks.
+- Constraints and approvals: exact user requirements, prohibitions, permissions and their scope.
+- Progress: completed work and verification, current state, failures and rejected approaches.
+- Evidence: confirmed findings with sources; attributed or UNVERIFIED claims and conflicts.
+- Artifacts: relevant paths, identifiers, attachments, and retrieval terms for omitted evidence.
+- Next steps: pending work, unresolved decisions, blockers and unanswered questions.
+- Active Skills: verbatim instructions as specified below.
+Prefer the current task state over a chronological transcript. Preserve later corrections
+and superseded decisions so the next agent does not repeat rejected work. Do not invent
+completion, authorization, verification or missing identifiers. Be concise but complete.
 Do not include tool output verbatim — reference files by path.
 Mention attachments (images, files) the conversation relies on by their label.
 IMPORTANT: Any activate_skill tool results contain durable skill instructions.
@@ -94,8 +104,13 @@ pub fn format_messages_for_summarization(messages: &[Message]) -> String {
         let is_summary =
             msg.role == MessageRole::System && content.starts_with("[CONVERSATION_SUMMARY]\n");
 
-        // Truncate very long messages to avoid blowing up the summarization prompt
-        let truncated = if !is_protected && !is_summary && content.len() > 2000 {
+        // User requirements are irreducible source material. The planner bounds
+        // the whole source page; only reproducible observations are clipped here.
+        let truncated = if msg.role != MessageRole::User
+            && !is_protected
+            && !is_summary
+            && content.len() > 2000
+        {
             let safe_prefix = truncate_at_char_boundary(&content, 2000);
             format!(
                 "{}... [truncated, {} chars total]",

@@ -10,6 +10,13 @@ pub(super) struct ConfiguredCompactionPolicy {
 }
 
 impl CompactionPolicy for ConfiguredCompactionPolicy {
+    fn proactive_enabled(&self) -> bool {
+        self.config.proactive
+    }
+    fn working_context_tokens(&self) -> Option<usize> {
+        Some(self.config.context_budget_tokens)
+    }
+
     fn settings(&self) -> CompactionSettings {
         CompactionSettings {
             strategy: match self.config.strategy {
@@ -63,10 +70,43 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
     }
 
     fn apply_observation_masking(&self, messages: &[Message]) -> ExecutionObservationMaskingResult {
-        let result = apply_observation_masking(messages, &self.config.observation_masking);
+        let indices: Vec<_> = messages
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.role == MessageRole::Tool && !is_protected_tool_result(messages, m))
+            .map(|(index, _)| index)
+            .collect();
+        let sizes: Vec<_> = indices
+            .iter()
+            .map(|i| extract_text(&messages[*i].content).len())
+            .collect();
+        let mut config = self.config.cost_control.clone();
+        config.keep_recent_tool_results = self.config.observation_masking.keep_recent_tool_outputs;
+        let boundary = mask_boundary(&sizes, &config);
+        let mut result = messages.to_vec();
+        let mut masked_count = 0;
+        for index in indices.into_iter().take(boundary) {
+            let original = extract_text(&messages[index].content);
+            if original.len() < config.min_masked_tool_result_bytes {
+                continue;
+            }
+            let summary = match self.config.observation_masking.summary_format {
+                MaskingSummaryFormat::OneLine => format_one_line_summary(
+                    &find_tool_call_name(messages, &messages[index]),
+                    &messages[index].content,
+                ),
+                MaskingSummaryFormat::HeadTail => {
+                    format_head_tail_summary(&messages[index].content)
+                }
+            };
+            if summary.len() < original.len() {
+                result[index].content = MessageContent::Text(summary);
+                masked_count += 1;
+            }
+        }
         ExecutionObservationMaskingResult {
-            messages: result.messages,
-            masked_count: result.masked_count,
+            messages: result,
+            masked_count,
         }
     }
 
@@ -77,6 +117,15 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
         preserve_system: bool,
     ) -> Vec<Message> {
         aggressive_trim(messages, target_tokens, preserve_system)
+    }
+
+    fn pinned_context(&self, messages: &[Message]) -> Vec<String> {
+        messages
+            .iter()
+            .enumerate()
+            .filter(|(index, message)| is_protected_tool_result(&messages[..*index], message))
+            .map(|(_, message)| extract_text(&message.content))
+            .collect()
     }
 
     fn summarization_prompt(&self) -> String {

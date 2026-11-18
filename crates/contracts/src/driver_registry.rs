@@ -65,6 +65,13 @@ use crate::recommended_models::ProviderRecommendedModels;
 /// reports it under a transient status like 429.
 #[async_trait]
 pub trait ChatDriver: Send + Sync {
+    /// Whether a separate history-summary request is a safe model operation.
+    /// Deterministic execution adapters must opt out rather than execute a
+    /// historical script or another side effect for a summarization prompt.
+    fn supports_history_summarization(&self) -> bool {
+        true
+    }
+
     /// Provider-native offline requests, when implemented. Never falls back to chat.
     fn batch_driver(&self) -> Option<&dyn crate::batch::BatchDriver> {
         None

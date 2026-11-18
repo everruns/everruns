@@ -1286,26 +1286,26 @@ async fn proactive_endpoint_error_without_fallback_install_emits_skipped() {
 }
 
 #[tokio::test]
-async fn proactive_observation_masking_emits_only_install() {
+async fn proactive_observation_masking_no_op_emits_skipped() {
     let policy = LifecycleStubPolicy {
         window_pressure: true,
         strategy: CompactionStrategy::ObservationMasking,
         masked_count: 1,
     };
-    assert_fallback_emits_only_install(&policy, None).await;
+    assert_fallback_no_op_emits_skipped(&policy, None).await;
 }
 
 #[tokio::test]
-async fn proactive_auto_without_native_support_emits_only_install() {
+async fn proactive_auto_without_native_support_does_not_report_a_no_op_as_compacted() {
     let policy = LifecycleStubPolicy {
         window_pressure: true,
         strategy: CompactionStrategy::Auto,
         masked_count: 1,
     };
-    assert_fallback_emits_only_install(&policy, None).await;
+    assert_fallback_no_op_emits_skipped(&policy, None).await;
 }
 
-async fn assert_fallback_emits_only_install(
+async fn assert_fallback_no_op_emits_skipped(
     policy: &LifecycleStubPolicy,
     store: Option<&std::sync::Arc<dyn crate::engine::CompactionCheckpointStore>>,
 ) {
@@ -1325,15 +1325,13 @@ async fn assert_fallback_emits_only_install(
     assert_eq!(
         events.len(),
         1,
-        "one terminal install event, got {events:?}"
+        "one terminal skipped event, got {events:?}"
     );
     match &events[0].data {
-        EventData::ContextCompacted(compacted) => {
-            assert_eq!(compacted.strategy_used, "masking");
-            assert_eq!(compacted.trigger, CompactionTrigger::ContextBudget);
-            assert!(compacted.checkpoint_id.is_none());
+        EventData::ContextCompactionSkipped(skipped) => {
+            assert_eq!(skipped.trigger, CompactionTrigger::ContextBudget);
         }
-        other => panic!("expected a compacted event, got {other:?}"),
+        other => panic!("expected a skipped event for unchanged history, got {other:?}"),
     }
 }
 

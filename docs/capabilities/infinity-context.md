@@ -13,6 +13,8 @@ appliesTo: [framework, platform, cloud]
 | **Features** | None |
 | **Dependencies** | None |
 
+> **Deprecated configuration entry:** use [`compaction`](/advanced/compaction/) for managed long-session context. It includes permitted history retrieval and coordinates portable and native checkpoints. Existing `infinity_context` configurations remain supported. Used alone, this entry does not enable paid summaries.
+
 Limits the live prompt to recent conversation history while keeping older messages accessible through `query_history`.
 
 This is useful for long-running sessions where the agent should stay responsive without losing access to earlier decisions, identifiers, or requirements.
@@ -62,12 +64,12 @@ Custom budget:
 
 ## Limitations
 
-- Search is keyword-based, not semantic
-- The tool reads full session history; it does not currently restrict itself to only the trimmed portion
-- Budgeting uses a heuristic message-count estimate, not model-specific tokenization
+- Search is keyword-based, not semantic; database-backed hosts use indexed full-text search
+- Search and range retrieval use bounded storage queries over retained session history, including messages still visible in the prompt
+- Budgeting uses token estimates, not guaranteed provider token counts
 
 ## See Also
 
-- [Context Compaction](/advanced/compaction/), Complementary capability that reduces the size of messages in the prompt; see [Worker Harness Defaults](/advanced/compaction/#worker-harness-defaults) for how they work together
+- [Context Compaction](/advanced/compaction/), The replacement capability for managed long-session context
 - [Capabilities Overview](/capabilities/)
 - [Harnesses](/features/harnesses/)

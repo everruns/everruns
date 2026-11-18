@@ -1280,10 +1280,13 @@ impl MessageRetriever for EventHistory {
     async fn load_filtered_history(&self, query: MessageQuery) -> CoreResult<MessageHistory> {
         // One projection serves both the messages and the source sequence;
         // with `after_sequence` it covers only the suffix.
-        let projected = self
+        let mut projected = self
             .project_after(query.session_id, query.after_sequence)
             .await
             .map_err(core_event_error)?;
+        if let Some(before) = query.before_sequence {
+            projected.retain(|item| i64::from(item.sequence) < before);
+        }
         let mut source_sequence = projected.last().map(|item| i64::from(item.sequence));
         if source_sequence.is_none() && query.after_sequence.is_some() {
             // No message after the boundary: the newest one is before it.

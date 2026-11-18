@@ -53,6 +53,14 @@ pub struct ObservationMaskingResult {
 /// implementation bundle owns thresholds and deterministic message transforms.
 pub trait CompactionPolicy: Send + Sync + Debug {
     fn settings(&self) -> CompactionSettings;
+    /// Desired working history size, independent of a provider's hard window.
+    fn proactive_enabled(&self) -> bool {
+        true
+    }
+    fn working_context_tokens(&self) -> Option<usize> {
+        None
+    }
+
     fn estimate_total_tokens(&self, messages: &[Message]) -> usize;
     fn total_tool_result_bytes(&self, messages: &[RuntimeMessage]) -> usize;
     fn should_compact_proactively(&self, messages: &[Message], context_window: usize) -> bool;
@@ -82,6 +90,10 @@ pub trait CompactionPolicy: Send + Sync + Debug {
         target_tokens: usize,
         preserve_system: bool,
     ) -> Vec<Message>;
+    /// Exact durable skill instructions retained outside generated prose.
+    fn pinned_context(&self, _messages: &[Message]) -> Vec<String> {
+        Vec::new()
+    }
     fn summarization_prompt(&self) -> String;
     fn format_messages_for_summarization(&self, messages: &[Message]) -> String;
     fn compose_summary_with_recent(

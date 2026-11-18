@@ -1,5 +1,7 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  "estimated tokens": "geschätzte Token",
+  tokens: "Token",
   "Discovery state at the last turn": "Erkennungsstatus beim letzten Gesprächsschritt",
   "Discovery pending": "Erkennung ausstehend",
   "Tools need sign-in": "Tools benötigen Anmeldung",

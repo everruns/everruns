@@ -51,4 +51,20 @@ describe("CompactionDivider", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(screen.queryByText(/Saved:/)).not.toBeInTheDocument();
   });
+  it("shows token reduction when masking preserves every message", () => {
+    render(
+      <CompactionDivider
+        data={data({
+          messages_before: 581,
+          messages_after: 581,
+          tokens_before: 90723,
+          tokens_after: 51578,
+        })}
+      />,
+    );
+    expect(screen.getByText(/90.7K → 51.6K estimated tokens/)).toBeInTheDocument();
+    expect(screen.queryByText(/581 → 581/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.queryByText(/Saved:/)).not.toBeInTheDocument();
+  });
 });

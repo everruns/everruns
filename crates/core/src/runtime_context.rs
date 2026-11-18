@@ -195,9 +195,29 @@ pub async fn assemble_resolved_turn_context(
         tool_surface_plan: Default::default(),
     };
     let compaction_policy = effective_overlay.capabilities.iter().find_map(|config| {
-        capability_registry
-            .get(config.capability_id())?
-            .compaction_policy(config.config_value())
+        let capability = capability_registry.get(config.capability_id())?;
+        let policy = capability.compaction_policy(config.config_value())?;
+        let legacy_budget = effective_overlay
+            .capabilities
+            .iter()
+            .find(|c| c.capability_id() == "infinity_context")
+            .and_then(|c| {
+                c.config_value()
+                    .get("context_budget_tokens")
+                    .and_then(serde_json::Value::as_u64)
+            });
+        if config.capability_id() == "compaction"
+            && let (Some(legacy), Some(working)) = (legacy_budget, policy.working_context_tokens())
+        {
+            let mut normalized = config.config_value().clone();
+            if normalized.is_null() {
+                normalized = serde_json::json!({});
+            }
+            normalized["context_budget_tokens"] = serde_json::json!(working.min(legacy as usize));
+            capability.compaction_policy(&normalized)
+        } else {
+            Some(policy)
+        }
     });
     let mut turn_agent = build_runtime_agent(
         &snapshot,
