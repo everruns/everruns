@@ -2075,6 +2075,23 @@ two nodes went past 12 GiB three times. A cell short of memory now starts
 no turns past `--pressure-turns` (1024): queued input waits, see
 `pressure.rs`.
 
+With that fix (saas run 44383590806) the mix ran 72,421 agents with 0
+errors, but one node of cell 1 was still killed: its memory rose from 9.2
+to 12 GB below the 85% gate. Per-node samples of the next run show why:
+every node of a cell jumps by 2 to 3 GB at the same moment, when the log
+reaches its longest (about 1.1 GB) and all three build a snapshot at the
+same index. `build_snapshot` clones the cell state and encodes it to JSON
+in memory, so the copy, the encoding and the full log coexist for a few
+seconds; the memory budget does not count the first two. Run 44396952768
+gave the nodes 14Gi with the same 9 GiB budget (executors 4608Mi, which
+peak at 3.5 GiB, so the fleet still fits one 48 vCPU node) and **passed the
+11.7 gate**: 72,301 agents, 723,010 turns, 0 errors, no restarts, 220
+turns/s, turn p50 84 s (queueing), $3e-05 per agent-hour, cells 11.0
+cores and executors 16.0 cores on average, peak node 13.2 GB. Left for
+the finalization work: encode a snapshot without a full copy of the
+state, and stagger the nodes' snapshots; after chaos the cell that lost
+a node still draws 16,000 running turns against 2,700 elsewhere.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found
