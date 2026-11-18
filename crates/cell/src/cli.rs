@@ -77,6 +77,10 @@ enum Mode {
         /// Turns one node runs at once; more wait in their session's inbox.
         #[arg(long, env = "CELL_MAX_TURNS_PER_NODE", default_value = "256")]
         max_turns_per_node: usize,
+        /// Turns the cell runs at once while it is short of memory; queued
+        /// work waits until memory frees (see `pressure.rs`).
+        #[arg(long, env = "CELL_PRESSURE_TURNS", default_value = "1024")]
+        pressure_turns: usize,
         #[arg(long, default_value = "20000")]
         snapshot_every: u64,
         /// Log entries kept behind each snapshot, for followers that fell
@@ -259,6 +263,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             unload_idle_secs,
             claim_ttl_ms,
             max_turns_per_node,
+            pressure_turns,
             snapshot_every,
             keep_log,
             join,
@@ -292,6 +297,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 unload_idle: (unload_idle_secs > 0).then(|| Duration::from_secs(unload_idle_secs)),
                 claim_ttl: Duration::from_millis(claim_ttl_ms),
                 max_turns_per_node,
+                pressure_turns,
                 snapshot_every,
                 keep_log,
                 executors: if executor_cap == 0 {

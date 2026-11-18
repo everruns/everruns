@@ -2062,6 +2062,19 @@ the MCP transport refuses a server whose address is private, which an
 in-cluster one would be. `crates/cell-testkit/tests/mix.rs` runs the mix on
 a fleet and checks what each kind of session answered.
 
+The first EKS run with the mix (saas run 44355318472, run 6 shape, chaos
+on) ran 71,762 agents and 717,620 turns with 0 errors at 216 turns/s,
+about $3e-05 per agent-hour; every feature's turns completed (files 35,940,
+schedules, subagents and MCP 23,960 each, sandboxes 11,980), and turn p50
+was 90 s against 138 s for chat alone, all of it queueing. It missed the
+no-out-of-memory gate: the mix holds about 0.5 GB more per cell node (9.1 to
+9.4 GB before chaos; subagent sessions add 9% more sessions), and after
+chaos killed a node of cell 1 its slow commits drew the executor pool in
+(2,600 to 17,000 running turns, the other cells steady at 2,700). Its other
+two nodes went past 12 GiB three times. A cell short of memory now starts
+no turns past `--pressure-turns` (1024): queued input waits, see
+`pressure.rs`.
+
 ### Corrections after the architecture review (2026-11-09)
 
 A review of the merged steps 1 to 3 against the code, not the plan, found

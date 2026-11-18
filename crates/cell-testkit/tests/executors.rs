@@ -455,3 +455,30 @@ async fn a_cell_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
     fleet.say(&session, "again").await;
     fleet.turns(&session, 2).await;
 }
+
+/// A cell short of memory starts no turns past its `pressure_turns` floor,
+/// even for input it admitted before: an executor pool would otherwise pile
+/// into it (EKS run 44355318472). The input waits and runs once memory frees.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cell_short_of_memory_starts_no_queued_turns_past_its_floor() {
+    let mut fleet = Fleet::start().await;
+    // No executor yet: the admitted input waits in cell 1.
+    let session = fleet.create_in("worker", 1).await;
+    fleet.say(&session, "go").await;
+    fleet.restart_with(1, 1, |cfg| {
+        cfg.memory_limit = 1 << 20;
+        cfg.pressure_turns = 0;
+    });
+    fleet.leader(1).await;
+    fleet.executor(1);
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let events = fleet.events(&session).await;
+    assert!(
+        !events.iter().any(|e| e["type"] == "turn.started"),
+        "no turn starts while the cell is short of memory: {:?}",
+        types(&events)
+    );
+    fleet.restart_with(1, 1, |cfg| cfg.memory_limit = 1 << 40);
+    fleet.leader(1).await;
+    fleet.turns(&session, 1).await;
+}
