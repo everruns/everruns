@@ -6425,18 +6425,18 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "12.0.0"
+version = "11.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f347a975eb5fa8f5c4eadce6c1152c11c326cf32cf839fb64ff12d5cb8f4ce8b"
+checksum = "e75fe14a82d81e5f5af639997db37d8b96045938a7ac6ab18cdbe1c7467e05e1"
 dependencies = [
  "aws-lc-rs",
- "base64 0.23.1",
- "getrandom 0.4.3",
+ "base64 0.22.1",
+ "getrandom 0.2.17",
  "js-sys",
- "pem",
+ "pem 3.0.6",
  "serde",
  "serde_json",
- "signature 3.0.0",
+ "signature 2.2.0",
  "simple_asn1",
  "zeroize",
 ]
@@ -6555,7 +6555,7 @@ dependencies = [
  "jsonpath-rust",
  "k8s-openapi",
  "kube-core",
- "pem",
+ "pem 4.0.0",
  "percent-encoding",
  "rustls",
  "rustls-platform-verifier",
@@ -7899,6 +7899,16 @@ dependencies = [
  "ttf-parser",
  "unicode-bidi",
  "unicode-normalization",
+]
+
+[[package]]
+name = "pem"
+version = "3.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
+dependencies = [
+ "base64 0.22.1",
+ "serde_core",
 ]
 
 [[package]]
