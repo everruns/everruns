@@ -459,6 +459,9 @@ export function SessionProvider({
             e.type === "tool.completed" ||
             e.type === "tool.call_requested" ||
             e.type === "context.compacted" ||
+            e.type === "context.compacting" ||
+            e.type === "context.compaction.skipped" ||
+            e.type === "context.compaction.failed" ||
             e.type === "session.model.changed",
         )
       : [];

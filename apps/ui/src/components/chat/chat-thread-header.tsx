@@ -16,6 +16,7 @@ import type { Session } from "@/lib/api/types";
 import { PageMasthead } from "@/components/layout/page-layout";
 import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
+import { SessionContextButton } from "@/components/session/session-context-button";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
 import { ChatMcpServersButton } from "@/components/chat/chat-mcp-servers";
@@ -156,6 +157,7 @@ export function ChatThreadHeader({
       {approvalMode && !session.archived_at && (
         <SessionApprovalModeSwitch sessionId={session.id} agentMode={approvalMode} />
       )}
+      <SessionContextButton sessionId={session.id} />
       <ChatMcpServersButton
         sessionId={session.id}
         status={session.status}

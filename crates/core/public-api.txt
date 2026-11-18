@@ -30,6 +30,10 @@ everruns_core::compaction_checkpoint::PORTABLE_COMPACTION_PROVIDER	constant
 everruns_core::compaction_checkpoint::PortableContinuity	struct
 everruns_core::compaction_checkpoint::ProactiveCompactionAttempt	struct
 everruns_core::compaction_checkpoint::ProactiveCompactionAttemptTracker	struct
+everruns_core::compaction_status	module
+everruns_core::compaction_status::CompactionEventSummary	struct
+everruns_core::compaction_status::CompactionStatus	struct
+everruns_core::compaction_status::ContextCheckpoint	struct
 everruns_core::config	module
 everruns_core::config::env::env_bool	function
 everruns_core::config::env::env_duration_ms	function

@@ -144,3 +144,42 @@ fn assert_public_stream(stream: &str) {
         assert!(!stream.contains(internal), "stream leaked {internal}");
     }
 }
+
+/// Policy inspection works before any generation without presenting zero load
+/// as a model measurement, and does not start a model call.
+#[tokio::test]
+async fn context_report_publishes_policy_before_the_first_model_request() {
+    let server = TestServer::in_memory().await;
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({ "harness_id": server.seed_base_harness_id, "title": "Context inspection" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let report: everruns_core::SessionContextReport = server
+        .get(&format!("/v1/sessions/{}/context-report", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(report.session_id, session.id.to_string());
+    assert!(!report.measurement_available);
+    assert!(report.as_of_sequence.is_none());
+    assert!(report.compaction.is_some());
+    assert!(report.sections.is_empty());
+    let generations = server
+        .db
+        .list_events(
+            session.id,
+            None,
+            None,
+            &["llm.generation".into()],
+            &[],
+            None,
+            Some(1),
+        )
+        .await
+        .unwrap();
+    assert!(generations.is_empty(), "inspection must never call a model");
+}

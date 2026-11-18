@@ -28,7 +28,7 @@ describe("CompactionDivider", () => {
         })}
       />,
     );
-    expect(screen.getByText(/Context compacted · provider_managed/)).toBeInTheDocument();
+    expect(screen.getByText(/Context compacted · Provider-native/)).toBeInTheDocument();
     expect(screen.queryByText(/→/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button"));
     expect(screen.queryByText(/Saved:/)).not.toBeInTheDocument();
@@ -47,7 +47,7 @@ describe("CompactionDivider", () => {
       />,
     );
     expect(screen.queryByText(/messages/)).not.toBeInTheDocument();
-    expect(screen.getByText(/152.0K → 9.4K tokens · native/)).toBeInTheDocument();
+    expect(screen.getByText(/152.0K → 9.4K tokens · Provider-native/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button"));
     expect(screen.queryByText(/Saved:/)).not.toBeInTheDocument();
   });

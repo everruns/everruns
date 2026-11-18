@@ -214,14 +214,15 @@ export function useSessionRun(sessionId: string | undefined, live = false) {
   };
 }
 
-export function useSessionContextReport(sessionId: string | undefined) {
+export function useSessionContextReport(sessionId: string | undefined, enabled = true) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: queryKeys.sessions.contextReport(org, sessionId),
     queryFn: () => getSessionContextReport(sessionId!),
-    enabled: !!org && !!sessionId,
+    enabled: enabled && !!org && !!sessionId,
+    refetchInterval: enabled ? 30_000 : false,
   });
 
   return {
@@ -453,6 +454,9 @@ const SSE_EVENT_TYPES = [
   "reason.thinking.completed",
   "reason.item",
   "context.compacted",
+  "context.compacting",
+  "context.compaction.skipped",
+  "context.compaction.failed",
   "session.model.changed",
   "task.created",
   "task.updated",

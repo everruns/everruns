@@ -38,6 +38,29 @@ change; opaque native content is never translated. Current working-context size
 and raw evidence since the checkpoint trigger reduction; cumulative lifetime
 usage alone cannot rearm a checkpoint. See the [public contract](../../docs/advanced/compaction.md).
 
+## Inspection and defaults
+
+The shared Base preset supplies compaction to its children; Framework's
+implicit harness supplies the same policy when builtins are compiled in.
+Explicit custom harnesses retain control over their capability lists.
+[Status projection](../../crates/core/src/compaction_status.rs) shares policy
+resolution with execution and exposes metadata rather than saved content.
+The [API context report](../../crates/server/src/domains/sessions/commands/context_report.rs)
+measures the last main request, excluding separately traced summary work. It
+reports missing measurements explicitly, and distinguishes unreported remote
+store availability from an inspected empty store. Neither API nor Framework
+inspection initiates a compaction. Backend availability is not crash durability.
+
+## Terminal reduction failures
+
+The Framework's former tiny-window trim-floor test exposed repeated actor
+recovery of deterministic planner failures. Source-budget violations, rejected
+summaries and non-reducing summaries are terminal configuration failures;
+checkpoint-store failures keep their storage classification so candidate retry
+remains available. A `RequestTooLarge` leaving the reason phase is terminal:
+that phase already attempted permitted recovery. Framework tests bound execution
+of an irreducible input and check a portable read floor across many turns.
+
 ## Cache and provenance regression analogies
 
 [Eve #6498](https://github.com/vercel/eve/pull/6498) motivates testing persistent

@@ -1,3 +1,5 @@
+import type { CompactionStatus, ContextCompactedData } from "./compaction-types";
+export type { ContextCompactedData } from "./compaction-types";
 import type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
 export type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
 export type {
@@ -1056,6 +1058,9 @@ export interface ContextReportContribution {
 }
 
 export interface SessionContextReport {
+  measurement_available?: boolean;
+  as_of_sequence?: number;
+  compaction?: CompactionStatus;
   session_id: string;
   model: string;
   context_window_tokens?: number;
@@ -1991,13 +1996,6 @@ export interface ContextCompactingData {
 }
 
 /** Data for context.compacted event (compaction completed) */
-export interface ContextCompactedData {
-  strategy_used: string;
-  messages_before: number;
-  messages_after: number;
-  duration_ms: number;
-  steps: CompactionStepData[];
-}
 
 /** Data for session.model.changed event (answering model switched between turns) */
 export interface SessionModelChangedData {
@@ -2088,6 +2086,8 @@ export interface EventTypeMap {
   "reason.item": ReasonItemData;
   "context.compacting": ContextCompactingData;
   "context.compacted": ContextCompactedData;
+  "context.compaction.skipped": { strategy: string };
+  "context.compaction.failed": { strategy: string };
   "session.model.changed": SessionModelChangedData;
 }
 

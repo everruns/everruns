@@ -474,10 +474,12 @@ impl SessionActor {
         let runtime = self.runtime.as_ref().expect("runtime built above");
         let context = runtime.load_context(self.session_id).await?;
         let commands = runtime.list_commands(self.session_id).await?;
+        let compaction = runtime.context_compaction(&context).await?;
         Ok(crate::SessionContext::from_runtime(
             context,
             self.agent.plugin_warnings(),
             commands,
+            compaction,
         ))
     }
 

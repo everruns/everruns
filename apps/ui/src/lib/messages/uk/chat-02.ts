@@ -1,5 +1,48 @@
 // Ukrainian product copy. Keep interpolation values separate from translated text.
 export const messages: Readonly<Record<string, string>> = {
+  Context: "Контекст",
+  "Effective compaction policy": "Ефективна політика ущільнення",
+  "Working history budget": "Бюджет робочої історії",
+  "Last model context": "Останній контекст моделі",
+  "Saved checkpoint": "Збережена контрольна точка",
+  "History retrieval": "Пошук в історії",
+  "Model window": "Вікно моделі",
+  "Last recorded request; the next request may differ.":
+    "Останній записаний запит; наступний може відрізнятися.",
+  "No recent model context measurement.": "Немає недавнього вимірювання контексту моделі.",
+  "Checkpoint storage is unavailable.": "Сховище контрольних точок недоступне.",
+  "Checkpoint storage has not been reported by this host.":
+    "Цей хост не повідомив про сховище контрольних точок.",
+  "No checkpoint has been saved yet.": "Контрольну точку ще не збережено.",
+  "Original session history is retained. Provider-native checkpoint contents stay private.":
+    "Початкова історія сесії зберігається. Вміст нативних контрольних точок залишається приватним.",
+  "Last compaction": "Останнє ущільнення",
+  "History through event {sequence}": "Історія до події {sequence}",
+  "Effective policy and saved context, without changing the conversation.":
+    "Ефективна політика та збережений контекст без зміни розмови.",
+  "Could not load context details.": "Не вдалося завантажити деталі контексту.",
+  "Keeps recent work in context and older history retrievable. Summary calls may add cost.":
+    "Зберігає поточну роботу в контексті та доступ до старішої історії. Підсумки можуть збільшити витрати.",
+  "Estimated tokens; separate from the model's maximum window.":
+    "Оцінені токени; окремо від максимального вікна моделі.",
+  "Use at least 4,096 tokens.": "Використайте щонайменше 4096 токенів.",
+  "Native trigger (% of model window)": "Нативний поріг (% вікна моделі)",
+  "Summary model": "Модель для підсумків",
+  "Same as conversation model": "Як модель розмови",
+  "Use a model name supported by the current provider.":
+    "Вкажіть назву моделі, яку підтримує поточний провайдер.",
+  "Summary instructions": "Інструкції для підсумків",
+  "Compacting context…": "Ущільнення контексту…",
+  "Compaction failed. Previous history was retained.":
+    "Ущільнення не вдалося. Попередню історію збережено.",
+  "No smaller context was installed.": "Менший контекст не встановлено.",
+  "Checkpoint saved": "Контрольну точку збережено",
+  "Request reduction": "Скорочення запиту",
+  "Provider-native": "Нативне ущільнення",
+  "Portable summary": "Переносний підсумок",
+  "Observation masking": "Маскування спостережень",
+  "Context reduction": "Скорочення контексту",
+  "History trimming": "Обрізання історії",
   "estimated tokens": "оцінених токенів",
   tokens: "токенів",
   "Discovery state at the last turn": "Стан виявлення під час останнього ходу",

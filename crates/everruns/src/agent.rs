@@ -901,8 +901,15 @@ impl Agent {
                 // agent definition below owns the instructions, and the
                 // runtime folds harness + agent prompts additively, so
                 // setting both rendered them twice.
-                let mut harness =
-                    HarnessBuilder::new(&self.name, "").capabilities(capabilities.clone());
+                let mut harness = HarnessBuilder::new(&self.name, "");
+                // Long sessions need the same continuity floor without an explicit
+                // harness. Agent configuration above this layer still overrides it.
+                #[cfg(feature = "builtins")]
+                {
+                    harness =
+                        harness.capability(everruns_contracts::CapabilityRef::new("compaction"));
+                }
+                harness = harness.capabilities(capabilities.clone());
                 if let Some(parallel) = self.parallel_tool_calls {
                     harness = harness.parallel_tool_calls(parallel);
                 }

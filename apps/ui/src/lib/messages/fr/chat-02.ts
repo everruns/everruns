@@ -1,5 +1,48 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Context: "Contexte",
+  "Effective compaction policy": "Politique effective de compactage",
+  "Working history budget": "Budget de l’historique de travail",
+  "Last model context": "Dernier contexte du modèle",
+  "Saved checkpoint": "Point de contrôle enregistré",
+  "History retrieval": "Consultation de l’historique",
+  "Model window": "Fenêtre du modèle",
+  "Last recorded request; the next request may differ.":
+    "Dernière requête enregistrée ; la suivante peut différer.",
+  "No recent model context measurement.": "Aucune mesure récente du contexte du modèle.",
+  "Checkpoint storage is unavailable.": "Le stockage des points de contrôle est indisponible.",
+  "Checkpoint storage has not been reported by this host.":
+    "Cet hôte n’a pas signalé le stockage des points de contrôle.",
+  "No checkpoint has been saved yet.": "Aucun point de contrôle n’a encore été enregistré.",
+  "Original session history is retained. Provider-native checkpoint contents stay private.":
+    "L’historique original de la session est conservé. Le contenu des points de contrôle natifs reste privé.",
+  "Last compaction": "Dernier compactage",
+  "History through event {sequence}": "Historique jusqu’à l’événement {sequence}",
+  "Effective policy and saved context, without changing the conversation.":
+    "Politique effective et contexte enregistré, sans modifier la conversation.",
+  "Could not load context details.": "Impossible de charger les détails du contexte.",
+  "Keeps recent work in context and older history retrievable. Summary calls may add cost.":
+    "Garde le travail récent en contexte et l’ancien historique consultable. Les résumés peuvent entraîner des frais.",
+  "Estimated tokens; separate from the model's maximum window.":
+    "Tokens estimés ; distincts de la fenêtre maximale du modèle.",
+  "Use at least 4,096 tokens.": "Utilisez au moins 4 096 tokens.",
+  "Native trigger (% of model window)": "Seuil natif (% de la fenêtre du modèle)",
+  "Summary model": "Modèle de résumé",
+  "Same as conversation model": "Identique au modèle de la conversation",
+  "Use a model name supported by the current provider.":
+    "Utilisez un nom de modèle pris en charge par le fournisseur actuel.",
+  "Summary instructions": "Instructions du résumé",
+  "Compacting context…": "Compactage du contexte…",
+  "Compaction failed. Previous history was retained.":
+    "Le compactage a échoué. L’historique précédent a été conservé.",
+  "No smaller context was installed.": "Aucun contexte plus petit n’a été installé.",
+  "Checkpoint saved": "Point de contrôle enregistré",
+  "Request reduction": "Réduction de la requête",
+  "Provider-native": "Natif du fournisseur",
+  "Portable summary": "Résumé portable",
+  "Observation masking": "Masquage des observations",
+  "Context reduction": "Réduction du contexte",
+  "History trimming": "Réduction de l’historique",
   "estimated tokens": "tokens estimés",
   tokens: "tokens",
   "Discovery state at the last turn": "État de la découverte au dernier tour",

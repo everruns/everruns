@@ -14,14 +14,13 @@ use crate::domains::users::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use chrono::{DateTime, Utc};
 use everruns_capabilities::capabilities::session_title_updated_event;
-use everruns_contracts::model_profiles::get_model_profile;
 use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
+use everruns_core::RuntimeMessage;
 use everruns_core::events::{
-    EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
-    TurnCancelledData, TurnStartedData, deserialize_event_data,
+    EventContext, EventData, EventRequest, InputMessageData, SessionIdledData, TurnCancelledData,
+    TurnStartedData, deserialize_event_data,
 };
-use everruns_core::{RuntimeMessage, SessionContextReport};
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -692,94 +691,8 @@ impl Command for GetSession {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct GetSessionContextReport {
-    /// Session's prefixed public identifier.
-    pub session_id: String,
-}
-
-#[command(
-    name = "get_session_context_report",
-    category = "sessions",
-    description = "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
-    method = "GET",
-    path = "/v1/sessions/{session_id}/context-report",
-    policy = super::SESSION_VIEW,
-    positional = "session_id",
-    cli = CliRoute::new(&["sessions"], "context").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("See what is filling a session's context window", "everruns sessions context session_01h9",)]),
-)]
-impl Command for GetSessionContextReport {
-    type Output = SessionContextReport;
-
-    async fn execute(self, ctx: &Ctx) -> Result<SessionContextReport, CommandError> {
-        let session_id = q::parse_session_id(&self.session_id)?;
-        let session = q::get_session(ctx, session_id, ctx.caller.user_id).await?;
-        // A v2 session's generations are in its own log on its data plane
-        // (step 11.6).
-        let plane = crate::domains::data_plane::session_plane::SessionPlane::of(
-            &ctx.db,
-            ctx.org_id(),
-            session.id,
-        )
-        .await?;
-        let latest = match plane {
-            Some(plane) => plane
-                .events(1, i32::MAX, &[LLM_GENERATION], Some(1))
-                .await?
-                .into_iter()
-                .next()
-                .map(|row| (row.event_type, row.data)),
-            None => ctx
-                .db
-                .list_events(
-                    session_id,
-                    None,
-                    None,
-                    &[LLM_GENERATION.to_string()],
-                    &[],
-                    None,
-                    Some(1),
-                )
-                .await?
-                .into_iter()
-                .next()
-                .map(|row| (row.event_type, row.data)),
-        };
-
-        let Some((event_type, event_data)) = latest else {
-            return Ok(SessionContextReport {
-                session_id: session.id.to_string(),
-                model: "unknown".to_string(),
-                context_window_tokens: None,
-                estimated_input_tokens: 0,
-                sections: vec![],
-                contributions: vec![],
-                cumulative_usage: session.usage,
-            });
-        };
-
-        let EventData::LlmGeneration(data) = deserialize_event_data(&event_type, event_data) else {
-            return Err(CommandError::internal(anyhow::anyhow!(
-                "latest llm.generation event could not be decoded"
-            )));
-        };
-        let context_window_tokens = data
-            .metadata
-            .provider
-            .as_deref()
-            .and_then(parse_provider_type)
-            .and_then(|provider_type| get_model_profile(&provider_type, &data.metadata.model))
-            .and_then(|profile| profile.limits)
-            .and_then(|limits| u32::try_from(limits.context).ok());
-
-        Ok(everruns_core::build_session_context_report_from_generation(
-            session.id.to_string(),
-            &data,
-            context_window_tokens,
-            session.usage,
-        ))
-    }
-}
+mod context_report;
+pub use context_report::GetSessionContextReport;
 
 fn parse_provider_type(provider: &str) -> Option<DriverId> {
     DriverId::from_str(&provider.to_ascii_lowercase()).ok()

@@ -12,6 +12,8 @@ use everruns_contracts::model_spec::ModelSpec;
 /// the Framework API.
 #[derive(Debug, Clone)]
 pub struct SessionContext {
+    /// Effective compaction policy and content-free saved checkpoint metadata.
+    pub compaction: crate::CompactionStatus,
     /// Credential-free provider and model selection.
     pub model: ModelSpec,
     /// Filtered conversation history visible to the next model call.
@@ -104,6 +106,7 @@ impl SessionContext {
         context: AssembledTurnContext,
         plugin_warnings: Vec<String>,
         commands: Vec<everruns_core::command::CommandDescriptor>,
+        compaction: crate::CompactionStatus,
     ) -> Self {
         let model = ModelSpec::on(context.model.provider.clone(), context.model.model.clone());
         let messages = context
@@ -126,6 +129,7 @@ impl SessionContext {
             .collect();
 
         Self {
+            compaction,
             request_metadata: context.embedder_metadata,
             model,
             messages,

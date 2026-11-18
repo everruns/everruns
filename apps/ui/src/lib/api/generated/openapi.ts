@@ -12884,6 +12884,35 @@ export interface components {
      * @enum {string}
      */
     Communication: "direct" | "explicit";
+    /** @description Content-free lifecycle information suitable for chat and API inspection. */
+    CompactionEventSummary: {
+      /** @description Whether this observation installed a checkpoint rather than only masking a request. */
+      checkpoint_id?: string | null;
+      /**
+       * Format: int64
+       * @description Recorded elapsed reduction time.
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Replaced journal boundary when available.
+       */
+      source_sequence?: number | null;
+      /** @description compacting, completed, skipped, or failed. */
+      state: string;
+      /** @description Strategy recorded by the runtime, not a forecast of the next provider call. */
+      strategy: string;
+      /**
+       * Format: int64
+       * @description Output token estimate or native provider measurement, when available.
+       */
+      tokens_after?: number | null;
+      /**
+       * Format: int64
+       * @description Input token estimate or native provider measurement, when available.
+       */
+      tokens_before?: number | null;
+    };
     /**
      * @description Which stage of a compaction attempt failed.
      * @enum {string}
@@ -12906,6 +12935,31 @@ export interface components {
       | "native_returned_none"
       | "no_material_reduction"
       | "guard_rejected";
+    /** @description Effective configured policy and the last compatible saved checkpoint. */
+    CompactionStatus: {
+      /**
+       * Format: float
+       * @description Native request pressure threshold as a fraction of the model window.
+       */
+      budget_percent?: number | null;
+      checkpoint?: components["schemas"]["ContextCheckpoint"] | null;
+      /**
+       * @description Store availability, not a promise about the backend's crash durability.
+       *     None when a remote host has not reported its store.
+       */
+      checkpoint_store_available?: boolean | null;
+      /** @description Soft working-history target, distinct from the provider hard window. */
+      context_budget_tokens?: number | null;
+      /** @description Whether a compaction policy is configured after inheritance and dependencies. */
+      enabled: boolean;
+      /** @description Whether raw history retrieval is allowed by the configured prompt hooks. */
+      history_retrieval_available: boolean;
+      last_event?: components["schemas"]["CompactionEventSummary"] | null;
+      /** @description Whether proactive reduction is enabled. */
+      proactive: boolean;
+      /** @description Configured strategy; runtime/provider eligibility still controls execution. */
+      strategy?: string | null;
+    };
     /** @description A single step in a compaction cascade. */
     CompactionStepData: {
       /**
@@ -13121,6 +13175,22 @@ export interface components {
           /** @enum {string} */
           type: "provider_opaque";
         });
+    /** @description Credential-free metadata for an installed checkpoint. */
+    ContextCheckpoint: {
+      /** @description Public-safe identifier for correlating the checkpoint with trace events. */
+      id: string;
+      /** @description portable_summary, provider_native, legacy_summary, or legacy_trim. */
+      kind: string;
+      /** @description Model scope for native checkpoints; portable notes have no model scope. */
+      model?: string | null;
+      /** @description Provider scope for native checkpoints; portable notes have no provider scope. */
+      provider?: string | null;
+      /**
+       * Format: int64
+       * @description Exact journal boundary replaced by this checkpoint.
+       */
+      source_sequence: number;
+    };
     /** @description Data for context.compacted event (compaction completed). */
     ContextCompactedData: {
       /**
@@ -30939,6 +31009,12 @@ export interface components {
      */
     SessionContextReport: {
       /**
+       * Format: int64
+       * @description Canonical generation event sequence; absent for an assembled preview.
+       */
+      as_of_sequence?: number | null;
+      compaction?: components["schemas"]["CompactionStatus"] | null;
+      /**
        * Format: int32
        * @description Total context window size in tokens for `model`. `None` if the model's profile lacks limits data.
        */
@@ -30951,6 +31027,8 @@ export interface components {
        * @description Estimated number of input tokens consumed by the next generation given the current context.
        */
       estimated_input_tokens: number;
+      /** @description Whether a main model request or assembled context backs the estimates. */
+      measurement_available?: boolean;
       /** @description Model identifier the report's token estimates target (used to scope context-window math). */
       model: string;
       /** @description Logical sections of the assembled context (system prompt, tool defs, message history, etc.) for inspection. */

@@ -5,33 +5,31 @@ date: 2026-11-17
 kind: improvement
 significance: major
 products: [framework, platform, cloud]
-surfaces: [agent]
+surfaces: [ui, api, code, agent]
 links:
   docs: [/advanced/compaction/]
 ---
 
-Enable [`compaction`](/advanced/compaction/) to manage long-session context with
-portable continuity, recent complete exchanges, and permitted history retrieval.
-New configurations no longer need a separate `infinity_context` entry.
+[`compaction`](/advanced/compaction/) now manages portable continuity, recent
+complete exchanges and permitted history retrieval. Built-in harnesses inherit
+it; Framework sessions without an explicit harness enable it with `builtins`.
+New configurations need no separate `infinity_context` entry.
 
-In Rust, with the default `builtins` feature:
+Portable summaries bridge model changes and recover after restarts on persistent
+backends. Native checkpoints retain their provider/model scope. Original history
+stays queryable. Summary calls are billed separately; fidelity depends on the model.
+
+**In the UI:** Chat and Playground have a **Context** inspector. Capability
+settings expose working budgets, proactive mode and summary options. Transcript
+notices distinguish saved checkpoints from request-local reductions and show
+available token measurements.
+
+**In code:** `session.inspect().await?.compaction` and the context-report API
+expose safe policy and checkpoint metadata. API measurements describe the last
+main-model request, excluding summary calls. Impossible reductions end visibly;
+storage failures retain candidate reuse and recovery.
 
 ```rust
-use everruns::{Agent, CompactionConfig};
-
-let builder = Agent::builder()
-    .name("worker")
-    .instructions("Complete the current task and verify older evidence when needed.")
-    .capability(CompactionConfig::new().context_budget_tokens(64_000));
+let context = session.inspect().await?;
+let checkpoint = context.compaction.checkpoint;
 ```
-
-Portable summaries survive restarts and can bridge provider/model changes. Native
-checkpoints retain their provider-specific compatibility. Raw history stays
-queryable. Summary calls are billed and traced separately; summary fidelity still
-depends on the model. The compaction divider shows available token measurements
-instead of treating unchanged message counts as a failure.
-
-Recorded skill and tool catalog updates also stay ahead of live-only continuation
-facts, keeping those updates in the replayable prompt prefix on the next turn.
-Restoring portable continuity also avoids treating the generated note as a new
-input that would regenerate historical facts.

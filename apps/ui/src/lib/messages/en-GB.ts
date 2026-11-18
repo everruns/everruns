@@ -1,6 +1,49 @@
 import { messages as extractions } from "./en-GB/extractions";
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  Context: "Context",
+  "Effective compaction policy": "Effective compaction policy",
+  "Working history budget": "Working history budget",
+  "Last model context": "Last model context",
+  "Saved checkpoint": "Saved checkpoint",
+  "History retrieval": "History retrieval",
+  "Model window": "Model window",
+  "Last recorded request; the next request may differ.":
+    "Last recorded request; the next request may differ.",
+  "No recent model context measurement.": "No recent model context measurement.",
+  "Checkpoint storage is unavailable.": "Checkpoint storage is unavailable.",
+  "Checkpoint storage has not been reported by this host.":
+    "Checkpoint storage has not been reported by this host.",
+  "No checkpoint has been saved yet.": "No checkpoint has been saved yet.",
+  "Original session history is retained. Provider-native checkpoint contents stay private.":
+    "Original session history is retained. Provider-native checkpoint contents stay private.",
+  "Last compaction": "Last compaction",
+  "History through event {sequence}": "History through event {sequence}",
+  "Effective policy and saved context, without changing the conversation.":
+    "Effective policy and saved context, without changing the conversation.",
+  "Could not load context details.": "Could not load context details.",
+  "Keeps recent work in context and older history retrievable. Summary calls may add cost.":
+    "Keeps recent work in context and older history retrievable. Summary calls may add cost.",
+  "Estimated tokens; separate from the model's maximum window.":
+    "Estimated tokens; separate from the model's maximum window.",
+  "Use at least 4,096 tokens.": "Use at least 4,096 tokens.",
+  "Native trigger (% of model window)": "Native trigger (% of model window)",
+  "Summary model": "Summary model",
+  "Same as conversation model": "Same as conversation model",
+  "Use a model name supported by the current provider.":
+    "Use a model name supported by the current provider.",
+  "Summary instructions": "Summary instructions",
+  "Compacting context…": "Compacting context…",
+  "Compaction failed. Previous history was retained.":
+    "Compaction failed. Previous history was retained.",
+  "No smaller context was installed.": "No smaller context was installed.",
+  "Checkpoint saved": "Checkpoint saved",
+  "Request reduction": "Request reduction",
+  "Provider-native": "Provider-native",
+  "Portable summary": "Portable summary",
+  "Observation masking": "Observation masking",
+  "Context reduction": "Context reduction",
+  "History trimming": "History trimming",
   "estimated tokens": "estimated tokens",
   tokens: "tokens",
   ...extractions,

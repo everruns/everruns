@@ -232,6 +232,9 @@ pub use everruns_core::builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+pub use everruns_core::compaction_status::{
+    CompactionEventSummary, CompactionStatus, ContextCheckpoint,
+};
 pub use everruns_core::decision_driver::{
     DecisionDriver, DecisionDriverCapabilities, NativePrimitives, SingleDriverService,
 };

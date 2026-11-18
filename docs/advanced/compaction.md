@@ -355,6 +355,49 @@ the desired target on `compaction` when migrating. The internal compatibility
 dependency provides retrieval and bounded bootstrap loading; it is not a second
 independent checkpoint reducer.
 
+## Defaults, configuration and inspection
+
+Base enables `compaction`; Conversation, Worker, Bashkit Worker, Sandbox Worker
+and Platform Chat inherit it. The Framework uses the same presets. A Framework
+session with no explicit harness also enables compaction when the `builtins`
+feature is compiled in. A custom harness owns its capability list: add
+`compaction` explicitly if it needs managed continuity.
+
+In the harness or agent capability settings, the compaction editor exposes the
+working-history token budget and proactive toggle. Advanced settings select the
+strategy, native trigger, summary model and summary instructions. The working
+budget is a soft target, separate from the provider's hard context window;
+complete recent exchanges and pinned instructions can exceed it. A summary
+model names a model served by the current provider, rather than an organization
+model record. Advanced settings not edited in the form are retained.
+
+Chat and Playground have a **Context** button showing the effective policy,
+history retrieval availability and safe saved-checkpoint metadata. Transcript
+markers distinguish **Checkpoint saved** from a request-local reduction. They
+show available token measurements, progress and safe failure status. A skipped
+attempt closes progress without claiming that smaller context was installed.
+
+`GET /v1/sessions/{session_id}/context-report` (also
+`everruns sessions context <session_id>`) returns the last recorded main-model
+request estimate and the effective `compaction` status. `as_of_sequence` identifies
+the measured request; `measurement_available: false` means no recent main-model
+sample is available. Summary-generation usage is excluded from that measurement.
+It is not a forecast of the next request. Inspection never starts compaction or
+calls a model, and does not expose summary text or provider-opaque state.
+
+`checkpoint_store_available` describes whether the inspected host has a store,
+not whether its backend survives a process crash. `null` means a remote host has
+not reported that information. For data-plane sessions, `last_event` reports the
+latest lifecycle observation even when direct checkpoint inspection is
+unavailable. Its checkpoint identifier records an installation at that event;
+it does not guarantee that the checkpoint is compatible with a newly selected
+model. Native checkpoints are scoped to their provider and model.
+
+Framework applications read the same safe policy and checkpoint projection from
+`session.inspect().await?.compaction`. Storage durability follows the hosting
+adapter: `MemoryHosting` keeps continuity only for the lifetime of its memory
+store. Use a persistent hosting adapter for restart recovery.
+
 ## Events
 
 Compaction emits SSE lifecycle and result events:
@@ -372,6 +415,11 @@ Request-local masking may emit a `context.compacted` measurement when it reduces
 the estimated prompt size; that event alone does not establish a durable checkpoint.
 Portable summary generation also emits a separate `llm.generation` usage event
 with request metadata `purpose: continuity_summary`.
+
+An oversized source, a rejected or non-reducing summary, and a request that still
+cannot fit after permitted compaction end the attempt with an error. Replaying
+the same deterministic failure does not repair it. Original history remains
+available; genuine storage failures retain their recovery behavior.
 
 ## Best Practices
 

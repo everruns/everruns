@@ -1,6 +1,6 @@
 "use client";
 
-// "Context now": what the next model call will send, by section, with the
+// Last recorded main model context, by section, with the
 // per-source list folded behind one summary line.
 
 import { useState } from "react";
@@ -36,8 +36,21 @@ export function ContextCard({ report }: { report: SessionContextReport }) {
   const largest = contributions[0];
   const shown = all ? contributions : contributions.slice(0, SOURCES_SHOWN);
 
+  if (report.measurement_available === false) {
+    return (
+      <CostCard title={ui("Last model context")}>
+        <p className="p-4 text-sm text-muted-foreground">
+          {ui("No recent model context measurement.")}
+        </p>
+      </CostCard>
+    );
+  }
+
   return (
-    <CostCard title={ui("Context now")} meta={ui("What the next model call will send")}>
+    <CostCard
+      title={ui("Last model context")}
+      meta={ui("Last recorded request; the next request may differ.")}
+    >
       <div className="p-4">
         <div className="mb-2 flex items-center justify-between gap-3 text-sm">
           <span className="flex items-center gap-2">

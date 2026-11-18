@@ -1,5 +1,48 @@
 // Product-owned copy. Preserve interpolation tokens and stable identifiers.
 export const messages: Readonly<Record<string, string>> = {
+  Context: "Kontext",
+  "Effective compaction policy": "Effektive Komprimierungsrichtlinie",
+  "Working history budget": "Budget für den Arbeitsverlauf",
+  "Last model context": "Letzter Modellkontext",
+  "Saved checkpoint": "Gespeicherter Prüfpunkt",
+  "History retrieval": "Verlaufsabruf",
+  "Model window": "Modellfenster",
+  "Last recorded request; the next request may differ.":
+    "Letzte aufgezeichnete Anfrage; die nächste kann abweichen.",
+  "No recent model context measurement.": "Keine aktuelle Messung des Modellkontexts.",
+  "Checkpoint storage is unavailable.": "Prüfpunktspeicher ist nicht verfügbar.",
+  "Checkpoint storage has not been reported by this host.":
+    "Dieser Host hat den Prüfpunktspeicher nicht gemeldet.",
+  "No checkpoint has been saved yet.": "Es wurde noch kein Prüfpunkt gespeichert.",
+  "Original session history is retained. Provider-native checkpoint contents stay private.":
+    "Der ursprüngliche Sitzungsverlauf bleibt erhalten. Inhalte anbietereigener Prüfpunkte bleiben privat.",
+  "Last compaction": "Letzte Komprimierung",
+  "History through event {sequence}": "Verlauf bis Ereignis {sequence}",
+  "Effective policy and saved context, without changing the conversation.":
+    "Effektive Richtlinie und gespeicherter Kontext, ohne die Unterhaltung zu ändern.",
+  "Could not load context details.": "Kontextdetails konnten nicht geladen werden.",
+  "Keeps recent work in context and older history retrievable. Summary calls may add cost.":
+    "Behält aktuelle Arbeit im Kontext und älteren Verlauf abrufbar. Zusammenfassungen können Kosten verursachen.",
+  "Estimated tokens; separate from the model's maximum window.":
+    "Geschätzte Token; getrennt vom maximalen Modellfenster.",
+  "Use at least 4,096 tokens.": "Mindestens 4.096 Token verwenden.",
+  "Native trigger (% of model window)": "Anbietereigene Auslösung (% des Modellfensters)",
+  "Summary model": "Zusammenfassungsmodell",
+  "Same as conversation model": "Wie das Unterhaltungsmodell",
+  "Use a model name supported by the current provider.":
+    "Einen vom aktuellen Anbieter unterstützten Modellnamen verwenden.",
+  "Summary instructions": "Anweisungen für die Zusammenfassung",
+  "Compacting context…": "Kontext wird komprimiert…",
+  "Compaction failed. Previous history was retained.":
+    "Komprimierung fehlgeschlagen. Der bisherige Verlauf bleibt erhalten.",
+  "No smaller context was installed.": "Es wurde kein kleinerer Kontext installiert.",
+  "Checkpoint saved": "Prüfpunkt gespeichert",
+  "Request reduction": "Anfrageverkleinerung",
+  "Provider-native": "Anbietereigen",
+  "Portable summary": "Übertragbare Zusammenfassung",
+  "Observation masking": "Ausblendung von Beobachtungen",
+  "Context reduction": "Kontextverkleinerung",
+  "History trimming": "Verlaufskürzung",
   "estimated tokens": "geschätzte Token",
   tokens: "Token",
   "Discovery state at the last turn": "Erkennungsstatus beim letzten Gesprächsschritt",
