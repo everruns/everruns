@@ -258,6 +258,7 @@ export const messages: Readonly<Record<string, string>> = {
   Workspace: "工作区",
   "Write a note or OKF concept": "写下笔记或 OKF 概念",
   "Write file output": "写入文件输出",
+  "Edit file diff": "文件编辑差异",
   "Write Markdown, optionally with OKF metadata…": "编写 Markdown，可选择使用 OKF 元数据…",
   "Wrong address?": "地址错误？",
   "X-API-Key": "X-API-密钥",

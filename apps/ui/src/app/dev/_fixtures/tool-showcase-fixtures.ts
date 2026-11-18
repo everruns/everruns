@@ -112,6 +112,30 @@ export const writeFileToolResult = makeCompletedResult({
   durationMs: 94,
 });
 
+export const editFileToolCall: ToolCallContent = {
+  id: "tool-edit-showcase",
+  name: "edit_file",
+  arguments: {
+    path: "/workspace/crates/integrations/src/filesystem/mod.rs",
+  },
+};
+
+// Shape of render_unified_diff in crates/integrations/src/filesystem/mod.rs.
+export const editFileToolResult = makeCompletedResult({
+  toolCallId: editFileToolCall.id,
+  toolName: editFileToolCall.name,
+  text: JSON.stringify({
+    path: "/workspace/crates/integrations/src/filesystem/mod.rs",
+    created: false,
+    size_bytes: 153560,
+    applied_edits: 2,
+    first_changed_line: 623,
+    diff: '--- /workspace/crates/integrations/src/filesystem/mod.rs (before)\n+++ /workspace/crates/integrations/src/filesystem/mod.rs (after)\n@@ -621,5 +621,5 @@\n     )\n     .unified_diff()\n-    .context_radius(2)\n+    .context_radius(EDIT_DIFF_CONTEXT_LINES)\n     .header(&format!("{path} (before)"), &format!("{path} (after)"))\n     .to_string()\n@@ -627,9 +627,10 @@\n \n fn truncate_diff(diff: String) -> (String, bool) {\n-    if diff.chars().count() <= MAX_EDIT_DIFF_CHARS {\n+    // Count once: chars().count() walks the whole string.\n+    let Some((cut, _)) = diff.char_indices().nth(MAX_EDIT_DIFF_CHARS) else {\n         return (diff, false);\n-    }\n-\n-    let truncated: String = diff.chars().take(MAX_EDIT_DIFF_CHARS).collect();\n+    };\n+\n+    let truncated = &diff[..cut];\n     (\n         format!("{truncated}\\n... diff truncated after {MAX_EDIT_DIFF_CHARS} characters ..."),\n',
+    diff_truncated: false,
+  }),
+  durationMs: 96,
+});
+
 export const todoToolCall: ToolCallContent = {
   id: "tool-todos-showcase",
   name: "write_todos",
