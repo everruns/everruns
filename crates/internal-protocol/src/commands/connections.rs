@@ -13,16 +13,16 @@
 //! nothing here falls back to another identity.
 
 use super::{InternalCommandTransport, call, call_secret};
-use crate::core::McpServerActsAs;
-use crate::core::connection_services::{
-    GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
-};
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::tool_approval_policy::SessionToolApprovalPolicy;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::McpServerActsAs;
+use everruns_core::connection_services::{
+    GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
+};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -305,7 +305,7 @@ impl<T: InternalCommandTransport + 'static> UserConnectionResolver
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_internal_protocol::proto;
+    use crate::proto;
     use std::sync::Mutex;
 
     /// Records each call and answers with a canned result.

@@ -26,6 +26,7 @@ everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
 # executor. The hosted catalog (step 11.6b): the capabilities the v1 worker
 # registers, with the worker's features.
 everruns-capabilities = { workspace = true, features = ["environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
+everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-integrations = { workspace = true, features = ["daytona", "e2b", "boxd", "modal", "kubernetes-sandbox"] }
 openraft = { version = "=0.9.25", features = ["serde", "storage-v2"] }
 tokio.workspace = true

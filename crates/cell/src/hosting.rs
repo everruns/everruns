@@ -426,7 +426,7 @@ impl SessionHosting for RaftHosting {
             .attach(session, backends);
         let backends = crate::subagents::attach(session, backends, Port(self.inner.clone())).await;
         Ok(match self.inner.sandboxes.get() {
-            Some(sandboxes) => sandboxes.attach(backends, self.files()),
+            Some(sandboxes) => sandboxes.attach(session, backends, self.files()),
             None => backends,
         })
     }

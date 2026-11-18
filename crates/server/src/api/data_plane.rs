@@ -5,7 +5,9 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use everruns_contracts::dataplane::{AllowanceGrant, AllowanceRequest, FeedAck, FeedBatch};
+use everruns_contracts::dataplane::{
+    AllowanceGrant, AllowanceRequest, FeedAck, FeedBatch, LookupRequest, SealedSecret,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -19,6 +21,7 @@ pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/dp/v1/feed", post(feed))
         .route("/dp/v1/tenants/{org}/allowances", post(allowances))
+        .route("/dp/v1/tenants/{org}/lookups", post(lookups))
         .route("/.well-known/jwks.json", get(jwks))
         .route("/v1/auth/token", post(token))
         .with_state(state)
@@ -97,6 +100,41 @@ async fn allowances(
         ));
     }
     dp_domain::allowances::answer(&cp, org_id, &request)
+        .await
+        .map(Json)
+        .map_err(internal)
+}
+
+/// One lookup a tool on the org's data plane makes at call time, answered
+/// sealed (`domains/data_plane/lookups.rs`).
+async fn lookups(
+    State(state): State<ApiState>,
+    Path(org): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<LookupRequest>,
+) -> Reply<SealedSecret> {
+    let cp = control_plane(&state)?;
+    require_link(&cp, &headers)?;
+    let org_id = org_internal(&org).ok_or((StatusCode::NOT_FOUND, format!("no org {org}")))?;
+    let row = cp.db.dp_org(org_id).await.map_err(internal)?.ok_or((
+        StatusCode::NOT_FOUND,
+        format!("org {org} is not on a data plane"),
+    ))?;
+    if !dp_domain::lookups::allowed(&request.command) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!("{} is not a data plane lookup", request.command),
+        ));
+    }
+    let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+        &state.db,
+        org_id,
+        &crate::records::FeatureFlagPolicy::current(),
+    )
+    .await
+    .map_err(internal)?;
+    let ctx = state.internal_ctx(org_id, flags);
+    dp_domain::lookups::answer(&cp, &row, &ctx, request)
         .await
         .map(Json)
         .map_err(internal)

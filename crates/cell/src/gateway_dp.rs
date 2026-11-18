@@ -82,6 +82,7 @@ pub fn cell_router(node: Arc<Node>) -> Router {
             "/cell/orgs/{org}/connections/{connection}",
             get(cell_connection).post(cell_connection),
         )
+        .route("/cell/orgs/{org}/lookups", post(cell_lookup))
         .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
         .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
         .with_state(node.clone())
@@ -722,6 +723,43 @@ async fn cell_connection(
             .get(&org)
             .and_then(|c| c.connections.get(&connection).cloned()),
     ))
+}
+
+/// An executor's call-time lookup for `org`, passed on to the control plane
+/// over the link (`lookups.rs`). The answer comes back sealed with the
+/// org's data key and goes to the executor unopened.
+async fn cell_lookup(
+    State(node): State<Arc<Node>>,
+    Path(org): Path<String>,
+    Json(request): Json<everruns_contracts::dataplane::LookupRequest>,
+) -> Result<Json<everruns_contracts::dataplane::SealedSecret>, ApiError> {
+    let cp = node.cfg.control_plane.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "this cell has no control plane".to_owned(),
+    ))?;
+    let failed = |error: reqwest::Error| {
+        tracing::warn!(%org, %error, "a lookup did not reach the control plane");
+        (
+            StatusCode::BAD_GATEWAY,
+            "the control plane did not answer the lookup".to_owned(),
+        )
+    };
+    let reply = cp
+        .post(&node.http, &format!("/dp/v1/tenants/{org}/lookups"))
+        .json(&request)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(failed)?;
+    if !reply.status().is_success() {
+        let status = reply.status();
+        tracing::warn!(%org, %status, command = %request.command, "the control plane refused a lookup");
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("the control plane refused the lookup ({status})"),
+        ));
+    }
+    Ok(Json(reply.json().await.map_err(failed)?))
 }
 
 /// Every session of `org` in this cell, with its full log (an export).

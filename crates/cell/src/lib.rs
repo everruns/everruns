@@ -51,6 +51,7 @@ pub mod gateway_work;
 pub mod host;
 pub mod hosting;
 pub mod inspect;
+pub mod lookups;
 pub mod mcp;
 pub mod metrics;
 pub mod moves;

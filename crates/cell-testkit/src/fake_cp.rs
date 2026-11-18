@@ -58,6 +58,12 @@ struct Ledger {
     events: Vec<(String, String, serde_json::Value)>,
     /// Secrets the data plane refreshed: (org, secret id, revision).
     refreshed: Vec<(String, String, u64)>,
+    /// Orgs whose lookups are answered: their data key and its id, and the
+    /// answer per command.
+    lookup_orgs: HashMap<String, (everruns_contracts::dataplane_seal::Key, String)>,
+    lookup_answers: HashMap<String, everruns_cell::dp::LookupAnswer>,
+    /// Lookups asked: `(org, command, params)`.
+    lookups: Vec<(String, String, serde_json::Value)>,
     requests: usize,
     /// Feed records that arrived again under an id already stored.
     duplicates: usize,
@@ -117,6 +123,7 @@ impl FakeCp {
         };
         let app = Router::new()
             .route("/dp/v1/tenants/{org}/allowances", post(allowance))
+            .route("/dp/v1/tenants/{org}/lookups", post(lookup))
             .route("/dp/v1/feed", post(feed))
             .route("/.well-known/jwks.json", axum::routing::get(jwks))
             .route("/v1/auth/token", post(exchange))
@@ -197,6 +204,34 @@ impl FakeCp {
         } else {
             Err((StatusCode::UNAUTHORIZED, "no link token".into()))
         }
+    }
+
+    /// Answer `org`'s lookups, sealed with its data key `key` (`key_id`).
+    pub fn answer_lookups(
+        &self,
+        org: &str,
+        key: everruns_contracts::dataplane_seal::Key,
+        key_id: &str,
+    ) {
+        self.ledger
+            .lock()
+            .lookup_orgs
+            .insert(org.to_owned(), (key, key_id.to_owned()));
+    }
+
+    /// Answer the lookup `command` with `answer` from now on (a command
+    /// with none is not found, as the control plane answers an unknown
+    /// session).
+    pub fn set_lookup(&self, command: &str, answer: everruns_cell::dp::LookupAnswer) {
+        self.ledger
+            .lock()
+            .lookup_answers
+            .insert(command.to_owned(), answer);
+    }
+
+    /// Lookups asked so far: `(org, command, params)`.
+    pub fn lookups(&self) -> Vec<(String, String, serde_json::Value)> {
+        self.ledger.lock().lookups.clone()
     }
 
     pub fn set_balance(&self, org: &str, micros: i64) {
@@ -400,6 +435,52 @@ async fn jwks(State(cp): State<FakeCp>) -> Reply<jsonwebtoken::jwk::JwkSet> {
         .jwks()
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+/// A lookup, answered sealed for the org as the control plane answers it.
+async fn lookup(
+    State(cp): State<FakeCp>,
+    Path(org): Path<String>,
+    headers: axum::http::HeaderMap,
+    Json(request): Json<everruns_cell::dp::LookupRequest>,
+) -> Reply<everruns_cell::dp::SealedSecret> {
+    use everruns_contracts::dataplane_seal as seal;
+    cp.admit(&headers)?;
+    if cp.knobs.down.load(Ordering::SeqCst) {
+        return Err(unavailable());
+    }
+    if !everruns_cell::dp::LOOKUP_COMMANDS.contains(&request.command.as_str()) {
+        return Err((StatusCode::FORBIDDEN, "not a lookup".into()));
+    }
+    let mut ledger = cp.ledger.lock();
+    let (key, key_id) = ledger.lookup_orgs.get(&org).cloned().ok_or((
+        StatusCode::NOT_FOUND,
+        format!("org {org} is not on a data plane"),
+    ))?;
+    ledger
+        .lookups
+        .push((org.clone(), request.command.clone(), request.params.clone()));
+    let answer = ledger
+        .lookup_answers
+        .get(&request.command)
+        .cloned()
+        .unwrap_or(everruns_cell::dp::LookupAnswer::Error {
+            kind: 3,
+            message: "Session not found".into(),
+        });
+    let plain = serde_json::to_vec(&answer)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    seal::seal(
+        &key,
+        &key_id,
+        &org,
+        &everruns_cell::dp::lookup_secret(&request.request),
+        0,
+        &plain,
+        seal::random_nonce(),
+    )
+    .map(Json)
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 async fn allowance(

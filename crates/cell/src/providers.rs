@@ -106,6 +106,23 @@ pub trait OrgMaterial: Send + Sync {
         let _ = (org, op);
         anyhow::bail!("this node does not refresh org secrets")
     }
+    /// Whether [`lookup`](Self::lookup) reaches a control plane: false on
+    /// a standalone cell, whose tools then get the defaults a host without
+    /// org settings gives.
+    fn looks_up(&self) -> bool {
+        false
+    }
+    /// Ask the control plane one of `org`'s call-time lookups
+    /// (`lookups.rs`).
+    async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+        let _ = (org, command, params);
+        anyhow::bail!("this node does not reach a control plane")
+    }
 }
 
 /// (org, key) -> the provider, opened, and when.

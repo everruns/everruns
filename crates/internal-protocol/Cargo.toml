@@ -34,6 +34,8 @@ prost-types.workspace = true
 everruns-core = { path = "../core" }
 everruns-contracts = { workspace = true, default-features = false }
 
+async-trait.workspace = true
+
 # Serialization (for JSON conversion)
 serde.workspace = true
 serde_json.workspace = true
@@ -47,6 +49,7 @@ chrono.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
 everruns-contracts = { workspace = true, default-features = false }
 
 [build-dependencies]
