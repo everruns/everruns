@@ -9,6 +9,7 @@
 //! and it asks for the instance name first.
 
 mod checks;
+mod data_plane;
 mod doctor;
 mod public;
 pub(crate) mod settings;
@@ -23,6 +24,8 @@ use crate::ui;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand, ValueEnum};
 
+pub use data_plane::DataPlaneChoice;
+use data_plane::data_plane_settings;
 use settings::{Instance, Settings};
 
 const DEFAULT_PORT: u16 = 9300;
@@ -149,6 +152,11 @@ pub struct UpArgs {
     /// --public-url, else a quick one whose address changes), ngrok, or none
     #[arg(long, value_enum)]
     pub tunnel: Option<public::TunnelChoice>,
+
+    /// Where new organizations run agents: v2 (cells, the default) or v1
+    /// (workers). Organizations that already have sessions stay where they are
+    #[arg(long, value_enum)]
+    pub data_plane: Option<DataPlaneChoice>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -356,6 +364,20 @@ async fn up(args: UpArgs) -> Result<()> {
     s.set(settings::ADMIN_EMAIL, &email);
     s.set_missing(settings::ADMIN_PASSWORD, settings::password);
     s.fill_secrets();
+
+    // Data plane: v2 unless this instance chose v1.
+    let (plane, replicas) = data_plane_settings(
+        args.data_plane,
+        s.value(settings::DATA_PLANE),
+        s.value(settings::DATA_PLANE_REPLICAS),
+    );
+    if plane == DataPlaneChoice::V1 && replicas != "0" {
+        ui::detail(
+            "New organizations run on v1. Ones already on v2 keep running on the cell, so it stays up.",
+        );
+    }
+    s.set(settings::DATA_PLANE, plane.as_str());
+    s.set(settings::DATA_PLANE_REPLICAS, replicas);
 
     // LLM provider. The server only turns a default key into the default
     // organization's provider when nobody can sign themselves up; with
@@ -948,6 +970,7 @@ async fn status(args: &InstanceArgs) -> Result<()> {
     }
     ui::field("Health", health);
     ui::field("Version", s.value(settings::IMAGE_TAG).unwrap_or("unknown"));
+    ui::field("Data plane", s.value(settings::DATA_PLANE).unwrap_or("v2"));
     ui::field("Sign-in", auth);
     ui::field("Profile", profile_line);
     ui::field("Settings", inst.dir.display());

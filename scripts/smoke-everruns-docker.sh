@@ -22,6 +22,8 @@ export RUST_BACKTRACE=0
 unset EVERRUNS_API_KEY EVERRUNS_API_URL EVERRUNS_PROFILE
 
 step() { printf '\n==> %s\n' "$*"; }
+# shellcheck source=lib/smoke-turn.sh
+. "$ROOT/scripts/lib/smoke-turn.sh"
 fail() {
   echo "::error title=everruns docker smoke::$*" >&2
   "$BIN" docker logs --name "$NAME" --no-follow server >&2 || true
@@ -38,9 +40,20 @@ trap cleanup EXIT
 step "Docker checks"
 "$BIN" docker doctor --name "$NAME" || fail "doctor failed"
 
-step "First run, no prompts"
+DATA_PLANE="$(smoke_data_plane "$TAG")"
+
+step "First run, no prompts (data plane $DATA_PLANE)"
 "$BIN" docker up --name "$NAME" --yes --image-tag "$TAG" --provider skip --admin-email smoke@example.com \
-  || fail "first up failed"
+  --data-plane "$DATA_PLANE" || fail "first up failed"
+
+step "A turn runs on the data plane it chose"
+ENV_FILE="$XDG_DATA_HOME/everruns/docker/$NAME/.env"
+grep -qx "EVERRUNS_DATA_PLANE=$DATA_PLANE" "$ENV_FILE" || fail ".env does not record data plane $DATA_PLANE"
+port="$(sed -n 's/^EXAMPLE_PROXY_PORT=//p' "$ENV_FILE")"
+password="$(sed -n 's/^AUTH_ADMIN_PASSWORD=//p' "$ENV_FILE")"
+token="$(smoke_token "http://localhost:$port" smoke@example.com "$password")"
+smoke_turn "http://localhost:$port" "$token" docker-smoke >/dev/null
+smoke_check_plane "$DATA_PLANE" docker exec "everruns-$NAME-postgres-1" psql -U everruns -d everruns -tAc
 
 step "CLI is signed in to the local instance"
 "$BIN" whoami | grep -q "smoke@example.com" || fail "whoami is not the local admin"

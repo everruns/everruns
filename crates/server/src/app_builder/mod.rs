@@ -978,6 +978,8 @@ impl ServerAppBuilder {
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
         organizations_state.org_create_policy = self.org_create_policy;
         organizations_state.org_initializers = self.org_initializers;
+        let default_plane = crate::domains::data_plane::default_plane::initializer();
+        organizations_state.org_initializers.extend(default_plane);
         let org_invitations_state = api::org_invitations::AppState::new(
             db.clone(),
             auth_state.clone(),

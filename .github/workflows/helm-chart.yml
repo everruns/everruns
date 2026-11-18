@@ -28,6 +28,7 @@ on:
       - 'scripts/check-helm-chart.sh'
       - 'scripts/smoke-helm-chart.sh'
       - 'scripts/smoke-everruns-k8s.sh'
+      - 'scripts/lib/smoke-turn.sh'
       - 'crates/cli/src/commands/k8s/**'
       - 'crates/cli/src/commands/docker/signin.rs'
       - '.github/workflows/helm-chart.yml'

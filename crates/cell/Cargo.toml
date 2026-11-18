@@ -75,6 +75,15 @@ everruns-drivers = { workspace = true, features = [
     "openrouter",
     "vercel",
 ] }
+# The production-safe deterministic `llmsim` driver the worker registers too,
+# so an org's LlmSim provider runs on a cell as it does on a worker.
+everruns-llmsim.workspace = true
+# The `everruns-cell` binary's allocator (see `main.rs`).
+tikv-jemallocator.workspace = true
+
+[[bin]]
+name = "everruns-cell"
+path = "src/main.rs"
 
 [dev-dependencies]
 tempfile.workspace = true

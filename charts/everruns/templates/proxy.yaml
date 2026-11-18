@@ -1,5 +1,11 @@
 {{- $name := include "everruns.name" (list . "proxy") }}
-{{- $caddyfile := .Files.Get "files/Caddyfile"
+{{- $caddyfile := .Files.Get "files/Caddyfile" }}
+{{- if not (include "everruns.dataPlaneRuns" .) }}
+{{- /* v1 runs no edge router: session calls go straight to the server. */}}
+{{- $caddyfile = $caddyfile | replace "reverse_proxy edge:7100 server:9000" "reverse_proxy server:9000" }}
+{{- end }}
+{{- $caddyfile = $caddyfile
+  | replace "edge:7100" (printf "%s:7100" (include "everruns.name" (list . "edge")))
   | replace "server:9000" (printf "%s:9000" (include "everruns.name" (list . "server")))
   | replace "ui:9305" (printf "%s:9305" (include "everruns.name" (list . "ui"))) }}
 apiVersion: v1

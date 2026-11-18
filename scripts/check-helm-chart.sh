@@ -57,6 +57,27 @@ one="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adm
 grep -q 'type: Recreate' <<<"$one" || fail "a single server must be replaced with Recreate"
 if grep -q 'kind: NetworkPolicy' <<<"$one"; then fail "network policies render when off"; fi
 
+echo "==> data plane v2 by default, v1 one setting away"
+grep -q 'name: check-everruns-cell$' <<<"$one" || fail "v2 is the default but no cell renders"
+grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-everruns-cell-0.check-everruns-cell:7000"' <<<"$one" \
+  || fail "the server does not put new organizations on the cell"
+grep -q 'reverse_proxy check-everruns-edge:7100 check-everruns-server:9000' <<<"$one" \
+  || fail "the proxy does not send session calls to the edge router"
+grep -q 'CELL_STORE, value: "file:///store"' <<<"$one" || fail "without S3 the cells do not share a store volume"
+grep -q 'CELL_STORE, value: "s3://files/cells"' <<<"$out" || fail "with S3 the cells do not keep history there"
+v1="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set dataPlane.version=v1)"
+if grep -q 'everruns-cell' <<<"$v1"; then fail "v1 renders the data plane"; fi
+if grep -q 'check-everruns-edge' <<<"$v1"; then fail "v1 routes to an edge router that does not run"; fi
+grep -q 'EVERRUNS_DATA_PLANE, value: "v1"' <<<"$v1" || fail "v1 does not tell the server"
+kept="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set dataPlane.version=v1 --set dataPlane.keepRunning=true)"
+grep -q 'name: check-everruns-cell$' <<<"$kept" || fail "keepRunning does not keep the cell"
+if grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL' <<<"$kept"; then fail "v1 still places new organizations on v2"; fi
+three="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set dataPlane.cell.nodes=3)"
+grep -q 'check-everruns-cell-2.check-everruns-cell:7000' <<<"$three" || fail "three nodes are not in the topology"
+
 echo "==> isolated sandboxes render least privilege"
 sbx="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set egressProxy.enabled=true --set networkPolicy.enabled=true --set sandboxes.kubernetes.enabled=true \
@@ -109,6 +130,10 @@ refuses "must be proxy, direct or none" --set postgresql.enabled=true --set auth
 refuses "must differ from the release namespace" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set sandboxes.kubernetes.enabled=true --set sandboxes.kubernetes.egress=none --set sandboxes.kubernetes.namespace=default
 refuses "needs storage.s3.bucket" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com --set storage.s3.enabled=true
+refuses "must be v1 or v2" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set dataPlane.version=v3
+refuses "must be 1, 3 or 5" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set dataPlane.cell.nodes=2
 refuses "cannot be used with auth.mode full" --set postgresql.enabled=true --set auth.mode=full \
   --set auth.adminEmail=admin@example.com --set seedDefaultProviderKeys=true
 

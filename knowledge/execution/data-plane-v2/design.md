@@ -1443,7 +1443,8 @@ the cells run the turns. Decisions (approved 2026-11-12):
 - **Local full v2:** `DATA_PLANE=v2 just start-all` adds one cell of three
   nodes, one executor and the edge next to the usual stack, and
   `just dp-enable <org>` moves an org onto it
-  (`scripts/lib/data-plane-local.sh`).
+  (`scripts/lib/data-plane-local.sh`). Since the self-hosted default
+  (below) it is the default and places new orgs itself.
 
 Gate, measured:
 
@@ -2437,3 +2438,29 @@ asked for all of it to be fixed; what changed:
 | 2026-11-09 | grok (independent review) | Conditional go: move generations, feed record ids, grant accounting, turn revision retention, recovery consistency, workspace versions, execution authority, capacity assumptions, slot reservation; gates in a revised order | Applied (13-21) |
 | 2026-11-09 | claude-everruns (funout author, from `0a0c0ec`) | Go for steps 0, 1, 5. (1) Long-session numbers stale: Engine hosting now 115.5/s flat vs 131 pre-Engine. (2) Fixes live in the funout adapter (write pipeline 23→11 waited writes/turn; `session.started` read); move them into Engine before PostgreSQL hosting; add "waited round trips per turn" budget, target ≤5. (3) Background usage events lost and model call re-run when input admitted mid-step; add an invariant of one usage record per provider call. (4) Constant build id disables the retained guard; retain `(agent_revision, protocol_major)` per turn. (5) ~115 turns/s per cell → ~11 cells, not 5–8; executor affinity and an LRU for Engine's per-session cache. Confirms grok's move-generation and feed-identity findings. Details in thread. | Applied (23-29, 32) |
 | 2026-11-09 | grok (follow-up) | (8) live deltas need attempt fencing and one membership view; (9) search catalogs must outlive placement; (10) speculative appends through a crash-durable EventLog; refinements on provider attempts, compatibility identity, 11 cells as saturation | Applied (25-31) |
+
+## Self-hosted default (after the full v2 decision)
+
+The user chose full v2 on 2026-11-18, with one condition first: self-hosted
+installs run v2 by default and keep v1 one setting away. Each install shape
+does it the same way:
+
+- **The server places new orgs.** `EVERRUNS_DEFAULT_DATA_PLANE_URL` (with
+  the link's token and key) makes the server register its data plane and
+  put every org that has never had a session on it, by a poll and at
+  creation (`domains/data_plane/default_plane.rs`). Orgs with v1 sessions
+  stay on the workers: moving history is the org-moves step of
+  finalization. `EVERRUNS_DATA_PLANE=v1` turns placement off.
+- **One cell.** Docker Compose runs one node, one executor and the edge;
+  the Helm chart runs 1 (or 3/5) nodes; local dev runs three. A fleet of
+  cells stays the hosted service's shape.
+- **Production binary.** `everruns-cell` (StandardHost plus the `llmsim`
+  driver the worker also registers) is published as
+  `ghcr.io/everruns/everruns-cell` with every release; `cell-testnode`
+  stays the test and load-run host.
+- **Switching back keeps the cell.** An install that ran v2 and switches to
+  v1 keeps its cell running (`DATA_PLANE_REPLICAS`, `dataPlane.keepRunning`):
+  its v2 orgs' sessions live there.
+- **Smokes follow the images.** The Compose, `docker up`, Helm and `k8s up`
+  smokes run a turn and check where it ran: v2 when the tag has a cell
+  image, v1 for older tags (`scripts/lib/smoke-turn.sh`).

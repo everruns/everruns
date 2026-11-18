@@ -44,13 +44,16 @@ workers to the control plane. Generate one value for each:
 python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"  # encryption key
 openssl rand -hex 32  # JWT secret
 openssl rand -hex 32  # worker token
+openssl rand -hex 32  # data plane token
+openssl rand -base64 32  # data plane key
 ```
 
 ### 3. Create Environment File
 
-Create a `.env` file next to `docker-compose.yaml`. The first five values are
-required: Compose refuses to start without `AUTH_JWT_SECRET`, and the server
-refuses to start without `WORKER_GRPC_AUTH_TOKEN`.
+Create a `.env` file next to `docker-compose.yaml`. The first seven values are
+required: Compose refuses to start without `AUTH_JWT_SECRET`, the server
+refuses to start without `WORKER_GRPC_AUTH_TOKEN`, and without the two data
+plane values new organizations run on v1.
 
 ```bash
 # .env
@@ -59,6 +62,12 @@ AUTH_JWT_SECRET=<jwt-secret>
 WORKER_GRPC_AUTH_TOKEN=<worker-token>
 AUTH_ADMIN_EMAIL=admin@example.com
 AUTH_ADMIN_PASSWORD=<choose-a-password>
+EVERRUNS_DP_TOKEN=<data-plane-token>
+EVERRUNS_DP_KEY=<data-plane-key>
+
+# Optional: run agents on the workers only (data plane v1), see below
+# EVERRUNS_DATA_PLANE=v1
+# DATA_PLANE_REPLICAS=0
 
 # Optional: two extra workers and VictoriaMetrics (see Profiles below)
 COMPOSE_PROFILES=scale,metrics
@@ -96,6 +105,8 @@ This starts:
 - Valkey (rate limiting) and NATS (event delivery and task notifications)
 - Control plane (`server`): HTTP API and worker gRPC
 - 1 worker, or 3 with the `scale` profile
+- Data plane v2: a cell (`cell`), an executor that runs its turns
+  (`executor`), and the edge router (`edge`) that sends session calls to it
 - Next.js UI
 - Caddy reverse proxy
 - VictoriaMetrics, scraping server metrics at http://localhost:8428/vmui (`metrics` profile)
@@ -114,6 +125,28 @@ Sign in to the UI with `AUTH_ADMIN_EMAIL` and `AUTH_ADMIN_PASSWORD`.
 | **Health Check** | http://localhost:9300/health |
 
 ## Configuration
+
+### Data Plane
+
+New organizations run their agents on data plane v2: the `cell` keeps each
+session (its history goes to the `cell_store` volume), the `executor` runs
+turns, and the proxy sends session calls through the `edge` router, which
+passes everything that is not a v2 session on to the API. An organization
+that already has sessions keeps running them on the workers (v1), so turning
+v2 on in an existing install leaves the organizations in use where they are.
+
+To run every organization on the workers instead, add to `.env`:
+
+```bash
+EVERRUNS_DATA_PLANE=v1
+DATA_PLANE_REPLICAS=0
+```
+
+`DATA_PLANE_REPLICAS=0` stops the cell, executor and edge containers. Leave
+it out when switching an install that already ran v2: its v2 organizations'
+sessions live in the cell. Data plane v2 needs images from the release that
+made it the default or later; an older `EVERRUNS_TAG` has no `everruns-cell`
+image, so run v1 with it.
 
 ### Run Multiple Copies
 

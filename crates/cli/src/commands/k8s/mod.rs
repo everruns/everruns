@@ -158,6 +158,11 @@ pub struct UpArgs {
     #[arg(long = "values", short = 'f', value_name = "FILE")]
     pub values: Vec<PathBuf>,
 
+    /// Where new organizations run agents: v2 (cells, the default) or v1
+    /// (workers). Organizations that already have sessions stay where they are
+    #[arg(long, value_enum)]
+    pub data_plane: Option<docker::DataPlaneChoice>,
+
     /// Local port for the port-forward when there is no public URL (default 9300)
     #[arg(long)]
     pub port: Option<u16>,
@@ -470,6 +475,7 @@ async fn up(args: UpArgs) -> Result<()> {
         bail!("with --auth accounts, add provider keys in the UI; drop --provider");
     }
     answers.image_tag = args.image_tag.clone();
+    answers.data_plane = args.data_plane;
 
     let values = values::build(&known_value, &answers);
     let bundled = Known(&values).bundled_postgres();

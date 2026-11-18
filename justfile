@@ -185,7 +185,7 @@ start-dev *args:
 start-all *args:
     ./scripts/lib/services.sh start-all {{args}}
 
-# Put an org on the local data plane (needs `DATA_PLANE=v2 just start-all` running)
+# Put an org that already has v1 sessions on the local data plane (needs `just start-all` running)
 dp-enable org:
     ./scripts/lib/services.sh dp-enable {{org}}
 

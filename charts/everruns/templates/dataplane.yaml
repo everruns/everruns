@@ -1,0 +1,315 @@
+{{- if include "everruns.dataPlaneRuns" . }}
+{{- /*
+Data plane v2: one cell (its nodes in a StatefulSet, each with its own
+disk), executors that pull turns from it, and the edge router the proxy
+sends session calls to. The server registers the cell as data plane
+`local` and puts new organizations on it (dataPlane.version v2).
+
+Decisions:
+- One cell. A self-hosted install fits in one; a fleet of cells is the
+  hosted service's shape, where an operator adds them.
+- Node and executor ids come from the pod's ordinal (no shell in the
+  image), so both are StatefulSets.
+- Raft runs on the node's port plus one, on its own threads, as in the
+  hosted service, so client load cannot hold up replication.
+*/}}
+{{- $cell := include "everruns.name" (list . "cell") }}
+{{- $executor := include "everruns.name" (list . "executor") }}
+{{- $edge := include "everruns.name" (list . "edge") }}
+{{- $server := include "everruns.name" (list . "server") }}
+{{- $topology := include "everruns.name" (list . "cell-topology") }}
+{{- $store := include "everruns.name" (list . "cell-store") }}
+{{- $sharedStore := include "everruns.cellStoreVolume" . }}
+{{- $sa := include "everruns.serverServiceAccount" . }}
+{{- $nodes := int .Values.dataPlane.cell.nodes }}
+{{- $members := dict }}
+{{- range $i := until $nodes }}
+{{- $_ := set $members (toString (add1 $i)) (include "everruns.cellAddr" (list $ $i)) }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $topology }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cell
+data:
+  topology.json: {{ dict "directory_cell" 0 "cells" (dict "0" $members) | toJson | quote }}
+{{- if $sharedStore }}
+---
+# Session history and snapshots, shared by the cell's nodes and the
+# executors. ReadWriteOnce keeps them on one node; S3 has no such limit.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $store }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cell
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ .Values.dataPlane.storeVolume.accessMode }}]
+  {{- with .Values.dataPlane.storeVolume.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.dataPlane.storeVolume.size }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $cell }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cell
+spec:
+  # Headless: every node has its own name, which the topology lists.
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {{- include "everruns.selector" (list . "cell") | nindent 4 }}
+  ports:
+    - { name: cell, port: 7000 }
+    - { name: raft, port: 7001 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $cell }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cell
+spec:
+  serviceName: {{ $cell }}
+  replicas: {{ $nodes }}
+  # The nodes form the cell together; one at a time would wait forever for
+  # a majority.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "cell") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "cell") | nindent 8 }}
+      annotations:
+        checksum/topology: {{ toJson $members | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with $sa }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: 30
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: node
+          image: {{ include "everruns.cellImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["node", "--cell", "0", "--data", "/data", "--listen", "0.0.0.0:7000"]
+          ports:
+            - { name: cell, containerPort: 7000 }
+            - { name: raft, containerPort: 7001 }
+          env:
+            {{- include "everruns.cellEnv" . | nindent 12 }}
+            - { name: CELL_CONTROL_PLANE, value: {{ printf "http://%s:9000/api" $server | quote }} }
+            - { name: CELL_RAFT_PORT_OFFSET, value: "1" }
+            # Turns the cell hands to executors at once: room for every slot,
+            # with turns that wait on tools and models.
+            - { name: CELL_EXECUTOR_CAP, value: {{ mul (int .Values.dataPlane.executor.replicas) (int .Values.dataPlane.executor.slots) 4 | quote }} }
+            - { name: CELL_MEMORY_BUDGET_MB, value: {{ .Values.dataPlane.cell.memoryBudgetMb | quote }} }
+            - { name: CELL_UNLOAD_IDLE_SECS, value: {{ .Values.dataPlane.cell.unloadIdleSeconds | quote }} }
+          readinessProbe:
+            httpGet: { path: /health, port: cell }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.dataPlane.cell.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: topology, mountPath: /etc/cell, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+            {{- if $sharedStore }}
+            - { name: store, mountPath: /store }
+            {{- end }}
+      volumes:
+        - { name: topology, configMap: { name: {{ $topology }} } }
+        - { name: tmp, emptyDir: {} }
+        {{- if $sharedStore }}
+        - { name: store, persistentVolumeClaim: { claimName: {{ $store }} } }
+        {{- end }}
+      {{- with .Values.dataPlane.cell.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dataPlane.cell.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dataPlane.cell.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+  # Selector labels only: a StatefulSet's claim templates cannot change on
+  # upgrade, and `everruns k8s destroy` finds the volumes by instance.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels: {{- include "everruns.selector" (list . "cell") | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.dataPlane.cell.storage.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.dataPlane.cell.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $executor }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: executor
+spec:
+  clusterIP: None
+  selector: {{- include "everruns.selector" (list . "executor") | nindent 4 }}
+  ports:
+    - { name: http, port: 7000 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $executor }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: executor
+spec:
+  serviceName: {{ $executor }}
+  replicas: {{ .Values.dataPlane.executor.replicas }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "executor") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "executor") | nindent 8 }}
+      annotations:
+        checksum/topology: {{ toJson $members | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with $sa }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      # Above the executor's own drain limit (60 s): it hands turns back first.
+      terminationGracePeriodSeconds: 90
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: executor
+          image: {{ include "everruns.cellImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["executor", "--slots", {{ .Values.dataPlane.executor.slots | quote }}, "--listen", "0.0.0.0:7000"]
+          ports:
+            - { name: http, containerPort: 7000 }
+          env:
+            {{- include "everruns.cellEnv" . | nindent 12 }}
+            {{- include "everruns.egressProxyEnv" . | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.dataPlane.executor.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: topology, mountPath: /etc/cell, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+            {{- if $sharedStore }}
+            - { name: store, mountPath: /store }
+            {{- end }}
+      volumes:
+        - { name: topology, configMap: { name: {{ $topology }} } }
+        - { name: tmp, emptyDir: {} }
+        {{- if $sharedStore }}
+        - { name: store, persistentVolumeClaim: { claimName: {{ $store }} } }
+        {{- end }}
+      {{- with .Values.dataPlane.executor.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dataPlane.executor.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.dataPlane.executor.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $edge }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+spec:
+  selector: {{- include "everruns.selector" (list . "edge") | nindent 4 }}
+  ports:
+    - { name: http, port: 7100 }
+---
+# Session calls from the proxy: a v2 organization's go to the cell, every
+# other call on to the server unchanged.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $edge }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: edge
+spec:
+  replicas: {{ .Values.dataPlane.edge.replicas }}
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "everruns.selector" (list . "edge") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "everruns.selector" (list . "edge") | nindent 8 }}
+      annotations:
+        checksum/topology: {{ toJson $members | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: edge
+          image: {{ include "everruns.cellImage" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["edge", "--listen", "0.0.0.0:7100", "--control-plane", {{ printf "http://%s:9000" $server | quote }}, "--api-prefix", "/api"]
+          ports:
+            - { name: http, containerPort: 7100 }
+          env:
+            {{- include "everruns.cellEnv" . | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.dataPlane.edge.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: topology, mountPath: /etc/cell, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: topology, configMap: { name: {{ $topology }} } }
+        - { name: tmp, emptyDir: {} }
+{{- end }}

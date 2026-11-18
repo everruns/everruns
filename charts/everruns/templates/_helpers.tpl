@@ -212,7 +212,108 @@ appears in the manifest.
 {{- if and .Values.storage.s3.enabled (not .Values.storage.s3.bucket) -}}
 {{- fail "storage.s3.enabled needs storage.s3.bucket" -}}
 {{- end -}}
+{{- if not (has .Values.dataPlane.version (list "v1" "v2")) -}}
+{{- fail (printf "dataPlane.version must be v1 or v2, got %q" .Values.dataPlane.version) -}}
+{{- end -}}
+{{- if not (has (int .Values.dataPlane.cell.nodes) (list 1 3 5)) -}}
+{{- fail "dataPlane.cell.nodes must be 1, 3 or 5: a cell needs a majority of its nodes" -}}
+{{- end -}}
 {{- if and .Values.metrics.serviceMonitor.enabled (not .Values.metrics.enabled) -}}
 {{- fail "metrics.serviceMonitor.enabled needs metrics.enabled" -}}
 {{- end -}}
+{{- end -}}
+
+{{/* Whether the data plane v2 components run (see values: dataPlane). */}}
+{{- define "everruns.dataPlaneRuns" -}}
+{{- if or (eq .Values.dataPlane.version "v2") .Values.dataPlane.keepRunning }}true{{ end -}}
+{{- end -}}
+
+{{- define "everruns.cellImage" -}}
+{{- .Values.dataPlane.image | default (include "everruns.image" (list . "cell")) -}}
+{{- end -}}
+
+{{/* A cell node's gateway address: pass (list $ ordinal). */}}
+{{- define "everruns.cellAddr" -}}
+{{- $ := index . 0 -}}
+{{- $cell := include "everruns.name" (list $ "cell") -}}
+{{- printf "%s-%d.%s:7000" $cell (int (index . 1)) $cell -}}
+{{- end -}}
+
+{{/* Where cells keep session history: dataPlane.store, S3, or the shared volume. */}}
+{{- define "everruns.cellStore" -}}
+{{- if .Values.dataPlane.store -}}
+{{- .Values.dataPlane.store -}}
+{{- else if .Values.storage.s3.enabled -}}
+{{- $prefix := trimSuffix "/" .Values.storage.s3.prefix -}}
+{{- if $prefix -}}
+{{- printf "s3://%s/%s/cells" .Values.storage.s3.bucket $prefix -}}
+{{- else -}}
+{{- printf "s3://%s/cells" .Values.storage.s3.bucket -}}
+{{- end -}}
+{{- else -}}
+file:///store
+{{- end -}}
+{{- end -}}
+
+{{/* Whether cells and executors mount the shared store volume. */}}
+{{- define "everruns.cellStoreVolume" -}}
+{{- if hasPrefix "file://" (include "everruns.cellStore" .) }}true{{ end -}}
+{{- end -}}
+
+{{/*
+Env entries every data plane pod shares: the topology, the store and its
+S3 settings (from storage.s3 when the store is there), the data plane it
+is and the link to the server.
+*/}}
+{{- define "everruns.cellEnv" -}}
+{{- $internal := include "everruns.internalSecretName" . -}}
+{{- $server := include "everruns.name" (list . "server") -}}
+- { name: CELL_TOPOLOGY, value: /etc/cell/topology.json }
+- { name: CELL_STORE, value: {{ include "everruns.cellStore" . | quote }} }
+- { name: CELL_DATA_PLANE, value: local }
+- { name: CELL_JWKS_URL, value: {{ printf "http://%s:9000/api/.well-known/jwks.json" $server | quote }} }
+- name: CELL_DP_TOKEN
+  valueFrom: { secretKeyRef: { name: {{ $internal }}, key: EVERRUNS_DP_TOKEN } }
+- name: CELL_DP_KEY
+  valueFrom: { secretKeyRef: { name: {{ $internal }}, key: EVERRUNS_DP_KEY } }
+- { name: RUST_LOG, value: "info,openraft=warn" }
+{{- if and .Values.storage.s3.enabled (not .Values.dataPlane.store) }}
+{{- with .Values.storage.s3 }}
+{{- with .region }}
+- { name: AWS_REGION, value: {{ . | quote }} }
+{{- end }}
+{{- with .endpoint }}
+- { name: AWS_ENDPOINT, value: {{ . | quote }} }
+{{- if hasPrefix "http://" . }}
+- { name: AWS_ALLOW_HTTP, value: "true" }
+{{- end }}
+{{- end }}
+{{- with .existingSecret }}
+- name: AWS_ACCESS_KEY_ID
+  valueFrom: { secretKeyRef: { name: {{ . }}, key: STORAGE_S3_ACCESS_KEY_ID } }
+- name: AWS_SECRET_ACCESS_KEY
+  valueFrom: { secretKeyRef: { name: {{ . }}, key: STORAGE_S3_SECRET_ACCESS_KEY } }
+{{- end }}
+{{- end }}
+{{- end }}
+{{- with .Values.otel.endpoint }}
+- { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ . | quote }} }
+{{- end }}
+{{- with .Values.dataPlane.extraEnv }}{{ toYaml . | nindent 0 }}{{ end }}
+{{- end -}}
+
+{{/* The server's side of the data plane: its default for new organizations and the link. */}}
+{{- define "everruns.serverDataPlaneEnv" -}}
+- { name: EVERRUNS_DATA_PLANE, value: {{ .Values.dataPlane.version | quote }} }
+{{- if include "everruns.dataPlaneRuns" . }}
+{{- if eq .Values.dataPlane.version "v2" }}
+- { name: EVERRUNS_DEFAULT_DATA_PLANE, value: local }
+- { name: EVERRUNS_DEFAULT_DATA_PLANE_URL, value: {{ printf "http://%s" (include "everruns.cellAddr" (list . 0)) | quote }} }
+{{- end }}
+{{- $internal := include "everruns.internalSecretName" . }}
+- name: EVERRUNS_DP_TOKEN
+  valueFrom: { secretKeyRef: { name: {{ $internal }}, key: EVERRUNS_DP_TOKEN } }
+- name: EVERRUNS_DP_KEY
+  valueFrom: { secretKeyRef: { name: {{ $internal }}, key: EVERRUNS_DP_KEY } }
+{{- end }}
 {{- end -}}

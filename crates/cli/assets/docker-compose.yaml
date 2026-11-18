@@ -4,7 +4,11 @@
 # - PostgreSQL database
 # - Valkey (distributed rate limiting)
 # - Server (control plane): HTTP API + gRPC server
-# - 1 Worker by default; 3 with the `scale` profile
+# - Data plane v2 (the default): one cell node, one executor and the edge
+#   router. New orgs' sessions run there; set EVERRUNS_DATA_PLANE=v1 and
+#   DATA_PLANE_REPLICAS=0 in .env to run every org on workers instead.
+# - 1 Worker by default; 3 with the `scale` profile (v1 orgs' sessions and
+#   control plane agents such as Platform Chat)
 # - UI (Next.js dashboard)
 # - Caddy reverse proxy (unified entry point)
 # - VictoriaMetrics (scrapes Prometheus /metrics from server), `metrics` profile
@@ -20,6 +24,8 @@
 #      AUTH_JWT_SECRET=<your-random-secret> # Required: JWT signing secret
 #      AUTH_ADMIN_EMAIL=admin@example.com   # Required: admin login email
 #      AUTH_ADMIN_PASSWORD=<your-password>  # Required: admin login password
+#      EVERRUNS_DP_TOKEN=<random-hex>       # Required for v2: control plane <-> data plane token
+#      EVERRUNS_DP_KEY=<base64 32 bytes>    # Required for v2: python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 #      SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV=true # Opt in to encrypting default-org keys
 #      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
 #      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
@@ -137,6 +143,14 @@ services:
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set when AUTH_MODE is admin/full}
       AUTH_ADMIN_EMAIL: ${AUTH_ADMIN_EMAIL:-}
       AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-}
+      # Data plane v2: new orgs' sessions run on the cell below. An org that
+      # already has sessions on workers stays there. EVERRUNS_DATA_PLANE=v1
+      # turns this off.
+      EVERRUNS_DATA_PLANE: ${EVERRUNS_DATA_PLANE:-v2}
+      EVERRUNS_DEFAULT_DATA_PLANE: local
+      EVERRUNS_DEFAULT_DATA_PLANE_URL: http://cell:7000
+      EVERRUNS_DP_TOKEN: ${EVERRUNS_DP_TOKEN:-}
+      EVERRUNS_DP_KEY: ${EVERRUNS_DP_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -187,6 +201,72 @@ services:
     depends_on:
       server:
         condition: service_started
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Data plane v2: a cell of one node (sessions, Raft log, snapshots), an
+  # executor that runs their turns, and the edge router the proxy sends
+  # session calls to. DATA_PLANE_REPLICAS=0 leaves them out (v1).
+  #
+  # The cell's restore points go to the `cell_store` volume (file://), which
+  # the executor reads too; point CELL_STORE at s3://bucket/prefix to keep
+  # them off this machine.
+  # ==========================================================================
+  cell:
+    image: ghcr.io/everruns/everruns-cell:${EVERRUNS_TAG:-latest}
+    command: ["node", "--cell", "0", "--node", "1", "--data", "/data", "--listen", "0.0.0.0:7000"]
+    environment: &cell-env
+      CELL_TOPOLOGY: /etc/cell/topology.json
+      CELL_STORE: ${CELL_STORE:-file:///store}
+      CELL_DATA_PLANE: local
+      CELL_CONTROL_PLANE: http://server:9000/api
+      CELL_JWKS_URL: http://server:9000/api/.well-known/jwks.json
+      CELL_DP_TOKEN: ${EVERRUNS_DP_TOKEN:-}
+      CELL_DP_KEY: ${EVERRUNS_DP_KEY:-}
+      CELL_EXECUTOR_CAP: "256"
+      CELL_MEMORY_BUDGET_MB: ${CELL_MEMORY_BUDGET_MB:-1024}
+      CELL_UNLOAD_IDLE_SECS: "600"
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    configs:
+      - source: cell_topology
+        target: /etc/cell/topology.json
+    volumes:
+      - cell_data:/data
+      - cell_store:/store
+    deploy:
+      replicas: ${DATA_PLANE_REPLICAS:-1}
+    depends_on:
+      server:
+        condition: service_started
+    restart: unless-stopped
+
+  executor:
+    image: ghcr.io/everruns/everruns-cell:${EVERRUNS_TAG:-latest}
+    command: ["executor", "--id", "4294967296", "--listen", "0.0.0.0:7001"]
+    environment: *cell-env
+    configs:
+      - source: cell_topology
+        target: /etc/cell/topology.json
+    volumes:
+      - cell_store:/store
+    deploy:
+      replicas: ${DATA_PLANE_REPLICAS:-1}
+    depends_on:
+      - cell
+    restart: unless-stopped
+
+  edge:
+    image: ghcr.io/everruns/everruns-cell:${EVERRUNS_TAG:-latest}
+    command: ["edge", "--listen", "0.0.0.0:7100", "--control-plane", "http://server:9000", "--api-prefix", "/api"]
+    environment: *cell-env
+    configs:
+      - source: cell_topology
+        target: /etc/cell/topology.json
+    deploy:
+      replicas: ${DATA_PLANE_REPLICAS:-1}
+    depends_on:
+      - cell
     restart: unless-stopped
 
   # ==========================================================================
@@ -310,6 +390,7 @@ configs:
   caddyfile:
     content: |
       # Reverse proxy routes:
+      #   /api/v1/sessions* /api/v1/commands* workspace files -> edge, else API
       #   /api/*     -> API
       #   /oauth/*   -> API
       #   /mcp       -> API
@@ -324,6 +405,21 @@ configs:
       # Server handles 5-min connection cycling with disconnecting events;
       # SDK reconnects transparently (no retry budget cost).
       :9300 {
+        # Session calls go to the data plane's edge router first: it serves a
+        # v2 org's sessions from the cell and passes everything else to the
+        # API unchanged. With no edge (v1, DATA_PLANE_REPLICAS=0) they go
+        # straight to the API. No compression: these are mostly SSE streams.
+        @sessions path_regexp ^/api/v1/(sessions|commands|workspaces/[^/]+/fs(/|$))
+        handle @sessions {
+          reverse_proxy edge:7100 server:9000 {
+            lb_policy first
+            lb_try_duration 5s
+            lb_retry_match method GET HEAD
+            health_uri /health
+            health_interval 5s
+            flush_interval -1
+          }
+        }
         handle /api/* {
           # Compress only buffered, text-based responses. The explicit allowlist keeps
           # text/event-stream out of the encoder so SSE events flush immediately.
@@ -388,6 +484,11 @@ configs:
         }
       }
 
+  # The data plane's layout: cell 0 (the directory cell) with one node.
+  cell_topology:
+    content: |
+      {"directory_cell": 0, "cells": {"0": {"1": "cell:7000"}}}
+
   prometheus_scrape_config:
     content: |
       global:
@@ -418,6 +519,8 @@ configs:
 
 volumes:
   postgres_data:
+  cell_data:
+  cell_store:
   valkey_data:
   nats_data:
   victoriametrics_data:

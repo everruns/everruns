@@ -95,7 +95,7 @@ jobs:
     strategy:
       matrix:
         arch: ${{ fromJSON(needs.resolve-source.outputs.arches) }}
-        group: [server, tools, worker, guest]
+        group: [server, tools, worker, guest, cell]
 
     steps:
       - name: Install build tools
@@ -133,6 +133,7 @@ jobs:
             server) bins=(everruns-server everruns-egress-proxy); pkg=everruns-server ;;
             tools) bins=(reencrypt-secrets everruns-migrate everruns-dataplane); pkg=everruns-server ;;
             worker) bins=(everruns-worker); pkg=everruns-worker ;;
+            cell) bins=(everruns-cell); pkg=everruns-cell ;;
             *) echo "unknown binary group: $GROUP" >&2; exit 1 ;;
           esac
           args=(-p "$pkg")
@@ -263,6 +264,33 @@ jobs:
           push: true
           tags: ${{ steps.meta-admin.outputs.tags }}
           labels: ${{ steps.meta-admin.outputs.labels }}
+
+      # Data plane v2 (cells, executors, edge router): one binary, three
+      # roles. Self-hosted installs run it by default.
+      - name: Extract metadata (cell)
+        id: meta-cell
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE_BASE }}/everruns-cell
+          labels: |
+            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=${{ needs.resolve-source.outputs.tag }},enable=${{ needs.resolve-source.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.resolve-source.outputs.is_latest == 'true' }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha_short }}
+            type=raw,value=${{ needs.resolve-source.outputs.sha }}
+
+      - name: Build and push cell
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: docker/Dockerfile.prebuilt
+          target: cell
+          platforms: ${{ needs.resolve-source.outputs.platforms }}
+          push: true
+          tags: ${{ steps.meta-cell.outputs.tags }}
+          labels: ${{ steps.meta-cell.outputs.labels }}
 
   # Publishes the same binaries the images carry as GitHub release assets.
   # Kept apart from the compile jobs so only this short job holds a token that
