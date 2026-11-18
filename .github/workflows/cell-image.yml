@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container:
-      image: rust:1.99.1-slim-bookworm
+      image: rust:1.100.0-slim-bookworm
     defaults:
       run:
         shell: bash
