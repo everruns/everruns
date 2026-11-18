@@ -79,6 +79,9 @@ struct Inner {
     /// An executor's way to the fleet's sessions (`subagents.rs`); a node
     /// uses its own gateway.
     gateway: std::sync::OnceLock<Arc<crate::gateway::Gateway>>,
+    /// An executor's org material: seals and opens session secrets
+    /// (`hosting_ports.rs`); a node has none and never sees them open.
+    material: std::sync::OnceLock<Weak<dyn crate::providers::OrgMaterial>>,
 }
 
 /// Where hosting reaches its cell.
@@ -112,6 +115,11 @@ impl RaftHosting {
         let _ = self.inner.sandboxes.set(sandboxes);
     }
 
+    /// The org material an executor seals session secrets with.
+    pub fn set_material(&self, material: Weak<dyn crate::providers::OrgMaterial>) {
+        let _ = self.inner.material.set(material);
+    }
+
     /// The gateway an executor reaches other sessions through.
     pub fn set_gateway(&self, gateway: Arc<crate::gateway::Gateway>) {
         let _ = self.inner.gateway.set(gateway);
@@ -134,6 +142,7 @@ impl RaftHosting {
                 sandboxes: Default::default(),
                 detached: Default::default(),
                 gateway: Default::default(),
+                material: Default::default(),
             }),
         }
     }

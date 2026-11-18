@@ -172,3 +172,78 @@ fn a_published_package_carries_no_sandbox_of_its_own() {
         json!([{ "ref": "session_file_system" }])
     );
 }
+
+#[tokio::test]
+async fn pausing_a_v2_sandbox_uses_the_pinned_one() {
+    let (cp, _, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let owner = person(&cp, "dtn-key-1").await;
+    let session = pinned_session(&cp, harness, owner).await;
+    let config = crate::domains::session_sandbox::plane::config(&cp.db, session)
+        .await
+        .unwrap()
+        .expect("a managed sandbox is pinned");
+    assert_eq!(config.provider, "daytona");
+
+    // A session with no sandbox has nothing to pause.
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.harness_id = Some(harness);
+    let plain = cp.db.create_session(row).await.unwrap().id;
+    assert!(
+        crate::domains::session_sandbox::plane::config(&cp.db, plain)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn an_idle_v2_sessions_sandbox_is_swept_once_per_idle_spell() {
+    use crate::domains::session_sandbox::plane::{idle_handled, idle_on_data_planes};
+    let (cp, _, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let owner = person(&cp, "dtn-key-1").await;
+    let session = pinned_session(&cp, harness, owner).await;
+    let summary = |at: chrono::DateTime<chrono::Utc>, version: i64| {
+        let db = cp.db.clone();
+        let id = session.to_string();
+        async move {
+            db.dp_upsert_session_summary(crate::storage::DpSessionSummary {
+                session_id: &id,
+                org_id: ORG,
+                data_plane_id: "dp-1",
+                agent_id: "ak_x",
+                session_version: version,
+                title: "",
+                status: "idle",
+                turns: version,
+                cost_micros: 0,
+                created_at: at,
+                last_activity_at: at,
+            })
+            .await
+            .unwrap();
+        }
+    };
+    let pool = cp.db.pool().clone();
+    let idle = || idle_on_data_planes(&pool, std::time::Duration::ZERO, 50);
+
+    // A turn that just ended is not idle yet.
+    summary(chrono::Utc::now(), 1).await;
+    assert!(idle().await.unwrap().is_empty());
+
+    // An hour later it is, once.
+    let ended = chrono::Utc::now() - chrono::Duration::hours(1);
+    summary(ended, 2).await;
+    let swept = idle().await.unwrap();
+    assert_eq!(swept.len(), 1);
+    assert_eq!((swept[0].0, swept[0].1), (session.uuid(), ORG));
+    idle_handled(&pool, session.uuid(), swept[0].2)
+        .await
+        .unwrap();
+    assert!(idle().await.unwrap().is_empty());
+
+    // Another turn, another idle spell.
+    summary(ended + chrono::Duration::minutes(10), 3).await;
+    assert_eq!(idle().await.unwrap().len(), 1);
+}

@@ -75,6 +75,10 @@ pub fn cell_router(node: Arc<Node>) -> Router {
             get(cell_secret).post(cell_secret),
         )
         .route(
+            "/cell/orgs/{org}/data-key",
+            get(cell_data_key).post(cell_data_key),
+        )
+        .route(
             "/cell/orgs/{org}/connections/{connection}",
             get(cell_connection).post(cell_connection),
         )
@@ -209,9 +213,19 @@ async fn org_session(
 /// 11.4, or a channel's message, 11.5), cancelling the running turn, a
 /// channel's prior conversation, the result of a parked call the control
 /// plane resolved (a question set's answers, 11.6), and an event it
-/// records (a reaction, 11.6). The cell checks each body.
-const ORG_SESSION_COMMANDS: &[&str] =
-    &["messages", "cancel-turn", "seed", "tool-results", "record"];
+/// records (a reaction, 11.6), and a person's change to the session's
+/// storage (11.6). The cell checks each body.
+const ORG_SESSION_COMMANDS: &[&str] = &[
+    "messages",
+    "cancel-turn",
+    "seed",
+    "tool-results",
+    "record",
+    "storage",
+    // A session's files: the control plane copies a message's uploads
+    // there before it sends the message (`gateway_input.rs`).
+    "fs",
+];
 
 /// The org's session `session`, or 404.
 async fn owned_session(
@@ -678,6 +692,19 @@ async fn cell_secret(
             data_key: c.data_key.clone()?,
         })
     })))
+}
+
+/// `org`'s data key, wrapped under the data plane's key: what an executor
+/// seals and opens the org's session secrets with (`session_secrets.rs`).
+async fn cell_data_key(
+    State(node): State<Arc<Node>>,
+    Path(org): Path<String>,
+) -> Result<Json<Option<crate::control::WrappedKey>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(
+        state.orgs.orgs.get(&org).and_then(|c| c.data_key.clone()),
+    ))
 }
 
 /// `org`'s connection, for the executor that runs a turn needing it (its

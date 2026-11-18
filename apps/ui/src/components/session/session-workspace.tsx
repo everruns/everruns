@@ -27,7 +27,6 @@ import { sessionRecordPanes, type SessionRecordPane } from "@/components/session
 import { useSessionSchedules } from "@/hooks/use-session-schedules";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { cn } from "@/lib/utils";
-import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 
 function useSessionStorage(sessionId: string, enabled: boolean) {
   return useQuery({
@@ -72,10 +71,13 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
                       <Badge variant="outline" className="font-mono">
                         {entry.key}
                       </Badge>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        {new Date(entry.updated_at).toLocaleString(displayLocale)}
-                      </span>
+                      {/* A data plane keeps no timestamps for values or secrets. */}
+                      {entry.updated_at && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {new Date(entry.updated_at).toLocaleString(displayLocale)}
+                        </span>
+                      )}
                     </div>
                     <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-sm">
                       {entry.value}
@@ -103,10 +105,13 @@ function StoragePanel({ sessionId }: { sessionId: string }) {
                     <Badge variant="secondary" className="font-mono">
                       {secret.name}
                     </Badge>
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      {new Date(secret.updated_at).toLocaleString(displayLocale)}
-                    </span>
+                    {/* A data plane keeps no timestamps for values or secrets. */}
+                    {secret.updated_at && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {new Date(secret.updated_at).toLocaleString(displayLocale)}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -177,11 +182,9 @@ export function SessionWorkspace() {
   const workspaceId = session?.workspace_id;
   const features = new Set(session?.features ?? []);
   // A data plane serves the session's files, its sandbox (the control
-  // plane answers which sandbox it pinned) and its schedules; its values
-  // are not there yet, so they are neither asked for nor shown.
-  const dataPlane = !!useOptionalFeatureFlags()?.flags?.data_plane;
+  // plane answers which sandbox it pinned), its schedules and its values.
   const schedules = useSessionSchedules(sessionId);
-  const storage = useSessionStorage(sessionId, !dataPlane);
+  const storage = useSessionStorage(sessionId, true);
   const hasScheduleRows = (schedules.data?.length ?? 0) > 0;
   const hasValueRows =
     (storage.data?.keyValues.length ?? 0) > 0 || (storage.data?.secrets.length ?? 0) > 0;
@@ -189,7 +192,6 @@ export function SessionWorkspace() {
     features,
     hasSchedules: hasScheduleRows,
     hasValues: hasValueRows,
-    dataPlane,
   });
   const [pane, setPane] = useState<SessionRecordPane>(panes[0] ?? "files");
   const active = panes.includes(pane) ? pane : (panes[0] ?? "files");

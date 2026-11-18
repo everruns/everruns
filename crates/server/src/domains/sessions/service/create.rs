@@ -875,6 +875,29 @@ impl SessionService {
             .get_session(org_id, source_session_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Source session"))?;
+        // A v2 source's history and storage are in its cell (`fork_plane`).
+        if let Some(plane) =
+            super::fork_plane::plane_of(&self.db, org_id, source_session_id).await?
+        {
+            let fork_sequence = if seed == SessionSeedMode::Fork {
+                super::fork_plane::seed_fork(
+                    &self.db,
+                    org_id,
+                    &plane,
+                    child_session_id,
+                    fork_up_to_sequence,
+                )
+                .await?
+            } else {
+                None
+            };
+            self.db
+                .set_session_fork_lineage(child_session_id, source_session_id, fork_sequence)
+                .await?;
+            child.forked_from_session_id = Some(source_session_id);
+            child.forked_from_sequence = fork_sequence;
+            return Ok(());
+        }
         let fork_sequence = if seed == SessionSeedMode::Fork {
             Some(
                 self.copy_session_events(source_session_id, child_session_id, fork_up_to_sequence)

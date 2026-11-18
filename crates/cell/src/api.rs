@@ -1144,7 +1144,14 @@ async fn create_session(
 
 #[derive(Deserialize)]
 pub struct MessageBody {
+    /// The message's text, when it is only text.
+    #[serde(default)]
     pub text: String,
+    /// Or its parts (text, images, files), when it has any but text
+    /// (step 11.6). An image or file part refers to an attachment already
+    /// in the session's files (`/attachments/<id>/`).
+    #[serde(default)]
+    pub parts: Vec<everruns_core::ContentPart>,
     pub id: everruns_contracts::typed_id::MessageId,
     /// Who wrote it, when not the person (an agent trigger, step 11.4).
     #[serde(default)]
@@ -1180,7 +1187,13 @@ async fn send_message(
             return Ok(Json(reply));
         }
     };
+    if let Some(reason) = missing_attachment(&node, id, &body.parts).await {
+        return Ok(Json(CellReply::Refused { reason }));
+    }
     let mut input = everruns::InputMessage::user(body.text);
+    if !body.parts.is_empty() {
+        input.content = body.parts;
+    }
     input.metadata = body.metadata;
     input.external_actor = body.external_actor;
     if let Some(origin) = &body.origin {
@@ -1208,6 +1221,52 @@ async fn send_message(
         Err(error) => reply_of(error),
     };
     Ok(Json(reply))
+}
+
+/// Why `parts` cannot be admitted: an image or file part whose attachment
+/// is not in the session's files. The executor reads an attachment's bytes
+/// from there when it builds a request (Engine's session attachments), so
+/// a message must never name one the session does not hold. The control
+/// plane copies uploads there before it sends such a message (step 11.6).
+async fn missing_attachment(
+    node: &Node,
+    session: SessionId,
+    parts: &[everruns_core::ContentPart],
+) -> Option<String> {
+    use everruns_core::ContentPart;
+    use everruns_core::session_files::SessionFileSystem as _;
+    let files = node.hosting.workspace_api();
+    let mut synced = false;
+    for part in parts {
+        let id = match part {
+            ContentPart::ImageFile(image) => image.image_id.to_string(),
+            ContentPart::File(file) => file.file_id.to_string(),
+            _ => continue,
+        };
+        let dir = format!(
+            "{}/{id}",
+            everruns_contracts::runtime::attachments::ATTACHMENTS_ROOT
+        );
+        loop {
+            let held = files
+                .list_directory(session, &dir)
+                .await
+                .is_ok_and(|entries| entries.iter().any(|entry| !entry.is_directory));
+            if held {
+                break;
+            }
+            // The copy may have committed after this replica last applied.
+            if !synced && crate::api_files::read_barrier(node).await.is_ok() {
+                synced = true;
+                continue;
+            }
+            return Some(format!(
+                "attachment {id} is not in the session's files; send a message with uploads \
+                 through the control plane, which copies them there"
+            ));
+        }
+    }
+    None
 }
 
 #[derive(Deserialize)]

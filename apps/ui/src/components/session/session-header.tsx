@@ -198,16 +198,13 @@ export function sessionRecordPanes({
   features,
   hasSchedules,
   hasValues,
-  dataPlane,
 }: {
   features: Set<string>;
   hasSchedules: boolean;
   hasValues?: boolean;
-  /** A data plane serves the session's files and schedules, not yet its values. */
-  dataPlane?: boolean;
 }): SessionRecordPane[] {
   const panes: SessionRecordPane[] = ["files"];
-  if (!dataPlane && (hasValues || features.has("key_value") || features.has("secrets"))) {
+  if (hasValues || features.has("key_value") || features.has("secrets")) {
     panes.push("values");
   }
   if (hasSchedules || features.has("schedules")) panes.push("schedules");

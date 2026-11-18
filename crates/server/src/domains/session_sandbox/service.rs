@@ -231,6 +231,21 @@ impl SessionSandboxService {
         session_sandbox_config_from_capabilities(&capabilities).map_err(|err| anyhow::anyhow!(err))
     }
 
+    /// [`Self::tool_context`] for a session on a data plane: its storage is
+    /// the session's cell (`plane.rs`), and no hosted state store or
+    /// resource lease is installed, since the cell keeps the sandbox's state.
+    pub(crate) async fn plane_tool_context(
+        &self,
+        session_id: SessionId,
+        storage: Arc<dyn SessionStorageStore>,
+    ) -> ToolContext {
+        let mut context = ToolContext::new(session_id);
+        context.egress_service = self.session_egress(session_id).await;
+        context.storage_store = Some(storage);
+        context.connection_resolver = self.connection_resolver.clone();
+        context
+    }
+
     pub(crate) async fn tool_context(&self, session_id: SessionId) -> ToolContext {
         let mut context = ToolContext::new(session_id);
         context.egress_service = self.session_egress(session_id).await;

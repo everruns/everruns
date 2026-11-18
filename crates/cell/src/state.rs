@@ -1448,6 +1448,11 @@ impl CellState {
                     if let Some(micros) = tap::generation_cost_micros(event) {
                         let tenant = self.sessions.get(&session).and_then(|s| s.tenant.clone());
                         self.allowances.settle(tenant.as_deref(), session, micros);
+                        if let Some(s) = self.sessions.get_mut(&session)
+                            && s.platform.charge(event, micros)
+                        {
+                            changes.push(Change::Session(session));
+                        }
                     }
                     if let Some(s) = self.sessions.get(&session) {
                         self.feed.observe(index, &session.to_string(), s, event);

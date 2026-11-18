@@ -110,6 +110,7 @@ impl Executor {
         orgs.bind(Arc::downgrade(&material));
         executor.mcp.bind(Arc::downgrade(&material));
         executor.sandboxes.bind(Arc::downgrade(&material));
+        executor.hosting.set_material(Arc::downgrade(&material));
         // Whatever refreshes the mirror wakes Engine's waiters, as a node's
         // applied changes do (`Remote::absorb`); a session that left the
         // mirror or froze hands off.
@@ -210,6 +211,36 @@ impl Executor {
             data_key,
             data_key_id: found.data_key.data_key_id,
         }))
+    }
+
+    /// `org`'s data key from the directory cell, unwrapped in memory;
+    /// `None` on a standalone cell, which has no data plane key
+    /// (`CELL_DP_KEY`) because no control plane wraps keys for it.
+    pub async fn data_key(
+        &self,
+        org: &str,
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
+        let Some(dp_key) = *self.dp_key.lock() else {
+            return Ok(None);
+        };
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let wrapped: Option<crate::control::WrappedKey> = self
+            .remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/data-key"),
+                &serde_json::json!({}),
+                Duration::from_secs(5),
+            )
+            .await?;
+        let wrapped = wrapped.ok_or_else(|| anyhow::anyhow!("org {org} has no data key"))?;
+        let key = everruns_contracts::dataplane_seal::unwrap_data_key(
+            &dp_key,
+            org,
+            &wrapped.data_key_id,
+            &wrapped.wrapped,
+        )?;
+        Ok(Some((key, wrapped.data_key_id)))
     }
 
     /// Lease or write `org`'s secret in the directory cell.
@@ -596,5 +627,16 @@ impl crate::providers::OrgMaterial for Executor {
         op: crate::secrets::SecretOp,
     ) -> anyhow::Result<crate::secrets::SecretReply> {
         Executor::secret_op(self, org, op).await
+    }
+
+    fn seals(&self) -> bool {
+        self.dp_key.lock().is_some()
+    }
+
+    async fn data_key(
+        &self,
+        org: &str,
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
+        Executor::data_key(self, org).await
     }
 }

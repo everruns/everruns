@@ -283,8 +283,8 @@ impl MessageService {
         );
 
         // Data plane v2: a session the org's data plane runs takes its
-        // messages there (through the edge). The platform's workers must
-        // never start a second copy of it.
+        // messages there; the platform's workers must never start a second
+        // copy of it (`on_data_plane`).
         let data_plane = crate::domains::data_plane::ControlPlane::from_env(self.db.clone());
         if crate::domains::data_plane::sessions::runs_on_data_plane(
             &data_plane,
@@ -293,11 +293,8 @@ impl MessageService {
         )
         .await?
         {
-            return Err(ConflictError::new(
-                "this session runs on the organization's data plane: send its messages there",
-            )
-            .with_code("session_on_data_plane")
-            .into());
+            return on_data_plane::create(&self.db, &data_plane, &ctx, req, platform_metadata)
+                .await;
         }
 
         if let Some(client_message_id) = req.client_message_id
@@ -1026,5 +1023,6 @@ fn stored_input_message(row: crate::storage::EventRow) -> Result<Message> {
     })
 }
 
+mod on_data_plane;
 #[cfg(test)]
 mod tests;

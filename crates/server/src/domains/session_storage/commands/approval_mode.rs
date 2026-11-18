@@ -10,6 +10,7 @@
 
 use super::q;
 use crate::domains::common::*;
+use crate::domains::session_storage::plane::PlaneStorage;
 use everruns_contracts::tool_approval_policy::{APPROVAL_MODE_NAMES, SESSION_APPROVAL_MODE_KEY};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -76,12 +77,18 @@ impl Command for SetSessionApprovalMode {
     async fn execute(self, ctx: &Ctx) -> Result<SessionApprovalMode, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        let plane = PlaneStorage::of(ctx, session_id).await?;
         match self.mode.as_deref().map(str::trim) {
-            None | Some("") => {
-                ctx.db
-                    .delete_session_key_value(session_id.uuid(), SESSION_APPROVAL_MODE_KEY)
-                    .await?;
-            }
+            None | Some("") => match &plane {
+                Some(plane) => {
+                    plane.delete_value(SESSION_APPROVAL_MODE_KEY).await?;
+                }
+                None => {
+                    ctx.db
+                        .delete_session_key_value(session_id.uuid(), SESSION_APPROVAL_MODE_KEY)
+                        .await?;
+                }
+            },
             Some(mode) => {
                 if !APPROVAL_MODE_NAMES.contains(&mode) {
                     return Err(CommandError::bad_request(
@@ -94,13 +101,18 @@ impl Command for SetSessionApprovalMode {
                         "your organization does not allow the '{mode}' approval mode"
                     )));
                 }
-                ctx.db
-                    .upsert_session_key_value(crate::storage::UpsertSessionKeyValue {
-                        session_id,
-                        key: SESSION_APPROVAL_MODE_KEY.to_string(),
-                        value: mode.to_string(),
-                    })
-                    .await?;
+                match &plane {
+                    Some(plane) => plane.set_value(SESSION_APPROVAL_MODE_KEY, mode).await?,
+                    None => {
+                        ctx.db
+                            .upsert_session_key_value(crate::storage::UpsertSessionKeyValue {
+                                session_id,
+                                key: SESSION_APPROVAL_MODE_KEY.to_string(),
+                                value: mode.to_string(),
+                            })
+                            .await?;
+                    }
+                }
             }
         }
         current(ctx, session_id).await
@@ -111,11 +123,14 @@ async fn current(
     ctx: &Ctx,
     session_id: crate::kernel_imports::contracts::typed_id::SessionId,
 ) -> Result<SessionApprovalMode, CommandError> {
-    let mode = ctx
-        .db
-        .get_session_key_value(session_id.uuid(), SESSION_APPROVAL_MODE_KEY)
-        .await?
-        .map(|row| row.value);
+    let mode = match PlaneStorage::of(ctx, session_id).await? {
+        Some(plane) => plane.value(SESSION_APPROVAL_MODE_KEY).await?,
+        None => ctx
+            .db
+            .get_session_key_value(session_id.uuid(), SESSION_APPROVAL_MODE_KEY)
+            .await?
+            .map(|row| row.value),
+    };
     let policy = ctx.db.org_tool_approval_policy(ctx.org_id()).await?;
     let allowed_modes = APPROVAL_MODE_NAMES
         .iter()

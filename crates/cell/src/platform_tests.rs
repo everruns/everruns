@@ -380,3 +380,73 @@ fn the_control_plane_records_only_reactions_of_the_session() {
         "its data names another type"
     );
 }
+
+#[test]
+fn a_schedule_stops_when_its_runs_spend_its_cap() {
+    let (mut state, session) = session();
+    let schedule = create(&mut state, session, Some("*/5 * * * *"), None);
+    let cap = |state: &mut CellState, limit: f64| {
+        apply(
+            state,
+            session,
+            Op::UpdateSchedule {
+                id: schedule.id,
+                change: ScheduleChange {
+                    budget_usd: Some(limit),
+                    ..Default::default()
+                },
+            },
+            T0,
+        )
+    };
+    cap(&mut state, 0.05);
+    let budget = stored(&state, session, schedule.id).budget.unwrap();
+    assert_eq!((budget.limit_usd, budget.spent_usd), (0.05, 0.0));
+    assert_eq!(budget.status, "active");
+
+    let due = schedule.next_trigger_at.unwrap().timestamp_millis();
+    let fired = fire(&mut state, session, schedule.id, due, due);
+    assert_eq!(fired["fired"], true, "{fired}");
+    let run: MessageId = serde_json::from_value(fired["message_id"].clone()).unwrap();
+
+    // A model call of its run costs it; another message's does not.
+    let call = |message: MessageId| {
+        everruns_core::events::Event::new(
+            session,
+            everruns_core::events::EventContext {
+                input_message_id: Some(message),
+                ..Default::default()
+            },
+            everruns_core::events::TurnCompletedData::default(),
+        )
+    };
+    let platform = &mut state.sessions.get_mut(&session).unwrap().platform;
+    assert!(!platform.charge(&call(MessageId::new()), 40_000));
+    assert!(platform.charge(&call(run), 30_000));
+    assert!(stored(&state, session, schedule.id).enabled);
+    let platform = &mut state.sessions.get_mut(&session).unwrap().platform;
+    assert!(platform.charge(&call(run), 30_000));
+    let stopped = stored(&state, session, schedule.id);
+    let budget = stopped.budget.unwrap();
+    assert!((budget.spent_usd - 0.06).abs() < 1e-9);
+    assert_eq!(budget.status, "exhausted");
+    assert!(!stopped.enabled);
+    assert_eq!(stopped.stop_reason.as_deref(), Some("budget_exhausted"));
+    // Run by hand, it does not run either.
+    let response = apply(
+        &mut state,
+        session,
+        Op::TriggerSchedule { id: schedule.id },
+        due + 1,
+    );
+    let Response::Value { value } = response else {
+        panic!("{response:?}");
+    };
+    assert_eq!(value["fired"], false);
+
+    // A higher cap keeps what it spent.
+    cap(&mut state, 1.0);
+    let budget = stored(&state, session, schedule.id).budget.unwrap();
+    assert_eq!(budget.status, "active");
+    assert!((budget.spent_usd - 0.06).abs() < 1e-9);
+}
