@@ -131,7 +131,7 @@ fs2 = "0.4"
 
 # Global allocator for binaries (sharded, low-fragmentation; MIT-licensed)
 mimalloc = "0.1"
-tikv-jemallocator = "0.6"
+tikv-jemallocator = "0.7"
 
 # HTTP framework
 axum = { version = "0.8", features = ["macros"] }
@@ -229,7 +229,7 @@ async-nats = { version = "0.52", default-features = false, features = [
 
 # Authentication
 argon2 = "0.6"
-jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "12", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
@@ -331,7 +331,7 @@ inventory = "0.3"
 # Compression and archive (plugin tarball extraction)
 flate2 = "1.1"
 tar = "0.4"
-zstd = "0.13"
+zstd = "0.14"
 
 [profile.dev]
 opt-level = 0
