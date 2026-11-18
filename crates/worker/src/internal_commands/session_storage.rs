@@ -201,8 +201,19 @@ mod tests {
         answer: std::result::Result<Value, proto::CommandError>,
     }
 
+    /// A shared handle, so a test reads the calls after the store took it.
+    #[derive(Clone)]
+    struct Shared(Arc<Recorded>);
+
+    impl std::ops::Deref for Shared {
+        type Target = Recorded;
+        fn deref(&self) -> &Recorded {
+            &self.0
+        }
+    }
+
     #[async_trait]
-    impl InternalCommandTransport for Arc<Recorded> {
+    impl InternalCommandTransport for Shared {
         async fn execute_internal_command(
             &self,
             name: &str,
@@ -213,11 +224,11 @@ mod tests {
         }
     }
 
-    fn recorded(answer: std::result::Result<Value, proto::CommandError>) -> Arc<Recorded> {
-        Arc::new(Recorded {
+    fn recorded(answer: std::result::Result<Value, proto::CommandError>) -> Shared {
+        Shared(Arc::new(Recorded {
             calls: Mutex::new(Vec::new()),
             answer,
-        })
+        }))
     }
 
     #[tokio::test]
