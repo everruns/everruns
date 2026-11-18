@@ -4,7 +4,7 @@
 //! A hosted capability's tools look org answers up as they run: a session's
 //! connection token, a GitHub token for one use, the agent's service API
 //! key, the org's web search settings and account keys, the tool approval
-//! policy. On a v1 worker they reach the control plane through internal
+//! policy, the org's knowledge collections. On a v1 worker they reach the control plane through internal
 //! commands; here the same resolver ([`CommandConnectionResolver`]) runs the
 //! same commands over the link: executor, directory cell, control plane
 //! (`POST /dp/v1/tenants/{org}/lookups`). The answer comes back sealed with
@@ -28,6 +28,7 @@ use std::sync::{Arc, Weak};
 use async_trait::async_trait;
 use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer};
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::knowledge::KnowledgeRuntimeExt;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::tool_approval_policy::SessionToolApprovalPolicy;
@@ -35,6 +36,8 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::connection_services::{
     GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
 };
+use everruns_core::host::HostBackends;
+use everruns_internal_protocol::commands::knowledge::CommandKnowledgeRuntime;
 use everruns_internal_protocol::commands::{CommandConnectionResolver, InternalCommandTransport};
 use everruns_internal_protocol::proto;
 use serde_json::Value;
@@ -44,6 +47,7 @@ use crate::providers::OrgMaterial;
 
 /// One org's lookups, as the internal command transport the shared
 /// resolver runs over.
+#[derive(Clone)]
 pub struct OrgLookups {
     material: Weak<dyn OrgMaterial>,
     org: String,
@@ -81,6 +85,21 @@ impl InternalCommandTransport for OrgLookups {
     }
 }
 
+/// `org`'s lookups for `session`, when `material` reaches a control plane
+/// and knows the session's org.
+fn org_lookups(material: Option<&Weak<dyn OrgMaterial>>, session: SessionId) -> Option<OrgLookups> {
+    let weak = material?;
+    let material = weak.upgrade()?;
+    if !material.looks_up() {
+        return None;
+    }
+    let org = material.tenant(session)?;
+    Some(OrgLookups {
+        material: weak.clone(),
+        org,
+    })
+}
+
 /// The connection resolver of one activation of `session`: `keys` for its
 /// sandbox, and the control plane's lookups when `material` reaches one.
 pub fn connections(
@@ -88,23 +107,55 @@ pub fn connections(
     material: Option<&Weak<dyn OrgMaterial>>,
     session: SessionId,
 ) -> Arc<dyn UserConnectionResolver> {
-    let lookups = material.and_then(|weak| {
-        let material = weak.upgrade()?;
-        if !material.looks_up() {
-            return None;
-        }
-        let org = material.tenant(session)?;
-        let resolver: Arc<dyn UserConnectionResolver> =
-            Arc::new(CommandConnectionResolver::new(OrgLookups {
-                material: weak.clone(),
-                org,
-            }));
-        Some(resolver)
-    });
+    with_lookups(keys, org_lookups(material, session))
+}
+
+fn with_lookups(
+    keys: Arc<dyn UserConnectionResolver>,
+    lookups: Option<OrgLookups>,
+) -> Arc<dyn UserConnectionResolver> {
     match lookups {
-        Some(lookups) => Arc::new(CellConnections { keys, lookups }),
+        Some(lookups) => Arc::new(CellConnections {
+            keys,
+            lookups: Arc::new(CommandConnectionResolver::new(lookups)),
+        }),
         None => keys,
     }
+}
+
+/// `backends` for one activation of `session`: its connection resolver
+/// ([`connections`]) and, when the control plane is reached, the org's
+/// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`), as a v1
+/// worker installs them.
+///
+/// Decision: automatic knowledge context (evidence added to a turn's input)
+/// stays off on a cell: the control plane records each retrieval against
+/// the turn's input message, which on the data plane lives in the cell, so
+/// it answers none. The tools search and browse the same collections.
+pub fn attach(
+    mut backends: HostBackends,
+    keys: Arc<dyn UserConnectionResolver>,
+    material: Option<&Weak<dyn OrgMaterial>>,
+    session: SessionId,
+) -> HostBackends {
+    let lookups = org_lookups(material, session);
+    if backends.connection_resolver.is_none() {
+        backends.connection_resolver = Some(with_lookups(keys, lookups.clone()));
+    }
+    if let Some(lookups) = lookups {
+        let knowledge = KnowledgeRuntimeExt(Arc::new(CommandKnowledgeRuntime::new(lookups)));
+        let knowledge = Arc::new(knowledge);
+        let embedder = backends.tool_context_extensions_factory.take();
+        backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
+            let mut extensions = embedder
+                .as_ref()
+                .map(|factory| factory(org, session))
+                .unwrap_or_default();
+            extensions.insert(knowledge.clone());
+            extensions
+        }));
+    }
+    backends
 }
 
 /// Sandbox keys from the cell, every other lookup from the control plane.

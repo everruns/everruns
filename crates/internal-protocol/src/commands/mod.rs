@@ -23,6 +23,7 @@ use serde_json::Value;
 use crate::proto;
 
 mod connections;
+pub mod knowledge;
 
 pub use connections::CommandConnectionResolver;
 

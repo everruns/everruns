@@ -2010,7 +2010,11 @@ commands go over: sandbox keys and MCP credentials are already sealed
 org secrets on the data plane, and a cell leases nothing to clean up. A
 standalone cell, with no control plane, keeps the answers of a host
 without org settings; a lookup that cannot reach the control plane fails
-the tool call rather than falling back to a default.
+the tool call rather than falling back to a default. The `knowledge`
+tools (search and browse the org's collections an agent attaches) go the
+same way, with the v1 worker's knowledge client. Automatic knowledge
+context stays off on a cell: the control plane records each retrieval
+against the turn's input message, which lives in the cell.
 
 ### Corrections after the architecture review (2026-11-09)
 
