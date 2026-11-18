@@ -4,7 +4,7 @@
 //! A hosted capability's tools look org answers up as they run: a session's
 //! connection token, a GitHub token for one use, the agent's service API
 //! key, the org's web search settings and account keys, the tool approval
-//! policy, the org's knowledge collections. On a v1 worker they reach the control plane through internal
+//! policy, the org's knowledge collections, a Poppy call. On a v1 worker they reach the control plane through internal
 //! commands; here the same resolver ([`CommandConnectionResolver`]) runs the
 //! same commands over the link: executor, directory cell, control plane
 //! (`POST /dp/v1/tenants/{org}/lookups`). The answer comes back sealed with
@@ -26,6 +26,7 @@
 use std::sync::{Arc, Weak};
 
 use async_trait::async_trait;
+use everruns_capabilities::capabilities::{PoppyCall, PoppyInvoker, PoppyInvokerExt};
 use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
@@ -38,9 +39,11 @@ use everruns_core::connection_services::{
 };
 use everruns_core::host::HostBackends;
 use everruns_internal_protocol::commands::knowledge::CommandKnowledgeRuntime;
-use everruns_internal_protocol::commands::{CommandConnectionResolver, InternalCommandTransport};
+use everruns_internal_protocol::commands::{
+    CommandConnectionResolver, InternalCommandTransport, is_bad_request,
+};
 use everruns_internal_protocol::proto;
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::providers::OrgMaterial;
@@ -125,8 +128,8 @@ fn with_lookups(
 
 /// `backends` for one activation of `session`: its connection resolver
 /// ([`connections`]) and, when the control plane is reached, the org's
-/// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`), as a v1
-/// worker installs them.
+/// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`) and the
+/// session's Poppy client (`PoppyInvokerExt`), as a v1 worker installs them.
 ///
 /// Decision: automatic knowledge context (evidence added to a turn's input)
 /// stays off on a cell: the control plane records each retrieval against
@@ -143,7 +146,8 @@ pub fn attach(
         backends.connection_resolver = Some(with_lookups(keys, lookups.clone()));
     }
     if let Some(lookups) = lookups {
-        let knowledge = KnowledgeRuntimeExt(Arc::new(CommandKnowledgeRuntime::new(lookups)));
+        let knowledge =
+            KnowledgeRuntimeExt(Arc::new(CommandKnowledgeRuntime::new(lookups.clone())));
         let knowledge = Arc::new(knowledge);
         let embedder = backends.tool_context_extensions_factory.take();
         backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
@@ -152,10 +156,46 @@ pub fn attach(
                 .map(|factory| factory(org, session))
                 .unwrap_or_default();
             extensions.insert(knowledge.clone());
+            extensions.insert(Arc::new(PoppyInvokerExt(Arc::new(CellPoppy {
+                lookups: lookups.clone(),
+                session,
+            }))));
             extensions
         }));
     }
     backends
+}
+
+/// The Poppy client of one session: the session owner's keys and Session
+/// Tokens stay in the control plane (`worker_poppy_call`), only the call and
+/// its answer cross. Same answers as the v1 worker's `CommandPoppyInvoker`.
+struct CellPoppy {
+    lookups: OrgLookups,
+    session: SessionId,
+}
+
+#[async_trait]
+impl PoppyInvoker for CellPoppy {
+    async fn invoke(&self, call: PoppyCall) -> std::result::Result<Value, String> {
+        let params = json!({ "session_id": self.session.to_string(), "call": call });
+        match self
+            .lookups
+            .execute_internal_command("worker_poppy_call", params)
+            .await
+        {
+            Ok(Ok(value)) => Ok(value),
+            // A company's refusal or an unreachable company: for the model.
+            Ok(Err(error)) if is_bad_request(&error) => Err(error.message),
+            Ok(Err(error)) => {
+                tracing::warn!(message = %error.message, "Poppy call failed");
+                Err("Poppy is unavailable right now.".to_string())
+            }
+            Err(error) => {
+                tracing::warn!(%error, "Poppy call did not reach the control plane");
+                Err("Poppy is unavailable right now.".to_string())
+            }
+        }
+    }
 }
 
 /// Sandbox keys from the cell, every other lookup from the control plane.

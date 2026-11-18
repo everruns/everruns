@@ -2014,7 +2014,9 @@ the tool call rather than falling back to a default. The `knowledge`
 tools (search and browse the org's collections an agent attaches) go the
 same way, with the v1 worker's knowledge client. Automatic knowledge
 context stays off on a cell: the control plane records each retrieval
-against the turn's input message, which lives in the cell.
+against the turn's input message, which lives in the cell. Poppy calls
+go over too: the session owner's company accounts, keys and conversations
+stay in the control plane, as on v1.
 
 ### Corrections after the architecture review (2026-11-09)
 
