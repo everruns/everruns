@@ -10,7 +10,7 @@
 
 mod support;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use everruns_cell::dp::{ConfigAck, ConfigUpdate};
 use everruns_cell_testkit::fake_cp::FakeCp;
@@ -80,6 +80,31 @@ async fn feed_drained(fleet: &Fleet) -> bool {
     pending == 0
 }
 
+/// The session's events, once a read shows `turns` completed turns.
+///
+/// Decision: wait for it rather than read once. The gateway spreads reads
+/// over the cell's members, and the one answering can still be applying the
+/// turn the `wait` endpoint (answered by another member) already reported.
+async fn committed(fleet: &Fleet, session: &str, turns: usize) -> Vec<Value> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let events = fleet.events(session).await;
+        let done = types(&events)
+            .iter()
+            .filter(|t| **t == "turn.completed")
+            .count();
+        if done >= turns {
+            return events;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{session}: no read showed {turns} turns: {:?}",
+            types(&events)
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn agents_come_from_config_and_turns_bill_the_org() {
     let (fleet, cp) = setup(10_000_000).await;
@@ -106,12 +131,7 @@ async fn agents_come_from_config_and_turns_bill_the_org() {
 
     let mut calls = 0;
     for session in [&first, &second] {
-        let events = fleet.events(session).await;
-        assert!(
-            types(&events).contains(&"turn.completed"),
-            "{session}: {:?}",
-            types(&events)
-        );
+        let events = committed(&fleet, session, 1).await;
         calls += generations(&events);
     }
     fleet
@@ -267,14 +287,7 @@ async fn expired_grants_are_settled_and_replaced() {
     tokio::time::sleep(Duration::from_secs(2)).await;
     fleet.say(&session, "again").await;
     fleet.turns(&session, 2).await;
-    let events = fleet.events(&session).await;
-    assert_eq!(
-        types(&events)
-            .iter()
-            .filter(|t| **t == "turn.completed")
-            .count(),
-        2
-    );
+    committed(&fleet, &session, 2).await;
     // The expired grant is reported closed and its rest returns.
     fleet
         .until("an expired grant is closed", || async {

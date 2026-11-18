@@ -87,7 +87,7 @@ jobs:
     # Same image as docker/Dockerfile.unified's builder, which Dependabot bumps;
     # scripts/test-docker-release-source.sh fails when the two drift apart.
     container:
-      image: rust:1.99.1-slim-bookworm
+      image: rust:1.100.0-slim-bookworm
     # Container jobs default to `sh`; the build step relies on bash arrays.
     defaults:
       run:
@@ -131,7 +131,7 @@ jobs:
           fi
           case "$GROUP" in
             server) bins=(everruns-server everruns-egress-proxy); pkg=everruns-server ;;
-            tools) bins=(reencrypt-secrets everruns-migrate); pkg=everruns-server ;;
+            tools) bins=(reencrypt-secrets everruns-migrate everruns-dataplane); pkg=everruns-server ;;
             worker) bins=(everruns-worker); pkg=everruns-worker ;;
             *) echo "unknown binary group: $GROUP" >&2; exit 1 ;;
           esac

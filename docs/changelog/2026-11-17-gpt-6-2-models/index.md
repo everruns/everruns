@@ -32,6 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Use Responses for function tools. Neither model accepts `none` reasoning or
-Flex. Ultrafast costs 3x Standard through February 28, 2027, then 6x from
+Flex. Both cache prompts only at explicit breakpoints, so Everruns places one
+after the instructions automatically; the prefix is cached from the first call. Ultrafast costs 3x Standard through February 28, 2027, then 6x from
 March 1 Pacific time. See [OpenAI](/providers/openai/) and
 [models and providers](/framework/models-and-providers/) for configuration.

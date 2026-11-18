@@ -173,6 +173,66 @@ pub(crate) async fn cell(State(node): State<Arc<Node>>) -> Json<CellReport> {
     })
 }
 
+/// `GET /cell/sessions/{session}/sandbox`: the session's managed sandbox as
+/// its state records it, and the session's work, for the control plane's
+/// sandbox diagnosis (`sandboxes diagnose`). Only non-secret fields leave
+/// the cell: the state is stored as a session secret, and its provider state
+/// and lease credential stay here.
+pub(crate) async fn sandbox(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+) -> Result<Json<crate::api::Lookup<serde_json::Value>>, (StatusCode, String)> {
+    let id = SessionId::parse(&session).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    Ok(Json(crate::api::lookup(&node, id, sandbox_report)))
+}
+
+fn sandbox_report(s: &crate::state::SessionState) -> serde_json::Value {
+    use everruns_contracts::session_sandbox::{SESSION_SANDBOX_SECRET_NAME, SessionSandboxState};
+    let a = &s.authority;
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let running = s.turn_running();
+    let queued = s.queued();
+    let phase = if running {
+        "running"
+    } else if queued > 0 {
+        "queued"
+    } else {
+        "idle"
+    };
+    let sandbox = a
+        .secrets
+        .get(SESSION_SANDBOX_SECRET_NAME)
+        .and_then(|raw| serde_json::from_str::<SessionSandboxState>(raw).ok())
+        .map(|state| {
+            serde_json::json!({
+                "provider": state.provider,
+                "external_id": state.instance.external_id,
+                "status": state.status,
+                "workspace_path": state.instance.workspace_path,
+                "created_at": state.created_at,
+                "updated_at": state.updated_at,
+                "init_completed_at": state.init_completed_at,
+                "last_init_error": state
+                    .last_init_error
+                    .map(|e| everruns_contracts::secret_scrub::scrub_secrets(&e)),
+                "last_sync": state.instance.metadata.get("everruns_fs"),
+            })
+        });
+    serde_json::json!({
+        "work": {
+            "phase": phase,
+            "turn_running": running,
+            "inbox": queued,
+            "claimed": a.holder.is_some(),
+            "attempts": a.attempts,
+            "runnable": a.runnable,
+            "suspended": a.suspended,
+            "owed": a.owed(now_ms),
+        },
+        "sandbox": sandbox,
+    })
+}
+
 /// `GET /cell/sessions/{session}/inspect`.
 pub(crate) async fn session(
     State(node): State<Arc<Node>>,

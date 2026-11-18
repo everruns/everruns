@@ -99,10 +99,19 @@ export function ChatWorkspace({
   visible = true,
   onPageMessage,
   onActiveChatChange,
+  newChat,
+  onNewChatCreated,
   extraActions,
   notice,
 }: {
   activeChatId?: string;
+  /**
+   * Beside a page: show an empty side chat draft instead of the active chat.
+   * A new number starts a fresh draft; the draft creates its session on first
+   * send and hands it to `onNewChatCreated`, so the page never changes.
+   */
+  newChat?: number;
+  onNewChatCreated?: (id: string) => void;
   pageAware?: boolean;
   visible?: boolean;
   onPageMessage?: () => void;
@@ -126,6 +135,7 @@ export function ChatWorkspace({
   const chatRoute = pathname === "/chats" || pathname.startsWith("/chats/");
   const segment = chatRoute ? pathname.slice("/chats".length).split("/")[1] : undefined;
   const conversationId = segment && !["new", "history"].includes(segment) ? segment : undefined;
+  const drafting = !chatRoute && !!newChat;
   const currentId = chatRoute ? (conversationId ?? thread?.id) : (activeChatId ?? thread?.id);
   const active = useSession(currentId);
   const parentId = active.data?.parent_session_id ?? undefined;
@@ -148,7 +158,8 @@ export function ChatWorkspace({
   const workOwnerId = personalChat ? currentId : coordinatorId;
   const taskId = chatRoute ? searchParams.get("task") : null;
   const useDrawer = compact || pageAware;
-  const panelOpen = visible && (open || !!taskId || (!useDrawer && !!openThreadId));
+  // An unsent draft has no threads yet.
+  const panelOpen = visible && !drafting && (open || !!taskId || (!useDrawer && !!openThreadId));
   useEffect(() => {
     if (personalChat && !active.data?.archived_at && currentId) onActiveChatChange?.(currentId);
   }, [personalChat, active.data?.archived_at, currentId, onActiveChatChange]);
@@ -367,6 +378,13 @@ export function ChatWorkspace({
         >
           {segment === "new" ? (
             <ChatDraft />
+          ) : drafting ? (
+            <ChatDraft
+              key={newChat}
+              pageAware={pageAware}
+              extraActions={extraActions}
+              onCreated={onNewChatCreated}
+            />
           ) : (
             <ChatThreadView
               threadId={currentId ?? thread.id}

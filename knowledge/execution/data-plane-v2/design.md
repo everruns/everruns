@@ -2010,7 +2010,57 @@ commands go over: sandbox keys and MCP credentials are already sealed
 org secrets on the data plane, and a cell leases nothing to clean up. A
 standalone cell, with no control plane, keeps the answers of a host
 without org settings; a lookup that cannot reach the control plane fails
-the tool call rather than falling back to a default.
+the tool call rather than falling back to a default. The `knowledge`
+tools (search and browse the org's collections an agent attaches) go the
+same way, with the v1 worker's knowledge client. Automatic knowledge
+context stays off on a cell: the control plane records each retrieval
+against the turn's input message, which lives in the cell. Poppy calls
+go over too: the session owner's company accounts, keys and conversations
+stay in the control plane, as on v1. So do the org's egress grants (open
+egress, allowlist extension): a session's turns run as its tenant's org,
+so its tools' requests carry that org to the egress boundary, which asks
+the control plane and caches the answer for a minute; a failed lookup
+grants nothing.
+
+Platform Chat's tools (`platform_discover`, `platform_query`,
+`platform_execute`) go over the same channel, but run as a person, not
+the org: the call names only the session and the turn's input message,
+the forwarding cell asks the session's cell who sent that message and
+sets the person, and the control plane re-derives the `platform`
+capability and the person's membership and current role, as for a v1
+worker's call. The session's cell records a sender only from a trusted
+admission path (the gateway, from a verified org token's subject; the
+control plane, for a message a person sent through it); a schedule's run
+or a task wake acts as the last person who wrote, as v1 copies the
+previous turn's record; a channel, trigger or webhook message acts as no
+one, so its platform calls are refused. The shell's `everruns` builtin is
+not installed on a cell yet. The `slack` tools' actions (react, update,
+upload, look up a user) go over too, run by the control plane as the bot
+of the endpoint the session came through, so the bot token stays there.
+The conversation sender a v1 worker installs with them is left out: a
+post binds to the turn's input event, which lives in the cell, and the
+channel host already delivers the turn's messages from the session's
+stream. Cells embed the product docs, so a platform agent finds them at
+`/docs` as on a worker. A session's SQL databases (the `sql_database`
+tools) stay in the control plane's store, as for a v1 session, so the
+console's Databases panel shows what a cell session's tools wrote; each
+operation goes over the channel for the session's own databases only, and
+keeps its error kind (a timeout, a blocked statement, a missing database).
+
+**11.7 The feature mix for the 75k run (2026-11-18).** `cell-drive load
+--agent mix` gives one session in two a chat agent (the llmsim mix the
+step 10 runs used) and the rest a platform feature, by repetition over
+twenty sessions: session files (three in twenty write a note on odd turns
+and read it back on even ones), a one-shot schedule a minute after the
+session's last turn (two), a foreground subagent on the first turn (two),
+an MCP server's tool on every turn (two) and a managed sandbox from the
+test node's local provider, 1.5 s to create and 50 ms a call (one). Each
+feature's turn latency is reported on its own. The MCP server is a stub
+the test node answers in process behind the agents' egress
+(`HostServices::egress`, `crates/cell-testkit/src/stub_mcp.rs`), since
+the MCP transport refuses a server whose address is private, which an
+in-cluster one would be. `crates/cell-testkit/tests/mix.rs` runs the mix on
+a fleet and checks what each kind of session answered.
 
 ### Corrections after the architecture review (2026-11-09)
 

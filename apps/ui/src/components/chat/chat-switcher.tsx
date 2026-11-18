@@ -3,7 +3,8 @@
 // "Main chat ▾" beside a page: the sidebar is hidden there, so this is how the
 // person reaches side chats and the current chat's threads without leaving the
 // page (knowledge/ui/chat-mode.md). Selecting a chat keeps the page as it is;
-// a thread opens in the page pane.
+// a thread opens in the page pane. New side chat is a callback, not a link to
+// /chats/new: the empty draft opens in the same pane and the page stays.
 
 import Link from "next/link";
 import { ChevronDown, Plus } from "lucide-react";
@@ -31,23 +32,32 @@ const SWITCHER_SIDE_CHATS = 6;
 export function ChatSwitcher({
   mainChatId,
   activeChatId,
+  drafting = false,
   onSelectChat,
   onSelectThread,
+  onNewChat,
 }: {
   mainChatId: string;
   activeChatId: string;
+  /** The pane shows an unsent new side chat rather than `activeChatId`. */
+  drafting?: boolean;
   onSelectChat: (id: string) => void;
   onSelectThread: (id: string) => void;
+  onNewChat: () => void;
 }) {
   const ui = useUiTranslations();
   const { threads: chats } = useChatThreads({ limit: SWITCHER_SIDE_CHATS + 1 });
   const sideChats = chats.filter((chat) => chat.id !== mainChatId).slice(0, SWITCHER_SIDE_CHATS);
-  const tasks = useSessionTasks(activeChatId);
+  const tasks = useSessionTasks(drafting ? undefined : activeChatId);
   const threads = coordinatorThreads(tasks.data ?? []).filter(
     (thread) => assignmentGroup(thread.latest) !== "Resolved",
   );
   const active = chats.find((chat) => chat.id === activeChatId);
-  const label = activeChatId === mainChatId || !active ? ui("Main chat") : threadTitle(active);
+  const label = drafting
+    ? ui("New side chat")
+    : activeChatId === mainChatId || !active
+      ? ui("Main chat")
+      : threadTitle(active);
 
   return (
     <DropdownMenu modal={false}>
@@ -61,7 +71,7 @@ export function ChatSwitcher({
       <DropdownMenuPositioner side="bottom" align="end" sideOffset={4}>
         <DropdownMenuContent aria-label={ui("Switch chat")} className="w-80">
           <DropdownMenuItem
-            aria-current={activeChatId === mainChatId ? "true" : undefined}
+            aria-current={!drafting && activeChatId === mainChatId ? "true" : undefined}
             onClick={() => onSelectChat(mainChatId)}
           >
             <span className="font-medium">{ui("Main chat")}</span>
@@ -89,13 +99,13 @@ export function ChatSwitcher({
             {sideChats.map((chat) => (
               <DropdownMenuItem
                 key={chat.id}
-                aria-current={chat.id === activeChatId ? "true" : undefined}
+                aria-current={!drafting && chat.id === activeChatId ? "true" : undefined}
                 onClick={() => onSelectChat(chat.id)}
               >
                 <span className="truncate">{threadTitle(chat)}</span>
               </DropdownMenuItem>
             ))}
-            <DropdownMenuItem render={<Link href="/chats/new" prefetch={false} />}>
+            <DropdownMenuItem onClick={onNewChat}>
               <Plus aria-hidden="true" className="size-3.5" />
               {ui("New side chat")}
             </DropdownMenuItem>

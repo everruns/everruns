@@ -101,6 +101,17 @@ pub struct RaftHosting {
     inner: Arc<Inner>,
 }
 
+/// The org a session's turns run as: its tenant's internal id when the
+/// tenant is an org's public id (a control plane names tenants so), else
+/// 1, the one org of a standalone cell. Tools carry it to the egress
+/// boundary, which enforces that org's egress grants (`lookups.rs`).
+fn org_id(tenant: Option<&str>) -> i64 {
+    tenant
+        .and_then(|tenant| tenant.parse::<everruns_contracts::typed_id::OrgId>().ok())
+        .map(everruns_contracts::runtime::organization::org_internal_id_from_public)
+        .unwrap_or(1)
+}
+
 fn store_err(error: impl std::fmt::Display) -> AgentLoopError {
     AgentLoopError::store(error.to_string())
 }
@@ -295,6 +306,11 @@ impl Inner {
 pub(crate) struct Port(Arc<Inner>);
 
 impl Port {
+    /// The executor's org material, when it has one.
+    pub(crate) fn material(&self) -> Option<&Weak<dyn crate::providers::OrgMaterial>> {
+        self.0.material.get()
+    }
+
     /// Propose `command`; its value, or why it was refused.
     pub(crate) async fn propose(&self, session: SessionId, command: Command) -> Result<Value> {
         match self.0.propose(session, command).await? {
@@ -557,17 +573,7 @@ impl SessionHosting for RaftHosting {
             other => return Err(refused(session, other)),
         };
         let fence = value["fence"].as_u64().unwrap_or(0);
-        let actor = LeasedActor {
-            session_id: session,
-            org_id: 1,
-            fence,
-            inbox_seq: value["inbox_seq"].as_i64().unwrap_or(0),
-            cancel_inbox_seq: value["cancel_inbox_seq"].as_i64(),
-            consumed_seq: value["consumed_seq"].as_i64().unwrap_or(0),
-            next_input_seq: value["next_input_seq"].as_i64().unwrap_or(0),
-            attempts: value["attempts"].as_u64().unwrap_or(1) as u32,
-        };
-        let (binding, frozen, seen, wake_at) = self
+        let (binding, frozen, seen, wake_at, tenant) = self
             .inner
             .read(session, |s| {
                 (
@@ -575,9 +581,20 @@ impl SessionHosting for RaftHosting {
                     s.placement == crate::state::Placement::Frozen,
                     actors::Seen::of(s),
                     s.authority.wake_at,
+                    s.tenant.clone(),
                 )
             })
             .await?;
+        let actor = LeasedActor {
+            session_id: session,
+            org_id: org_id(tenant.as_deref()),
+            fence,
+            inbox_seq: value["inbox_seq"].as_i64().unwrap_or(0),
+            cancel_inbox_seq: value["cancel_inbox_seq"].as_i64(),
+            consumed_seq: value["consumed_seq"].as_i64().unwrap_or(0),
+            next_input_seq: value["next_input_seq"].as_i64().unwrap_or(0),
+            attempts: value["attempts"].as_u64().unwrap_or(1) as u32,
+        };
         let binding = binding.ok_or_else(|| AgentLoopError::store("session has no binding"))?;
         let hand_off = Arc::new(AtomicBool::new(frozen));
         self.inner
@@ -1428,3 +1445,14 @@ pub mod files;
 #[path = "hosting_actors.rs"]
 mod actors;
 use actors::scopeguard;
+
+#[cfg(test)]
+mod org_tests {
+    #[test]
+    fn a_session_runs_as_its_tenants_org_or_the_standalone_org() {
+        let public = everruns_contracts::runtime::organization::org_public_id_from_internal(42);
+        assert_eq!(super::org_id(Some(&public)), 42);
+        assert_eq!(super::org_id(Some("org-a")), 1);
+        assert_eq!(super::org_id(None), 1);
+    }
+}

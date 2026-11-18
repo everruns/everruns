@@ -92,7 +92,7 @@ clap = { workspace = true, features = ["string"], optional = true }
 connectrpc = { version = "0.9.0", default-features = false, features = ["client", "client-tls", "gzip", "json"], optional = true }
 everruns-cli-contract = { workspace = true, optional = true }
 everruns-drivers = { workspace = true, default-features = false, optional = true }
-fetchkit = { version = "=0.7.1", optional = true }
+fetchkit = { version = "=0.7.2", optional = true }
 flate2 = { workspace = true, optional = true }
 tar = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }

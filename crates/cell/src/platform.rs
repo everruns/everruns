@@ -66,11 +66,17 @@ pub struct Platform {
     /// and the schedule's id, so what the run costs is charged to it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub charging: BTreeMap<String, String>,
+    /// Who sent its input messages (`senders.rs`).
+    #[serde(default, skip_serializing_if = "crate::senders::Senders::is_empty")]
+    pub senders: crate::senders::Senders,
 }
 
 impl Platform {
     pub fn is_empty(&self) -> bool {
-        self.schedules.is_empty() && self.tasks.is_empty() && self.task_messages.is_empty()
+        self.schedules.is_empty()
+            && self.tasks.is_empty()
+            && self.task_messages.is_empty()
+            && self.senders.is_empty()
     }
 
     /// Charge `micros` a committed model call cost to the schedule whose
@@ -174,6 +180,9 @@ pub enum Op {
     /// A person's change to the session's storage
     /// (`session_storage.rs`).
     Storage(crate::session_storage::StorageOp),
+    /// `user` sent input message `message` (`senders.rs`). Proposed by a
+    /// trusted admission path before the message is admitted.
+    Sender { message: MessageId, user: String },
 }
 
 /// The event types the control plane may record on a session.
@@ -303,6 +312,13 @@ impl CellState {
         if let Op::Storage(op) = op {
             return crate::session_storage::apply(state, session, op, changes);
         }
+        if let Op::Sender { message, user } = op {
+            state.platform.senders.record(message, user);
+            changes.push(Change::Session(session));
+            return Response::Value {
+                value: json!({ "recorded": true }),
+            };
+        }
         let now = at(now_ms);
         let schedules = &mut state.platform.schedules;
         let response = match op {
@@ -384,7 +400,7 @@ impl CellState {
                 }
                 fire(state, session, schedule, now_ms, seed, changes, false)
             }
-            Op::Call(_) | Op::Task(_) | Op::Record { .. } | Op::Storage(_) => {
+            Op::Call(_) | Op::Task(_) | Op::Record { .. } | Op::Storage(_) | Op::Sender { .. } => {
                 return Response::Ok;
             }
         };
@@ -486,6 +502,7 @@ fn fire(
     fired.fire_origin().write(&mut input.metadata);
     let mut message = everruns_core::host::AcceptedTurnInput::new(input).into_message();
     message.id = occurrence;
+    state.platform.senders.inherit(occurrence);
     // Every replica builds the same message: no clock but the command's.
     message.created_at = now;
     let admit = SessionCommand::Admit {
@@ -561,7 +578,7 @@ pub(crate) async fn fire_due(node: &Arc<Node>) {
         state
             .sessions
             .iter()
-            .filter(|(_, s)| s.placement == Placement::Live && !s.platform.is_empty())
+            .filter(|(_, s)| s.placement == Placement::Live && !s.platform.schedules.is_empty())
             .flat_map(|(session, s)| s.platform.due(now).map(|(id, due)| (*session, id, due)))
             .collect()
     };

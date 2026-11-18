@@ -202,6 +202,41 @@ pub(crate) fn repair_unpaired_function_call_items(
 
 /// Breakpoints belong on content blocks, never the top-level instructions string.
 /// Apply after serialization so ordinary input and compact-item replay stay lossless.
+/// The prompt cache `apply_cache_options` acts on: the configured one when
+/// enabled, else the qualified first-party endpoint's automatic default.
+fn effective_cache(
+    config: &LlmCallConfig,
+    native_openai: bool,
+    extended_retention: bool,
+) -> Option<crate::driver_registry::PromptCacheConfig> {
+    if !native_openai || !crate::openai_compat::supports_cache_options(&config.model) {
+        return None;
+    }
+    // Only the qualified first-party endpoint gets an automatic default.
+    // Explicit disable wins; compatible endpoints retain their opt-in behavior.
+    match &config.prompt_cache {
+        Some(cache) if cache.enabled => Some(cache.clone()),
+        None if extended_retention => Some(crate::driver_registry::PromptCacheConfig {
+            enabled: true,
+            ..Default::default()
+        }),
+        _ => None,
+    }
+}
+
+/// Whether the request carries explicit breakpoints (instructions move into
+/// `input`): requested, or the only way the model caches at all.
+pub(crate) fn uses_explicit_breakpoints(
+    config: &LlmCallConfig,
+    native_openai: bool,
+    extended_retention: bool,
+) -> bool {
+    effective_cache(config, native_openai, extended_retention).is_some_and(|cache| {
+        cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit
+            || crate::openai_compat::requires_explicit_cache(&config.model)
+    })
+}
+
 #[expect(
     clippy::unwrap_used,
     reason = "The request builder always emits an object with an input array before applying cache options"
@@ -212,21 +247,10 @@ pub(crate) fn apply_cache_options(
     native_openai: bool,
     extended_retention: bool,
 ) {
-    if !native_openai || !crate::openai_compat::supports_cache_options(&config.model) {
+    let Some(cache) = effective_cache(config, native_openai, extended_retention) else {
         return;
-    }
-    // Only the qualified first-party endpoint gets an automatic default.
-    // Explicit disable wins; compatible endpoints retain their opt-in behavior.
-    let default_cache = crate::driver_registry::PromptCacheConfig {
-        enabled: true,
-        ..Default::default()
     };
-    let cache = match &config.prompt_cache {
-        Some(cache) if cache.enabled => cache,
-        None if extended_retention => &default_cache,
-        _ => return,
-    };
-    let explicit = cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit;
+    let explicit = uses_explicit_breakpoints(config, native_openai, extended_retention);
     body["prompt_cache_options"] = json!({"ttl": if extended_retention { cache.retention.openai_responses_ttl() } else { "30m" }, "mode": if explicit { "explicit" } else { "implicit" }});
     if explicit
         && let Some(instructions) = body

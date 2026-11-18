@@ -6,6 +6,8 @@
 // knowledge/runtime-resources/session-sandbox.md.
 
 pub mod commands;
+pub mod diagnose;
+pub mod events;
 pub mod types;
 
 pub use commands::*;

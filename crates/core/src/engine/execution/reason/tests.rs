@@ -693,6 +693,15 @@ fn test_build_request_options_for_openai_prompt_cache() {
         );
         assert_eq!(options.provider_options.contains_key("openai"), chained);
     }
+    // GPT-6.2 caches only at breakpoints, so auto records (and sends) explicit.
+    config.model = "gpt-6.2-sol".into();
+    config.prompt_cache.as_mut().unwrap().strategy = PromptCacheStrategy::Auto;
+    let options = build_request_options(&config, "openai").unwrap();
+    assert_eq!(
+        options.prompt_cache.unwrap().provider_mode.as_deref(),
+        Some("explicit")
+    );
+    assert!(!options.provider_options.contains_key("openai"));
 }
 
 #[test]

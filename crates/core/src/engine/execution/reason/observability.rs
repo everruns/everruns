@@ -36,6 +36,14 @@ pub(super) fn build_request_options(
                 "openai" => Some(
                     if everruns_contracts::openai_compat::supports_cache_options(&config.model) {
                         match cfg.strategy {
+                            // GPT-6.2 caches only at breakpoints, so auto places them.
+                            everruns_contracts::driver_registry::PromptCacheStrategy::Auto
+                                if everruns_contracts::openai_compat::requires_explicit_cache(
+                                    &config.model,
+                                ) =>
+                            {
+                                "explicit"
+                            }
                             everruns_contracts::driver_registry::PromptCacheStrategy::Auto => {
                                 "implicit"
                             }
@@ -92,8 +100,9 @@ pub(super) fn build_request_options(
         && everruns_contracts::openai_compat::supports_cache_options(&config.model)
         && config.prompt_cache.as_ref().is_some_and(|cache| {
             cache.enabled
-                && cache.strategy
+                && (cache.strategy
                     == everruns_contracts::driver_registry::PromptCacheStrategy::Explicit
+                    || everruns_contracts::openai_compat::requires_explicit_cache(&config.model))
         });
     if provider == "openai" && config.previous_response_id.is_some() && !explicit_openai_cache {
         provider_options.insert(

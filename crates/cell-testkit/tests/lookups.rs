@@ -11,8 +11,9 @@ use std::sync::Arc;
 
 use everruns_cell::dp::LookupAnswer;
 use everruns_cell::providers::OrgMaterial;
+use everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::connection_services::UserConnectionResolver;
 use serde_json::json;
 use support::org::{DATA_KEY, DATA_KEY_ID, ORG, org_executor, org_fleet, session};
@@ -89,6 +90,33 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     );
     assert_eq!(cp.lookups().len(), 2);
 
+    // The org's knowledge, for the `knowledge` tools, the same way.
+    cp.set_lookup(
+        "worker_knowledge",
+        LookupAnswer::Value(json!({ "results": [], "warnings": ["empty"], "truncated": false })),
+    );
+    let backends = everruns_cell::lookups::attach(
+        everruns_core::host::HostBackends::in_memory(),
+        Arc::new(NoKeys),
+        Some(&Arc::downgrade(&material)),
+        id,
+    );
+    let factory = backends
+        .tool_context_extensions_factory
+        .expect("knowledge installed");
+    let knowledge = factory(0, id)
+        .get::<everruns_contracts::knowledge::KnowledgeRuntimeExt>()
+        .expect("the knowledge runtime");
+    let query: everruns_contracts::knowledge::KnowledgeQuery =
+        serde_json::from_value(json!({ "query": "refunds" })).unwrap();
+    let found = knowledge.0.search(id, query).await.unwrap();
+    assert_eq!(found.warnings, vec!["empty".to_owned()]);
+    let asked = cp.lookups();
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    assert_eq!(asked[2].1, "worker_knowledge");
+    assert_eq!(asked[2].2["operation"], json!("search"));
+    assert_eq!(asked[2].2["query"]["query"], json!("refunds"));
+
     // A session the executor does not know is no org's: nothing is asked.
     let stranger = SessionId::new();
     let resolver = everruns_cell::lookups::connections(
@@ -103,5 +131,78 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
             .unwrap(),
         None
     );
-    assert_eq!(cp.lookups().len(), 2);
+    assert_eq!(cp.lookups().len(), 3);
+}
+
+/// Admit `text` as `id` on `session` with `sender`, as a trusted admission
+/// path does (the gateway from a verified org token, or the control plane),
+/// on whichever node holds the session.
+async fn send_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &str) {
+    let mut replies = Vec::new();
+    for base in fleet.bases() {
+        let reply = fleet
+            .http
+            .post(format!("{base}/cell/sessions/{session}/messages"))
+            .json(&json!({ "text": "list my agents", "id": id, "sender": sender }))
+            .send()
+            .await
+            .unwrap();
+        let status = reply.status();
+        let text = reply.text().await.unwrap();
+        let body: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        if body["reply"] == "ok" {
+            return;
+        }
+        replies.push(format!("{status} {text}"));
+    }
+    panic!("no node took the message: {replies:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(
+        PLATFORM_COMMAND_SURFACE,
+        LookupAnswer::Value(json!("3 agents")),
+    );
+    let session = session(&fleet, &cp).await;
+    fleet.say(&session, "ping").await;
+    fleet.turns(&session, 1).await;
+
+    let person = uuid::Uuid::new_v4().to_string();
+    let theirs = MessageId::new();
+    send_as(&fleet, &session, theirs, &person).await;
+    fleet.turns(&session, 2).await;
+
+    // The executor asks with a person of its own choosing: the cell that
+    // forwards the call replaces it with the one who sent the message.
+    let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
+    let ask = |message: MessageId| {
+        json!({
+            "session_id": session,
+            "input_message_id": message,
+            "operation": "discover",
+            "arguments": { "query": "agents" },
+            "acting_user": "someone-else",
+        })
+    };
+    let answer = material
+        .lookup(ORG, PLATFORM_COMMAND_SURFACE, ask(theirs))
+        .await
+        .unwrap();
+    assert_eq!(answer, LookupAnswer::Value(json!("3 agents")));
+    let asked = cp.lookups();
+    assert_eq!(asked[0].1, PLATFORM_COMMAND_SURFACE);
+    assert_eq!(asked[0].2["acting_user"], json!(person));
+    assert_eq!(asked[0].2["operation"], json!("discover"));
+
+    // A message no one is recorded for (the first, sent without a verified
+    // token) acts as no one.
+    let first = MessageId::new();
+    material
+        .lookup(ORG, PLATFORM_COMMAND_SURFACE, ask(first))
+        .await
+        .unwrap();
+    assert_eq!(cp.lookups()[1].2["acting_user"], serde_json::Value::Null);
 }

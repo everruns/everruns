@@ -4,23 +4,39 @@
 //! A hosted capability on a cell needs the same org answers it gets on a v1
 //! worker: a session's connection token, a GitHub token for one use, the
 //! agent's service API key, the org's web search settings and account keys,
-//! the tool approval policy. The v1 worker asks through internal commands;
-//! an executor asks the same commands over the link, and its cell forwards
-//! the request here.
+//! the tool approval policy, the org's knowledge, a Poppy call, the org's
+//! egress grants. The v1 worker asks through internal commands; an executor
+//! asks the same commands over the link, and its cell forwards the request
+//! here.
 //!
 //! Decisions:
 //! - Only [`LOOKUP_COMMANDS`] run here, as the org's internal caller with
 //!   the org's feature flags: the same caller, checks and failures a v1
 //!   worker's `ExecuteCommand` gets (a session of another org is not
 //!   found).
+//! - A platform tool's call ([`PLATFORM_COMMAND_SURFACE`], Platform Chat)
+//!   runs on the command catalog as the person the forwarding cell names
+//!   (`acting_user`), never as the internal caller: the session must
+//!   resolve `platform` and the person must still be an org member, with
+//!   their current role (THREAT[TM-AGENT-017]).
+//! - A Slack action ([`SLACK_ACTION`]) runs as the bot of the endpoint the
+//!   session came through, resolved within the org; its token stays here.
+//! - A session's SQL databases ([`SESSION_SQL_DB`]) stay in the control
+//!   plane's store, as for a v1 session, so the console reads the same
+//!   ones; the session must be the org's.
 //! - Every answer, a refusal included, is sealed with the org's data key
 //!   as the request's own secret (`lookup:{request}`, revision 0): the
 //!   cells that pass it on hold ciphertext only, and an answer cannot pass
 //!   for another request's.
-//! - Nothing is stored: a lookup is a read, like the v1 command.
+//! - Nothing is stored here. The commands are reads, except a Poppy call,
+//!   which keeps the session owner's company accounts and conversations in
+//!   the control plane, as on v1.
 
 use everruns_contracts::dataplane::SealedSecret;
-use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer, LookupRequest, lookup_secret};
+use everruns_contracts::dataplane::{
+    LOOKUP_COMMANDS, LookupAnswer, LookupRequest, PLATFORM_COMMAND_SURFACE, SESSION_SQL_DB,
+    SLACK_ACTION, lookup_secret,
+};
 use everruns_contracts::dataplane_seal as seal;
 
 use super::{ControlPlane, org_public};
@@ -40,6 +56,31 @@ pub async fn answer(
     ctx: &Ctx,
     request: LookupRequest,
 ) -> anyhow::Result<SealedSecret> {
+    // A platform tool's call (Platform Chat) is not an internal command: it
+    // runs on the command catalog as the person the forwarding cell names.
+    if request.command == PLATFORM_COMMAND_SURFACE {
+        let answer = match crate::worker_link::platform_command_surface::data_plane_call(
+            ctx,
+            &request.params,
+        )
+        .await
+        {
+            Ok(output) => LookupAnswer::Value(serde_json::Value::String(output)),
+            Err((kind, message)) => LookupAnswer::Error {
+                kind: kind as i32,
+                message,
+            },
+        };
+        return seal_answer(cp, org, &request.request, &answer);
+    }
+    if request.command == SESSION_SQL_DB {
+        let answer = LookupAnswer::Value(session_sql_db(ctx, &request.params).await);
+        return seal_answer(cp, org, &request.request, &answer);
+    }
+    if request.command == SLACK_ACTION {
+        let answer = LookupAnswer::Value(slack_action(ctx, &request.params).await);
+        return seal_answer(cp, org, &request.request, &answer);
+    }
     let answer = match crate::domains::common::dispatch(&request.command, request.params, ctx).await
     {
         Ok(json) => LookupAnswer::Value(serde_json::from_str(&json)?),
@@ -52,6 +93,85 @@ pub async fn answer(
         }
     };
     seal_answer(cp, org, &request.request, &answer)
+}
+
+/// A Slack action for one session of the org (`SLACK_ACTION`), as the bot
+/// of the Slack endpoint the session came through, as a v1 worker's
+/// `InvokeSlackAction`: the session is read within the org, so another
+/// org's session has no endpoint, and the bot token stays here.
+async fn slack_action(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Value {
+    use everruns_contracts::slack_action::{SlackAction, SlackActionError};
+    let session = params["session_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok());
+    let action = serde_json::from_value::<SlackAction>(params["action"].clone());
+    let outcome = match (session, action) {
+        (Some(session), Ok(action)) => {
+            crate::channels::slack::actions::in_process_invoker(
+                &ctx.db,
+                ctx.encryption.as_ref(),
+                ctx.org_id(),
+                session,
+            )
+            .invoke(action)
+            .await
+        }
+        (None, _) => Err(SlackActionError::InvalidArgument(
+            "invalid session_id".into(),
+        )),
+        (_, Err(error)) => Err(SlackActionError::InvalidArgument(format!(
+            "invalid Slack action: {error}"
+        ))),
+    };
+    match outcome {
+        Ok(outcome) => serde_json::json!({ "outcome": outcome }),
+        Err(error) => serde_json::json!({ "error": error }),
+    }
+}
+
+/// One operation on a session's SQL databases (`SESSION_SQL_DB`), in the
+/// control plane's store as for a v1 worker. The store is keyed by session
+/// alone, so the session must be the org's first.
+async fn session_sql_db(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Value {
+    use everruns_contracts::session_sqldb::SessionSqlDbError as Error;
+    let result: Result<serde_json::Value, Error> = async {
+        let internal = |error: &dyn std::fmt::Display| Error::Internal(error.to_string());
+        let session = params["session_id"]
+            .as_str()
+            .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
+            .ok_or_else(|| Error::Internal("invalid session_id".into()))?;
+        ctx.db
+            .get_session(ctx.org_id(), session)
+            .await
+            .map_err(|error| internal(&error))?
+            .ok_or_else(|| Error::Internal("session not found".into()))?;
+        let store = ctx
+            .sqldb_store
+            .as_ref()
+            .ok_or_else(|| Error::Internal("session SQL databases are not configured".into()))?;
+        let name = params["name"].as_str().unwrap_or_default();
+        let sql = params["sql"].as_str().unwrap_or_default();
+        let value = match params["op"].as_str() {
+            Some("create") => serde_json::to_value(store.create_database(session, name).await?),
+            Some("list") => serde_json::to_value(store.list_databases(session).await?),
+            Some("get") => serde_json::to_value(store.get_database(session, name).await?),
+            Some("delete") => serde_json::to_value(store.delete_database(session, name).await?),
+            Some("execute") => serde_json::to_value(store.sql_execute(session, name, sql).await?),
+            Some("query") => serde_json::to_value(store.sql_query(session, name, sql).await?),
+            Some("schema") => serde_json::to_value(
+                store
+                    .sql_schema(session, name, params["table"].as_str())
+                    .await?,
+            ),
+            _ => return Err(Error::Internal("unknown SQL database operation".into())),
+        };
+        value.map_err(|error| internal(&error))
+    }
+    .await;
+    match result {
+        Ok(value) => serde_json::json!({ "ok": value }),
+        Err(error) => serde_json::json!({ "error": error }),
+    }
 }
 
 /// `answer` sealed for `org` as `request`'s secret.

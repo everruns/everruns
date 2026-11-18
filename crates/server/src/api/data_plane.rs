@@ -44,10 +44,22 @@ fn internal(error: impl std::fmt::Display) -> (StatusCode, String) {
     )
 }
 
-/// The link's token, when one is configured: a data plane must send it.
+/// The link's token: a data plane must send it.
+///
+/// Decision: a control plane with no link token configured refuses every
+/// `/dp/v1` call instead of serving it to anyone. These routes sit under the
+/// public API, so an unconfigured server would otherwise take feed batches,
+/// allowance requests and lookups from the internet.
 fn require_link(cp: &ControlPlane, headers: &HeaderMap) -> Result<(), (StatusCode, String)> {
-    let Some(token) = &cp.link.token else {
-        return Ok(());
+    check_link(cp.link.token.as_deref(), headers)
+}
+
+fn check_link(token: Option<&str>, headers: &HeaderMap) -> Result<(), (StatusCode, String)> {
+    let Some(token) = token else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            "this control plane has no data plane link".into(),
+        ));
     };
     let sent = headers
         .get(axum::http::header::AUTHORIZATION)
@@ -203,4 +215,34 @@ async fn token(
         "expires_at_unix": exp,
         "org": org,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bearer(token: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {token}").parse().unwrap(),
+        );
+        headers
+    }
+
+    #[test]
+    fn a_control_plane_without_a_link_token_serves_no_data_plane_call() {
+        let refused = check_link(None, &HeaderMap::new()).unwrap_err();
+        assert_eq!(refused.0, StatusCode::NOT_FOUND);
+        assert!(check_link(None, &bearer("anything")).is_err());
+    }
+
+    #[test]
+    fn a_data_plane_call_needs_the_links_own_token() {
+        assert!(check_link(Some("s3cret"), &bearer("s3cret")).is_ok());
+        for headers in [HeaderMap::new(), bearer("s3cre"), bearer("s3cret!")] {
+            let refused = check_link(Some("s3cret"), &headers).unwrap_err();
+            assert_eq!(refused.0, StatusCode::UNAUTHORIZED);
+        }
+    }
 }

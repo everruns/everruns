@@ -117,7 +117,7 @@ jobs:
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 45
     container:
-      image: rust:1.99.1-slim-bookworm
+      image: rust:1.100.0-slim-bookworm
     defaults:
       run:
         shell: bash

@@ -19,16 +19,16 @@ workspace = true
 [dependencies]
 libc = "0.2"
 everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs", "mcp"] }
-everruns-core = { workspace = true, features = ["host"] }
+everruns-core = { workspace = true, features = ["host", "direct-egress"] }
 everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
 # Managed sandboxes (step 11.3): the `session_sandbox` capability and the
 # same providers as the worker, so an agent's sandbox runs the same way on an
 # executor. The hosted catalog (step 11.6b): the capabilities the v1 worker
 # registers, with the worker's features.
-everruns-capabilities = { workspace = true, features = ["environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
+everruns-capabilities = { workspace = true, features = ["embedded-platform-docs", "environment-capabilities", "hosted-integration-catalog", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-integrations = { workspace = true, features = ["daytona", "e2b", "boxd", "modal", "kubernetes-sandbox"] }
-openraft = { version = "=0.9.25", features = ["serde", "storage-v2"] }
+openraft = { version = "=0.9.26", features = ["serde", "storage-v2"] }
 tokio.workspace = true
 tokio-stream = { workspace = true, features = ["sync"] }
 futures.workspace = true
