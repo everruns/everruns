@@ -1,3 +1,4 @@
+use super::plane::PlaneStorage;
 use super::queries as q;
 use super::types::{BatchSetSecretsResponse, KeyValueInfo, SecretBinding, SecretInfo};
 use crate::domains::common::*;
@@ -52,6 +53,21 @@ impl Command for ListSessionStorage {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<KeyValueInfo>, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if let Some(plane) = PlaneStorage::of(ctx, session_id).await? {
+            return Ok(plane
+                .listed()
+                .await?
+                .values
+                .into_iter()
+                .filter(|(key, _)| !is_internal_session_kv_key(key))
+                .map(|(key, value)| KeyValueInfo {
+                    key,
+                    value,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                })
+                .collect());
+        }
 
         let keys = ctx.db.list_session_keys(session_id.uuid()).await?;
 
@@ -124,6 +140,21 @@ impl Command for ListSessionSecrets {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SecretInfo>, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if let Some(plane) = PlaneStorage::of(ctx, session_id).await? {
+            return Ok(plane
+                .listed()
+                .await?
+                .secrets
+                .into_iter()
+                .filter(|name| !is_internal_session_secret_name(name))
+                .map(|name| SecretInfo {
+                    name,
+                    binding: None,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                })
+                .collect());
+        }
 
         let secrets = ctx.db.list_session_secrets(session_id.uuid()).await?;
 
@@ -208,6 +239,20 @@ impl Command for BatchSetSessionSecrets {
 
         let bindings = validate_bindings(&self.secrets, self.bindings)?;
 
+        if let Some(plane) = PlaneStorage::of(ctx, session_id).await? {
+            if !bindings.is_empty() {
+                return Err(CommandError::bad_request(
+                    "bound secrets are not available yet for sessions on a data plane",
+                ));
+            }
+            for (name, value) in &self.secrets {
+                plane.set_secret(name, value).await?;
+            }
+            return Ok(BatchSetSecretsResponse {
+                count: self.secrets.len(),
+            });
+        }
+
         for (name, value) in &self.secrets {
             let encrypted = encryption
                 .encrypt_string(value)
@@ -256,6 +301,9 @@ impl Command for DeleteSessionSecret {
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
         if is_internal_session_secret_name(&self.name) {
             return Err(CommandError::not_found("Secret"));
+        }
+        if let Some(plane) = PlaneStorage::of(ctx, session_id).await? {
+            return plane.delete_secret(&self.name).await;
         }
         ctx.db
             .delete_session_secret(session_id.uuid(), &self.name)

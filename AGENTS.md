@@ -28,7 +28,7 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 - Internal code needs no backward compatibility unless a spec says otherwise.
 - Examples (`examples/`, `crates/*/examples/`) run against a real LLM. Never script one with
   `llmsim` or another simulated model: that belongs in tests, and an example must show real
-  agent behavior. Use `gpt-6.1-sol` (or `gpt-6-luna` for a lighter model), never a `gpt-5`
+  agent behavior. Use `gpt-6.2-sol` (or `gpt-6-luna` for a lighter model), never a `gpt-5`
   model.
 - Changelog is part of done. A PR that meets the public changelog's impact criteria adds its
   entry (`docs/changelog/<date>-<slug>/`) in the same PR and fills the PR template's

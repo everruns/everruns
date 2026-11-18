@@ -24,9 +24,7 @@ through `BudgetService::record_host_charge`, and that charge replaces the
 estimate for the usage. The API keeps the `/v1/budgets` paths; the UI says
 "usage policy".
 
-Budget enforcement remains owned by this domain. Analytical budget reports are
-derived asynchronously from `usage_ledger` and related budget metadata; see
-[knowledge/evaluation/reporting.md](../evaluation/reporting.md).
+Budget enforcement is owned by this domain.
 
 Key use cases:
 - **Volunteer budget**: User sets a $10 budget when creating a session. Session stops at $10.

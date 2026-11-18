@@ -111,6 +111,18 @@ impl ApiState {
 }
 
 impl ApiState {
+    /// The domain context the platform's own workers act in for `org_id`
+    /// (`Caller::internal`), as their internal commands run: what a data
+    /// plane's lookups run as (`api/data_plane.rs`).
+    pub fn internal_ctx(&self, org_id: i64, feature_flags: crate::records::FeatureFlags) -> Ctx {
+        Ctx {
+            caller: Caller::internal(org_id),
+            feature_flags,
+            permission_resolver: self.auth.permission_resolver.clone(),
+            ..(*self.template).clone()
+        }
+    }
+
     /// The domain context for a platform-wide request by a platform user:
     /// the default organization, as owner, like the durable routes.
     pub fn platform_ctx(&self, user: &crate::auth::PlatformUser) -> Ctx {

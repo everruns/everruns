@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Save a small refund summary in SQL using sql_execute, query it to verify, ",
             "then write a brief note in /memory/refunds/latest.md. Explain the result.",
         ))
-        .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+        .model(Model::new("gpt-6.2-sol", OpenAI::from_env()?))
         .sql_database(SqlDatabase::open(format!("{root}/databases"))?)
         .knowledge(Knowledge::documents("refunds", vec![policy]))
         .memory(MemoryDirectory::directory(

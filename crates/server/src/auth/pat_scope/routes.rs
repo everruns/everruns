@@ -642,19 +642,6 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("POST", "/v1/providers/{provider_id}/chatgpt/login", Write),
     ("GET", "/v1/providers/{provider_id}/models", Read),
     ("POST", "/v1/providers/{provider_id}/models", Write),
-    ("POST", "/v1/reports/admin/backfill", Write),
-    ("GET", "/v1/reports/admin/diagnostics", Read),
-    ("GET", "/v1/reports/catalog", Read),
-    ("POST", "/v1/reports/projector/run", Write),
-    ("POST", "/v1/reports/query", Read),
-    ("POST", "/v1/reports/query/export", Read),
-    ("GET", "/v1/reports/saved", Read),
-    ("POST", "/v1/reports/saved", Write),
-    ("DELETE", "/v1/reports/saved/{report_id}", Write),
-    ("GET", "/v1/reports/saved/{report_id}", Read),
-    ("PATCH", "/v1/reports/saved/{report_id}", Write),
-    ("POST", "/v1/reports/saved/{report_id}/export", Read),
-    ("POST", "/v1/reports/saved/{report_id}/run", Read),
     ("GET", "/v1/resolve-org", Read),
     ("GET", "/v1/resources/{id}/grants", Read),
     ("POST", "/v1/resources/{id}/grants", Never),
@@ -1027,14 +1014,6 @@ pub const REVIEWED_NON_GET_READ: &[(&str, &str)] = &[
     ("POST", "/v1/memories/{memory_id}/fs/_/grep"),
     // reads file metadata
     ("POST", "/v1/memories/{memory_id}/fs/_/stat"),
-    // run_report_query: runs a read-only report query
-    ("POST", "/v1/reports/query"),
-    // export_report_query: same query as a download
-    ("POST", "/v1/reports/query/export"),
-    // export_saved_report: download
-    ("POST", "/v1/reports/saved/{report_id}/export"),
-    // run_saved_report: runs, persists nothing
-    ("POST", "/v1/reports/saved/{report_id}/run"),
     // grep_workspace_files
     ("POST", "/v1/sessions/{session_id}/fs/_/grep"),
     // search_workspace_files

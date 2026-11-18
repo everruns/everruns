@@ -7,14 +7,14 @@
 //! client metadata and key ([`identity_routes`]) at a public HTTPS address,
 //! where companies check them.
 //!
-//! The example runs on a real model (`gpt-6.1-sol`).
+//! The example runs on a real model (`gpt-6.2-sol`).
 
 use everruns::poppy::{AGENT_PATH, JWKS_PATH, PoppyPersonalAgent};
 use everruns::providers::openai::{OpenAI, OpenAIError};
 use everruns::{Agent, BuildError, LocalConfig, Model};
 
 /// The model the example runs on.
-pub const MODEL: &str = "gpt-6.1-sol";
+pub const MODEL: &str = "gpt-6.2-sol";
 
 /// The name companies see for this personal agent.
 pub const CLIENT_NAME: &str = "Everruns Poppy example";
@@ -42,7 +42,7 @@ pub fn personal_agent(
         .build()
 }
 
-/// OpenAI's `gpt-6.1-sol`, keyed by `OPENAI_API_KEY`.
+/// OpenAI's `gpt-6.2-sol`, keyed by `OPENAI_API_KEY`.
 pub fn openai_model() -> Result<Model, OpenAIError> {
     Ok(Model::new(MODEL, OpenAI::from_env()?))
 }

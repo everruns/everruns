@@ -13,9 +13,9 @@ const mockRows = [
     can_manage: true,
   },
   {
-    name: "reports",
-    label: "Reports",
-    description: "Explore usage",
+    name: "knowledge",
+    label: "Knowledge",
+    description: "Search documents",
     grade: "prod",
     effective: true,
     can_manage: true,
@@ -51,13 +51,13 @@ describe("Feature grade settings", () => {
       "aria-checked",
       "false",
     );
-    expect(screen.getByRole("switch", { name: "Enable Reports" })).toHaveAttribute(
+    expect(screen.getByRole("switch", { name: "Enable Knowledge" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
     expect(screen.queryByText("Voice")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("switch", { name: "Enable Reports" }));
-    expect(mockMutate).toHaveBeenCalledWith({ reports: false });
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Knowledge" }));
+    expect(mockMutate).toHaveBeenCalledWith({ knowledge: false });
   });
 
   it("lets an org admin opt into adoption", () => {
@@ -70,8 +70,8 @@ describe("Feature grade settings", () => {
   it("keeps member controls read only", () => {
     mockRole = "member";
     render(<FeaturesSettingsPage />);
-    expect(screen.getByRole("switch", { name: "Enable Reports" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("switch", { name: "Enable Reports" }));
+    expect(screen.getByRole("switch", { name: "Enable Knowledge" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Knowledge" }));
     expect(mockMutate).not.toHaveBeenCalled();
   });
 });

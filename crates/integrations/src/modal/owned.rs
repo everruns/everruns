@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use everruns_contracts::session_sandbox::{OwnedSandbox, SandboxAdminError};
+use everruns_contracts::session_sandbox::{OwnedSandbox, ProviderSandboxView, SandboxAdminError};
 
 use super::client::ModalClient;
 
@@ -69,5 +69,35 @@ pub async fn terminate(client: &ModalClient, external_id: &str) -> Result<(), Sa
     match client.terminate(external_id).await {
         Err(err) if !err.contains("not found") => Err(SandboxAdminError::Provider(err)),
         _ => Ok(()),
+    }
+}
+
+/// What Modal reports about one sandbox: running, or finished with Modal's
+/// terminal status (`terminated`, `timeout`, `idle_timeout`, ...) and any
+/// exception text.
+pub async fn describe(
+    client: &ModalClient,
+    external_id: &str,
+) -> Result<ProviderSandboxView, SandboxAdminError> {
+    match client.sandbox_status(external_id).await {
+        Ok(super::client::SandboxStatus::Running) => Ok(ProviderSandboxView {
+            external_id: external_id.to_string(),
+            exists: true,
+            state: "running".to_string(),
+            active: Some(true),
+            ..ProviderSandboxView::default()
+        }),
+        Ok(super::client::SandboxStatus::Finished { status, exception }) => {
+            Ok(ProviderSandboxView {
+                external_id: external_id.to_string(),
+                exists: true,
+                state: format!("finished:{status}"),
+                active: Some(false),
+                error: exception,
+                ..ProviderSandboxView::default()
+            })
+        }
+        Err(err) if err.contains("not found") => Ok(ProviderSandboxView::missing(external_id)),
+        Err(err) => Err(SandboxAdminError::Provider(err)),
     }
 }

@@ -6528,218 +6528,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/reports/admin/backfill": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Backfill reporting
-     * @description Run a reporting projector to refresh derived data (operator action).
-     */
-    post: operations["backfill_reporting"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/admin/diagnostics": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get diagnostics
-     * @description Return diagnostics for the reporting subsystem (operator view).
-     */
-    get: operations["get_diagnostics"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/catalog": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get catalog
-     * @description Return the available reporting datasets and their schemas.
-     */
-    get: operations["get_catalog"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/projector/run": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Run projector
-     * @description Run a reporting projector to refresh derived data (operator action).
-     */
-    post: operations["run_projector"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/query": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Run query
-     * @description Run an ad-hoc reporting query against a registered dataset.
-     */
-    post: operations["run_query"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/query/export": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Export query
-     * @description Run an ad-hoc reporting query and stream the result as CSV.
-     */
-    post: operations["export_query"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/saved": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * List saved reports
-     * @description List saved reports.
-     */
-    get: operations["list_saved_reports"];
-    put?: never;
-    /**
-     * Create saved report
-     * @description Create a new saved report.
-     */
-    post: operations["create_saved_report"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/saved/{report_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get saved report
-     * @description Get a saved report by ID.
-     */
-    get: operations["get_saved_report"];
-    put?: never;
-    post?: never;
-    /**
-     * Delete saved report
-     * @description Delete a saved report.
-     */
-    delete: operations["delete_saved_report"];
-    options?: never;
-    head?: never;
-    /**
-     * Update saved report
-     * @description Update a saved report. Only provided fields are modified.
-     */
-    patch: operations["update_saved_report"];
-    trace?: never;
-  };
-  "/v1/reports/saved/{report_id}/export": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Export saved report
-     * @description Run a previously saved reporting query and stream the result as CSV.
-     */
-    post: operations["export_saved_report"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/reports/saved/{report_id}/run": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Run saved report
-     * @description Run a previously saved reporting query and return the result.
-     */
-    post: operations["run_saved_report"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/resolve-org": {
     parameters: {
       query?: never;
@@ -7540,9 +7328,69 @@ export interface paths {
     };
     /**
      * Get a Sandbox with its resources and state history
-     * @description Get one Sandbox with its provider resources and full state history.
+     * @description Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines.
      */
     get: operations["get_sandbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/{id}/diagnosis": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Explain why a Sandbox is in its state
+     * @description Explain why a Sandbox is in its state: its record against what the provider reports, the pinned lifecycle policy and its deadlines, whether its session is running or stuck in a turn, the latest lifecycle decisions and failures, as findings with what to do. Deterministic. The provider is asked only for organization admins.
+     */
+    get: operations["diagnose_sandbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/{id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the decisions behind a Sandbox's states
+     * @description List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.
+     */
+    get: operations["list_sandbox_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/{id}/provider": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Ask the provider about a Sandbox now
+     * @description Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.
+     */
+    get: operations["get_sandbox_provider_state"];
     put?: never;
     post?: never;
     delete?: never;
@@ -15315,25 +15163,6 @@ export interface components {
       /** @description Initial immutable Sandbox specification revision. */
       spec: components["schemas"]["SandboxTemplateSpec"];
     };
-    /** @description Request body for the `create_saved_report` operation. */
-    CreateSavedReportRequest: {
-      dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
-      /**
-       * @description Human-readable description. Safe to render in user-facing messages.
-       * @example Rolling 30-day count of agents with at least one session per day, grouped by org.
-       */
-      description?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example Weekly active agents — last 30 days
-       */
-      name: string;
-      /**
-       * @description The query this report executes when run or exported. See `ReportQuery`
-       *     for the full field breakdown.
-       */
-      query: components["schemas"]["ReportQuery"];
-    };
     /** @description Create schedule request */
     CreateScheduleRequest: {
       /**
@@ -15697,28 +15526,6 @@ export interface components {
       updated_at: string;
     };
     /**
-     * @description Listing of every dataset the reporting layer can answer queries over.
-     *     Returned from `GET /v1/reports/catalog`.
-     */
-    DatasetCatalog: {
-      /** @description All datasets the caller has access to, in stable alphabetical order. */
-      datasets: components["schemas"]["DatasetCatalogEntry"][];
-    };
-    /**
-     * @description A single dataset entry in the reporting catalog — the set of dimensions,
-     *     measures, and filter fields the dataset exposes to query authors.
-     */
-    DatasetCatalogEntry: {
-      /** @description Dimensions available to group by. */
-      dimensions: string[];
-      /** @description Fields valid as the `field` of a `ReportFilter`. */
-      filter_fields: string[];
-      /** @description Measures available to aggregate. */
-      measures: string[];
-      /** @description Dataset identifier as passed to `ReportQuery.dataset`. */
-      name: string;
-    };
-    /**
      * @description Selection filters applied per case. `org_id` is never part of this — it is
      *     injected by the command from the authenticated caller, so a filter can never
      *     widen the org scope.
@@ -15741,28 +15548,6 @@ export interface components {
      * @enum {string}
      */
     DatasetFormat: "trajectory" | "sft" | "atif";
-    /**
-     * @description Per-dataset projector freshness telemetry. One entry per active dataset
-     *     the reporting projector is materializing.
-     */
-    DatasetProjectorLag: {
-      /** @description Dataset name (matches `ReportQuery.dataset`). */
-      dataset: string;
-      /**
-       * Format: int64
-       * @description Gap between `latest_projected_at` and the diagnostic's
-       *     `generated_at`, in milliseconds. `None` when freshness can't be
-       *     determined.
-       */
-      freshness_lag_ms?: number | null;
-      /**
-       * Format: date-time
-       * @description Wall-clock timestamp of the newest fact the projector has
-       *     materialized for this dataset (RFC 3339). `None` if the projector
-       *     hasn't produced any rows yet.
-       */
-      latest_projected_at?: string | null;
-    };
     /** @description Typed decision semantics and serving-independent limits. */
     DecisionModelProfile: {
       /** @description Whether returned probabilities are calibrated native decision measurements. */
@@ -16509,7 +16294,7 @@ export interface components {
       id: string;
       /**
        * @description Model that wrote the proposals.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**
@@ -17468,7 +17253,7 @@ export interface components {
       cost_per_case_usd?: number | null;
       /** @example candidate */
       label: string;
-      /** @example gpt-6.1-sol */
+      /** @example gpt-6.2-sol */
       model_override?: string | null;
       /**
        * @description Set when the variant ran outside Everruns and was imported: the system
@@ -17494,7 +17279,7 @@ export interface components {
       label: string;
       /**
        * @description Model for this variant, beating the target's model.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model_override?: string | null;
       target?: components["schemas"]["EvalTarget"] | null;
@@ -17507,21 +17292,6 @@ export interface components {
       format?: components["schemas"]["DatasetFormat"];
       /** @description Redaction controls. */
       redaction?: components["schemas"]["RedactionOptions"];
-    };
-    /** @description Request body for the `export_report_query` operation. */
-    ExportReportQueryRequest: {
-      /** @description Export format. Defaults to `csv` when omitted. */
-      format?: components["schemas"]["ReportExportFormat"];
-      /**
-       * @description Ad-hoc query to materialize and export. Same shape as the body of
-       *     `POST /v1/reports/query` — see `ReportQuery` for the field breakdown.
-       */
-      query: components["schemas"]["ReportQuery"];
-    };
-    /** @description Request body for the `export_saved_report` operation. */
-    ExportSavedReportRequest: {
-      /** @description Export format. Defaults to `csv` when omitted. */
-      format?: components["schemas"]["ReportExportFormat"];
     };
     /** @description Full user data export response (GDPR compliance) */
     ExportUserDataResponse: {
@@ -17999,39 +17769,6 @@ export interface components {
       state_tokens?: number | null;
     };
     /**
-     * @description One failed reporting-outbox row, surfaced in
-     *     `ReportingOutboxDiagnostics.failed_rows` so operators can triage
-     *     projector failures without dropping to SQL.
-     */
-    FailedReportingOutboxRow: {
-      /**
-       * Format: int32
-       * @description Number of processing attempts made before this row was marked failed.
-       */
-      attempts: number;
-      /**
-       * Format: uuid
-       * @description Outbox row UUID.
-       */
-      id: string;
-      /** @description Most recent error message from a processing attempt. */
-      last_error?: string | null;
-      /**
-       * Format: int64
-       * @description Owning organization's internal numeric id.
-       */
-      org_id: number;
-      /** @description Source-specific row identifier (event id, session id, etc.). */
-      source_id: string;
-      /** @description Discriminator for the outbox source (`event`, `session`, `llm_generation`, `usage_ledger`). */
-      source_type: string;
-      /**
-       * Format: date-time
-       * @description Timestamp when this row was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /**
      * @description How bad a recorded failure is, decided by whether work stopped.
      *
      *     The runtime assigns this, not the client: a failed tool call is reported
@@ -18388,7 +18125,7 @@ export interface components {
       dismissed_at?: string | null;
       /**
        * @description The model that wrote it.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**
@@ -18494,6 +18231,19 @@ export interface components {
        * @description Cases that passed every trial.
        */
       passed: number;
+    };
+    /** @description A link to the step that makes a blocked fixer available. */
+    FixerUnblock: {
+      /**
+       * @description A path inside the Everruns console, never an external URL.
+       * @example /settings/slack
+       */
+      href: string;
+      /**
+       * @description Button text.
+       * @example Reconnect Slack workspace
+       */
+      label: string;
     };
     /**
      * @description Spacing between successive forecast values.
@@ -19750,7 +19500,7 @@ export interface components {
       /**
        * @description The variant this import is. A later import with the same label
        *     replaces it.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       variant: string;
     };
@@ -19933,6 +19683,7 @@ export interface components {
       steps: string[];
       /** @description Why it cannot run now, and what unlocks it. Absent when it can run. */
       unavailable_reason?: string | null;
+      unblock?: components["schemas"]["FixerUnblock"] | null;
       /** @description Whether the fix can be undone from the finding. */
       undoable: boolean;
     };
@@ -21731,41 +21482,6 @@ export interface components {
          *     defaults (Automatic) when the organization never set any.
          */
         web_search_defaults: components["schemas"]["WebSearchDefaults"];
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_SavedReport: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was created (RFC 3339).
-         */
-        created_at: string;
-        dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
-        /** @description Human-readable description. Safe to render in user-facing messages. */
-        description?: string | null;
-        /**
-         * Format: uuid
-         * @description UUID of the saved report.
-         */
-        id: string;
-        /** @description Human-readable name. Safe to render in user-facing messages. */
-        name: string;
-        /**
-         * @description The query this report executes when run or exported. Same shape as the
-         *     `body` of `POST /v1/reports/query` — see `ReportQuery` for the field
-         *     breakdown.
-         */
-        query: components["schemas"]["ReportQuery"];
-        /**
-         * Format: date-time
-         * @description Timestamp when this resource was last updated (RFC 3339).
-         */
-        updated_at: string;
       }[];
     };
     /**
@@ -27344,30 +27060,6 @@ export interface components {
      */
     ProgressStepStatus: "pending" | "in_progress" | "done" | "skipped";
     /**
-     * @description Query parameters for a manual `POST /v1/reports/projector/run` invocation —
-     *     the cap on how many outbox rows one run is allowed to claim.
-     */
-    ProjectorRunQuery: {
-      /**
-       * Format: int64
-       * @description Maximum number of items returned in this page.
-       */
-      limit?: number;
-    };
-    /**
-     * @description Outcome of one projector run — how many outbox rows it claimed,
-     *     completed, and failed. Returned by manual `POST /v1/reports/projector/run`
-     *     calls and useful for backfill scripting.
-     */
-    ProjectorRunResult: {
-      /** @description Number of outbox rows claimed by this run. */
-      claimed: number;
-      /** @description Number of claimed rows that completed successfully. */
-      completed: number;
-      /** @description Number of claimed rows that failed and will be retried (or moved to `failed` after retry limit). */
-      failed: number;
-    };
-    /**
      * @description Strategy for prompt caching.
      * @enum {string}
      */
@@ -27516,6 +27208,59 @@ export interface components {
       provider_id: string;
       /** @description Operator slug when the heading is a discovered title or a plugin name. */
       slug?: string | null;
+    };
+    /**
+     * @description What the provider reports about the sandbox now. Built from an allowlist of
+     *     fields; never the provider's raw object.
+     */
+    ProviderSandboxState: {
+      /** @description Whether it holds compute (and so bills for it), when known. */
+      active?: boolean | null;
+      /** Format: int64 */
+      auto_archive_minutes?: number | null;
+      /** Format: int64 */
+      auto_delete_minutes?: number | null;
+      /**
+       * Format: int64
+       * @description The provider's own idle stop in minutes (0 is off). It acts on its own,
+       *     independently of Everruns' idle pause.
+       */
+      auto_stop_minutes?: number | null;
+      /** Format: date-time */
+      checked_at: string;
+      /** Format: date-time */
+      created_at?: string | null;
+      desired_state?: string | null;
+      /** @description Size, region, image and similar non-secret details. */
+      details: {
+        [key: string]: string;
+      };
+      /**
+       * Format: date-time
+       * @description When the provider ends the sandbox on its own.
+       */
+      ends_at?: string | null;
+      /** @description The provider's own error or exit reason. */
+      error?: string | null;
+      /** @description Whether the provider still knows the sandbox. */
+      exists: boolean;
+      external_id: string;
+      /** @description Labels Everruns set on it. */
+      labels: {
+        [key: string]: string;
+      };
+      /** Format: date-time */
+      last_activity_at?: string | null;
+      /** @example daytona */
+      provider: string;
+      recoverable?: boolean | null;
+      /**
+       * @description Provider-native state, such as `started`, `stopped` or `archived`.
+       * @example stopped
+       */
+      state: string;
+      /** Format: date-time */
+      updated_at?: string | null;
     };
     /**
      * @description LLM provider status
@@ -27984,296 +27729,6 @@ export interface components {
     /** @description A display-name change that preserves the connected account credential. */
     RenameOrganizationConnectionRequest: {
       name: string;
-    };
-    /**
-     * @description One column header in a `ReportResult`. The ordered `columns` list
-     *     declares the key set of each row in `rows`.
-     */
-    ReportColumn: {
-      /**
-       * @description Whether this column is a grouping `dimension` or an aggregate
-       *     `measure` — the same distinction made on `ReportQuery`.
-       */
-      kind: components["schemas"]["ReportColumnKind"];
-      /**
-       * @description Column name as it appears in `rows`.
-       * @example session_count
-       */
-      name: string;
-    };
-    /**
-     * @description Whether a `ReportColumn` is a grouping dimension or an aggregate measure.
-     * @enum {string}
-     */
-    ReportColumnKind: "dimension" | "measure";
-    /**
-     * @description Serialized export of a report's data, ready to stream to a caller as a
-     *     download. Carries the rendered payload plus the MIME/filename metadata
-     *     a client needs to save it.
-     */
-    ReportExport: {
-      /**
-       * Format: date-time
-       * @description Timestamp the underlying data was materialized (RFC 3339). Useful for "as of" footers.
-       */
-      as_of: string;
-      /** @description Serialized payload as a UTF-8 string. Caller streams this to the client. */
-      content: string;
-      /** @description MIME type matching `format` (`text/csv` for CSV exports). */
-      content_type: string;
-      /** @description Suggested filename for the download (includes the extension matching `format`). */
-      filename: string;
-      /** @description Export format (currently `csv`). */
-      format: components["schemas"]["ReportExportFormat"];
-      /**
-       * Format: int64
-       * @description How stale the data is relative to `now()`, in milliseconds. `None` when freshness can't be determined.
-       */
-      freshness_lag_ms?: number | null;
-    };
-    /**
-     * @description Output format for a report export. `Csv` emits a header row plus one
-     *     row per result; `Json` emits an envelope with the same shape as
-     *     `ReportResult`.
-     * @enum {string}
-     */
-    ReportExportFormat: "csv" | "json";
-    /**
-     * @description One predicate filter applied to the dataset before aggregation.
-     *     Combined with other filters via logical AND.
-     */
-    ReportFilter: {
-      /**
-       * @description Field to filter on. Must be a filter field exposed by the dataset (see `filter_fields` in the catalog).
-       * @example status
-       */
-      field: string;
-      /**
-       * @description Comparison operator. Determines the expected shape of `value`
-       *     (scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`, array for `in`).
-       */
-      op: components["schemas"]["ReportFilterOp"];
-      /**
-       * @description Comparison value. Type depends on `op`: a scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`,
-       *     an array for `in`. Example for `op = in`: `["completed", "failed"]`.
-       */
-      value: unknown;
-    };
-    /**
-     * @description Comparison operator used in a `ReportFilter`. The `In` variant takes a
-     *     JSON array as its value; all others take a scalar.
-     * @enum {string}
-     */
-    ReportFilterOp: "eq" | "neq" | "in" | "gt" | "gte" | "lt" | "lte";
-    /**
-     * @description One sort clause applied to the aggregated result. Either `dimension`
-     *     OR `measure` is set (mutually exclusive), never both.
-     */
-    ReportOrderBy: {
-      /**
-       * @description Dimension name to sort by. Mutually exclusive with `measure`.
-       * @example org_id
-       */
-      dimension?: string | null;
-      /** @description Sort direction (`asc` or `desc`). Defaults to `asc`. */
-      direction?: components["schemas"]["ReportOrderDirection"];
-      /**
-       * @description Measure name to sort by. Mutually exclusive with `dimension`.
-       * @example session_count
-       */
-      measure?: string | null;
-    };
-    /**
-     * @description Sort direction for a `ReportOrderBy` clause.
-     * @enum {string}
-     */
-    ReportOrderDirection: "asc" | "desc";
-    /**
-     * @description Semantic query a caller submits to the reporting layer. The backend
-     *     compiles this to its native query language, scopes it to the calling
-     *     org, and returns a `ReportResult`.
-     */
-    ReportQuery: {
-      /**
-       * @description Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets).
-       * @example sessions
-       */
-      dataset: string;
-      /**
-       * @description Columns to group by. Empty list returns one aggregate row.
-       * @example [
-       *       "status"
-       *     ]
-       */
-      dimensions?: string[];
-      /** @description Predicate filters applied before aggregation. */
-      filters?: components["schemas"]["ReportFilter"][];
-      /**
-       * Format: int32
-       * @description Maximum number of rows to return (defaults to 100).
-       * @example 100
-       */
-      limit?: number;
-      /**
-       * @description Aggregations to compute (count, sum, avg, etc.). Empty list returns row counts only.
-       * @example [
-       *       "session_count",
-       *       "avg_duration_ms"
-       *     ]
-       */
-      measures?: string[];
-      /** @description Sort spec applied after aggregation. Empty list yields unspecified order. */
-      order_by?: components["schemas"]["ReportOrderBy"][];
-      /** @description Time window for the query. The dataset selects which timestamp column the range applies to. */
-      time_range: components["schemas"]["ReportTimeRange"];
-    };
-    /**
-     * @description Materialized result of a report query — column metadata, rows, and the
-     *     freshness of the underlying data.
-     */
-    ReportResult: {
-      /**
-       * Format: date-time
-       * @description Timestamp the underlying data was materialized (RFC 3339). Useful as
-       *     an "as of" footer when rendering — distinct from when the query ran.
-       */
-      as_of: string;
-      /**
-       * @description Column metadata in the same order as the entries of each row in
-       *     `rows`. Use the `kind` field to tell dimensions from measures.
-       */
-      columns: components["schemas"]["ReportColumn"][];
-      /**
-       * Format: int64
-       * @description How stale the data is relative to the server's wall clock at query
-       *     time, in milliseconds. `None` when freshness can't be determined
-       *     (e.g. backends that don't track projector lag).
-       */
-      freshness_lag_ms?: number | null;
-      /**
-       * @description Result rows. Each row is a JSON object keyed by column name; cell
-       *     types match the underlying dataset (numbers for measures, strings
-       *     or numbers for dimensions). Length is capped by `ReportQuery.limit`.
-       */
-      rows: unknown[];
-    };
-    /**
-     * @description Half-open time window applied to the dataset's primary timestamp column
-     *     during a report query. `from` is inclusive, `to` is exclusive.
-     */
-    ReportTimeRange: {
-      /**
-       * Format: date-time
-       * @description Start of the window (RFC 3339, inclusive).
-       * @example 2026-04-24T00:00:00Z
-       */
-      from: string;
-      /**
-       * Format: date-time
-       * @description End of the window (RFC 3339, exclusive).
-       * @example 2026-05-24T00:00:00Z
-       */
-      to: string;
-    };
-    /**
-     * @description Request body for the `reporting_backfill` operation — enqueues source
-     *     rows into the reporting outbox for the projector to re-materialize.
-     */
-    ReportingBackfillRequest: {
-      /**
-       * Format: int64
-       * @description Maximum number of outbox rows to enqueue across all source types. Defaults to 1000.
-       * @example 5000
-       */
-      limit?: number;
-    };
-    /**
-     * @description Result of a `reporting_backfill` call — per-source counts of outbox rows
-     *     enqueued for re-projection.
-     */
-    ReportingBackfillResult: {
-      /**
-       * Format: int64
-       * @description Total number of outbox rows enqueued across all source types.
-       */
-      enqueued: number;
-      /**
-       * Format: int64
-       * @description Number of `event` outbox rows enqueued.
-       */
-      events: number;
-      /**
-       * Format: int64
-       * @description Number of `llm_generation` outbox rows enqueued.
-       */
-      llm_generations: number;
-      /**
-       * Format: int64
-       * @description Number of `session` outbox rows enqueued.
-       */
-      sessions: number;
-      /**
-       * Format: int64
-       * @description Number of `usage_ledger` outbox rows enqueued.
-       */
-      usage_ledger: number;
-    };
-    /**
-     * @description Point-in-time health snapshot of the reporting layer — projector
-     *     freshness plus outbox processing health. Returned from
-     *     `GET /v1/reports/admin/diagnostics`.
-     */
-    ReportingDiagnostics: {
-      /**
-       * Format: date-time
-       * @description Server-side wall-clock timestamp when this snapshot was assembled
-       *     (RFC 3339). Use as the "as-of" for any displayed lag metrics.
-       */
-      generated_at: string;
-      /**
-       * @description Reporting outbox health — counts of pending/processing/failed/
-       *     completed rows plus a sample of the most recent failures.
-       */
-      outbox: components["schemas"]["ReportingOutboxDiagnostics"];
-      /**
-       * @description Per-dataset projector freshness. One entry per active reporting
-       *     dataset; missing datasets mean the projector hasn't produced any
-       *     rows yet.
-       */
-      projector_lag: components["schemas"]["DatasetProjectorLag"][];
-    };
-    /**
-     * @description Aggregate health of the reporting outbox — the queue of source rows
-     *     waiting to be projected into fact tables.
-     */
-    ReportingOutboxDiagnostics: {
-      /**
-       * Format: int64
-       * @description Outbox rows that have completed processing successfully.
-       */
-      completed: number;
-      /**
-       * Format: int64
-       * @description Outbox rows that have failed (exceeded retry limit).
-       */
-      failed: number;
-      /** @description Sample of the most recent failed rows for operator inspection. */
-      failed_rows: components["schemas"]["FailedReportingOutboxRow"][];
-      /**
-       * Format: date-time
-       * @description Timestamp of the oldest `pending` row (RFC 3339). `None` if no rows are pending.
-       */
-      oldest_pending_at?: string | null;
-      /**
-       * Format: int64
-       * @description Outbox rows waiting to be claimed by a projector.
-       */
-      pending: number;
-      /**
-       * Format: int64
-       * @description Outbox rows currently being processed.
-       */
-      processing: number;
     };
     /** @description The agent a request came from. */
     RequestingAgent: {
@@ -29514,6 +28969,25 @@ export interface components {
       /** @example running */
       key: string;
     };
+    /** @description Everything known about why a Sandbox is in its state. */
+    SandboxDiagnosis: {
+      /** @description The sandbox as its cell records it (v2 sessions). */
+      cell_sandbox?: Record<string, unknown> | null;
+      /** @description Problems and warnings first. */
+      findings: components["schemas"]["SandboxFinding"][];
+      /** Format: date-time */
+      generated_at: string;
+      lifecycle?: components["schemas"]["SandboxLifecycleStatus"] | null;
+      provider?: components["schemas"]["ProviderSandboxState"] | null;
+      /** @description Why the provider was not asked, or what went wrong asking it. */
+      provider_note?: string | null;
+      /** @description The latest recorded causes, oldest first. */
+      recent_events: components["schemas"]["SandboxEvent"][];
+      sandbox: components["schemas"]["SandboxFleetItem"];
+      /** @description The worst status of any finding. */
+      status: components["schemas"]["CheckStatus"];
+      work: components["schemas"]["SandboxSessionWork"];
+    };
     /**
      * @description What survives physical compute loss.
      * @enum {string}
@@ -29524,10 +28998,73 @@ export interface components {
      * @enum {string}
      */
     SandboxEscalation: "never" | "approval" | "auto";
+    /** @description One recorded cause: who acted on the Sandbox (or decided not to), and why. */
+    SandboxEvent: {
+      /**
+       * @description `pause`, `resume` or `delete`.
+       * @example pause
+       */
+      action: string;
+      /**
+       * @description `idle_timer`, `idle_sweep`, `retention_sweep` or `person`.
+       * @example idle_sweep
+       */
+      actor: string;
+      /** Format: date-time */
+      at: string;
+      detail: Record<string, unknown>;
+      /**
+       * Format: int64
+       * @description Incarnation the event applied to.
+       */
+      generation: number;
+      /** @description What happened, in one sentence. */
+      message: string;
+      /**
+       * @description `done`, `skipped` or `failed`.
+       * @example skipped
+       */
+      outcome: string;
+      /**
+       * @description Stable reason code, such as `idle_limit`, `stale_turn`, `session_active`,
+       *     `idle_pause_off`, `retention`, `idle_action_delete` or `provider_error`.
+       * @example session_active
+       */
+      reason: string;
+    };
+    /** @description A Sandbox's decisions and states over a window. */
+    SandboxEventList: {
+      /** @description Recorded causes, oldest first. */
+      events: components["schemas"]["SandboxEvent"][];
+      /** Format: date-time */
+      from: string;
+      sandbox_id: string;
+      /**
+       * @description States over the same window, oldest first. A state change with no
+       *     event beside it was made by an agent's sandbox call or found on the
+       *     provider (a lost sandbox), not by a lifecycle decision.
+       */
+      states: components["schemas"]["SandboxStateSpan"][];
+      /** Format: date-time */
+      to: string;
+    };
     /** @description Filesystem paths the target permits command execution to mutate. */
     SandboxFilesystemPolicy: {
       /** @description Absolute roots the runtime may mutate; empty means provider default. */
       writable_roots?: string[];
+    };
+    /** @description One finding: what is true, why it matters, how to fix it. */
+    SandboxFinding: {
+      fix?: string | null;
+      /**
+       * @description Stable identifier, such as `provider.state` or `lifecycle.overdue`.
+       * @example provider.auto_stop
+       */
+      id: string;
+      status: components["schemas"]["CheckStatus"];
+      summary: string;
+      title: string;
+      why?: string | null;
     };
     /** @description One Sandbox with its incarnations and lifecycle history. */
     SandboxFleetDetail: components["schemas"]["SandboxFleetItem"] & {
@@ -29535,6 +29072,7 @@ export interface components {
       history: components["schemas"]["SandboxStateSpan"][];
       /** @description Provider resources, newest first. */
       incarnations: components["schemas"]["SandboxIncarnation"][];
+      lifecycle?: components["schemas"]["SandboxLifecycleStatus"] | null;
     };
     /** @description One logical Sandbox in the organization. */
     SandboxFleetItem: {
@@ -29744,6 +29282,52 @@ export interface components {
       /** @description Durable logical Sandbox identifier, when hosted persistence is available. */
       sandbox_id?: string | null;
     };
+    /**
+     * @description The lifecycle policy pinned when the Session was created, and what it
+     *     means for this Sandbox now.
+     */
+    SandboxLifecycleStatus: {
+      /**
+       * Format: int64
+       * @description How long a paused Sandbox is kept before deletion; `null` keeps it.
+       */
+      delete_after_seconds?: number | null;
+      /**
+       * Format: date-time
+       * @description When the retention sweep deletes the provider sandbox (paused only).
+       */
+      delete_due_at?: string | null;
+      /**
+       * @description `checkpoint_and_stop`, `stop`, `keep_running` or `delete`.
+       * @example checkpoint_and_stop
+       */
+      idle_action: string;
+      /**
+       * Format: int64
+       * @description Inactivity before the idle action.
+       */
+      idle_after_seconds: number;
+      /**
+       * Format: date-time
+       * @description Last activity, from which every deadline counts.
+       */
+      idle_since: string;
+      /**
+       * Format: date-time
+       * @description When the in-process idle timer pauses it (running only).
+       */
+      pause_due_at?: string | null;
+      /**
+       * Format: date-time
+       * @description When the sweep pauses it although its session claims a running turn.
+       */
+      stale_turn_pause_at?: string | null;
+      /**
+       * Format: date-time
+       * @description When the sweep pauses it if the timer did not (running only).
+       */
+      sweep_pause_at?: string | null;
+    };
     /** @description Outbound network policy the target must actually enforce. */
     SandboxNetworkPolicy:
       | {
@@ -29783,6 +29367,35 @@ export interface components {
           use: string;
         }
       | components["schemas"]["SandboxTemplateSpec"];
+    /** @description The session's work, as the runtime sees it. */
+    SandboxSessionWork: {
+      /** Format: int32 */
+      attempts?: number | null;
+      /** Format: date-time */
+      cancel_requested_at?: string | null;
+      /** Format: date-time */
+      claim_expires_at?: string | null;
+      /** @description Whether a worker holds the turn right now. */
+      claimed?: boolean | null;
+      /** @description The session runs on a v2 data plane (a cell). */
+      data_plane: boolean;
+      /**
+       * Format: int64
+       * @description Inputs admitted but not yet taken by a turn.
+       */
+      pending_inputs?: number | null;
+      /** @description Where the turn is: `idle`, `queued`, `running`, ... */
+      phase?: string | null;
+      /** Format: date-time */
+      phase_since?: string | null;
+      /**
+       * Format: date-time
+       * @description Waiting for a worker since.
+       */
+      queued_since?: string | null;
+      /** @description `active` means a turn is running. */
+      session_status?: string | null;
+    };
     /** @description A span of time a Sandbox spent in one state. */
     SandboxStateSpan: {
       /** @description The Sandbox is still in this state. */
@@ -30173,64 +29786,6 @@ export interface components {
        * @example 1
        */
       revision: number;
-    };
-    /**
-     * @description A user-saved report definition — a named, persistable wrapper around a
-     *     `ReportQuery` with optional dashboard placement metadata.
-     */
-    SavedReport: {
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was created (RFC 3339).
-       */
-      created_at: string;
-      dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
-      /** @description Human-readable description. Safe to render in user-facing messages. */
-      description?: string | null;
-      /**
-       * Format: uuid
-       * @description UUID of the saved report.
-       */
-      id: string;
-      /** @description Human-readable name. Safe to render in user-facing messages. */
-      name: string;
-      /**
-       * @description The query this report executes when run or exported. Same shape as the
-       *     `body` of `POST /v1/reports/query` — see `ReportQuery` for the field
-       *     breakdown.
-       */
-      query: components["schemas"]["ReportQuery"];
-      /**
-       * Format: date-time
-       * @description Timestamp when this resource was last updated (RFC 3339).
-       */
-      updated_at: string;
-    };
-    /**
-     * @description Dashboard placement metadata attached to a `SavedReport`. Captures how
-     *     and where to render the report in the operator dashboard UI.
-     */
-    SavedReportDashboardMetadata: {
-      /**
-       * @description Rendering hint for the UI (e.g. `"line"`, `"bar"`, `"table"`,
-       *     `"big_number"`). Free-form string — the server doesn't enforce a
-       *     closed set so new chart types can roll out client-side first.
-       */
-      chart_type?: string | null;
-      /**
-       * Format: int32
-       * @description Sort key within `section`. Lower values render first. `None` means
-       *     "place at the end".
-       */
-      position?: number | null;
-      /**
-       * @description Dashboard section/group this report belongs to (free-form bucket name
-       *     like `"Operations"` or `"Finance"`). Used to cluster related reports
-       *     in the UI.
-       */
-      section?: string | null;
-      /** @description Human-readable title. Safe to render in user-facing messages. */
-      title?: string | null;
     };
     /** @description Schedule execution response */
     ScheduleExecutionResponse: {
@@ -34389,7 +33944,7 @@ export interface components {
       kind: string;
       /**
        * @description Model that served the call, for model steps.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**
@@ -35964,25 +35519,6 @@ export interface components {
       request_options?: components["schemas"]["ProviderRequestOptions"] | null;
       status?: components["schemas"]["ProviderStatus"] | null;
       trace?: components["schemas"]["ProviderTraceConfig"] | null;
-    };
-    /** @description Request body for the `update_saved_report` operation. */
-    UpdateSavedReportRequest: {
-      dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
-      /**
-       * @description Human-readable description. Safe to render in user-facing messages.
-       * @example Rolling 60-day window; widened from 30d after the Q3 product launch.
-       */
-      description?: string | null;
-      /**
-       * @description Human-readable name. Safe to render in user-facing messages.
-       * @example Weekly active agents — last 60 days
-       */
-      name?: string | null;
-      /**
-       * @description Replace the saved report's query wholesale. Omit to keep the existing
-       *     query; send a new `ReportQuery` to swap it.
-       */
-      query?: components["schemas"]["ReportQuery"];
     };
     /** @description Update schedule request */
     UpdateScheduleRequest: {
@@ -38466,7 +38002,7 @@ export interface components {
       headline: string;
       /**
        * @description Model of the latest generation.
-       * @example gpt-6.1-sol
+       * @example gpt-6.2-sol
        */
       model?: string | null;
       /**
@@ -44820,7 +44356,7 @@ export interface operations {
       query?: {
         /**
          * @description Entity kind, needed only for ids without a prefix (`schedule`,
-         *     `saved_report`, `check_rule`).
+         *     `check_rule`).
          */
         kind?: string;
         /** @description For DELETE: the revision being cleared; refused when stale. */
@@ -44878,7 +44414,7 @@ export interface operations {
       query?: {
         /**
          * @description Entity kind, needed only for ids without a prefix (`schedule`,
-         *     `saved_report`, `check_rule`).
+         *     `check_rule`).
          */
         kind?: string;
         /** @description For DELETE: the revision being cleared; refused when stale. */
@@ -44949,7 +44485,7 @@ export interface operations {
       query?: {
         /**
          * @description Entity kind, needed only for ids without a prefix (`schedule`,
-         *     `saved_report`, `check_rule`).
+         *     `check_rule`).
          */
         kind?: string;
         /** @description For DELETE: the revision being cleared; refused when stale. */
@@ -45007,7 +44543,7 @@ export interface operations {
       query?: {
         /**
          * @description Entity kind, needed only for ids without a prefix (`schedule`,
-         *     `saved_report`, `check_rule`).
+         *     `check_rule`).
          */
         kind?: string;
         /** @description For DELETE: the revision being cleared; refused when stale. */
@@ -50107,7 +49643,7 @@ export interface operations {
       query?: {
         /**
          * @description Entity kind, needed only for kinds whose ids have no prefix
-         *     (`schedule`, `saved_report`, `check_rule`).
+         *     (`schedule`, `check_rule`).
          */
         kind?: string;
         /** @description Only this action (`created`, `updated`, `deleted`, ...). */
@@ -55405,504 +54941,6 @@ export interface operations {
       };
     };
   };
-  backfill_reporting: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ReportingBackfillRequest"];
-      };
-    };
-    responses: {
-      /** @description Reporting backfill enqueue result */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReportingBackfillResult"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_diagnostics: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Reporting diagnostics */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReportingDiagnostics"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_catalog: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Reporting semantic catalog */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["DatasetCatalog"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  run_projector: {
-    parameters: {
-      query?: {
-        /** @description Maximum number of items returned in this page. */
-        limit?: number;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Reporting projector run result */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ProjectorRunResult"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  run_query: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ReportQuery"];
-      };
-    };
-    responses: {
-      /** @description Reporting query result */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReportResult"];
-        };
-      };
-      /** @description Invalid semantic query */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  export_query: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ExportReportQueryRequest"];
-      };
-    };
-    responses: {
-      /** @description Exported report content */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReportExport"];
-        };
-      };
-      /** @description Invalid semantic query */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  list_saved_reports: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Saved reports */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ListResponse_SavedReport"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  create_saved_report: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateSavedReportRequest"];
-      };
-    };
-    responses: {
-      /** @description Saved report */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SavedReport"];
-        };
-      };
-      /** @description Invalid saved report */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  get_saved_report: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Saved report ID */
-        report_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Saved report */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SavedReport"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Saved report not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  delete_saved_report: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Saved report ID */
-        report_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Saved report deleted */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Saved report not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  update_saved_report: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Saved report ID */
-        report_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateSavedReportRequest"];
-      };
-    };
-    responses: {
-      /** @description Saved report */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["SavedReport"];
-        };
-      };
-      /** @description Invalid saved report */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Saved report not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  export_saved_report: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Saved report ID */
-        report_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ExportSavedReportRequest"];
-      };
-    };
-    responses: {
-      /** @description Exported report content */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReportExport"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Saved report not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
-  run_saved_report: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Saved report ID */
-        report_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Reporting query result */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ReportResult"];
-        };
-      };
-      /** @description Forbidden */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description Saved report not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-    };
-  };
   resolve_org: {
     parameters: {
       query: {
@@ -57304,6 +56342,110 @@ export interface operations {
       };
       /** @description Sandbox not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  diagnose_sandbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxDiagnosis"];
+        };
+      };
+      /** @description Sandbox not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_sandbox_events: {
+    parameters: {
+      query?: {
+        /** @description Window start (RFC 3339). Defaults to the Sandbox's creation. */
+        from?: string;
+        /** @description Window end (RFC 3339). Defaults to now. */
+        to?: string;
+        /** @description Most events, 1 to 500 (the newest when there are more). Defaults to 200. */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxEventList"];
+        };
+      };
+      /** @description Sandbox not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_sandbox_provider_state: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderSandboxState"];
+        };
+      };
+      /** @description Sandbox not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The provider could not be asked */
+      503: {
         headers: {
           [name: string]: unknown;
         };

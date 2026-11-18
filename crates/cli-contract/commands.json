@@ -4207,7 +4207,7 @@
         "long": "kind",
         "kind": "string",
         "required": false,
-        "help": "Entity kind, needed only for ids without a prefix (`schedule`, `saved_report`, `check_rule`)."
+        "help": "Entity kind, needed only for ids without a prefix (`schedule`, `check_rule`)."
       }
     ],
     "examples": [
@@ -5561,7 +5561,7 @@
     "examples": [
       {
         "intent": "Compare two models on the same cases, three trials each, within $10",
-        "command": "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.1-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'"
+        "command": "everruns evals experiments create --eval-id eval_01h9 --variants '[{\"label\":\"luna\",\"model_override\":\"gpt-6-luna\"},{\"label\":\"sol\",\"model_override\":\"gpt-6.2-sol\"}]' --max-cost-usd 10 --reason 'Pick the model for the support agent'"
       }
     ]
   },
@@ -11688,408 +11688,6 @@
     ]
   },
   {
-    "wire_name": "backfill_reporting",
-    "path": [
-      "reports",
-      "admin"
-    ],
-    "verb": "backfill",
-    "description": "Enqueue missing reporting projection work from canonical sources.",
-    "method": "POST",
-    "http_path": "/v1/reports/admin/backfill",
-    "args": [
-      {
-        "field": "limit",
-        "long": "limit",
-        "kind": "integer",
-        "required": false,
-        "help": "Maximum number of outbox rows to enqueue across all source types."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Rebuild reporting data that is missing from older sessions",
-        "command": "everruns reports admin backfill --limit 1000 --reason 'Reports are missing last week'"
-      }
-    ]
-  },
-  {
-    "wire_name": "get_reporting_diagnostics",
-    "path": [
-      "reports",
-      "admin",
-      "diagnostics"
-    ],
-    "verb": "get",
-    "description": "Inspect reporting projector lag and failed outbox rows.",
-    "method": "GET",
-    "http_path": "/v1/reports/admin/diagnostics",
-    "args": [],
-    "examples": [
-      {
-        "intent": "Check whether reporting is lagging behind live data",
-        "command": "everruns reports admin diagnostics get"
-      }
-    ]
-  },
-  {
-    "wire_name": "get_report_catalog",
-    "path": [
-      "reports",
-      "catalog"
-    ],
-    "verb": "get",
-    "description": "Return semantic reporting datasets, dimensions, measures, and filter fields.",
-    "method": "GET",
-    "http_path": "/v1/reports/catalog",
-    "args": [],
-    "examples": [
-      {
-        "intent": "Discover the datasets, dimensions and measures a query can use",
-        "command": "everruns reports catalog get"
-      }
-    ]
-  },
-  {
-    "wire_name": "run_reporting_projector",
-    "path": [
-      "reports",
-      "projector"
-    ],
-    "verb": "run",
-    "description": "Claim and process pending reporting outbox rows.",
-    "method": "POST",
-    "http_path": "/v1/reports/projector/run",
-    "args": [
-      {
-        "field": "limit",
-        "long": "limit",
-        "kind": "integer",
-        "required": false,
-        "help": "Maximum number of items returned in this page."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Process pending reporting rows right away when reports look stale",
-        "command": "everruns reports projector run --limit 500 --reason 'Reports lag behind live data'"
-      }
-    ]
-  },
-  {
-    "wire_name": "export_report_query",
-    "path": [
-      "reports",
-      "query"
-    ],
-    "verb": "export",
-    "description": "Run and export an org-scoped semantic reporting query.",
-    "method": "POST",
-    "http_path": "/v1/reports/query/export",
-    "args": [
-      {
-        "field": "format",
-        "long": "format",
-        "kind": "string",
-        "required": false,
-        "help": "Output format for a report export.",
-        "choices": [
-          "csv",
-          "json"
-        ]
-      },
-      {
-        "field": "query",
-        "long": "query",
-        "kind": "json",
-        "required": true,
-        "help": "Semantic query a caller submits to the reporting layer."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Download a one-off query result as CSV",
-        "command": "everruns reports query export --format csv --query '{\"dataset\":\"sessions\",\"time_range\":{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"},\"dimensions\":[\"status\"],\"measures\":[\"session_count\"],\"filters\":[],\"order_by\":[],\"limit\":100}'"
-      }
-    ]
-  },
-  {
-    "wire_name": "run_report_query",
-    "path": [
-      "reports",
-      "query"
-    ],
-    "verb": "run",
-    "description": "Run an org-scoped semantic reporting query.",
-    "method": "POST",
-    "http_path": "/v1/reports/query",
-    "args": [
-      {
-        "field": "dataset",
-        "long": "dataset",
-        "kind": "string",
-        "required": true,
-        "help": "Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets)."
-      },
-      {
-        "field": "dimensions",
-        "long": "dimensions",
-        "kind": "string_list",
-        "required": false,
-        "help": "Columns to group by."
-      },
-      {
-        "field": "filters",
-        "long": "filters",
-        "kind": "json",
-        "required": false,
-        "help": "Predicate filters applied before aggregation."
-      },
-      {
-        "field": "limit",
-        "long": "limit",
-        "kind": "integer",
-        "required": false,
-        "help": "Maximum number of rows to return (defaults to 100)."
-      },
-      {
-        "field": "measures",
-        "long": "measures",
-        "kind": "string_list",
-        "required": false,
-        "help": "Aggregations to compute (count, sum, avg, etc.)."
-      },
-      {
-        "field": "order_by",
-        "long": "order-by",
-        "kind": "json",
-        "required": false,
-        "help": "Sort spec applied after aggregation."
-      },
-      {
-        "field": "time_range",
-        "long": "time-range",
-        "kind": "json",
-        "required": true,
-        "help": "Half-open time window applied to the dataset's primary timestamp column during a report query."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Answer a quick question, such as sessions per status last month",
-        "command": "everruns reports query run --dataset sessions --time-range '{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"}' --dimensions status --measures session_count"
-      }
-    ]
-  },
-  {
-    "wire_name": "create_saved_report",
-    "path": [
-      "reports",
-      "saved"
-    ],
-    "verb": "create",
-    "description": "Create an org-scoped saved report definition.",
-    "method": "POST",
-    "http_path": "/v1/reports/saved",
-    "args": [
-      {
-        "field": "dashboard",
-        "long": "dashboard",
-        "kind": "json",
-        "required": false
-      },
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable name."
-      },
-      {
-        "field": "query",
-        "long": "query",
-        "kind": "json",
-        "required": true,
-        "help": "Semantic query a caller submits to the reporting layer."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Save a query so the team can rerun it",
-        "command": "everruns reports saved create --name 'Sessions by status' --query '{\"dataset\":\"sessions\",\"time_range\":{\"from\":\"2026-04-01T00:00:00Z\",\"to\":\"2026-05-01T00:00:00Z\"},\"dimensions\":[\"status\"],\"measures\":[\"session_count\"],\"filters\":[],\"order_by\":[],\"limit\":100}' --reason 'Monthly review'"
-      }
-    ]
-  },
-  {
-    "wire_name": "delete_saved_report",
-    "path": [
-      "reports",
-      "saved"
-    ],
-    "verb": "delete",
-    "description": "Delete an org-scoped saved report definition.",
-    "method": "DELETE",
-    "http_path": "/v1/reports/saved/{report_id}",
-    "args": [
-      {
-        "field": "report_id",
-        "long": "report-id",
-        "kind": "string",
-        "required": true,
-        "help": "Saved report's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Delete a saved report nobody uses",
-        "command": "everruns reports saved delete --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --reason 'Superseded by the weekly report'"
-      }
-    ]
-  },
-  {
-    "wire_name": "export_saved_report",
-    "path": [
-      "reports",
-      "saved"
-    ],
-    "verb": "export",
-    "description": "Run and export an org-scoped saved report definition.",
-    "method": "POST",
-    "http_path": "/v1/reports/saved/{report_id}/export",
-    "args": [
-      {
-        "field": "report_id",
-        "long": "report-id",
-        "kind": "string",
-        "required": true,
-        "help": "Saved report's prefixed public identifier."
-      },
-      {
-        "field": "request",
-        "long": "request",
-        "kind": "json",
-        "required": true,
-        "help": "Request body for the `export_saved_report` operation."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Download a saved report's current data as JSON",
-        "command": "everruns reports saved export --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --request '{\"format\":\"json\"}'"
-      }
-    ]
-  },
-  {
-    "wire_name": "get_saved_report",
-    "path": [
-      "reports",
-      "saved"
-    ],
-    "verb": "get",
-    "description": "Get an org-scoped saved report definition.",
-    "method": "GET",
-    "http_path": "/v1/reports/saved/{report_id}",
-    "args": [
-      {
-        "field": "report_id",
-        "long": "report-id",
-        "kind": "string",
-        "required": true,
-        "help": "Saved report's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Read a saved report's query before changing or running it",
-        "command": "everruns reports saved get --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90"
-      }
-    ]
-  },
-  {
-    "wire_name": "list_saved_reports",
-    "path": [
-      "reports",
-      "saved"
-    ],
-    "verb": "list",
-    "description": "List org-scoped saved report definitions.",
-    "method": "GET",
-    "http_path": "/v1/reports/saved",
-    "args": [],
-    "examples": [
-      {
-        "intent": "Find a saved report's id",
-        "command": "everruns reports saved list"
-      }
-    ]
-  },
-  {
-    "wire_name": "run_saved_report",
-    "path": [
-      "reports",
-      "saved"
-    ],
-    "verb": "run",
-    "description": "Run an org-scoped saved report definition.",
-    "method": "POST",
-    "http_path": "/v1/reports/saved/{report_id}/run",
-    "args": [
-      {
-        "field": "report_id",
-        "long": "report-id",
-        "kind": "string",
-        "required": true,
-        "help": "Saved report's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Get the current numbers for a saved report",
-        "command": "everruns reports saved run --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90"
-      }
-    ]
-  },
-  {
-    "wire_name": "update_saved_report",
-    "path": [
-      "reports",
-      "saved"
-    ],
-    "verb": "update",
-    "description": "Update an org-scoped saved report definition.",
-    "method": "PATCH",
-    "http_path": "/v1/reports/saved/{report_id}",
-    "args": [
-      {
-        "field": "report_id",
-        "long": "report-id",
-        "kind": "string",
-        "required": true,
-        "help": "Saved report's prefixed public identifier."
-      },
-      {
-        "field": "request",
-        "long": "request",
-        "kind": "json",
-        "required": true,
-        "help": "Request body for the `update_saved_report` operation."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Rename a saved report",
-        "command": "everruns reports saved update --report-id 0190f8a2-7c1e-7d3a-9b2f-4e5d6c7b8a90 --request '{\"name\":\"Weekly active agents\"}' --reason 'Clearer name'"
-      }
-    ]
-  },
-  {
     "wire_name": "grant_resource_access",
     "path": [
       "resources",
@@ -13885,12 +13483,86 @@
     ]
   },
   {
+    "wire_name": "diagnose_sandbox",
+    "path": [
+      "sandboxes"
+    ],
+    "verb": "diagnose",
+    "description": "Explain why a Sandbox is in its state: its record against what the provider reports, the pinned lifecycle policy and its deadlines, whether its session is running or stuck in a turn, the latest lifecycle decisions and failures, as findings with what to do. Deterministic. The provider is asked only for organization admins.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/{id}/diagnosis",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Logical Sandbox id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find out why a Sandbox did not pause",
+        "command": "everruns sandboxes diagnose sandbox_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_sandbox_events",
+    "path": [
+      "sandboxes",
+      "events"
+    ],
+    "verb": "list",
+    "description": "List why a Sandbox changed state, or did not: each pause, resume and delete by the idle timer, idle sweep, retention sweep or a person, each decision to skip, and each failure, beside the state history.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/{id}/events",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Logical Sandbox id."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Window start (RFC 3339)."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Most events, 1 to 500 (the newest when there are more)."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Window end (RFC 3339)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See who paused a Sandbox and why, since a given time",
+        "command": "everruns sandboxes events list sandbox_01h9 --from 2026-11-09T02:25:00Z"
+      }
+    ]
+  },
+  {
     "wire_name": "get_sandbox",
     "path": [
       "sandboxes"
     ],
     "verb": "get",
-    "description": "Get one Sandbox with its provider resources and full state history.",
+    "description": "Get one Sandbox with its provider resources, full state history and pinned lifecycle policy with its deadlines.",
     "method": "GET",
     "http_path": "/v1/sandboxes/{id}",
     "args": [
@@ -13988,6 +13660,33 @@
       {
         "intent": "Find Sandboxes that need attention",
         "command": "everruns sandboxes list --needs-attention true"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_sandbox_provider_state",
+    "path": [
+      "sandboxes",
+      "provider"
+    ],
+    "verb": "get",
+    "description": "Ask the Sandbox's provider (Daytona, E2B, Modal, boxd, Kubernetes) what it reports now: its state, errors, last activity and its own idle stop and delete settings. Read-only; organization admins only. Secrets in the provider's record are never returned.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/{id}/provider",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Logical Sandbox id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether Daytona stopped a Sandbox on its own",
+        "command": "everruns sandboxes provider get sandbox_01h9"
       }
     ]
   },

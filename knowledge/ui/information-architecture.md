@@ -83,8 +83,8 @@ gating and stay out of the five groups for the same reason.
   each tab its own URL (`/models/providers`, `/sandboxes/templates`) so a tab can be linked,
   opened in a new browser tab and kept in history; filters stay query params. Retired
   `?tab=` links redirect ([`tab-routes.ts`](../../apps/ui/src/lib/tab-routes.ts)).
-* **Reports is Quality.** Reporting sits with Evals and Observers, leaving Operational
-  focused on recordings and external exposure. Approvals stays within its session.
+* **Approvals stays within its session.** Operational stays focused on recordings and
+  external exposure.
 * **Identities is Building, not Library.** An identity is authored per agent
   deployment with credentials and scope decisions, not registered once and forgotten.
 
@@ -202,8 +202,6 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   ([forking sessions](../runtime-resources/forking-sessions.md)) and lands the user in it
   as a thread, so a recording can always be turned back into something you can talk to
   without ever mutating the record.
-* **Reports is a saved view on Sessions, not a separate page concept.** It shares the
-  session model and adds persistence of a query.
 * **The breadcrumb names the owning group, and derives it from the nav table.** The
   sidebar teaches the five-group model to people who navigate; the breadcrumb teaches it
   to everyone arriving by a direct link or saved view. `PageBreadcrumb` reads the group from the

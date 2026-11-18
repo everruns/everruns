@@ -6,10 +6,10 @@
 // runs it, and sends the browser to the provider when approval is needed.
 import { useEffect, useState } from "react";
 import { ExternalLink, Wand2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useHealthIssueAction, useRunHealthFixer } from "@/hooks/use-health-issues";
-import { safeConsentUrl } from "@/lib/api/health-issues";
+import { safeConsentUrl, safeConsolePath } from "@/lib/api/health-issues";
 import type { HealthIssue, IssueFixer } from "@/lib/api/types";
 
 /** What happened after a fixer ran, for the card to say. */
@@ -91,11 +91,19 @@ export function HealthFixer({
   const [showManual, setShowManual] = useState(false);
   const available = !fixer.unavailable_reason;
   const consent = fixer.effect === "consent";
+  // A blocked fix shows the step that unblocks it as the action, rather than
+  // the fix itself greyed out: a disabled button left people with no way on.
+  const unblockHref = !available ? safeConsolePath(fixer.unblock?.href) : null;
+  const unblock = unblockHref && fixer.unblock ? { ...fixer.unblock, href: unblockHref } : null;
   return (
     <div className="space-y-3 border border-border bg-background p-3" aria-label={ui("Fix")}>
       <p className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
         {available && <Wand2 className="size-3" aria-hidden />}
-        {available ? ui("Fix available") : ui("Fix not available yet")}
+        {available
+          ? ui("Fix available")
+          : unblock
+            ? ui("One step before the fix")
+            : ui("Fix not available here")}
         {available && consent && fixer.needs_provider_admin && (
           <span className="border border-border px-1.5 normal-case tracking-normal">
             {fixer.kind.startsWith("slack.")
@@ -114,15 +122,17 @@ export function HealthFixer({
         <p className="text-sm">{fixer.unavailable_reason}</p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="sm"
-          disabled={!available || pending}
-          onClick={() => void start(fixer.kind)}
-        >
-          {pending ? ui("Working…") : fixer.label}
-          {consent && <ExternalLink className="size-3" aria-hidden />}
-        </Button>
+        {available && (
+          <Button type="button" size="sm" disabled={pending} onClick={() => void start(fixer.kind)}>
+            {pending ? ui("Working…") : fixer.label}
+            {consent && <ExternalLink className="size-3" aria-hidden />}
+          </Button>
+        )}
+        {unblock && (
+          <LinkButton href={unblock.href} size="sm">
+            {unblock.label}
+          </LinkButton>
+        )}
         <Button
           type="button"
           variant="outline"

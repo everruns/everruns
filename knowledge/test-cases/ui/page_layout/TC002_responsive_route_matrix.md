@@ -25,7 +25,7 @@ and desktop widths. Check shared layout behavior first, then the representative 
 
 | Surface | Representative routes |
 |---|---|
-| Landing and reporting | `/chats`, `/reports` |
+| Landing | `/chats` |
 | Lists | `/sessions`, `/agents`, `/harnesses`, `/virtual-users`, `/skills`, `/memory`, `/knowledge-indexes`, `/models`, `/capabilities`, `/plugins`, `/evals`, `/observers` |
 | Detail and edit | Representative agent, harness, virtual user, memory, knowledge index, capability, provider, and session detail/edit routes |
 | Create forms | New agent, harness, virtual user, declarative capability, eval, observer, and agent-channel routes |

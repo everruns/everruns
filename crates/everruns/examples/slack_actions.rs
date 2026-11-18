@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "that says this Framework bot is connected. ",
             "Report success only after checking tool results.",
         ))
-        .model(Model::new("gpt-6.1-sol", OpenAI::from_env()?))
+        .model(Model::new("gpt-6.2-sol", OpenAI::from_env()?))
         .slack_actions(actions)
         .build()?;
     let session = Engine::new().create(agent);

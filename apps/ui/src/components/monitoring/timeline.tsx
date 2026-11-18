@@ -535,11 +535,6 @@ function TimelineBody({
                 kind: "line",
               },
             ]}
-            footer={
-              <Link href="/reports" className="text-xs underline-offset-4 hover:underline">
-                {ui("Open Reports →")}
-              </Link>
-            }
           />
           <SmallChart
             title={ui("Errors")}

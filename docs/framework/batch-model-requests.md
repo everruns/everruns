@@ -210,7 +210,7 @@ use everruns::{Model, batch::Batch, providers::openai::OpenAI};
 let provider: everruns::Provider = OpenAI::from_env()?.into();
 assert!(provider.supports_batch());
 let client = Batch::new(provider, "tenant-42/openai-account-7");
-let ticket = client.request("review_001", Model::from("gpt-6.1-sol")
+let ticket = client.request("review_001", Model::from("gpt-6.2-sol")
     .completion().user("Classify: delivery arrived early.").max_tokens(64))?
     .submit().await?;
 # let _ = ticket;
@@ -366,7 +366,7 @@ BATCH_PROVIDER=fireworks cargo run -p everruns --features fireworks --example ba
 ```
 
 The [classification example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/batch_classification.rs)
-defaults to `claude-sonnet-5`, `gpt-6.1-sol` or `gemini-4-argon` for the selected
+defaults to `claude-sonnet-5`, `gpt-6.2-sol` or `gemini-4-argon` for the selected
 provider; set `BATCH_MODEL` on submission to choose another eligible model. Protect the state directory: intents and results contain user
 content even though tickets do not contain prompts.
 

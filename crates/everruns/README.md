@@ -27,7 +27,7 @@ cargo add tokio --features macros,rt-multi-thread
 export OPENAI_API_KEY=sk-...
 ```
 
-Define a typed tool, give it to an agent powered by GPT-6.1 Sol, and run a
+Define a typed tool, give it to an agent powered by GPT-6.2 Sol, and run a
 turn:
 
 ```rust
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name("assistant")
         .instructions("Use unix_time when asked about time. Be concise.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .tool(unix_time())
         .build()?;
 
@@ -89,7 +89,7 @@ call the model directly — same provider, same credentials, no agent loop:
 ```rust
 use everruns::{Model, OpenAI};
 
-let model = Model::new("gpt-6.1-sol", OpenAI::from_env()?);
+let model = Model::new("gpt-6.2-sol", OpenAI::from_env()?);
 let answer = model.complete("Name the three primary colors.").await?;
 ```
 
@@ -163,7 +163,7 @@ use everruns::{Agent, CompactionConfig, ToolSearch};
 let agent = Agent::builder()
     .instructions("Find the right tool and keep long sessions focused.")
     .provider(everruns::OpenAI::from_env()?)
-    .model("gpt-6.1-sol")
+    .model("gpt-6.2-sol")
     .capability(ToolSearch::automatic())
     .capability(CompactionConfig::new().budget_percent(0.85))
     .build()?;
@@ -268,7 +268,7 @@ includes the exact command for each one.
 
 ### Start here
 
-- [`hello`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) — a small GPT-6.1 Sol agent with a typed tool
+- [`hello`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) — a small GPT-6.2 Sol agent with a typed tool
   and live events.
 - [`production_agent`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/production_agent.rs) — defensive tool
   boundaries and a multi-turn support agent.

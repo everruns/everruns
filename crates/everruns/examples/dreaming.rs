@@ -100,9 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let eval = std::env::args().any(|a| a == "--eval");
     let openrouter = std::env::args().any(|a| a == "--openrouter");
     let model = if openrouter {
-        "openai/gpt-6.1-sol"
+        "openai/gpt-6.2-sol"
     } else {
-        "gpt-6.1-sol"
+        "gpt-6.2-sol"
     };
     let cases: Vec<Case> = if eval {
         serde_json::from_str(include_str!("data/dreaming-cases.json"))?

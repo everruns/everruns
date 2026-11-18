@@ -347,7 +347,7 @@ into agents (EVE-1010, landed at `/exposures`).
 **The word was "Exposures"**, settling open question 3 at the time, because the API and CLI
 said it (`exposures/suspend`, since renamed to pause and resume) and it covered triggers,
 which "Channels" does not. It sits under **Operational**, beside
-Sessions and Reports, because reading it is an operational act and the editing it links to
+Sessions, because reading it is an operational act and the editing it links to
 lives on the agent. This view has since moved onto the Agents page as its Channels view,
 which says "channels" instead, and `/exposures` redirects there; see
 [Agents Home](../ui/agents-home.md).

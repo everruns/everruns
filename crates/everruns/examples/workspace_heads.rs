@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Work only in the selected workspace head.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .local(LocalConfig::new(state.join("runtime")))
         .workspace_backend(backend)
         .workspace_policy(WorkspacePolicy::read_write())

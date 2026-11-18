@@ -46,7 +46,13 @@ jobs:
         working-directory: apps/docs
 
     steps:
+      # Full history (commits and trees, no old blobs): the sitemap's <lastmod>
+      # is each page's last git change (apps/docs/integrations/git-lastmod.mjs),
+      # and a shallow clone would date every page to the newest commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
 
       - name: Setup patched Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7

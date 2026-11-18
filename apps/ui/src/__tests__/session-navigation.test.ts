@@ -225,12 +225,8 @@ describe("buildSessionNavigation on a data plane", () => {
     expect(keys).toContain("files");
   });
 
-  it("shows files and schedules on the Files tab, not values", () => {
+  it("shows files, values and schedules on the Files tab", () => {
     const features = new Set(["key_value", "secrets", "schedules"]);
-    expect(sessionRecordPanes({ features, hasSchedules: true, dataPlane: true })).toEqual([
-      "files",
-      "schedules",
-    ]);
     expect(sessionRecordPanes({ features, hasSchedules: true })).toEqual([
       "files",
       "values",

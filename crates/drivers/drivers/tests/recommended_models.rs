@@ -80,8 +80,8 @@ fn spot_checks_match_requested_defaults() {
     let openai = registry
         .recommended_models(&DriverId::OpenAI)
         .expect("openai");
-    assert_eq!(openai.coding_model, "gpt-6.1-sol");
-    assert_eq!(openai.research_model, "gpt-6-astra");
+    assert_eq!(openai.coding_model, "gpt-6.2-sol");
+    assert_eq!(openai.research_model, "gpt-6.2-astra");
     let anthropic = registry
         .recommended_models(&DriverId::Anthropic)
         .expect("anthropic");
@@ -91,4 +91,23 @@ fn spot_checks_match_requested_defaults() {
         .recommended_models(&DriverId::OpenRouter)
         .expect("openrouter");
     assert_eq!(openrouter.coding_model, "muse-spark-1.3-contributor");
+}
+
+#[test]
+fn gpt_62_recommendations_keep_budget_and_protocol_boundaries() {
+    let registry = registered();
+    for provider in [DriverId::OpenAI, DriverId::OpenRouter, DriverId::Vercel] {
+        let models = registry.recommended_models(&provider).expect("covered");
+        assert!(models.recommended_models.contains(&"gpt-6.2-sol"));
+        assert!(models.recommended_models.contains(&"gpt-6.2-astra"));
+        assert_eq!(models.research_model, "gpt-6.2-astra");
+        assert_eq!(models.small_model, "gpt-6-luna");
+        assert_eq!(models.chat_model, "gpt-6-luna");
+    }
+    // GPT-6.2 tool calling requires Responses, not Chat Completions.
+    let legacy = registry
+        .recommended_models(&DriverId::OpenAICompletions)
+        .expect("covered");
+    assert_eq!(legacy.coding_model, "gpt-6.1-sol");
+    assert!(!legacy.recommended_models.contains(&"gpt-6.2-sol"));
 }

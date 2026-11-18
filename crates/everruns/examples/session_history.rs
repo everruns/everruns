@@ -13,7 +13,7 @@ fn agent(data_dir: &Path) -> Result<Agent, Box<dyn std::error::Error>> {
     Ok(Agent::builder()
         .instructions("Keep the conversation concise: one short sentence per reply.")
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .local(LocalConfig::new(data_dir))
         .build()?)
 }

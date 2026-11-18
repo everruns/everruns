@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use everruns_contracts::session_sandbox::{OwnedSandbox, SandboxAdminError};
+use everruns_contracts::session_sandbox::{OwnedSandbox, ProviderSandboxView, SandboxAdminError};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -86,6 +86,55 @@ pub async fn delete(client: &E2BClient, external_id: &str) -> Result<(), Sandbox
     match client.delete_sandbox(external_id).await {
         Err(err) if !is_not_found(&err) => Err(SandboxAdminError::Provider(err)),
         _ => Ok(()),
+    }
+}
+
+fn timestamp(at: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .ok()
+        .map(|at| at.with_timezone(&chrono::Utc))
+}
+
+/// The allowlisted view of one E2B sandbox. The detail also carries
+/// `envdAccessToken`, the sandbox's own access token; it is never copied.
+pub(crate) fn view(detail: super::state::E2BSandboxDetail) -> ProviderSandboxView {
+    let mut details = BTreeMap::new();
+    details.insert("cpu".to_string(), detail.cpu_count.to_string());
+    details.insert("memory_mb".to_string(), detail.memory_mb.to_string());
+    details.insert("disk_mb".to_string(), detail.disk_size_mb.to_string());
+    details.insert("template_id".to_string(), detail.template_id.clone());
+    if !detail.envd_version.is_empty() {
+        details.insert("envd_version".to_string(), detail.envd_version.clone());
+    }
+    let labels = match detail.metadata {
+        Value::Object(map) => ProviderSandboxView::everruns_labels(
+            map.into_iter()
+                .filter_map(|(k, v)| v.as_str().map(|v| (k, v.to_string()))),
+        ),
+        _ => BTreeMap::new(),
+    };
+    ProviderSandboxView {
+        external_id: detail.sandbox_id,
+        exists: true,
+        active: Some(detail.state == "running"),
+        state: detail.state.to_ascii_lowercase(),
+        created_at: timestamp(&detail.started_at),
+        ends_at: timestamp(&detail.end_at),
+        labels,
+        details,
+        ..ProviderSandboxView::default()
+    }
+}
+
+/// `GET /sandboxes/{id}`: what E2B reports about one sandbox.
+pub async fn describe(
+    client: &E2BClient,
+    external_id: &str,
+) -> Result<ProviderSandboxView, SandboxAdminError> {
+    match client.get_sandbox(external_id).await {
+        Ok(detail) => Ok(view(detail)),
+        Err(err) if is_not_found(&err) => Ok(ProviderSandboxView::missing(external_id)),
+        Err(err) => Err(SandboxAdminError::Provider(err)),
     }
 }
 
@@ -184,5 +233,31 @@ mod tests {
         let client = client(&server);
         stop(&client, "sb-1").await.unwrap();
         delete(&client, "sb-gone").await.unwrap();
+    }
+
+    // E2B's detail carries the envd access token; describe must not copy it.
+    #[tokio::test]
+    async fn describe_never_copies_the_access_token() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sandboxes/sb-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "clientID": "c", "cpuCount": 2, "diskSizeMB": 1024, "memoryMB": 512,
+                "endAt": "2026-11-09T03:00:00Z", "envdVersion": "0.2.0",
+                "sandboxID": "sb-1", "startedAt": "2026-11-09T02:00:00Z",
+                "state": "running", "templateID": "base",
+                "envdAccessToken": "envd-secret-token",
+                "metadata": {"everruns": "true", "other": "x"}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let view = describe(&client(&server), "sb-1").await.unwrap();
+        assert!(view.exists);
+        assert_eq!(view.active, Some(true));
+        assert!(view.ends_at.is_some());
+        assert_eq!(view.labels.len(), 1);
+        let text = serde_json::to_string(&view).unwrap();
+        assert!(!text.contains("envd-secret-token"), "{text}");
     }
 }

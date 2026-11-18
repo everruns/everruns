@@ -53,13 +53,13 @@ check(
 # covered is the exact false picture this report exists to remove.
 cells = r.parse(
     records(
-        ("configured", "openai", "OPENAI_API_KEY", "gpt-6-astra"),
-        ("quota", "openai", "OPENAI_API_KEY", "gpt-6-astra"),
+        ("configured", "openai", "OPENAI_API_KEY", "gpt-6.2-astra"),
+        ("quota", "openai", "OPENAI_API_KEY", "gpt-6.2-astra"),
     )
 )
 check(
     "quota outranks configured",
-    cells[("openai", "OPENAI_API_KEY", "gpt-6-astra")] == r.QUOTA,
+    cells[("openai", "OPENAI_API_KEY", "gpt-6.2-astra")] == r.QUOTA,
     cells,
 )
 
@@ -93,7 +93,7 @@ cells = r.parse(
     records(
         ("configured", "anthropic", "ANTHROPIC_API_KEY", "claude-haiku-4-5-20251001"),
         ("configured", "anthropic", "ANTHROPIC_API_KEY", "claude-sonnet-5"),
-        ("quota", "openai", "OPENAI_API_KEY", "gpt-6-astra"),
+        ("quota", "openai", "OPENAI_API_KEY", "gpt-6.2-astra"),
         ("no-key", "gemini", "GEMINI_API_KEY", "gemini-2.5-flash"),
     )
 )
@@ -117,7 +117,7 @@ body = "\n".join(
     r.format_report(
         r.parse(
             records(
-                ("no-key", "openai", "OPENAI_API_KEY", "gpt-6-astra"),
+                ("no-key", "openai", "OPENAI_API_KEY", "gpt-6.2-astra"),
                 ("quota", "anthropic", "ANTHROPIC_API_KEY", "claude-sonnet-5"),
             )
         )

@@ -7,7 +7,7 @@ Everruns is a multi-tenant agent runtime and control plane. Rust services expose
 - Axum serves organization-scoped REST APIs, SSE event streams, authentication, public metadata, and published-agent protocols.
 - Public agent surfaces include AG-UI, A2A, FCP, public chat, generic webhooks, and Slack events/interactivity.
 - Stateless workers claim durable task rows through an internal gRPC service; NATS primarily carries wake-up notifications and session event streams.
-- Background schedulers handle session work, scheduled triggers, lease cleanup, task reaping, tool-result timeouts, retention, and reporting.
+- Background schedulers handle session work, scheduled triggers, lease cleanup, task reaping, tool-result timeouts, and retention.
 - A Rust CLI and MCP endpoint expose control-plane operations, while runtime ToolRegistry and ToolContext objects expose capabilities to agents.
 
 ## Auth shape

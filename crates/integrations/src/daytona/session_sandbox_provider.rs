@@ -3,10 +3,11 @@
 use everruns_contracts::runtime::computer_use::{ComputerSession, ComputerUseConfig, DisplaySize};
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::session_sandbox::{
-    DesktopRecording, OwnedSandbox, SandboxAdminError, SessionSandboxConfig, SessionSandboxContext,
-    SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
-    SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
-    SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
+    DesktopRecording, OwnedSandbox, ProviderSandboxView, SandboxAdminError, SessionSandboxConfig,
+    SessionSandboxContext, SessionSandboxExecRequest, SessionSandboxExecResponse,
+    SessionSandboxInstance, SessionSandboxProvider, SessionSandboxReadFileResponse,
+    SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
+    SessionSandboxWriteFileResponse,
 };
 use everruns_contracts::tools::ToolExecutionResult;
 use everruns_contracts::typed_id::SessionId;
@@ -666,6 +667,14 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
 
     async fn stop_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {
         owned::stop(&DaytonaClient::new(token.to_string()), external_id).await
+    }
+
+    async fn describe_by_id(
+        &self,
+        token: &str,
+        external_id: &str,
+    ) -> Result<ProviderSandboxView, SandboxAdminError> {
+        owned::describe(&DaytonaClient::new(token.to_string()), external_id).await
     }
 
     async fn delete_by_id(&self, token: &str, external_id: &str) -> Result<(), SandboxAdminError> {

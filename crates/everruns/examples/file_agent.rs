@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = package
         .builder()?
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .build()?;
     let session = package.create(&Engine::new(), agent)?;
     let result = session.send_and_wait("Help me triage an issue.").await?;

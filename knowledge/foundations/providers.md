@@ -243,7 +243,7 @@ The model's identity, promoted from a runtime-computed shadow type to a first-cl
 Profile matching heuristics (version normalization, slug mapping) run at **sync/creation time** to assign `profile_key`; reads use the stored assignment.
 
 **Model identity normalization.** One model has a different id at each provider
-(`gpt-6.1-sol` at OpenAI, `openai/gpt-6.1-sol` at OpenRouter). Its normal form is
+(`gpt-6.2-sol` at OpenAI, `openai/gpt-6.2-sol` at OpenRouter). Its normal form is
 `vendor/model`: the profile key when the registry knows the model, otherwise derived
 from the driver's spelling (a first-party driver's bare id is prefixed with its vendor;
 a gateway's `vendor/model` id is kept). A custom endpoint's own names have no identity.

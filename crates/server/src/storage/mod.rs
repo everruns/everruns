@@ -52,7 +52,6 @@ pub mod pact_delegation;
 pub mod password;
 pub mod poppy;
 pub mod poppy_agent;
-pub mod reporting;
 pub mod repositories;
 pub mod repository;
 pub mod runtime;

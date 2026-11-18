@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .model(Model::new("gpt-6-luna", provider.clone()))
         .build()?;
-    let lead=Agent::builder().name("lead").instructions("Draft a short technical explanation, delegate a critique to reviewer with spawn_agent in foreground mode, then use the critique to produce the final answer. The reviewer is a separate agent with its own model.").model(Model::new("gpt-6.1-sol",provider)).member(reviewer).max_iterations(8).build()?;
+    let lead=Agent::builder().name("lead").instructions("Draft a short technical explanation, delegate a critique to reviewer with spawn_agent in foreground mode, then use the critique to produce the final answer. The reviewer is a separate agent with its own model.").model(Model::new("gpt-6.2-sol",provider)).member(reviewer).max_iterations(8).build()?;
     let session = Engine::new().create(lead);
     let turn = session
         .run("Explain Rust ownership and borrowing with one small example.")

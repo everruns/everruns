@@ -4,6 +4,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, dead_code)]
 
+pub mod org;
+
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -433,6 +435,15 @@ impl Fleet {
             .iter()
             .filter(|((c, _), (_, rt))| *c == cell && rt.is_some())
             .map(|((_, node), (addr, _))| (*node, addr.clone()))
+            .collect()
+    }
+
+    /// Every live node's address.
+    pub fn bases(&self) -> Vec<String> {
+        self.nodes
+            .values()
+            .filter(|(_, rt)| rt.is_some())
+            .map(|(addr, _)| format!("http://{addr}"))
             .collect()
     }
 

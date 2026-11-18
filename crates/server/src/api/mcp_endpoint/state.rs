@@ -17,7 +17,6 @@ pub struct AppState {
     pub capability_service: Arc<CapabilityService>,
     pub connector_registry: everruns_contracts::connector::ConnectorRegistry,
     pub budget_service: Arc<BudgetService>,
-    pub reporting_service: Arc<ReportingService>,
     pub runner: Arc<dyn TurnBackend>,
     pub auth: AuthState,
     pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
@@ -103,7 +102,6 @@ impl AppState {
             // `with_connector_registry`.
             connector_registry: crate::platform::oss_connector_registry(),
             budget_service: Arc::new(BudgetService::new(db.clone())),
-            reporting_service: Arc::new(ReportingService::new(db.clone())),
             db,
             runner,
             auth,

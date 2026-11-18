@@ -34,7 +34,7 @@ everruns history org --via-agent agent_01h9      # what one agent changed across
 
 Each entry carries the action (`created`, `updated`, `deleted`, ...), the command that ran, the fields the caller asked to change, the actor, the surface (`api`, `commands`, `mcp`, `platform`, `worker`), and the reason. The REST equivalents are `GET /v1/history/{entity_ref}` and `GET /v1/history`.
 
-Anyone who can see an entity can read its history. The organization-wide view needs audit-log access. Kinds whose ids carry no prefix (`schedule`, `saved_report`, `check_rule`) need `--kind`.
+Anyone who can see an entity can read its history. The organization-wide view needs audit-log access. Kinds whose ids carry no prefix (`schedule`, `check_rule`) need `--kind`.
 
 ## Revisions and restore
 

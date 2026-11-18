@@ -245,6 +245,7 @@ fn wake(
     message.created_at = at(now_ms);
     message.metadata = Some(everruns_core::message::task_wake_message_metadata());
     everruns_core::causal::task_causal_context(task).write_metadata(&mut message.metadata);
+    state.platform.senders.inherit(message.id);
     let admit = SessionCommand::Admit {
         message: Box::new(message),
         cancelled: false,
@@ -290,6 +291,77 @@ pub(crate) fn detail(
         .unwrap_or(0);
     let page: Vec<&TaskMessage> = all.iter().skip(start).take(limit).collect();
     json!({ "task": task, "messages": page })
+}
+
+/// A person's write to one of a session's tasks through the `/v1` API
+/// (step 11.6): a cancel, or a message to the task.
+#[derive(Debug, Deserialize)]
+pub struct ApiWrite {
+    pub task: String,
+    #[serde(default)]
+    pub cancel: bool,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub content: Option<Vec<everruns_core::session_task::TaskMessagePart>>,
+    #[serde(default)]
+    pub in_reply_to: Option<String>,
+}
+
+/// The kind of task `task` of the session, if it has one.
+pub(crate) fn kind_of(state: &SessionState, task: &str) -> Option<String> {
+    state
+        .platform
+        .tasks
+        .get(task)
+        .and_then(load)
+        .map(|t| t.kind)
+}
+
+/// The change `write` makes to a task of `kind`, or why it is refused,
+/// with the control plane's rules: a subagent or handoff is steered by its
+/// parent agent and an assignment through its thread, and a message needs
+/// content. A person's message applies whatever the task's attempt.
+pub fn api_op(write: ApiWrite, kind: &str) -> std::result::Result<TaskOp, String> {
+    use everruns_core::session_task::{
+        TASK_KIND_AGENT_HANDOFF, TASK_KIND_ASSIGNMENT, TASK_KIND_SUBAGENT, TaskMessagePart,
+    };
+    if write.cancel {
+        return Ok(TaskOp::RequestCancel {
+            task_id: write.task,
+        });
+    }
+    if kind == TASK_KIND_SUBAGENT || kind == TASK_KIND_AGENT_HANDOFF {
+        return Err(
+            "Subagent and agent-handoff tasks are steered by their parent agent via the \
+                    message_task tool; HTTP message delivery is not supported for this task kind."
+                .into(),
+        );
+    }
+    if kind == TASK_KIND_ASSIGNMENT {
+        return Err(
+            "Assignments belong to a thread: send the message to the thread session \
+                    itself, or ask the coordinator to relay it."
+                .into(),
+        );
+    }
+    let content = match (write.content, write.text) {
+        (Some(content), _) if !content.is_empty() => content,
+        (_, Some(text)) if !text.trim().is_empty() => vec![TaskMessagePart::text(text)],
+        _ => return Err("Message requires non-empty `content` parts or `text`".into()),
+    };
+    let message = TaskMessage {
+        id: generate_task_message_id(),
+        task_id: write.task,
+        direction: TaskMessageDirection::Inbound,
+        content,
+        in_reply_to: write.in_reply_to.filter(|s| !s.is_empty()),
+        created_at: Utc::now(),
+    };
+    Ok(TaskOp::Message {
+        message: Box::new(message),
+        expected_attempt: None,
+    })
 }
 
 /// The session tasks of an activation, in the owning sessions' cell state.

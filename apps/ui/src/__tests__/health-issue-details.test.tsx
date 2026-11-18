@@ -26,7 +26,13 @@ jest.mock("@/hooks/use-health-issues", () => ({
 }));
 jest.mock("@/lib/api/agent-channels", () => ({
   getAgentChannel: jest.fn(() =>
-    Promise.resolve({ channel_config: { slack_app_provisioned: mockManaged, team_id: "T1" } }),
+    Promise.resolve({
+      channel_config: {
+        slack_app_provisioned: mockManaged,
+        ...(mockManaged ? { slack_app_id: "A0123" } : {}),
+        team_id: "T1",
+      },
+    }),
   ),
 }));
 const issue: HealthIssue = {
@@ -56,6 +62,7 @@ const fixer = {
   undoable: false,
   needs_provider_admin: true,
   unavailable_reason: null,
+  unblock: null,
 };
 function mount(value = issue, canManage = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -76,7 +83,11 @@ test("manual repair explains reinstall and token update; check and snooze remain
     "href",
     "/agents/agent_1/channels/ep_1",
   );
-  expect(screen.getByText(/reinstall the existing app/)).toBeInTheDocument();
+  expect(screen.getByText(/Reinstall to Workspace/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "integration settings" })).toHaveAttribute(
+    "href",
+    "/agents/agent_1/channels/ep_1",
+  );
   fireEvent.click(screen.getByRole("button", { name: "Check again" }));
   expect(check).toHaveBeenCalledWith(issue.id);
   fireEvent.click(screen.getByRole("button", { name: "Remind me tomorrow" }));
@@ -98,15 +109,55 @@ test("a declared fixer explains its steps and runs by kind", async () => {
   // A consent URL outside the provider allowlist is never followed.
   expect(await screen.findByRole("alert")).toHaveTextContent(/unexpected approval page/);
 });
-test("an unavailable fixer says why and keeps the manual steps", async () => {
+test("a fixer nothing in Everruns unblocks says why and keeps the manual steps", async () => {
   mount({
     ...issue,
-    fixers: [{ ...fixer, unavailable_reason: "Connect this Slack workspace first." }],
+    fixers: [{ ...fixer, unavailable_reason: "This deployment cannot edit Slack apps." }],
   });
-  expect(screen.getByText("Fix not available yet")).toBeInTheDocument();
-  expect(screen.getByText("Connect this Slack workspace first.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Fix in Slack" })).toBeDisabled();
-  expect(await screen.findByText(/reinstall the existing app/)).toBeInTheDocument();
+  expect(screen.getByText("Fix not available here")).toBeInTheDocument();
+  expect(screen.getByText("This deployment cannot edit Slack apps.")).toBeInTheDocument();
+  // No greyed-out fix button that leads nowhere.
+  expect(screen.queryByRole("button", { name: "Fix in Slack" })).not.toBeInTheDocument();
+  expect(await screen.findByText(/Reinstall to Workspace/)).toBeInTheDocument();
+});
+test("a blocked fixer links to the step that unblocks it", async () => {
+  mockManaged = true;
+  mount({
+    ...issue,
+    missing_scopes: ["reactions:read"],
+    fixers: [
+      {
+        ...fixer,
+        unavailable_reason: "Reconnect the workspace, then come back and run the fix.",
+        unblock: { label: "Reconnect Slack workspace", href: "/settings/slack" },
+      },
+    ],
+  });
+  expect(screen.getByText("One step before the fix")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Reconnect Slack workspace" })).toHaveAttribute(
+    "href",
+    "/settings/slack",
+  );
+  expect(screen.queryByRole("button", { name: "Fix in Slack" })).not.toBeInTheDocument();
+  // Everruns-made apps get the manual steps too, straight to the app's page.
+  expect(await screen.findByRole("link", { name: "Open the app in Slack" })).toHaveAttribute(
+    "href",
+    "https://api.slack.com/apps/A0123/oauth",
+  );
+  expect(screen.getByText(/nothing to paste back/)).toBeInTheDocument();
+});
+test("an unblock link to another origin is not followed", () => {
+  mount({
+    ...issue,
+    fixers: [
+      {
+        ...fixer,
+        unavailable_reason: "Blocked.",
+        unblock: { label: "Go", href: "//evil.example/x" },
+      },
+    ],
+  });
+  expect(screen.queryByRole("link", { name: "Go" })).not.toBeInTheDocument();
 });
 test("viewers see escalation and cannot reconnect", () => {
   mount(issue, false);

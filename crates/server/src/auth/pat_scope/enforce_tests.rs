@@ -356,7 +356,7 @@ async fn command_run_refuses_every_write_command_for_a_read_only_caller() {
     }
     assert!(refused > 0, "no write command reached the check");
 
-    dispatch("get_report_catalog", serde_json::json!({}), &ctx)
+    dispatch("list_sandbox_targets", serde_json::json!({}), &ctx)
         .await
         .expect("a read command runs for a read-only caller");
 }

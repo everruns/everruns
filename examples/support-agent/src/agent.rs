@@ -2,7 +2,7 @@ use everruns::{Agent, BuildError, Provider};
 
 use crate::tools;
 
-pub const MODEL: &str = "gpt-6.1-sol";
+pub const MODEL: &str = "gpt-6.2-sol";
 
 pub fn build(provider: impl Into<Provider>) -> Result<Agent, BuildError> {
     Agent::builder()

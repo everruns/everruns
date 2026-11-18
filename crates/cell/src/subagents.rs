@@ -47,13 +47,35 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
     let Some(gateway) = port.gateway() else {
         return backends;
     };
+    let calls = crate::lookups::org_lookups(port.material(), session)
+        .map(|lookups| crate::platform_calls::PlatformCalls::new(lookups, session));
+    let bind = calls.is_some();
     let store: Arc<dyn PlatformStore> = Arc::new(CellPlatformStore {
         parent: session,
         port,
         gateway,
         children: Default::default(),
+        calls,
     });
-    backends.with_platform_store_factory(Arc::new(move |_org, _session| store.clone()))
+    let mut backends = backends.with_platform_store_factory({
+        let store = store.clone();
+        Arc::new(move |_org, _session| store.clone())
+    });
+    // The platform tools' calls run as the person of each turn's input
+    // message (`platform_calls.rs`): bind the store to it.
+    if bind {
+        let binding = Arc::new(crate::platform_calls::binding(store));
+        let inner = backends.tool_context_extensions_factory.take();
+        backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
+            let mut extensions = inner
+                .as_ref()
+                .map(|factory| factory(org, session))
+                .unwrap_or_default();
+            extensions.insert(binding.clone());
+            extensions
+        }));
+    }
+    backends
 }
 
 fn api(error: (axum::http::StatusCode, String)) -> AgentLoopError {
@@ -71,8 +93,10 @@ struct CellPlatformStore {
     parent: SessionId,
     port: Port,
     gateway: Arc<Gateway>,
-    /// Children made by this activation.
-    children: parking_lot::Mutex<HashMap<SessionId, ExecutionSession>>,
+    /// Children made by this activation, shared with its bound copies.
+    children: Arc<parking_lot::Mutex<HashMap<SessionId, ExecutionSession>>>,
+    /// The platform tools' calls, when the executor reaches a control plane.
+    calls: Option<crate::platform_calls::PlatformCalls>,
 }
 
 impl CellPlatformStore {
@@ -169,8 +193,48 @@ fn outcome(events: &[Event]) -> Option<&'static str> {
     status
 }
 
+impl CellPlatformStore {
+    async fn platform(&self, operation: &str, arguments: serde_json::Value) -> Result<String> {
+        match &self.calls {
+            Some(calls) => calls.call(operation, arguments).await,
+            None => Err(unsupported("platform commands without a control plane")),
+        }
+    }
+}
+
 #[async_trait]
 impl PlatformStore for CellPlatformStore {
+    fn for_execution(&self, input_message_id: uuid::Uuid) -> Option<Arc<dyn PlatformStore>> {
+        let calls = self.calls.as_ref()?;
+        Some(Arc::new(Self {
+            parent: self.parent,
+            port: self.port.clone(),
+            gateway: self.gateway.clone(),
+            children: self.children.clone(),
+            calls: Some(calls.bound(MessageId::from_uuid(input_message_id))),
+        }))
+    }
+
+    async fn platform_discover(&self, arguments: serde_json::Value) -> Result<String> {
+        self.platform("discover", arguments).await
+    }
+
+    async fn platform_query(&self, arguments: serde_json::Value) -> Result<String> {
+        self.platform("query", arguments).await
+    }
+
+    async fn platform_execute(&self, arguments: serde_json::Value) -> Result<String> {
+        self.platform("execute", arguments).await
+    }
+
+    async fn platform_run(&self, command: &str, params: serde_json::Value) -> Result<String> {
+        self.platform(
+            "run",
+            serde_json::json!({ "command": command, "params": params }),
+        )
+        .await
+    }
+
     async fn get_harness(&self, _id: HarnessId) -> Result<Option<HarnessDefinition>> {
         Err(unsupported("get_harness"))
     }

@@ -48,7 +48,7 @@ so it can never disagree with the page. Source: [`components/home/`](../../apps/
   `GET /v1/monitoring/timeline?range=24h`, whose current and previous summaries also feed the turn
   and failure-rate comparisons. Without Monitoring, the agents activity buckets draw turns per
   hour. Overview never designs its own chart.
-- **No spend.** Model spend stays in Monitoring and Reports. Overview carries no billing framing.
+- **No spend.** Model spend stays in Monitoring. Overview carries no billing framing.
 - **A new organization gets steps, not zeros.** Until it has an agent of its own, the key numbers
   and agent sections are replaced by a three-step Get started list.
 - **Chat reads what Overview shows.** The attention rows are registered as page rows, so Chat beside

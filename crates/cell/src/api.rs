@@ -35,6 +35,10 @@ pub fn router(node: Arc<Node>) -> Router {
             "/cell/sessions/{session}/inspect",
             get(crate::inspect::session),
         )
+        .route(
+            "/cell/sessions/{session}/sandbox",
+            get(crate::inspect::sandbox),
+        )
         .route("/metrics", get(metrics))
         .route("/cell/metrics/reset", post(reset_metrics))
         .route("/cell/snapshot", post(trigger_snapshot))
@@ -549,6 +553,15 @@ pub struct CellLoad {
 /// tool, a person, another session), not working.
 pub const WAITING_AFTER: chrono::Duration = chrono::Duration::seconds(30);
 
+/// An idle session whose schedule falls due within this is not moved.
+/// Decision: no cell fires a schedule while its session moves (the source
+/// is frozen, the target's copy only prepared), so a move that straddles
+/// the due time makes it late by the move. Under load a move takes seconds:
+/// main CI saw schedules fire 6.5 s late in `cell-testkit`'s 10 000
+/// schedules test while the rebalancer evened out idle sessions. Idle
+/// sessions are only moved to even out counts, so waiting costs nothing.
+pub const SCHEDULE_CLEAR: std::time::Duration = std::time::Duration::from_secs(30);
+
 impl CellLoad {
     /// What the cell's turns cost, in turn slots.
     ///
@@ -606,6 +619,7 @@ struct Movable {
 /// current turn has written.
 async fn movable(State(node): State<Arc<Node>>, Query(q): Query<Movable>) -> Json<Vec<SessionId>> {
     let since = chrono::Utc::now() - WAITING_AFTER;
+    let soon = crate::node::now_ms() + SCHEDULE_CLEAR.as_millis() as i64;
     let state = node.shared.state.read();
     let mut found: Vec<((bool, i64), SessionId)> = state
         .sessions
@@ -619,7 +633,11 @@ async fn movable(State(node): State<Arc<Node>>, Query(q): Query<Movable>) -> Jso
                 let waiting = s.events.last().is_some_and(|e| e.ts <= since);
                 Some(((waiting, -(progress as i64)), *id))
             }
-            (false, "idle") if s.queued() == 0 && !s.authority.runnable => Some(((false, 0), *id)),
+            (false, "idle")
+                if s.queued() == 0 && !s.authority.runnable && !s.platform.due_before(soon) =>
+            {
+                Some(((false, 0), *id))
+            }
             _ => None,
         })
         .collect();
@@ -1130,7 +1148,14 @@ async fn create_session(
 
 #[derive(Deserialize)]
 pub struct MessageBody {
+    /// The message's text, when it is only text.
+    #[serde(default)]
     pub text: String,
+    /// Or its parts (text, images, files), when it has any but text
+    /// (step 11.6). An image or file part refers to an attachment already
+    /// in the session's files (`/attachments/<id>/`).
+    #[serde(default)]
+    pub parts: Vec<everruns_core::ContentPart>,
     pub id: everruns_contracts::typed_id::MessageId,
     /// Who wrote it, when not the person (an agent trigger, step 11.4).
     #[serde(default)]
@@ -1142,6 +1167,11 @@ pub struct MessageBody {
     /// The channel participant who wrote it (step 11.5).
     #[serde(default)]
     pub external_actor: Option<everruns_core::ExternalActor>,
+    /// The person who sent it (a user id), from a trusted admission path:
+    /// the gateway's verified org token or the control plane
+    /// (`senders.rs`). Recorded before the message is admitted.
+    #[serde(default)]
+    pub sender: Option<String>,
 }
 
 /// Admit a user message through Engine (`Session::send_with_id`): a retry
@@ -1166,7 +1196,23 @@ async fn send_message(
             return Ok(Json(reply));
         }
     };
+    if let Some(reason) = missing_attachment(&node, id, &body.parts).await {
+        return Ok(Json(CellReply::Refused { reason }));
+    }
+    if let Some(user) = body.sender.clone() {
+        let action = crate::platform::Op::Sender {
+            message: body.id,
+            user,
+        };
+        match crate::api_session::platform(&node, id, action).await? {
+            CellReply::Ok { .. } => {}
+            other => return Ok(Json(other)),
+        }
+    }
     let mut input = everruns::InputMessage::user(body.text);
+    if !body.parts.is_empty() {
+        input.content = body.parts;
+    }
     input.metadata = body.metadata;
     input.external_actor = body.external_actor;
     if let Some(origin) = &body.origin {
@@ -1194,6 +1240,52 @@ async fn send_message(
         Err(error) => reply_of(error),
     };
     Ok(Json(reply))
+}
+
+/// Why `parts` cannot be admitted: an image or file part whose attachment
+/// is not in the session's files. The executor reads an attachment's bytes
+/// from there when it builds a request (Engine's session attachments), so
+/// a message must never name one the session does not hold. The control
+/// plane copies uploads there before it sends such a message (step 11.6).
+async fn missing_attachment(
+    node: &Node,
+    session: SessionId,
+    parts: &[everruns_core::ContentPart],
+) -> Option<String> {
+    use everruns_core::ContentPart;
+    use everruns_core::session_files::SessionFileSystem as _;
+    let files = node.hosting.workspace_api();
+    let mut synced = false;
+    for part in parts {
+        let id = match part {
+            ContentPart::ImageFile(image) => image.image_id.to_string(),
+            ContentPart::File(file) => file.file_id.to_string(),
+            _ => continue,
+        };
+        let dir = format!(
+            "{}/{id}",
+            everruns_contracts::runtime::attachments::ATTACHMENTS_ROOT
+        );
+        loop {
+            let held = files
+                .list_directory(session, &dir)
+                .await
+                .is_ok_and(|entries| entries.iter().any(|entry| !entry.is_directory));
+            if held {
+                break;
+            }
+            // The copy may have committed after this replica last applied.
+            if !synced && crate::api_files::read_barrier(node).await.is_ok() {
+                synced = true;
+                continue;
+            }
+            return Some(format!(
+                "attachment {id} is not in the session's files; send a message with uploads \
+                 through the control plane, which copies them there"
+            ));
+        }
+    }
+    None
 }
 
 #[derive(Deserialize)]

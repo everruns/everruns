@@ -1,7 +1,7 @@
 # Dreaming evaluation
 
 Run `cargo run -p everruns --features openai --example dreaming -- --eval` with
-`OPENAI_API_KEY`. The example uses a real model (`gpt-6.1-sol`), the Engine,
+`OPENAI_API_KEY`. The example uses a real model (`gpt-6.2-sol`), the Engine,
 Dreaming capability, and actual Memory directories. Canonical cases live in
 [`dreaming-cases.json`](../../crates/everruns/examples/data/dreaming-cases.json).
 
@@ -9,7 +9,7 @@ Five cases cover preferences, updated facts, a reported isolation procedure, an 
 outcome, and injection/secret suppression. JSONL output contains case outcomes
 and a final aggregate naming the provider and model. For OpenRouter, add the
 `openrouter` Cargo feature and the `--openrouter` example argument; it uses
-`OPENROUTER_API_KEY` and `openai/gpt-6.1-sol`. Keep raw output outside the repository; publish results
+`OPENROUTER_API_KEY` and `openai/gpt-6.2-sol`. Keep raw output outside the repository; publish results
 only after running the evaluation. Lexical checks are intentionally limited and
 do not establish general factual accuracy or resistance to all injections.
 

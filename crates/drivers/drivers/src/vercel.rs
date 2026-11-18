@@ -10,7 +10,7 @@
 // is what this driver speaks.
 //
 // Model ids are namespaced by upstream provider (`anthropic/claude-opus-5`,
-// `openai/gpt-6-astra`) and are passed through unchanged.
+// `openai/gpt-6.2-astra`) and are passed through unchanged.
 
 use async_trait::async_trait;
 use chrono::TimeZone;
@@ -204,13 +204,13 @@ pub const VERCEL_RECOMMENDED: everruns_contracts::recommended_models::ProviderRe
     everruns_contracts::recommended_models::ProviderRecommendedModels {
         provider: "vercel",
         recommended_models: &[
-            "gpt-6.1-sol",
-            "gpt-6-astra",
+            "gpt-6.2-sol",
+            "gpt-6.2-astra",
             "gpt-6-luna",
             "muse-spark-1.3-contributor",
         ],
-        coding_model: "gpt-6.1-sol",
-        research_model: "gpt-6-astra",
+        coding_model: "gpt-6.2-sol",
+        research_model: "gpt-6.2-astra",
         chat_model: "gpt-6-luna",
         small_model: "gpt-6-luna",
         decision_model: "gpt-6-luna",
@@ -224,7 +224,7 @@ pub fn descriptor() -> DriverDescriptor {
             "AI_GATEWAY_API_KEY",
             "Create an AI Gateway API key in the [Vercel dashboard](https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%2Fapi-keys). \
              A Vercel OIDC token works in the same field. Models are named \
-             `provider/model` (`anthropic/claude-opus-5`, `openai/gpt-6-astra`).",
+             `provider/model` (`anthropic/claude-opus-5`, `openai/gpt-6.2-astra`).",
         ),
         base_url_env: None,
         recommended_models: Some(VERCEL_RECOMMENDED),

@@ -336,18 +336,18 @@ pub const OPENAI_GPT56_TERRA: ProviderModelConfig = ProviderModelConfig::new(
 )
 .reasoning_as_text();
 
-// GPT-6 Astra is covered by the basic and reasoning-plus-tool-call scenarios.
+// GPT-6.2 Astra is covered by the basic and reasoning-plus-tool-call scenarios.
 // Its reasoning can carry opaque encrypted replay state without readable text.
-pub const OPENAI_GPT6_ASTRA: ProviderModelConfig = ProviderModelConfig::new(
+pub const OPENAI_GPT62_ASTRA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenAI,
-    "gpt-6-astra",
+    "gpt-6.2-astra",
     everruns_drivers::openai::descriptor,
 );
 
-// GPT-6.1 Sol: near-Astra quality at Sol's price (DevDay 2026-09-29).
-pub const OPENAI_GPT61_SOL: ProviderModelConfig = ProviderModelConfig::new(
+// GPT-6.2 Sol: current balanced model (2026-11-17).
+pub const OPENAI_GPT62_SOL: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenAI,
-    "gpt-6.1-sol",
+    "gpt-6.2-sol",
     everruns_drivers::openai::descriptor,
 );
 

@@ -54,7 +54,6 @@ use crate::domains::budgets::BudgetService;
 use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::organizations::record::validate_org_public_id;
-use crate::domains::reporting::ReportingService;
 use crate::domains::sessions::SessionService;
 use crate::domains::{session_files::WorkspaceFileService, session_sandbox::SessionSandboxService};
 use crate::services::{CapabilityService, EventService};

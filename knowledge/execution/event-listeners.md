@@ -76,8 +76,7 @@ below makes them restart safe.
   writes): thread coordination, A2A push, notifications, MCP events,
   sandbox lifecycle, and listeners an embedder adds. Later (polled every 2 s,
   pages of 1,000): usage, budgets, customer tracing, turn latency, session
-  trace, titles, run summaries, observer matching, approval audit, reporting
-  facts. Turn latency and the session trace keep each running turn in memory
+  trace, titles, run summaries, observer matching, approval audit. Turn latency and the session trace keep each running turn in memory
   and act on its last event, since the feed hands one replica every event of
   a session in order; they read the turn back from storage only when they did
   not see its start. Each tier
@@ -101,7 +100,6 @@ Effects under replay:
 | Notifications | Dedupe key per turn |
 | Observer matching | Score rows unique per observer, scorer and turn |
 | Approval audit | Audit row id is the event id |
-| Reporting facts | Fact rows unique on a source key from the event (capability snapshots: the turn) |
 | MCP events | Carry the event id for receivers to dedupe |
 | A2A push, coordination, sandbox | Apply the current state, not a delta |
 | Session trace | Applies events past its watermark only |
@@ -122,18 +120,11 @@ woke the near tier on every write. At 100 agents on the stress bench that added
 a quarter more commits per turn, 40% more database load and a third more
 pickup latency, with overhead per model call unchanged within noise.
 
-## Reporting
-
-Reporting facts are a later-tier listener (`ReportingProjection`); event
-writes no longer enqueue reporting outbox rows. Capability snapshot facts are
-keyed per turn, so a turn's later model calls write none
-(`knowledge/evaluation/reporting.md`).
-
 ## Session reads
 
 Listeners run on nearly every event, so what they read about the session comes
 from memory where it can stay exact. The org, parent, workspace and agent are
-set when a session is created and never change, so the reporting, sandbox
+set when a session is created and never change, so the sandbox
 capability and late-usage paths take them from the per-server lineage cache (`crates/server/src/storage/backend/identity_cache.rs`). The
 observer listener takes an org's active observers from the configuration row
 cache, which a trigger on `observers` keeps exact across servers

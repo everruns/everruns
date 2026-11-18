@@ -93,7 +93,7 @@ let agent = Agent::builder()
 The session event stream reports each sent message as
 `SessionEventKind::MessageSent { message_id, text }`. The
 [`explicit_communication`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/explicit_communication.rs)
-example runs against `gpt-6.1-sol`, opts into live note inspection, and prints
+example runs against `gpt-6.2-sol`, opts into live note inspection, and prints
 the sent messages separately from the notes:
 
 ```bash

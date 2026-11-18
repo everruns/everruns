@@ -12,7 +12,7 @@
 //! - Delegation is the built-in `a2a_agent_delegation` capability, configured
 //!   with the researcher's base URL. It resolves the Agent Card under it and
 //!   calls `SendMessage`; the model sees one `spawn_agent` tool.
-//! - Both agents run on a real model: the writer on OpenAI's `gpt-6.1-sol`
+//! - Both agents run on a real model: the writer on OpenAI's `gpt-6.2-sol`
 //!   (`OPENAI_API_KEY`), the researcher on whatever its serve gateway routes.
 
 use everruns::providers::openai::OpenAI;
@@ -20,7 +20,7 @@ use everruns::{Agent, CapabilityRef, Engine, LocalConfig, Model};
 use everruns_example_demo as demo;
 use serde_json::{Value, json};
 
-const MODEL: &str = "gpt-6.1-sol";
+const MODEL: &str = "gpt-6.2-sol";
 const RESEARCHER: &str = "http://127.0.0.1:3000/v1/channels/researcher/a2a";
 
 #[tokio::main]

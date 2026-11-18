@@ -86,7 +86,7 @@ pub struct Cli {
     #[arg(long)]
     read_only: bool,
 
-    /// OpenAI model id (default `gpt-6.1-sol`; needs `OPENAI_API_KEY`).
+    /// OpenAI model id (default `gpt-6.2-sol`; needs `OPENAI_API_KEY`).
     #[arg(short = 'm', long)]
     model: Option<String>,
 
@@ -151,7 +151,7 @@ impl Cli {
         self.model
             .clone()
             .or_else(|| std::env::var("EVERRUNS_CLI_MODEL").ok())
-            .unwrap_or_else(|| "gpt-6.1-sol".to_string())
+            .unwrap_or_else(|| "gpt-6.2-sol".to_string())
     }
 
     /// Parsed reasoning effort.

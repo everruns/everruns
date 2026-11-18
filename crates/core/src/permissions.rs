@@ -82,12 +82,6 @@ pub enum Permission {
     OrgApiKeysManage,
     /// View audit logs (read-only)
     OrgAuditLogsView,
-    /// View semantic reports (read-only)
-    OrgReportsView,
-    /// Manage saved reports and reporting definitions
-    OrgReportsManage,
-    /// Run reporting administrative operations
-    OrgReportsAdmin,
 }
 
 impl Permission {
@@ -126,9 +120,6 @@ impl Permission {
             Permission::OrgMembersManage => "org:members:manage",
             Permission::OrgApiKeysManage => "org:api-keys:manage",
             Permission::OrgAuditLogsView => "org:audit-logs:view",
-            Permission::OrgReportsView => "org:reports:view",
-            Permission::OrgReportsManage => "org:reports:manage",
-            Permission::OrgReportsAdmin => "org:reports:admin",
         }
     }
 
@@ -166,9 +157,6 @@ impl Permission {
         Permission::OrgMembersManage,
         Permission::OrgApiKeysManage,
         Permission::OrgAuditLogsView,
-        Permission::OrgReportsView,
-        Permission::OrgReportsManage,
-        Permission::OrgReportsAdmin,
     ];
 }
 
@@ -216,9 +204,6 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
     Permission::OrgAuditLogsView,
-    Permission::OrgReportsView,
-    Permission::OrgReportsManage,
-    Permission::OrgReportsAdmin,
 ];
 
 /// Permissions granted to Admin role.
@@ -252,8 +237,6 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
     Permission::OrgAuditLogsView,
-    Permission::OrgReportsView,
-    Permission::OrgReportsManage,
 ];
 
 /// Permissions granted to Member role.
@@ -282,7 +265,6 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgModelsView,
     Permission::OrgSettingsView,
     Permission::OrgMembersView,
-    Permission::OrgReportsView,
 ];
 
 /// Check whether a role grants a specific permission.
@@ -1148,19 +1130,6 @@ mod tests {
                 Permission::OrgAuditLogsView,
                 "org:audit-logs:view",
                 true,
-                false,
-            ),
-            (Permission::OrgReportsView, "org:reports:view", true, true),
-            (
-                Permission::OrgReportsManage,
-                "org:reports:manage",
-                true,
-                false,
-            ),
-            (
-                Permission::OrgReportsAdmin,
-                "org:reports:admin",
-                false,
                 false,
             ),
         ];

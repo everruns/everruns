@@ -85,7 +85,41 @@ pub struct IssueFixer {
     pub needs_provider_admin: bool,
     /// Why it cannot run now, and what unlocks it. Absent when it can run.
     pub unavailable_reason: Option<String>,
+    /// The page where the person takes the step that unlocks the fix, when
+    /// one exists in Everruns. Absent when the fix can run, or when nothing in
+    /// Everruns unlocks it (only the manual steps remain).
+    pub unblock: Option<FixerUnblock>,
 }
+
+/// A link to the step that makes a blocked fixer available.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct FixerUnblock {
+    /// Button text.
+    #[schema(example = "Reconnect Slack workspace")]
+    pub label: String,
+    /// A path inside the Everruns console, never an external URL.
+    #[schema(example = "/settings/slack")]
+    pub href: String,
+}
+
+/// Why a fixer is blocked, and where to unblock it.
+struct Blocker {
+    reason: String,
+    unblock: Option<FixerUnblock>,
+}
+
+impl Blocker {
+    fn split(blocker: Option<Blocker>) -> (Option<String>, Option<FixerUnblock>) {
+        match blocker {
+            Some(b) => (Some(b.reason), b.unblock),
+            None => (None, None),
+        }
+    }
+}
+
+/// The organization's Slack workspaces page, where a workspace is connected
+/// or reconnected.
+const SLACK_SETTINGS: &str = "/settings/slack";
 
 /// The result of running a fixer.
 #[derive(Debug, Serialize, ToSchema)]
@@ -166,25 +200,34 @@ async fn slack_channel(
 async fn workspace_blocker(
     ctx: &Ctx,
     team_id: Option<&str>,
-) -> Result<Option<String>, CommandError> {
+) -> Result<Option<Blocker>, CommandError> {
     if ctx.slack_provisioner.is_none() {
-        return Ok(Some(
-            "This deployment cannot edit Slack apps. Use the manual steps below.".into(),
-        ));
+        return Ok(Some(Blocker {
+            reason: "This deployment cannot edit Slack apps. Use the manual steps below.".into(),
+            unblock: None,
+        }));
     }
     let connections = ctx.db.list_org_slack_connections(ctx.org_id()).await?;
     let connection = connections
         .iter()
         .find(|c| team_id.is_none() || c.team_id.as_deref() == team_id);
     Ok(match connection {
-        None => Some(
-            "Connect this Slack workspace to the organization, as someone who can edit the app in Slack, and Everruns can fix it."
+        None => Some(Blocker {
+            reason: "Everruns edits the app through the organization's connection to this Slack workspace, and there is none yet. Connect the workspace, as someone who can edit the app in Slack, then come back and run the fix."
                 .into(),
-        ),
-        Some(c) if c.state == "reconnect_required" => Some(
-            "Reconnect this Slack workspace in the organization's Slack settings, and Everruns can fix it."
+            unblock: Some(FixerUnblock {
+                label: "Connect Slack workspace".into(),
+                href: SLACK_SETTINGS.into(),
+            }),
+        }),
+        Some(c) if c.state == "reconnect_required" => Some(Blocker {
+            reason: "Everruns edits the app through the organization's connection to this Slack workspace, and Slack stopped accepting it. Reconnect the workspace, then come back and run the fix."
                 .into(),
-        ),
+            unblock: Some(FixerUnblock {
+                label: "Reconnect Slack workspace".into(),
+                href: SLACK_SETTINGS.into(),
+            }),
+        }),
         Some(_) => None,
     })
 }
@@ -228,6 +271,7 @@ pub async fn fixers_for(ctx: &Ctx, row: &HealthIssueRow) -> Result<Vec<IssueFixe
                 undoable: true,
                 needs_provider_admin: false,
                 unavailable_reason: None,
+                unblock: None,
             })
             .collect());
     }
@@ -254,24 +298,30 @@ pub async fn fixers_for(ctx: &Ctx, row: &HealthIssueRow) -> Result<Vec<IssueFixe
     if rejected {
         // A hand-made app's revoked token can only be replaced by its owner.
         return Ok(match slack.origin {
-            SlackOrigin::Everruns => vec![IssueFixer {
-                kind: SLACK_RECONNECT.into(),
-                label: "Reconnect in Slack".into(),
-                steps: vec![
-                    format!("Slack opens so you can approve the {agent} app again."),
-                    "You come back here and Everruns checks the app again.".into(),
-                ],
-                effect: "consent".into(),
-                undoable: false,
-                needs_provider_admin: true,
-                unavailable_reason: workspace_blocker(ctx, team).await?,
-            }],
+            SlackOrigin::Everruns => {
+                let (unavailable_reason, unblock) =
+                    Blocker::split(workspace_blocker(ctx, team).await?);
+                vec![IssueFixer {
+                    kind: SLACK_RECONNECT.into(),
+                    label: "Reconnect in Slack".into(),
+                    steps: vec![
+                        format!("Slack opens so you can approve the {agent} app again."),
+                        "You come back here and Everruns checks the app again.".into(),
+                    ],
+                    effect: "consent".into(),
+                    undoable: false,
+                    needs_provider_admin: true,
+                    unavailable_reason,
+                    unblock,
+                }]
+            }
             SlackOrigin::ByHand => Vec::new(),
         });
     }
     if row.missing_scopes.is_empty() {
         return Ok(Vec::new());
     }
+    let (unavailable_reason, unblock) = Blocker::split(workspace_blocker(ctx, team).await?);
     Ok(vec![IssueFixer {
         kind: SLACK_ADD_PERMISSIONS.into(),
         label: "Fix in Slack".into(),
@@ -279,7 +329,8 @@ pub async fn fixers_for(ctx: &Ctx, row: &HealthIssueRow) -> Result<Vec<IssueFixe
         effect: "consent".into(),
         undoable: false,
         needs_provider_admin: true,
-        unavailable_reason: workspace_blocker(ctx, team).await?,
+        unavailable_reason,
+        unblock,
     }])
 }
 
@@ -412,6 +463,10 @@ async fn model_sync_fixer(
         effect: "in_place".into(),
         undoable: false,
         needs_provider_admin: false,
+        unblock: unavailable_reason.as_ref().map(|_| FixerUnblock {
+            label: format!("Open {name}"),
+            href: format!("/models/providers/{provider_id}"),
+        }),
         unavailable_reason,
     }))
 }

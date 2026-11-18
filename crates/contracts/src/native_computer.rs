@@ -261,6 +261,8 @@ mod tests {
     #[test]
     fn openai_native_computer_starts_at_gpt_5_4() {
         for model in [
+            "gpt-6.2-sol",
+            "gpt-6.2-astra",
             "gpt-6.1-sol",
             "gpt-6-astra",
             "gpt-5.4",

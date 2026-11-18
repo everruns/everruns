@@ -36,8 +36,8 @@ primary service remains independent.
 
 This phase copies history and qualifies reads. It does not remove canonical
 rows, route user requests to DataFusion, alter actor fencing, export customer
-telemetry, or move billing authority. See [Events](../execution/events.md),
-[Session Trace](../ui/session-trace.md), and [Reporting](../evaluation/reporting.md).
+telemetry, or move billing authority. See [Events](../execution/events.md)
+and [Session Trace](../ui/session-trace.md).
 
 ## Tradeoffs and scope of the experiment
 

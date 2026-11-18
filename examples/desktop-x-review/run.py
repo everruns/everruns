@@ -6,7 +6,7 @@ reviews the recent posts of an X (Twitter) account.
 The agent gets one Daytona (or E2B) Sandbox with `desktop` turned on in its
 Sandbox Template, so its shell, its files and its screen are the same machine. It
 drives the screen through the `computer` tool and writes its review to a file
-in the Sandbox workspace. The model is real (`gpt-6.1-sol`); every step is the
+in the Sandbox workspace. The model is real (`gpt-6.2-sol`); every step is the
 model looking at a screenshot and choosing the next action.
 
 Usage:
@@ -35,7 +35,7 @@ import urllib.request
 AGENT_FILE = os.path.join(os.path.dirname(__file__), "desktop-x-review.md")
 # The local dev proxy (PORT_PREFIX=271) serves the API under /api.
 DEFAULT_BASE_URL = "http://localhost:27100/api"
-DEFAULT_MODEL = "gpt-6.1-sol"
+DEFAULT_MODEL = "gpt-6.2-sol"
 REVIEW_PATH = "x-review.md"
 # A browser session on a desktop takes dozens of screenshot round trips.
 TURN_TIMEOUT_SECONDS = 30 * 60

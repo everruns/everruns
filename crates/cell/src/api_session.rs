@@ -1,7 +1,8 @@
 //! A node's session commands behind the Everruns `/v1` session API
 //! (`gateway_v1.rs`): answering tool approvals, client-side tool results,
-//! cancelling the running turn, the session's schedules, and a channel's
-//! prior conversation (step 11.5). Each answers
+//! cancelling the running turn, the session's schedules, a channel's
+//! prior conversation (step 11.5), and the events the control plane records
+//! on a session and its storage (11.6). Each answers
 //! a [`CellReply`], so the gateway follows moves and freezes the same way
 //! it does for admissions.
 
@@ -9,7 +10,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use everruns::hosting::SessionHosting as _;
 use everruns_contracts::execution_api::ToolApprovalAnswer;
@@ -32,6 +33,14 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/sessions/{session}/seed", post(seed))
         .route("/cell/sessions/{session}/schedules", post(schedules))
         .route("/cell/sessions/{session}/tasks", post(tasks))
+        .route("/cell/sessions/{session}/task", post(task))
+        .route("/cell/sessions/{session}/record", post(record))
+        .route(
+            "/cell/sessions/{session}/storage",
+            get(storage).post(change_storage),
+        )
+        .route("/cell/sessions/{session}/secrets", get(secrets))
+        .route("/cell/sessions/{session}/sender", post(sender))
         .with_state(node)
 }
 
@@ -250,6 +259,12 @@ async fn schedules(
     Json(body): Json<Schedules>,
 ) -> Result<Json<CellReply>, ApiError> {
     let id = parse(&session)?;
+    // Senders are recorded only with the message (`api.rs` `send_message`).
+    if matches!(body.action, Some(crate::platform::Op::Sender { .. })) {
+        return Ok(Json(CellReply::Refused {
+            reason: "a sender is recorded with its message".into(),
+        }));
+    }
     let Some(action) = body.action else {
         let listed = crate::api::lookup(&node, id, |s| {
             let live: Vec<_> = s
@@ -270,7 +285,7 @@ async fn schedules(
 }
 
 /// Propose a platform change to `id`, as a [`CellReply`].
-async fn platform(
+pub(crate) async fn platform(
     node: &Node,
     id: SessionId,
     action: crate::platform::Op,
@@ -293,6 +308,74 @@ async fn platform(
         },
         Err(error) => return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string())),
     })
+}
+
+#[derive(Deserialize)]
+struct Record {
+    /// The event's id, which makes a retry find it.
+    event_id: everruns_contracts::typed_id::EventId,
+    event: everruns_core::events::EventRequest,
+}
+
+/// Record an event the control plane produced on the session (a reaction,
+/// `platform::RECORDABLE`); answers the event.
+async fn record(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<Record>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    // Checked again when the command applies; refused here so an event the
+    // control plane may not write never enters the log.
+    if let Err(reason) = crate::platform::recordable(id, &body.event) {
+        return Ok(Json(CellReply::Refused { reason }));
+    }
+    let action = crate::platform::Op::Record {
+        event_id: body.event_id,
+        request: Box::new(body.event),
+    };
+    Ok(Json(platform(&node, id, action).await?))
+}
+
+/// The session's values and secret names (`session_storage.rs`).
+async fn storage(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+) -> Result<Json<Lookup<Value>>, ApiError> {
+    let id = parse(&session)?;
+    Ok(Json(crate::api::lookup(
+        &node,
+        id,
+        crate::session_storage::listed,
+    )))
+}
+
+/// The session's secrets as stored, sealed (`session_storage.rs`), for
+/// the control plane.
+async fn secrets(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+) -> Result<Json<Lookup<Value>>, ApiError> {
+    let id = parse(&session)?;
+    Ok(Json(crate::api::lookup(
+        &node,
+        id,
+        crate::session_storage::sealed_secrets,
+    )))
+}
+
+/// A person's change to the session's storage, through the control plane.
+async fn change_storage(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(op): Json<crate::session_storage::StorageOp>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    if let Some(reason) = crate::session_storage::refused(id, &op) {
+        return Ok(Json(CellReply::Refused { reason }));
+    }
+    let action = crate::platform::Op::Storage(op);
+    Ok(Json(platform(&node, id, action).await?))
 }
 
 #[derive(Deserialize)]
@@ -327,6 +410,33 @@ async fn tasks(
         Lookup::Moved { cell } => CellReply::Moved { cell },
         Lookup::Missing => CellReply::NotFound,
     }))
+}
+
+/// Cancel one of the session's tasks, or send it a person's message
+/// (`tasks::api_op`); answers the task or the message, null for a task the
+/// session does not have.
+async fn task(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(write): Json<crate::tasks::ApiWrite>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    let kind = match crate::api::lookup(&node, id, |s| crate::tasks::kind_of(s, &write.task)) {
+        Lookup::Here(Some(kind)) => kind,
+        Lookup::Here(None) => {
+            return Ok(Json(CellReply::Ok {
+                value: serde_json::Value::Null,
+            }));
+        }
+        Lookup::Moved { cell } => return Ok(Json(CellReply::Moved { cell })),
+        Lookup::Missing => return Ok(Json(CellReply::NotFound)),
+    };
+    match crate::tasks::api_op(write, &kind) {
+        Ok(op) => Ok(Json(
+            platform(&node, id, crate::platform::Op::Task(op)).await?,
+        )),
+        Err(reason) => Ok(Json(CellReply::Refused { reason })),
+    }
 }
 
 #[cfg(test)]
@@ -369,4 +479,29 @@ mod tests {
         events.push(started(session, second, b));
         assert_eq!(running_input(&events), Some(b));
     }
+}
+
+#[derive(Deserialize)]
+struct SenderOf {
+    message: MessageId,
+}
+
+/// Who sent the session's input message `message` (`senders.rs`):
+/// `{"user": <user id or null>}`.
+async fn sender(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(body): Json<SenderOf>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    let found = crate::api::lookup(&node, id, |s| {
+        s.platform.senders.of(body.message).map(str::to_owned)
+    });
+    Ok(Json(match found {
+        Lookup::Here(user) => CellReply::Ok {
+            value: json!({ "user": user }),
+        },
+        Lookup::Moved { cell } => CellReply::Moved { cell },
+        Lookup::Missing => CellReply::NotFound,
+    }))
 }

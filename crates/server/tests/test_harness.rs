@@ -951,7 +951,6 @@ impl TestServer {
             everruns_server::platform::oss_connector_registry(),
             mcp_service,
         );
-        let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
 
         let virtual_user_connections_state = api::virtual_user_connections::AppState::new(
             db.clone(),
@@ -1159,7 +1158,6 @@ impl TestServer {
             ))
             .merge(api::sandbox_templates::routes(environments_state))
             .merge(api::user_connections::routes(user_connections_state))
-            .merge(api::reporting::routes(reporting_state))
             .merge(everruns_server::channels::ag_ui::routes(ag_ui_state))
             .merge(everruns_server::channels::public_chat::routes(
                 public_chat_state,

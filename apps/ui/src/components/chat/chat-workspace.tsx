@@ -10,7 +10,7 @@ import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Maximize2, Minimize2, Plus, X } from "lucide-react";
+import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { useSession } from "@/hooks/use-sessions";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
@@ -21,7 +21,7 @@ import { ChatThreadWorkDetail } from "@/components/chat/chat-thread-work-detail"
 import { ChatWorkspaceContext } from "@/components/chat/chat-workspace-context";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { useChatMode } from "@/components/chat-mode/chat-mode-context";
-import { Button, LinkButton } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
@@ -378,14 +378,6 @@ export function ChatWorkspace({
               extraActions={
                 <>
                   {extraActions}
-                  <LinkButton
-                    href="/chats/new"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={ui("New side chat")}
-                  >
-                    <Plus />
-                  </LinkButton>
                   <Button
                     ref={threadsButton}
                     variant="outline"

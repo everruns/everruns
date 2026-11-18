@@ -47,7 +47,8 @@ type ModelFactory = Arc<dyn Fn(&str) -> Option<Model> + Send + Sync>;
 /// A host built from named tools and model providers.
 ///
 /// A definition's `tools` are bound by name from the tools registered here;
-/// its `capabilities` must be ones the Everruns Framework itself provides;
+/// its `capabilities` are the Framework's, the platform ones this crate
+/// implements, or the hosted catalog the v1 worker registers;
 /// its `model.provider` must be registered here.
 #[derive(Default, Clone)]
 pub struct StandardHost {
@@ -205,6 +206,7 @@ impl Host for StandardHost {
         {
             services = services.register(everruns_capabilities::capabilities::SubagentCapability);
         }
+        services = hosted_capabilities(services, &manifest.capabilities);
         let model = match (local, orgs) {
             (Some(model), _) => model,
             (None, Some(orgs)) => {
@@ -245,4 +247,50 @@ impl Host for StandardHost {
     fn tools(&self) -> Vec<Value> {
         self.tool_definitions()
     }
+}
+
+/// The hosted catalog the v1 worker registers (portable builtins, the
+/// integrations, the hosted product capabilities), for this deployment's
+/// grade. Built once per process.
+fn hosted_registry() -> &'static everruns_core::capabilities::CapabilityRegistry {
+    static REGISTRY: std::sync::OnceLock<everruns_core::capabilities::CapabilityRegistry> =
+        std::sync::OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        everruns_capabilities::integrations_catalog::oss_capability_registry_for_grade(
+            everruns_core::DeploymentGrade::from_env(),
+        )
+    })
+}
+
+/// Register on `services` the hosted capabilities `named` reaches (with the
+/// ones they depend on) that neither the Framework nor this host already
+/// serves.
+///
+/// Decision (step 11.6b): a cell runs the capabilities a v1 worker runs,
+/// from the same catalog, so an org's agents build the same on either
+/// plane. Only what the agent names is registered: a registered
+/// capability can change a turn even unnamed (as `tool_approval` would).
+/// What a capability's tools need at call time (an org's keys, the control
+/// plane's stores) is checked per capability by the matrix in
+/// `cell-testkit/tests/capabilities.rs`.
+fn hosted_capabilities(
+    mut services: HostServices,
+    named: &[everruns::CapabilityRef],
+) -> HostServices {
+    let registry = hosted_registry();
+    let mut have: std::collections::BTreeSet<String> =
+        services.capability_ids().into_iter().collect();
+    let mut queue: Vec<String> = named.iter().map(|c| c.id().to_owned()).collect();
+    while let Some(id) = queue.pop() {
+        if have.contains(&id) || everruns::hosting::services::is_framework_capability(&id) {
+            continue;
+        }
+        let Some(capability) = registry.get(&id) else {
+            continue;
+        };
+        have.insert(id);
+        queue.extend(capability.dependencies().into_iter().map(str::to_owned));
+        services = services.register_shared(capability.clone());
+    }
+    services
 }

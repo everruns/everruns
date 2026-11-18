@@ -49,22 +49,22 @@ export function HealthIssueDetails({
     retry: false,
   });
   const config = channel.data?.channel_config as
-    | (SlackChannelConfig & { slack_app_provisioned?: boolean })
+    | (SlackChannelConfig & { slack_app_provisioned?: boolean; slack_app_id?: string })
     | undefined;
   const resolved = issue.status === "resolved" || issue.status === "inapplicable";
   const Icon = resolved ? CheckCircle2 : AlertTriangle;
   const integrationHref = `/agents/${issue.agent_id ?? ""}/channels/${issue.channel_id ?? ""}`;
   const fixers = issue.fixers ?? [];
-  const manualText = ui(
-    "For a manually configured app: add the listed bot scopes in Slack’s OAuth & Permissions settings, reinstall the existing app, and save the refreshed bot token in Everruns.",
-  );
+  const provisioned = !!config?.slack_app_provisioned;
+  // Steps that work for every Slack app, whoever made it: Slack itself is the
+  // one place a scope is added and approved, so these never need Everruns.
   const manualSlack = (
-    <p className="text-xs text-muted-foreground">
-      {manualText}{" "}
-      <Link className="underline" href={integrationHref}>
-        {ui("Open integration settings")}
-      </Link>
-    </p>
+    <SlackManualSteps
+      scopes={issue.missing_scopes}
+      appId={config?.slack_app_id}
+      provisioned={provisioned}
+      integrationHref={integrationHref}
+    />
   );
   return (
     <section
@@ -128,7 +128,11 @@ export function HealthIssueDetails({
               key={fixer.kind}
               issue={issue}
               fixer={fixer}
-              manualSteps={!orgIssue && !config?.slack_app_provisioned ? manualSlack : undefined}
+              manualSteps={
+                !orgIssue && fixer.kind.startsWith("slack.") && issue.missing_scopes.length > 0
+                  ? manualSlack
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -180,9 +184,7 @@ export function HealthIssueDetails({
                     {check.isPending ? ui("Checking…") : ui("Check again")}
                   </Button>
                 </div>
-                {!config?.slack_app_provisioned && (
-                  <p className="text-xs text-muted-foreground">{manualText}</p>
-                )}
+                {issue.missing_scopes.length > 0 && manualSlack}
               </>
             )
           ) : (
@@ -241,5 +243,68 @@ export function HealthIssueDetails({
         </p>
       </details>
     </section>
+  );
+}
+
+/**
+ * Adding Slack bot scopes by hand, for any app: Everruns-created apps keep
+ * their bot token on reinstall; a hand-made app may get a new one to paste.
+ */
+function SlackManualSteps({
+  scopes,
+  appId,
+  provisioned,
+  integrationHref,
+}: {
+  scopes: string[];
+  appId?: string | null;
+  provisioned: boolean;
+  integrationHref: string;
+}) {
+  const ui = useUiTranslations();
+  const validAppId = appId && /^A[A-Z0-9]+$/.test(appId) ? appId : null;
+  const appHref = validAppId
+    ? `https://api.slack.com/apps/${validAppId}/oauth`
+    : "https://api.slack.com/apps";
+  return (
+    <ol className="list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+      <li>
+        <a className="underline" href={appHref} target="_blank" rel="noopener noreferrer">
+          {validAppId ? ui("Open the app in Slack") : ui("Open your Slack apps")}
+        </a>
+        {validAppId
+          ? ui(" and go to OAuth & Permissions.")
+          : ui(", choose this agent's app, and go to OAuth & Permissions.")}
+      </li>
+      <li>
+        {ui("Under Bot Token Scopes, add")}{" "}
+        {scopes.map((scope, i) => (
+          <span key={scope}>
+            {i > 0 && ", "}
+            <code>{scope}</code>
+          </span>
+        ))}
+        .
+      </li>
+      <li>
+        {ui(
+          "Click Reinstall to Workspace in the banner at the top and approve. Your workspace may need an administrator to approve it.",
+        )}
+      </li>
+      <li>
+        {provisioned ? (
+          ui("The bot token stays the same, so there is nothing to paste back.")
+        ) : (
+          <>
+            {ui("If Slack shows a new Bot User OAuth Token, save it in")}{" "}
+            <Link className="underline" href={integrationHref}>
+              {ui("integration settings")}
+            </Link>
+            .
+          </>
+        )}
+      </li>
+      <li>{ui("Come back here and click Check again.")}</li>
+    </ol>
   );
 }

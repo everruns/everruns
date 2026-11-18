@@ -6,7 +6,6 @@ use rows::*;
 use super::Database;
 use anyhow::Result;
 use everruns_server_macros::sql;
-use tracing::warn;
 
 use uuid::Uuid;
 
@@ -546,7 +545,8 @@ impl Database {
         served_by: GenerationProvider,
         created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
-        let (id,): (uuid::Uuid,) = sqlx::query_as(
+        // `fetch_one` keeps the error a conflicting insert has always raised.
+        let _: (uuid::Uuid,) = sqlx::query_as(
             r#"
             INSERT INTO llm_generations (
                 org_id, session_id, turn_id, event_id, model, provider,
@@ -577,28 +577,6 @@ impl Database {
         .bind(created_at)
         .fetch_one(&self.pool)
         .await?;
-
-        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
-        // The canonical llm_generations row is already durable; no reconciler
-        // exists yet (tracked separately), so on failure the corresponding
-        // fact will remain stale until reconciliation lands.
-        if let Err(e) = self
-            .enqueue_reporting_outbox(
-                org_id,
-                "llm_generation",
-                &id.to_string(),
-                Some(&id.to_string()),
-                "llm_generation_projection",
-            )
-            .await
-        {
-            warn!(
-                generation_id = %id,
-                org_id,
-                error = %e,
-                "reporting outbox enqueue failed for llm_generation; projection may remain stale until reconciliation lands"
-            );
-        }
 
         Ok(())
     }
@@ -706,7 +684,8 @@ impl Database {
         estimated_cost_usd: f64,
         cost_usd: f64,
     ) -> Result<()> {
-        let row: (i64, uuid::Uuid, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
+        // `fetch_one` keeps the not-found error for a missing session.
+        let _: (uuid::Uuid,) = sqlx::query_as(
             r#"
             UPDATE sessions
             SET
@@ -719,7 +698,7 @@ impl Database {
                 total_cost_usd = total_cost_usd + $8,
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING org_id, id, updated_at
+            RETURNING id
             "#,
         )
         .bind(session_id)
@@ -732,29 +711,6 @@ impl Database {
         .bind(cost_usd)
         .fetch_one(&self.pool)
         .await?;
-
-        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
-        // The canonical session totals are already committed; no reconciler
-        // exists yet (tracked separately), so on failure the corresponding
-        // fact will remain stale until reconciliation lands or the session
-        // totals are updated again and the next enqueue succeeds.
-        if let Err(e) = self
-            .enqueue_reporting_outbox(
-                row.0,
-                "session",
-                &row.1.to_string(),
-                Some(&row.2.to_rfc3339()),
-                "session_snapshot",
-            )
-            .await
-        {
-            warn!(
-                session_id = %row.1,
-                org_id = row.0,
-                error = %e,
-                "reporting outbox enqueue failed for session snapshot; projection may remain stale until reconciliation lands or the source row is updated again"
-            );
-        }
 
         Ok(())
     }

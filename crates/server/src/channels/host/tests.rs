@@ -895,7 +895,7 @@ async fn a_v2_channel_session_runs_on_its_data_plane() {
         assert_eq!(commands, ["messages", "cancel-turn", "seed"]);
         let (to, _, body) = &seen[0];
         assert_eq!(to, &session);
-        assert_eq!(body["text"], "what's new?");
+        assert_eq!(body["parts"][0]["text"], "what's new?");
         assert_eq!(body["metadata"]["slack_thread_ts"], "1700000000.0001");
         assert_eq!(body["external_actor"]["actor_id"], "U1", "{body}");
         assert_eq!(

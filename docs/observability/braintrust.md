@@ -86,12 +86,12 @@ Each Everruns turn creates its own trace with the following structure:
 ```
 agent turn (root span)
 ├── reason (iteration 1)
-│   └── llm.generation (gpt-6.1-sol)
+│   └── llm.generation (gpt-6.2-sol)
 ├── act (iteration 1)
 │   ├── tool.call (search)
 │   └── tool.call (fetch)
 ├── reason (iteration 2)
-│   └── llm.generation (gpt-6.1-sol)
+│   └── llm.generation (gpt-6.2-sol)
 └── (no more tool calls - turn complete)
 ```
 

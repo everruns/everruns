@@ -48,20 +48,93 @@ impl Command for ManageSessionSandbox {
 
     async fn execute(self, ctx: &Ctx) -> Result<ManageSessionSandboxResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session_access(ctx, session_id).await?;
-
         let service = q::session_sandbox_service(ctx)?;
-        let config = service
-            .config_for_session(session_id)
-            .await?
-            .ok_or_else(|| {
-                CommandError::bad_request("Session sandbox is not configured for this session")
-            })?;
-        let tool_context = service.tool_context(session_id).await;
+        // A v2 session: the pinned sandbox, its state on the session's cell
+        // (`plane.rs`).
+        let plane =
+            crate::domains::session_storage::plane::PlaneStorage::of(ctx, session_id).await?;
+        let (config, tool_context) = match plane {
+            Some(plane) => {
+                crate::domains::session_storage::queries::verify_session_ownership(
+                    &ctx.db,
+                    ctx.org_id(),
+                    session_id,
+                )
+                .await?;
+                let config = super::plane::config(&ctx.db, session_id).await?;
+                let storage = super::plane::PlaneSandboxStorage::new(plane);
+                (
+                    config,
+                    service.plane_tool_context(session_id, storage).await,
+                )
+            }
+            None => {
+                q::verify_session_access(ctx, session_id).await?;
+                let config = service.config_for_session(session_id).await?;
+                (config, service.tool_context(session_id).await)
+            }
+        };
+        let config = config.ok_or_else(|| {
+            CommandError::bad_request("Session sandbox is not configured for this session")
+        })?;
 
+        let result = self.apply(&tool_context, config).await;
+        record_person_event(ctx, session_id, self.action, &result).await;
+        result
+    }
+}
+
+/// Record a person's sandbox action and its outcome (`sandboxes events`).
+async fn record_person_event(
+    ctx: &Ctx,
+    session_id: everruns_contracts::typed_id::SessionId,
+    requested: SessionSandboxAction,
+    result: &Result<ManageSessionSandboxResponse, CommandError>,
+) {
+    use crate::domains::sandboxes::events::{NewSandboxEvent, action, actor, outcome, reason};
+    let verb = match requested {
+        SessionSandboxAction::Pause => action::PAUSE,
+        SessionSandboxAction::Resume => action::RESUME,
+        SessionSandboxAction::Delete => action::DELETE,
+    };
+    let who = ctx
+        .caller
+        .user_id
+        .map_or("an API key".to_string(), |user| format!("user {user}"));
+    let said = ctx
+        .change_intent
+        .as_ref()
+        .and_then(|intent| intent.reason.as_deref())
+        .map(|why| format!(" Reason given: {why}"))
+        .unwrap_or_default();
+    let event = match result {
+        Ok(_) => NewSandboxEvent::new(
+            actor::PERSON,
+            verb,
+            outcome::DONE,
+            reason::REQUESTED,
+            format!("{verb} requested by {who}.{said}"),
+        ),
+        Err(error) => NewSandboxEvent::new(
+            actor::PERSON,
+            verb,
+            outcome::FAILED,
+            reason::PROVIDER_ERROR,
+            format!("{verb} requested by {who} failed: {error}.{said}"),
+        ),
+    };
+    crate::domains::sandboxes::events::record(&ctx.db, session_id, event).await;
+}
+
+impl ManageSessionSandbox {
+    async fn apply(
+        &self,
+        tool_context: &everruns_core::tool_context::ToolContext,
+        config: everruns_capabilities::session_sandbox::SessionSandboxConfig,
+    ) -> Result<ManageSessionSandboxResponse, CommandError> {
         match self.action {
             SessionSandboxAction::Pause => {
-                let state = pause_session_sandbox(&tool_context, &config)
+                let state = pause_session_sandbox(tool_context, &config)
                     .await
                     .map_err(q::map_tool_error)?;
                 Ok(match state {
@@ -79,13 +152,13 @@ impl Command for ManageSessionSandbox {
                 })
             }
             SessionSandboxAction::Resume => {
-                let state = ensure_session_sandbox_running(&tool_context, &config)
+                let state = ensure_session_sandbox_running(tool_context, &config)
                     .await
                     .map_err(q::map_tool_error)?;
                 Ok(manage_response_from_state(self.action, &state))
             }
             SessionSandboxAction::Delete => {
-                let deleted = delete_session_sandbox(&tool_context, &config)
+                let deleted = delete_session_sandbox(tool_context, &config)
                     .await
                     .map_err(q::map_tool_error)?;
                 Ok(ManageSessionSandboxResponse {

@@ -13,7 +13,7 @@
  * 9. ID-based lookup (detects prefixed IDs and provides direct navigation)
  * 10. Evals (client-side filter over cached list)
  * 11. Virtual Users (client-side filter over cached list)
- * 12. Memories, knowledge indexes, plugins, observers, and saved reports
+ * 12. Memories, knowledge indexes, plugins, and observers
  *
  * All entity searches are client-side over already-fetched React Query data.
  * Backend search endpoints are available for server-side filtering when needed.
@@ -28,7 +28,6 @@ import {
   MemoryIcon,
   ObserverIcon,
   OrganizationIcon,
-  ReportIcon,
   SessionIcon,
   VirtualUserIcon,
 } from "@/components/icons/facet-icons";
@@ -48,7 +47,6 @@ import { useMemories } from "@/hooks/use-memory";
 import { useKnowledgeIndexes } from "@/hooks/use-knowledge-indexes";
 import { useInstalledPlugins } from "@/hooks/use-plugins";
 import { useObservers } from "@/hooks/use-observers";
-import { useSavedReports } from "@/hooks/use-reporting";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
@@ -79,7 +77,6 @@ export type SearchResultCategory =
   | "knowledge_index"
   | "plugin"
   | "observer"
-  | "report"
   | "organization"
   | "id";
 
@@ -178,7 +175,6 @@ export function useGlobalSearch(query: string) {
   const knowledgeEnabled = featureFlags.knowledge;
   const pluginsEnabled = featureFlags.plugins;
   const observersEnabled = featureFlags.observers;
-  const reportsEnabled = featureFlags.reports;
   const { can } = usePolicies("durable");
   const durableAllowed = can("durable.view");
   const canNavigate = useNavigationPolicy();
@@ -261,7 +257,6 @@ export function useGlobalSearch(query: string) {
   const { data: observersData } = useObservers({
     enabled: observersEnabled && entitySearchEnabled,
   });
-  const { data: savedReportsData } = useSavedReports(reportsEnabled && entitySearchEnabled);
 
   const agents = agentsData ?? EMPTY_ARRAY;
   const sessions = sessionsData?.data ?? EMPTY_ARRAY;
@@ -276,7 +271,6 @@ export function useGlobalSearch(query: string) {
   const knowledgeIndexes = knowledgeEnabled ? (knowledgeIndexesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const installedPlugins = pluginsEnabled ? (installedPluginsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const observers = observersEnabled ? (observersData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
-  const savedReports = reportsEnabled ? (savedReportsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
 
   return useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -682,23 +676,6 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 17. Saved reports
-    let reportCount = 0;
-    for (const report of savedReports) {
-      if (reportCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, report.name, report.description, report.id, "saved report")) {
-        results.push({
-          id: `report:${report.id}`,
-          category: "report",
-          icon: ReportIcon,
-          title: report.name,
-          subtitle: `Reports > ${report.name}`,
-          href: "/reports",
-        });
-        reportCount++;
-      }
-    }
-
     return results;
   }, [
     query,
@@ -722,6 +699,5 @@ export function useGlobalSearch(query: string) {
     knowledgeIndexes,
     installedPlugins,
     observers,
-    savedReports,
   ]);
 }

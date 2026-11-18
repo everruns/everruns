@@ -61,7 +61,36 @@ const RECORD: &[&str] = &[
     "participants",
     "commands",
     "run-requests",
+    // Served by the control plane for both planes with one code path,
+    // reading the session's events from its cell and sending outcomes back
+    // as session commands (step 11.6, `session_plane.rs` on the server).
+    "trace",
+    "question-answers",
+    "reactions",
+    "feedback",
+    "context-report",
+    "export",
+    // The session's storage: the control plane reads and changes it on the
+    // cell (`session_storage.rs`), with its policy and secret sealing.
+    "storage",
+    "approval-mode",
+    // Answered by the control plane on the session's cell (step 11.6): an
+    // MCP server's sign-in link, a fork, the whole run, and continuing past
+    // a usage policy (a budget record).
+    "mcp-elicitation-consent",
+    "fork",
+    "run",
+    "resume",
+    // The pinned sandbox: its description (also under its older name), and
+    // pausing, resuming or deleting it. The control plane pinned it and
+    // holds the provider account; the session's cell holds its state
+    // (`domains/session_sandbox/plane.rs` in the server).
+    "environment",
+    "sandbox",
 ];
+/// The calls on one of a session's messages that the control plane serves
+/// (step 11.6): `messages/{id}/{call}`.
+const MESSAGE_RECORD: &[&str] = &["reactions", "feedback"];
 /// How long "not on a data plane" is believed.
 const NOT_V2_FOR: Duration = Duration::from_secs(60);
 /// How long "the data plane does not know this session" is believed.
@@ -107,17 +136,12 @@ enum Route {
     Session(SessionId),
 }
 
-#[cfg(test)]
 fn route(path: &str) -> Route {
-    route_for(&Method::POST, path)
-}
-
-/// [`route`], for `method`: reading a session's primary sandbox is a record
-/// (the control plane pinned it), managing it is the data plane's.
-fn route_for(method: &Method, path: &str) -> Route {
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match parts.as_slice() {
-        ["v1", "sessions", _, "sandbox"] if method == Method::GET => Route::ControlPlane,
+        ["v1", "sessions", _, "messages", _, call, ..] if MESSAGE_RECORD.contains(call) => {
+            Route::ControlPlane
+        }
         ["v1", "sessions", id, first, ..] if !RECORD.contains(first) => {
             match SessionId::parse(id) {
                 Ok(id) => Route::Session(id),
@@ -374,7 +398,7 @@ async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
         let name = name.to_owned();
         return edge.command(name, request).await;
     }
-    let Route::Session(session) = route_for(request.method(), path) else {
+    let Route::Session(session) = route(path) else {
         return edge.to_control_plane(request).await;
     };
     let token = match edge.token_for(request.headers()).await {
@@ -385,7 +409,49 @@ async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
     if !edge.on_data_plane(session).await {
         return edge.to_control_plane(request).await;
     }
+    // A message that refers to uploads goes through the control plane,
+    // which keeps them and copies them into the session's files first
+    // (`gateway_input.rs`); every other message goes straight to the cell.
+    let request = if request.method() == Method::POST && is_messages(path) {
+        let (parts, body) = request.into_parts();
+        let Ok(bytes) = axum::body::to_bytes(body, crate::gateway::max_request_bytes()).await
+        else {
+            return (StatusCode::PAYLOAD_TOO_LARGE, "message too large").into_response();
+        };
+        let uploads = refers_to_uploads(&bytes);
+        let request = Request::from_parts(parts, Body::from(bytes));
+        if uploads {
+            return edge.to_control_plane(request).await;
+        }
+        request
+    } else {
+        request
+    };
     edge.to_data_plane(request, &token).await
+}
+
+/// `/v1/sessions/{id}/messages`.
+fn is_messages(path: &str) -> bool {
+    matches!(
+        path.trim_matches('/')
+            .split('/')
+            .collect::<Vec<_>>()
+            .as_slice(),
+        ["v1", "sessions", _, "messages"]
+    )
+}
+
+/// Whether a message body (`{"message": {"content": [...]}}`) refers to
+/// an upload (an `image_file` or `file` part).
+fn refers_to_uploads(body: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return false;
+    };
+    value["message"]["content"].as_array().is_some_and(|parts| {
+        parts
+            .iter()
+            .any(|part| matches!(part["type"].as_str(), Some("image_file" | "file")))
+    })
 }
 
 impl Edge {
@@ -525,6 +591,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_a_message_that_refers_to_uploads_goes_through_the_control_plane() {
+        let id = SessionId::new();
+        assert!(is_messages(&format!("/v1/sessions/{id}/messages")));
+        assert!(!is_messages(&format!(
+            "/v1/sessions/{id}/messages/x/feedback"
+        )));
+        let body = |parts: serde_json::Value| {
+            serde_json::to_vec(&serde_json::json!({ "message": { "content": parts } })).unwrap()
+        };
+        assert!(refers_to_uploads(&body(serde_json::json!([
+            { "type": "text", "text": "see" },
+            { "type": "image_file", "image_id": "img_1" },
+        ]))));
+        assert!(refers_to_uploads(&body(
+            serde_json::json!([{ "type": "file", "file_id": "file_1" }])
+        )));
+        assert!(!refers_to_uploads(&body(serde_json::json!([
+            { "type": "text", "text": "hi" },
+            { "type": "image", "base64": "AA==" },
+        ]))));
+        assert!(!refers_to_uploads(b"{\"text\": \"hi\"}"));
+        assert!(!refers_to_uploads(b"not json"));
+    }
+
+    #[test]
     fn records_stay_with_the_control_plane_and_data_calls_route_to_the_session() {
         let id = SessionId::new();
         assert_eq!(route("/v1/sessions"), Route::ControlPlane);
@@ -546,18 +637,36 @@ mod tests {
             Route::ControlPlane
         );
         assert_eq!(
-            route_for(&Method::GET, &format!("/v1/sessions/{id}/sandbox")),
+            route(&format!("/v1/sessions/{id}/sandbox")),
             Route::ControlPlane
-        );
-        assert_eq!(
-            route_for(&Method::POST, &format!("/v1/sessions/{id}/sandbox")),
-            Route::Session(id)
         );
         assert_eq!(route(&format!("/v1/sessions/{id}/sse")), Route::Session(id));
         assert_eq!(
             route(&format!("/v1/sessions/{id}/messages")),
             Route::Session(id)
         );
+        for call in ["reactions/%F0%9F%91%8D", "feedback"] {
+            assert_eq!(
+                route(&format!("/v1/sessions/{id}/messages/message_1/{call}")),
+                Route::ControlPlane
+            );
+        }
+        for call in [
+            "reactions",
+            "storage/keys",
+            "storage/secrets/TOKEN",
+            "approval-mode",
+            "mcp-elicitation-consent",
+            "fork",
+            "run",
+            "resume",
+            "environment",
+        ] {
+            assert_eq!(
+                route(&format!("/v1/sessions/{id}/{call}")),
+                Route::ControlPlane
+            );
+        }
         assert_eq!(
             route(&format!("/v1/sessions/{id}/fs/a.md")),
             Route::Session(id)

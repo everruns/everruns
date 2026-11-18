@@ -100,12 +100,21 @@ impl OrgSandboxes {
         let _ = self.material.set(material);
     }
 
-    /// `backends` for one activation: the provider key resolver, and the
-    /// sync that keeps the session's sandbox and its workspace together.
-    pub fn attach(self: &Arc<Self>, mut backends: HostBackends, files: CellFiles) -> HostBackends {
-        if backends.connection_resolver.is_none() {
-            backends.connection_resolver = Some(Arc::new(SandboxKeys(self.clone())));
-        }
+    /// `backends` for one activation of `session`: the control plane's
+    /// lookups and provider keys from here (`lookups.rs`), and the sync
+    /// that keeps the session's sandbox and its workspace together.
+    pub fn attach(
+        self: &Arc<Self>,
+        session: SessionId,
+        backends: HostBackends,
+        files: CellFiles,
+    ) -> HostBackends {
+        let mut backends = crate::lookups::attach(
+            backends,
+            Arc::new(SandboxKeys(self.clone())),
+            self.material.get(),
+            session,
+        );
         let sync = SandboxWorkspaceSyncExt(Arc::new(CellSandboxSync {
             sandboxes: self.clone(),
             files,
@@ -196,7 +205,8 @@ impl OrgSandboxes {
     }
 }
 
-/// Provider keys for the sandbox tools; nothing else resolves here.
+/// Provider keys for the sandbox tools; nothing else resolves here
+/// (`lookups.rs` adds the rest).
 struct SandboxKeys(Arc<OrgSandboxes>);
 
 #[async_trait]

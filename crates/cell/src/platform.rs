@@ -19,6 +19,15 @@
 //!   missed runs when it comes back.
 //! - An occurrence the session refuses (it is suspended, say) is skipped: the
 //!   schedule moves on, so the leader does not propose it again every tick.
+//! - The control plane records a few events on a session itself (step
+//!   11.6): a reaction a person adds or removes. Only [`RECORDABLE`] types
+//!   are taken, so the control plane cannot write the agent's conversation,
+//!   and a retry finds its event by id.
+//! - A schedule's spend cap (`budget_usd`, step 11.6) is kept with the
+//!   schedule: what its runs' model calls cost is added as their events
+//!   commit ([`Platform::charge`]), from the same cost the allowance
+//!   settles, and the schedule stops when its cap is reached. Only its
+//!   latest run is charged, so the record stays one entry per schedule.
 //! - Limits: five active schedules per session, as on every host, checked
 //!   when the create applies, so two concurrent creates cannot both pass.
 //!   The org-wide cap needs a count across cells; it comes with the
@@ -30,7 +39,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::runtime::session_schedule::{
-    MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule, parse_session_cron, stop_reason,
+    MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleBudget, SessionSchedule, parse_session_cron,
+    stop_reason,
 };
 use everruns_contracts::typed_id::{EventId, MessageId, ScheduleId, SessionId};
 use serde::{Deserialize, Serialize};
@@ -52,11 +62,47 @@ pub struct Platform {
     /// Each task's message channel, oldest first.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub task_messages: BTreeMap<String, Vec<everruns_core::session_task::TaskMessage>>,
+    /// The latest run of each schedule with a spend cap: its message id
+    /// and the schedule's id, so what the run costs is charged to it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub charging: BTreeMap<String, String>,
+    /// Who sent its input messages (`senders.rs`).
+    #[serde(default, skip_serializing_if = "crate::senders::Senders::is_empty")]
+    pub senders: crate::senders::Senders,
 }
 
 impl Platform {
     pub fn is_empty(&self) -> bool {
-        self.schedules.is_empty() && self.tasks.is_empty() && self.task_messages.is_empty()
+        self.schedules.is_empty()
+            && self.tasks.is_empty()
+            && self.task_messages.is_empty()
+            && self.senders.is_empty()
+    }
+
+    /// Charge `micros` a committed model call cost to the schedule whose
+    /// run it belongs to; the schedule stops when its cap is reached.
+    /// Whether a schedule changed.
+    pub fn charge(&mut self, event: &everruns_core::events::Event, micros: i64) -> bool {
+        let Some(message) = event.context.input_message_id else {
+            return false;
+        };
+        let Some(id) = self.charging.get(&message.to_string()) else {
+            return false;
+        };
+        let Some(schedule) = self.schedules.get_mut(id) else {
+            return false;
+        };
+        let Some(budget) = schedule.budget.as_mut() else {
+            return false;
+        };
+        budget.spent_usd += micros as f64 / 1_000_000.0;
+        if budget.spent_usd >= budget.limit_usd && budget.status != BUDGET_EXHAUSTED {
+            budget.status = BUDGET_EXHAUSTED.to_owned();
+            schedule.enabled = false;
+            schedule.next_trigger_at = None;
+            schedule.stop_reason = Some(stop_reason::BUDGET_EXHAUSTED.to_owned());
+        }
+        true
     }
 
     /// Schedules due at `now_ms`, with the time each was due.
@@ -67,8 +113,36 @@ impl Platform {
         })
     }
 
+    /// Whether a live schedule falls due before `until_ms` (overdue ones
+    /// included).
+    pub fn due_before(&self, until_ms: i64) -> bool {
+        self.schedules.values().any(|s| {
+            live(s)
+                && s.next_trigger_at
+                    .is_some_and(|t| t.timestamp_millis() < until_ms)
+        })
+    }
+
     fn active(&self) -> u32 {
         self.schedules.values().filter(|s| live(s)).count() as u32
+    }
+}
+
+/// A spend cap's status once it is reached.
+const BUDGET_EXHAUSTED: &str = "exhausted";
+
+/// A schedule's spend cap set to `limit_usd`, keeping what it spent.
+fn budget(schedule: &SessionSchedule, limit_usd: f64) -> ScheduleBudget {
+    let spent_usd = schedule.budget.as_ref().map_or(0.0, |b| b.spent_usd);
+    let status = if spent_usd >= limit_usd {
+        BUDGET_EXHAUSTED
+    } else {
+        "active"
+    };
+    ScheduleBudget {
+        limit_usd,
+        spent_usd,
+        status: status.to_owned(),
     }
 }
 
@@ -97,7 +171,25 @@ pub enum Op {
     Call(crate::detach::CallOp),
     /// A change to the session's tasks (`tasks.rs`).
     Task(crate::tasks::TaskOp),
+    /// An event the control plane records on the session: one of
+    /// [`RECORDABLE`].
+    Record {
+        event_id: EventId,
+        request: Box<everruns_core::events::EventRequest>,
+    },
+    /// A person's change to the session's storage
+    /// (`session_storage.rs`).
+    Storage(crate::session_storage::StorageOp),
+    /// `user` sent input message `message` (`senders.rs`). Proposed by a
+    /// trusted admission path before the message is admitted.
+    Sender { message: MessageId, user: String },
 }
+
+/// The event types the control plane may record on a session.
+pub const RECORDABLE: &[&str] = &[
+    everruns_core::MESSAGE_REACTION_ADDED,
+    everruns_core::MESSAGE_REACTION_REMOVED,
+];
 
 /// What a person or the agent changes on a schedule (the control plane's
 /// `PATCH` shape: an `ends_at` or `max_runs` of null removes it).
@@ -117,6 +209,9 @@ pub struct ScheduleChange {
         skip_serializing_if = "Option::is_none"
     )]
     pub max_runs: Option<Option<u32>>,
+    /// Its spend cap in USD; what it spent so far is kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_usd: Option<f64>,
     /// Delete it: it stops for good and leaves the agent's view.
     #[serde(default)]
     pub deleted: bool,
@@ -211,6 +306,19 @@ impl CellState {
         if let Op::Task(op) = op {
             return crate::tasks::apply(state, session, op, now_ms, seed, changes);
         }
+        if let Op::Record { event_id, request } = op {
+            return record(state, session, event_id, *request, changes);
+        }
+        if let Op::Storage(op) = op {
+            return crate::session_storage::apply(state, session, op, changes);
+        }
+        if let Op::Sender { message, user } = op {
+            state.platform.senders.record(message, user);
+            changes.push(Change::Session(session));
+            return Response::Value {
+                value: json!({ "recorded": true }),
+            };
+        }
         let now = at(now_ms);
         let schedules = &mut state.platform.schedules;
         let response = match op {
@@ -265,6 +373,9 @@ impl CellState {
                 if let Some(max_runs) = change.max_runs {
                     schedule.max_runs = max_runs;
                 }
+                if let Some(limit) = change.budget_usd {
+                    schedule.budget = Some(budget(schedule, limit));
+                }
                 schedule.updated_at = now;
                 Response::Value {
                     value: json!(schedule),
@@ -289,11 +400,59 @@ impl CellState {
                 }
                 fire(state, session, schedule, now_ms, seed, changes, false)
             }
-            Op::Call(_) | Op::Task(_) => return Response::Ok,
+            Op::Call(_) | Op::Task(_) | Op::Record { .. } | Op::Storage(_) | Op::Sender { .. } => {
+                return Response::Ok;
+            }
         };
         changes.push(Change::Session(session));
         response
     }
+}
+
+/// Whether the control plane may record `request` on `session`: one of
+/// [`RECORDABLE`], of that session, with the data its type names.
+pub(crate) fn recordable(
+    session: SessionId,
+    request: &everruns_core::events::EventRequest,
+) -> Result<(), String> {
+    let kind = request.event_type.as_str();
+    if !RECORDABLE.contains(&kind) || request.data.event_type() != kind {
+        return Err(format!("{kind} is not an event the control plane records"));
+    }
+    if request.session_id != session {
+        return Err("the event names another session".into());
+    }
+    Ok(())
+}
+
+/// Journal `request` on `session` as `event_id`, when it is [`RECORDABLE`].
+fn record(
+    state: &mut SessionState,
+    session: SessionId,
+    event_id: EventId,
+    request: everruns_core::events::EventRequest,
+    changes: &mut Vec<Change>,
+) -> Response {
+    if let Err(reason) = recordable(session, &request) {
+        return Response::Rejected { reason };
+    }
+    // A retry finds its event near the tail.
+    if let Some(event) = state
+        .events
+        .iter()
+        .rev()
+        .take(256)
+        .find(|e| e.id == event_id)
+    {
+        return Response::Value {
+            value: json!(event),
+        };
+    }
+    let event = state.journal(request, event_id);
+    let value = json!(event);
+    changes.push(Change::Event(session, Arc::new(event)));
+    changes.push(Change::Session(session));
+    Response::Value { value }
 }
 
 /// Admit `schedule`'s occurrence into `state` and, when `advance`, move it
@@ -314,6 +473,13 @@ fn fire(
         || schedule
             .max_runs
             .is_some_and(|max| schedule.trigger_count >= max);
+    if schedule
+        .budget
+        .as_ref()
+        .is_some_and(|b| b.status == BUDGET_EXHAUSTED)
+    {
+        return not_fired(stop_reason::BUDGET_EXHAUSTED);
+    }
     if advance && ended {
         schedule.enabled = false;
         schedule.next_trigger_at = None;
@@ -336,6 +502,7 @@ fn fire(
     fired.fire_origin().write(&mut input.metadata);
     let mut message = everruns_core::host::AcceptedTurnInput::new(input).into_message();
     message.id = occurrence;
+    state.platform.senders.inherit(occurrence);
     // Every replica builds the same message: no clock but the command's.
     message.created_at = now;
     let admit = SessionCommand::Admit {
@@ -356,6 +523,12 @@ fn fire(
     if refused.is_none() {
         schedule.trigger_count = fired.trigger_count;
         schedule.last_triggered_at = Some(now);
+        if schedule.budget.is_some() {
+            let id = schedule.id.to_string();
+            let charging = &mut state.platform.charging;
+            charging.retain(|_, of| *of != id);
+            charging.insert(occurrence.to_string(), id);
+        }
     }
     schedule.updated_at = now;
     if advance {
@@ -405,7 +578,7 @@ pub(crate) async fn fire_due(node: &Arc<Node>) {
         state
             .sessions
             .iter()
-            .filter(|(_, s)| s.placement == Placement::Live && !s.platform.is_empty())
+            .filter(|(_, s)| s.placement == Placement::Live && !s.platform.schedules.is_empty())
             .flat_map(|(session, s)| s.platform.due(now).map(|(id, due)| (*session, id, due)))
             .collect()
     };

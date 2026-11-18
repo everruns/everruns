@@ -302,7 +302,7 @@ pub struct WorkReport {
     pub agent_name: Option<String>,
     /// Model of the latest generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "gpt-6.1-sol"))]
+    #[cfg_attr(feature = "openapi", schema(example = "gpt-6.2-sol"))]
     pub model: Option<String>,
     /// When the work started.
     #[serde(default, skip_serializing_if = "Option::is_none")]

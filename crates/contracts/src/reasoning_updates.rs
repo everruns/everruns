@@ -33,10 +33,10 @@ impl ReasoningState {
     }
 }
 
-/// Configuration updates are an Astra standard single-agent Responses feature.
+/// Configuration updates are supported by Astra and GPT-6.2 Responses models.
 /// Everruns does not request native pro or multi-agent mode on this path.
 pub fn supports_configuration_updates(model: &str) -> bool {
-    model == "gpt-6-astra"
+    matches!(model, "gpt-6-astra" | "gpt-6.2-astra" | "gpt-6.2-sol")
 }
 
 pub fn supported_update_effort(effort: ReasoningEffort) -> bool {

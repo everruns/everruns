@@ -393,6 +393,83 @@ pub struct AllowanceGrant {
     pub per_call_micros: Option<i64>,
 }
 
+// --------------------------------------------------------------- lookups
+
+/// The control plane lookups a tool on the data plane may make at call
+/// time, by the internal command that answers each: the session's
+/// connection tokens, GitHub tokens, the agent's service API keys, web
+/// search settings and account keys, the tool approval policy, the org's
+/// knowledge the session's agent attaches (search and browse), and the
+/// session's Poppy calls (the owner's keys and conversations stay in the
+/// control plane), the org's egress grants, the platform tools' calls
+/// ([`PLATFORM_COMMAND_SURFACE`]) and the session's Slack actions
+/// ([`SLACK_ACTION`]).
+///
+/// Decision (step 11.6b): these are the v1 worker's own commands, run as
+/// the org's internal caller with the same checks (the session belongs to
+/// the org). Lookups the data plane answers itself stay out: MCP grants
+/// (sealed org secrets, `mcp.rs`), sandbox keys (sealed when the sandbox
+/// is pinned), and leased-resource cleanup (a cell leases nothing).
+pub const LOOKUP_COMMANDS: &[&str] = &[
+    "worker_get_connection_token",
+    "worker_get_github_token",
+    "worker_get_org_egress_allowlist",
+    "worker_get_service_api_key_connection",
+    "worker_get_tool_approval_policy",
+    "worker_get_web_search_account_key",
+    "worker_get_web_search_settings",
+    "worker_knowledge",
+    "worker_poppy_call",
+    PLATFORM_COMMAND_SURFACE,
+    SLACK_ACTION,
+];
+
+/// The lookup that performs a Slack action (post, react, update, upload,
+/// look up a user) as the bot of the Slack endpoint the session came
+/// through. Its params name the session and the action
+/// (`slack_action::SlackAction`); the answer is `{"outcome": ...}` or
+/// `{"error": ...}` (`slack_action::SlackActionError`). The endpoint's bot
+/// token never leaves the control plane, as on v1.
+pub const SLACK_ACTION: &str = "slack_action";
+
+/// The lookup that runs a platform tool's call (discover, query, execute,
+/// run) on the control plane's command catalog, as the person who sent the
+/// turn's input message. Its params name the session and the input
+/// message; the cell that forwards it sets `acting_user` from the
+/// session's own record, and the control plane checks that person.
+pub const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
+
+/// `POST /dp/v1/tenants/{org}/lookups`: one lookup, answered once.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LookupRequest {
+    /// A fresh id per lookup: the answer is sealed under
+    /// [`lookup_secret`] of it, so it cannot pass for another's.
+    pub request: String,
+    /// One of [`LOOKUP_COMMANDS`].
+    pub command: String,
+    pub params: Value,
+}
+
+/// What a lookup answered. Its JSON travels as a [`SealedSecret`] named
+/// [`lookup_secret`] (revision 0) under the org's data key, because most
+/// answers are credentials and the cells between pass them on unopened.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LookupAnswer {
+    Value(Value),
+    /// The command refused: its kind (the internal protocol's
+    /// `CommandError` kind) and a message safe to show.
+    Error {
+        kind: i32,
+        message: String,
+    },
+}
+
+/// The secret id a lookup's answer is sealed under.
+pub fn lookup_secret(request: &str) -> String {
+    format!("lookup:{request}")
+}
+
 // ------------------------------------------------------------------ feed
 
 /// `POST /dp/v1/feed`. At least once.
@@ -572,6 +649,35 @@ pub struct FeedReplay {
     pub source: String,
     pub incarnation: u64,
     pub from_index: u64,
+}
+
+// ------------------------------------------------------- session reads
+
+/// `GET /dp/v1/orgs/{org}/sessions/{id}/trace`: the trace rows of one
+/// session, computed by the data plane from its events with the fold the
+/// control plane keeps for a v1 session, so the control plane serves the
+/// Trace view of both with one code path.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct SessionTraceRows {
+    pub turn_count: i32,
+    /// In turn order.
+    pub turns: Vec<crate::trace::TraceTurnRow>,
+    /// In `(turn_no, step_no)` order.
+    pub steps: Vec<crate::trace::TraceStepRow>,
+    /// Child sessions of `spawn_agent` calls, by tool call id.
+    #[serde(default)]
+    pub children: Vec<(String, String)>,
+}
+
+/// `GET /dp/v1/orgs/{org}/sessions/{id}/events?from=&to=`: one committed
+/// event of a session, as the session stream serves it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionEventRow {
+    pub id: String,
+    pub sequence: i32,
+    pub event_type: String,
+    pub ts: chrono::DateTime<chrono::Utc>,
+    pub data: Value,
 }
 
 // ------------------------------------------------------------ org tokens

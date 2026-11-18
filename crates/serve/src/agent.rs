@@ -251,7 +251,7 @@ impl AgentBuilder {
     /// ```text
     /// #[agent(default)]
     /// fn analyst() -> Agent {
-    ///     Agent::builder().model("openai/gpt-6.1-sol").member("reviewer").build()
+    ///     Agent::builder().model("openai/gpt-6.2-sol").member("reviewer").build()
     /// }
     /// ```
     pub fn member(mut self, name: impl Into<String>) -> Self {

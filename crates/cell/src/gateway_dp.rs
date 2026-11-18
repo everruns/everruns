@@ -52,7 +52,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         )
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/{command}",
-            post(org_session_command),
+            post(org_session_command).get(org_session_read),
         )
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
@@ -75,9 +75,14 @@ pub fn cell_router(node: Arc<Node>) -> Router {
             get(cell_secret).post(cell_secret),
         )
         .route(
+            "/cell/orgs/{org}/data-key",
+            get(cell_data_key).post(cell_data_key),
+        )
+        .route(
             "/cell/orgs/{org}/connections/{connection}",
             get(cell_connection).post(cell_connection),
         )
+        .route("/cell/orgs/{org}/lookups", post(cell_lookup))
         .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
         .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
         .with_state(node.clone())
@@ -206,9 +211,22 @@ async fn org_session(
 
 /// The session commands the control plane runs on an org's session
 /// itself: admitting a message it produced (an agent trigger's run, step
-/// 11.4, or a channel's message, 11.5), cancelling the running turn, and a
-/// channel's prior conversation. The cell checks each body.
-const ORG_SESSION_COMMANDS: &[&str] = &["messages", "cancel-turn", "seed"];
+/// 11.4, or a channel's message, 11.5), cancelling the running turn, a
+/// channel's prior conversation, the result of a parked call the control
+/// plane resolved (a question set's answers, 11.6), and an event it
+/// records (a reaction, 11.6), and a person's change to the session's
+/// storage (11.6). The cell checks each body.
+const ORG_SESSION_COMMANDS: &[&str] = &[
+    "messages",
+    "cancel-turn",
+    "seed",
+    "tool-results",
+    "record",
+    "storage",
+    // A session's files: the control plane copies a message's uploads
+    // there before it sends the message (`gateway_input.rs`).
+    "fs",
+];
 
 /// The org's session `session`, or 404.
 async fn owned_session(
@@ -242,6 +260,22 @@ async fn org_session_command(
     let session = owned_session(&gateway, &org, &session).await?;
     Ok(Json(
         gateway.session_command(session, &command, &body).await?,
+    ))
+}
+
+/// `GET /dp/v1/orgs/{org}/sessions/{session}/{read}`: one of
+/// [`crate::gateway_reads::READS`] on one of the org's sessions (step 11.6).
+async fn org_session_read(
+    State(gateway): State<Arc<Gateway>>,
+    Path((org, session, read)): Path<(String, String, String)>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if !crate::gateway_reads::READS.contains(&read.as_str()) {
+        return Err((StatusCode::NOT_FOUND, format!("no session read {read}")));
+    }
+    let session = owned_session(&gateway, &org, &session).await?;
+    Ok(Json(
+        crate::gateway_reads::read(&gateway, session, &read, raw.as_deref()).await?,
     ))
 }
 
@@ -661,6 +695,19 @@ async fn cell_secret(
     })))
 }
 
+/// `org`'s data key, wrapped under the data plane's key: what an executor
+/// seals and opens the org's session secrets with (`session_secrets.rs`).
+async fn cell_data_key(
+    State(node): State<Arc<Node>>,
+    Path(org): Path<String>,
+) -> Result<Json<Option<crate::control::WrappedKey>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(
+        state.orgs.orgs.get(&org).and_then(|c| c.data_key.clone()),
+    ))
+}
+
 /// `org`'s connection, for the executor that runs a turn needing it (its
 /// token stays sealed: the executor opens it with `secrets`).
 async fn cell_connection(
@@ -676,6 +723,80 @@ async fn cell_connection(
             .get(&org)
             .and_then(|c| c.connections.get(&connection).cloned()),
     ))
+}
+
+/// An executor's call-time lookup for `org`, passed on to the control plane
+/// over the link (`lookups.rs`). The answer comes back sealed with the
+/// org's data key and goes to the executor unopened.
+async fn cell_lookup(
+    State(node): State<Arc<Node>>,
+    Path(org): Path<String>,
+    Json(mut request): Json<everruns_contracts::dataplane::LookupRequest>,
+) -> Result<Json<everruns_contracts::dataplane::SealedSecret>, ApiError> {
+    let cp = node.cfg.control_plane.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "this cell has no control plane".to_owned(),
+    ))?;
+    if request.command == everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE {
+        act_as_sender(&node, &mut request.params).await?;
+    }
+    let failed = |error: reqwest::Error| {
+        tracing::warn!(%org, %error, "a lookup did not reach the control plane");
+        (
+            StatusCode::BAD_GATEWAY,
+            "the control plane did not answer the lookup".to_owned(),
+        )
+    };
+    let reply = cp
+        .post(&node.http, &format!("/dp/v1/tenants/{org}/lookups"))
+        .json(&request)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(failed)?;
+    if !reply.status().is_success() {
+        let status = reply.status();
+        tracing::warn!(%org, %status, command = %request.command, "the control plane refused a lookup");
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("the control plane refused the lookup ({status})"),
+        ));
+    }
+    Ok(Json(reply.json().await.map_err(failed)?))
+}
+
+/// Set a platform call's `acting_user` to the person who sent its input
+/// message, from the session's own record (`senders.rs`), whatever the
+/// executor put there (THREAT[TM-AGENT-017]): `null` when no one did, which
+/// the control plane refuses.
+async fn act_as_sender(node: &Node, params: &mut serde_json::Value) -> Result<(), ApiError> {
+    let bad = |what: &str| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("a platform call needs {what}"),
+        )
+    };
+    let session = params["session_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
+        .ok_or_else(|| bad("its session"))?;
+    let message = params["input_message_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::MessageId::parse(id).ok())
+        .ok_or_else(|| bad("its input message"))?;
+    let gateway = node.gateway.get().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "this cell has no gateway".to_owned(),
+    ))?;
+    let found = gateway
+        .session_command(
+            session,
+            "sender",
+            &serde_json::json!({ "message": message }),
+        )
+        .await?;
+    params["acting_user"] = found["user"].clone();
+    Ok(())
 }
 
 /// Every session of `org` in this cell, with its full log (an export).

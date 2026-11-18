@@ -110,6 +110,8 @@ impl Executor {
         orgs.bind(Arc::downgrade(&material));
         executor.mcp.bind(Arc::downgrade(&material));
         executor.sandboxes.bind(Arc::downgrade(&material));
+        executor.hosting.set_material(Arc::downgrade(&material));
+        crate::lookups::serve_org_egress(Arc::downgrade(&material));
         // Whatever refreshes the mirror wakes Engine's waiters, as a node's
         // applied changes do (`Remote::absorb`); a session that left the
         // mirror or froze hands off.
@@ -212,6 +214,36 @@ impl Executor {
         }))
     }
 
+    /// `org`'s data key from the directory cell, unwrapped in memory;
+    /// `None` on a standalone cell, which has no data plane key
+    /// (`CELL_DP_KEY`) because no control plane wraps keys for it.
+    pub async fn data_key(
+        &self,
+        org: &str,
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
+        let Some(dp_key) = *self.dp_key.lock() else {
+            return Ok(None);
+        };
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let wrapped: Option<crate::control::WrappedKey> = self
+            .remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/data-key"),
+                &serde_json::json!({}),
+                Duration::from_secs(5),
+            )
+            .await?;
+        let wrapped = wrapped.ok_or_else(|| anyhow::anyhow!("org {org} has no data key"))?;
+        let key = everruns_contracts::dataplane_seal::unwrap_data_key(
+            &dp_key,
+            org,
+            &wrapped.data_key_id,
+            &wrapped.wrapped,
+        )?;
+        Ok(Some((key, wrapped.data_key_id)))
+    }
+
     /// Lease or write `org`'s secret in the directory cell.
     pub async fn secret_op(
         &self,
@@ -232,6 +264,44 @@ impl Executor {
             crate::state::Response::Value { value } => Ok(serde_json::from_value(value)?),
             other => anyhow::bail!("the directory cell answered {other:?}"),
         }
+    }
+
+    /// Ask the control plane one of `org`'s call-time lookups, through the
+    /// directory cell; the answer comes sealed with the org's data key and
+    /// is opened here (`lookups.rs`).
+    pub async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+        use everruns_contracts::dataplane::{LookupRequest, SealedSecret, lookup_secret};
+        let request = uuid::Uuid::new_v4().to_string();
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let sealed: SealedSecret = self
+            .remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/lookups"),
+                &LookupRequest {
+                    request: request.clone(),
+                    command: command.to_owned(),
+                    params,
+                },
+                Duration::from_secs(15),
+            )
+            .await?;
+        // The seal binds the secret id; the id must be this request's, or
+        // an answer to another lookup could stand in for this one.
+        if sealed.secret_id != lookup_secret(&request) || sealed.revision != 0 {
+            anyhow::bail!("the control plane answered another lookup");
+        }
+        let (key, _) = self
+            .data_key(org)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
+        let plain = everruns_contracts::dataplane_seal::unseal(&key, org, &sealed)?;
+        Ok(serde_json::from_slice(&plain)?)
     }
 
     /// `org`'s connection `id`, from the directory cell.
@@ -596,5 +666,31 @@ impl crate::providers::OrgMaterial for Executor {
         op: crate::secrets::SecretOp,
     ) -> anyhow::Result<crate::secrets::SecretReply> {
         Executor::secret_op(self, org, op).await
+    }
+
+    fn seals(&self) -> bool {
+        self.dp_key.lock().is_some()
+    }
+
+    fn looks_up(&self) -> bool {
+        // A data plane key means a control plane wraps this cell's keys,
+        // so it is the one lookups go to.
+        self.dp_key.lock().is_some()
+    }
+
+    async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+        Executor::lookup(self, org, command, params).await
+    }
+
+    async fn data_key(
+        &self,
+        org: &str,
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
+        Executor::data_key(self, org).await
     }
 }

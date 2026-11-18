@@ -30,7 +30,6 @@ export const messages: Readonly<Record<string, string>> = {
   "No finished turns": "没有已完成的轮次",
   "No turns started in this window.": "此时间窗口内没有开始的轮次。",
   "No worker reports in this range.": "此范围内没有 worker 报告。",
-  "Open Reports →": "打开报表 →",
   "Parallel sessions": "并行会话",
   "Parallel sessions against capacity": "并行会话与容量对比",
   "Parallel sessions over time": "并行会话趋势",

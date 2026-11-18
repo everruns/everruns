@@ -59,7 +59,7 @@ pub struct ConfiguredModelRow {
     pub org_id: i64,
     pub agent_id: Option<Uuid>,
     pub model_name: String,
-    /// The id the provider is called with, e.g. `openai/gpt-6.1-sol`.
+    /// The id the provider is called with, e.g. `openai/gpt-6.2-sol`.
     pub model_id: String,
     pub provider_id: Uuid,
     pub provider_name: String,

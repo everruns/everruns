@@ -1,5 +1,5 @@
 //! An agent that talks through `send_message` instead of its assistant text,
-//! run against `gpt-6.1-sol`.
+//! run against `gpt-6.2-sol`.
 //!
 //! ```text
 //! cargo run -p everruns --features openai --example explicit_communication
@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
              Keep what you send short.",
         )
         .provider(OpenAI::from_env()?)
-        .model("gpt-6.1-sol")
+        .model("gpt-6.2-sol")
         .tool(deploy_status())
         .communication(Communication::Explicit)
         .build()?;
