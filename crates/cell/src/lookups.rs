@@ -4,7 +4,7 @@
 //! A hosted capability's tools look org answers up as they run: a session's
 //! connection token, a GitHub token for one use, the agent's service API
 //! key, the org's web search settings and account keys, the tool approval
-//! policy, the org's knowledge collections. On a v1 worker they reach the control plane through internal
+//! policy, the org's knowledge collections, a Poppy call. On a v1 worker they reach the control plane through internal
 //! commands; here the same resolver ([`CommandConnectionResolver`]) runs the
 //! same commands over the link: executor, directory cell, control plane
 //! (`POST /dp/v1/tenants/{org}/lookups`). The answer comes back sealed with
@@ -22,25 +22,35 @@
 //! - A lookup that cannot reach the control plane fails the tool call, as
 //!   on a v1 worker whose control plane is down: a credential or a policy
 //!   never falls back to a default.
+//! - The org's egress grants (open egress, allowlist extension) are asked
+//!   the same way, by the process's egress boundary ([`serve_org_egress`]):
+//!   a session's turns run as its tenant's org (`hosting.rs`), so its
+//!   tools' requests carry that org. A failed lookup grants nothing, as on
+//!   v1 (fail closed).
 
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Once, Weak};
 
 use async_trait::async_trait;
+use everruns_capabilities::capabilities::{PoppyCall, PoppyInvoker, PoppyInvokerExt};
 use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
+use everruns_contracts::runtime::organization::org_public_id_from_internal;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
+use everruns_contracts::runtime::{OrgEgressAllowlist, OrgEgressGrant};
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::tool_approval_policy::SessionToolApprovalPolicy;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{OrgId, SessionId};
 use everruns_core::connection_services::{
     GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
 };
 use everruns_core::host::HostBackends;
 use everruns_internal_protocol::commands::knowledge::CommandKnowledgeRuntime;
-use everruns_internal_protocol::commands::{CommandConnectionResolver, InternalCommandTransport};
+use everruns_internal_protocol::commands::{
+    CommandConnectionResolver, CommandOrgEgressAllowlist, InternalCommandTransport, is_bad_request,
+};
 use everruns_internal_protocol::proto;
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::providers::OrgMaterial;
@@ -125,8 +135,8 @@ fn with_lookups(
 
 /// `backends` for one activation of `session`: its connection resolver
 /// ([`connections`]) and, when the control plane is reached, the org's
-/// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`), as a v1
-/// worker installs them.
+/// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`) and the
+/// session's Poppy client (`PoppyInvokerExt`), as a v1 worker installs them.
 ///
 /// Decision: automatic knowledge context (evidence added to a turn's input)
 /// stays off on a cell: the control plane records each retrieval against
@@ -143,7 +153,8 @@ pub fn attach(
         backends.connection_resolver = Some(with_lookups(keys, lookups.clone()));
     }
     if let Some(lookups) = lookups {
-        let knowledge = KnowledgeRuntimeExt(Arc::new(CommandKnowledgeRuntime::new(lookups)));
+        let knowledge =
+            KnowledgeRuntimeExt(Arc::new(CommandKnowledgeRuntime::new(lookups.clone())));
         let knowledge = Arc::new(knowledge);
         let embedder = backends.tool_context_extensions_factory.take();
         backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
@@ -152,10 +163,97 @@ pub fn attach(
                 .map(|factory| factory(org, session))
                 .unwrap_or_default();
             extensions.insert(knowledge.clone());
+            extensions.insert(Arc::new(PoppyInvokerExt(Arc::new(CellPoppy {
+                lookups: lookups.clone(),
+                session,
+            }))));
             extensions
         }));
     }
     backends
+}
+
+/// Executors of this process, for [`CellOrgEgress`].
+static EXECUTORS: parking_lot::Mutex<Vec<Weak<dyn OrgMaterial>>> =
+    parking_lot::Mutex::new(Vec::new());
+
+/// Let this process's egress boundary ask `material`'s control plane for an
+/// org's egress grants. The boundary keeps one resolver per process
+/// (`install_runtime_org_egress_allowlist`), so it is installed once and
+/// asks the first live executor that reaches a control plane: every
+/// executor of a process serves the same data plane.
+pub fn serve_org_egress(material: Weak<dyn OrgMaterial>) {
+    static INSTALLED: Once = Once::new();
+    let mut executors = EXECUTORS.lock();
+    executors.retain(|executor| executor.strong_count() > 0);
+    executors.push(material);
+    drop(executors);
+    INSTALLED.call_once(|| {
+        everruns_core::host::install_runtime_org_egress_allowlist(Arc::new(CellOrgEgress));
+    });
+}
+
+/// An org's egress grants from the control plane (`serve_org_egress`).
+struct CellOrgEgress;
+
+#[async_trait]
+impl OrgEgressAllowlist for CellOrgEgress {
+    async fn grant(&self, org_id: &OrgId) -> std::result::Result<OrgEgressGrant, String> {
+        let reaching = EXECUTORS.lock().iter().find_map(|weak| {
+            let material = weak.upgrade()?;
+            material.looks_up().then(|| weak.clone())
+        });
+        org_grant(reaching, org_id).await
+    }
+}
+
+/// `org_id`'s egress grants from `material`'s control plane; nothing
+/// granted without one (a standalone cell has no org settings).
+async fn org_grant(
+    material: Option<Weak<dyn OrgMaterial>>,
+    org_id: &OrgId,
+) -> std::result::Result<OrgEgressGrant, String> {
+    let Some(material) = material else {
+        return Ok(OrgEgressGrant::default());
+    };
+    CommandOrgEgressAllowlist::new(move |org| OrgLookups {
+        material: material.clone(),
+        org: org_public_id_from_internal(org),
+    })
+    .grant(org_id)
+    .await
+}
+
+/// The Poppy client of one session: the session owner's keys and Session
+/// Tokens stay in the control plane (`worker_poppy_call`), only the call and
+/// its answer cross. Same answers as the v1 worker's `CommandPoppyInvoker`.
+struct CellPoppy {
+    lookups: OrgLookups,
+    session: SessionId,
+}
+
+#[async_trait]
+impl PoppyInvoker for CellPoppy {
+    async fn invoke(&self, call: PoppyCall) -> std::result::Result<Value, String> {
+        let params = json!({ "session_id": self.session.to_string(), "call": call });
+        match self
+            .lookups
+            .execute_internal_command("worker_poppy_call", params)
+            .await
+        {
+            Ok(Ok(value)) => Ok(value),
+            // A company's refusal or an unreachable company: for the model.
+            Ok(Err(error)) if is_bad_request(&error) => Err(error.message),
+            Ok(Err(error)) => {
+                tracing::warn!(message = %error.message, "Poppy call failed");
+                Err("Poppy is unavailable right now.".to_string())
+            }
+            Err(error) => {
+                tracing::warn!(%error, "Poppy call did not reach the control plane");
+                Err("Poppy is unavailable right now.".to_string())
+            }
+        }
+    }
 }
 
 /// Sandbox keys from the cell, every other lookup from the control plane.

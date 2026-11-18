@@ -111,6 +111,7 @@ impl Executor {
         executor.mcp.bind(Arc::downgrade(&material));
         executor.sandboxes.bind(Arc::downgrade(&material));
         executor.hosting.set_material(Arc::downgrade(&material));
+        crate::lookups::serve_org_egress(Arc::downgrade(&material));
         // Whatever refreshes the mirror wakes Engine's waiters, as a node's
         // applied changes do (`Remote::absorb`); a session that left the
         // mirror or froze hands off.

@@ -24,8 +24,10 @@ use crate::proto;
 
 mod connections;
 pub mod knowledge;
+mod org_egress_allowlist;
 
 pub use connections::CommandConnectionResolver;
+pub use org_egress_allowlist::CommandOrgEgressAllowlist;
 
 /// Runs one internal domain command as the organization's internal caller.
 ///

@@ -4,9 +4,10 @@
 //! A hosted capability on a cell needs the same org answers it gets on a v1
 //! worker: a session's connection token, a GitHub token for one use, the
 //! agent's service API key, the org's web search settings and account keys,
-//! the tool approval policy. The v1 worker asks through internal commands;
-//! an executor asks the same commands over the link, and its cell forwards
-//! the request here.
+//! the tool approval policy, the org's knowledge, a Poppy call, the org's
+//! egress grants. The v1 worker asks through internal commands; an executor
+//! asks the same commands over the link, and its cell forwards the request
+//! here.
 //!
 //! Decisions:
 //! - Only [`LOOKUP_COMMANDS`] run here, as the org's internal caller with
@@ -17,7 +18,9 @@
 //!   as the request's own secret (`lookup:{request}`, revision 0): the
 //!   cells that pass it on hold ciphertext only, and an answer cannot pass
 //!   for another request's.
-//! - Nothing is stored: a lookup is a read, like the v1 command.
+//! - Nothing is stored here. The commands are reads, except a Poppy call,
+//!   which keeps the session owner's company accounts and conversations in
+//!   the control plane, as on v1.
 
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer, LookupRequest, lookup_secret};

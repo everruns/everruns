@@ -19,7 +19,7 @@ workspace = true
 [dependencies]
 libc = "0.2"
 everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs", "mcp"] }
-everruns-core = { workspace = true, features = ["host"] }
+everruns-core = { workspace = true, features = ["host", "direct-egress"] }
 everruns-contracts = { workspace = true, features = ["dataplane-seal"] }
 # Managed sandboxes (step 11.3): the `session_sandbox` capability and the
 # same providers as the worker, so an agent's sandbox runs the same way on an

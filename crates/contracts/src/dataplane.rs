@@ -398,8 +398,10 @@ pub struct AllowanceGrant {
 /// The control plane lookups a tool on the data plane may make at call
 /// time, by the internal command that answers each: the session's
 /// connection tokens, GitHub tokens, the agent's service API keys, web
-/// search settings and account keys, the tool approval policy, and the
-/// org's knowledge the session's agent attaches (search and browse).
+/// search settings and account keys, the tool approval policy, the org's
+/// knowledge the session's agent attaches (search and browse), and the
+/// session's Poppy calls (the owner's keys and conversations stay in the
+/// control plane), and the org's egress grants.
 ///
 /// Decision (step 11.6b): these are the v1 worker's own commands, run as
 /// the org's internal caller with the same checks (the session belongs to
@@ -409,11 +411,13 @@ pub struct AllowanceGrant {
 pub const LOOKUP_COMMANDS: &[&str] = &[
     "worker_get_connection_token",
     "worker_get_github_token",
+    "worker_get_org_egress_allowlist",
     "worker_get_service_api_key_connection",
     "worker_get_tool_approval_policy",
     "worker_get_web_search_account_key",
     "worker_get_web_search_settings",
     "worker_knowledge",
+    "worker_poppy_call",
 ];
 
 /// `POST /dp/v1/tenants/{org}/lookups`: one lookup, answered once.

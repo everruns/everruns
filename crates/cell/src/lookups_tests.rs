@@ -186,3 +186,107 @@ async fn a_cell_without_a_control_plane_answers_as_a_host_without_org_settings()
     );
     assert!(material.asked.lock().is_empty());
 }
+
+/// The Poppy client `attach` installs for `session`, when it installs one.
+fn poppy(
+    material: &Arc<Material>,
+    session: SessionId,
+) -> Option<Arc<dyn everruns_capabilities::capabilities::PoppyInvoker>> {
+    let material: Arc<dyn OrgMaterial> = material.clone();
+    let backends = super::attach(
+        everruns_core::host::HostBackends::in_memory(),
+        Arc::new(Keys),
+        Some(&Arc::downgrade(&material)),
+        session,
+    );
+    let factory = backends.tool_context_extensions_factory?;
+    factory(0, session)
+        .get::<everruns_capabilities::capabilities::PoppyInvokerExt>()
+        .map(|ext| ext.0.clone())
+}
+
+#[tokio::test]
+async fn a_poppy_call_runs_in_the_control_plane_for_the_session() {
+    let material = Material::new(true, Ok(LookupAnswer::Value(json!({ "sent": true }))));
+    let session = SessionId::new();
+    let call: everruns_capabilities::capabilities::PoppyCall =
+        serde_json::from_value(json!({ "action": "discover", "company": "acme.example" })).unwrap();
+    let answer = poppy(&material, session)
+        .expect("installed")
+        .invoke(call)
+        .await
+        .unwrap();
+    assert_eq!(answer, json!({ "sent": true }));
+    let asked = material.asked.lock();
+    assert_eq!(asked[0].0, "org-a");
+    assert_eq!(asked[0].1, "worker_poppy_call");
+    assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
+    assert_eq!(asked[0].2["call"]["action"], json!("discover"));
+    assert_eq!(asked[0].2["call"]["company"], json!("acme.example"));
+}
+
+#[tokio::test]
+async fn a_company_refusal_reaches_the_model_and_anything_else_is_unavailable() {
+    let call = || -> everruns_capabilities::capabilities::PoppyCall {
+        serde_json::from_value(json!({ "action": "discover", "company": "acme.example" })).unwrap()
+    };
+    let session = SessionId::new();
+    let refused = Material::new(
+        true,
+        Ok(LookupAnswer::Error {
+            kind: everruns_internal_protocol::proto::command_error::Kind::BadRequest as i32,
+            message: "acme.example has no poppy.json".into(),
+        }),
+    );
+    let error = poppy(&refused, session)
+        .unwrap()
+        .invoke(call())
+        .await
+        .unwrap_err();
+    assert_eq!(error, "acme.example has no poppy.json");
+
+    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    let error = poppy(&down, session)
+        .unwrap()
+        .invoke(call())
+        .await
+        .unwrap_err();
+    assert_eq!(error, "Poppy is unavailable right now.");
+
+    let standalone = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
+    assert!(poppy(&standalone, session).is_none());
+}
+
+#[tokio::test]
+async fn an_orgs_egress_grants_come_from_the_control_plane_as_that_org() {
+    let org_id = everruns_contracts::runtime::organization::org_public_id_from_internal(42);
+    let org: everruns_contracts::typed_id::OrgId = org_id.parse().unwrap();
+    let material = Material::new(
+        true,
+        Ok(LookupAnswer::Value(
+            json!({ "patterns": ["api.acme.example"] }),
+        )),
+    );
+    let weak: Arc<dyn OrgMaterial> = material.clone();
+    let grant = super::org_grant(Some(Arc::downgrade(&weak)), &org)
+        .await
+        .unwrap();
+    let extension = grant.extension.expect("granted");
+    assert!(extension.is_url_allowed("https://api.acme.example/v1"));
+    {
+        let asked = material.asked.lock();
+        assert_eq!(asked[0].0, org_id);
+        assert_eq!(asked[0].1, "worker_get_org_egress_allowlist");
+    }
+
+    // No control plane: nothing granted. A failed lookup is an error, which
+    // the egress boundary enforces as no grant.
+    assert!(super::org_grant(None, &org).await.unwrap().is_empty());
+    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    let weak: Arc<dyn OrgMaterial> = down.clone();
+    assert!(
+        super::org_grant(Some(Arc::downgrade(&weak)), &org)
+            .await
+            .is_err()
+    );
+}
