@@ -174,13 +174,11 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // Explicit breakpoints move instructions into input. Replaying the full
         // transcript avoids appending that developer prefix again on every
         // previous_response_id continuation (instructions normally do not persist).
-        if self.native_prompt_cache_options
-            && crate::openai_compat::supports_cache_options(&config.model)
-            && config.prompt_cache.as_ref().is_some_and(|cache| {
-                cache.enabled
-                    && cache.strategy == crate::driver_registry::PromptCacheStrategy::Explicit
-            })
-        {
+        if uses_explicit_breakpoints(
+            config,
+            self.native_prompt_cache_options,
+            crate::openai_protocol::is_openai_api_url(&api_url),
+        ) {
             previous_response_id = None;
         }
 
