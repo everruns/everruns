@@ -2,6 +2,7 @@
 
 ## 2026-11-17
 
+- Remove Reports: the Reports page, `/v1/reports` API, `everruns reports` CLI, `reports` feature flag, report permissions and the reporting projector are gone, and a migration drops the reporting outbox, saved reports and fact tables. The relaxed-commit database pool, which only the projector used, goes with it. The Reporting specification and the backends evaluation are deleted.
 - [Load Testing](operations/load-testing.md): the llmsim driver simulates long-session and provider realism: a per-session prompt cache with prefill time, compaction summaries sized from their input, sized reasoning replay payloads, and the `-storm-`, `-busy-` and `-tpm-` markers for provider conditions shared by every session.
 - [Load Testing](operations/load-testing.md): the load driver can soak sessions with log-normal gaps and history reloads, herd idle sessions, mix client behavior (tabs, abandons, Poisson arrivals, model switches), verify persisted history, and compare against a saved baseline; the `subagent-fanout` scenario exercises subagents.
 

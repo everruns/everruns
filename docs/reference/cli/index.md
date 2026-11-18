@@ -65,7 +65,6 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`plugin-marketplaces`](/reference/cli/plugin-marketplaces/) | Sources of installable plugins. |
 | [`plugins`](/reference/cli/plugins/) | Plugins installed in this organization. |
 | [`providers`](/reference/cli/providers/) | LLM providers and their credentials. |
-| [`reports`](/reference/cli/reports/) | Usage and cost reporting: queries, saved reports, catalog. |
 | [`resources`](/reference/cli/resources/) | Access to credentials and connections. |
 | [`rooms`](/reference/cli/rooms/) | Conversations where people and agents talk; addressed agents wake. |
 | [`sandbox-targets`](/reference/cli/sandbox-targets/) | Sandbox providers this deployment offers. |

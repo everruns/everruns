@@ -144,7 +144,6 @@ pub(super) fn recorded_mutation(name: &str) -> bool {
             | "payment_policy"
             | "eval"
             | "eval_case"
-            | "saved_report"
             | "session"
     );
     (entity
@@ -213,7 +212,6 @@ pub(super) fn subject_ref(name: &str, params: &Value) -> Option<String> {
             Some("payment_policy") => "payment_policy_id",
             Some("eval") => "eval_id",
             Some("eval_case") => "case_id",
-            Some("saved_report") => "report_id",
             Some("session") => "session_id",
             _ => "id",
         }

@@ -145,13 +145,9 @@ other filter applied but its own dropped. Counting `by_source` under an active
 making the rail a dead end after the first click. Excluding the dimension's own
 selection is what makes multi-select work.
 
-**Counts come from `sessions`, not `fact_session`.** The reporting projection
-is the natural place to aggregate and was the first choice, but it is an
-eventually-consistent mirror of the same row that carries neither `source` nor
-the last-turn outcome. It could not answer these filters, and where it could it
-would report a count that disagrees with the page rendered beside it. Facets
-belong to the list, so they read what the list reads. `fact_session` remains
-the right source for analytics that tolerate projection lag.
+**Counts come from `sessions`.** Facets belong to the list, so they read what
+the list reads; an asynchronous projection would report a count that disagrees
+with the page rendered beside it.
 
 ## Archive: the "put it away" bit
 

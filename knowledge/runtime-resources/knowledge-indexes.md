@@ -329,9 +329,7 @@ Sync-time embedding spend is ledgered too, but on a different path. Sync is
 host-triggered background work with no session, so it writes `llm_generations`
 directly instead of emitting an event: `EventRequest` requires a session, and the
 usage listener derives the org from one. `llm_generations.session_id` is nullable
-for exactly this case, and the reporting projection left-joins sessions so a
-session-less row still reaches `fact_llm_generation` with null session
-dimensions.
+for exactly this case.
 
 A run writes one aggregate row rather than one per embedding call, a run embeds
 every chunk of every document, and per-call rows carry no dimension the aggregate

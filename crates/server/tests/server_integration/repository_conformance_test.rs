@@ -109,24 +109,6 @@ pub(crate) fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow
     }
 }
 
-async fn assert_one_outbox(
-    repo: &StorageBackend,
-    source_type: &str,
-    source_id: &str,
-    reason: &str,
-) {
-    let rows = repo
-        .list_reporting_outbox(DEFAULT_ORG_ID, source_type, source_id, reason)
-        .await
-        .expect("list reporting outbox");
-    assert_eq!(
-        rows.len(),
-        1,
-        "expected one reporting outbox row for {source_type}/{source_id}/{reason}"
-    );
-    assert_eq!(rows[0].status, "pending");
-}
-
 async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_id: HarnessId) {
     let principal_id = create_test_principal(repo, label).await;
 
@@ -134,17 +116,7 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
         .create_session(session_input(principal_id, label))
         .await
         .expect("create session");
-    assert_one_outbox(
-        repo,
-        "session",
-        &session.id.uuid().to_string(),
-        "session_snapshot",
-    )
-    .await;
-
-    // Events reach reporting through the listener feed, not the outbox: no
-    // event write enqueues an outbox row, projected type or not.
-    let projected = || CreateEventRow {
+    let turn_completed = || CreateEventRow {
         session_id: session.id,
         event_type: "turn.completed".to_string(),
         ts: Utc::now(),
@@ -153,26 +125,15 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
         metadata: None,
         tags: None,
     };
-    let event = repo.create_event(projected()).await.expect("create event");
+    let event = repo
+        .create_event(turn_completed())
+        .await
+        .expect("create event");
     let batch = repo
-        .create_events(vec![projected(), projected()])
+        .create_events(vec![turn_completed(), turn_completed()])
         .await
         .expect("create event batch");
     assert_eq!(batch.len(), 2);
-    for row in std::iter::once(&event).chain(&batch) {
-        assert!(
-            repo.list_reporting_outbox(
-                DEFAULT_ORG_ID,
-                "event",
-                &row.id.uuid().to_string(),
-                "event_projection",
-            )
-            .await
-            .expect("list reporting outbox")
-            .is_empty(),
-            "an event write enqueues no reporting outbox row"
-        );
-    }
 
     let provider_prefix = format!("conf-{label}-{}", Uuid::now_v7());
     let first = repo
@@ -266,7 +227,7 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
         })
         .await
         .expect("create usage journal");
-    let (ledger, updated_budget) = repo
+    let (_ledger, updated_budget) = repo
         .create_usage_ledger_entry(CreateUsageLedgerRow {
             journal_id: journal.id,
             budget_id: Some(budget.id),
@@ -288,14 +249,6 @@ async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_
         updated_budget.expect("updated budget").balance,
         budget.balance - 2.0
     );
-    assert_one_outbox(
-        repo,
-        "usage_ledger",
-        &ledger.id.to_string(),
-        "budget_posting_projection",
-    )
-    .await;
-
     for index in 0..=MESSAGE_SAFETY_LIMIT {
         repo.create_event(CreateEventRow {
             session_id: session.id,

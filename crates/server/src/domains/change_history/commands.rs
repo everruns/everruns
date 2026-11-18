@@ -176,7 +176,7 @@ pub struct ListEntityHistory {
     /// The entity's public id, e.g. `agent_01933b5a...`.
     pub entity_ref: String,
     /// Entity kind. Needed only for kinds whose ids have no prefix
-    /// (`schedule`, `saved_report`, `check_rule`).
+    /// (`schedule`, `check_rule`).
     pub kind: Option<String>,
     /// Only this action (`created`, `updated`, `deleted`, ...).
     pub action: Option<String>,

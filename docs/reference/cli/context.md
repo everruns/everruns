@@ -70,7 +70,7 @@ everruns context get [OPTIONS] [ENTITY_REF]
 | Flag | Description |
 |---|---|
 | `--entity-ref <ENTITY_REF>` | The entity's public id, e.g. |
-| `--kind <KIND>` | Entity kind, needed only for ids without a prefix (`schedule`, `saved_report`, `check_rule`). |
+| `--kind <KIND>` | Entity kind, needed only for ids without a prefix (`schedule`, `check_rule`). |
 
 Example:
 

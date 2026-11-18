@@ -32,7 +32,7 @@ type ContextResult = Result<Json<ManagerContext>, (StatusCode, Json<ErrorRespons
 #[into_params(parameter_in = Query)]
 pub struct ContextKindQuery {
     /// Entity kind, needed only for ids without a prefix (`schedule`,
-    /// `saved_report`, `check_rule`).
+    /// `check_rule`).
     pub kind: Option<String>,
     /// For DELETE: the revision being cleared; refused when stale.
     pub expected_revision: Option<i64>,

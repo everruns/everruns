@@ -1869,8 +1869,8 @@ hands the list to every cell on the tenants poll, so a change reaches a
 cell within one poll, about 2 s), the cell copies
 those committed events onto the feed (`crates/cell/src/tap.rs`, payloads
 over 512 KiB left out and named), and feed ingest hands each to the same
-listeners v1 runs, once, by feed position. Reports are deprecated and get
-nothing from v2 orgs; analytics come from the warehouse export, which is
+listeners v1 runs, once, by feed position. Reports were removed
+(2026-11-17); analytics come from the warehouse export, which is
 opt-in per org (`everruns-dataplane warehouse <org> on`): every event goes
 onto the feed and the control plane writes gzipped
 NDJSON per org, hour and batch under `warehouse/{org}/date=/hour=/` in its

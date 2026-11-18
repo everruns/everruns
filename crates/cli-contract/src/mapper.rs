@@ -300,22 +300,6 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("providers models", "Models offered by one provider."),
     ("providers sync-models", "Refresh a provider's model list."),
-    (
-        "reports",
-        "Usage and cost reporting: queries, saved reports, catalog.",
-    ),
-    ("reports admin", "Maintenance for the reporting pipeline."),
-    (
-        "reports admin diagnostics",
-        "Reporting pipeline lag and failures.",
-    ),
-    (
-        "reports catalog",
-        "Datasets, measures and filters reports can use.",
-    ),
-    ("reports projector", "Process pending reporting work."),
-    ("reports query", "Ad-hoc reporting queries."),
-    ("reports saved", "Saved report definitions."),
     ("resources", "Access to credentials and connections."),
     (
         "resources grants",

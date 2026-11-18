@@ -71,10 +71,6 @@ Events are classified as **ephemeral** or **durable**:
 
 NATS rejects a message over its `max_payload` (1 MiB by default). A durable `llm.generation` too large for it goes out live without its captured request body, then without its prompt messages and tool list, marked `live_payload_trimmed` in `metadata`; output and usage stay, and the stored row is complete. Other oversize events are not delivered live and log their size.
 
-Durable events and usage rows can also feed asynchronous analytical projections
-for built-in reporting. Reporting is not part of the hot event delivery path;
-see [knowledge/evaluation/reporting.md](../evaluation/reporting.md).
-
 ### Listener Transport Boundary
 
 Push-style PostgreSQL listeners are intentionally separated from the ordinary sqlx query pool.
@@ -302,13 +298,9 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
    - Background loops take `StorageBackend::for_background()`, which routes their whole call graph onto the reserved
      pool without changing a query. Request handlers keep the request pool.
    - `DATABASE_BACKGROUND_POOL_MAX=0` puts background work back on the request pool, as a config-only rollback.
-   - A third small pool (`DATABASE_RELAXED_POOL_MAX`, default 4) commits with `synchronous_commit = off`: it does not
-     wait for the WAL flush. Only writes whose loss in a database crash is harmless use it: the reporting projector's
-     fact upserts and outbox completions (WAL order means a lost fact also loses its completion, so the row is
-     projected again). Lease renewals and the outbox enqueue after an event write set the same option per statement
-     on the request pool (the bounded repair job re-enqueues a lost outbox row). Chat events and messages keep waiting
-     for the flush. Reason: at 500 agents RDS spent most of its time on WAL flush waits
-     (load test 2026-10-29). `0` puts this work on the background pool.
+   - Lease renewals set `synchronous_commit = off` per statement on the request pool: they do not wait for the WAL
+     flush, since losing one in a database crash is harmless. Chat events and messages keep waiting for the flush.
+     Reason: at 500 agents RDS spent most of its time on WAL flush waits (load test 2026-10-29).
    - Sizes and defaults live in `crates/server/src/storage/repositories/mod.rs`.
 
 ### Database Conventions
@@ -842,7 +834,7 @@ Multiple control-plane instances can run behind a load balancer for HA.
 Set `EXPECTED_INSTANCES=N` to inform each instance about the total count:
 
 - **SSE connection limits**: Global and per-org limits divided by N. Per-session limits unchanged.
-- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX + DATABASE_RELAXED_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
+- **Database pool sizing**: Set `DATABASE_POOL_MAX = pg_max_connections / N - margin`. An instance opens `DATABASE_POOL_MAX + DATABASE_BACKGROUND_POOL_MAX` connections, and the startup warning fires when that sum × instances exceeds 80% of `PG_MAX_CONNECTIONS` (default 100).
 - **Metrics**: Each instance maintains its own ring buffer. The `/v1/durable/metrics/timeseries` response includes `instance_count` when >1.
 
 ### Load Balancer Requirements
