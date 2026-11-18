@@ -94,6 +94,8 @@ async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
     assert!(lookups::allowed("worker_knowledge"));
     assert!(lookups::allowed("worker_poppy_call"));
     assert!(lookups::allowed("worker_get_org_egress_allowlist"));
+    assert!(lookups::allowed("slack_action"));
+    assert!(lookups::allowed("platform_command_surface"));
     for command in [
         "worker_get_sandbox_connection_token",
         "worker_get_mcp_connection_token",
@@ -190,4 +192,64 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
             "{why}: {answer:?}"
         );
     }
+}
+
+/// A Slack action runs as the session's own endpoint, resolved within the
+/// org: a session that did not come through Slack, or another org's, has
+/// none, and the refusal comes back as the action's own error.
+#[tokio::test]
+async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
+    use everruns_contracts::dataplane::SLACK_ACTION;
+
+    let (cp, _, _) = control_plane().await;
+    let mine = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(ORG))
+        .await
+        .unwrap()
+        .id;
+    let stranger = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(
+            everruns_core::DEFAULT_ORG_ID,
+        ))
+        .await
+        .unwrap()
+        .id;
+    let react = json!({
+        "action": "add_reaction", "channel": "C1", "timestamp": "1.2", "name": "eyes"
+    });
+    for session in [mine, stranger] {
+        let answer = ask(
+            &cp,
+            ORG,
+            SLACK_ACTION,
+            json!({ "session_id": session.to_string(), "action": react }),
+        )
+        .await;
+        let LookupAnswer::Value(answer) = answer else {
+            panic!("a refusal is the action's error: {answer:?}");
+        };
+        assert_eq!(
+            answer["error"]["error"],
+            json!("no_slack_session"),
+            "{answer}"
+        );
+    }
+
+    let answer = ask(
+        &cp,
+        ORG,
+        SLACK_ACTION,
+        json!({ "session_id": mine.to_string(), "action": { "action": "open_dm" } }),
+    )
+    .await;
+    let LookupAnswer::Value(answer) = answer else {
+        panic!("{answer:?}");
+    };
+    assert_eq!(
+        answer["error"]["error"],
+        json!("invalid_argument"),
+        "{answer}"
+    );
 }

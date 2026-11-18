@@ -4,7 +4,8 @@
 //! A hosted capability's tools look org answers up as they run: a session's
 //! connection token, a GitHub token for one use, the agent's service API
 //! key, the org's web search settings and account keys, the tool approval
-//! policy, the org's knowledge collections, a Poppy call. On a v1 worker they reach the control plane through internal
+//! policy, the org's knowledge collections, a Poppy call, a Slack action.
+//! On a v1 worker they reach the control plane through internal
 //! commands; here the same resolver ([`CommandConnectionResolver`]) runs the
 //! same commands over the link: executor, directory cell, control plane
 //! (`POST /dp/v1/tenants/{org}/lookups`). The answer comes back sealed with
@@ -32,13 +33,16 @@ use std::sync::{Arc, Once, Weak};
 
 use async_trait::async_trait;
 use everruns_capabilities::capabilities::{PoppyCall, PoppyInvoker, PoppyInvokerExt};
-use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer};
+use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer, SLACK_ACTION};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
 use everruns_contracts::runtime::organization::org_public_id_from_internal;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::runtime::{OrgEgressAllowlist, OrgEgressGrant};
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
+use everruns_contracts::slack_action::{
+    SlackAction, SlackActionError, SlackActionInvoker, SlackActionInvokerExt, SlackActionOutcome,
+};
 use everruns_contracts::tool_approval_policy::SessionToolApprovalPolicy;
 use everruns_contracts::typed_id::{OrgId, SessionId};
 use everruns_core::connection_services::{
@@ -138,8 +142,9 @@ fn with_lookups(
 
 /// `backends` for one activation of `session`: its connection resolver
 /// ([`connections`]) and, when the control plane is reached, the org's
-/// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`) and the
-/// session's Poppy client (`PoppyInvokerExt`), as a v1 worker installs them.
+/// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`), the
+/// session's Poppy client (`PoppyInvokerExt`) and its Slack actions
+/// (`SlackActionInvokerExt`), as a v1 worker installs them.
 ///
 /// Decision: automatic knowledge context (evidence added to a turn's input)
 /// stays off on a cell: the control plane records each retrieval against
@@ -170,6 +175,17 @@ pub fn attach(
                 lookups: lookups.clone(),
                 session,
             }))));
+            // The `slack` tools' actions, as the session's own endpoint bot.
+            // Decision: not the conversation sender a v1 worker installs with
+            // them: a post binds to the turn's input event, which on the data
+            // plane lives in the cell, so the channel host delivers the
+            // turn's messages from the session's stream instead.
+            extensions.insert(Arc::new(SlackActionInvokerExt(Arc::new(
+                CellSlackActions {
+                    lookups: lookups.clone(),
+                    session,
+                },
+            ))));
             extensions
         }));
     }
@@ -256,6 +272,40 @@ impl PoppyInvoker for CellPoppy {
                 Err("Poppy is unavailable right now.".to_string())
             }
         }
+    }
+}
+
+/// The Slack actions of one session ([`SLACK_ACTION`]): the control plane
+/// acts as the bot of the endpoint the session came through, and the bot
+/// token stays there. Same answers as the v1 worker's
+/// `GrpcSlackActionInvoker`: a refusal comes back as the action's error, a
+/// lookup that fails is transient.
+struct CellSlackActions {
+    lookups: OrgLookups,
+    session: SessionId,
+}
+
+#[async_trait]
+impl SlackActionInvoker for CellSlackActions {
+    async fn invoke(
+        &self,
+        action: SlackAction,
+    ) -> std::result::Result<SlackActionOutcome, SlackActionError> {
+        let params = json!({ "session_id": self.session.to_string(), "action": action });
+        let answer = match self
+            .lookups
+            .execute_internal_command(SLACK_ACTION, params)
+            .await
+        {
+            Ok(Ok(answer)) => answer,
+            Ok(Err(error)) => return Err(SlackActionError::Transient(error.message)),
+            Err(error) => return Err(SlackActionError::Transient(error.to_string())),
+        };
+        let transient = |error: serde_json::Error| SlackActionError::Transient(error.to_string());
+        if let Some(error) = answer.get("error") {
+            return Err(serde_json::from_value(error.clone()).map_err(transient)?);
+        }
+        serde_json::from_value(answer["outcome"].clone()).map_err(transient)
     }
 }
 

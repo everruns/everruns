@@ -19,6 +19,8 @@
 //!   (`acting_user`), never as the internal caller: the session must
 //!   resolve `platform` and the person must still be an org member, with
 //!   their current role (THREAT[TM-AGENT-017]).
+//! - A Slack action ([`SLACK_ACTION`]) runs as the bot of the endpoint the
+//!   session came through, resolved within the org; its token stays here.
 //! - Every answer, a refusal included, is sealed with the org's data key
 //!   as the request's own secret (`lookup:{request}`, revision 0): the
 //!   cells that pass it on hold ciphertext only, and an answer cannot pass
@@ -29,7 +31,8 @@
 
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane::{
-    LOOKUP_COMMANDS, LookupAnswer, LookupRequest, PLATFORM_COMMAND_SURFACE, lookup_secret,
+    LOOKUP_COMMANDS, LookupAnswer, LookupRequest, PLATFORM_COMMAND_SURFACE, SLACK_ACTION,
+    lookup_secret,
 };
 use everruns_contracts::dataplane_seal as seal;
 
@@ -67,6 +70,10 @@ pub async fn answer(
         };
         return seal_answer(cp, org, &request.request, &answer);
     }
+    if request.command == SLACK_ACTION {
+        let answer = LookupAnswer::Value(slack_action(ctx, &request.params).await);
+        return seal_answer(cp, org, &request.request, &answer);
+    }
     let answer = match crate::domains::common::dispatch(&request.command, request.params, ctx).await
     {
         Ok(json) => LookupAnswer::Value(serde_json::from_str(&json)?),
@@ -79,6 +86,40 @@ pub async fn answer(
         }
     };
     seal_answer(cp, org, &request.request, &answer)
+}
+
+/// A Slack action for one session of the org (`SLACK_ACTION`), as the bot
+/// of the Slack endpoint the session came through, as a v1 worker's
+/// `InvokeSlackAction`: the session is read within the org, so another
+/// org's session has no endpoint, and the bot token stays here.
+async fn slack_action(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Value {
+    use everruns_contracts::slack_action::{SlackAction, SlackActionError};
+    let session = params["session_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok());
+    let action = serde_json::from_value::<SlackAction>(params["action"].clone());
+    let outcome = match (session, action) {
+        (Some(session), Ok(action)) => {
+            crate::channels::slack::actions::in_process_invoker(
+                &ctx.db,
+                ctx.encryption.as_ref(),
+                ctx.org_id(),
+                session,
+            )
+            .invoke(action)
+            .await
+        }
+        (None, _) => Err(SlackActionError::InvalidArgument(
+            "invalid session_id".into(),
+        )),
+        (_, Err(error)) => Err(SlackActionError::InvalidArgument(format!(
+            "invalid Slack action: {error}"
+        ))),
+    };
+    match outcome {
+        Ok(outcome) => serde_json::json!({ "outcome": outcome }),
+        Err(error) => serde_json::json!({ "error": error }),
+    }
 }
 
 /// `answer` sealed for `org` as `request`'s secret.

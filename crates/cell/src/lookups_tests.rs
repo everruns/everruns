@@ -225,6 +225,84 @@ async fn a_poppy_call_runs_in_the_control_plane_for_the_session() {
     assert_eq!(asked[0].2["call"]["company"], json!("acme.example"));
 }
 
+fn slack(
+    material: &Arc<Material>,
+    session: SessionId,
+) -> Option<Arc<dyn everruns_contracts::slack_action::SlackActionInvoker>> {
+    let material: Arc<dyn OrgMaterial> = material.clone();
+    let backends = super::attach(
+        everruns_core::host::HostBackends::in_memory(),
+        Arc::new(Keys),
+        Some(&Arc::downgrade(&material)),
+        session,
+    );
+    let factory = backends.tool_context_extensions_factory?;
+    let extensions = factory(0, session);
+    // Posts bind to the turn's input event, which lives in the cell: the
+    // channel host delivers them, not a conversation sender.
+    assert!(
+        extensions
+            .get::<everruns_contracts::runtime::conversation::ConversationSenderExt>()
+            .is_none()
+    );
+    extensions
+        .get::<everruns_contracts::slack_action::SlackActionInvokerExt>()
+        .map(|ext| ext.0.clone())
+}
+
+#[tokio::test]
+async fn a_slack_action_runs_as_the_sessions_endpoint_and_keeps_its_error() {
+    use everruns_contracts::slack_action::{SlackAction, SlackActionError, SlackActionOutcome};
+    let react = || SlackAction::AddReaction {
+        channel: "C1".into(),
+        timestamp: "1.2".into(),
+        name: "eyes".into(),
+    };
+    let session = SessionId::new();
+    let done = Material::new(
+        true,
+        Ok(LookupAnswer::Value(json!({
+            "outcome": { "outcome": "reaction_added", "already_reacted": false }
+        }))),
+    );
+    let outcome = slack(&done, session)
+        .expect("installed")
+        .invoke(react())
+        .await;
+    assert_eq!(
+        outcome,
+        Ok(SlackActionOutcome::ReactionAdded {
+            already_reacted: false
+        })
+    );
+    {
+        let asked = done.asked.lock();
+        assert_eq!(asked[0].1, everruns_contracts::dataplane::SLACK_ACTION);
+        assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
+        assert_eq!(asked[0].2["action"]["action"], json!("add_reaction"));
+    }
+
+    // The control plane's refusal is the model's to act on, intact.
+    let refused = Material::new(
+        true,
+        Ok(LookupAnswer::Value(
+            json!({ "error": SlackActionError::NoSlackSession }),
+        )),
+    );
+    let error = slack(&refused, session).unwrap().invoke(react()).await;
+    assert_eq!(error, Err(SlackActionError::NoSlackSession));
+
+    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    let error = slack(&down, session).unwrap().invoke(react()).await;
+    assert!(
+        matches!(error, Err(SlackActionError::Transient(_))),
+        "{error:?}"
+    );
+
+    let standalone = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
+    assert!(slack(&standalone, session).is_none());
+}
+
 #[tokio::test]
 async fn a_company_refusal_reaches_the_model_and_anything_else_is_unavailable() {
     let call = || -> everruns_capabilities::capabilities::PoppyCall {

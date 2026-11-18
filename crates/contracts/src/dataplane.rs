@@ -401,8 +401,9 @@ pub struct AllowanceGrant {
 /// search settings and account keys, the tool approval policy, the org's
 /// knowledge the session's agent attaches (search and browse), and the
 /// session's Poppy calls (the owner's keys and conversations stay in the
-/// control plane), the org's egress grants, and the platform tools' calls
-/// ([`PLATFORM_COMMAND_SURFACE`]).
+/// control plane), the org's egress grants, the platform tools' calls
+/// ([`PLATFORM_COMMAND_SURFACE`]) and the session's Slack actions
+/// ([`SLACK_ACTION`]).
 ///
 /// Decision (step 11.6b): these are the v1 worker's own commands, run as
 /// the org's internal caller with the same checks (the session belongs to
@@ -420,7 +421,16 @@ pub const LOOKUP_COMMANDS: &[&str] = &[
     "worker_knowledge",
     "worker_poppy_call",
     PLATFORM_COMMAND_SURFACE,
+    SLACK_ACTION,
 ];
+
+/// The lookup that performs a Slack action (post, react, update, upload,
+/// look up a user) as the bot of the Slack endpoint the session came
+/// through. Its params name the session and the action
+/// (`slack_action::SlackAction`); the answer is `{"outcome": ...}` or
+/// `{"error": ...}` (`slack_action::SlackActionError`). The endpoint's bot
+/// token never leaves the control plane, as on v1.
+pub const SLACK_ACTION: &str = "slack_action";
 
 /// The lookup that runs a platform tool's call (discover, query, execute,
 /// run) on the control plane's command catalog, as the person who sent the
