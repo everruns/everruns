@@ -89,6 +89,7 @@ export async function sendUserMessageWithImages(
   controls?: Controls,
   addressedParticipantId?: string | null,
   files: FileAttachment[] = [],
+  metadata?: Record<string, unknown>,
 ): Promise<Message> {
   const content: Array<
     | { type: "text"; text: string }
@@ -124,6 +125,7 @@ export async function sendUserMessageWithImages(
       role: "user",
       content,
     },
+    ...(metadata ? { metadata } : {}),
     controls,
     ...(addressedParticipantId ? { addressed_participant_id: addressedParticipantId } : {}),
   });

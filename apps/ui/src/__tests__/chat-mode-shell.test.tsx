@@ -46,14 +46,25 @@ jest.mock("next/dynamic", () => ({
     function ChatStub({
       extraActions,
       pageAware,
+      newChat,
+      onNewChatCreated,
     }: {
       extraActions?: ReactNode;
       pageAware?: boolean;
+      newChat?: number;
+      onNewChatCreated?: (id: string) => void;
     }) {
       const [text, setText] = useState("");
       return (
-        <div data-testid="workspace" data-page-aware={pageAware}>
+        <div
+          data-testid="workspace"
+          data-page-aware={pageAware}
+          data-new-chat={newChat || undefined}
+        >
           {extraActions}
+          {newChat ? (
+            <button onClick={() => onNewChatCreated?.("side_new")}>Send first message</button>
+          ) : null}
           <input
             aria-label="Chat draft"
             value={text}
@@ -86,7 +97,21 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   SessionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 jest.mock("@/components/chat/chat-switcher", () => ({
-  ChatSwitcher: () => <button>Main chat</button>,
+  ChatSwitcher: ({
+    drafting,
+    onNewChat,
+    onSelectChat,
+  }: {
+    drafting?: boolean;
+    onNewChat: () => void;
+    onSelectChat: (id: string) => void;
+  }) => (
+    <>
+      <button>{drafting ? "New side chat draft" : "Main chat"}</button>
+      <button onClick={onNewChat}>New side chat</button>
+      <button onClick={() => onSelectChat("side_2")}>Pick side chat</button>
+    </>
+  ),
 }));
 jest.mock("@/components/layout/sidebar", () => ({
   Sidebar: ({ config }: { config?: { navigation?: unknown[] } }) => (
@@ -420,6 +445,40 @@ describe("classic layout with floating or docked Chat", () => {
     expect(mockPush).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Float" }));
     expect(mockSetClassicChat).toHaveBeenCalledWith("floating");
+  });
+
+  it("starts a new side chat in the docked column and keeps the page", () => {
+    mockClassicChat = "docked";
+    render(shell(<ModeProbe />));
+    fireEvent.click(screen.getByRole("button", { name: "Show chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Platform Chat" })).toHaveAttribute(
+      "data-inline",
+      "docked",
+    );
+    expect(screen.getByTestId("workspace")).toHaveAttribute("data-new-chat");
+    expect(screen.getByRole("button", { name: "New side chat draft" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open thread" })).toBeInTheDocument();
+    // The first send makes the created chat the active side chat.
+    fireEvent.click(screen.getByRole("button", { name: "Send first message" }));
+    expect(screen.getByTestId("workspace")).not.toHaveAttribute("data-new-chat");
+    expect(screen.getByLabelText("Active chat")).toHaveTextContent("side_new");
+    // Picking another chat leaves a draft behind.
+    fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick side chat" }));
+    expect(screen.getByTestId("workspace")).not.toHaveAttribute("data-new-chat");
+    expect(screen.getByLabelText("Active chat")).toHaveTextContent("side_2");
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("continues an unsent side chat draft full screen at /chats/new", () => {
+    mockClassicChat = "floating";
+    render(shell());
+    fireEvent.click(screen.getByRole("button", { name: "Show chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "New side chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Full screen" }));
+    expect(mockPush).toHaveBeenLastCalledWith("/chats/new");
   });
 
   it("returns from full screen with Chat still beside the page", () => {

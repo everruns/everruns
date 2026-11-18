@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import { ApiError } from "@/lib/api/client";
 import type { Event, ModelWithProvider } from "@/lib/api/types";
 
@@ -1179,6 +1180,47 @@ describe("ChatPanel placeholder", () => {
 
     await waitFor(() => expect(textarea).toHaveValue(""));
     expect(mockSessionContext.chatSends.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives a draft's first send beside a page the same page context as later sends", async () => {
+    const onDraftSubmit = jest.fn().mockResolvedValue(undefined);
+    const draft = { binding: "agent_1", revision: "v1", dirty: false, writable: true };
+    const mode: ChatModeState = {
+      open: true,
+      setOpen: jest.fn(),
+      page: { route: "/agents/agent_1", label: "Agent" },
+      pageAdapter: { describe: () => draft, read: jest.fn(), patch: jest.fn() },
+      pageContainer: { current: null },
+      registerPage: () => () => {},
+      actions: [
+        { id: "a1", label: "Opened Agent", page: { route: "/agents/agent_1", label: "Agent" } },
+      ],
+      recordAction: jest.fn(),
+    };
+    const send = (pageAware: boolean) => {
+      const view = render(
+        <ChatModeContext.Provider value={mode}>
+          <ChatPanel pageAware={pageAware} onDraftSubmit={onDraftSubmit} />
+        </ChatModeContext.Provider>,
+      );
+      const textarea = screen.getByPlaceholderText(/^Type a message/);
+      fireEvent.change(textarea, { target: { value: "hello" } });
+      fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+      return view;
+    };
+
+    send(true).unmount();
+    await waitFor(() => expect(onDraftSubmit).toHaveBeenCalledTimes(1));
+    expect(onDraftSubmit.mock.calls[0][4]).toEqual({
+      page_context: { route: "/agents/agent_1", label: "Agent", draft },
+      page_actions: mode.actions,
+    });
+
+    // A draft outside a page (/chats/new) sends no page context.
+    send(false);
+    await waitFor(() => expect(onDraftSubmit).toHaveBeenCalledTimes(2));
+    expect(onDraftSubmit.mock.calls[1][4]).toBeUndefined();
+    expect(mockSessionContext.chatSends.submit).not.toHaveBeenCalled();
   });
 
   it("reports a failed send on its row with Retry", () => {

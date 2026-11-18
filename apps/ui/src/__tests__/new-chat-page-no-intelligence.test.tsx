@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import NewChatPageClient from "@/app/(main)/chats/new/new-chat-page-client";
+import NewChatPageClient, { ChatDraft } from "@/app/(main)/chats/new/new-chat-page-client";
 
 jest.mock("@/hooks/use-turn-work-report", () => ({
   useTurnWorkReport: () => null,
@@ -61,13 +61,27 @@ jest.mock("@/components/chat/chat-panel", () => ({
   ChatPanel: ({
     onDraftSubmit,
     platformStarters,
+    pageAware,
   }: {
-    onDraftSubmit: (t: string, i: unknown[], f: unknown[]) => Promise<void>;
+    onDraftSubmit: (
+      t: string,
+      i: unknown[],
+      f: unknown[],
+      c?: unknown,
+      m?: Record<string, unknown>,
+    ) => Promise<void>;
     platformStarters: { text: string }[];
+    pageAware?: boolean;
   }) => (
     <button
       onClick={() =>
-        void onDraftSubmit("hello", [], []).catch((e: Error) => {
+        void onDraftSubmit(
+          "hello",
+          [],
+          [],
+          undefined,
+          pageAware ? { page_context: { route: "/agents/agent_1" } } : undefined,
+        ).catch((e: Error) => {
           mockSubmitError = e.message;
         })
       }
@@ -94,7 +108,15 @@ it("opens an empty draft with Agent starters and creates only on first send", as
   expect(mockCreate).toHaveBeenCalledWith({
     request: { source: "chat", agent_name: "platform-chat", tags: ["chat"] },
   });
-  expect(mockSend).toHaveBeenCalledWith("ses_side", "hello", [], undefined, undefined, []);
+  expect(mockSend).toHaveBeenCalledWith(
+    "ses_side",
+    "hello",
+    [],
+    undefined,
+    undefined,
+    [],
+    undefined,
+  );
 });
 it("reuses a created session after the first message fails", async () => {
   mockSend.mockRejectedValueOnce(new Error("offline"));
@@ -105,6 +127,19 @@ it("reuses a created session after the first message fails", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Show agents" }));
   await waitFor(() => expect(mockReplace).toHaveBeenCalled());
   expect(mockCreate).toHaveBeenCalledTimes(1);
+});
+
+it("hands a side chat drafted beside a page to its pane instead of navigating", async () => {
+  const onCreated = jest.fn();
+  render(<ChatDraft pageAware onCreated={onCreated} extraActions={<button>Hide chat</button>} />);
+  expect(screen.getByRole("button", { name: "Hide chat" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Show agents" }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith("ses_side"));
+  // The first send carries the page context the composer built for it.
+  expect(mockSend).toHaveBeenCalledWith("ses_side", "hello", [], undefined, undefined, [], {
+    page_context: { route: "/agents/agent_1" },
+  });
+  expect(mockReplace).not.toHaveBeenCalled();
 });
 
 it("previews the independent Chat default while preserving explicit Agent selection", () => {

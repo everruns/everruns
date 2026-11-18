@@ -1,7 +1,7 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useOrganization } from "@/hooks/use-organizations";
 import { useAgent } from "@/hooks/use-agents";
@@ -17,7 +17,19 @@ import { isChatModel } from "@/lib/model-capabilities";
 import type { Controls } from "@/lib/api/types";
 import { PLATFORM_CHAT_AGENT_NAME, CHAT_THREAD_TAG } from "@/lib/chat-threads";
 
-export function ChatDraft({ threadMode = false }: { threadMode?: boolean }) {
+export function ChatDraft({
+  threadMode = false,
+  extraActions,
+  onCreated,
+  pageAware = false,
+}: {
+  threadMode?: boolean;
+  extraActions?: ReactNode;
+  /** Beside a page: the first send carries page context like later sends. */
+  pageAware?: boolean;
+  /** Takes over from opening `/chats/{id}` once the first send created the chat. */
+  onCreated?: (id: string) => void;
+}) {
   const ui = useUiTranslations();
   const router = useRouter();
   const { data: agent, error } = useAgent(PLATFORM_CHAT_AGENT_NAME);
@@ -42,6 +54,7 @@ export function ChatDraft({ threadMode = false }: { threadMode?: boolean }) {
     images: Array<{ imageId: string; filename?: string }>,
     files: Array<{ fileId: string; filename?: string }>,
     controls?: Controls,
+    metadata?: Record<string, unknown>,
   ) => {
     if (sending.current) return;
     sending.current = true;
@@ -56,8 +69,17 @@ export function ChatDraft({ threadMode = false }: { threadMode?: boolean }) {
         });
         sessionId.current = session.id;
       }
-      await sendUserMessageWithImages(sessionId.current, text, images, controls, undefined, files);
-      router.replace(`/chats/${sessionId.current}`);
+      await sendUserMessageWithImages(
+        sessionId.current,
+        text,
+        images,
+        controls,
+        undefined,
+        files,
+        metadata,
+      );
+      if (onCreated) onCreated(sessionId.current);
+      else router.replace(`/chats/${sessionId.current}`);
     } finally {
       sending.current = false;
     }
@@ -68,15 +90,23 @@ export function ChatDraft({ threadMode = false }: { threadMode?: boolean }) {
   return (
     <SessionProvider sessionId="" draftAgent={agent} draftModel={draftModel}>
       <div className="flex h-full flex-col bg-background bg-brand-dots">
-        <div className="border-b border-border/70 bg-background/70 px-6 py-3">
-          <h1 className="text-base font-semibold">
-            {threadMode ? ui("New thread") : ui("New side chat")}
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            {ui("A fresh conversation to manage your Everruns organization.")}
-          </p>
+        <div className="flex min-w-0 items-center gap-3 border-b border-border/70 bg-background/70 px-6 py-3">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold">
+              {threadMode ? ui("New thread") : ui("New side chat")}
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {ui("A fresh conversation to manage your Everruns organization.")}
+            </p>
+          </div>
+          {extraActions && (
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {extraActions}
+            </div>
+          )}
         </div>
         <ChatPanel
+          pageAware={pageAware}
           showParticipants={false}
           replyToLabel="Platform Chat"
           platformIcon="everruns"

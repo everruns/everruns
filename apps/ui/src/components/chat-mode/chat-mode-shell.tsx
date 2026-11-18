@@ -160,6 +160,10 @@ function EnabledShell({
       // Storage disabled: the choice lasts until reload.
     }
   }, []);
+  // "New side chat" in the switcher drafts beside the page instead of going to
+  // full-screen /chats/new. 0 is no draft; each new draft gets a new
+  // number so it starts empty. Not stored: an unsent draft has no session yet.
+  const [newChat, setNewChat] = useState(0);
   const [visited, setVisited] = useState(false);
   const [navExpanded, setNavExpandedState] = useState(() => {
     try {
@@ -303,14 +307,26 @@ function EnabledShell({
     [mainChatId],
   );
   const showFullScreen = useCallback(() => {
-    router.push(chatHref(selectedChatId));
-  }, [router, chatHref, selectedChatId]);
+    if (newChat) {
+      setNewChat(0);
+      router.push("/chats/new");
+    } else router.push(chatHref(selectedChatId));
+  }, [router, chatHref, selectedChatId, newChat]);
+  const selectChat = useCallback(
+    (chatId: string) => {
+      setNewChat(0);
+      setActiveChatId(chatId === mainChatId ? undefined : chatId);
+    },
+    [setActiveChatId, mainChatId],
+  );
+  const startNewChat = useCallback(() => setNewChat((current) => current + 1), []);
   const showBesidePage = useCallback(() => {
     if (inlineMode) setInlineOpen(true);
     router.push(lastPage.current);
   }, [router, inlineMode, setInlineOpen]);
   const openBeside = useCallback(
     (chatId?: string) => {
+      setNewChat(0);
       setActiveChatId(chatId === mainChatId ? undefined : chatId);
       if (inlineMode) setInlineOpen(true);
       if (chatRoute) router.push(lastPage.current);
@@ -481,6 +497,8 @@ function EnabledShell({
               <ChatWorkspace
                 activeChatId={activeChatId}
                 onActiveChatChange={setActiveChatId}
+                newChat={newChat}
+                onNewChatCreated={selectChat}
                 visible={conversationVisible}
                 pageAware={pageAware}
                 extraActions={
@@ -492,8 +510,10 @@ function EnabledShell({
                       <ChatSwitcher
                         mainChatId={thread.id}
                         activeChatId={selectedChatId ?? thread.id}
-                        onSelectChat={(id) => setActiveChatId(id === thread.id ? undefined : id)}
+                        drafting={!!newChat}
+                        onSelectChat={selectChat}
                         onSelectThread={openThreadBeside}
+                        onNewChat={startNewChat}
                       />
                       <Button
                         variant="ghost"
@@ -536,8 +556,10 @@ function EnabledShell({
                       <ChatSwitcher
                         mainChatId={thread.id}
                         activeChatId={selectedChatId ?? thread.id}
-                        onSelectChat={(id) => setActiveChatId(id === thread.id ? undefined : id)}
+                        drafting={!!newChat}
+                        onSelectChat={selectChat}
                         onSelectThread={openThreadBeside}
+                        onNewChat={startNewChat}
                       />
                       <Button
                         variant="ghost"
