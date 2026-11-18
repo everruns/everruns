@@ -29,7 +29,8 @@ enum Mode {
         #[arg(long)]
         gateways: String,
         /// The agent every session runs: a test definition by name (see
-        /// `everruns_cell_testkit::definition`), or `@path` to a JSON definition.
+        /// `everruns_cell_testkit::definition`), `@path` to a JSON definition,
+        /// or `mix` for the step 11.7 feature mix (see [`MIX_FEATURES`]).
         #[arg(long, default_value = "worker")]
         agent: String,
         #[arg(long, default_value = "100")]
@@ -161,9 +162,13 @@ impl Client {
     }
 }
 
-/// The message for `turn`: a scenario marker makes the sim agent play it,
-/// padded to `bytes` (`--message-bytes`).
-fn text(scenario: &str, turn: u64, bytes: usize) -> String {
+/// The message for `turn` of `turns`: a scenario marker makes the sim agent
+/// play it, a `feature:` one says what a feature-mix agent does
+/// ([`feature_text`]); padded to `bytes` (`--message-bytes`).
+fn text(scenario: &str, turn: u64, turns: u64, bytes: usize) -> String {
+    if let Some(feature) = scenario.strip_prefix("feature:") {
+        return feature_text(feature, turn, turns, bytes);
+    }
     let mut text = if scenario.is_empty() {
         format!("turn {turn}")
     } else {
@@ -175,6 +180,37 @@ fn text(scenario: &str, turn: u64, bytes: usize) -> String {
         text.push_str(&words[..bytes - text.len()]);
     }
     text
+}
+
+/// What a feature-mix session (`--agent mix`) says on `turn` of `turns`.
+/// Odd turns write a note, even ones read the last one back; on top of that:
+/// - `schedule`: the last turn also sets a one-shot schedule a minute out,
+///   so its run lands after the driver stopped counting the session's turns;
+/// - `team`: the first turn asks a subagent (a session of its own) and
+///   waits for its answer;
+/// - `mcp`: every turn calls the stub MCP server's `lookup`;
+/// - `sandbox`: the notes live in its managed sandbox.
+fn feature_text(feature: &str, turn: u64, turns: u64, bytes: usize) -> String {
+    match feature {
+        "schedule" if turn == turns => {
+            let at = chrono::Utc::now() + chrono::Duration::seconds(60);
+            format!(
+                "at {} wake up",
+                at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+            )
+        }
+        "team" if turn == 1 => "ask answer 42".to_string(),
+        "mcp" => format!("mcp term {turn}"),
+        _ if turn % 2 == 1 => {
+            let mut note = format!("write /notes/{turn}.md note {turn}");
+            if note.len() < bytes {
+                note.push(' ');
+                note.push_str(&"lorem ipsum ".repeat((bytes - note.len()) / 12 + 1));
+            }
+            note
+        }
+        _ => format!("read /notes/{}.md", turn - 1),
+    }
 }
 
 /// `secs:sessions,...` (`--bursts`), in time order.
@@ -319,6 +355,103 @@ fn scenario_list(arg: &str) -> Vec<String> {
     }
 }
 
+/// The step 11.7 feature mix (`--agent mix`), by repetition over 20
+/// sessions: half chat (the llmsim [`MIX`]), and the rest using session
+/// files, schedules, subagents, an MCP server and a managed sandbox (one in
+/// twenty: a real one per agent would cost more than the run).
+const MIX_FEATURES: &[&str] = &[
+    "chat", "files", "chat", "schedule", "chat", "team", "chat", "mcp", "chat", "files", "chat",
+    "schedule", "chat", "team", "chat", "mcp", "chat", "files", "chat", "sandbox",
+];
+
+/// The definition a feature-mix session runs.
+fn feature_agent(feature: &str) -> anyhow::Result<Value> {
+    let name = match feature {
+        "chat" => "sim",
+        "files" | "schedule" => "files",
+        "team" => "team",
+        "mcp" => "mcp",
+        "sandbox" => "sandbox",
+        other => anyhow::bail!("no feature {other}"),
+    };
+    let mut agent = everruns_cell_testkit::definition(name)
+        .ok_or_else(|| anyhow::anyhow!("no test agent {name}"))?;
+    if feature == "sandbox" {
+        // About a warm provider: 1.5 s to create, 50 ms a call.
+        agent["capabilities"] =
+            json!([everruns_cell_testkit::local_sandbox::capability(50, 1_500)]);
+    }
+    if feature == "files" || feature == "schedule" || feature == "team" {
+        // `team` already names its capability; it also keeps notes.
+        let mut capabilities = agent["capabilities"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        for capability in ["session_file_system", "session_schedule"] {
+            if !capabilities.iter().any(|c| c["ref"] == capability) {
+                capabilities.push(json!({ "ref": capability }));
+            }
+        }
+        agent["capabilities"] = Value::Array(capabilities);
+    }
+    Ok(agent)
+}
+
+/// Session `i`'s agent and scenario label: the one agent with the
+/// scenarios in turn, or the feature mix.
+struct Plans {
+    mix: Option<HashMap<&'static str, Value>>,
+    agent: Value,
+    scenarios: Vec<String>,
+}
+
+impl Plans {
+    fn new(agent: &str, scenarios: Vec<String>) -> anyhow::Result<Self> {
+        if agent == "mix" {
+            let mut mix = HashMap::new();
+            for feature in MIX_FEATURES {
+                mix.insert(*feature, feature_agent(feature)?);
+            }
+            return Ok(Self {
+                mix: Some(mix),
+                agent: Value::Null,
+                scenarios: Vec::new(),
+            });
+        }
+        // The client owns the agent: every session carries its definition.
+        let agent: Value = match agent.strip_prefix('@') {
+            Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
+            None => everruns_cell_testkit::definition(agent)
+                .ok_or_else(|| anyhow::anyhow!("no test agent {agent}"))?,
+        };
+        Ok(Self {
+            mix: None,
+            agent,
+            scenarios,
+        })
+    }
+
+    fn get(&self, i: usize) -> (Value, String) {
+        match &self.mix {
+            Some(mix) => {
+                let feature = MIX_FEATURES[i % MIX_FEATURES.len()];
+                let label = if feature == "chat" {
+                    // Successive chat sessions walk the llmsim mix.
+                    MIX[(i / MIX_FEATURES.len()) % MIX.len()].to_string()
+                } else {
+                    format!("feature:{feature}")
+                };
+                (mix[feature].clone(), label)
+            }
+            None if self.scenarios.is_empty() => (self.agent.clone(), String::new()),
+            None => (
+                self.agent.clone(),
+                self.scenarios[i % self.scenarios.len()].clone(),
+            ),
+        }
+    }
+}
+
 /// How a load run creates sessions and paces their turns.
 struct Shape {
     sessions: usize,
@@ -416,7 +549,7 @@ async fn run_turns(
                 "POST",
                 &format!("/v1/sessions/{id}/messages"),
                 Some(&json!({
-                    "text": text(scenario, turn, client.message_bytes),
+                    "text": text(scenario, turn, turns, client.message_bytes),
                     "id": message_id
                 })),
             )
@@ -530,19 +663,7 @@ async fn load(
     if let Some(c) = Arc::get_mut(&mut client) {
         c.message_bytes = shape.message_bytes;
     }
-    // The client owns the agent: every session carries its definition.
-    let agent: Value = match agent.strip_prefix('@') {
-        Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
-        None => everruns_cell_testkit::definition(&agent)
-            .ok_or_else(|| anyhow::anyhow!("no test agent {agent}"))?,
-    };
-    let scenario_for = |i: usize| {
-        if scenarios.is_empty() {
-            String::new()
-        } else {
-            scenarios[i % scenarios.len()].clone()
-        }
-    };
+    let plans = Plans::new(&agent, scenarios)?;
     let progress = Arc::new(Progress::default());
     let Shape {
         sessions,
@@ -580,8 +701,8 @@ async fn load(
                 arriving += n;
             }
             for _ in 0..arriving {
-                let (client, agent, progress) = (client.clone(), agent.clone(), progress.clone());
-                let scenario = scenario_for(i);
+                let (client, progress) = (client.clone(), progress.clone());
+                let (agent, scenario) = plans.get(i);
                 let (tx, rx) = tokio::sync::oneshot::channel();
                 created.push(rx);
                 tasks.spawn(async move {
@@ -610,11 +731,13 @@ async fn load(
     } else {
         let created = Instant::now();
         ids = stream::iter(0..sessions)
-            .map(|_| {
-                let (client, agent) = (client.clone(), agent.clone());
+            .map(|i| {
+                let client = client.clone();
+                let (agent, _) = plans.get(i);
                 async move { create(&client, &agent).await }
             })
-            .buffer_unordered(concurrency)
+            // In order: session `i` must be the one created with plan `i`.
+            .buffered(concurrency)
             .collect::<Vec<_>>()
             .await
             .into_iter()
@@ -632,7 +755,7 @@ async fn load(
                     client.clone(),
                     id,
                     turns,
-                    scenario_for(i),
+                    plans.get(i).1,
                     think,
                     streams(i, stream_share),
                     progress.clone(),

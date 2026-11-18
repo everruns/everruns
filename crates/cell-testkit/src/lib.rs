@@ -11,6 +11,7 @@
 pub mod fake_cp;
 pub mod local_sandbox;
 pub mod signer;
+pub mod stub_mcp;
 
 use std::io::Write;
 use std::time::Duration;
@@ -236,11 +237,24 @@ impl everruns::ChatDriver for FilesSim {
                         "The answer is {}.",
                         text.trim()["answer".len()..].trim()
                     )),
+                    // The stub MCP server's `lookup` (`stub_mcp.rs`), by the
+                    // name the session's catalog gives it.
+                    (Some("mcp"), Some(_), _) => {
+                        let query = text.trim()["mcp".len()..].trim();
+                        match config
+                            .tools
+                            .iter()
+                            .find(|tool| tool.name().ends_with("lookup"))
+                        {
+                            Some(tool) => call(tool.name(), json!({ "query": query })),
+                            None => SimTurn::Assistant("No MCP lookup tool.".into()),
+                        }
+                    }
                     (Some("sh"), Some(_), _) => {
                         let command = text.trim().trim_start_matches("sh").trim();
                         call("bash", json!({ "command": command }))
                     }
-                    _ => SimTurn::Assistant("Say write, read, at or sh.".into()),
+                    _ => SimTurn::Assistant("Say write, read, at, ask, mcp or sh.".into()),
                 }
             }
         };
@@ -655,6 +669,7 @@ pub fn host() -> StandardHost {
         .tool(|| file_tool("stat_file", "Describe a file."))
         .tool(bash_tool)
         .tool(blob_tool)
+        .egress(std::sync::Arc::new(stub_mcp::StubMcpEgress::over_runtime()))
 }
 
 // ------------------------------------------------------------ client side
@@ -698,6 +713,8 @@ fn agent(name: &str, instructions: &str, model: &str, tool_names: &[&str]) -> Va
 ///   `read <path>`) and schedules its own runs (`at <time> <text>`);
 /// - `sandbox`: the same in a managed sandbox on this machine, and runs
 ///   `sh <command>` there;
+/// - `team`: `files`, with subagents (`ask <text>`, `later <text>`);
+/// - `mcp`: `files`, with the stub MCP server (`mcp <query>`);
 /// - `lead`: hands each message to its bundled member `worker3`.
 pub fn definition(name: &str) -> Option<Value> {
     Some(match name {
@@ -759,6 +776,13 @@ pub fn definition(name: &str) -> Option<Value> {
             let mut team = agent("team", "Ask a helper.", "files", &[]);
             team["capabilities"] = json!([{ "ref": "subagents" }]);
             team
+        }
+        "mcp" => {
+            // `files`, with the stub MCP server (`stub_mcp.rs`): `mcp <query>`
+            // calls its `lookup`.
+            let mut mcp = agent("mcp", "Look it up.", "files", &[]);
+            mcp["mcpServers"] = json!({ "stub": { "url": stub_mcp::URL } });
+            mcp
         }
         "sandbox" => {
             // A managed sandbox on this machine (`local_sandbox`): `sh

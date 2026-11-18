@@ -54,6 +54,8 @@ type ModelFactory = Arc<dyn Fn(&str) -> Option<Model> + Send + Sync>;
 pub struct StandardHost {
     tools: BTreeMap<String, ToolFactory>,
     providers: BTreeMap<String, ModelFactory>,
+    /// The agents' outbound boundary, when not the Framework's own.
+    egress: Option<Arc<dyn everruns_core::EgressService>>,
 }
 
 impl StandardHost {
@@ -85,6 +87,13 @@ impl StandardHost {
                 .to_owned(),
             Arc::new(factory),
         );
+        self
+    }
+
+    /// Send the agents' outbound calls (MCP servers, web tools) through
+    /// `egress`: a test node answers its stub servers in process with it.
+    pub fn egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.egress = Some(egress);
         self
     }
 
@@ -168,6 +177,9 @@ impl Host for StandardHost {
         // the gate of tools marked for approval (`durable_approvals`) and
         // let them run unasked.
         let mut services = HostServices::new();
+        if let Some(egress) = &self.egress {
+            services = services.egress(egress.clone());
+        }
         if manifest
             .capabilities
             .iter()
