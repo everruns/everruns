@@ -45,6 +45,7 @@ impl Cell {
             unload_idle: None,
             claim_ttl: Duration::from_secs(10),
             max_turns_per_node: 64,
+            pressure_turns: 1024,
             snapshot_every: 100_000,
             keep_log: 256,
             executors: Default::default(),

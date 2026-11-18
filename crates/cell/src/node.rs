@@ -53,6 +53,9 @@ pub struct NodeConfig {
     /// Turns one node runs at once. A session whose turn would exceed it
     /// waits, queued, until a slot frees.
     pub max_turns_per_node: usize,
+    /// Turns the cell runs at once while it is short of memory (Full or
+    /// worse, see `pressure.rs`); queued work waits until memory frees.
+    pub pressure_turns: usize,
     /// Entries between snapshots.
     pub snapshot_every: u64,
     /// Entries kept behind each snapshot. A follower further behind than
@@ -1260,6 +1263,12 @@ impl Node {
             }
             if !self.allowance_ready(&state, s, now) {
                 return; // the control loop is asking for its tenant's money
+            }
+            if self.holds_turns(&state) {
+                if matches!(self.cfg.executors, ExecutorMode::Pull { .. }) {
+                    self.dispatch.queue(session);
+                }
+                return;
             }
             if self
                 .dispatched

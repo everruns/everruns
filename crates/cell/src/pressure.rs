@@ -14,6 +14,12 @@
 //!   outright. Callers get 429 with a retry hint; turns already admitted
 //!   keep running and finish, which is what frees memory again.
 //!
+//! At either level the cell also starts no more turns than its
+//! `pressure_turns` floor (`Node::schedule`): input it already queued
+//! waits. A slow cell otherwise draws the shared executor pool into itself,
+//! since its turns hold executor credits longer (EKS run 44355318472: 17,000
+//! running turns in a cell that lost a node, three nodes out of memory).
+//!
 //! Decision: Full only steers, it does not refuse. A gateway has already
 //! written a session's directory entry when it creates the session on its
 //! cell, so a refused create comes back to the same cell on retry; steering
@@ -35,7 +41,7 @@
 //! has not moved for [`STALL_AFTER`], refuses new sessions and input with
 //! the same retry hint until it commits again.
 //!
-//! Work already admitted is never refused: claims, appends, outcomes and
+//! Work already running is never refused: claims, appends, outcomes and
 //! moves all go through. Shedding new input bounds how far the log grows
 //! while a node is short of memory, which also bounds what a rejoining
 //! node must catch up on.
@@ -261,6 +267,22 @@ impl Node {
         self.pressure.refuses(work).then_some(Response::Busy {
             retry_after_ms: RETRY_AFTER_MS,
         })
+    }
+
+    /// Whether the cell, short of memory, starts no more turns now.
+    ///
+    /// Decision: at Full or worse a cell starts no turns past
+    /// `pressure_turns`. In EKS run 44355318472 a cell that lost a node to
+    /// chaos committed slowly, so its turns held executor credits longer and
+    /// the shared pool piled into it (2,600 to 17,000 running turns in four
+    /// minutes, the other cells steady at 2,700); its other two nodes ran
+    /// out of memory three times. Refusing new input (Shedding) did not stop
+    /// it: the input was already queued. Below the floor the cell still
+    /// makes progress, so memory that only finished turns free does get
+    /// freed.
+    pub(crate) fn holds_turns(&self, state: &crate::state::CellState) -> bool {
+        self.pressure.effective() >= Level::Full
+            && self.running_turns(state) >= self.cfg.pressure_turns
     }
 
     /// Every second: read this node's resident set and ask the cell's other
