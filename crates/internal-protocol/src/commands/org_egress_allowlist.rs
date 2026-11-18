@@ -1,10 +1,11 @@
 //! `OrgEgressAllowlist` over the `worker_get_org_egress_allowlist` command.
 //!
-//! A distributed worker has no database, so it asks the control plane for an
-//! org's enforced egress grants (open egress, allowlist extension). The egress boundary caches each answer
-//! (`ORG_EGRESS_ALLOWLIST_CACHE_TTL`, 60 seconds) and only asks for a
-//! request the system policy would otherwise refuse, so this is not on the hot
-//! path. Any failure is returned as an error, which the boundary treats as "no
+//! A distributed worker or a data plane executor has no control plane
+//! database, so it asks the control plane for an org's enforced egress
+//! grants (open egress, allowlist extension). The egress boundary caches
+//! each answer (`ORG_EGRESS_ALLOWLIST_CACHE_TTL`, 60 seconds) and only asks
+//! for a request the system policy would otherwise refuse, so this is not
+//! on the hot path. Any failure is returned as an error, which the boundary treats as "no
 //! extension" (fail closed).
 
 use super::InternalCommandTransport;
@@ -16,7 +17,8 @@ use std::sync::Arc;
 
 const COMMAND: &str = "worker_get_org_egress_allowlist";
 
-/// The org allowlist resolver a worker installs for its runtime egress.
+/// The org allowlist resolver a worker or an executor installs for its
+/// runtime egress.
 pub struct CommandOrgEgressAllowlist<T> {
     /// Builds a transport acting as the given org's internal caller.
     transport_for: Arc<dyn Fn(i64) -> T + Send + Sync>,
@@ -60,8 +62,8 @@ impl<T: InternalCommandTransport + 'static> OrgEgressAllowlist for CommandOrgEgr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proto;
     use everruns_contracts::error::Result;
-    use everruns_internal_protocol::proto;
     use serde_json::Value;
     use std::sync::Mutex;
 

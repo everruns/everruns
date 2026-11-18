@@ -401,7 +401,7 @@ pub struct AllowanceGrant {
 /// search settings and account keys, the tool approval policy, the org's
 /// knowledge the session's agent attaches (search and browse), and the
 /// session's Poppy calls (the owner's keys and conversations stay in the
-/// control plane).
+/// control plane), and the org's egress grants.
 ///
 /// Decision (step 11.6b): these are the v1 worker's own commands, run as
 /// the org's internal caller with the same checks (the session belongs to
@@ -411,6 +411,7 @@ pub struct AllowanceGrant {
 pub const LOOKUP_COMMANDS: &[&str] = &[
     "worker_get_connection_token",
     "worker_get_github_token",
+    "worker_get_org_egress_allowlist",
     "worker_get_service_api_key_connection",
     "worker_get_tool_approval_policy",
     "worker_get_web_search_account_key",

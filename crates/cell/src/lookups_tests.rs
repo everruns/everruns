@@ -256,3 +256,37 @@ async fn a_company_refusal_reaches_the_model_and_anything_else_is_unavailable() 
     let standalone = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
     assert!(poppy(&standalone, session).is_none());
 }
+
+#[tokio::test]
+async fn an_orgs_egress_grants_come_from_the_control_plane_as_that_org() {
+    let org_id = everruns_contracts::runtime::organization::org_public_id_from_internal(42);
+    let org: everruns_contracts::typed_id::OrgId = org_id.parse().unwrap();
+    let material = Material::new(
+        true,
+        Ok(LookupAnswer::Value(
+            json!({ "patterns": ["api.acme.example"] }),
+        )),
+    );
+    let weak: Arc<dyn OrgMaterial> = material.clone();
+    let grant = super::org_grant(Some(Arc::downgrade(&weak)), &org)
+        .await
+        .unwrap();
+    let extension = grant.extension.expect("granted");
+    assert!(extension.is_url_allowed("https://api.acme.example/v1"));
+    {
+        let asked = material.asked.lock();
+        assert_eq!(asked[0].0, org_id);
+        assert_eq!(asked[0].1, "worker_get_org_egress_allowlist");
+    }
+
+    // No control plane: nothing granted. A failed lookup is an error, which
+    // the egress boundary enforces as no grant.
+    assert!(super::org_grant(None, &org).await.unwrap().is_empty());
+    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    let weak: Arc<dyn OrgMaterial> = down.clone();
+    assert!(
+        super::org_grant(Some(Arc::downgrade(&weak)), &org)
+            .await
+            .is_err()
+    );
+}

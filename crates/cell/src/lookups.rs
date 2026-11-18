@@ -22,25 +22,32 @@
 //! - A lookup that cannot reach the control plane fails the tool call, as
 //!   on a v1 worker whose control plane is down: a credential or a policy
 //!   never falls back to a default.
+//! - The org's egress grants (open egress, allowlist extension) are asked
+//!   the same way, by the process's egress boundary ([`serve_org_egress`]):
+//!   a session's turns run as its tenant's org (`hosting.rs`), so its
+//!   tools' requests carry that org. A failed lookup grants nothing, as on
+//!   v1 (fail closed).
 
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Once, Weak};
 
 use async_trait::async_trait;
 use everruns_capabilities::capabilities::{PoppyCall, PoppyInvoker, PoppyInvokerExt};
 use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer};
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
+use everruns_contracts::runtime::organization::org_public_id_from_internal;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
+use everruns_contracts::runtime::{OrgEgressAllowlist, OrgEgressGrant};
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::tool_approval_policy::SessionToolApprovalPolicy;
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{OrgId, SessionId};
 use everruns_core::connection_services::{
     GitHubAccess, McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
 };
 use everruns_core::host::HostBackends;
 use everruns_internal_protocol::commands::knowledge::CommandKnowledgeRuntime;
 use everruns_internal_protocol::commands::{
-    CommandConnectionResolver, InternalCommandTransport, is_bad_request,
+    CommandConnectionResolver, CommandOrgEgressAllowlist, InternalCommandTransport, is_bad_request,
 };
 use everruns_internal_protocol::proto;
 use serde_json::{Value, json};
@@ -164,6 +171,57 @@ pub fn attach(
         }));
     }
     backends
+}
+
+/// Executors of this process, for [`CellOrgEgress`].
+static EXECUTORS: parking_lot::Mutex<Vec<Weak<dyn OrgMaterial>>> =
+    parking_lot::Mutex::new(Vec::new());
+
+/// Let this process's egress boundary ask `material`'s control plane for an
+/// org's egress grants. The boundary keeps one resolver per process
+/// (`install_runtime_org_egress_allowlist`), so it is installed once and
+/// asks the first live executor that reaches a control plane: every
+/// executor of a process serves the same data plane.
+pub fn serve_org_egress(material: Weak<dyn OrgMaterial>) {
+    static INSTALLED: Once = Once::new();
+    let mut executors = EXECUTORS.lock();
+    executors.retain(|executor| executor.strong_count() > 0);
+    executors.push(material);
+    drop(executors);
+    INSTALLED.call_once(|| {
+        everruns_core::host::install_runtime_org_egress_allowlist(Arc::new(CellOrgEgress));
+    });
+}
+
+/// An org's egress grants from the control plane (`serve_org_egress`).
+struct CellOrgEgress;
+
+#[async_trait]
+impl OrgEgressAllowlist for CellOrgEgress {
+    async fn grant(&self, org_id: &OrgId) -> std::result::Result<OrgEgressGrant, String> {
+        let reaching = EXECUTORS.lock().iter().find_map(|weak| {
+            let material = weak.upgrade()?;
+            material.looks_up().then(|| weak.clone())
+        });
+        org_grant(reaching, org_id).await
+    }
+}
+
+/// `org_id`'s egress grants from `material`'s control plane; nothing
+/// granted without one (a standalone cell has no org settings).
+async fn org_grant(
+    material: Option<Weak<dyn OrgMaterial>>,
+    org_id: &OrgId,
+) -> std::result::Result<OrgEgressGrant, String> {
+    let Some(material) = material else {
+        return Ok(OrgEgressGrant::default());
+    };
+    CommandOrgEgressAllowlist::new(move |org| OrgLookups {
+        material: material.clone(),
+        org: org_public_id_from_internal(org),
+    })
+    .grant(org_id)
+    .await
 }
 
 /// The Poppy client of one session: the session owner's keys and Session
