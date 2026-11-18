@@ -438,6 +438,15 @@ impl Fleet {
             .collect()
     }
 
+    /// Every live node's address.
+    pub fn bases(&self) -> Vec<String> {
+        self.nodes
+            .values()
+            .filter(|(_, rt)| rt.is_some())
+            .map(|(addr, _)| format!("http://{addr}"))
+            .collect()
+    }
+
     /// A live node's base URL; its gateway reaches every cell.
     pub fn base(&self) -> String {
         let (addr, _) = self

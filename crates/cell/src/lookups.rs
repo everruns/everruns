@@ -97,7 +97,10 @@ impl InternalCommandTransport for OrgLookups {
 
 /// `org`'s lookups for `session`, when `material` reaches a control plane
 /// and knows the session's org.
-fn org_lookups(material: Option<&Weak<dyn OrgMaterial>>, session: SessionId) -> Option<OrgLookups> {
+pub(crate) fn org_lookups(
+    material: Option<&Weak<dyn OrgMaterial>>,
+    session: SessionId,
+) -> Option<OrgLookups> {
     let weak = material?;
     let material = weak.upgrade()?;
     if !material.looks_up() {

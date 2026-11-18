@@ -656,9 +656,23 @@ impl Gateway {
         parts: Vec<everruns_core::ContentPart>,
         id: Option<MessageId>,
     ) -> Result<Value, ApiError> {
+        self.admit_from(session, text, parts, id, None).await
+    }
+
+    /// [`Gateway::admit_parts`] for a message `sender` (a user id, from the
+    /// caller's verified org token) wrote, so the session's turns can act
+    /// as them (`senders.rs`).
+    pub async fn admit_from(
+        &self,
+        session: SessionId,
+        text: String,
+        parts: Vec<everruns_core::ContentPart>,
+        id: Option<MessageId>,
+        sender: Option<String>,
+    ) -> Result<Value, ApiError> {
         let started = Instant::now();
         let message_id = id.unwrap_or_default();
-        let body = json!({ "text": text, "parts": parts, "id": message_id });
+        let body = json!({ "text": text, "parts": parts, "id": message_id, "sender": sender });
         let value = self.session_command(session, "messages", &body).await?;
         self.admitted.inc(&[("status", "accepted")]);
         self.admit_window.observe(started.elapsed());

@@ -401,7 +401,8 @@ pub struct AllowanceGrant {
 /// search settings and account keys, the tool approval policy, the org's
 /// knowledge the session's agent attaches (search and browse), and the
 /// session's Poppy calls (the owner's keys and conversations stay in the
-/// control plane), and the org's egress grants.
+/// control plane), the org's egress grants, and the platform tools' calls
+/// ([`PLATFORM_COMMAND_SURFACE`]).
 ///
 /// Decision (step 11.6b): these are the v1 worker's own commands, run as
 /// the org's internal caller with the same checks (the session belongs to
@@ -418,7 +419,15 @@ pub const LOOKUP_COMMANDS: &[&str] = &[
     "worker_get_web_search_settings",
     "worker_knowledge",
     "worker_poppy_call",
+    PLATFORM_COMMAND_SURFACE,
 ];
+
+/// The lookup that runs a platform tool's call (discover, query, execute,
+/// run) on the control plane's command catalog, as the person who sent the
+/// turn's input message. Its params name the session and the input
+/// message; the cell that forwards it sets `acting_user` from the
+/// session's own record, and the control plane checks that person.
+pub const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
 
 /// `POST /dp/v1/tenants/{org}/lookups`: one lookup, answered once.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -731,12 +731,15 @@ async fn cell_connection(
 async fn cell_lookup(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
-    Json(request): Json<everruns_contracts::dataplane::LookupRequest>,
+    Json(mut request): Json<everruns_contracts::dataplane::LookupRequest>,
 ) -> Result<Json<everruns_contracts::dataplane::SealedSecret>, ApiError> {
     let cp = node.cfg.control_plane.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         "this cell has no control plane".to_owned(),
     ))?;
+    if request.command == everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE {
+        act_as_sender(&node, &mut request.params).await?;
+    }
     let failed = |error: reqwest::Error| {
         tracing::warn!(%org, %error, "a lookup did not reach the control plane");
         (
@@ -760,6 +763,40 @@ async fn cell_lookup(
         ));
     }
     Ok(Json(reply.json().await.map_err(failed)?))
+}
+
+/// Set a platform call's `acting_user` to the person who sent its input
+/// message, from the session's own record (`senders.rs`), whatever the
+/// executor put there (THREAT[TM-AGENT-017]): `null` when no one did, which
+/// the control plane refuses.
+async fn act_as_sender(node: &Node, params: &mut serde_json::Value) -> Result<(), ApiError> {
+    let bad = |what: &str| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("a platform call needs {what}"),
+        )
+    };
+    let session = params["session_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
+        .ok_or_else(|| bad("its session"))?;
+    let message = params["input_message_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::MessageId::parse(id).ok())
+        .ok_or_else(|| bad("its input message"))?;
+    let gateway = node.gateway.get().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "this cell has no gateway".to_owned(),
+    ))?;
+    let found = gateway
+        .session_command(
+            session,
+            "sender",
+            &serde_json::json!({ "message": message }),
+        )
+        .await?;
+    params["acting_user"] = found["user"].clone();
+    Ok(())
 }
 
 /// Every session of `org` in this cell, with its full log (an export).

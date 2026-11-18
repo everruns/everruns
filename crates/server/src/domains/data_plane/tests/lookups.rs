@@ -104,3 +104,86 @@ async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
         assert!(!lookups::allowed(command), "{command} is not a lookup");
     }
 }
+
+/// THREAT[TM-AGENT-017]: a platform call runs as the person the forwarding
+/// cell names, only while they are a member, and only for a session that
+/// resolves `platform`; without a person it runs as no one.
+#[tokio::test]
+async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
+    use everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE;
+
+    let (cp, _, _) = control_plane().await;
+    // The default org, where the built-in harness the v1 worker's test uses
+    // lives; the answer is still sealed for ORG's data plane.
+    let org = everruns_core::DEFAULT_ORG_ID;
+    let member = cp.db.create_test_user(uuid::Uuid::now_v7()).await;
+    cp.db
+        .ensure_membership(member, org, "member")
+        .await
+        .unwrap();
+    let outsider = cp.db.create_test_user(uuid::Uuid::now_v7()).await;
+    let platform = cp
+        .db
+        .create_session(crate::storage::CreateSessionRow {
+            capabilities: json!([{ "ref": "platform" }]),
+            ..crate::storage::test_database::test_session_row(org)
+        })
+        .await
+        .unwrap()
+        .id;
+    let plain = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(org))
+        .await
+        .unwrap()
+        .id;
+    let call = |session: &dyn std::fmt::Display, acting_user: Value| {
+        json!({
+            "session_id": session.to_string(),
+            "input_message_id": uuid::Uuid::now_v7().to_string(),
+            "operation": "discover",
+            "arguments": { "query": "models" },
+            "acting_user": acting_user,
+        })
+    };
+
+    let answer = ask(
+        &cp,
+        org,
+        PLATFORM_COMMAND_SURFACE,
+        call(&platform, json!(member.to_string())),
+    )
+    .await;
+    let LookupAnswer::Value(Value::String(output)) = answer else {
+        panic!("a member's call runs: {answer:?}");
+    };
+    assert!(output.contains("list_models"), "{output}");
+
+    // KIND_FORBIDDEN in the internal protocol.
+    for (session, acting_user, why) in [
+        (platform, Value::Null, "no person: runs as no one"),
+        (platform, json!("someone"), "not a user id"),
+        (
+            platform,
+            json!(outsider.to_string()),
+            "not a member of the org",
+        ),
+        (
+            plain,
+            json!(member.to_string()),
+            "the session lacks platform",
+        ),
+    ] {
+        let answer = ask(
+            &cp,
+            org,
+            PLATFORM_COMMAND_SURFACE,
+            call(&session, acting_user),
+        )
+        .await;
+        assert!(
+            matches!(answer, LookupAnswer::Error { kind: 2, .. }),
+            "{why}: {answer:?}"
+        );
+    }
+}

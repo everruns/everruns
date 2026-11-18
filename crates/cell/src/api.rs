@@ -1167,6 +1167,11 @@ pub struct MessageBody {
     /// The channel participant who wrote it (step 11.5).
     #[serde(default)]
     pub external_actor: Option<everruns_core::ExternalActor>,
+    /// The person who sent it (a user id), from a trusted admission path:
+    /// the gateway's verified org token or the control plane
+    /// (`senders.rs`). Recorded before the message is admitted.
+    #[serde(default)]
+    pub sender: Option<String>,
 }
 
 /// Admit a user message through Engine (`Session::send_with_id`): a retry
@@ -1193,6 +1198,16 @@ async fn send_message(
     };
     if let Some(reason) = missing_attachment(&node, id, &body.parts).await {
         return Ok(Json(CellReply::Refused { reason }));
+    }
+    if let Some(user) = body.sender.clone() {
+        let action = crate::platform::Op::Sender {
+            message: body.id,
+            user,
+        };
+        match crate::api_session::platform(&node, id, action).await? {
+            CellReply::Ok { .. } => {}
+            other => return Ok(Json(other)),
+        }
     }
     let mut input = everruns::InputMessage::user(body.text);
     if !body.parts.is_empty() {

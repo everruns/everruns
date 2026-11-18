@@ -182,6 +182,7 @@ async fn send(
     State(gateway): State<Arc<Gateway>>,
     Path(session): Path<String>,
     RawQuery(raw): RawQuery,
+    claims: Option<axum::Extension<crate::org_token::OrgTokenClaims>>,
     Json(body): Json<SendBody>,
 ) -> Response {
     let session = match parse(&session) {
@@ -205,11 +206,21 @@ async fn send(
             return (StatusCode::BAD_REQUEST, "message or text required").into_response();
         }
     };
+    // The person the verified org token names (the control plane mints
+    // `sub` as the user id, for a console session or the user's API key),
+    // so the turn's platform tools act as them.
+    let sender = claims
+        .and_then(|axum::Extension(claims)| uuid::Uuid::parse_str(&claims.sub).ok())
+        .map(|user| user.to_string());
     let admitted = match crate::gateway_input::text_only(&parts) {
-        Some(text) => gateway.admit(session, text, Some(id)).await,
+        Some(text) => {
+            gateway
+                .admit_from(session, text, Vec::new(), Some(id), sender)
+                .await
+        }
         None => {
             gateway
-                .admit_parts(session, String::new(), parts.clone(), Some(id))
+                .admit_from(session, String::new(), parts.clone(), Some(id), sender)
                 .await
         }
     };
