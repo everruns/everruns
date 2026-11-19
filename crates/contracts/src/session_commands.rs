@@ -149,6 +149,8 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     ("schedules", Plane::Cell),
     ("work", Plane::Cell),
     ("resources", Plane::Cell),
+    // The session's SQL databases (parity step 9).
+    ("databases", Plane::Cell),
     // The record the control plane keeps for both planes.
     ("archive", Plane::Record),
     ("pin", Plane::Record),
