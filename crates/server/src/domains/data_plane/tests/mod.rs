@@ -157,13 +157,19 @@ async fn a_v1_org_has_no_data_plane() {
     assert!(cp.db.dp_items_live(3).await.unwrap().is_empty());
 }
 
+/// What a newly enabled org's full snapshot holds: its policy, then the
+/// org settings it was enabled with (web search, tool approval, egress).
+fn snapshot_kinds() -> [&'static str; 4] {
+    ["Policy", "Connection", "Connection", "Connection"]
+}
+
 #[tokio::test]
 async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
     let (cp, seen, dp_key) = control_plane().await;
     let epoch = cp.db.dp_epoch().await.unwrap();
     assert_eq!(outbox::deliver_due(&cp).await.unwrap(), 1);
     let org = cp.db.dp_org(ORG).await.unwrap().unwrap();
-    {
+    let snapshot = {
         let seen = seen.lock();
         assert_eq!(seen.enabled.len(), 1);
         // The data plane can open the data key with its own key.
@@ -181,8 +187,9 @@ async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
             first.base_version, 0,
             "the first delivery is a full snapshot"
         );
-        assert_eq!(kinds(first), ["Policy"]);
-    }
+        assert_eq!(kinds(first), snapshot_kinds());
+        first.version
+    };
     assert_eq!(
         outbox::deliver_due(&cp).await.unwrap(),
         0,
@@ -196,7 +203,7 @@ async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
     let (secret, version) = {
         let seen = seen.lock();
         let (_, update) = seen.updates.last().unwrap();
-        assert_eq!(update.base_version, 1);
+        assert_eq!(update.base_version, snapshot);
         assert_eq!(kinds(update), ["Secret"]);
         let ConfigChange::Secret(sealed) = ConfigChange::parse(&update.changes[0]).unwrap() else {
             panic!("a secret");
@@ -219,7 +226,7 @@ async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
         assert_eq!(seen.updates[n - 2].1.base_version, version);
         assert_eq!(kinds(&seen.updates[n - 2].1), ["Removal"]);
         assert_eq!(seen.updates[n - 1].1.base_version, 0);
-        assert_eq!(kinds(&seen.updates[n - 1].1), ["Policy"]);
+        assert_eq!(kinds(&seen.updates[n - 1].1), snapshot_kinds());
     }
 
     // A new epoch (a restore) sends a full snapshot in it.
