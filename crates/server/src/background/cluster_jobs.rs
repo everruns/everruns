@@ -155,6 +155,8 @@ pub async fn start(
     let config = WorkerPoolConfig::new(handlers.iter().map(|(a, _)| a.to_string()).collect())
         .with_worker_id(format!("server-jobs-{}", uuid::Uuid::now_v7()))
         .with_worker_group("server-jobs")
+        // Runs in the server, so it reports the server's version (System doctor).
+        .with_version(env!("CARGO_PKG_VERSION"))
         .with_max_concurrency(jobs_enabled + TASK_CONCURRENCY)
         // The server's stale-task reaper (durable_reaper.rs) owns reclaim.
         .without_stale_reclaim();
