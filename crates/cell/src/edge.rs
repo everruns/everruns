@@ -36,6 +36,7 @@ use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use everruns_contracts::session_commands::{self, Plane};
 use everruns_contracts::typed_id::SessionId;
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
@@ -47,50 +48,6 @@ use crate::edge_commands;
 use crate::gateway::Gateway;
 use crate::org_token::OrgTokens;
 
-/// A session's calls that stay with the control plane: its record, and
-/// what the record answers (the model it resolves to, its participants,
-/// the agent's slash commands, run requests). The console reads these for
-/// every chat; without the resolved model its composer stays disabled.
-const RECORD: &[&str] = &[
-    "archive",
-    "pin",
-    "cost",
-    "budgets",
-    "budget-check",
-    "resolved-model",
-    "participants",
-    "commands",
-    "run-requests",
-    // Served by the control plane for both planes with one code path,
-    // reading the session's events from its cell and sending outcomes back
-    // as session commands (step 11.6, `session_plane.rs` on the server).
-    "trace",
-    "question-answers",
-    "reactions",
-    "feedback",
-    "context-report",
-    "export",
-    // The session's storage: the control plane reads and changes it on the
-    // cell (`session_storage.rs`), with its policy and secret sealing.
-    "storage",
-    "approval-mode",
-    // Answered by the control plane on the session's cell (step 11.6): an
-    // MCP server's sign-in link, a fork, the whole run, and continuing past
-    // a usage policy (a budget record).
-    "mcp-elicitation-consent",
-    "fork",
-    "run",
-    "resume",
-    // The pinned sandbox: its description (also under its older name), and
-    // pausing, resuming or deleting it. The control plane pinned it and
-    // holds the provider account; the session's cell holds its state
-    // (`domains/session_sandbox/plane.rs` in the server).
-    "environment",
-    "sandbox",
-];
-/// The calls on one of a session's messages that the control plane serves
-/// (step 11.6): `messages/{id}/{call}`.
-const MESSAGE_RECORD: &[&str] = &["reactions", "feedback"];
 /// How long "not on a data plane" is believed.
 const NOT_V2_FOR: Duration = Duration::from_secs(60);
 /// How long "the data plane does not know this session" is believed.
@@ -139,10 +96,15 @@ enum Route {
 fn route(path: &str) -> Route {
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match parts.as_slice() {
-        ["v1", "sessions", _, "messages", _, call, ..] if MESSAGE_RECORD.contains(call) => {
+        // Which plane serves a session route is declared once, in the
+        // contracts' session route table; the server's API and the cell's
+        // gateway are both checked against it.
+        ["v1", "sessions", _, "messages", _, call, ..]
+            if session_commands::MESSAGE_RECORD_ROUTES.contains(call) =>
+        {
             Route::ControlPlane
         }
-        ["v1", "sessions", id, first, ..] if !RECORD.contains(first) => {
+        ["v1", "sessions", id, first, ..] if session_commands::plane(first) != Plane::Record => {
             match SessionId::parse(id) {
                 Ok(id) => Route::Session(id),
                 Err(_) => Route::ControlPlane,

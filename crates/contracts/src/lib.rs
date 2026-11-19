@@ -107,6 +107,7 @@ pub mod retry_failure;
 pub mod rt;
 pub mod runtime_provider;
 pub mod secret_scrub;
+pub mod session_commands;
 pub mod stream_accumulator;
 mod stream_error;
 pub mod stream_event;

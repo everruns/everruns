@@ -919,3 +919,115 @@ async fn message_task(
     body["cancel"] = json!(false);
     write_task(&gateway, &session, body).await
 }
+
+/// The public API's session routes against the declared plane table
+/// (`everruns_contracts::session_commands`): every route of a
+/// [`Plane::Cell`](everruns_contracts::session_commands::Plane::Cell)
+/// segment is served here, unless it is a declared gap, and every
+/// declared gap still answers "not available yet", so closing one fails
+/// until the table says so.
+#[cfg(test)]
+mod route_tests {
+    use std::collections::BTreeMap;
+    use std::time::Duration;
+
+    use axum::body::Body;
+    use axum::http::Request;
+    use everruns_contracts::session_commands::{
+        CELL_ROUTE_GAPS, MESSAGE_RECORD_ROUTES, Plane, plane,
+    };
+    use tower::ServiceExt as _;
+
+    use super::*;
+    use crate::cluster::{Topology, TopologySource};
+
+    /// `(method, path relative to the session)` of every session route in
+    /// the public API's document.
+    fn session_routes() -> Vec<(String, String)> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/api/openapi.json");
+        let spec: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let mut routes = Vec::new();
+        for (path, item) in spec["paths"].as_object().unwrap() {
+            let Some(rest) = path.strip_prefix("/v1/sessions/{session_id}/") else {
+                continue;
+            };
+            for method in item.as_object().unwrap().keys() {
+                if ["get", "post", "put", "patch", "delete"].contains(&method.as_str()) {
+                    routes.push((method.to_uppercase(), rest.to_owned()));
+                }
+            }
+        }
+        assert!(routes.len() > 20, "the API document lists session routes");
+        routes
+    }
+
+    /// Whether the cell answered "not available yet" (or not at all).
+    async fn not_served(app: &Router, method: &str, path: &str) -> bool {
+        let session = SessionId::new();
+        let path = path
+            .split('/')
+            .map(|part| if part.starts_with('{') { "x" } else { part })
+            .collect::<Vec<_>>()
+            .join("/");
+        let request = Request::builder()
+            .method(method)
+            .uri(format!("/v1/sessions/{session}/{path}"))
+            .body(Body::empty())
+            .unwrap();
+        // A served route fails on the missing body or the unreachable cell;
+        // a slow one is still served.
+        match tokio::time::timeout(Duration::from_secs(10), app.clone().oneshot(request)).await {
+            Ok(response) => {
+                let status = response.unwrap().status();
+                status == StatusCode::NOT_IMPLEMENTED || status == StatusCode::METHOD_NOT_ALLOWED
+            }
+            Err(_) => false,
+        }
+    }
+
+    #[tokio::test]
+    async fn cell_routes_are_served_and_gaps_are_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("topology.json");
+        // A cell nobody listens on: every call that reaches it fails fast.
+        let topology = Topology {
+            directory_cell: 0,
+            cells: BTreeMap::from([(0, BTreeMap::from([(1, "127.0.0.1:1".to_owned())]))]),
+        };
+        std::fs::write(&path, serde_json::to_vec(&topology).unwrap()).unwrap();
+        let app = routes().with_state(Gateway::new(TopologySource { path }));
+
+        let mut wrong = Vec::new();
+        for (method, path) in session_routes() {
+            let mut parts = path.split('/');
+            let first = parts.next().unwrap_or_default();
+            if first == "messages"
+                && parts
+                    .nth(1)
+                    .is_some_and(|call| MESSAGE_RECORD_ROUTES.contains(&call))
+            {
+                continue;
+            }
+            let gap = match plane(first) {
+                Plane::Record => continue,
+                Plane::Gap => true,
+                Plane::Cell => CELL_ROUTE_GAPS.contains(&path.as_str()),
+            };
+            if not_served(&app, &method, &path).await != gap {
+                wrong.push(format!(
+                    "{method} {path}: {}",
+                    if gap {
+                        "served by the cell, but declared a gap"
+                    } else {
+                        "not served by the cell, but declared the cell's"
+                    }
+                ));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "update crates/contracts/src/session_commands.rs:\n{}",
+            wrong.join("\n")
+        );
+    }
+}

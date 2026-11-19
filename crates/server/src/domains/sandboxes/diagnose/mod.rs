@@ -21,6 +21,7 @@
 //   reports as a fact.
 
 use chrono::{DateTime, Duration, Utc};
+use everruns_contracts::session_commands;
 use everruns_contracts::session_sandbox::{ProviderSandboxView, SessionSandboxCredentialSource};
 use everruns_contracts::typed_id::{SandboxId, SessionId};
 use everruns_core::Policy;
@@ -774,7 +775,7 @@ async fn session_work(
     {
         let read = plane
             .plane
-            .session_read(&plane.org, id, "sandbox", "")
+            .session_read(&plane.org, id, &session_commands::SANDBOX, "")
             .await;
         let (work, sandbox) = match read {
             Ok(value) => cell_work(&value),

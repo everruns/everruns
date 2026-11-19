@@ -27,6 +27,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
+use everruns_contracts::session_commands::{self, Kind};
 
 use crate::control::AdminCommand;
 use crate::dp::{
@@ -215,25 +216,6 @@ async fn org_session(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
-/// The session commands the control plane runs on an org's session
-/// itself: admitting a message it produced (an agent trigger's run, step
-/// 11.4, or a channel's message, 11.5), cancelling the running turn, a
-/// channel's prior conversation, the result of a parked call the control
-/// plane resolved (a question set's answers, 11.6), and an event it
-/// records (a reaction, 11.6), and a person's change to the session's
-/// storage (11.6). The cell checks each body.
-const ORG_SESSION_COMMANDS: &[&str] = &[
-    "messages",
-    "cancel-turn",
-    "seed",
-    "tool-results",
-    "record",
-    "storage",
-    // A session's files: the control plane copies a message's uploads
-    // there before it sends the message (`gateway_input.rs`).
-    "fs",
-];
-
 /// The org's session `session`, or 404.
 async fn owned_session(
     gateway: &Gateway,
@@ -251,13 +233,15 @@ async fn owned_session(
 }
 
 /// `POST /dp/v1/orgs/{org}/sessions/{session}/{command}`: one of
-/// [`ORG_SESSION_COMMANDS`] on one of the org's sessions.
+/// a declared session command
+/// ([`everruns_contracts::session_commands::SESSION_COMMANDS`]) on one of
+/// the org's sessions. The cell checks each body.
 async fn org_session_command(
     State(gateway): State<Arc<Gateway>>,
     Path((org, session, command)): Path<(String, String, String)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if !ORG_SESSION_COMMANDS.contains(&command.as_str()) {
+    if session_commands::find(Kind::Command, &command).is_none() {
         return Err((
             StatusCode::NOT_FOUND,
             format!("no session command {command}"),
@@ -270,13 +254,13 @@ async fn org_session_command(
 }
 
 /// `GET /dp/v1/orgs/{org}/sessions/{session}/{read}`: one of
-/// [`crate::gateway_reads::READS`] on one of the org's sessions (step 11.6).
+/// a declared session read on one of the org's sessions (step 11.6).
 async fn org_session_read(
     State(gateway): State<Arc<Gateway>>,
     Path((org, session, read)): Path<(String, String, String)>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if !crate::gateway_reads::READS.contains(&read.as_str()) {
+    if session_commands::find(Kind::Read, &read).is_none() {
         return Err((StatusCode::NOT_FOUND, format!("no session read {read}")));
     }
     let session = owned_session(&gateway, &org, &session).await?;

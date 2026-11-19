@@ -21,6 +21,7 @@
 //! - Reactions are not recorded on a v2 session yet (11.6); a reaction is
 //!   logged and dropped rather than refused, so the channel keeps working.
 
+use everruns_contracts::session_commands;
 use std::time::Duration;
 
 use everruns_contracts::runtime::channel::ChannelError;
@@ -112,7 +113,7 @@ impl DpSession {
             .session_command(
                 &self.org,
                 self.session,
-                "messages",
+                &session_commands::MESSAGES,
                 &message_body(id, message),
             )
             .await
@@ -126,7 +127,7 @@ impl DpSession {
             .session_command(
                 &self.org,
                 self.session,
-                "cancel-turn",
+                &session_commands::CANCEL_TURN,
                 &json!({ "command": uuid::Uuid::new_v4() }),
             )
             .await
@@ -142,7 +143,7 @@ impl DpSession {
             .session_command(
                 &self.org,
                 self.session,
-                "seed",
+                &session_commands::SEED,
                 &json!({ "command": uuid::Uuid::new_v4(), "messages": history }),
             )
             .await

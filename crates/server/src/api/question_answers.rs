@@ -24,6 +24,7 @@ pub(crate) use crate::domains::tool_results::ask_user_result::{
 };
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue};
+use everruns_contracts::session_commands;
 use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 use everruns_core::builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
@@ -517,7 +518,7 @@ async fn resolve_on_data_plane(
         "command": command,
         "tool_results": [{ "tool_call_id": pending.tool_call_id, "result": payload }],
     });
-    match plane.command("tool-results", &body).await {
+    match plane.command(&session_commands::TOOL_RESULTS, &body).await {
         Ok(_) => {
             if let Some(spoken) = spoken {
                 // The model never made the engine's synthetic call, so the
