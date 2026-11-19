@@ -3,9 +3,10 @@ export type { SidebarConfig, NavigationSection, NavigationItem } from "./sidebar
 export {
   defaultNavigationSections,
   defaultChatsNavigation,
-  defaultOperationalNavigation,
-  defaultBuildingNavigation,
-  defaultRegistriesNavigation,
+  defaultOverviewNavigation,
+  defaultActivityNavigation,
+  defaultBuildNavigation,
+  defaultBlocksNavigation,
   defaultQualityNavigation,
   defaultBottomNavigation,
   defaultDurableNavigation,

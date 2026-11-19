@@ -226,7 +226,7 @@ is not, because it marks what it returns read.
 2. **Agents in rooms** (shipped): wake rules, room sessions, `send_message`
    posts, loop limits, room notices.
 3. **Console** (shipped): Playground rooms for trying agents together, a Rooms
-   list under Operational next to Sessions, and a read-only room recording.
+   list under Activity next to Sessions, and a read-only room recording.
    Mockups were approved with the design. See [Console](#console).
 4. **Facilitator**: one optional agent per room that gets messages addressing
    nobody and routes by mentioning; a template agent.
@@ -240,7 +240,7 @@ is not, because it marks what it returns read.
 The console inspects rooms and lets a builder try agents together; it is not a
 chat client for a product's people.
 
-- **Rooms** (Operational, next to Sessions) lists every room in the org with who
+- **Rooms** (Activity, next to Sessions) lists every room in the org with who
   made it, its members and its last activity. A Playground room is an ordinary
   room carrying `metadata.playground = true`; everything else counts as made
   through the API.

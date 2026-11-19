@@ -36,7 +36,7 @@ import {
 } from "@/components/icons/facet-icons";
 import { ArrowRight, Plus } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
-import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
+import { registryNavigationByHref, type RegistryNavigationItem } from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
 
 export type NavigationItem = {
@@ -102,16 +102,36 @@ export const sideChatNavigation: NavigationItem[] = [
   },
 ];
 
-export const defaultOperationalNavigation: NavigationItem[] = [
+export const defaultOverviewNavigation: NavigationItem[] = [
+  // Overview (route /home) sits under the chats with no group header: it is the
+  // org's home, what needs a person, with the count of waiting items on its
+  // sidebar entry (knowledge/ui/org-home.md).
   {
-    name: "Monitoring",
-    description: "Inspect running sessions, actors and leases.",
-    href: "/monitoring",
-    icon: DurableIcon,
-    flag: "monitoring",
-    experimental: true,
-    keywords: ["execution", "actors", "leases", "monitor"],
+    name: "Overview",
+    description: "What needs attention in this organization, and how its agents ran today.",
+    href: "/home",
+    icon: OrganizationIcon,
+    keywords: ["home", "dashboard", "overview", "attention", "health", "status"],
   },
+];
+
+export const defaultBuildNavigation: NavigationItem[] = [
+  {
+    name: "Agents",
+    description: "Build and configure your AI assistants.",
+    href: "/agents",
+    icon: AgentIcon,
+    keywords: ["bot", "assistant"],
+  },
+  {
+    name: "Playground",
+    description: "Try agents in shared test conversations.",
+    href: "/playground",
+    icon: PlaygroundIcon,
+  },
+];
+
+export const defaultActivityNavigation: NavigationItem[] = [
   {
     name: "Sessions",
     description: "Review recorded conversations and execution traces.",
@@ -128,38 +148,28 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     icon: RoomIcon,
     keywords: ["room", "board", "channel", "conversation", "group", "styk", "facilitator"],
   },
+  {
+    name: "Monitoring",
+    description: "Inspect running sessions, actors and leases.",
+    href: "/monitoring",
+    icon: DurableIcon,
+    flag: "monitoring",
+    experimental: true,
+    keywords: ["execution", "actors", "leases", "monitor"],
+  },
 ];
 
-export const defaultBuildingNavigation: NavigationItem[] = [
-  {
-    name: "Extractions",
-    href: "/extractions",
-    icon: ReportIcon,
-    policy: "model.manage",
-    keywords: ["extract", "structured data", "evidence"],
-  },
-  // Overview (route /home) leads Building: what needs a person across the org,
-  // with the count of waiting items on its sidebar entry (knowledge/ui/org-home.md).
-  {
-    name: "Overview",
-    description: "What needs attention in this organization, and how its agents ran today.",
-    href: "/home",
-    icon: OrganizationIcon,
-    keywords: ["home", "dashboard", "overview", "attention", "health", "status"],
-  },
-  {
-    name: "Agents",
-    description: "Build and configure your AI assistants.",
-    href: "/agents",
-    icon: AgentIcon,
-    keywords: ["bot", "assistant"],
-  },
-  {
-    name: "Playground",
-    description: "Try agents in shared test conversations.",
-    href: "/playground",
-    icon: PlaygroundIcon,
-  },
+function registryItem(href: keyof typeof registryNavigationByHref): NavigationItem {
+  const { name, icon, keywords, description }: RegistryNavigationItem =
+    registryNavigationByHref[href];
+  const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
+  return { name, href, icon, keywords, description, flag, experimental: Boolean(flag) };
+}
+
+// Blocks: everything agents are made from and run on. What agents use by name
+// comes first; the provider-backed pages (Models, Web search, Sandboxes), each
+// with its own accounts tab, close the group.
+export const defaultBlocksNavigation: NavigationItem[] = [
   {
     name: "Harnesses",
     description: "Reusable instructions and tools for agents.",
@@ -167,6 +177,44 @@ export const defaultBuildingNavigation: NavigationItem[] = [
     icon: HarnessDomainIcon,
     keywords: ["template", "config"],
   },
+  registryItem("/capabilities"),
+  registryItem("/skills"),
+  registryItem("/plugins"),
+  {
+    name: "Knowledge",
+    description: "Organize collections, sources and searchable knowledge for agents.",
+    href: "/knowledge",
+    icon: KnowledgeIcon,
+    flag: "knowledge",
+    experimental: true,
+    keywords: ["knowledge", "index", "search", "retrieval"],
+  },
+  {
+    name: "Memory",
+    description: "Browse the persistent memory available to agents.",
+    href: "/memory",
+    icon: MemoryIcon,
+    keywords: ["workspace", "files", "storage"],
+    flag: "memory",
+    experimental: true,
+  },
+  {
+    name: "Extractions",
+    description: "Extract typed values and evidence using your provider account.",
+    href: "/extractions",
+    icon: ReportIcon,
+    policy: "model.manage",
+    keywords: ["extract", "structured data", "evidence"],
+  },
+  {
+    name: "Virtual Users",
+    description: "Manage the identities and personas agents interact with.",
+    href: "/virtual-users",
+    icon: VirtualUserIcon,
+    keywords: ["persona", "principal", "identity"],
+  },
+  registryItem("/models"),
+  registryItem("/web-search"),
   // One page with tabs, like Models: the fleet (what is running), the
   // templates that configure it, and the provider accounts it runs on.
   {
@@ -190,48 +238,6 @@ export const defaultBuildingNavigation: NavigationItem[] = [
       "provider accounts",
       "sandbox credentials",
     ],
-  },
-  {
-    name: "Virtual Users",
-    description: "Manage the identities and personas agents interact with.",
-    href: "/virtual-users",
-    icon: VirtualUserIcon,
-    keywords: ["persona", "principal", "identity"],
-  },
-];
-
-export const defaultRegistriesNavigation: NavigationItem[] = [
-  ...registryNavigationItems.map<NavigationItem>(
-    ({ name, href, icon, keywords, description }: RegistryNavigationItem) => {
-      const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-      return {
-        name,
-        href,
-        icon,
-        keywords,
-        description,
-        flag,
-        experimental: Boolean(flag),
-      };
-    },
-  ),
-  {
-    name: "Knowledge",
-    description: "Organize collections, sources and searchable knowledge for agents.",
-    href: "/knowledge",
-    icon: KnowledgeIcon,
-    flag: "knowledge",
-    experimental: true,
-    keywords: ["knowledge", "index", "search", "retrieval"],
-  },
-  {
-    name: "Memory",
-    description: "Browse the persistent memory available to agents.",
-    href: "/memory",
-    icon: MemoryIcon,
-    keywords: ["workspace", "files", "storage"],
-    flag: "memory",
-    experimental: true,
   },
 ];
 
@@ -328,9 +334,10 @@ export const defaultDevNavigation: NavigationItem[] = [
 
 export const defaultNavigationSections: NavigationSection[] = [
   { id: "chats", items: defaultChatsNavigation },
-  { label: "Building", items: defaultBuildingNavigation },
-  { label: "Operational", items: defaultOperationalNavigation },
-  { label: "Library", items: defaultRegistriesNavigation },
+  { id: "overview", items: defaultOverviewNavigation },
+  { label: "Build", items: defaultBuildNavigation },
+  { label: "Activity", items: defaultActivityNavigation },
+  { label: "Blocks", items: defaultBlocksNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
   { label: "System", items: defaultDurableNavigation, defaultCollapsed: true },
@@ -344,7 +351,7 @@ function isUnder(pathname: string, href: string): boolean {
 
 /**
  * The label of the sidebar group that owns `pathname`, or `undefined` when the
- * page sits outside a labelled group — Chats and Settings have no group header,
+ * page sits outside a labelled group — Chats, Overview and Settings have no group header,
  * so their pages take no group prefix.
  *
  * Matching is longest-href-first so `/agents/all` resolves through `/agents`

@@ -14,7 +14,7 @@ agent names, prompts, and tool arguments out of the display.
 
 An organization administrator enables **Monitoring** in **Settings → Features**.
 The feature uses the `monitoring` adoption flag and starts disabled. The
-**Operational → Monitoring** destination then shows only the selected
+**Activity → Monitoring** destination then shows only the selected
 organization's execution and actor ownership. Reading it requires session-read
 permission; opting in does not grant additional permissions.
 

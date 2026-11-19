@@ -123,12 +123,12 @@ describe("navigation results", () => {
   it("groups pages by the current layout and selects across group boundaries", () => {
     mockUseGlobalSearch.mockReturnValue([
       page("Chat", "Chat"),
-      page("Sessions", "Operational"),
-      page("Agents", "Building"),
+      page("Sessions", "Activity"),
+      page("Agents", "Build"),
     ]);
     render(<CommandPalette />);
-    expect(screen.getByRole("group", { name: "Operational" })).toHaveTextContent("Sessions");
-    expect(screen.getByRole("group", { name: "Building" })).toHaveTextContent("Agents");
+    expect(screen.getByRole("group", { name: "Activity" })).toHaveTextContent("Sessions");
+    expect(screen.getByRole("group", { name: "Build" })).toHaveTextContent("Agents");
     const input = screen.getByRole("combobox");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(screen.getByRole("option", { name: "Sessions" })).toHaveAttribute(
@@ -147,14 +147,14 @@ describe("navigation results", () => {
   it("keeps a usable selection after asynchronous results shrink or arrive", () => {
     mockUseGlobalSearch.mockReturnValue([
       page("Chat", "Chat"),
-      page("Sessions", "Operational"),
-      page("Agents", "Building"),
+      page("Sessions", "Activity"),
+      page("Agents", "Build"),
     ]);
     const { rerender } = render(<CommandPalette />);
     const input = screen.getByRole("combobox");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
-    mockUseGlobalSearch.mockReturnValue([page("Chat", "Chat"), page("Sessions", "Operational")]);
+    mockUseGlobalSearch.mockReturnValue([page("Chat", "Chat"), page("Sessions", "Activity")]);
     rerender(<CommandPalette />);
     fireEvent.keyDown(input, { key: "ArrowUp" });
     expect(screen.getByRole("option", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
@@ -162,7 +162,7 @@ describe("navigation results", () => {
     rerender(<CommandPalette />);
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(input).not.toHaveAttribute("aria-activedescendant");
-    mockUseGlobalSearch.mockReturnValue([page("Agents", "Building")]);
+    mockUseGlobalSearch.mockReturnValue([page("Agents", "Build")]);
     rerender(<CommandPalette />);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(mockPush).toHaveBeenCalledWith("/agents");
