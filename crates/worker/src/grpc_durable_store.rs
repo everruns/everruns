@@ -284,7 +284,10 @@ impl GrpcDurableStore {
             protocol_version: worker.protocol_version().unwrap_or_default(),
         };
 
-        self.client.register_durable_worker(request).await?;
+        let response = self.client.register_durable_worker(request).await?;
+        crate::grpc_adapters::set_server_skips_ephemeral(
+            response.into_inner().skips_ephemeral_persistence,
+        );
         Ok(())
     }
 
@@ -324,8 +327,13 @@ impl GrpcDurableStore {
             accepting_tasks,
         };
 
-        let response = self.client.heartbeat_durable_worker(request).await?;
-        Ok(response.into_inner().draining)
+        let response = self
+            .client
+            .heartbeat_durable_worker(request)
+            .await?
+            .into_inner();
+        crate::grpc_adapters::set_server_skips_ephemeral(response.skips_ephemeral_persistence);
+        Ok(response.draining)
     }
 
     /// Mark this worker draining, so the queue hands it no new tasks

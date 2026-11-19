@@ -219,6 +219,14 @@ pub fn active_backend() -> Option<&'static str> {
     ACTIVE_BACKEND.get().map(EventDelivery::backend_name)
 }
 
+/// Whether this server's active backend skips persisting ephemeral events.
+/// Workers learn it at registration and on each heartbeat.
+pub fn active_skips_ephemeral() -> bool {
+    ACTIVE_BACKEND
+        .get()
+        .is_some_and(EventDelivery::supports_ephemeral_skip)
+}
+
 /// `EXPECTED_INSTANCES`: how many servers the operator runs (default 1).
 pub(crate) fn expected_instances() -> usize {
     std::env::var("EXPECTED_INSTANCES")

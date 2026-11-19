@@ -964,6 +964,11 @@ message RegisterDurableWorkerRequest {
 
 message RegisterDurableWorkerResponse {
     bool registered = 1;
+    // The server delivers live updates over NATS, so ephemeral events (stream
+    // deltas) skip PostgreSQL and the worker may send them without waiting
+    // for an id. Also on every heartbeat, so the worker follows a server
+    // that connects to NATS later.
+    bool skips_ephemeral_persistence = 2;
 }
 
 // === Worker self-checks ===
@@ -999,6 +1004,8 @@ message HeartbeatDurableWorkerResponse {
     // shutting down). The queue hands it nothing, so it stops claiming until
     // a resume clears this.
     bool draining = 2;
+    // See RegisterDurableWorkerResponse.skips_ephemeral_persistence.
+    bool skips_ephemeral_persistence = 3;
 }
 
 // === Drain worker ===

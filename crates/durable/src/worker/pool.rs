@@ -59,6 +59,11 @@ pub struct WorkerPoolConfig {
     /// Resource monitoring interval (CPU/memory sampling)
     #[serde(with = "duration_millis")]
     pub resource_monitor_interval: Duration,
+
+    /// Build version the pool registers with, so operators can tell which
+    /// release a worker runs. `None` registers it as unknown.
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 impl Default for WorkerPoolConfig {
@@ -75,6 +80,7 @@ impl Default for WorkerPoolConfig {
             stale_threshold: Duration::from_secs(60),
             shutdown_timeout: Duration::from_secs(30),
             resource_monitor_interval: Duration::from_secs(2),
+            version: None,
         }
     }
 }
@@ -102,6 +108,12 @@ impl WorkerPoolConfig {
     /// would never hear about it.
     pub fn without_stale_reclaim(mut self) -> Self {
         self.stale_reclaim_interval = Duration::ZERO;
+        self
+    }
+
+    /// Set the build version the pool registers with.
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
         self
     }
 
@@ -441,7 +453,7 @@ impl WorkerPool {
             started_at: Utc::now(),
             last_heartbeat_at: Utc::now(),
             hostname: None,
-            version: None,
+            version: self.config.version.clone(),
             metadata: None,
             tasks_completed: 0,
             tasks_failed: 0,
@@ -919,6 +931,24 @@ mod tests {
         assert_eq!(pool.status(), WorkerPoolStatus::Stopped);
         assert!(!pool.is_accepting());
         // Shutting down a stopped pool is a no-op.
+        pool.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pool_registers_with_its_version() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let pool = WorkerPool::new(
+            store.clone(),
+            fast_config(&["double"]).with_version("1.2.3"),
+        );
+        pool.start().await.unwrap();
+
+        let workers = store
+            .list_workers(crate::persistence::WorkerFilter::default())
+            .await
+            .unwrap();
+        let worker = workers.iter().find(|w| w.id == "pool-test").unwrap();
+        assert_eq!(worker.version.as_deref(), Some("1.2.3"));
         pool.shutdown().await.unwrap();
     }
 

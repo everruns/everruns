@@ -191,6 +191,8 @@ pub async fn start_case_pool(
     let config = WorkerPoolConfig::new(vec![EVAL_CASE_ACTIVITY.to_string()])
         .with_worker_id(format!("server-evals-{}", Uuid::now_v7()))
         .with_worker_group("server-evals")
+        // Runs in the server, so it reports the server's version (System doctor).
+        .with_version(env!("CARGO_PKG_VERSION"))
         .with_max_concurrency(concurrency_from_env())
         // The server's stale-task reaper (durable_reaper.rs) owns reclaim.
         .without_stale_reclaim();

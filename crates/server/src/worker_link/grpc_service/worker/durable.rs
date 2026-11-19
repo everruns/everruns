@@ -245,6 +245,8 @@ impl WorkerServiceImpl {
 
         Ok(Response::new(RegisterDurableWorkerResponse {
             registered: true,
+            skips_ephemeral_persistence:
+                crate::live_updates::event_delivery::active_skips_ephemeral(),
         }))
     }
 
@@ -299,6 +301,8 @@ impl WorkerServiceImpl {
         Ok(Response::new(HeartbeatDurableWorkerResponse {
             acknowledged: true,
             draining: heartbeat.draining,
+            skips_ephemeral_persistence:
+                crate::live_updates::event_delivery::active_skips_ephemeral(),
         }))
     }
 

@@ -338,7 +338,7 @@ fn self_reports_merge_across_workers_and_name_the_broken_ones() {
         // A stale report is ignored, whatever it says.
         with_report("w3", proxy("problem"), 60),
     ];
-    let checks = self_report_checks(&workers, false, now);
+    let checks = self_report_checks(&workers, now);
     assert_eq!(checks.len(), 1);
     let check = &checks[0];
     assert_eq!(check.id, "workers.self.egress_proxy");
@@ -351,22 +351,8 @@ fn self_reports_merge_across_workers_and_name_the_broken_ones() {
     assert!(check.summary.contains("(w2)"), "{}", check.summary);
     assert_eq!(check.fix.as_deref(), Some("Start the proxy."));
 
-    let healthy = self_report_checks(&[with_report("w1", proxy("ok"), 1)], false, now);
+    let healthy = self_report_checks(&[with_report("w1", proxy("ok"), 1)], now);
     assert_eq!(healthy[0].status, CheckStatus::Ok);
-}
-
-#[test]
-fn nats_must_match_between_workers_and_server() {
-    let now = chrono::Utc::now();
-    let nats = |status: &str| serde_json::json!([{ "id": "nats", "status": status }]);
-    let status =
-        |workers: &[WorkerInfo], server: bool| self_report_checks(workers, server, now)[0].status;
-    let with = [with_report("w1", nats("ok"), 1)];
-    let without = [with_report("w1", nats("info"), 1)];
-    assert_eq!(status(&with, true), CheckStatus::Ok);
-    assert_eq!(status(&without, false), CheckStatus::Info);
-    assert_eq!(status(&without, true), CheckStatus::Warning);
-    assert_eq!(status(&with, false), CheckStatus::Problem);
 }
 
 #[tokio::test]
