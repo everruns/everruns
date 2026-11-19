@@ -175,12 +175,15 @@ pub trait DataPlane: Send + Sync {
         body: &Value,
     ) -> anyhow::Result<Value>;
     /// `POST /dp/v1/orgs/{org}/sessions`: create the org's session `id`
-    /// running its agent `agent_key`. Creating again is a no-op.
+    /// running its agent `agent_key`, or `definition`, the session's own
+    /// declaration of that agent (its own settings on top). Creating again
+    /// is a no-op.
     async fn create_session(
         &self,
         org: &str,
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
+        definition: Option<&Value>,
         initial_files: &[everruns_core::session_file::InitialFile],
         sandbox: Option<&Value>,
     ) -> anyhow::Result<()>;
@@ -247,6 +250,7 @@ impl DataPlane for NoDataPlane {
         _: &str,
         _: everruns_contracts::typed_id::SessionId,
         _: &str,
+        _: Option<&Value>,
         _: &[everruns_core::session_file::InitialFile],
         _: Option<&Value>,
     ) -> anyhow::Result<()> {
@@ -358,11 +362,15 @@ impl DataPlane for HttpDataPlane {
         org: &str,
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
+        definition: Option<&Value>,
         initial_files: &[everruns_core::session_file::InitialFile],
         sandbox: Option<&Value>,
     ) -> anyhow::Result<()> {
         let url = format!("{}{}/orgs/{org}/sessions", self.row.url, dp::PREFIX);
         let mut body = serde_json::json!({ "id": id, "agent_ref": agent_key });
+        if let Some(definition) = definition {
+            body["definition"] = definition.clone();
+        }
         if !initial_files.is_empty() {
             body["initial_files"] = serde_json::to_value(initial_files)?;
         }

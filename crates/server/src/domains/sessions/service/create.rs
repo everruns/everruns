@@ -556,6 +556,8 @@ impl SessionService {
         let seed = req.seed;
         let fork_up_to_sequence = req.fork_up_to_sequence;
 
+        // On a data plane, its own settings run as its own declaration.
+        let session_layer = crate::domains::data_plane::sessions::session_layer(&req);
         let input = CreateSessionRow {
             mcp_creator: crate::auth::mcp_attribution::for_user(caller.user_id)
                 .map(serde_json::to_value)
@@ -601,18 +603,6 @@ impl SessionService {
         let on_data_plane =
             !crate::domains::data_plane::sessions::stays_on_control_plane(agent.as_ref())
                 && crate::domains::data_plane::sessions::on_data_plane(&data_plane, org_id).await?;
-        if on_data_plane
-            && let Some(setting) = crate::domains::data_plane::sessions::unsupported(
-                &input,
-                has_caller_supplied_session_capabilities,
-            )
-        {
-            return Err(BadRequestError::new(format!(
-                "this organization runs sessions on a data plane, which does not take a \
-                 session's own `{setting}` yet; set it on the agent instead"
-            ))
-            .into());
-        }
         let row = self.db.create_session(input).await?;
         // Pinned before a data plane creates the session: it runs the
         // pinned sandbox (`data_plane::sandboxes`).
@@ -629,6 +619,7 @@ impl SessionService {
                 harness_id,
                 agent_id,
                 &req.initial_files,
+                session_layer,
             )
             .await
         {

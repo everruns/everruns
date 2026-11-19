@@ -40,7 +40,12 @@ pub fn strip(package: &mut Value) {
             object.remove(*field);
         }
     }
-    if let Some(capabilities) = package["capabilities"].as_array_mut() {
+    // `get_mut`, not indexing: indexing a missing field writes a null,
+    // which no manifest reads as a list.
+    if let Some(capabilities) = package
+        .get_mut("capabilities")
+        .and_then(Value::as_array_mut)
+    {
         capabilities.retain(|capability| {
             let id = capability["ref"].as_str().or_else(|| capability.as_str());
             !id.is_some_and(|id| SANDBOX_CAPABILITIES.contains(&id))
