@@ -145,6 +145,10 @@ impl OrgProviders {
     pub fn host_providers(self: &Arc<Self>) -> HostProviders {
         let mut drivers = DriverRegistry::new();
         everruns_drivers::register_drivers(&mut drivers);
+        // Decision: the worker's deterministic LlmSim driver too, so an org's
+        // LlmSim provider (a self-hosted install's keyless first agent, the
+        // Compose smoke test) answers on a cell as it does on a worker.
+        everruns_llmsim::register_driver(&mut drivers);
         HostProviders::shared(self.clone(), drivers)
     }
 

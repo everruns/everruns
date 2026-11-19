@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Local data plane v2 (DATA_PLANE=v2 just start-all): one cell (cell 0,
-# the directory cell) of three nodes, one executor and the edge router,
-# next to the usual stack.
+# Local data plane v2 (`just start-all`, the default; DATA_PLANE=v1 leaves
+# it out): one cell (cell 0, the directory cell) of three nodes, one
+# executor and the edge router, next to the usual stack.
 #
 # Decisions:
 # - Ports come from the stack's PORT_PREFIX: nodes ${PORT_PREFIX}41..43,
@@ -13,9 +13,14 @@
 # - The proxy sends /api/v1/sessions and below to the edge (SESSIONS_UPSTREAM);
 #   the edge passes everything that is not a data plane session's call on
 #   to the API server unchanged.
-# - The cell binary is `cell-testnode`: the standard host plus the
-#   simulated `llmsim` provider, so an agent can chat without any key, and
-#   an org's own providers (a real model) through its sealed connections.
+# - The API server registers the data plane and puts every org that has
+#   no sessions on it (EVERRUNS_DEFAULT_DATA_PLANE_URL), as a self-hosted
+#   install does. Orgs with v1 sessions stay on the workers; `just
+#   dp-enable` moves one by hand.
+# - The cell binary is the production `everruns-cell`, which registers the
+#   simulated `llmsim` provider like the worker, so an agent can chat
+#   without any key, and an org's own providers through its sealed
+#   connections.
 #
 # Usage (sourced by services.sh): data_plane_local_env, then
 # data_plane_local_start once the API answers; data_plane_local_stop.
@@ -44,6 +49,9 @@ data_plane_local_env() {
   export CELL_DP_TOKEN="$EVERRUNS_DP_TOKEN"
   export CELL_DP_KEY="$EVERRUNS_DP_KEY"
   export CELL_DATA_PLANE="$DP_LOCAL_ID"
+  export EVERRUNS_DATA_PLANE=v2
+  export EVERRUNS_DEFAULT_DATA_PLANE="$DP_LOCAL_ID"
+  export EVERRUNS_DEFAULT_DATA_PLANE_URL="http://127.0.0.1:${PORT_PREFIX}41"
   export CELL_CONTROL_PLANE="http://127.0.0.1:${API_PORT}/api"
   export CELL_JWKS_URL="http://127.0.0.1:${API_PORT}/api/.well-known/jwks.json"
   export DP_EDGE_PORT="${PORT_PREFIX}45"
@@ -73,12 +81,12 @@ data_plane_local_start() {
   mkdir -p "$dir/logs" "$dir/data" "$dir/store"
   data_plane_local_topology "$dir"
   echo "   Building the cell binary..."
-  cargo build -p everruns-cell-testkit --bin cell-testnode || return 1
-  bin="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}/debug/cell-testnode"
+  cargo build -p everruns-cell --bin everruns-cell || return 1
+  bin="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}/debug/everruns-cell"
   store="file://$dir/store"
   local node
   for node in 1 2 3; do
-    CELL_GATEWAY="127.0.0.1:${PORT_PREFIX}4${node}" CELL_EXECUTOR_CAP=256 \
+    CELL_EXECUTOR_CAP=256 \
       "$bin" node --topology "$dir/topology.json" --cell 0 --node "$node" \
       --data "$dir/data/n$node" --store "$store" \
       --control-plane "$CELL_CONTROL_PLANE" \
@@ -105,12 +113,10 @@ data_plane_local_start() {
     fi
     sleep 1
   done
-  # The control plane's note of the data plane: its gateway (any node) for
-  # config and sessions, the same node for org admin.
-  cargo run -q -p everruns-server --bin everruns-dataplane -- \
-    register "$DP_LOCAL_ID" "http://127.0.0.1:${PORT_PREFIX}41" || return 1
+  # The API server registered it (EVERRUNS_DEFAULT_DATA_PLANE_URL) and
+  # places new orgs on it within seconds.
   echo "   ✅ Data plane $DP_LOCAL_ID: cell 0 (3 nodes), 1 executor, edge :${DP_EDGE_PORT}"
-  echo "      Move an org onto it: just dp-enable <org public id>"
+  echo "      New orgs run on it; move an org with v1 sessions: just dp-enable <org public id>"
 }
 
 # Put an org on the local data plane (the stack must be running).

@@ -99,11 +99,36 @@ backups or failover, so use it only for experiments.
 | Part | Notes |
 |---|---|
 | Server | `server.replicas` (default 1). It applies migrations when it starts. See [Run several servers](#run-several-servers). |
+| Data plane v2 | Where new organizations run agents (`dataPlane.version`, default `v2`): a cell (StatefulSet, `dataPlane.cell.nodes`, default 1), executors that run its turns (`dataPlane.executor.replicas`) and the edge router the proxy sends session calls to. See [Choose the data plane](#choose-the-data-plane). |
 | Workers | `worker.replicas` (default 1), or scaled by [KEDA](https://keda.sh) with `worker.autoscaling.enabled=true` on waiting and running work: background tasks and chat turns. |
 | UI | `ui.replicas` (default 1). |
 | Proxy | Caddy with the same routes as the [Docker Compose](/getting-started/docker-compose/) setup: `/api`, `/mcp`, OAuth and agent-readable documents go to the server, the rest to the UI. Service `everruns`, port 9300. `proxy.replicas` (default 1). |
 | NATS | Bundled with JetStream and a generated password for live event delivery, or `nats.url` for your own. |
 | Valkey | Optional with one server (`valkey.enabled` or `valkey.url`), which then keeps rate limits in memory. Required with more. |
+
+## Choose the data plane
+
+New organizations run their agents on data plane v2. The cell keeps each
+session and writes its history to an object store: storage.s3's bucket (under
+`cells/`) when [S3 is on](#keep-files-in-s3), else a volume the cell and the
+executors share. A ReadWriteOnce volume keeps them on one node, so on a cluster
+of several nodes use S3 or a ReadWriteMany `dataPlane.storeVolume.storageClass`.
+An organization that already has sessions keeps running them on the workers
+(v1), so upgrading an existing install leaves the organizations in use where
+they are.
+
+```bash
+# Every organization on the workers (v1):
+helm upgrade everruns oci://ghcr.io/everruns/charts/everruns --reuse-values \
+  --set dataPlane.version=v1
+# Three cell nodes, so the cell keeps running when one is lost:
+helm upgrade everruns oci://ghcr.io/everruns/charts/everruns --reuse-values \
+  --set dataPlane.cell.nodes=3 --set storage.s3.enabled=true --set storage.s3.bucket=my-bucket
+```
+
+`everruns k8s up --data-plane v1` does the first. Going back to v1 after an
+install ran v2 also needs `dataPlane.keepRunning=true` (the CLI sets it), since
+the v2 organizations' sessions live in the cell.
 
 ## Expose it
 
@@ -224,8 +249,8 @@ through the egress proxy, so turn on `egressProxy.enabled` too, or set
 
 On the first install the chart generates the encryption key, the session
 signing key, the worker token and the admin password, and stores them in the
-Secret `<release>-generated`, and the bundled NATS and Valkey passwords in
-`<release>-internal`. Upgrades read them back instead of making new
+Secret `<release>-generated`, and the bundled NATS and Valkey passwords and
+the data plane link's token and key in `<release>-internal`. Upgrades read them back instead of making new
 ones, and uninstalling the chart leaves those Secrets in place.
 
 **Back up that Secret with the database.** The encryption key protects the

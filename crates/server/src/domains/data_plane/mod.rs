@@ -37,6 +37,7 @@ use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 
 pub mod allowances;
 pub mod attachments;
+pub mod default_plane;
 pub mod event_tap;
 pub mod feed;
 pub mod lookups;

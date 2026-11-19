@@ -119,6 +119,28 @@ impl Database {
         Ok(())
     }
 
+    /// Orgs on no data plane that have never had a session: the ones a
+    /// default data plane takes (`domains::data_plane::default_plane`). An
+    /// org with v1 sessions stays on v1, since its history lives here.
+    pub async fn dp_orgs_to_place(
+        &self,
+        limit: i64,
+        since: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<Vec<i64>> {
+        Ok(sqlx::query_scalar(
+            "SELECT o.org_id FROM organizations o
+             WHERE NOT EXISTS (SELECT 1 FROM dp_orgs d WHERE d.org_id = o.org_id)
+               AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.org_id = o.org_id)
+               AND ($2::timestamptz IS NULL OR o.created_at >= $2)
+             ORDER BY o.org_id
+             LIMIT $1",
+        )
+        .bind(limit)
+        .bind(since)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     pub async fn dp_data_plane(&self, id: &str) -> Result<Option<DataPlaneRow>> {
         Ok(sqlx::query_as(
             "SELECT data_plane_id, url, admin_url FROM data_planes WHERE data_plane_id = $1",

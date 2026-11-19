@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Install the Helm chart on the cluster in the current kube context (CI uses a
 # kind cluster), wait until it is healthy, sign in through the proxy, and check
-# that an upgrade and a reinstall keep the generated secrets.
+# that an agent turn runs on the data plane the images support (v2, cells,
+# by default), and that an upgrade and a reinstall keep the generated secrets.
 #
 # Usage: scripts/smoke-helm-chart.sh   (needs helm, kubectl and curl)
 #   EVERRUNS_TAG  image tag to run (default latest)
@@ -17,10 +18,14 @@ EMAIL="smoke@example.com"
 SECRET="$REL-everruns-generated"
 
 step() { printf '\n==> %s\n' "$*"; }
+# shellcheck source=lib/smoke-turn.sh
+. "$ROOT/scripts/lib/smoke-turn.sh"
+DATA_PLANE="$(smoke_data_plane "$TAG")"
 fail() {
   echo "::error title=helm chart smoke::$*" >&2
   kubectl -n "$NS" get pods -o wide >&2 || true
   kubectl -n "$NS" logs "deploy/$REL-everruns-server" --tail 80 >&2 || true
+  kubectl -n "$NS" logs "statefulset/$REL-everruns-cell" --tail 40 >&2 || true
   exit 1
 }
 pf_pid=""
@@ -35,7 +40,8 @@ trap cleanup EXIT
 
 install() {
   helm upgrade --install "$REL" "$CHART" -n "$NS" --create-namespace \
-    --set image.tag="$TAG" --set postgresql.enabled=true --set auth.adminEmail="$EMAIL" "$@"
+    --set image.tag="$TAG" --set postgresql.enabled=true --set auth.adminEmail="$EMAIL" \
+    --set dataPlane.version="$DATA_PLANE" "$@"
 }
 secrets() {
   { kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data}'
@@ -46,6 +52,11 @@ wait_ready() {
     kubectl -n "$NS" rollout status "deploy/$REL-everruns-$deploy" --timeout 600s \
       || fail "$deploy did not become ready"
   done
+  if [ "$DATA_PLANE" = v2 ]; then
+    for workload in statefulset/$REL-everruns-cell statefulset/$REL-everruns-executor deploy/$REL-everruns-edge; do
+      kubectl -n "$NS" rollout status "$workload" --timeout 600s || fail "$workload did not become ready"
+    done
+  fi
 }
 
 step "Install"
@@ -67,6 +78,17 @@ sign_in() {
 
 step "Reach it through the proxy and sign in"
 sign_in
+
+step "A turn runs on data plane $DATA_PLANE"
+kubectl -n "$NS" port-forward "svc/$REL-everruns" 19300:9300 >/dev/null 2>&1 &
+pf_pid=$!
+for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:19300/health >/dev/null 2>&1 && break; sleep 1; done
+password="$(kubectl -n "$NS" get secret "$SECRET" -o jsonpath='{.data.AUTH_ADMIN_PASSWORD}' | base64 -d)"
+token="$(smoke_token http://127.0.0.1:19300 "$EMAIL" "$password")"
+smoke_turn http://127.0.0.1:19300 "$token" helm-smoke >/dev/null
+smoke_check_plane "$DATA_PLANE" kubectl -n "$NS" exec "statefulset/$REL-everruns-postgresql" -- \
+  psql -U everruns -d everruns -tAc
+kill "$pf_pid"; pf_pid=""
 
 step "Upgrade to the hosted service's shape keeps the generated secrets"
 # Two servers rolled one at a time, password-protected NATS and Valkey,

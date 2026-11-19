@@ -45,8 +45,15 @@ ENVIRONMENT:
     STORAGE_BLOB_BACKEND      `s3` for the warehouse export (with the S3 settings)
 "#;
 
-fn org(arg: Option<&String>) -> Result<i64> {
+/// The org an operator names: the public id people see (console, API), or
+/// the link's id derived from the internal one (`org_{internal:032x}`).
+/// Organizations created by sign-up have random public ids, so the link's
+/// form alone would leave the CLI unable to name them.
+async fn org(db: &StorageBackend, arg: Option<&String>) -> Result<i64> {
     let public = arg.context("an org public id is required")?;
+    if let Some(row) = db.get_organization_by_public_id(public).await? {
+        return Ok(row.org_id);
+    }
     data_plane::org_internal(public).with_context(|| format!("{public} is not an org id"))
 }
 
@@ -81,7 +88,7 @@ async fn main() -> Result<()> {
             println!("data plane {id} at {url}");
         }
         "enable" => {
-            let org_id = org(args.get(1))?;
+            let org_id = org(&db, args.get(1)).await?;
             let plane = args.get(2).context("a data plane id is required")?;
             let row = data_plane::enable_org(&cp, org_id, plane).await?;
             println!(
@@ -92,7 +99,7 @@ async fn main() -> Result<()> {
             );
         }
         "suspend" | "resume" => {
-            let org_id = org(args.get(1))?;
+            let org_id = org(&db, args.get(1)).await?;
             let state = if command == "suspend" {
                 OrgState::Suspended
             } else {
@@ -102,7 +109,7 @@ async fn main() -> Result<()> {
             println!("{command}ed {}", data_plane::org_public(org_id));
         }
         "secret" => {
-            let org_id = org(args.get(1))?;
+            let org_id = org(&db, args.get(1)).await?;
             let secret_id = args.get(2).context("a secret id is required")?;
             let mut value = Vec::new();
             std::io::stdin().read_to_end(&mut value)?;
@@ -110,7 +117,7 @@ async fn main() -> Result<()> {
             println!("secret {secret_id} revision {revision}");
         }
         "status" => {
-            let org_id = org(args.get(1))?;
+            let org_id = org(&db, args.get(1)).await?;
             match db.dp_org(org_id).await? {
                 None => println!(
                     "{} runs on the platform's workers (v1)",
@@ -130,7 +137,7 @@ async fn main() -> Result<()> {
             }
         }
         "warehouse" => {
-            let org_id = org(args.get(1))?;
+            let org_id = org(&db, args.get(1)).await?;
             let on = match args.get(2).map(String::as_str) {
                 Some("on") => true,
                 Some("off") => false,
@@ -144,12 +151,12 @@ async fn main() -> Result<()> {
             );
         }
         "diff" => {
-            let org_id = org(args.get(1))?;
+            let org_id = org(&db, args.get(1)).await?;
             let diff = data_plane::config_diff(&cp, org_id).await?;
             println!("{}", serde_json::to_string_pretty(&diff)?);
         }
         "reconcile" => {
-            let org_id = org(args.get(1))?;
+            let org_id = org(&db, args.get(1)).await?;
             let keep = match args.get(2).map(String::as_str) {
                 None => None,
                 Some("--keep") => Some(true),

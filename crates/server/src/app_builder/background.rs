@@ -280,6 +280,14 @@ fn spawn_data_plane_dispatcher(
         }
     };
     let cp = crate::domains::data_plane::ControlPlane::new(db, encryption, link);
+    if let Some(plane) = crate::domains::data_plane::default_plane::DefaultDataPlane::from_env() {
+        let cp = cp.clone();
+        supervisor.spawn(
+            "default_data_plane",
+            RestartPolicy::always_after(Duration::from_secs(5)),
+            move || crate::domains::data_plane::default_plane::run(cp.clone(), plane.clone()),
+        );
+    }
     supervisor.spawn(
         "data_plane_dispatcher",
         RestartPolicy::always_after(Duration::from_secs(5)),
