@@ -15,7 +15,7 @@ VICTORIAMETRICS_PORT=127.0.0.1:18428 \
   python3 -c '
 import json, sys
 services = json.load(sys.stdin)["services"]
-assert len(services) == 10, "Full E2E profiles must include all ten services"
+assert len(services) == 13, "Full E2E profiles must include all thirteen services (data plane v2: cell, executor, edge)"
 assert services["caddy"]["ports"][0]["host_ip"] == "127.0.0.1", "E2E proxy must stay loopback-only"
 assert str(services["caddy"]["ports"][0]["published"]) == "19300", "E2E proxy port must be independent of its bind address"
 assert services["victoriametrics"]["ports"][0]["host_ip"] == "127.0.0.1", "E2E metrics must stay loopback-only"
