@@ -19,6 +19,8 @@ agents are made from and run on, starting with what agents use by name
 Virtual Users) and ending with the pages that hold provider accounts (Models,
 Web search, Sandboxes). Quality and Settings are unchanged.
 
+![The console sidebar before, with Building, Operational and Library, and after, with Overview under the chats, then Build, Activity and Blocks](./sidebar@2x.png)
+
 Before, Extractions sat above Overview at the top of Building, and Models and
 Web search shared a Library group with Capabilities and Knowledge. Breadcrumbs,
 Cmd-K search and the Chat first navigation rail follow the same groups. Every
