@@ -9,7 +9,7 @@
 name = "everruns-tool-search-reveal-evals"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.96.0"
 description = "Mira eval study: call quality of tool_search's `redefine` vs `in_result` reveal modes"
 publish = false
 

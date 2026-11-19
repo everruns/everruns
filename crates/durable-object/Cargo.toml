@@ -8,7 +8,7 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 license = "MIT"
-rust-version = "1.94.0"
+rust-version = "1.96.0"
 description = "Reference implementation of the Everruns session hosting SPI"
 readme = "README.md"
 
