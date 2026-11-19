@@ -10,6 +10,7 @@
 //! gave one, so a retry is the same message. The message's metadata
 //! carries the platform's entries (its origin), as on v1.
 
+use everruns_contracts::session_commands;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -54,7 +55,7 @@ pub(super) async fn create(
         .session_command(
             &org,
             session,
-            "messages",
+            &session_commands::MESSAGES,
             &json!({
                 "id": id,
                 "parts": content,

@@ -2060,6 +2060,22 @@ change until their next settings change. The session owner's own
 approval settings are a person's and stay a host call; without an
 answer a turn runs with the org's policy alone, which only asks more.
 
+**Parity, Phase A: session commands and route planes are declared
+(2026-11-19).** The other direction gets the host calls' discipline: the
+control plane reaches a v2 session only through a declared session command
+or read (`POST`/`GET /dp/v1/orgs/{org}/sessions/{id}/{name}`), named by
+constant on both sides, and every public session route
+(`/v1/sessions/{id}/{segment}`) declares the plane that serves it for a v2
+session: the cell, the control plane's record, or a known gap
+(`crates/contracts/src/session_commands.rs`, printed to
+`session_commands_registry.txt`). The edge routes by that table. A server
+test fails on a session route in the API document that declares no plane;
+a cell test sends every route of a cell segment to the cell's router and
+fails when one answers "not available yet" without being a declared gap,
+or when a declared gap is served, so closing a gap updates the table in
+the same change. A session route the server serves outside the API
+document (`commands`, `environment`) is declared by hand.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

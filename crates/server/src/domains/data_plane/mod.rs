@@ -31,6 +31,7 @@ use std::sync::Arc;
 
 use everruns_contracts::dataplane::{self as dp, ConfigChange, TenantPolicy};
 use everruns_contracts::dataplane_seal as seal;
+use everruns_contracts::session_commands::{Kind, SessionCommand};
 use serde_json::Value;
 
 use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
@@ -183,26 +184,27 @@ pub trait DataPlane: Send + Sync {
         initial_files: &[everruns_core::session_file::InitialFile],
         sandbox: Option<&Value>,
     ) -> anyhow::Result<()>;
-    /// `POST /dp/v1/orgs/{org}/sessions/{id}/{command}`: a command the
-    /// control plane runs on one of the org's sessions itself: `messages`
-    /// (an agent trigger's run, a channel's message; a retry with the same
-    /// message id admits once), `cancel-turn`, or `seed` (a channel's
-    /// prior conversation). The cell's answer.
+    /// `POST /dp/v1/orgs/{org}/sessions/{id}/{command}`: a declared session
+    /// command the control plane runs on one of the org's sessions itself
+    /// (`messages`: an agent trigger's run, a channel's message, where a
+    /// retry with the same message id admits once; `cancel-turn`; `seed`, a
+    /// channel's prior conversation; see [`everruns_contracts::session_commands`]).
+    /// The cell's answer.
     async fn session_command(
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        command: &str,
+        command: &'static SessionCommand,
         body: &Value,
     ) -> anyhow::Result<Value>;
-    /// `GET /dp/v1/orgs/{org}/sessions/{id}/{read}?{query}`: a view of one
-    /// of the org's sessions the control plane builds from its events
-    /// (`trace`, `events`; step 11.6).
+    /// `GET /dp/v1/orgs/{org}/sessions/{id}/{read}?{query}`: a declared
+    /// session read of one of the org's sessions (`trace`, `events`, ...;
+    /// step 11.6).
     async fn session_read(
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        read: &str,
+        read: &'static SessionCommand,
         query: &str,
     ) -> anyhow::Result<Value>;
     /// `GET /dp/v1/orgs/{org}/sessions/{id}/sse`: the session's committed
@@ -255,7 +257,7 @@ impl DataPlane for NoDataPlane {
         &self,
         _: &str,
         session: everruns_contracts::typed_id::SessionId,
-        _: &str,
+        _: &'static SessionCommand,
         _: &Value,
     ) -> anyhow::Result<Value> {
         anyhow::bail!("session {session} is not on a data plane")
@@ -265,7 +267,7 @@ impl DataPlane for NoDataPlane {
         &self,
         _: &str,
         _: everruns_contracts::typed_id::SessionId,
-        _: &str,
+        _: &'static SessionCommand,
         _: &str,
     ) -> anyhow::Result<Value> {
         anyhow::bail!("the org has no data plane")
@@ -379,13 +381,15 @@ impl DataPlane for HttpDataPlane {
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        command: &str,
+        command: &'static SessionCommand,
         body: &Value,
     ) -> anyhow::Result<Value> {
+        debug_assert_eq!(command.kind, Kind::Command);
         let url = format!(
-            "{}{}/orgs/{org}/sessions/{session}/{command}",
+            "{}{}/orgs/{org}/sessions/{session}/{}",
             self.row.url,
-            dp::PREFIX
+            dp::PREFIX,
+            command.name
         );
         Ok(self
             .request(reqwest::Method::POST, url)
@@ -401,13 +405,15 @@ impl DataPlane for HttpDataPlane {
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        read: &str,
+        read: &'static SessionCommand,
         query: &str,
     ) -> anyhow::Result<Value> {
+        debug_assert_eq!(read.kind, Kind::Read);
         let mut url = format!(
-            "{}{}/orgs/{org}/sessions/{session}/{read}",
+            "{}{}/orgs/{org}/sessions/{session}/{}",
             self.row.url,
-            dp::PREFIX
+            dp::PREFIX,
+            read.name
         );
         if !query.is_empty() {
             url.push('?');

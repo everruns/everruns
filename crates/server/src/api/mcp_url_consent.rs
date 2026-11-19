@@ -24,6 +24,7 @@ use axum::{
     http::StatusCode,
     routing::post,
 };
+use everruns_contracts::session_commands;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{EventRequest, ToolCompletedData};
 use everruns_core::mcp::{StoredConsent, consent_storage_key};
@@ -471,7 +472,7 @@ async fn consent_on_data_plane(
             "result": consent_summary(req.action, &pending),
         }],
     });
-    if let Err(error) = plane.command("tool-results", &body).await {
+    if let Err(error) = plane.command(&session_commands::TOOL_RESULTS, &body).await {
         let status = error
             .downcast_ref::<reqwest::Error>()
             .and_then(reqwest::Error::status);

@@ -1,0 +1,57 @@
+# session commands: kind name version
+Command messages v1
+Command cancel-turn v1
+Command seed v1
+Command tool-results v1
+Command record v1
+Command storage v1
+Command fs v1
+Read events v1
+Read log v1
+Read trace v1
+Read storage v1
+Read secrets v1
+Read sandbox v1
+# session routes: segment plane
+messages Cell
+events Cell
+sse Cell
+cancel Cell
+tool-approvals Cell
+tool-results Cell
+tasks Cell
+schedules Cell
+work Cell
+resources Cell
+archive Record
+pin Record
+cost Record
+budgets Record
+budget-check Record
+resolved-model Record
+participants Record
+commands Record
+run-requests Record
+trace Record
+question-answers Record
+reactions Record
+feedback Record
+context-report Record
+export Record
+storage Record
+approval-mode Record
+mcp-elicitation-consent Record
+fork Record
+run Record
+resume Record
+environment Record
+sandbox Record
+databases Gap
+git Gap
+mcp-servers Gap
+repositories Gap
+voice Gap
+messages/{id}/reactions Record
+messages/{id}/feedback Record
+tasks/{task_id}/push-configs Gap
+tasks/{task_id}/push-configs/{config_id} Gap

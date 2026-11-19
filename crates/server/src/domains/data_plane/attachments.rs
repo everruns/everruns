@@ -14,6 +14,7 @@
 //! - One upload per call keeps each call within the cell's file bound.
 //! - An upload the org does not have rejects the message, as on v1.
 
+use everruns_contracts::session_commands;
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -69,7 +70,12 @@ pub async fn stage(
             _ => continue,
         };
         let reply = plane
-            .session_command(org, session, "fs", &json!({ "op": "seed", "files": files }))
+            .session_command(
+                org,
+                session,
+                &session_commands::FS,
+                &json!({ "op": "seed", "files": files }),
+            )
             .await?;
         if reply["result"] == "failed" {
             anyhow::bail!(

@@ -21,6 +21,7 @@
 //! - Its pinned managed sandbox goes with the create (step 11.3,
 //!   `sandboxes.rs`), so the record is pinned before the create.
 
+use everruns_contracts::session_commands;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 
 use crate::domains::common::CommandError;
@@ -204,7 +205,12 @@ impl TriggerRun<'_> {
         let body = serde_json::json!({ "id": message, "text": self.text, "origin": self.origin });
         for_org(cp, self.org_id)
             .await?
-            .session_command(&org_public(self.org_id), self.session, "messages", &body)
+            .session_command(
+                &org_public(self.org_id),
+                self.session,
+                &session_commands::MESSAGES,
+                &body,
+            )
             .await
             .map_err(|error| error.context("the data plane did not take the message"))?;
         Ok(true)

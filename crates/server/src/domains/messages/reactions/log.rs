@@ -18,6 +18,7 @@ use crate::domains::messages::service::{CreateMessageContext, MessageService};
 use crate::storage::Database;
 use everruns_contracts::dataplane::SessionEventRow;
 use everruns_contracts::message_reactions::ReactionNote;
+use everruns_contracts::session_commands;
 use everruns_contracts::typed_id::{EventId, MessageId};
 use everruns_core::{
     EventRequest, INPUT_MESSAGE, MESSAGE_REACTION_ADDED, MESSAGE_REACTION_REMOVED,
@@ -100,7 +101,7 @@ impl ReactionLog<'_> {
             }
             Self::DataPlane(plane) => {
                 let body = serde_json::json!({ "event_id": EventId::new(), "event": request });
-                plane.command("record", &body).await?;
+                plane.command(&session_commands::RECORD, &body).await?;
             }
         }
         Ok(())
@@ -134,7 +135,7 @@ impl ReactionLog<'_> {
                     "origin": origin,
                     "metadata": metadata,
                 });
-                plane.command("messages", &body).await?;
+                plane.command(&session_commands::MESSAGES, &body).await?;
             }
         }
         Ok(())

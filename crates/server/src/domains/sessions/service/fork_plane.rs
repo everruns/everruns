@@ -17,6 +17,7 @@
 //! - Branching from a message stops where v1 stops: at the end of the turn
 //!   the message started, or at the message itself.
 
+use everruns_contracts::session_commands;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::Event;
 use everruns_core::message::{ContentPart, RuntimeMessage};
@@ -115,7 +116,7 @@ pub(crate) async fn seed_fork(
         let command = uuid::Uuid::new_v5(&child.uuid(), b"everruns.fork");
         child_plane
             .command(
-                "seed",
+                &session_commands::SEED,
                 &serde_json::json!({ "command": command, "messages": messages }),
             )
             .await?;

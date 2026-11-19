@@ -15,6 +15,7 @@
 //! - Bound secrets (a secret the platform puts on requests to one URL) are
 //!   refused on a v2 session for now: the cell has no egress binding yet.
 
+use everruns_contracts::session_commands;
 use std::collections::BTreeMap;
 
 use everruns_contracts::typed_id::SessionId;
@@ -69,7 +70,7 @@ impl PlaneStorage {
     pub async fn listed(&self) -> Result<Listed, CommandError> {
         let value = self
             .plane
-            .read("storage")
+            .read(&session_commands::STORAGE_READ)
             .await
             .map_err(CommandError::internal)?;
         serde_json::from_value(value).map_err(|e| CommandError::internal(e.into()))
@@ -121,7 +122,7 @@ impl PlaneStorage {
         }
         let read = self
             .plane
-            .read("secrets")
+            .read(&session_commands::SECRETS)
             .await
             .map_err(CommandError::internal)?;
         let stored: Stored =
@@ -170,7 +171,7 @@ impl PlaneStorage {
 
     async fn change(&self, op: Value) -> Result<Value, CommandError> {
         self.plane
-            .command("storage", &op)
+            .command(&session_commands::STORAGE, &op)
             .await
             .map_err(CommandError::internal)
     }

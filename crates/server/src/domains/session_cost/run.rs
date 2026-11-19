@@ -13,6 +13,7 @@
 // status, timing and spend in it, and nothing more. Conversations stay behind
 // each session's own view.
 
+use everruns_contracts::session_commands;
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
@@ -186,7 +187,10 @@ impl Command for GetSessionRun {
                 Some(plane) => {
                     let trace: everruns_contracts::dataplane::SessionTraceRows =
                         serde_json::from_value(
-                            plane.read("trace").await.map_err(CommandError::internal)?,
+                            plane
+                                .read(&session_commands::TRACE)
+                                .await
+                                .map_err(CommandError::internal)?,
                         )
                         .map_err(|e| CommandError::internal(e.into()))?;
                     turns.extend(trace.turns.into_iter().map(|turn| {
