@@ -15,7 +15,7 @@ tags:
 
 Overview (route `/home`, called Home until 2026-11-10) answers two questions in order: what
 in this organization needs a person now, and how its agents ran in the last 24 hours. It is
-the first entry of the Building section, not the landing route. Its sidebar entry shows how
+an ungrouped sidebar entry right under the chats, not the landing route. Its sidebar entry shows how
 many items wait on the attention list, and nothing when there are none; the count reuses the
 same queries and ranking ([`use-home-attention.ts`](../../apps/ui/src/components/home/use-home-attention.ts)),
 so it can never disagree with the page. Source: [`components/home/`](../../apps/ui/src/components/home/), the ranking rules in

@@ -104,6 +104,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Binding type": "Bindungstyp",
   "Blocked domains": "Blockierte Domänen",
   "Blocked hosts": "Blockierte Hosts",
+  Blocks: "Bausteine",
   "Bosnian (Bosnia)": "Bosnisch (Bosnien)",
   Branch: "Zweig",
   Branding: "Branding",

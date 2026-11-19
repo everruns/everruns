@@ -612,7 +612,7 @@ jobs:
           ref: ${{ needs.changes.outputs.revision }}
 
       - name: Install Rust MSRV toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2

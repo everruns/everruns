@@ -14,8 +14,8 @@ a small open issue I could fix.
 
 ### Prerequisites
 
-- Rust 1.96.0 toolchain for repo development (1.94.0 is the minimum supported
-  Rust version for published crates)
+- Rust 1.96.0 toolchain for repo development (also the minimum supported Rust
+  version for published crates)
 - Node.js 18+ and pnpm (for the UI)
 - [just](https://github.com/casey/just) command runner
 - An OpenAI or Anthropic API key in your environment (for LLM calls)

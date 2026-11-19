@@ -29,7 +29,7 @@ Verify standard navigation, identity binding, shared inspection, and reuse of se
 
 ## Steps
 
-1. Open Playground under Building. Start a new Playground chat; verify Talk as defaults to your linked virtual user.
+1. Open Playground under Build. Start a new Playground chat; verify Talk as defaults to your linked virtual user.
 2. As an admin, select another active end-user virtual user. Choose the test agent and start.
 3. Send the test message. Verify streaming, final output, rename, and the fixed agent/user facts.
 4. Use Open session and verify the same session identifier and transcript. Use Workspace to inspect the same run. Verify Trace and Pin chat are absent.

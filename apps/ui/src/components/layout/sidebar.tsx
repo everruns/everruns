@@ -23,14 +23,15 @@ import { useState } from "react";
 import { Search, Menu } from "lucide-react";
 import {
   defaultBottomNavigation,
-  defaultBuildingNavigation,
+  defaultBuildNavigation,
   defaultChatsNavigation,
+  defaultOverviewNavigation,
   defaultDevNavigation,
   defaultDurableNavigation,
   defaultNavigationSections,
-  defaultOperationalNavigation,
+  defaultActivityNavigation,
   defaultQualityNavigation,
-  defaultRegistriesNavigation,
+  defaultBlocksNavigation,
 } from "@/lib/navigation";
 import type { NavigationItem, NavigationSection } from "@/lib/navigation";
 
@@ -40,14 +41,15 @@ import type { NavigationItem, NavigationSection } from "@/lib/navigation";
 export type { NavigationItem, NavigationSection };
 export {
   defaultBottomNavigation,
-  defaultBuildingNavigation,
+  defaultBuildNavigation,
   defaultChatsNavigation,
+  defaultOverviewNavigation,
   defaultDevNavigation,
   defaultDurableNavigation,
   defaultNavigationSections,
-  defaultOperationalNavigation,
+  defaultActivityNavigation,
   defaultQualityNavigation,
-  defaultRegistriesNavigation,
+  defaultBlocksNavigation,
 };
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useProviders } from "@/hooks/use-providers";

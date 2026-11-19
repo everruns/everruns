@@ -103,6 +103,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Binding type": "Тип палітурки",
   "Blocked domains": "Заблоковані домени",
   "Blocked hosts": "Заблоковані хости",
+  Blocks: "Блоки",
   "Bosnian (Bosnia)": "боснійська (Боснія)",
   Branch: "Гілка",
   Branding: "Представлення",

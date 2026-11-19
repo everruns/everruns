@@ -589,8 +589,6 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
     row.harness_id = Some(harness);
     // A session's own starter files ride along with the create.
     row.initial_files = json!([{ "path": "/brief.md", "content": "Read me." }]);
-    assert_eq!(sessions::unsupported(&row, false), None);
-    assert_eq!(sessions::unsupported(&row, true), Some("capabilities"));
     let id = cp.db.create_session(row).await.unwrap().id;
     assert!(!sessions::runs_on_data_plane(&cp, ORG, id).await.unwrap());
 
@@ -600,7 +598,7 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         encoding: "text".into(),
         is_readonly: false,
     };
-    sessions::created(&cp, ORG, id, harness, None, &[brief])
+    sessions::created(&cp, ORG, id, harness, None, &[brief], None)
         .await
         .unwrap();
     let (key, _) = crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, None)
@@ -613,6 +611,8 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         assert_eq!(body["id"], json!(id.to_string()));
         assert_eq!(body["agent_ref"], json!(key));
         assert_eq!(body["initial_files"][0]["path"], "/brief.md");
+        // No settings of its own: it runs its agent's shared declaration.
+        assert!(body.get("definition").is_none());
         // The agent was delivered before the create.
         let agents: Vec<&ConfigUpdate> = seen
             .updates
@@ -641,12 +641,60 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         .await;
     if let Ok(v1) = v1 {
         let before = seen.lock().sessions.len();
-        sessions::created(&cp, 3, v1.id, harness, None, &[])
+        sessions::created(&cp, 3, v1.id, harness, None, &[], None)
             .await
             .unwrap();
         assert_eq!(seen.lock().sessions.len(), before);
         assert!(!sessions::runs_on_data_plane(&cp, 3, v1.id).await.unwrap());
     }
+}
+
+/// A v2 session created with its own settings runs its own declaration of
+/// its agent, sent with the create: the session's prompt after the agent's,
+/// its client tools and iteration cap (data plane v2 parity gap 4).
+#[tokio::test]
+async fn a_v2_session_with_its_own_settings_runs_its_own_declaration() {
+    let (cp, seen, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.harness_id = Some(harness);
+    let id = cp.db.create_session(row).await.unwrap().id;
+    let request: crate::domains::sessions::types::CreateSessionRequest =
+        serde_json::from_value(json!({
+            "system_prompt": "Grade the answer.",
+            "tools": [{
+                "type": "client_side",
+                "name": "submit_grade",
+                "description": "Record the grade.",
+                "parameters": { "type": "object" }
+            }],
+            "max_iterations": 4
+        }))
+        .unwrap();
+    let layer = sessions::session_layer(&request).expect("the session has its own settings");
+    sessions::created(&cp, ORG, id, harness, None, &[], Some(layer))
+        .await
+        .unwrap();
+    let (key, _) = crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, None)
+        .await
+        .unwrap();
+    let seen = seen.lock();
+    let (_, body, _) = seen.sessions.last().expect("created on the data plane");
+    assert_eq!(body["agent_ref"], json!(key));
+    let definition = everruns::hosting::RuntimeAgent::new(body["definition"].clone());
+    let package = definition.package().expect("a valid declaration");
+    let manifest = package.manifest();
+    assert!(
+        manifest.instructions.ends_with("\n\nGrade the answer."),
+        "{}",
+        manifest.instructions
+    );
+    assert_eq!(manifest.tools.len(), 1);
+    assert_eq!(manifest.max_iterations, Some(4));
+    // No setting of its own: no declaration of its own.
+    let plain: crate::domains::sessions::types::CreateSessionRequest =
+        serde_json::from_value(json!({ "system_prompt": "  " })).unwrap();
+    assert!(sessions::session_layer(&plain).is_none());
 }
 
 /// An agent trigger's run on a v2 session goes to the data plane under the
@@ -676,7 +724,7 @@ async fn a_trigger_run_on_a_v2_session_goes_to_the_data_plane() {
     assert!(!run(false).admit(&cp).await.unwrap());
     assert!(seen.lock().messages.is_empty());
 
-    sessions::created(&cp, ORG, id, harness, None, &[])
+    sessions::created(&cp, ORG, id, harness, None, &[], None)
         .await
         .unwrap();
     assert!(run(false).admit(&cp).await.unwrap());

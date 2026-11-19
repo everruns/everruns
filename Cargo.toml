@@ -98,7 +98,7 @@ exclude = [
 version = "0.53.1"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
-rust-version = "1.94.0"
+rust-version = "1.96.0"
 license = "MIT"
 authors = ["Everruns Contributors"]
 homepage = "https://everruns.com"
