@@ -183,7 +183,6 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     ("environment", Plane::Record),
     ("sandbox", Plane::Record),
     // Known gaps (data plane v2 parity, Phase B).
-    ("databases", Plane::Gap),
     ("git", Plane::Gap),
     ("mcp-servers", Plane::Gap),
     ("repositories", Plane::Gap),

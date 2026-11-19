@@ -46,7 +46,6 @@ run Record
 resume Record
 environment Record
 sandbox Record
-databases Gap
 git Gap
 mcp-servers Gap
 repositories Gap

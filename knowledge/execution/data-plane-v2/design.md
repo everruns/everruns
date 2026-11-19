@@ -444,7 +444,7 @@ capacity scale in seconds.
 | Session secrets (set during a session) | Cell state, sealed with the same org data key | | Yes, local |
 | Session log | Cell Raft log, then S3 segments | | Yes, local |
 | Session files (workspace) | Root and recent changes in cell state; tree nodes and contents in S3 by hash ([fs.md](fs.md)) | Executor cache, data plane chunk cache | A commit is a Raft entry; large contents go through the chunk cache to S3 |
-| Session SQL database | SQLite file per session in S3, opened by the executor for the turn | | Stage 2 |
+| Session SQL database | Index in cell state; each database one SQLite file in S3 by hash (`blobs/{sha256}`), a new file per write | Executor working copy | A write is a blob put plus a Raft entry; reads run on the warm copy |
 | Org Memories (shared, mountable) | A shared volume: a placeable unit on some cell (movable like a session), tree in S3 | Read-only mounts read S3 directly; writes go to the cell hosting the volume | Reads local to S3; writes one hop to the volume's cell |
 | Traces (one session) | The session log itself; full model prompts stored as S3 objects referenced from `llm.generation` | | No; read by the gateway on demand |
 | Traces (across sessions: costs, monitoring, reporting) | Analytical copy in S3 written by the cell's segment writer (the trace-store format: "an analytical copy, never a journal") | Catalog entries as Raft commands in the writing cell | No |
@@ -502,7 +502,6 @@ work by prefix, and random org ids spread load across S3 partitions):
 | --- | --- | --- | --- |
 | `orgs/{org}/sessions/{session}/log/{from}-{to}.seg` | Session history: one object per flush, with events, messages and prompts sections and a footer index. Compaction writes larger replacement segments (funout's tiered compaction, messages-only companions) | Cell leader (segment writer) | Executors (range read of the messages section from the newest checkpoint), gateway (history pages, trace view, full prompts) |
 | `orgs/{org}/blobs/{sha256}` | File, attachment, image and memory bytes, content-addressed, so fork and copy share them | Executors, gateway uploads | Executors (local cache), gateway downloads |
-| `orgs/{org}/sqldb/{session}/{generation}.sqlite` | Session SQL database (stage 2), a new generation per committed turn | Executors | Executors |
 | `orgs/{org}/index/parquet/{cell}/{date}/{seq}.parquet`, `orgs/{org}/index/tantivy/{cell}/{segment}/` | Trace and session search indexes | Cell leader (exporter) | Query service |
 | `orgs/{org}/exports/{export}.tar.zst` | Org export, used to move an org between data planes or for a download | Control plane admin job | Control plane, importing cell |
 | `cells/{cell}/snapshots/{raft_index}.snap` | Raft snapshots, last three kept | Cell leader | Replicas that fall far behind, recovery |
@@ -2163,6 +2162,23 @@ absent, as v1 copies them (`crates/cell/src/memory.rs`,
 runs on the control plane: its person's own MCP servers, page context and
 threads come next.
 
+**Parity, Phase B: a session's SQL databases live in its cell
+(2026-11-19).** Decision 2A: session state belongs with the session, so
+the `session_sql_db` host call is gone. Each database is one SQLite file in
+the object store, named by its SHA-256 like any other blob; the session's
+replicated state holds the index (`Command::SqlDb`), so a database moves
+and restores with its session and needs no control plane. A
+write makes a new file and commits it over the hash it started from, so two
+writers never both win and a reader never sees a torn file; old files stay,
+as workspace blobs do. The executor runs SQLite on a local working copy,
+brought to the index before each call, with the executor, authorizer and
+limits every host shares (`everruns::database`); the index also holds the
+database count and the session's total size. Executors commit under their
+epoch, the Databases API (`/v1/sessions/{id}/databases`, now served by the
+cell) unfenced as the gateway (`crates/cell/src/sqldb.rs`,
+`crates/cell/src/hosting_sqldb.rs`). Not carried yet: a fork's copy of the
+parent's databases.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
@@ -2212,10 +2228,8 @@ post binds to the turn's input event, which lives in the cell, and the
 channel host already delivers the turn's messages from the session's
 stream. Cells embed the product docs, so a platform agent finds them at
 `/docs` as on a worker. A session's SQL databases (the `sql_database`
-tools) stay in the control plane's store, as for a v1 session, so the
-console's Databases panel shows what a cell session's tools wrote; each
-operation goes over the channel for the session's own databases only, and
-keeps its error kind (a timeout, a blocked statement, a missing database).
+tools) first stayed in the control plane's store; they moved into the cell
+in Phase B (below).
 
 **11.7 The feature mix for the 75k run (2026-11-18).** `cell-drive load
 --agent mix` gives one session in two a chat agent (the llmsim mix the

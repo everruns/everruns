@@ -77,6 +77,8 @@ pub fn routes() -> Router<Arc<Gateway>> {
             "/v1/sessions/{session}/tasks/{task}/messages",
             post(message_task),
         )
+        // The session's SQL databases (`sqldb.rs`).
+        .merge(crate::sqldb::gateway_routes())
         .route("/v1/sessions/{session}/{*feature}", any(not_yet))
 }
 

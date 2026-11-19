@@ -79,7 +79,7 @@ pub mod senders;
 pub mod session_storage;
 pub mod ship;
 pub mod sm;
-mod sqldb;
+pub mod sqldb;
 pub mod state;
 pub mod store;
 mod store_throttle;

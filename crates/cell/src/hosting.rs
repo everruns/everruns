@@ -43,6 +43,24 @@ use crate::authority::{ProactiveAttempt, WriteOp};
 use crate::node::{Node, now_ms};
 use crate::state::{Checkpoint, Command, Response, SessionState};
 
+/// `backends` with the session's SQL databases for the `sql_database`
+/// tools (`hosting_sqldb.rs`), on every cell, with or without a control
+/// plane.
+fn attach_databases(mut backends: HostBackends, databases: sqldb::CellSqlDb) -> HostBackends {
+    use everruns_contracts::session_sqldb::SessionSqlDbStoreExt;
+    let store = Arc::new(SessionSqlDbStoreExt(Arc::new(databases)));
+    let embedder = backends.tool_context_extensions_factory.take();
+    backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
+        let mut extensions = embedder
+            .as_ref()
+            .map(|factory| factory(org, session))
+            .unwrap_or_default();
+        extensions.insert(store.clone());
+        extensions
+    }));
+    backends
+}
+
 /// The agent behavior version sessions are bound to. Decision: this is NOT
 /// the binary's version. Engine's `AgentBuild::build_id` names retained Agent
 /// behavior "independent of deployment revisions", and a session's behavior
@@ -456,6 +474,7 @@ impl SessionHosting for RaftHosting {
             let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
             crate::memory::attach(backends, lookups, session, &memory)
         };
+        let backends = attach_databases(backends, self.databases());
         Ok(match self.inner.sandboxes.get() {
             Some(sandboxes) => sandboxes.attach(session, backends, self.files()),
             None => backends,
@@ -1456,6 +1475,9 @@ mod deltas;
 
 #[path = "hosting_files.rs"]
 pub mod files;
+
+#[path = "hosting_sqldb.rs"]
+pub mod sqldb;
 
 #[path = "hosting_actors.rs"]
 mod actors;
