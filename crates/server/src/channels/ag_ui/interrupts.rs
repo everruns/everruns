@@ -242,19 +242,18 @@ pub(crate) async fn resume(
     }
     // THREAT[TM-TENANT-016]: `session` is the one the request's own routing
     // tags resolved, so an entry can only answer this thread's interrupts.
-    let rows = services
-        .db
-        .list_events(
-            session.id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(QUESTION_LOOKBACK_EVENTS),
-        )
-        .await
-        .map_err(ResumeError::Internal)?;
+    let rows = crate::domains::sessions::events::list(
+        services.db,
+        session.id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(QUESTION_LOOKBACK_EVENTS),
+    )
+    .await
+    .map_err(ResumeError::Internal)?;
     let Some(row) = rows.last() else {
         warn_unrecognised(session.id, entries.iter());
         return Ok(ResumeOutcome::NothingParked);

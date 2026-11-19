@@ -43,7 +43,7 @@ pub struct Evidence {
 /// Read the evidence for `score`. `None` when the slice is not in the trace
 /// (a tool call id that never completed).
 pub async fn gather(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     score: &TraceScoreRow,
 ) -> anyhow::Result<Option<Evidence>> {
     let session_id = SessionId::from_uuid(score.session_id);
@@ -62,14 +62,14 @@ pub async fn gather(
                 filter_types: vec![TOOL_STARTED.into(), TOOL_COMPLETED.into()],
                 ..Default::default()
             };
-            let events = db.list_events_advanced(&params).await?;
+            let events = crate::domains::sessions::events::advanced(db, &params).await?;
             Ok(tool_evidence(&events, &score.turn_id))
         }
     }
 }
 
 async fn list(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     session_id: SessionId,
     turn_id: Option<&str>,
     newest: Option<i32>,
@@ -84,7 +84,7 @@ async fn list(
         limit: newest,
         ..Default::default()
     };
-    let mut events = db.list_events_advanced(&params).await?;
+    let mut events = crate::domains::sessions::events::advanced(db, &params).await?;
     events.sort_by_key(|e| e.sequence);
     Ok(events)
 }

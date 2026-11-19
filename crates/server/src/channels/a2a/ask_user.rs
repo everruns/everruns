@@ -93,17 +93,17 @@ pub(super) async fn pending_ask_user(
     {
         return Ok(None);
     }
-    let events = db
-        .list_events(
-            session.id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(crate::api::question_answers::QUESTION_LOOKBACK_EVENTS),
-        )
-        .await?;
+    let events = crate::domains::sessions::events::list(
+        db,
+        session.id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(crate::api::question_answers::QUESTION_LOOKBACK_EVENTS),
+    )
+    .await?;
     Ok(crate::api::question_answers::pending_from_events(
         &events, None,
     ))

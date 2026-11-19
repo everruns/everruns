@@ -686,6 +686,10 @@ pub struct SessionEventRow {
     pub sequence: i32,
     pub event_type: String,
     pub ts: chrono::DateTime<chrono::Utc>,
+    /// The event's context (its turn, input message), as the stream
+    /// serves it. Absent from a cell older than the field.
+    #[serde(default)]
+    pub context: Value,
     pub data: Value,
 }
 

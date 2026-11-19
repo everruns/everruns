@@ -224,33 +224,30 @@ async fn wait_for_turn(
     // (the service reserves the active turn slot), so the first terminal
     // turn event after the baseline is ours.
     let filter = vec![TURN_COMPLETED.to_string(), TURN_FAILED.to_string()];
-    let mut last_seq = baseline_seq;
-    loop {
-        if Instant::now() >= deadline {
-            return Ok((TurnWaitStatus::Timeout, None));
+    let left = deadline.saturating_duration_since(Instant::now());
+    let ended = crate::domains::sessions::events::wait_for(
+        &ctx.db,
+        session_id,
+        baseline_seq,
+        &filter,
+        WAIT_POLL_INTERVAL,
+        left,
+    )
+    .await
+    .map_policy_or_internal("poll turn events")?;
+    Ok(match ended {
+        None => (TurnWaitStatus::Timeout, None),
+        Some(event) if event.event_type == TURN_COMPLETED => (TurnWaitStatus::Completed, None),
+        Some(event) => {
+            let detail = event
+                .data
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("turn failed")
+                .to_string();
+            (TurnWaitStatus::Failed, Some(detail))
         }
-        tokio::time::sleep(WAIT_POLL_INTERVAL).await;
-        let events = ctx
-            .db
-            .list_events(session_id, Some(last_seq), None, &filter, &[], None, None)
-            .await
-            .map_policy_or_internal("poll turn events")?;
-        for event in &events {
-            last_seq = last_seq.max(event.sequence);
-            if event.event_type == TURN_COMPLETED {
-                return Ok((TurnWaitStatus::Completed, None));
-            }
-            if event.event_type == TURN_FAILED {
-                let detail = event
-                    .data
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("turn failed")
-                    .to_string();
-                return Ok((TurnWaitStatus::Failed, Some(detail)));
-            }
-        }
-    }
+    })
 }
 /// POST /v1/sessions/{session_id}/messages - Create message (user message makes the session runnable)
 #[utoipa::path(

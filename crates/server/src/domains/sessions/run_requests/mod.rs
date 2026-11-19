@@ -109,7 +109,7 @@ impl WaitingAgent {
 /// Sessions under the first session `session_id` that wait, oldest first.
 /// Empty for a session that is not a run's first session.
 pub(crate) async fn waiting_agents(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     org_id: i64,
     session_id: SessionId,
     is_first_session: bool,
@@ -150,28 +150,28 @@ pub(crate) async fn waiting_agents(
 }
 
 async fn last_tool_call_requested(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     session_id: SessionId,
 ) -> anyhow::Result<Option<EventRow>> {
-    Ok(db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(1),
-        )
-        .await?
-        .pop())
+    Ok(crate::domains::sessions::events::list(
+        db,
+        session_id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(1),
+    )
+    .await?
+    .pop())
 }
 
 /// How many person-facing requests `sessions` wait on, each read from its last
 /// `tool.call_requested`. For the whole-run view, which counts the first
 /// session's own requests too.
 pub(crate) async fn count_person_requests(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     sessions: &[SessionId],
 ) -> anyhow::Result<usize> {
     let mut waiting = Vec::with_capacity(sessions.len());
@@ -229,7 +229,7 @@ pub(crate) enum AnswerTargetError {
 /// agent in its run that asked. Falls back to `session_id`, so a request
 /// nobody waits on gets that session's own "not found".
 pub(crate) async fn answer_target(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     org_id: i64,
     session_id: SessionId,
     is_first_session: bool,

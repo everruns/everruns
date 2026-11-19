@@ -218,18 +218,17 @@ impl RunSummaryService {
             return Ok(());
         }
 
-        let events = self
-            .db
-            .list_events(
-                session_id,
-                None,
-                None,
-                &[],
-                &[],
-                Some(turn_sequence + 1),
-                Some(MAX_DIGEST_EVENTS),
-            )
-            .await?;
+        let events = crate::domains::sessions::events::list(
+            &self.db,
+            session_id,
+            None,
+            None,
+            &[],
+            &[],
+            Some(turn_sequence + 1),
+            Some(MAX_DIGEST_EVENTS),
+        )
+        .await?;
 
         let digest = build_digest(session.title.as_deref(), &events);
         if digest.trim().is_empty() {

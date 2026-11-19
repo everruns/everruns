@@ -243,24 +243,23 @@ pub(super) async fn session_view(
         .ok_or_else(|| format!("Session not found: {session_id}"))?;
     let status = session.status.to_string();
 
-    let events = state
-        .db
-        .list_events(
-            *session_id,
-            None,
-            None,
-            &[
-                "input.message".to_string(),
-                "output.message.completed".to_string(),
-                "conversation.message".to_string(),
-                "tool.completed".to_string(),
-            ],
-            &[],
-            None,
-            Some(VIEW_EVENT_LOOKBACK),
-        )
-        .await
-        .map_err(|error| error.to_string())?;
+    let events = crate::domains::sessions::events::list(
+        &state.db,
+        *session_id,
+        None,
+        None,
+        &[
+            "input.message".to_string(),
+            "output.message.completed".to_string(),
+            "conversation.message".to_string(),
+            "tool.completed".to_string(),
+        ],
+        &[],
+        None,
+        Some(VIEW_EVENT_LOOKBACK),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
 
     let messages = transcript_tail(&events);
     let pending = pending_input(&caller, *session_id, &status, state).await?;
@@ -401,19 +400,18 @@ async fn pending_approval(
     session_id: SessionId,
     state: &AppState,
 ) -> Result<Option<ApprovalPrompt>, String> {
-    let events = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["input.message".to_string(), "tool.completed".to_string()],
-            &[],
-            None,
-            Some(VIEW_EVENT_LOOKBACK),
-        )
-        .await
-        .map_err(|error| error.to_string())?;
+    let events = crate::domains::sessions::events::list(
+        &state.db,
+        session_id,
+        None,
+        None,
+        &["input.message".to_string(), "tool.completed".to_string()],
+        &[],
+        None,
+        Some(VIEW_EVENT_LOOKBACK),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
     Ok(latest_unanswered_approval(&events))
 }
 

@@ -977,6 +977,8 @@ jobs:
       run: bash scripts/lib/check-no-ignored-tests.sh
     - name: Check domains, storage, services and records never import crate::api
       run: bash scripts/lib/check-server-api-layering.sh
+    - name: Check control plane features read session events through the port
+      run: bash scripts/lib/check-session-events-port.sh
     - name: Check server modules use folder mod.rs and no path attributes
       run: bash scripts/lib/check-server-module-layout.sh
     - name: Check every crate is on the lint floor or has recorded debt

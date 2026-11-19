@@ -306,19 +306,18 @@ pub(super) async fn pending_questions_for_session(
         return Ok(None);
     }
 
-    let events = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(crate::api::question_answers::QUESTION_LOOKBACK_EVENTS),
-        )
-        .await
-        .map_err(|error| error.to_string())?;
+    let events = crate::domains::sessions::events::list(
+        &state.db,
+        session_id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(crate::api::question_answers::QUESTION_LOOKBACK_EVENTS),
+    )
+    .await
+    .map_err(|error| error.to_string())?;
     Ok(crate::api::question_answers::pending_from_events(
         &events, None,
     ))

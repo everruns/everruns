@@ -110,20 +110,20 @@ pub(crate) fn pending_approvals_from_events(events: &[EventRow]) -> Vec<PendingA
 
 /// Read the approval requests the session is currently parked on.
 pub(crate) async fn pending_tool_approvals(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     session_id: SessionId,
 ) -> anyhow::Result<Vec<PendingApproval>> {
-    let requested = db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(1),
-        )
-        .await?;
+    let requested = crate::domains::sessions::events::list(
+        db,
+        session_id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(1),
+    )
+    .await?;
     Ok(pending_approvals_from_events(&requested))
 }
 
@@ -299,18 +299,18 @@ pub(crate) async fn resolve_tool_approvals(
     {
         ClaimWaitingTurnResult::Claimed(claim) => claim,
         ClaimWaitingTurnResult::Conflict { current_status } => {
-            let completed = db
-                .list_events(
-                    session_id,
-                    None,
-                    None,
-                    &["tool.completed".to_string()],
-                    &[],
-                    None,
-                    Some(APPROVAL_LOOKBACK_EVENTS),
-                )
-                .await
-                .map_err(|error| ApprovalResolveError::Internal(error.to_string()))?;
+            let completed = crate::domains::sessions::events::list(
+                db,
+                session_id,
+                None,
+                None,
+                &["tool.completed".to_string()],
+                &[],
+                None,
+                Some(APPROVAL_LOOKBACK_EVENTS),
+            )
+            .await
+            .map_err(|error| ApprovalResolveError::Internal(error.to_string()))?;
             if completed.iter().any(|event| {
                 event.data.get("tool_call_id").and_then(|v| v.as_str())
                     == Some(pending[0].request_call_id.as_str())
@@ -353,21 +353,21 @@ pub(crate) async fn resolve_tool_approvals(
 
 /// Controls from the most recent user message in this session, if any.
 async fn latest_user_controls(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     session_id: SessionId,
 ) -> Option<everruns_core::message::Controls> {
-    let events = db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["input.message".to_string()],
-            &[],
-            None,
-            Some(APPROVAL_LOOKBACK_EVENTS),
-        )
-        .await
-        .ok()?;
+    let events = crate::domains::sessions::events::list(
+        db,
+        session_id,
+        None,
+        None,
+        &["input.message".to_string()],
+        &[],
+        None,
+        Some(APPROVAL_LOOKBACK_EVENTS),
+    )
+    .await
+    .ok()?;
     events.iter().rev().find_map(|event| {
         serde_json::from_value::<everruns_core::message::Controls>(
             event.data.get("message")?.get("controls")?.clone(),
