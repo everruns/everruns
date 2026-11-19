@@ -259,6 +259,11 @@ struct Record {
     admin_email: Option<String>,
     #[serde(default)]
     bundled_postgres: bool,
+    /// `v1` or `v2`. A reinstall after `uninstall` finds no release values,
+    /// so without this it would fall to the chart default and move a v1
+    /// install to v2.
+    #[serde(default)]
+    data_plane: Option<String>,
 }
 
 struct Instance {
@@ -475,7 +480,7 @@ async fn up(args: UpArgs) -> Result<()> {
         bail!("with --auth accounts, add provider keys in the UI; drop --provider");
     }
     answers.image_tag = args.image_tag.clone();
-    answers.data_plane = args.data_plane;
+    answers.data_plane = data_plane_choice(args.data_plane, known.data_plane(), remembered);
 
     let values = values::build(&known_value, &answers);
     let bundled = Known(&values).bundled_postgres();
@@ -529,6 +534,7 @@ async fn up(args: UpArgs) -> Result<()> {
         auth: Some(auth.server_mode().to_string()),
         admin_email: Some(email.clone()),
         bundled_postgres: bundled,
+        data_plane: Known(&values).data_plane().map(|p| p.as_str().to_string()),
     };
     inst.save(&record)?;
 
@@ -914,6 +920,22 @@ fn provider_key(provider: LlmProvider, asker: Asker) -> Result<Option<(&'static 
 }
 
 /// An install this machine set up, or a friendly "nothing here yet".
+/// The flag wins; then the release's own value; then what this machine
+/// remembers, which is all a reinstall after `uninstall` has left.
+fn data_plane_choice(
+    flag: Option<docker::DataPlaneChoice>,
+    released: Option<docker::DataPlaneChoice>,
+    remembered: Option<&Record>,
+) -> Option<docker::DataPlaneChoice> {
+    match (flag, released) {
+        (Some(p), _) => Some(p),
+        (None, Some(_)) => None,
+        (None, None) => remembered
+            .and_then(|r| r.data_plane.as_deref())
+            .and_then(docker::DataPlaneChoice::parse),
+    }
+}
+
 fn existing(args: &InstanceArgs) -> Result<Option<(Instance, Record)>> {
     let inst = Instance::new(&args.name)?;
     match inst.load()? {
@@ -1378,6 +1400,32 @@ mod tests {
             !good && line.contains("not answering (no endpoints available)"),
             "{line}"
         );
+    }
+
+    #[test]
+    fn a_reinstall_after_uninstall_keeps_the_data_plane_it_ran() {
+        use docker::DataPlaneChoice::{V1, V2};
+        let record = |plane: Option<&str>| Record {
+            context: "kind-kind".into(),
+            namespace: "ns".into(),
+            release: "demo".into(),
+            chart: CHART_OCI.into(),
+            port: DEFAULT_PORT,
+            auth: None,
+            admin_email: None,
+            bundled_postgres: true,
+            data_plane: plane.map(str::to_string),
+        };
+        let v1 = record(Some("v1"));
+        // Uninstalled: no release values, the record brings v1 back.
+        assert_eq!(data_plane_choice(None, None, Some(&v1)), Some(V1));
+        // The flag wins over both.
+        assert_eq!(data_plane_choice(Some(V2), Some(V1), Some(&v1)), Some(V2));
+        // A live release keeps its own value; nothing to set.
+        assert_eq!(data_plane_choice(None, Some(V1), Some(&v1)), None);
+        // Nothing remembered: the chart default.
+        assert_eq!(data_plane_choice(None, None, Some(&record(None))), None);
+        assert_eq!(data_plane_choice(None, None, None), None);
     }
 
     #[test]
