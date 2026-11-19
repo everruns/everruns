@@ -168,6 +168,14 @@ struct OrgSession {
     id: everruns_contracts::typed_id::SessionId,
     /// The org's agent, at its current revision.
     agent_ref: String,
+    /// Or the session's own declaration of that agent: the agent with the
+    /// session's own settings (prompt, client tools, MCP servers, network
+    /// access, iteration controls, capabilities) on top, compiled by the
+    /// control plane like any agent revision (parity gap 4). Sent with the
+    /// create rather than published as org config, so the org's config does
+    /// not grow with its sessions.
+    #[serde(default)]
+    definition: Option<serde_json::Value>,
     /// The session's own starter files, written where absent.
     #[serde(default)]
     initial_files: Vec<everruns_core::session_file::InitialFile>,
@@ -185,8 +193,18 @@ async fn org_session(
     Path(org): Path<String>,
     Json(body): Json<OrgSession>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let revision = gateway.agent_revision(&org, &body.agent_ref).await?;
-    let mut package = revision.package;
+    let mut package = match body.definition {
+        Some(definition) => {
+            // Checked as a published revision is: a readable format that
+            // names no stored record.
+            let declaration = everruns::hosting::RuntimeAgent::new(definition);
+            declaration
+                .validate()
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("definition: {e}")))?;
+            declaration.agent
+        }
+        None => gateway.agent_revision(&org, &body.agent_ref).await?.package,
+    };
     if let Some(sandbox) = &body.sandbox {
         let entry = crate::sandbox::capability_entry(sandbox).ok_or((
             StatusCode::BAD_REQUEST,

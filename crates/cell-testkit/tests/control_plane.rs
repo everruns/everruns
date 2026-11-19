@@ -377,3 +377,54 @@ async fn a_config_change_mid_turn_keeps_the_running_turns_revision() {
     let fresh = fleet.get(&format!("/v1/sessions/{fresh}/agent")).await;
     assert!(fresh.to_string().contains("Revision 2"), "{fresh}");
 }
+
+/// A session created with its own settings runs the declaration the control
+/// plane sent with the create, not its agent's config revision; a
+/// declaration the executor could not read is refused at the create
+/// (data plane v2 parity gap 4).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_with_its_own_settings_runs_its_own_definition() {
+    let (fleet, cp) = setup(10_000_000).await;
+    let mut own = everruns_cell_testkit::definition("worker").unwrap();
+    own["name"] = json!("helper");
+    own["instructions"] = json!("Revision 1: do the work.\n\nSession's own: grade it.");
+    own["max_iterations"] = json!(4);
+    let id = everruns_contracts::typed_id::SessionId::new();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": id, "agent_ref": "helper", "definition": own }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let session = id.to_string();
+    fleet.say(&session, "go").await;
+    fleet.turns(&session, 1).await;
+    let running = fleet.get(&format!("/v1/sessions/{session}/agent")).await;
+    assert!(
+        running.to_string().contains("Session's own: grade it."),
+        "{running}"
+    );
+    // Its agent's other sessions keep the agent's revision.
+    let plain = create(&fleet, 0).await;
+    let agent = fleet.get(&format!("/v1/sessions/{plain}/agent")).await;
+    assert!(!agent.to_string().contains("Session's own"), "{agent}");
+
+    let (status, refused) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({
+                "id": everruns_contracts::typed_id::SessionId::new(),
+                "agent_ref": "helper",
+                "definition": "not a declaration",
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
+}

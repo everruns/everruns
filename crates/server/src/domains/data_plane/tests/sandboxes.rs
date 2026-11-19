@@ -85,7 +85,7 @@ async fn a_v2_sessions_sandbox_goes_with_the_create_and_its_key_sealed() {
     let secret = sandbox_key_secret("daytona", Some(owner.uuid()), None);
 
     let first = pinned_session(&cp, harness, owner).await;
-    sessions::created(&cp, ORG, first, harness, None, &[])
+    sessions::created(&cp, ORG, first, harness, None, &[], None)
         .await
         .unwrap();
     {
@@ -130,7 +130,7 @@ async fn a_v2_sessions_sandbox_goes_with_the_create_and_its_key_sealed() {
     };
     let before = revision(&cp).await;
     let second = pinned_session(&cp, harness, owner).await;
-    sessions::created(&cp, ORG, second, harness, None, &[])
+    sessions::created(&cp, ORG, second, harness, None, &[], None)
         .await
         .unwrap();
     assert_eq!(revision(&cp).await, before);
@@ -138,7 +138,7 @@ async fn a_v2_sessions_sandbox_goes_with_the_create_and_its_key_sealed() {
     // A rotated key is sealed again with the next session.
     set_key(&cp, owner, "dtn-key-2").await;
     let third = pinned_session(&cp, harness, owner).await;
-    sessions::created(&cp, ORG, third, harness, None, &[])
+    sessions::created(&cp, ORG, third, harness, None, &[], None)
         .await
         .unwrap();
     assert_eq!(revision(&cp).await, before + 1);

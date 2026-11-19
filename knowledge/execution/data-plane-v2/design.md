@@ -1414,9 +1414,10 @@ the cells run the turns. Decisions (approved 2026-11-12):
   come. Messages to such a session never reach the platform's workers.
   Feed summaries keep the record's status and last turn current.
 - **Stage 1 is chat.** Session files, MCP servers, sandboxes and per-session
-  overrides answer 501 with the feature's name on a cell, the control
-  plane refuses a v2 session that asks for them, and the console hides
-  them for a v2 org (`data_plane` in the org's feature flags). The `/fs`
+  overrides answered 501 with the feature's name on a cell, the control
+  plane refused a v2 session that asked for them, and the console hid
+  them for a v2 org (since replaced: per-session overrides run as the
+  session's own declaration, "Parity, Phase B" below) (`data_plane` in the org's feature flags). The `/fs`
   routes ([fs.md](fs.md)) move to stage 2 with the rest.
 - **An org's own model provider** reaches executors as an `llm_provider`
   connection whose key is a sealed secret; only the executor running the
@@ -2090,6 +2091,22 @@ reaches some calls through shared parts (a pinned sandbox's git
 credential, the egress boundary) that a turn on the simulated model does
 not exercise; once the live fleet shows none, an undeclared call is
 refused.
+
+**Parity, Phase B: a session's own settings (2026-11-19).** A session
+created with its own prompt, client tools, MCP servers, network access,
+iteration controls or capabilities ran nowhere on v2: the control plane
+refused it, so API callers and evals could not use a v2 org. It now runs
+its own declaration of its agent: the agent's layers with the session's
+settings folded on top as one more layer, by the merge a platform turn
+applies (prompts concatenate, tools and capabilities add, network access
+narrows, iteration controls follow the session). The control plane
+compiles it and sends it with the create
+(`POST /dp/v1/orgs/{org}/sessions`, `definition`), checked like a
+published revision. Decision: sent with the create, not published as org
+config, so an org's config does not grow with its sessions and no node
+holds every session's agent; a v2 session keeps the definition it was
+created with, as every v2 session does. Its MCP credentials are bound
+under the session's own key, never shared with the agent's.
 
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for

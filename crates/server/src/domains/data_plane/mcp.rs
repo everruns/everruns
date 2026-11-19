@@ -80,17 +80,7 @@ pub async fn prepare(
     agent_key: &str,
     package: &mut Value,
 ) -> anyhow::Result<()> {
-    // The canonical package spells it `mcpServers`; the manifest also
-    // reads `mcp_servers`.
-    let Some(field) = ["mcpServers", "mcp_servers"]
-        .into_iter()
-        .find(|field| package.get(*field).is_some_and(|v| !v.is_null()))
-    else {
-        return Ok(());
-    };
-    let declared = &package[field];
-    let mut servers: ScopedMcpServers = serde_json::from_value(declared.clone())?;
-    if servers.is_empty() {
+    if declared_servers(package)?.is_none() {
         return Ok(());
     }
     let target = cp
@@ -106,7 +96,40 @@ pub async fn prepare(
         agent_id,
     )
     .await?;
-    let written = crate::domains::agent_definitions::mcp_servers(&layers);
+    prepare_layers(cp, org_id, agent_key, agent_id, &layers, package).await
+}
+
+/// `package`'s MCP servers and the field that holds them, if it has any.
+/// The canonical package spells it `mcpServers`; the manifest also reads
+/// `mcp_servers`.
+fn declared_servers(package: &Value) -> anyhow::Result<Option<(&'static str, ScopedMcpServers)>> {
+    let Some(field) = ["mcpServers", "mcp_servers"]
+        .into_iter()
+        .find(|field| package.get(*field).is_some_and(|v| !v.is_null()))
+    else {
+        return Ok(None);
+    };
+    let servers: ScopedMcpServers = serde_json::from_value(package[field].clone())?;
+    Ok((!servers.is_empty()).then_some((field, servers)))
+}
+
+/// [`prepare`] for a declaration compiled from `layers` (the agent's, or a
+/// session's own: its agent's with the session's settings on top). Its
+/// bindings are named for `binding_key`: the agent key, or the session's
+/// own key, so a session's servers never share a secret with its agent's.
+pub async fn prepare_layers(
+    cp: &ControlPlane,
+    org_id: i64,
+    binding_key: &str,
+    agent_id: Option<AgentId>,
+    layers: &crate::domains::agent_definitions::PlatformLayers,
+    package: &mut Value,
+) -> anyhow::Result<()> {
+    let agent_key = binding_key;
+    let Some((field, mut servers)) = declared_servers(package)? else {
+        return Ok(());
+    };
+    let written = crate::domains::agent_definitions::mcp_servers(layers);
     let catalog = McpServerService::new(cp.db.clone(), cp.encryption.clone());
     let grants = DbConnectionResolver::new(
         cp.db.as_ref().clone(),
