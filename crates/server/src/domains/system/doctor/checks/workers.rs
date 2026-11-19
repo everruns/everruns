@@ -84,7 +84,7 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
         env!("CARGO_PKG_VERSION"),
     ));
     found.check(worker_reports::drain_check(&draining, now));
-    for check in worker_reports::self_report_checks(&live, doctor.env.nats_url.is_some(), now) {
+    for check in worker_reports::self_report_checks(&live, now) {
         found.check(check);
     }
 

@@ -414,6 +414,8 @@ and credentials differ.
 
 Connection URL for Core NATS, used for push-based event delivery and task notifications.
 
+Set it on the control plane only. Workers never connect to NATS: the server tells them whether streamed output can skip PostgreSQL.
+
 | Property | Value |
 |----------|-------|
 | **Required** | With more than one control-plane instance |
