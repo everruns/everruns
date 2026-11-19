@@ -14704,7 +14704,7 @@
         "long": "search",
         "kind": "string",
         "required": false,
-        "help": "Case-insensitive title substring match."
+        "help": "Case-insensitive title substring match or exact public session ID."
       },
       {
         "field": "side_chats_only",
@@ -15353,7 +15353,7 @@
         "long": "search",
         "kind": "string",
         "required": false,
-        "help": "Case-insensitive title substring match."
+        "help": "Case-insensitive title substring match or exact public session ID."
       },
       {
         "field": "side_chats_only",
