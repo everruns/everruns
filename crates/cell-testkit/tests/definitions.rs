@@ -32,7 +32,10 @@ fn unknown_tools_and_providers_are_refused() {
     let Err(error) = host.agent(&definition) else {
         panic!("a built-in tool by name")
     };
-    assert!(error.contains("built-in tools through capabilities"), "{error}");
+    assert!(
+        error.contains("built-in tools through capabilities"),
+        "{error}"
+    );
 
     // A declared tool the node has no code for is the client's to run.
     let mut definition = everruns_cell_testkit::definition("worker").unwrap();
