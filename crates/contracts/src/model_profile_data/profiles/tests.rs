@@ -891,3 +891,42 @@ fn gpt_62_profiles_cover_pricing_controls_and_gateway_identity() {
     );
     assert!(get_model_profile("openai", "gpt-6.1-sol").is_some());
 }
+
+#[test]
+fn gemini_4_family_profiles_match_google_pricing_and_thinking_levels() {
+    for (id, cost, xhigh) in [
+        ("gemini-4-argon", (2.0, 10.0, 0.10), false),
+        ("gemini-4-carbon", (2.0, 10.0, 0.10), false),
+        ("gemini-4-hydrogen", (1.5, 7.5, 0.075), true),
+        ("gemini-4-neon", (3.0, 15.0, 0.15), true),
+    ] {
+        let profile = get_model_profile("gemini", id).expect(id);
+        assert_eq!(profile.family, id);
+        let price = profile.cost.as_ref().unwrap();
+        assert_eq!(
+            (price.input, price.output, price.cache_read),
+            (cost.0, cost.1, Some(cost.2)),
+            "{id}"
+        );
+        let limits = profile.limits.as_ref().unwrap();
+        assert_eq!(
+            (limits.context, limits.output),
+            (1_048_576, 1_048_576),
+            "{id}"
+        );
+        assert!(
+            profile.reasoning && profile.tool_call && !profile.temperature,
+            "{id}"
+        );
+        let effort = profile.reasoning_effort.as_ref().unwrap();
+        assert_eq!(effort.default, ReasoningEffort::Medium);
+        assert_eq!(
+            effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::Xhigh),
+            xhigh,
+            "{id}"
+        );
+    }
+}

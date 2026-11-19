@@ -9,6 +9,9 @@ use uuid::Uuid;
 // New seed identities must not replace existing saved-model identities.
 const GPT_6_2_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022f);
 const GPT_6_2_ASTRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000230);
+const GEMINI_4_HYDROGEN: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060c);
+const GEMINI_4_CARBON: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060d);
+const GEMINI_4_NEON: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060e);
 
 /// Seed LLM model definition
 pub(super) struct SeedModel {
@@ -473,6 +476,30 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
     },
     // Anthropic Claude 4 series
     // Google Gemini 4 series
+    SeedModel {
+        id: GEMINI_4_HYDROGEN,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-4-hydrogen",
+        display_name: "Gemini 4 Hydrogen",
+        enabled: true,
+        is_favorite: true,
+    },
+    SeedModel {
+        id: GEMINI_4_NEON,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-4-neon",
+        display_name: "Gemini 4 Neon",
+        enabled: true,
+        is_favorite: true,
+    },
+    SeedModel {
+        id: GEMINI_4_CARBON,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-4-carbon",
+        display_name: "Gemini 4 Carbon",
+        enabled: true,
+        is_favorite: false,
+    },
     SeedModel {
         id: seed_ids::GEMINI_4_ARGON,
         provider_id: seed_ids::GEMINI_PROVIDER,

@@ -299,15 +299,18 @@ async fn bootstrap_elects_luna_over_other_openai_models() {
 }
 
 #[test]
-fn argon_is_preferred_over_a_newer_uncurated_gemini_profile() {
-    let argon = get_model_profile(&DriverId::Gemini, "gemini-4-argon").unwrap();
+fn hydrogen_is_preferred_over_a_newer_uncurated_gemini_profile() {
+    let hydrogen = get_model_profile(&DriverId::Gemini, "gemini-4-hydrogen").unwrap();
     let mut flash = get_model_profile(&DriverId::Gemini, "gemini-3.8-flash").unwrap();
     flash.release_date = Some("2099-01-01".into());
-    assert!(ModelRank::of(&argon) < ModelRank::of(&flash));
+    assert!(ModelRank::of(&hydrogen) < ModelRank::of(&flash));
+    // Neon is newer than Hydrogen but not the curated pick.
+    let neon = get_model_profile(&DriverId::Gemini, "gemini-4-neon").unwrap();
+    assert!(ModelRank::of(&hydrogen) < ModelRank::of(&neon));
 }
 
 #[tokio::test]
-async fn bootstrap_elects_argon_for_gemini_and_preserves_existing_default() {
+async fn bootstrap_elects_hydrogen_for_gemini_and_preserves_existing_default() {
     let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
@@ -325,14 +328,15 @@ async fn bootstrap_elects_argon_for_gemini_and_preserves_existing_default() {
         .await
         .unwrap();
     let flash = discover_model(&db, org_id, provider.id, "gemini-3.8-flash", &["chat"]).await;
-    let argon = discover_model(&db, org_id, provider.id, "gemini-4-argon", &["chat"]).await;
+    discover_model(&db, org_id, provider.id, "gemini-4-neon", &["chat"]).await;
+    let hydrogen = discover_model(&db, org_id, provider.id, "gemini-4-hydrogen", &["chat"]).await;
     let outcome = service
         .bootstrap_intelligence(org_id, provider.id.uuid())
         .await
         .unwrap();
-    assert_eq!(outcome.default_model_id, Some(argon.id.uuid()));
+    assert_eq!(outcome.default_model_id, Some(hydrogen.id.uuid()));
     let selected = db.get_default_model(org_id).await.unwrap().unwrap();
-    assert_eq!(selected.model_id, "gemini-4-argon");
+    assert_eq!(selected.model_id, "gemini-4-hydrogen");
     assert!(selected.enabled && selected.is_favorite);
 
     db.upsert_organization_settings(org_id, Some(flash.id.uuid()))

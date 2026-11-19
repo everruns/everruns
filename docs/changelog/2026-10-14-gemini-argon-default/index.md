@@ -28,3 +28,9 @@ When a new Gemini setup needs an organisation default, it prefers Argon over
 other Gemini models. An existing working default stays selected, and other
 providers retain their selection policy. See [Google Gemini](/providers/gemini/)
 for configuration and long decode support.
+
+## Update 2026-11-19
+
+New Gemini setups now prefer Gemini 4 Hydrogen as the organisation default.
+Argon stays enabled. See
+[Gemini 4 Hydrogen, Neon and Carbon join Argon](/changelog/2026-11-19-gemini-4-hydrogen-neon-carbon/).
