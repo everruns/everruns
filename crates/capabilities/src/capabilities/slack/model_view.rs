@@ -39,20 +39,19 @@ impl ModelViewProvider for SlackModelViewProvider {
             {
                 continue;
             }
-            let Some((seconds, fraction)) = timestamp.split_once('.') else {
-                continue;
-            };
-            if timestamp.len() > 32
-                || seconds.is_empty()
-                || fraction.is_empty()
-                || !seconds
-                    .bytes()
-                    .chain(fraction.bytes())
-                    .all(|b| b.is_ascii_digit())
-            {
+            if !valid_timestamp(timestamp) {
                 continue;
             }
-            let annotation = format!("[slack channel={channel} timestamp={timestamp}]");
+            let thread = metadata
+                .get("slack_thread_ts")
+                .and_then(Value::as_str)
+                .filter(|thread| valid_timestamp(thread));
+            let annotation = match thread {
+                Some(thread) => {
+                    format!("[slack channel={channel} timestamp={timestamp} thread_ts={thread}]")
+                }
+                None => format!("[slack channel={channel} timestamp={timestamp}]"),
+            };
             if let Some(ContentPart::Text(text)) = message
                 .content
                 .iter_mut()
@@ -70,6 +69,20 @@ impl ModelViewProvider for SlackModelViewProvider {
     fn priority(&self) -> i32 {
         110
     }
+}
+
+fn valid_timestamp(timestamp: &str) -> bool {
+    timestamp.len() <= 32
+        && timestamp
+            .split_once('.')
+            .is_some_and(|(seconds, fraction)| {
+                !seconds.is_empty()
+                    && !fraction.is_empty()
+                    && seconds
+                        .bytes()
+                        .chain(fraction.bytes())
+                        .all(|b| b.is_ascii_digit())
+            })
 }
 
 #[cfg(test)]
@@ -125,6 +138,23 @@ mod tests {
         assert_eq!(message.text().unwrap(), "Can you like my message?");
         assert_eq!(out[0].id, message.id);
         assert!(!out[0].text().unwrap().contains("secret"));
+    }
+
+    #[test]
+    fn exposes_the_parent_thread_of_a_reply() {
+        let mut message = slack_message();
+        message
+            .metadata
+            .as_mut()
+            .unwrap()
+            .insert("slack_thread_ts".into(), json!("1791063220.912345"));
+        let out = apply(vec![message]);
+        assert!(
+            out[0]
+                .text()
+                .unwrap()
+                .contains("timestamp=1791063223.531299 thread_ts=1791063220.912345")
+        );
     }
 
     #[test]

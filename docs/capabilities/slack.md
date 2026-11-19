@@ -442,14 +442,15 @@ Returns only those addressing fields. Email, phone, and title are not exposed to
 
 #### `slack_upload_file`
 
-Share a file into the conversation. Use it for reports, diffs, and logs too long to read in a
-message.
+Share inline text or an existing session file into the originating Slack thread. The bot
+needs the `files:write` scope. Reconnect an existing install to grant that scope.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `channel` | string | yes | Channel ID to share into |
 | `filename` | string | yes | Filename shown in Slack, including its extension |
-| `content` | string | yes | The file's text content |
+| `content` | string | conditional | Inline text. Supply exactly one of `content` and `session_path`. |
+| `session_path` | string | conditional | Existing text or binary file in the session workspace |
 | `thread_ts` | string | yes | Thread timestamp of the current conversation |
 | `initial_comment` | string | no | Message posted alongside the file |
 
