@@ -94,6 +94,29 @@ mod lifecycle_tests {
         calls: AtomicUsize,
         finish: &'static str,
     }
+    struct WindowedSummarizer {
+        inner: Summarizer,
+        window: usize,
+        reports_window: bool,
+    }
+    #[async_trait::async_trait]
+    impl ChatDriver for WindowedSummarizer {
+        fn effective_context_window(&self, _: &str) -> Option<usize> {
+            self.reports_window.then_some(self.window)
+        }
+        async fn chat_completion_stream(
+            &self,
+            endpoint: &crate::engine::ProviderEndpoint,
+            messages: Vec<Message>,
+            config: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            let input = policy().estimate_total_tokens(&messages);
+            assert!(input + config.max_tokens.unwrap() as usize <= self.window);
+            self.inner
+                .chat_completion_stream(endpoint, messages, config)
+                .await
+        }
+    }
     #[async_trait::async_trait]
     impl ChatDriver for Summarizer {
         async fn chat_completion_stream(
@@ -147,7 +170,7 @@ mod lifecycle_tests {
             reason: crate::events::CompactionReason::ProactiveBudget,
             source_sequence,
             budget: 4096,
-            summary_input_budget: 16_000,
+            fallback_summary_window: 16_000,
         }
         .run()
         .await
@@ -187,6 +210,54 @@ mod lifecycle_tests {
     }
 
     #[tokio::test]
+    async fn small_summary_windows_reserve_output_without_starving_source_input() {
+        for (window, reports_window) in
+            [(4_000, true), (8_000, true), (4_000, false), (8_000, false)]
+        {
+            let store: Arc<dyn CompactionCheckpointStore> =
+                Arc::new(InMemoryCompactionCheckpointStore::default());
+            let driver = WindowedSummarizer {
+                inner: Summarizer {
+                    calls: AtomicUsize::new(0),
+                    finish: "stop",
+                },
+                window,
+                reports_window,
+            };
+            let journal = history(100);
+            let emitter = TestEventEmitter::new();
+            let session = SessionId::new();
+            Planner {
+                store: &store,
+                retriever: &journal,
+                driver: &driver,
+                policy: policy().as_ref(),
+                emitter: &emitter,
+                event_context: &EventContext::empty(),
+                session_id: session,
+                provider: "test",
+                model: "small-window",
+                reason: crate::events::CompactionReason::ProactiveBudget,
+                source_sequence: 100,
+                budget: 4096,
+                fallback_summary_window: if reports_window { 16_000 } else { window },
+            }
+            .run()
+            .await
+            .unwrap();
+            assert!(driver.inner.calls.load(Ordering::SeqCst) > 0);
+            assert!(
+                store
+                    .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
+            assert_eq!(journal.0.len(), 100);
+        }
+    }
+
+    #[tokio::test]
     async fn a_non_reducing_summary_is_not_cached_as_a_reusable_candidate() {
         let store: Arc<dyn CompactionCheckpointStore> =
             Arc::new(InMemoryCompactionCheckpointStore::default());
@@ -206,7 +277,7 @@ mod lifecycle_tests {
             reason: crate::events::CompactionReason::ProactiveBudget,
             source_sequence: 100,
             budget: 4096,
-            summary_input_budget: 16_000,
+            fallback_summary_window: 16_000,
         }
         .run()
         .await

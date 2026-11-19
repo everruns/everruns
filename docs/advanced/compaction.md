@@ -58,7 +58,9 @@ with `message_id`; `message_range` retrieves a bounded absolute range.
 Source user requirements are passed to the summarizer in full, within the source-page budget. Long reproducible observations may be clipped with explicit omission markers.
 
 Summary generation is a separate, paid model call recorded in the trace and
-usage totals. Empty, truncated and tool-calling responses are rejected. Completed
+usage totals. Input and requested output share the summary model's reported
+context window; smaller models receive a smaller output allowance. Empty,
+truncated and tool-calling responses are rejected. Completed
 candidates are saved before installation, so retrying the same source after an
 installation failure can reuse the candidate. Messages arriving during a summary
 remain in the raw suffix. The first compaction of an existing large session can

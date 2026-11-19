@@ -67,7 +67,7 @@ pub(super) struct Planner<'a> {
     /// Fixed for the whole operation; arrivals after this remain in the suffix.
     pub source_sequence: i64,
     pub budget: usize,
-    pub summary_input_budget: usize,
+    pub fallback_summary_window: usize,
 }
 
 /// A prefix boundary cannot split a tool exchange, including parallel calls.
@@ -190,12 +190,15 @@ impl Planner<'_> {
             .settings()
             .summarization_model
             .unwrap_or_else(|| self.model.to_string());
-        let summary_input_budget = self
+        let summary_window = self
             .driver
             .effective_context_window(&summary_model)
-            .map(|window| window.saturating_sub(8192).max(1024))
-            .unwrap_or(self.summary_input_budget)
-            .min(self.summary_input_budget);
+            .unwrap_or(self.fallback_summary_window);
+        // Reserve the output actually requested. A fixed 8K reservation starves
+        // small models; a fixed 4K output can itself exceed their whole window.
+        let summary_output_tokens = (summary_window / 4).clamp(1, 4096);
+        // The two role envelopes also consume estimated request tokens.
+        let summary_input_budget = summary_window.saturating_sub(summary_output_tokens + 32);
         let mut current = self
             .store
             .get_latest_format(self.session_id, PROVIDER, MODEL, FORMAT)
@@ -421,7 +424,7 @@ impl Planner<'_> {
                 if let Some(turn) = self.event_context.turn_id {
                     config.metadata.insert("turn_id".into(), turn.to_string());
                 }
-                config.max_tokens = Some(4096);
+                config.max_tokens = Some(summary_output_tokens as u32);
                 config.temperature = Some(0.0);
                 config
                     .metadata

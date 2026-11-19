@@ -326,7 +326,7 @@ impl ReasonAtom {
                     reason: crate::events::CompactionReason::ProactiveBudget,
                     source_sequence,
                     budget,
-                    summary_input_budget: window.saturating_sub(8192).max(1024),
+                    fallback_summary_window: window,
                 }
                 .run()
                 .await?;

@@ -1042,7 +1042,7 @@ pub(super) async fn apply_reactive_compaction(
                 .min(history_budget / 2)
                 .min(context.policy.estimate_total_tokens(messages) / 2)
                 .max(1024),
-            summary_input_budget: window.saturating_sub(8192).max(1024),
+            fallback_summary_window: window,
         }
         .run()
         .await?;
