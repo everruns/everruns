@@ -2,60 +2,37 @@ use super::*;
 
 pub(super) fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        // https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
-        // The 1M output ceiling requires continuation; the driver defaults to
-        // 64K unless the caller explicitly raises the total output budget.
-        "gemini-4-argon" => Some(ModelProfile {
-            name: "Gemini 4 Argon".into(),
-            family: "gemini-4-argon".into(),
-            description: None,
-            release_date: Some("2026-10-13".into()),
-            last_updated: Some("2026-10-13".into()),
-            attachment: true,
-            reasoning: true,
-            temperature: false,
-            knowledge: None,
-            tool_call: true,
-            structured_output: true,
-            open_weights: false,
-            // Introductory pricing through 2026-11-30. Source: Google's model
-            // pricing page; scheduled rates thereafter are $4/$20/$0.20.
-            cost: Some(ModelCost {
-                input: 2.0,
-                output: 10.0,
-                cache_read: Some(0.10),
-                cache_write: None,
-                cost_tiers: vec![],
-            }),
-            limits: Some(ModelLimits {
-                context: 1_048_576,
-                input: None,
-                output: 1_048_576,
-                max_media: None,
-            }),
-            modalities: Some(ModelModalities {
-                input: vec![
-                    Modality::Text,
-                    Modality::Image,
-                    Modality::Audio,
-                    Modality::Video,
-                    Modality::Pdf,
-                ],
-                output: vec![Modality::Text],
-            }),
-            reasoning_effort: Some(reasoning_effort_standard()),
-            speed: None,
-            verbosity: None,
-            tool_search: false,
-            supported_parameters: Vec::new(),
-            supports_phases: false,
-            supports_server_compaction: false,
-            model_card_url: Some(
-                "https://ai.google.dev/gemini-api/docs/models/gemini-4-argon".into(),
-            ),
-            decisions: None,
-            images: None,
-        }),
+        // Gemini 4 family. Source: Google's model pages and pricing page,
+        // re-checked against the live `models` listing on 2026-11-19. Every
+        // member shares the 1M unified window, long decode past the 64K
+        // synchronous default, thinking levels instead of budgets, and
+        // implicit-only caching. Carbon and Argon reject `xhigh` (probed).
+        // Argon and Carbon: introductory pricing through 2026-11-30; the
+        // scheduled rates thereafter are $4/$20/$0.20.
+        "gemini-4-argon" => Some(gemini_4(
+            ("Gemini 4 Argon", "gemini-4-argon", "2026-10-13"),
+            (2.0, 10.0, 0.10),
+            reasoning_effort_standard(),
+        )),
+        // Google's strongest reasoning model of the family.
+        "gemini-4-carbon" => Some(gemini_4(
+            ("Gemini 4 Carbon", "gemini-4-carbon", "2026-11-10"),
+            (2.0, 10.0, 0.10),
+            reasoning_effort_standard(),
+        )),
+        // Fast, cheapest member; Google's suggested starting point.
+        "gemini-4-hydrogen" => Some(gemini_4(
+            ("Gemini 4 Hydrogen", "gemini-4-hydrogen", "2026-11-12"),
+            (1.5, 7.5, 0.075),
+            reasoning_effort_gemini_xhigh(),
+        )),
+        // Adapted from Carbon for complex software engineering, between
+        // Hydrogen and Carbon.
+        "gemini-4-neon" => Some(gemini_4(
+            ("Gemini 4 Neon", "gemini-4-neon", "2026-11-18"),
+            (3.0, 15.0, 0.15),
+            reasoning_effort_gemini_xhigh(),
+        )),
         // Gemini 3.x series (newest). Source: models.dev (google provider).
         // `gemini-3-pro-preview` is deprecated upstream; 3.1 Pro Preview is the
         // current flagship Pro. Pricing has a >200K-token tier. Reasoning effort
@@ -408,4 +385,29 @@ fn gemini_flash(
         decisions: None,
         images: None,
     }
+}
+
+/// Gemini 4 profile. The 1M output ceiling requires continuation; the driver
+/// defaults to 64K unless the caller explicitly raises the total output
+/// budget. `id` is (name, family, release date); `cost` is (input, output,
+/// cache_read) per million tokens.
+fn gemini_4(
+    id: (&str, &str, &str),
+    cost: (f64, f64, f64),
+    reasoning_effort: ReasoningEffortConfig,
+) -> ModelProfile {
+    let (name, family, release_date) = id;
+    let mut profile = gemini_flash(name, family, release_date, None, cost);
+    profile.temperature = false;
+    profile.limits = Some(ModelLimits {
+        context: 1_048_576,
+        input: None,
+        output: 1_048_576,
+        max_media: None,
+    });
+    profile.reasoning_effort = Some(reasoning_effort);
+    profile.model_card_url = Some(format!(
+        "https://ai.google.dev/gemini-api/docs/models/{family}"
+    ));
+    profile
 }

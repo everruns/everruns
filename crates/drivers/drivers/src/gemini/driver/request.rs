@@ -8,14 +8,14 @@ impl GeminiChatDriver {
         config: &LlmCallConfig,
         native_tools: bool,
     ) -> Result<(GeminiRequest, bool)> {
-        if is_argon(&config.model)
+        if is_gemini_4(&config.model)
             && config
                 .prompt_cache
                 .as_ref()
                 .is_some_and(|cache| cache.enabled && cache.gemini_cached_content.is_some())
         {
             return Err(AgentLoopError::config(
-                "Gemini 4 Argon supports implicit caching only",
+                "Gemini 4 models support implicit caching only",
             ));
         }
         let (system_instruction, contents) = Self::convert_messages(messages);
@@ -36,27 +36,35 @@ impl GeminiChatDriver {
             .reasoning_effort
             .filter(everruns_contracts::ReasoningEffort::requests_reasoning)
             .map(|effort| GeminiThinkingConfig {
-                thinking_budget: (!is_argon(&config.model))
+                thinking_budget: (!is_gemini_4(&config.model))
                     .then(|| driver_helpers::thinking_budget::from_effort(effort))
                     .flatten(),
-                thinking_level: is_argon(&config.model).then_some(match effort {
+                thinking_level: is_gemini_4(&config.model).then_some(match effort {
                     everruns_contracts::ReasoningEffort::Minimal
                     | everruns_contracts::ReasoningEffort::Low => "low",
                     everruns_contracts::ReasoningEffort::Medium => "medium",
+                    // Hydrogen and Neon take `xhigh`; Argon and Carbon answer
+                    // it with HTTP 400 (probed 2026-11-19), so they cap at high.
+                    everruns_contracts::ReasoningEffort::Xhigh
+                    | everruns_contracts::ReasoningEffort::Max
+                        if has_xhigh_thinking(&config.model) =>
+                    {
+                        "xhigh"
+                    }
                     _ => "high",
                 }),
                 include_thoughts: true,
             });
 
         let mut generation_config = GeminiGenerationConfig {
-            temperature: config.temperature.filter(|_| !is_argon(&config.model)),
+            temperature: config.temperature.filter(|_| !is_gemini_4(&config.model)),
             max_output_tokens: config.max_tokens,
             thinking_config,
         };
 
         // If no max_tokens specified, use model's max output from profile, or 8192 fallback
         if generation_config.max_output_tokens.is_none() {
-            generation_config.max_output_tokens = Some(if is_argon(&config.model) {
+            generation_config.max_output_tokens = Some(if is_gemini_4(&config.model) {
                 65_536
             } else {
                 everruns_contracts::get_model_profile(
@@ -87,4 +95,11 @@ impl GeminiChatDriver {
             grounded,
         ))
     }
+}
+
+fn has_xhigh_thinking(model: &str) -> bool {
+    matches!(
+        model.rsplit('/').next(),
+        Some("gemini-4-hydrogen" | "gemini-4-neon")
+    )
 }

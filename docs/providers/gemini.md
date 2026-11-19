@@ -1,6 +1,6 @@
 ---
 title: Google Gemini
-description: Run Everruns agents on Google Gemini models, with streaming, tool calls, reasoning, context caching, and long decode on Gemini 4 Argon.
+description: Run Everruns agents on Google Gemini models, including the Gemini 4 family, with streaming, tool calls, reasoning, context caching, and long decode.
 sidebar:
   label: Google Gemini
 ---
@@ -13,8 +13,8 @@ implementing the provider-neutral driver contract over the Gemini API.
 ## What you get
 
 - **Gemini API** streaming.
-- **Gemini 4 Argon long decode**: one response can continue across requests with
-  a shared output budget.
+- **Gemini 4 long decode** (Hydrogen, Neon, Carbon, Argon): one response can
+  continue across requests with a shared output budget.
 - **Tool calls and reasoning** mapped to provider-neutral Everruns types.
 - **Context caching**: explicit caching via `cachedContent` when a cached-content
   resource is supplied, otherwise Gemini's default implicit caching on supported
@@ -30,25 +30,34 @@ implementing the provider-neutral driver contract over the Gemini API.
 
 ## Models
 
-Gemini 4 Argon is seeded as an enabled favourite. New Gemini setups prefer it
-when choosing an organisation default; existing defaults stay selected.
+| Model | Best for | Thinking levels | Price per 1M tokens (input / output / cached) |
+|---|---|---|---|
+| `gemini-4-hydrogen` | Everyday agent work; fastest and cheapest | low, medium, high, xhigh | $1.50 / $7.50 / $0.075 |
+| `gemini-4-neon` | Complex software engineering | low, medium, high, xhigh | $3.00 / $15.00 / $0.15 |
+| `gemini-4-carbon` | Hardest reasoning and research | low, medium, high | $2.00 / $10.00 / $0.10 until 30 November 2026, then $4 / $20 / $0.20 |
+| `gemini-4-argon` | The first Gemini 4 model | low, medium, high | $2.00 / $10.00 / $0.10 until 30 November 2026, then $4 / $20 / $0.20 |
+
+Gemini 4 Hydrogen, Neon, Carbon, and Argon are seeded and enabled; Hydrogen and
+Neon are favourites. New Gemini setups prefer Hydrogen when choosing an
+organisation default; existing defaults stay selected. The provider recommends
+Neon for coding agents and Carbon for research.
 
 Gemini models resolve to Everruns' built-in model profiles for capability and
-cost metadata. Argon defaults to 65,536 output tokens. Other Gemini models
-resolve their default from the model profile, falling back to a safe value.
+cost metadata. Gemini 4 models default to 65,536 output tokens. Other Gemini
+models resolve their default from the model profile, falling back to a safe value.
 
 ## Long decode
 
-For `gemini-4-argon`, set `max_tokens` above 65,536 to let a single response
+For any Gemini 4 model, set `max_tokens` above 65,536 to let a single response
 continue across multiple Gemini API requests. In an agent package, use
-the top-level `max_output_tokens`; the built-in Argon profile permits up to 1,048,576
+the top-level `max_output_tokens`; the built-in Gemini 4 profiles permit up to 1,048,576
 tokens. Input, thinking, and output share that window, so leave room for the
 prompt. The default remains 65,536.
 
 ```rust
 use everruns_contracts::{LlmCallConfig, ReasoningEffort};
 
-let mut config = LlmCallConfig::new("gemini-4-argon");
+let mut config = LlmCallConfig::new("gemini-4-neon");
 config.max_tokens = Some(100_000);
 config.reasoning_effort = Some(ReasoningEffort::High);
 ```
@@ -67,9 +76,11 @@ Repeated search metadata within a hop is counted once; the same query in another
 hop counts as a separate search. Gemini 3 and later count queries for search
 usage, while Gemini 2.x counts grounded requests.
 
-Argon supports low, medium, and high thinking levels; minimal maps to low and
-higher efforts map to high. Sampling temperature is omitted. Argon supports
-implicit caching only; do not supply an explicit cached-content resource.
+Gemini 4 models take thinking levels rather than budgets; minimal maps to low.
+Hydrogen and Neon accept `xhigh`, so Extra High and Max map to it there; Carbon
+and Argon map every effort above medium to high. Sampling temperature is omitted.
+Gemini 4 models support implicit caching only; do not supply an explicit
+cached-content resource.
 
 Long-decode calls default to a 20-minute HTTP read and agent-loop stall timeout.
 Explicit host-level turn and stall limits still apply. A failed hop

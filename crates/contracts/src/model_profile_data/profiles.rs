@@ -52,6 +52,16 @@ fn reasoning_effort_standard() -> ReasoningEffortConfig {
     }
 }
 
+/// Gemini 4 Hydrogen and Neon thinking levels: low, medium, high, xhigh.
+/// Default medium, like Argon.
+fn reasoning_effort_gemini_xhigh() -> ReasoningEffortConfig {
+    let mut config = reasoning_effort_standard();
+    config
+        .values
+        .push(effort(ReasoningEffort::Xhigh, "Extra High"));
+    config
+}
+
 /// Reasoning effort for pro-tier reasoning models (only high)
 fn reasoning_effort_high_only() -> ReasoningEffortConfig {
     ReasoningEffortConfig {
@@ -516,6 +526,9 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-haiku-5-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
+    md(&["gemini-4-neon"], ModelVendor::Google, GEMINI),
+    md(&["gemini-4-hydrogen"], ModelVendor::Google, GEMINI),
+    md(&["gemini-4-carbon"], ModelVendor::Google, GEMINI),
     md(&["gemini-4-argon"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
     md(&["gemini-3.8-flash"], ModelVendor::Google, GEMINI),

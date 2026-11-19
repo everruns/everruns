@@ -59,7 +59,7 @@ fn automatic_uses_current_research_recommendation_not_legacy_flagship() {
 
 #[test]
 fn automatic_falls_back_to_other_providers_then_none() {
-    let gemini = model("gemini", "gemini-4-argon");
+    let gemini = model("gemini", "gemini-4-carbon");
     assert_eq!(
         pick(&[model("gemini", "gemini-4-flash"), gemini.clone()]),
         Some(gemini.id)
