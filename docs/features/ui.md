@@ -26,9 +26,9 @@ The sidebar puts Main chat and Overview on top, then four groups:
 |---------|-------------|
 | Main chat | Your permanent conversation with Platform Chat; side chats below it |
 | Overview | What needs attention in the organization, and how its agents ran today. Its sidebar entry shows how many items are waiting |
-| Build | Agents, and Playground to try them |
+| Build | Agents, Playground to try them, and Extractions when enabled |
 | Activity | What ran: Sessions, Rooms and Monitoring |
-| Blocks | What agents are made from and run on: Harnesses, Capabilities, Skills, Plugins, Knowledge, Memory, Extractions, Virtual Users, then Models, Web search and Sandboxes |
+| Blocks | What agents are made from and run on: Harnesses, Capabilities, Skills, Plugins, Knowledge, Memory, Virtual Users, then Models, Web search and Sandboxes |
 | Quality | Evals and Observers |
 | Settings | Configure the organization, team members and personal preferences |
 

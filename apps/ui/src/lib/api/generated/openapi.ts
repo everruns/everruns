@@ -48636,7 +48636,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Model management permission required */
+      /** @description Organization adoption and model management permission required */
       403: {
         headers: {
           [name: string]: unknown;
@@ -56527,7 +56527,7 @@ export interface operations {
          * @example agent_01933b5a00007000800000000000001
          */
         agent_id?: string | null;
-        /** @description Search by title (case-insensitive substring match). */
+        /** @description Search by title (case-insensitive substring match) or exact public session ID. */
         search?: string | null;
         /**
          * @description Comma-separated session sources: `chat`, `api`, `slack`, `ag_ui`,
@@ -56684,6 +56684,7 @@ export interface operations {
         archived_only?: boolean;
         /** @example agent_01933b5a00007000800000000000001 */
         agent_id?: string;
+        /** @description Search by title (case-insensitive substring match) or exact public session ID. */
         search?: string;
         source?: string;
         status?: string;

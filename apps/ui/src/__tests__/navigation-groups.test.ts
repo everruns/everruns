@@ -1,4 +1,8 @@
-import { defaultNavigationSections, navigationGroupForPath } from "@/lib/navigation";
+import {
+  defaultBuildNavigation,
+  defaultNavigationSections,
+  navigationGroupForPath,
+} from "@/lib/navigation";
 
 // EVE-869: a page's group is decided in exactly one place — the sidebar section
 // table. These pin the derivation the breadcrumb depends on.
@@ -46,7 +50,7 @@ describe("navigationGroupForPath", () => {
         .map((section) => [section.label, section.items.map((item) => item.name)]),
     );
     expect(Object.keys(groups).slice(0, 4)).toEqual(["Build", "Activity", "Blocks", "Quality"]);
-    expect(groups.Build).toEqual(["Agents", "Playground"]);
+    expect(groups.Build).toEqual(["Agents", "Playground", "Extractions"]);
     expect(groups.Activity).toEqual(["Sessions", "Rooms", "Monitoring"]);
     expect(groups.Blocks).toEqual([
       "Harnesses",
@@ -55,11 +59,20 @@ describe("navigationGroupForPath", () => {
       "Plugins",
       "Knowledge",
       "Memory",
-      "Extractions",
       "Virtual Users",
       "Models",
       "Web search",
       "Sandboxes",
     ]);
+  });
+});
+
+describe("Build navigation", () => {
+  it("puts adoption-gated Extractions last", () => {
+    expect(defaultBuildNavigation.at(-1)).toMatchObject({
+      name: "Extractions",
+      href: "/extractions",
+      flag: "extractions",
+    });
   });
 });

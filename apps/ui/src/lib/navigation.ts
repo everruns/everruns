@@ -129,6 +129,15 @@ export const defaultBuildNavigation: NavigationItem[] = [
     href: "/playground",
     icon: PlaygroundIcon,
   },
+  {
+    name: "Extractions",
+    description: "Extract typed values and evidence using your provider account.",
+    href: "/extractions",
+    icon: ReportIcon,
+    flag: "extractions",
+    policy: "model.manage",
+    keywords: ["extract", "structured data", "evidence"],
+  },
 ];
 
 export const defaultActivityNavigation: NavigationItem[] = [
@@ -197,14 +206,6 @@ export const defaultBlocksNavigation: NavigationItem[] = [
     keywords: ["workspace", "files", "storage"],
     flag: "memory",
     experimental: true,
-  },
-  {
-    name: "Extractions",
-    description: "Extract typed values and evidence using your provider account.",
-    href: "/extractions",
-    icon: ReportIcon,
-    policy: "model.manage",
-    keywords: ["extract", "structured data", "evidence"],
   },
   {
     name: "Virtual Users",

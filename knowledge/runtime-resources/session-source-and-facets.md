@@ -15,7 +15,7 @@ run come from* and *how many runs match what I am looking at*.
 
 ## Motivation
 
-The sessions list filtered by agent and title substring only. That is enough to
+The sessions list originally filtered by agent and title substring only. That is enough to
 find a session you already know about and nothing else. An operator asking
 "which runs did a schedule start last night", or "show me my chat threads", or
 "how many of these failed", had to fetch every row and reduce client-side,
@@ -148,6 +148,12 @@ selection is what makes multi-select work.
 **Counts come from `sessions`.** Facets belong to the list, so they read what
 the list reads; an asynchronous projection would report a count that disagrees
 with the page rendered beside it.
+
+Title search remains a case-insensitive substring match. A complete public
+`session_…` ID switches the same `search` filter to an exact indexed ID lookup,
+so operators can paste a durable identifier without scanning or depending on a
+generated title. List rows and facets share this resolution just as they share
+every other predicate.
 
 ## Archive: the "put it away" bit
 

@@ -15898,7 +15898,7 @@
             "description": "Invalid or unsupported extraction request"
           },
           "403": {
-            "description": "Model management permission required"
+            "description": "Organization adoption and model management permission required"
           },
           "404": {
             "description": "Model not found"
@@ -28403,7 +28403,7 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Search by title (case-insensitive substring match).",
+            "description": "Search by title (case-insensitive substring match) or exact public session ID.",
             "required": false,
             "schema": {
               "type": [
@@ -28685,6 +28685,7 @@
           {
             "name": "search",
             "in": "query",
+            "description": "Search by title (case-insensitive substring match) or exact public session ID.",
             "required": false,
             "schema": {
               "type": "string"

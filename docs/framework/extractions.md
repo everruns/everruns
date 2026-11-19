@@ -36,7 +36,7 @@ For direct Cloudflare access, construct `everruns_drivers::cloudflare::provider`
 
 ## Server and console
 
-Configure an organization-owned provider key and add or sync an extraction-capable model. Open **Extractions** in the console to supply text and field specifications, then inspect values and evidence. Inline assets are supported through the API; the initial console does not include an asset upload widget.
+Configure an organization-owned provider key and add or sync an extraction-capable model. In Platform, first enable **Extractions** in **Settings → Features** for the organization. Open **Extractions** in the console to supply text and field specifications, then inspect values and evidence. Inline assets are supported through the API; the initial console does not include an asset upload widget.
 
 Set `EVERRUNS_URL` to the API base URL, for example `http://localhost:27100/api` for a local stack.
 

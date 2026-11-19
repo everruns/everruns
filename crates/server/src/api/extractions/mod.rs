@@ -46,7 +46,7 @@ pub fn routes(state: ApiState) -> Router {
  summary = "Extract typed fields", request_body = ExtractRequest,
  responses((status = 200, description = "Typed extraction values, evidence and usage", body = ExtractionOutcome),
  (status = 400, description = "Invalid or unsupported extraction request"),
- (status = 403, description = "Model management permission required"),
+ (status = 403, description = "Organization adoption and model management permission required"),
  (status = 404, description = "Model not found"),
  (status = 413, description = "Request body exceeds 8 MiB"),
  (status = 502, description = "Extraction provider failed"),
@@ -56,7 +56,13 @@ pub async fn extract_typed_fields(
     State(state): State<ApiState>,
     Json(mut request): Json<ExtractRequest>,
 ) -> ApiResult<ExtractionOutcome> {
-    // THREAT[TM-EXTRACT-001]: tenant model selection never borrows utility credentials.
+    // THREAT[TM-EXTRACT-001]: enforce organization adoption before resolving
+    // any model or credential; tenant model selection never borrows utility credentials.
+    if !org.feature_flags.extractions {
+        return Err(
+            CommandError::forbidden("Extractions are not enabled for this organization").into(),
+        );
+    }
     let ctx = state.ctx(&org);
     LLM_MODEL_MANAGE
         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)

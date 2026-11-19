@@ -30,6 +30,8 @@ pub struct FeatureFlags {
     pub dreaming: bool,
     /// Evals (user-facing behavioral evals for agents). Organization adoption opt-in.
     pub evals: bool,
+    /// Native typed extraction API and console. Organization adoption opt-in.
+    pub extractions: bool,
     /// Skills registry management UI. Experimental.
     pub skills: bool,
     /// Workspace memory management UI. Experimental.
@@ -133,6 +135,12 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Lets you define and run behavioral evals against your agents. Use it to \
              confirm an agent responds the way you expect and to catch regressions as you change \
              prompts or models.",
+        grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
+        name: "extractions",
+        label: "Extractions",
+        description: "Extract typed values and source evidence with an organization-owned provider account.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -297,6 +305,7 @@ impl FeatureFlags {
             ("lua".to_string(), self.lua),
             ("mistral".to_string(), self.mistral),
             ("evals".to_string(), self.evals),
+            ("extractions".to_string(), self.extractions),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
             ("knowledge".to_string(), self.knowledge),
@@ -325,6 +334,7 @@ impl FeatureFlags {
             "lua" => self.lua,
             "mistral" => self.mistral,
             "evals" => self.evals,
+            "extractions" => self.extractions,
             "skills" => self.skills,
             "memory" => self.memory,
             "knowledge" => self.knowledge,
@@ -343,6 +353,7 @@ impl FeatureFlags {
             "monitoring" => self.monitoring = enabled,
             "dreaming" => self.dreaming = enabled,
             "evals" => self.evals = enabled,
+            "extractions" => self.extractions = enabled,
             "skills" => self.skills = enabled,
             "memory" => self.memory = enabled,
             "knowledge" => self.knowledge = enabled,
@@ -417,6 +428,7 @@ impl FeatureFlags {
             lua: true,
             mistral: true,
             evals: true,
+            extractions: true,
             skills: true,
             memory: true,
             knowledge: true,
@@ -582,7 +594,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = ["evals", "observers", "voice", "knowledge"];
+        let adoption_flags = ["evals", "extractions", "observers", "voice", "knowledge"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))

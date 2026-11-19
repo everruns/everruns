@@ -13,6 +13,7 @@ Verify typed extraction model selection, field validation and organization-isola
 ## Preconditions
 
 - Canonical local stack on a distinct port prefix.
+- The organization has adopted the `extractions` feature.
 - Model-management permission and an enabled organization-owned extraction model.
 - A synthetic provider fixture for offline testing, or explicit permission for provider spending before a live call.
 
@@ -23,7 +24,7 @@ Fields: `{"invoice_number":{"type":"text"},"total":{"type":"number"}}`.
 
 ## Steps
 
-1. Open Extractions through the sidebar and Command-K in both console layouts. Verify users without model-management permission cannot see either destination. Verify the charge warning, source and field inputs, and the extraction model selector in light and dark themes.
+1. With `extractions` off, verify the sidebar and Command-K omit Extractions and a direct route shows the feature gate. Adopt the feature, then open Extractions through the sidebar and Command-K in both console layouts. Verify it is the last item in Build and users without model-management permission cannot see either destination. Verify the charge warning, source and field inputs, and the extraction model selector in light and dark themes.
 2. With no model or source, verify Extract is disabled. Choose an extraction model; chat-only models must not appear.
 3. Enter malformed field JSON, then Extract. Verify a local error and no API request.
 4. Enter valid fields and Extract. Verify inputs and button disable while pending and a second click cannot submit again.
@@ -36,6 +37,7 @@ Fields: `{"invoice_number":{"type":"text"},"total":{"type":"number"}}`.
 ## Expected Result
 
 - Only enabled extraction-capable models are offered.
+- Navigation, direct-route access and API spending require organization adoption.
 - Invalid JSON never causes provider spending; pending interactions do not duplicate calls.
 - Results retain provider evidence without fabricating confidence.
 - Form and result state never cross organization boundaries.

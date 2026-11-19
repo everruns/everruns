@@ -63,6 +63,7 @@ pub struct SessionFacetsQuery {
     pub archived_only: Option<bool>,
     #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// Search by title (case-insensitive substring match) or exact public session ID.
     pub search: Option<String>,
     pub source: Option<String>,
     pub status: Option<String>,

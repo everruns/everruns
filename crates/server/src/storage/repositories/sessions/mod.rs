@@ -63,6 +63,7 @@ struct SessionFilterSql {
     owner_predicate: String,
     window_predicate: String,
     agent_id: Option<AgentId>,
+    search_session_id: Option<SessionId>,
     search_patterns: Vec<String>,
     owner_user_id: Option<Uuid>,
     created_after: Option<DateTime<Utc>>,
@@ -85,6 +86,9 @@ macro_rules! bind_session_filters {
         let mut q = $q;
         if let Some(agent_id) = $plan.agent_id {
             q = q.bind(agent_id);
+        }
+        if let Some(session_id) = $plan.search_session_id {
+            q = q.bind(session_id);
         }
         for pattern in &$plan.search_patterns {
             q = q.bind(pattern);
@@ -145,15 +149,29 @@ impl SessionFilterSql {
             None => String::new(),
         };
 
-        let (mut search_predicate, search_patterns) = build_search_sql(
-            filters.search.as_deref(),
-            "LOWER(COALESCE(title, ''))",
-            param_idx,
-        );
+        // A pasted public session ID is an indexed exact lookup. Everything
+        // else keeps the existing case-insensitive title substring search.
+        let search_session_id = filters
+            .search
+            .as_deref()
+            .map(str::trim)
+            .and_then(|search| search.parse::<SessionId>().ok());
+        let (mut search_predicate, search_patterns) = if search_session_id.is_some() {
+            let predicate = format!(" AND id = ${param_idx}");
+            param_idx += 1;
+            (predicate, Vec::new())
+        } else {
+            let result = build_search_sql(
+                filters.search.as_deref(),
+                "LOWER(COALESCE(title, ''))",
+                param_idx,
+            );
+            param_idx += result.1.len();
+            result
+        };
         if filters.side_chats_only {
             search_predicate.push_str(" AND NOT 'platform-chat-starter' = ANY(tags)");
         }
-        param_idx += search_patterns.len();
 
         // `mine` resolves against the effective human owner so a session an
         // virtual user created on the user's behalf still shows up.
@@ -211,6 +229,7 @@ impl SessionFilterSql {
             owner_predicate,
             window_predicate,
             agent_id: filters.agent_id,
+            search_session_id,
             search_patterns,
             owner_user_id: filters.owner_user_id,
             created_after: filters.created_after,

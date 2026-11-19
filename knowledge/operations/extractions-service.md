@@ -38,6 +38,9 @@ model, active provider, and stored credentials. Require model-management rights,
 reject read-only callers and host-managed providers until hosted extraction
 accounting exists. Do not borrow deployment utility credentials for tenant calls.
 The explicit deployment-owned utility is opt-in by extraction model configuration.
+The Server API and console also require the organization's Adoption-grade
+`extractions` flag. Enforce adoption before model or credential resolution, and
+hide both navigation and the direct page while it is off.
 
 Bound input assets before decoding and responses before parsing. Disable redirects,
 pin connections to public DNS answers, and suppress provider response bodies in errors: they may repeat source documents

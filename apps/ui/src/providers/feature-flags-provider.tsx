@@ -16,6 +16,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   monitoring: false,
   dreaming: false,
   evals: false,
+  extractions: false,
   skills: false,
   memory: false,
   knowledge: false,
