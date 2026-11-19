@@ -149,7 +149,7 @@ async fn worker_file_commands_can_store_large_binary_artifacts() {
     use base64::Engine;
     use everruns_internal_protocol::uuid_to_proto_uuid;
 
-    let service = test_worker_service().await;
+    let service = super::tests::test_worker_service().await;
     let (session_id, _) = super::tests::create_grpc_test_session(&service).await;
     let bytes = vec![0xf8; 1024 * 1024];
     let content = base64::engine::general_purpose::STANDARD.encode(&bytes);
