@@ -102,6 +102,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Binding type": "装订类型",
   "Blocked domains": "被阻止的域名",
   "Blocked hosts": "被阻止的主机",
+  Blocks: "构建块",
   "Bosnian (Bosnia)": "波斯尼亚语（波斯尼亚）",
   Branch: "分行",
   Branding: "品牌",

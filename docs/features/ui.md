@@ -20,16 +20,17 @@ Access the UI at `http://localhost:9300` when running locally.
 
 ## Navigation
 
-The sidebar provides access to main sections:
+The sidebar puts Main chat and Overview on top, then four groups:
 
 | Section | Description |
 |---------|-------------|
 | Main chat | Your permanent conversation with Platform Chat; side chats below it |
 | Overview | What needs attention in the organization, and how its agents ran today. Its sidebar entry shows how many items are waiting |
-| Agents | List, create, and manage agents |
-| Virtual users | Manage end-user and service runtime accounts |
-| Capabilities | Browse available capabilities |
-| Settings | Configure providers, personal access tokens, and team members |
+| Build | Agents, and Playground to try them |
+| Activity | What ran: Sessions, Rooms and Monitoring |
+| Blocks | What agents are made from and run on: Harnesses, Capabilities, Skills, Plugins, Knowledge, Memory, Extractions, Virtual Users, then Models, Web search and Sandboxes |
+| Quality | Evals and Observers |
+| Settings | Configure the organization, team members and personal preferences |
 
 ## Chat and Threads
 
@@ -59,7 +60,7 @@ divider between chat and page to resize. See
 
 ## Overview page
 
-**Overview** (formerly Home) is the first entry under Building. A number next to it
+**Overview** (formerly Home) sits right under the chats in the sidebar. A number next to it
 shows how many items need attention. In the Chat first layout it is the page you land
 on, with Main chat beside it. In the default Classic layout you land on Main chat.
 
