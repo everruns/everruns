@@ -306,3 +306,33 @@ fn hosted_capabilities(
     }
     services
 }
+
+/// The host calls the agent of `definition` declares: what its named
+/// capabilities, and the ones they depend on, say their tools ask a
+/// control plane at call time (`Capability::host_calls`). Empty for a
+/// definition that does not parse (it does not build either).
+pub fn declared_host_calls(definition: &Value) -> std::collections::BTreeSet<&'static str> {
+    let mut declared = std::collections::BTreeSet::new();
+    let Ok(package) = package(definition) else {
+        return declared;
+    };
+    let registry = hosted_registry();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut queue: Vec<String> = package
+        .manifest()
+        .capabilities
+        .iter()
+        .map(|c| c.id().to_owned())
+        .collect();
+    while let Some(id) = queue.pop() {
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+        let Some(capability) = registry.get(&id) else {
+            continue;
+        };
+        declared.extend(capability.host_calls().iter().copied());
+        queue.extend(capability.dependencies().into_iter().map(str::to_owned));
+    }
+    declared
+}

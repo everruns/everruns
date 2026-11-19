@@ -149,10 +149,35 @@ const fn call(
     }
 }
 
+/// A provider connection token, as the turn's person or the agent.
+pub const CONNECTION_TOKEN: &str = "connection_token";
+/// A GitHub token minted for one use.
+pub const GITHUB_TOKEN: &str = "github_token";
+/// The org's egress grants.
+pub const EGRESS_GRANTS: &str = "egress_grants";
+/// The responding agent's service API key.
+pub const SERVICE_API_KEY: &str = "service_api_key";
+/// The session owner's tool approval settings.
+pub const TOOL_APPROVAL_POLICY: &str = "tool_approval_policy";
+/// A web search account key.
+pub const WEB_SEARCH_KEY: &str = "web_search_key";
+/// The org's web search settings.
+pub const WEB_SEARCH_SETTINGS: &str = "web_search_settings";
+/// The org's knowledge: search and browse.
+pub const KNOWLEDGE: &str = "knowledge";
+/// A Poppy call.
+pub const POPPY_CALL: &str = "poppy_call";
+
+/// The host calls any turn may make, whatever its agent's capabilities:
+/// the approval policy every tool call is checked against, and the egress
+/// grants every outbound request is. Every other call is declared by the
+/// capabilities that make it (`Capability::host_calls`).
+pub const TURN_CALLS: &[&str] = &[TOOL_APPROVAL_POLICY, EGRESS_GRANTS];
+
 /// Every host call, by name.
 pub const HOST_CALLS: &[HostCall] = &[
     call(
-        "connection_token",
+        CONNECTION_TOKEN,
         "worker_get_connection_token",
         ActsAs::Person,
         Effect::Read,
@@ -160,7 +185,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "a provider connection token of the turn's person, or of the agent; refreshed in the control plane",
     ),
     call(
-        "github_token",
+        GITHUB_TOKEN,
         "worker_get_github_token",
         ActsAs::Person,
         Effect::Read,
@@ -168,7 +193,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "a GitHub token minted for one use from the GitHub App key",
     ),
     call(
-        "egress_grants",
+        EGRESS_GRANTS,
         "worker_get_org_egress_allowlist",
         ActsAs::Org,
         Effect::Read,
@@ -176,7 +201,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "the org's egress grants (open egress, allowlist extension), until they are pushed",
     ),
     call(
-        "service_api_key",
+        SERVICE_API_KEY,
         "worker_get_service_api_key_connection",
         ActsAs::Person,
         Effect::Read,
@@ -184,7 +209,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "the responding agent's service API key, for the turn",
     ),
     call(
-        "tool_approval_policy",
+        TOOL_APPROVAL_POLICY,
         "worker_get_tool_approval_policy",
         ActsAs::Org,
         Effect::Read,
@@ -192,7 +217,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "the session owner's own approval settings; the org's policy is pushed",
     ),
     call(
-        "web_search_key",
+        WEB_SEARCH_KEY,
         "worker_get_web_search_account_key",
         ActsAs::Org,
         Effect::Read,
@@ -200,7 +225,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "a web search account key, until the org's keys are pushed",
     ),
     call(
-        "web_search_settings",
+        WEB_SEARCH_SETTINGS,
         "worker_get_web_search_settings",
         ActsAs::Org,
         Effect::Read,
@@ -208,7 +233,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "the org's web search settings, until they are pushed",
     ),
     call(
-        "knowledge",
+        KNOWLEDGE,
         "worker_knowledge",
         ActsAs::Org,
         Effect::Read,
@@ -216,7 +241,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         "the org's knowledge the session's agent attaches: search and browse",
     ),
     call(
-        "poppy_call",
+        POPPY_CALL,
         "worker_poppy_call",
         ActsAs::Org,
         Effect::Write,

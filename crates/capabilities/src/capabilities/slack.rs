@@ -44,6 +44,10 @@ impl Capability for SlackCapability {
         SLACK_CAPABILITY_ID
     }
 
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[everruns_contracts::host_calls::SLACK_ACTION]
+    }
+
     fn name(&self) -> &str {
         "Slack"
     }

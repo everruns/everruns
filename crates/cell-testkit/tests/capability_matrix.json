@@ -103,5 +103,74 @@
     "user_mcp": "runs",
     "web_fetch": "runs",
     "web_search": "runs"
+  },
+  "host_calls": {
+    "agent_handoff": [
+      "connection_token"
+    ],
+    "agentid": [
+      "connection_token",
+      "service_api_key"
+    ],
+    "boxd": [
+      "connection_token"
+    ],
+    "brave_search": [
+      "connection_token"
+    ],
+    "browserless": [
+      "connection_token"
+    ],
+    "cursor": [
+      "connection_token"
+    ],
+    "daytona": [
+      "connection_token",
+      "github_token"
+    ],
+    "e2b": [
+      "connection_token"
+    ],
+    "github": [
+      "connection_token",
+      "github_token"
+    ],
+    "github_scout": [
+      "connection_token",
+      "github_token"
+    ],
+    "jev": [
+      "connection_token"
+    ],
+    "knowledge": [
+      "knowledge"
+    ],
+    "modal": [
+      "connection_token"
+    ],
+    "platform": [
+      "platform_command"
+    ],
+    "poppy_client": [
+      "poppy_call"
+    ],
+    "repositories": [
+      "connection_token",
+      "github_token"
+    ],
+    "sandbox_fleet": [
+      "connection_token"
+    ],
+    "session_sql_database": [
+      "session_sql_db"
+    ],
+    "slack": [
+      "slack_action"
+    ],
+    "web_search": [
+      "connection_token",
+      "web_search_key",
+      "web_search_settings"
+    ]
   }
 }

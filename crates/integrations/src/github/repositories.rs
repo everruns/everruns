@@ -283,6 +283,13 @@ impl Capability for RepositoriesCapability {
         REPOSITORIES_CAPABILITY_ID
     }
 
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[
+            everruns_contracts::host_calls::GITHUB_TOKEN,
+            everruns_contracts::host_calls::CONNECTION_TOKEN,
+        ]
+    }
+
     fn name(&self) -> &str {
         "Repositories"
     }

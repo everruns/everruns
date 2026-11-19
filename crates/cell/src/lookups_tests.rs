@@ -20,6 +20,9 @@ struct Material {
     /// What the control plane pushed: settings and secrets, by id.
     pushed: Mutex<std::collections::HashMap<String, Value>>,
     secrets: Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    /// The host calls the session's agent declares; `None` for unknown.
+    declared: Mutex<Option<std::collections::BTreeSet<&'static str>>>,
+    undeclared: Mutex<Vec<String>>,
 }
 
 impl Material {
@@ -30,6 +33,8 @@ impl Material {
             asked: Mutex::new(Vec::new()),
             pushed: Mutex::default(),
             secrets: Mutex::default(),
+            declared: Mutex::default(),
+            undeclared: Mutex::default(),
         })
     }
 }
@@ -73,6 +78,17 @@ impl OrgMaterial for Material {
 
     fn looks_up(&self) -> bool {
         self.reaches
+    }
+
+    fn declared_host_calls(
+        &self,
+        _session: SessionId,
+    ) -> Option<std::collections::BTreeSet<&'static str>> {
+        self.declared.lock().clone()
+    }
+
+    fn undeclared_host_call(&self, call: &str) {
+        self.undeclared.lock().push(call.to_owned());
     }
 
     async fn lookup(
@@ -134,6 +150,49 @@ async fn a_connection_token_is_looked_up_for_the_session_as_its_org() {
     assert_eq!(asked[0].1, "worker_get_connection_token");
     assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
     assert_eq!(asked[0].2["provider"], json!("github"));
+}
+
+/// A host call the session's capabilities do not declare is counted, and
+/// still made while the declarations are checked against the live fleet;
+/// a declared one, or one every turn makes, is not counted.
+#[tokio::test]
+async fn an_undeclared_host_call_is_counted() {
+    let session = SessionId::new();
+    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("gh-token"))));
+    *material.declared.lock() = Some(Default::default());
+    let token = resolver(&material, session)
+        .get_connection_token(session, "github")
+        .await
+        .unwrap();
+    assert_eq!(token.as_deref(), Some("gh-token"));
+    assert_eq!(*material.undeclared.lock(), ["connection_token"]);
+
+    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("gh-token"))));
+    *material.declared.lock() = Some(
+        [everruns_contracts::host_calls::CONNECTION_TOKEN]
+            .into_iter()
+            .collect(),
+    );
+    resolver(&material, session)
+        .get_connection_token(session, "github")
+        .await
+        .unwrap();
+    assert!(material.undeclared.lock().is_empty());
+
+    let material = Material::new(true, Ok(HostCallAnswer::Value(json!({}))));
+    *material.declared.lock() = Some(Default::default());
+    let lookups = super::org_lookups(
+        Some(&(Arc::downgrade(&(material.clone() as Arc<dyn OrgMaterial>)))),
+        session,
+    )
+    .unwrap();
+    use everruns_internal_protocol::commands::InternalCommandTransport as _;
+    lookups
+        .execute_internal_command("worker_get_tool_approval_policy", json!({}))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(material.undeclared.lock().is_empty(), "every turn asks it");
 }
 
 #[tokio::test]
