@@ -419,6 +419,22 @@ Landed:
   `/mcp` in `crates/server/tests/domain/mcp_tasks_interop_test.rs`. stdio and
   the connection-less `http_call_tool` do not declare it.
 
+- Tool parameters as headers (`2026-07-28`, `x-mcp-header`): a server may
+  mark `inputSchema` properties with `x-mcp-header`, and every `tools/call`
+  must then carry the argument as `Mcp-Param-{Name}` (GitHub's MCP server marks
+  `owner` and `repo`). `tools/list` validates the annotations (token name,
+  unique case-insensitively, string/integer/boolean only, reachable only
+  through `properties`) and drops a tool that breaks them with a warning,
+  keeping the server's other tools. The HTTP transport remembers each tool's
+  annotations per connection for an hour and adds the headers to the call; a
+  value that is not header-safe ASCII goes as `=?base64?...?=`, so an argument
+  cannot inject a header (TM-TOOL-068). A `-32020` HeaderMismatch rejection
+  re-reads `tools/list` and retries once, and only when the schema changed.
+  `Mcp-Name` uses the same encoding, and Everruns' own `/mcp` decodes it.
+  Decisions in `crates/core/src/mcp/param_headers.rs`; tests in
+  `crates/core/tests/consolidated/mcp/param_headers.rs`. The connection-less
+  `http_call_tool` sends no parameter headers.
+
 Remaining follow-up:
 
 - Per-session TTL cache for runtime tool discovery (currently live per turn,

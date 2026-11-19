@@ -157,6 +157,16 @@ fn routing_headers_matching_is_ok() {
 }
 
 #[test]
+fn base64_wrapped_routing_name_is_decoded() {
+    let mut headers = HeaderMap::new();
+    headers.insert("Mcp-Name", "=?base64?IHBhZGRlZCA=?=".parse().unwrap());
+    let request = req("tools/call", json!({ "name": " padded " }));
+    assert!(validate_routing_headers(&headers, &request).is_ok());
+    let other = req("tools/call", json!({ "name": "padded" }));
+    assert!(validate_routing_headers(&headers, &other).is_err());
+}
+
+#[test]
 fn duplicate_routing_header_method_is_rejected() {
     let mut headers = HeaderMap::new();
     headers.append("Mcp-Method", "tools/call".parse().unwrap());
