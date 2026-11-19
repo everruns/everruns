@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-19
+
+- [Runtime MCP](integrations/runtime-mcp.md): the MCP client mirrors `x-mcp-header` tool parameters as `Mcp-Param-*` headers, drops tools with invalid annotations, and retries once after a HeaderMismatch rejection. [Threat Model](security/threat-model.md) TM-TOOL-068.
+
 ## 2026-11-17
 
 - Remove Reports: the Reports page, `/v1/reports` API, `everruns reports` CLI, `reports` feature flag, report permissions and the reporting projector are gone, and a migration drops the reporting outbox, saved reports and fact tables. The relaxed-commit database pool, which only the projector used, goes with it. The Reporting specification and the backends evaluation are deleted.

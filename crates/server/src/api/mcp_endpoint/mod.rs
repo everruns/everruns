@@ -298,6 +298,9 @@ fn validate_routing_headers(headers: &HeaderMap, req: &JsonRpcRequest) -> Result
     if let Some(header_name) = single_routing_header(headers, "Mcp-Name")? {
         // `Mcp-Name` identifies the specific tool/resource/prompt. We can only
         // cross-check it on `tools/call`, where the body carries `params.name`.
+        // Clients Base64-wrap names that are not header-safe (`=?base64?..?=`).
+        let header_name = everruns_core::mcp::param_headers::decode_value(header_name)
+            .unwrap_or_else(|| header_name.to_string());
         if req.method == "tools/call"
             && let Some(body_name) = req.params.get("name").and_then(Value::as_str)
             && body_name != header_name

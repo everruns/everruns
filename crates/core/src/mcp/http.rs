@@ -26,6 +26,7 @@ use crate::mcp::elicitation::{
 use crate::mcp::form_elicitation::{
     FormElicitation, FormElicitationHandler, FormOutcome, parse_requested_schema,
 };
+use crate::mcp::param_headers;
 use crate::mcp::protocol::{self, ClientCapabilities, Negotiated};
 use crate::mcp::result::extract_json_from_response;
 use crate::mcp::tasks;
@@ -1050,6 +1051,8 @@ pub struct HttpTransport {
     /// `tools/list` results held for the server-declared `ttlMs`. Absent for
     /// 2025-era servers, which send no caching hints.
     tools: Mutex<HashMap<ToolsCacheKey, CachedTools>>,
+    /// Which tool parameters each tool mirrors into `Mcp-Param-*` headers.
+    param_headers: param_headers::ParamHeaderCache<NegotiationCacheKey>,
     /// Host surface that puts a URL elicitation in front of a human. `None`
     /// (the default) declares no elicitation capability, which under MRTR
     /// forbids servers from asking.
@@ -1068,6 +1071,7 @@ impl HttpTransport {
             egress,
             negotiations: Mutex::new(HashMap::new()),
             tools: Mutex::new(HashMap::new()),
+            param_headers: Default::default(),
             elicitation: None,
             form_elicitation: None,
             task_wait_limit: tasks::TASK_WAIT_LIMIT,
@@ -1209,8 +1213,100 @@ impl McpTransport for HttpTransport {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
         if let Some(tools) = self.cached_tools(&cache_key) {
-            return Ok(tools);
+            return Ok(self
+                .param_headers
+                .screen(&cache_key, &connection.name, tools));
         }
+        self.discover_fresh(connection, credential).await
+    }
+
+    async fn call_tool(
+        &self,
+        connection: &McpConnection,
+        tool_name: &str,
+        arguments: Value,
+        credential: Option<&McpCredential>,
+        idempotency_key: Option<&str>,
+    ) -> Result<McpToolCallResult> {
+        validate_tool_consent_scope(tool_name)?;
+        let (url, headers) = Self::http_parts(connection)?;
+        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        let known = self.param_headers.get(&cache_key, tool_name);
+        let mirrored = |params: &Option<Vec<param_headers::HeaderParam>>| {
+            param_headers::headers_for(params.as_deref().unwrap_or_default(), &arguments)
+                .map_err(|reason| anyhow!("MCP tool '{tool_name}': {reason}"))
+        };
+        let first = self
+            .call_tool_once(
+                connection,
+                tool_name,
+                &arguments,
+                credential,
+                idempotency_key,
+                &mirrored(&known)?,
+            )
+            .await;
+        match first {
+            // The spec's recovery for a rejected call: re-read the tool's
+            // schema, then retry once with the headers it now asks for.
+            Err(error) if param_headers::is_header_mismatch(&error) => {
+                self.discover_fresh(connection, credential).await?;
+                let fresh = self.param_headers.get(&cache_key, tool_name);
+                if fresh == known {
+                    return Err(error);
+                }
+                self.call_tool_once(
+                    connection,
+                    tool_name,
+                    &arguments,
+                    credential,
+                    idempotency_key,
+                    &mirrored(&fresh)?,
+                )
+                .await
+            }
+            other => other,
+        }
+    }
+
+    async fn request(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+        credential: Option<&McpCredential>,
+    ) -> Result<Value> {
+        let (url, headers) = Self::http_parts(connection)?;
+        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        let cached = self.cached_negotiation(&cache_key);
+        let (text, negotiated) = request_with_inputs(
+            self.egress.as_ref(),
+            url,
+            headers,
+            credential,
+            connection.protocol_mode,
+            &connection.name,
+            method,
+            &params,
+            cached,
+            self.handlers(connection),
+        )
+        .await?;
+        self.store_negotiation(cache_key, negotiated);
+        parse_rpc_result(&text)
+    }
+}
+
+impl HttpTransport {
+    /// `tools/list` against the server, bypassing the tool cache; refreshes
+    /// both caches and the mirrored-parameter memory.
+    async fn discover_fresh(
+        &self,
+        connection: &McpConnection,
+        credential: Option<&McpCredential>,
+    ) -> Result<Vec<McpToolDefinition>> {
+        let (url, headers) = Self::http_parts(connection)?;
+        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
         let cached = self.cached_negotiation(&cache_key);
         let (tools, negotiated, hints, _server_info) = http_discover_tools(
             self.egress.as_ref(),
@@ -1226,20 +1322,27 @@ impl McpTransport for HttpTransport {
             self.store_negotiation(cache_key.clone(), negotiated);
         }
         self.store_tools(&cache_key, hints, &tools);
-        Ok(tools)
+        Ok(self
+            .param_headers
+            .screen(&cache_key, &connection.name, tools))
     }
 
-    async fn call_tool(
+    /// One `tools/call`, with `mirrored` (`Mcp-Param-*`) headers added to the
+    /// connection's own headers for the call and any input-required retries.
+    async fn call_tool_once(
         &self,
         connection: &McpConnection,
         tool_name: &str,
-        arguments: Value,
+        arguments: &Value,
         credential: Option<&McpCredential>,
         idempotency_key: Option<&str>,
+        mirrored: &[(String, String)],
     ) -> Result<McpToolCallResult> {
-        validate_tool_consent_scope(tool_name)?;
-        let (url, headers) = Self::http_parts(connection)?;
-        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        let (url, base_headers) = Self::http_parts(connection)?;
+        let cache_key = NegotiationCacheKey::new(connection, url, base_headers, credential);
+        let mut call_headers = base_headers.clone();
+        call_headers.extend(mirrored.iter().cloned());
+        let headers = &call_headers;
         // This transport can keep polling, so `tools/call` may become a task.
         let capabilities = ClientCapabilities {
             tasks: true,
@@ -1256,7 +1359,7 @@ impl McpTransport for HttpTransport {
             Some(tool_name),
             &|version| {
                 protocol::with_idempotency_key(
-                    protocol::tools_call_body(1, tool_name, &arguments, version, capabilities),
+                    protocol::tools_call_body(1, tool_name, arguments, version, capabilities),
                     idempotency_key,
                 )
             },
@@ -1306,32 +1409,5 @@ impl McpTransport for HttpTransport {
             .await;
         }
         parse_tool_call(&text)
-    }
-
-    async fn request(
-        &self,
-        connection: &McpConnection,
-        method: &str,
-        params: Value,
-        credential: Option<&McpCredential>,
-    ) -> Result<Value> {
-        let (url, headers) = Self::http_parts(connection)?;
-        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
-        let cached = self.cached_negotiation(&cache_key);
-        let (text, negotiated) = request_with_inputs(
-            self.egress.as_ref(),
-            url,
-            headers,
-            credential,
-            connection.protocol_mode,
-            &connection.name,
-            method,
-            &params,
-            cached,
-            self.handlers(connection),
-        )
-        .await?;
-        self.store_negotiation(cache_key, negotiated);
-        parse_rpc_result(&text)
     }
 }
