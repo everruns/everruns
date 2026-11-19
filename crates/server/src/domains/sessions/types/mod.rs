@@ -241,7 +241,7 @@ pub struct ListSessionsQuery {
     /// Filter sessions by agent ID.
     #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
-    /// Search by title (case-insensitive substring match).
+    /// Search by title (case-insensitive substring match) or exact public session ID.
     pub search: Option<String>,
     /// Comma-separated session sources: `chat`, `api`, `slack`, `ag_ui`,
     /// `fcp`, `schedule`, `webhook`, `a2a`, `eval`, `subagent`, `unknown`.

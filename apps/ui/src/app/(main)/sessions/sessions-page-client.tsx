@@ -268,7 +268,7 @@ export default function SessionsPageClient() {
         >
           <SearchInput
             value={searchDraft}
-            placeholder={ui("Search runs by title")}
+            placeholder={ui("Search runs by title or session ID")}
             aria-label={ui("Search runs")}
             onChange={(event) => setSearchDraft(event.target.value)}
             onBlur={() => {

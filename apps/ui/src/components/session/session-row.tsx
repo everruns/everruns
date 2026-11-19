@@ -99,7 +99,7 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
       <div className="hidden min-w-0 flex-[1_1_10rem] text-[13px] @lg/page-main:block">
         {failed ? (
           <span
-            className="truncate font-medium text-destructive"
+            className="block truncate font-medium text-destructive"
             title={session.output_preview ?? undefined}
           >
             {session.output_preview?.trim() || activityLabel(activity)}
@@ -111,7 +111,7 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
             live={activity === "running" || activity === "paused"}
             className="block text-muted-foreground"
             fallback={
-              <span className="truncate text-muted-foreground">
+              <span className="block truncate text-muted-foreground">
                 {tokens !== undefined
                   ? ui("{value0} tokens", { value0: formatTokens(tokens) })
                   : ui("No work recorded")}

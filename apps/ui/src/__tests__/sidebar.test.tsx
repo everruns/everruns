@@ -132,6 +132,7 @@ jest.mock("@/components/layout/notification-bell", () => ({
 // Mock feature flags provider
 const mockFeatureFlags = {
   evals: true,
+  extractions: true,
   skills: true,
   memory: true,
   knowledge: true,
@@ -172,6 +173,7 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
       evals: true,
+      extractions: true,
       skills: true,
       memory: true,
       knowledge: true,
@@ -216,6 +218,16 @@ describe("Sidebar", () => {
     const link = screen.queryByRole("link", { name: "Extractions" });
     if (allowed) expect(link).toHaveAttribute("href", "/extractions");
     else expect(link).not.toBeInTheDocument();
+  });
+
+  it("hides Extractions until the organization adopts it", () => {
+    mockFeatureFlags.extractions = false;
+    mockUsePolicies.mockReturnValue({
+      data: { policies: { "durable.view": true } },
+      can: (policyId: string) => policyId === "model.manage",
+    });
+    render(<Sidebar />);
+    expect(screen.queryByRole("link", { name: "Extractions" })).not.toBeInTheDocument();
   });
 
   it("keeps search row focused on search only", () => {

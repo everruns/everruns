@@ -14266,7 +14266,7 @@
               ]
             },
             "search": {
-              "description": "Case-insensitive title substring match.",
+              "description": "Case-insensitive title substring match or exact public session ID.",
               "type": [
                 "string",
                 "null"
@@ -18669,7 +18669,7 @@
               ]
             },
             "search": {
-              "description": "Case-insensitive title substring match.",
+              "description": "Case-insensitive title substring match or exact public session ID.",
               "type": [
                 "string",
                 "null"

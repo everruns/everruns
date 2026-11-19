@@ -46,8 +46,8 @@ The placement test for a new entity is a single question:
 > What does the user do with it: talk to it, build and try an agent with it, look at
 > what ran, assemble agents from it, or check the quality of something else with it?
 
-The first answer that is true names the group. Build is deliberately narrow: only the
-agent itself and the place to try it. Anything an agent is made from or runs on
+The first answer that is true names the group. Build centers on agents and the place
+to try them, with the opt-in Extractions console as a standalone utility. Anything an agent is made from or runs on
 (harnesses, capabilities, knowledge, identities, models, sandboxes) is a Block, even
 when the user authors it, because the user reaches it while assembling an agent rather
 than as a destination of its own.
@@ -58,9 +58,9 @@ than as a destination of its own.
 |---|---|
 | **Chats** | Where you talk: Main chat, then the Side chats group with its new-side-chat affordance. First, no section header. |
 | **Overview** | The org's [home](org-home.md), right under the chats with no section header. It carries a count of the items waiting on it. |
-| **Build** | Agents and Playground: the agent and the place to try it. |
+| **Build** | Agents, Playground, and the organization-adopted Extractions console. |
 | **Activity** | What ran: Sessions, Rooms, and Monitoring. |
-| **Blocks** | Everything agents are made from and run on. What agents use by name first (Harnesses, Capabilities, Skills, Plugins, Knowledge, Memory, Extractions, Virtual Users), then the provider-backed pages (Models, Web search, Sandboxes), each with its own accounts tab. |
+| **Blocks** | Everything agents are made from and run on. What agents use by name first (Harnesses, Capabilities, Skills, Plugins, Knowledge, Memory, Virtual Users), then the provider-backed pages (Models, Web search, Sandboxes), each with its own accounts tab. |
 | **Quality** | Evaluation and observation. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
@@ -77,10 +77,10 @@ gating and stay out of the groups for the same reason.
   ordered by "used by name, then providers" keeps the line inside the group instead of
   between two headers. It was called Library and before that Registers; Blocks says
   what the group holds without implying a catalog you only read.
-* **Harnesses, Virtual Users and Extractions are Blocks, not Build.** A harness is
-  referenced by name from agents like a skill; a virtual user is an identity agents
-  act for or test as; Extractions is a model-backed utility. Keeping them out of Build
-  leaves Build with just the agent and Playground.
+* **Harnesses and Virtual Users are Blocks.** A harness is referenced by name from
+  agents like a skill. A virtual user is an identity agents act for or test as.
+* **Extractions closes Build.** It is a standalone console for extracting typed
+  values, visible after the organization adopts it and to viewers who can manage models.
 * **Overview is not in a group.** It is the org's home, so it sits with the chats at the
   top instead of leading a working group.
 * **Sandboxes is one entry with tabs.** The fleet, its Templates and provider accounts are

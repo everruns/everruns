@@ -178,6 +178,36 @@ async fn test_search_sessions_by_title() {
 }
 
 #[tokio::test]
+async fn test_search_sessions_by_public_id() {
+    let db = StorageBackend::test_database();
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+            title: Some("A title that does not contain the identifier".to_string()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let (results, total) = db
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                search: Some(session.id.to_string()),
+                ..Default::default()
+            },
+            crate::common_dto::Pagination::new(0, 20),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(total, 1);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, session.id);
+}
+
+#[tokio::test]
 async fn test_search_sessions_with_agent_filter() {
     let db = StorageBackend::test_database();
     let agent1 = create_test_agent(&db, "Agent1", None).await;

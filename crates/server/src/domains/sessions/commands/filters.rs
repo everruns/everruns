@@ -14,7 +14,7 @@ pub struct SessionFilterArgs {
     /// Return only archived sessions.
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub archived_only: Option<bool>,
-    /// Case-insensitive title substring match.
+    /// Case-insensitive title substring match or exact public session ID.
     pub search: Option<String>,
     /// Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`,
     /// `schedule`, `webhook`, `a2a`, `eval`, `subagent`, `unknown`).

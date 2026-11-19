@@ -2222,7 +2222,7 @@ out across orgs. Leases retain their own org-scoped runtime owner; migration to 
 
 | ID | Threat | Mitigation |
 | --- | --- | --- |
-| TM-EXTRACT-001 | Extraction requests borrow another organization's or deployment utility credentials, or bypass hosted accounting | Resolve the enabled model and active provider in the authenticated org, require model-management permission, reject read-only callers and input routing overrides, and reject managed providers until accounting exists. The utility helper is separate and never a tenant fallback. |
+| TM-EXTRACT-001 | Extraction requests borrow another organization's or deployment utility credentials, bypass organization adoption, or bypass hosted accounting | Require the organization-effective `extractions` flag before model or credential resolution. Resolve the enabled model and active provider in the authenticated org, require model-management permission, reject read-only callers and input routing overrides, and reject managed providers until accounting exists. The utility helper is separate and never a tenant fallback. |
 | TM-EXTRACT-002 | Large encoded assets or provider responses exhaust memory; provider errors disclose source documents | Contract asset count/encoded-byte checks precede decoding, driver-specific bounds apply, Server HTTP request bodies are bounded to 8 MiB and provider responses to 4 MiB, timeouts bound work, redirects are disabled, a DNS-pinning resolver rejects private/internal destinations after registration, and raw upstream bodies are excluded from errors. Models may still return inaccurate extraction or confidence; typed/evidence validation does not establish factual correctness. |
 
 See [Native Extraction Services](../operations/extractions-service.md).

@@ -78,6 +78,11 @@ Knowledge is an explicit Adoption-grade organization opt-in on development and h
 
 Dreaming in the built-in Worker harness is an explicit Adoption-grade organization opt-in. Runtime capability filtering gates inherited and explicitly configured dreaming alike.
 
+Extractions is an explicit Adoption-grade organization opt-in. The console route
+and navigation require the organization-effective flag, and the extraction API
+rejects requests before resolving a model, provider, or credential when the
+flag is off.
+
 ## Execution boundary
 
 Hosted capability registration uses deployment availability. Internal/adoption registration
