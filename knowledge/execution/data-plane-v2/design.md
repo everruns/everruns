@@ -2108,6 +2108,24 @@ holds every session's agent; a v2 session keeps the definition it was
 created with, as every v2 session does. Its MCP credentials are bound
 under the session's own key, never shared with the agent's.
 
+**Parity, Phase B: the agent catalog (2026-11-19).** Tools that hand work
+to another agent (coordination, handoff, teams, subagents) name it by the
+platform's agent id. A cell knew only the agents a session had run, so
+most of them failed. Every agent of a v2 org now has its own key
+published (the agent on its own harness), whose revision carries the
+agent's card: the platform's ids for it and its harness, and the
+definitions the tools read, MCP credentials redacted
+(`crates/server/src/domains/data_plane/catalog.rs`). The cell's directory
+answers tools from the cards (`/cell/orgs/{org}/catalog/...`). Decisions:
+platform ids appear only on cards, so Engine records stay id-free; a card
+is never run, a session runs its key's package. A session records the
+agent key it runs (`Platform.agent_ref`), so a child of the parent's own
+agent runs that agent's current revision plus the parent's pinned
+sandbox, never the parent's own session settings. A deleted agent's keys
+leave the config; running sessions keep their revision. Blueprint
+children and forked or workspace-seeded children stay refused until
+step 9.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

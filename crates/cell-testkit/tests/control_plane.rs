@@ -428,3 +428,128 @@ async fn a_session_with_its_own_settings_runs_its_own_definition() {
         .unwrap();
     assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{refused}");
 }
+
+/// Every node's answer to `path` that is not an error (the directory
+/// cell's leader answers the org's catalog; other cells' leaders answer
+/// null, followers refuse).
+async fn node_answers(fleet: &Fleet, path: &str) -> Vec<Value> {
+    let http = reqwest::Client::builder().no_proxy().build().unwrap();
+    let mut answers = Vec::new();
+    for cell in [0u32, 1] {
+        for (_, addr) in fleet.addrs(cell) {
+            if let Ok(reply) = http.get(format!("http://{addr}{path}")).send().await
+                && reply.status().is_success()
+                && let Ok(value) = reply.json::<Value>().await
+            {
+                answers.push(value);
+            }
+        }
+    }
+    answers
+}
+
+/// The org's agent catalog (parity gap 9): an agent's card can arrive at
+/// the revision the cells already hold, and the directory finds the agent
+/// and its harness by the host's ids.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_catalog_finds_an_agent_by_the_hosts_id() {
+    let (fleet, cp) = setup(10_000_000).await;
+    let mut carded = agent("helper", 1);
+    carded["card"] = json!({
+        "agent_id": "agent_reviewer",
+        "harness_id": "harness_generic",
+        "agent": { "name": "reviewer" },
+        "harness": { "name": "generic" },
+    });
+    let ack = cp
+        .push_config(&fleet.base(), ORG, &update(1, 2, 1, vec![carded]))
+        .await
+        .unwrap();
+    assert_eq!(ack, ConfigAck::Ok { applied_version: 2 });
+    let found = node_answers(
+        &fleet,
+        &format!("/cell/orgs/{ORG}/catalog/agents/agent_reviewer"),
+    )
+    .await;
+    let found = found
+        .iter()
+        .find(|answer| !answer.is_null())
+        .unwrap_or_else(|| panic!("no node found the agent: {found:?}"));
+    assert_eq!(found["agent_id"], "helper");
+    assert_eq!(found["revision"], 1);
+    let harness = node_answers(
+        &fleet,
+        &format!("/cell/orgs/{ORG}/catalog/harnesses/harness_generic"),
+    )
+    .await;
+    assert!(
+        harness.iter().any(|h| h["name"] == "generic"),
+        "{harness:?}"
+    );
+    let missing = node_answers(
+        &fleet,
+        &format!("/cell/orgs/{ORG}/catalog/agents/agent_other"),
+    )
+    .await;
+    assert!(
+        !missing.is_empty() && missing.iter().all(Value::is_null),
+        "{missing:?}"
+    );
+}
+
+/// A subagent of a session with its own settings runs the session's agent
+/// at its current revision, not the session's own definition (parity gaps
+/// 4 and 9).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_subagent_runs_its_agent_without_the_parents_own_settings() {
+    let cp = FakeCp::start().await.unwrap();
+    cp.set_balance(ORG, 10_000_000);
+    let mut fleet = Fleet::start_with(Some(cp.url.clone())).await;
+    fleet.executor(1);
+    fleet.executor(2);
+    let mut team = everruns_cell_testkit::definition("team").unwrap();
+    team["name"] = json!("helper");
+    let published =
+        json!({ "kind": "Agent", "agent_id": "helper", "revision": 1, "package": team.clone() });
+    let ack = cp
+        .push_config(&fleet.base(), ORG, &update(1, 1, 0, vec![published]))
+        .await
+        .unwrap();
+    assert_eq!(ack, ConfigAck::Ok { applied_version: 1 });
+    let mut own = team;
+    own["instructions"] = json!("Ask a helper.\n\nSession's own: be brief.");
+    let id = everruns_contracts::typed_id::SessionId::new();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": id, "agent_ref": "helper", "definition": own }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let parent = id.to_string();
+    fleet.say(&parent, "ask answer 42").await;
+    fleet.turns(&parent, 1).await;
+    let events = fleet.events(&parent).await;
+    let child = events
+        .iter()
+        .filter(|e| e["type"] == "tool.completed")
+        .find_map(|e| {
+            let text = serde_json::to_string(&e["data"]).ok()?;
+            let at = text.find("session_")?;
+            Some(text[at..at + 40].to_owned())
+        })
+        .unwrap_or_else(|| panic!("no child in {:?}", types(&events)));
+    let parent_agent = fleet.get(&format!("/v1/sessions/{parent}/agent")).await;
+    assert!(
+        parent_agent.to_string().contains("Session's own"),
+        "{parent_agent}"
+    );
+    let child_agent = fleet.get(&format!("/v1/sessions/{child}/agent")).await;
+    assert!(
+        !child_agent.to_string().contains("Session's own"),
+        "{child_agent}"
+    );
+}

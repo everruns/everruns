@@ -82,6 +82,31 @@ pub struct AgentDefinition {
     pub format: u32,
     /// The agent package manifest. Secrets only as [`SealedSecret`] ids.
     pub package: Value,
+    /// The host's own names for this agent, when this key is an agent on
+    /// its own harness (data plane v2 parity gap 9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<AgentCard>,
+}
+
+/// What a tool that picks another agent by the host's id (coordination,
+/// handoff, teams) finds on the data plane: the org's agent catalog, one
+/// card per agent, pushed with the agent's own key.
+///
+/// Decision: the Engine stays id-free. Its declarations name things, and a
+/// card is never what a session runs: a session runs `package`. A card
+/// maps the host's ids, which those tools carry in their configuration, to
+/// the key a child runs, and answers their reads of the agent and its
+/// harness. MCP credentials in a card are redacted.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AgentCard {
+    /// The host's agent id.
+    pub agent_id: String,
+    /// The host's id of the harness the agent runs on.
+    pub harness_id: String,
+    /// The host's agent definition (`everruns_core::AgentDefinition`).
+    pub agent: Value,
+    /// Its harness, inheritance resolved (`everruns_core::HarnessDefinition`).
+    pub harness: Value,
 }
 
 fn one() -> u32 {

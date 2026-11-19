@@ -38,6 +38,7 @@ use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 
 pub mod allowances;
 pub mod attachments;
+pub mod catalog;
 pub mod default_plane;
 pub mod event_tap;
 pub mod feed;
@@ -556,6 +557,10 @@ pub async fn enable_org(
             agent_published(cp, &key.agent_key, org_id, &revision).await?;
         }
     }
+    // Every agent, for tools that hand work to another one (parity gap 9).
+    if let Err(error) = catalog::sync(cp, org_id).await {
+        tracing::warn!(org_id, %error, "the data plane's agent catalog was not synced");
+    }
     Ok(org)
 }
 
@@ -589,6 +594,7 @@ pub async fn agent_published(
         revision: n,
         format: 1,
         package,
+        card: catalog::card(cp, org_id, agent_key).await?,
     });
     db.dp_put_item(
         org_id,

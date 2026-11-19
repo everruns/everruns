@@ -4,9 +4,24 @@
 //! (`tasks.rs`).
 //!
 //! Decisions:
-//! - A child runs the parent's own agent definition, billed to the parent's
-//!   org. The control plane's agent catalog is not on the data plane, so an
-//!   agent id other than the parent's is refused rather than guessed.
+//! - A child of the parent's own agent runs that agent's current revision
+//!   (the key the control plane created the parent with,
+//!   `Platform::agent_ref`), never the parent's own definition, which may
+//!   carry the parent session's own settings (parity gap 4); it keeps the
+//!   parent's pinned sandbox. A parent with no such key (a session made
+//!   without a control plane) gives its children its own definition.
+//! - Another agent is found in the org's catalog (parity gap 9): the
+//!   control plane pushes one card per agent, naming it by the platform's
+//!   ids, which coordination, handoff and teams carry in their
+//!   configuration. The child runs that agent on its own harness. The
+//!   catalog is the org's; a tool's own allow list (coordination's workers,
+//!   handoff targets) still bounds which agents it starts.
+//! - Reads of the parent's own agent and harness name them by the Engine's
+//!   session-local ids, and answer from the parent's card.
+//! - Billed to the parent's org.
+//! - A detached child records its lineage only (`forked_from_session_id`
+//!   with a fresh seed). Seeded children (a fork, a workspace copy) and
+//!   blueprints are not on the data plane yet.
 //! - The store reaches only sessions this parent created: the children this
 //!   activation made, and any child a task of the parent links to (which
 //!   outlives the activation). Anything else reads as missing.
@@ -164,6 +179,101 @@ impl CellPlatformStore {
     }
 }
 
+/// What a parent's children and reads need from it.
+struct Parent {
+    definition: Arc<serde_json::Value>,
+    /// Its org, when the control plane created it.
+    org: Option<String>,
+    agent_ref: Option<String>,
+    /// The Engine's session-local ids of its agent and harness.
+    agent: Option<AgentId>,
+    harness: Option<HarnessId>,
+}
+
+fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T> {
+    serde_json::from_value(value).map_err(|error| AgentLoopError::store(error.to_string()))
+}
+
+impl CellPlatformStore {
+    async fn parent(&self) -> Result<Parent> {
+        let (definition, org, agent_ref, record) = self
+            .port
+            .read(self.parent, |s| {
+                (
+                    s.definition.clone(),
+                    s.tenant.clone(),
+                    s.platform.agent_ref.clone(),
+                    s.authority.execution.clone(),
+                )
+            })
+            .await?;
+        let record = record.and_then(|r| serde_json::from_value::<ExecutionSession>(r).ok());
+        Ok(Parent {
+            definition,
+            org,
+            agent_ref,
+            agent: record.as_ref().and_then(|r| r.agent_id),
+            harness: record.map(|r| r.harness_id),
+        })
+    }
+
+    /// The org's agent the platform names `id`, from its catalog.
+    async fn catalog(
+        &self,
+        parent: &Parent,
+        id: AgentId,
+    ) -> Result<Option<crate::dp::AgentDefinition>> {
+        match &parent.org {
+            Some(org) => self
+                .gateway
+                .catalog_agent(org, &id.to_string())
+                .await
+                .map_err(api),
+            None => Ok(None),
+        }
+    }
+
+    /// The parent's own agent at its current revision, when the control
+    /// plane created the parent.
+    async fn parent_revision(&self, parent: &Parent) -> Result<Option<crate::dp::AgentDefinition>> {
+        let (Some(org), Some(agent_ref)) = (&parent.org, &parent.agent_ref) else {
+            return Ok(None);
+        };
+        self.gateway
+            .agent_revision(org, agent_ref)
+            .await
+            .map(Some)
+            .map_err(api)
+    }
+
+    async fn parent_card(&self, parent: &Parent) -> Result<Option<crate::dp::AgentCard>> {
+        Ok(self
+            .parent_revision(parent)
+            .await?
+            .and_then(|revision| revision.card))
+    }
+
+    /// What a child of the parent's own agent runs, and its agent key.
+    async fn parent_agent(&self, parent: &Parent) -> Result<(serde_json::Value, Option<String>)> {
+        let Some(revision) = self.parent_revision(parent).await? else {
+            return Ok(((*parent.definition).clone(), None));
+        };
+        let mut package = revision.package;
+        let sandbox = parent.definition["capabilities"]
+            .as_array()
+            .and_then(|capabilities| {
+                capabilities
+                    .iter()
+                    .find(|c| crate::sandbox::capability_entry(c).is_some())
+            })
+            .cloned();
+        if let Some(entry) = sandbox {
+            crate::gateway_dp::with_capability(&mut package, entry);
+        }
+        Ok((package, Some(revision.agent_id)))
+    }
+}
+
 /// The text of the message an event carries, when it has any.
 fn text_of(event: &Event) -> Option<String> {
     let data = serde_json::to_value(&event.data).ok()?;
@@ -235,45 +345,86 @@ impl PlatformStore for CellPlatformStore {
         .await
     }
 
-    async fn get_harness(&self, _id: HarnessId) -> Result<Option<HarnessDefinition>> {
-        Err(unsupported("get_harness"))
+    async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>> {
+        let parent = self.parent().await?;
+        let card = if parent.harness == Some(id) {
+            self.parent_card(&parent).await?.map(|card| card.harness)
+        } else {
+            match &parent.org {
+                Some(org) => self
+                    .gateway
+                    .catalog_harness(org, &id.to_string())
+                    .await
+                    .map_err(api)?,
+                None => None,
+            }
+        };
+        card.map(decode).transpose()
     }
 
-    async fn get_agent_by_id(&self, _id: AgentId) -> Result<Option<AgentDefinition>> {
-        Err(unsupported("get_agent_by_id"))
+    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<AgentDefinition>> {
+        let parent = self.parent().await?;
+        let card = if parent.agent == Some(id) {
+            self.parent_card(&parent).await?
+        } else {
+            self.catalog(&parent, id)
+                .await?
+                .and_then(|found| found.card)
+        };
+        card.map(|card| decode(card.agent)).transpose()
+    }
+
+    async fn get_agent_harness_id(&self, id: AgentId) -> Result<Option<HarnessId>> {
+        let parent = self.parent().await?;
+        if parent.agent == Some(id) {
+            return Ok(parent.harness);
+        }
+        let Some(card) = self
+            .catalog(&parent, id)
+            .await?
+            .and_then(|found| found.card)
+        else {
+            return Ok(None);
+        };
+        card.harness_id
+            .parse()
+            .map(Some)
+            .map_err(|_| AgentLoopError::store(format!("catalog harness id {}", card.harness_id)))
     }
 
     async fn create_session_with_options(
         &self,
         request: PlatformCreateSessionRequest,
     ) -> Result<ExecutionSession> {
-        if request.blueprint_id.is_some()
-            || request.forked_from_session_id.is_some()
-            || request.seed != everruns_core::session::SessionSeedMode::Fresh
-        {
-            return Err(unsupported("blueprints, forks and seeded subagents"));
+        if request.blueprint_id.is_some() {
+            return Err(unsupported("blueprint subagents"));
         }
-        let (definition, tenant, record) = self
-            .port
-            .read(self.parent, |s| {
-                (
-                    s.definition.clone(),
-                    s.tenant.clone(),
-                    s.authority.execution.clone(),
-                )
-            })
-            .await?;
-        let parent_agent = record
-            .and_then(|r| serde_json::from_value::<ExecutionSession>(r).ok())
-            .and_then(|r| r.agent_id);
-        if request.agent_id.is_some() && request.agent_id != parent_agent {
-            return Err(AgentLoopError::tool(
-                "on the data plane a subagent runs its parent's own agent",
-            ));
+        if request.seed != everruns_core::session::SessionSeedMode::Fresh {
+            return Err(unsupported("forked and workspace-seeded subagents"));
         }
+        let parent = self.parent().await?;
+        let (definition, agent_ref) = match request.agent_id {
+            Some(id) if parent.agent != Some(id) => {
+                let found = self
+                    .catalog(&parent, id)
+                    .await?
+                    .ok_or_else(|| AgentLoopError::tool(format!("Agent {id} was not found.")))?;
+                let own = found
+                    .card
+                    .as_ref()
+                    .is_some_and(|card| card.harness_id == request.harness_id.to_string());
+                if !own && parent.harness != Some(request.harness_id) {
+                    return Err(AgentLoopError::tool(format!(
+                        "on the data plane agent {id} runs on its own harness"
+                    )));
+                }
+                (found.package, Some(found.agent_id))
+            }
+            _ => self.parent_agent(&parent).await?,
+        };
         let id = SessionId::new();
         self.gateway
-            .create((*definition).clone(), None, Some(id), tenant)
+            .create_running(definition, None, Some(id), parent.org.clone(), agent_ref)
             .await
             .map_err(api)?;
         let mut child = SessionBuilder::new(request.harness_id)
@@ -284,6 +435,7 @@ impl PlatformStore for CellPlatformStore {
         child.goal = request.goal;
         child.locale = request.locale;
         child.parent_session_id = request.parent_session_id;
+        child.forked_from_session_id = request.forked_from_session_id;
         self.children.lock().insert(id, child.clone());
         Ok(child)
     }
