@@ -2076,6 +2076,21 @@ or when a declared gap is served, so closing a gap updates the table in
 the same change. A session route the server serves outside the API
 document (`commands`, `environment`) is declared by hand.
 
+**Parity, Phase A: the parity gate (2026-11-19).** Each capability
+declares the host calls its tools make (`Capability::host_calls`); two
+calls are the turn's own and need no declaration (`host_calls::TURN_CALLS`:
+the approval policy and the egress grants). The capability matrix
+(`cell-testkit/tests/capabilities.rs`) runs on a fleet with no control
+plane, so "runs" means it runs without one, and lists beside each
+capability the host calls it may still make; a name that is not a declared
+host call fails it. An executor counts a session's host call its agent's
+capabilities do not declare (`executor_host_calls_undeclared_total`) and
+still makes it. Decision: counted before refused, because a capability
+reaches some calls through shared parts (a pinned sandbox's git
+credential, the egress boundary) that a turn on the simulated model does
+not exercise; once the live fleet shows none, an undeclared call is
+refused.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

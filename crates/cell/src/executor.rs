@@ -68,6 +68,9 @@ pub struct Executor {
     pub mcp: Arc<crate::mcp::OrgMcp>,
     /// Managed sandboxes of the sessions whose turns run here.
     pub sandboxes: Arc<crate::sandbox::OrgSandboxes>,
+    /// Host calls a session made that its agent's capabilities do not
+    /// declare, by call.
+    pub host_calls_undeclared: crate::prom::Counters,
 }
 
 impl Executor {
@@ -105,6 +108,7 @@ impl Executor {
             dp_key: Mutex::new(data_plane_key()?),
             mcp,
             sandboxes,
+            host_calls_undeclared: Default::default(),
         });
         let material: Arc<dyn crate::providers::OrgMaterial> = executor.clone();
         orgs.bind(Arc::downgrade(&material));
@@ -625,6 +629,11 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
                         "Orphaned sandboxes removed before a create, by provider.",
                         &executor.sandboxes.orphans,
                     );
+                    w.counters(
+                        "executor_host_calls_undeclared_total",
+                        "Host calls a session made that its agent's capabilities do not declare, by call.",
+                        &executor.host_calls_undeclared,
+                    );
                     w.out
                 },
             ),
@@ -674,6 +683,25 @@ impl crate::providers::OrgMaterial for Executor {
 
     fn seals(&self) -> bool {
         self.dp_key.lock().is_some()
+    }
+
+    fn declared_host_calls(
+        &self,
+        session: SessionId,
+    ) -> Option<std::collections::BTreeSet<&'static str>> {
+        let definition = self
+            .remote
+            .shared
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .map(|s| s.definition.clone())?;
+        Some(crate::host::declared_host_calls(&definition))
+    }
+
+    fn undeclared_host_call(&self, call: &str) {
+        self.host_calls_undeclared.inc(&[("call", call)]);
     }
 
     fn looks_up(&self) -> bool {

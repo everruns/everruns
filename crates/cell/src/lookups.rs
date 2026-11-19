@@ -38,6 +38,7 @@
 //!   tools' requests carry that org. A failed lookup grants nothing, as on
 //!   v1 (fail closed).
 
+use std::collections::BTreeSet;
 use std::sync::{Arc, Once, Weak};
 
 use async_trait::async_trait;
@@ -46,7 +47,7 @@ use everruns_contracts::dataplane::{
     EGRESS_SETTING, ORG_SETTING, TOOL_APPROVAL_SETTING, WEB_SEARCH_SETTING, web_search_key_secret,
 };
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::host_calls::{HostCallAnswer, SLACK_ACTION, by_command};
+use everruns_contracts::host_calls::{HostCallAnswer, SLACK_ACTION, TURN_CALLS, by_command};
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
 use everruns_contracts::runtime::organization::org_public_id_from_internal;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
@@ -78,6 +79,10 @@ use crate::providers::OrgMaterial;
 pub struct OrgLookups {
     material: Weak<dyn OrgMaterial>,
     org: String,
+    /// The host calls the session's agent declares (its capabilities'
+    /// `host_calls`), when the lookups serve one session; `None` for the
+    /// process's egress boundary, which serves every session.
+    declared: Option<Arc<BTreeSet<&'static str>>>,
 }
 
 #[async_trait]
@@ -87,16 +92,24 @@ impl InternalCommandTransport for OrgLookups {
         name: &str,
         params: Value,
     ) -> Result<std::result::Result<Value, proto::CommandError>> {
-        if by_command(name).is_none() {
+        let Some(call) = by_command(name) else {
             return Ok(Err(proto::CommandError {
                 kind: proto::command_error::Kind::Forbidden as i32,
                 message: format!("{name} is not available on the data plane"),
             }));
-        }
+        };
         let material = self
             .material
             .upgrade()
             .ok_or_else(|| AgentLoopError::store("the executor is stopping"))?;
+        if !self.declares(call.name) {
+            // Counted, not refused (yet): a capability reaches some calls
+            // through shared parts (a pinned sandbox's git credential, the
+            // egress boundary), so the declarations are checked against the
+            // live fleet before a call they miss is refused.
+            tracing::warn!(org = %self.org, call = call.name, "a host call the session's capabilities do not declare");
+            material.undeclared_host_call(call.name);
+        }
         match material.lookup(&self.org, name, params).await {
             Ok(HostCallAnswer::Value(value)) => Ok(Ok(value)),
             Ok(HostCallAnswer::Error { kind, message }) => {
@@ -113,6 +126,16 @@ impl InternalCommandTransport for OrgLookups {
 }
 
 impl OrgLookups {
+    /// Whether the session's agent may make host call `name`: a call every
+    /// turn makes, or one its capabilities declare.
+    fn declares(&self, name: &str) -> bool {
+        TURN_CALLS.contains(&name)
+            || self
+                .declared
+                .as_ref()
+                .is_none_or(|declared| declared.contains(name))
+    }
+
     /// The org setting `id` the control plane pushed with the org's config
     /// (`dataplane::ORG_SETTING`), read from the directory cell; `None`
     /// before it arrives or when the directory cell cannot be read, and
@@ -161,9 +184,11 @@ pub(crate) fn org_lookups(
         return None;
     }
     let org = material.tenant(session)?;
+    let declared = material.declared_host_calls(session).map(Arc::new);
     Some(OrgLookups {
         material: weak.clone(),
         org,
+        declared,
     })
 }
 
@@ -296,6 +321,7 @@ async fn org_grant(
     let lookups = move |org| OrgLookups {
         material: material.clone(),
         org: org_public_id_from_internal(org),
+        declared: None,
     };
     let org = everruns_contracts::runtime::organization::org_internal_id_from_public(*org_id);
     if let Some(enforced) = lookups(org).setting::<Enforced>(EGRESS_SETTING).await {

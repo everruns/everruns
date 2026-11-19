@@ -181,6 +181,10 @@ impl Capability for BoxdCapability {
         BOXD_PROVIDER
     }
 
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[everruns_contracts::host_calls::CONNECTION_TOKEN]
+    }
+
     fn name(&self) -> &str {
         "boxd"
     }

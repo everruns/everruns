@@ -20,7 +20,7 @@
 //!   build the same agents executors run, and nothing outside a session
 //!   can call a model with an org's key.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
@@ -111,6 +111,18 @@ pub trait OrgMaterial: Send + Sync {
     /// org settings gives.
     fn looks_up(&self) -> bool {
         false
+    }
+    /// The host calls `session`'s agent declares (its capabilities'
+    /// `host_calls`); `None` when the session is not known here, and then
+    /// nothing is checked.
+    fn declared_host_calls(&self, session: SessionId) -> Option<BTreeSet<&'static str>> {
+        let _ = session;
+        None
+    }
+    /// A session made host call `call`, which its capabilities do not
+    /// declare (counted for the matrix's declarations to be checked live).
+    fn undeclared_host_call(&self, call: &str) {
+        let _ = call;
     }
     /// Make one of `org`'s host calls, named by its v1 worker command
     /// (`lookups.rs`).

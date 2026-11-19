@@ -473,6 +473,16 @@ pub trait Capability: Send + Sync {
         false
     }
 
+    /// The host calls ([`crate::host_calls`]) this capability's tools make
+    /// at call time, by name: what its tools need from a control plane when
+    /// they run on a data plane. A data plane counts a session's host call
+    /// that none of its agent's capabilities declares (and that is not one
+    /// of [`crate::host_calls::TURN_CALLS`]), and the capability matrix
+    /// lists each capability's declarations.
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Model-adaptive dispatch: delegate this capability's contributions to a
     /// different underlying capability based on the agent's model.
     ///
