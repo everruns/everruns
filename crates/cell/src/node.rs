@@ -156,7 +156,6 @@ pub struct Node {
     pub metrics: Metrics,
     /// Counters and histograms for `/metrics`.
     pub prom: crate::prom::Prom,
-    /// Host calls in flight per org, and the breaker (`host_calls.rs`).
     pub host_call_limits: crate::host_calls::Limits,
     /// Sessions this node runs an activation of now.
     running: Mutex<HashSet<SessionId>>,
