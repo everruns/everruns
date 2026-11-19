@@ -450,12 +450,20 @@ impl SessionHosting for RaftHosting {
             })
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
+        let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
         let backends = if memory.is_empty() {
             backends
         } else {
-            let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
-            crate::memory::attach(backends, lookups, session, &memory)
+            crate::memory::attach(backends, lookups.clone(), session, &memory)
         };
+        // The person's own MCP servers, in the control plane (`user_mcp.rs`).
+        let backends = crate::user_mcp::attach(
+            backends,
+            lookups,
+            Port(self.inner.clone()),
+            session,
+            &definition,
+        );
         Ok(match self.inner.sandboxes.get() {
             Some(sandboxes) => sandboxes.attach(session, backends, self.files()),
             None => backends,

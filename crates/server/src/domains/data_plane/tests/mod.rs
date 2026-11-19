@@ -839,11 +839,13 @@ async fn a_providers_key_travels_sealed_and_only_when_it_changed() {
     assert!(live.iter().all(|item| item.item_id != id), "{live:?}");
 }
 
-/// The console's own Chat stays on the control plane in a v2 org: its page
-/// tools are the console's, and the data plane holds only the org's
-/// published agents. Any other agent's session goes to the data plane.
+/// The console's own Chat runs on the data plane in a v2 org (parity,
+/// Phase B): its declaration carries the page tools as tools the browser
+/// runs, with the platform tools, and it is in the org's catalog like any
+/// agent, for its coordination to hand work to.
 #[tokio::test]
-async fn the_consoles_chat_stays_on_the_control_plane() {
+async fn the_consoles_chat_runs_on_the_data_plane_with_its_page_tools() {
+    use everruns_contracts::tool_types::ToolDefinition;
     let (cp, _, _) = control_plane().await;
     let harness = harness(&cp.db, ORG).await;
     // The test database is shared: the org may have its Chat already.
@@ -862,17 +864,39 @@ async fn the_consoles_chat_stays_on_the_control_plane() {
             .await
             .unwrap(),
     };
-    assert!(sessions::stays_on_control_plane(Some(&chat)));
-
-    let mut other = crate::platform_chat_agent::definition(
-        harness,
-        everruns_contracts::typed_id::AgentId::new(),
+    let layers =
+        crate::domains::agent_definitions::resolve(&cp.db, ORG, chat.harness_id, Some(chat.id))
+            .await
+            .unwrap();
+    let package = crate::domains::agent_definitions::compile(&layers)
+        .unwrap()
+        .package()
+        .unwrap();
+    let manifest = package.manifest();
+    let client: Vec<&str> = manifest
+        .tools
+        .iter()
+        .filter(|tool| matches!(tool, ToolDefinition::ClientSide(_)))
+        .map(|tool| tool.name())
+        .collect();
+    assert!(client.contains(&"read_page_draft"), "{client:?}");
+    assert!(client.contains(&"patch_page_draft"), "{client:?}");
+    assert!(
+        manifest.capabilities.iter().any(|c| c.id() == "platform"),
+        "{:?}",
+        manifest.capabilities
     );
-    other.name = format!("helper-{}", uuid::Uuid::new_v4().simple());
-    other.is_built_in = false;
-    let other = cp.db.create_agent(ORG, other).await.unwrap();
-    assert!(!sessions::stays_on_control_plane(Some(&other)));
-    assert!(!sessions::stays_on_control_plane(None));
+
+    let (key, _) =
+        crate::domains::agent_definitions::key_for(&cp.db, ORG, chat.harness_id, Some(chat.id))
+            .await
+            .unwrap();
+    let card = catalog::card(&cp, ORG, &key).await.unwrap();
+    assert_eq!(
+        card.map(|card| card.agent_id),
+        Some(chat.id.to_string()),
+        "the Chat is in the catalog"
+    );
 }
 
 /// Every agent of a v2 org is in its data plane's catalog: its own key
@@ -924,3 +948,4 @@ mod mcp;
 mod memory;
 mod org_settings;
 mod sandboxes;
+mod user_mcp;

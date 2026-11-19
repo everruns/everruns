@@ -135,6 +135,21 @@ pub const SESSION_SQL_DB: &str = "session_sql_db";
 /// `{"error": message}`. Declared by a session the control plane gave
 /// Memory mounts.
 pub const MEMORY_FILE: &str = "memory_file";
+/// The host call behind the `user_mcp` tools that manage the turn's
+/// person's own MCP servers (catalog, list, add, remove, enable, connect).
+/// Its params name the session, `input_message_id: "open"` ([`OPEN_TURN`])
+/// and the call (`mcp::UserMcpStoreCall`); the answer is `{"ok": reply}`
+/// or `{"error": ...}` (`mcp::UserMcpStoreError`). The control plane
+/// resolves the person from the turn, never from the call.
+pub const USER_MCP_STORE: &str = "user_mcp_store";
+/// The host call that gives a turn its person's own MCP servers (the
+/// `user_mcp` capability with `use` on), resolved into what an executor
+/// runs: a catalog server's address, a key as a literal header, a server
+/// that signs in as the person with its OAuth provider, whose token is
+/// then [`MCP_CONNECTION_TOKEN`] per use. Its params name the session and
+/// `input_message_id: "open"`; the answer is `{"ok": servers}`, empty when
+/// the turn has no single person.
+pub const USER_MCP_SERVERS: &str = "user_mcp_servers";
 
 const fn call(
     name: &'static str,
@@ -307,6 +322,22 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Write,
         Fate::HostCall,
         "one file operation in the session's Memory, shared across sessions in the control plane",
+    ),
+    call(
+        USER_MCP_STORE,
+        "user_mcp_store",
+        ActsAs::Person,
+        Effect::Write,
+        Fate::HostCall,
+        "one call on the turn's person's own MCP server list, which stays in the control plane",
+    ),
+    call(
+        USER_MCP_SERVERS,
+        "user_mcp_servers",
+        ActsAs::Person,
+        Effect::Read,
+        Fate::HostCall,
+        "the turn's person's own MCP servers, resolved for the turn",
     ),
 ];
 

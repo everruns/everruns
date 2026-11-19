@@ -1435,9 +1435,8 @@ the cells run the turns. Decisions (approved 2026-11-12):
   `/v1` call they name and answers in the command's envelope
   (`crates/cell/src/edge_commands.rs`). A send keeps its idempotency: the
   message id comes from the command's key.
-- **The console's own Chat stays on the control plane** in a v2 org: its
-  page tools are the console's, and a data plane runs only the org's
-  published agents (`data_plane::sessions::stays_on_control_plane`).
+- **The console's own Chat runs on the data plane** in a v2 org since
+  parity Phase B (below); until then it stayed on the control plane.
 - **Live streaming:** an epoch's deltas go to the session's stream node,
   which relays them to every watcher; a stream subscribes before its
   response goes out, so a client that has the response misses nothing.
@@ -2159,9 +2158,28 @@ is mounted read-only from the cell's memory, built once and shared by
 every session; its inline files are written with the create, only where
 absent, as v1 copies them (`crates/cell/src/memory.rs`,
 `crates/cell/src/capability_files.rs`,
-`crates/server/src/domains/data_plane/memory.rs`). Console Chat still
-runs on the control plane: its person's own MCP servers, page context and
-threads come next.
+`crates/server/src/domains/data_plane/memory.rs`).
+
+**Parity, Phase B: Console Chat on cells (2026-11-19).** The console's
+own Chat now runs on a v2 org's data plane like any agent, and is in its
+catalog. Its page tools are tools the browser runs: a package declares
+them and the Framework binds nothing for them, so the turn parks on the
+call until the console answers through the session's tool results. The
+person's own MCP servers (`user_mcp`) stay in the control plane, theirs
+across every chat: the manage tools' store is one host call
+(`user_mcp_store`), and a turn a person sent asks once for their servers
+(`user_mcp_servers`), resolved into what an executor runs (a catalog
+server's address, a key as a literal header, a sign-in kept as its OAuth
+provider whose token is `mcp_connection_token` per use). Both act as the
+person the session's cell recorded for the turn, never as one the
+executor names. The servers join the turn through the runtime's
+`TurnMcpServers` hook, never the session record, so a record written back
+cannot keep a person's key; a turn nobody sent (a channel message, a
+schedule run) never asks. "Add to this chat only" waits for session MCP
+records on cells (step 9). The Chat's model is the one the org set when
+its definition was last published; a change reaches new chats with the
+next republish, within the ten-minute sweep (`crates/cell/src/user_mcp.rs`,
+`crates/server/src/domains/data_plane/user_mcp.rs`).
 
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for

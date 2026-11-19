@@ -110,6 +110,16 @@ impl Capability for UserMcpCapability {
         USER_MCP_CAPABILITY_ID
     }
 
+    /// On a data plane the person's list stays with the control plane: the
+    /// manage tools' store, each turn's servers, and the token of a server
+    /// that signs in as the person.
+    fn host_calls(&self) -> &'static [&'static str] {
+        use everruns_contracts::host_calls::{
+            MCP_CONNECTION_TOKEN, USER_MCP_SERVERS, USER_MCP_STORE,
+        };
+        &[USER_MCP_STORE, USER_MCP_SERVERS, MCP_CONNECTION_TOKEN]
+    }
+
     fn name(&self) -> &str {
         "User MCP Servers"
     }
