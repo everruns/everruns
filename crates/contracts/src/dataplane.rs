@@ -103,9 +103,9 @@ pub struct AgentCard {
     pub agent_id: String,
     /// The host's id of the harness the agent runs on.
     pub harness_id: String,
-    /// The host's agent definition (`everruns_core::AgentDefinition`).
+    /// The host's agent definition, as the runtime's `AgentDefinition`.
     pub agent: Value,
-    /// Its harness, inheritance resolved (`everruns_core::HarnessDefinition`).
+    /// Its harness, inheritance resolved, as the runtime's `HarnessDefinition`.
     pub harness: Value,
 }
 
