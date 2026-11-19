@@ -189,7 +189,7 @@ async fn answer_call(
     .await
     .map_err(internal)?;
     let ctx = state.internal_ctx(org_id, flags);
-    let answer = dp_domain::host_calls::answer(&ctx, call, params)
+    let answer = dp_domain::host_calls::answer(&cp, &ctx, call, params)
         .await
         .map_err(internal)?;
     dp_domain::host_calls::seal_answer(&cp, &row, secret_id, &answer)

@@ -32,7 +32,7 @@ async fn ask_as(
     let row = cp.db.dp_org(ORG).await.unwrap().unwrap();
     let call = host_calls::by_command(command).expect("a declared host call");
     let id = uuid::Uuid::now_v7().to_string();
-    let answer = dispatcher::answer(ctx, call, params).await.unwrap();
+    let answer = dispatcher::answer(cp, ctx, call, params).await.unwrap();
     let sealed = dispatcher::seal_answer(cp, &row, &host_call_secret(&id), &answer).unwrap();
     assert_eq!(sealed.revision, 0);
     let key = cp.data_key(&row).unwrap();
@@ -92,6 +92,8 @@ async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
 
     for command in [
         "worker_get_connection_token",
+        "worker_get_github_token",
+        "worker_get_service_api_key_connection",
         "worker_knowledge",
         "worker_poppy_call",
         "worker_get_org_egress_allowlist",
@@ -355,4 +357,157 @@ async fn a_sessions_sql_databases_are_the_control_planes_and_the_orgs_only() {
     );
     assert_eq!(refused["error"]["error"], json!("internal"), "{refused}");
     assert!(store.list_databases(stranger).await.unwrap().is_empty());
+}
+
+/// A v2 session's messages reach its cell without the control plane, so a
+/// call acting as the turn's person records the turn's invocation first,
+/// as v1 does when the message comes through its API: the person the cell
+/// names with their default runtime identity, and the session's agent.
+/// The resolver's checks then run on it unchanged.
+#[tokio::test]
+async fn a_persons_lookup_records_the_turn_it_acts_for() {
+    let (cp, _, _) = control_plane().await;
+    let member = cp.db.create_test_user(uuid::Uuid::now_v7()).await;
+    cp.db
+        .ensure_membership(member, ORG, "member")
+        .await
+        .unwrap();
+    let outsider = cp.db.create_test_user(uuid::Uuid::now_v7()).await;
+    let session = |on_data_plane: bool| {
+        let cp = &cp;
+        async move {
+            let id = cp
+                .db
+                .create_session(crate::storage::test_database::test_session_row(ORG))
+                .await
+                .unwrap()
+                .id;
+            if on_data_plane {
+                let now = chrono::Utc::now();
+                cp.db
+                    .dp_upsert_session_summary(crate::storage::DpSessionSummary {
+                        session_id: &id.to_string(),
+                        org_id: ORG,
+                        data_plane_id: "dp-1",
+                        agent_id: "ak_x",
+                        session_version: 0,
+                        title: "",
+                        status: "started",
+                        turns: 0,
+                        cost_micros: 0,
+                        created_at: now,
+                        last_activity_at: now,
+                    })
+                    .await
+                    .unwrap();
+            }
+            id
+        }
+    };
+    let v2 = session(true).await;
+    let v1 = session(false).await;
+    let lookup = |session: everruns_contracts::typed_id::SessionId,
+                  message: uuid::Uuid,
+                  acting_user: Value| {
+        json!({
+            "session_id": session.to_string(),
+            "provider": "linear",
+            "input_message_id": message.to_string(),
+            "acting_user": acting_user,
+        })
+    };
+
+    // A member's turn: recorded as them, under their runtime identity.
+    let turn = uuid::Uuid::now_v7();
+    ask(
+        &cp,
+        ORG,
+        "worker_get_connection_token",
+        lookup(v2, turn, json!(member.to_string())),
+    )
+    .await;
+    assert_eq!(
+        cp.db
+            .runtime_invocation_management_user(v2, turn)
+            .await
+            .unwrap(),
+        Some(member)
+    );
+    let subject = cp.db.default_virtual_user(ORG, member).await.unwrap().id;
+    assert_eq!(
+        cp.db.runtime_invocation_subject(v2, turn).await.unwrap(),
+        Some(subject)
+    );
+    // Once per turn: a later call of the same turn keeps it.
+    ask(
+        &cp,
+        ORG,
+        "worker_get_connection_token",
+        lookup(v2, turn, Value::Null),
+    )
+    .await;
+    assert_eq!(
+        cp.db
+            .runtime_invocation_management_user(v2, turn)
+            .await
+            .unwrap(),
+        Some(member)
+    );
+
+    // No person (a channel message, a trigger): the turn acts as no one.
+    let anonymous = uuid::Uuid::now_v7();
+    ask(
+        &cp,
+        ORG,
+        "worker_get_service_api_key_connection",
+        lookup(v2, anonymous, Value::Null),
+    )
+    .await;
+    assert!(
+        cp.db
+            .runtime_invocation_exists(v2, anonymous)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !cp.db
+            .runtime_invocation_has_subject(v2, anonymous)
+            .await
+            .unwrap()
+    );
+
+    // Not recorded: an outsider (asks again next time), a v1 session's
+    // turn (its own API recorded it), a call that acts as the org.
+    for (session, message, command, acting_user, why) in [
+        (
+            v2,
+            uuid::Uuid::now_v7(),
+            "worker_get_connection_token",
+            json!(outsider.to_string()),
+            "not a member",
+        ),
+        (
+            v1,
+            uuid::Uuid::now_v7(),
+            "worker_get_connection_token",
+            json!(member.to_string()),
+            "a v1 session",
+        ),
+        (
+            v2,
+            uuid::Uuid::now_v7(),
+            "worker_get_web_search_settings",
+            json!(member.to_string()),
+            "acts as the org",
+        ),
+    ] {
+        ask(&cp, ORG, command, lookup(session, message, acting_user)).await;
+        assert!(
+            !cp.db
+                .runtime_invocation_exists(session, message)
+                .await
+                .unwrap(),
+            "{why}"
+        );
+    }
 }

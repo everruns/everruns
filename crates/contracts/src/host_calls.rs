@@ -15,10 +15,13 @@
 //!   plane: `host_calls_registry.txt` prints it, and a test fails until a
 //!   change to the registry changes that file too, so a new call shows in
 //!   review.
-//! - Each call says what it is planned to become (`Fate`). Six of today's
-//!   calls are values known before the call (policy, settings, sealed
-//!   keys) and move to pushed state; the session's SQL databases move into
-//!   the runtime. Until then they travel here, under the same rules.
+//! - Each call says what it is planned to become (`Fate`). Four of today's
+//!   calls are org values known before the call (policy, settings, keys,
+//!   egress grants) and move to pushed state; the session's SQL databases
+//!   move into the runtime. Until then they travel here, under the same
+//!   rules. A connection token or a service key stays a call: which one
+//!   applies depends on the turn's person and responder, and the control
+//!   plane refreshes OAuth grants.
 //! - The path is fixed: executor, the session's directory cell, then
 //!   `POST /dp/v1/tenants/{org}/host-calls/{name}` with the link token. The
 //!   cell stamps what it verified (the acting person) and limits each org's
@@ -38,7 +41,11 @@ pub enum ActsAs {
     /// The org's internal caller, with the org's feature flags.
     Org,
     /// The person who sent the turn's input message, as the session's cell
-    /// recorded them, re-checked against current membership and role.
+    /// recorded them, re-checked against current membership and role. The
+    /// control plane records the turn's invocation from it, as v1 does when
+    /// the message comes through its API, so its credential checks run
+    /// unchanged; no person (a channel message, a trigger) means the turn
+    /// acts as no one, and only the agent's own connections apply.
     Person,
     /// The bot of the channel endpoint the session came through.
     ChannelBot,
@@ -145,15 +152,15 @@ pub const HOST_CALLS: &[HostCall] = &[
     call(
         "connection_token",
         "worker_get_connection_token",
-        ActsAs::Org,
+        ActsAs::Person,
         Effect::Read,
-        Fate::Pushed,
-        "a session's provider connection token",
+        Fate::HostCall,
+        "a provider connection token of the turn's person, or of the agent; refreshed in the control plane",
     ),
     call(
         "github_token",
         "worker_get_github_token",
-        ActsAs::Org,
+        ActsAs::Person,
         Effect::Read,
         Fate::HostCall,
         "a GitHub token minted for one use from the GitHub App key",
@@ -169,10 +176,10 @@ pub const HOST_CALLS: &[HostCall] = &[
     call(
         "service_api_key",
         "worker_get_service_api_key_connection",
-        ActsAs::Org,
+        ActsAs::Person,
         Effect::Read,
-        Fate::Pushed,
-        "the agent's service API key",
+        Fate::HostCall,
+        "the responding agent's service API key, for the turn",
     ),
     call(
         "tool_approval_policy",

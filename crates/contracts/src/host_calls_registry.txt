@@ -1,8 +1,8 @@
 name version acts_as effect timeout_s when_down fate command
-connection_token v1 Org Read 10 Fail Pushed worker_get_connection_token
-github_token v1 Org Read 10 Fail HostCall worker_get_github_token
+connection_token v1 Person Read 10 Fail HostCall worker_get_connection_token
+github_token v1 Person Read 10 Fail HostCall worker_get_github_token
 egress_grants v1 Org Read 10 Fail Pushed worker_get_org_egress_allowlist
-service_api_key v1 Org Read 10 Fail Pushed worker_get_service_api_key_connection
+service_api_key v1 Person Read 10 Fail HostCall worker_get_service_api_key_connection
 tool_approval_policy v1 Org Read 10 Fail Pushed worker_get_tool_approval_policy
 web_search_key v1 Org Read 10 Fail Pushed worker_get_web_search_account_key
 web_search_settings v1 Org Read 10 Fail Pushed worker_get_web_search_settings

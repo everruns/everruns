@@ -2011,9 +2011,10 @@ host calls, the one way a data plane asks its control plane anything at
 call time. Each call is declared once in `everruns_contracts::host_calls`
 with who it acts as (the org, the person who sent the turn, or a channel
 bot), its effect, timeout, behaviour while the control plane is down, and
-what it is planned to become: six are values known before the call
-(policy, settings, sealed keys) that move to pushed state, the SQL
-databases move into the runtime, and the rest stay host calls. The path is
+what it is planned to become: four are org values known before the call
+(policy, settings, web search keys, egress grants) that move to pushed
+state, the SQL databases move into the runtime, and the rest stay host
+calls. The path is
 fixed (executor, directory cell, `POST /dp/v1/tenants/{org}/host-calls/{name}`,
 one dispatcher in `crates/server/src/domains/data_plane/host_calls.rs`);
 the cell stamps the acting person, holds each org to 64 calls in flight,
@@ -2023,6 +2024,25 @@ Both sides count each call by name and outcome. Two guards keep it the
 only path: the registry's printed copy (`host_calls_registry.txt`) must
 change with it, and `scripts/lib/check-cell-control-plane-calls.sh` fails
 on a control plane call outside the link and host call modules.
+
+**Parity, Phase A: credentials act as the turn's person (2026-11-19).**
+On v1 the control plane records each turn's invocation (who sent the
+message, their runtime identity, the responding agent) when the message
+comes through its API, and every credential check reads it: which
+person's connection a GitHub tool uses, whether the agent's service
+identity applies. A v2 session's messages reach the cell without the
+control plane, so those checks found no invocation and a connection
+token, a GitHub token or a service key came back empty on a cell. The
+three calls now act as the person (`ActsAs::Person`): the cell stamps
+who sent the turn's message from its own record, and the control plane
+records the turn's invocation from it before the lookup, with the v1
+checks (an active member, an active agent), once per turn and only for
+a session the data plane runs. A turn no person sent (a channel message,
+a trigger) acts as no one, so only the agent's own connections apply, as
+on v1; a channel's external users mapped to runtime identities are not
+carried yet. They stay host calls rather than pushed state: which
+connection applies depends on the turn, and OAuth grants refresh in the
+control plane.
 
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
