@@ -13,23 +13,20 @@
 //! one vocabulary whichever way it was reached.
 
 pub use everruns_internal_protocol::commands::{
-    CommandConnectionResolver, CommandOrgEgressAllowlist, InternalCommandTransport,
+    CommandConnectionResolver, CommandLeasedResourceStore, CommandOrgEgressAllowlist,
+    CommandSessionResourceRegistry, InternalCommandTransport,
 };
 use everruns_internal_protocol::commands::{call, call_secret, decode, failure, is_bad_request};
 
 mod credentials;
 pub mod dreaming;
 pub use everruns_internal_protocol::commands::knowledge;
-mod leased_resources;
 mod poppy;
-mod session_resources;
 mod session_schedules;
 mod session_storage;
 mod session_tasks;
 
-pub use leased_resources::CommandLeasedResourceStore;
 pub use poppy::CommandPoppyInvoker;
-pub use session_resources::CommandSessionResourceRegistry;
 pub use session_schedules::CommandSessionScheduleStore;
 pub use session_storage::CommandSessionStorageStore;
 pub use session_tasks::CommandSessionTaskRegistry;

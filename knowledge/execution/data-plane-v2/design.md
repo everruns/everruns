@@ -2217,6 +2217,22 @@ Decision: delivery goes through the feed, the channel the control plane
 drains once per position, rather than from a cell, which has no outbound
 webhook path; it stays best-effort, as on v1.
 
+**Parity, Phase B: the capabilities left (step 10, 2026-11-19).** A
+capability a deployment turns on by flag (Docker, the container sandbox,
+paid Parallel) registers on a cell from the same catalog and grade as on a
+v1 worker, so it builds and runs once the operator turns it on for both
+planes; the capability matrix records it so turned on. A session's
+resources (fleet sandboxes, activated skills) and the leases of what its
+tools started at a provider (a sandbox, a browser) stay in the control
+plane, reached by the v1 worker's own commands as host calls
+(`session_resource_*`, `leased_resource_*`): the console lists the
+resources, and the lease sweeper stops a provider sandbox a session left
+running. Before this a fleet tool failed its turn on a cell, and a cell
+never leased the provider sandboxes it started, so none would have been
+reaped. A cell with no control plane has neither, as on a Framework host.
+Phase C must move the lease sweeper off the v1 worker before workers
+retire.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

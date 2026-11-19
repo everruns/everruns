@@ -1,13 +1,13 @@
 //! `SessionResourceRegistry` over the `worker_*_session_resource(s)` commands.
 
 use super::{InternalCommandTransport, call};
-use crate::core::session_services::SessionResourceRegistry;
-use crate::core::{
-    RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
-};
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::session_services::SessionResourceRegistry;
+use everruns_core::{
+    RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
+};
 use serde_json::json;
 
 /// The session resource registry runtime capabilities use, on either transport.
@@ -106,7 +106,7 @@ impl<T: InternalCommandTransport> SessionResourceRegistry for CommandSessionReso
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_internal_protocol::proto;
+    use crate::proto;
     use serde_json::Value;
     use std::sync::Mutex;
 

@@ -14,3 +14,10 @@ slack_action v1 ChannelBot Write 10 Fail HostCall slack_action
 memory_file v1 Org Write 10 Fail HostCall memory_file
 user_mcp_store v1 Person Write 10 Fail HostCall user_mcp_store
 user_mcp_servers v1 Person Read 10 Fail HostCall user_mcp_servers
+session_resource_register v1 Org Write 10 Fail HostCall worker_register_session_resource
+session_resource_status v1 Org Write 10 Fail HostCall worker_update_session_resource_status
+session_resources_list v1 Org Read 10 Fail HostCall worker_list_session_resources
+session_resource_deregister v1 Org Write 10 Fail HostCall worker_deregister_session_resource
+leased_resource_upsert v1 Org Write 10 Fail HostCall worker_upsert_leased_resource
+leased_resource_release v1 Org Write 10 Fail HostCall worker_release_leased_resource
+leased_resources_list v1 Org Read 10 Fail HostCall worker_list_session_leased_resources

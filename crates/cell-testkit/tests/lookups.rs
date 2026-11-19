@@ -693,3 +693,54 @@ async fn a_client_side_tool_parks_until_the_client_answers() {
         .any(|e| e.to_string().contains("Billing settings"));
     assert!(replied, "the answer never reached the model: {events:#?}");
 }
+
+/// A session's resources and leases stay in the control plane (parity,
+/// step 10): a fleet tool lists them there, as the session's org, and the
+/// turn finishes with the answer.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sessions_resources_are_kept_by_the_control_plane() {
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(
+        "worker_list_session_resources",
+        HostCallAnswer::Value(json!([{
+            "session_id": SessionId::new().to_string(),
+            "resource_id": "sandbox_build",
+            "kind": "sandbox",
+            "display_name": "Build box",
+            "status": "active",
+            "metadata": { "role": "resource", "provider": "daytona" },
+            "created_at": "2026-11-19T00:00:00Z",
+            "updated_at": "2026-11-19T00:00:00Z",
+        }])),
+    );
+    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    definition["capabilities"] = json!([{ "ref": "sandbox_fleet" }]);
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": session, "agent_ref": "fleet", "definition": definition }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    fleet.say(&session, "call sandbox_list").await;
+    fleet.turns(&session, 1).await;
+
+    let asked = cp.lookups();
+    let listed = asked
+        .iter()
+        .find(|(_, name, _)| name == "worker_list_session_resources")
+        .unwrap_or_else(|| panic!("no list asked: {asked:?}"));
+    assert_eq!(listed.0, ORG);
+    assert_eq!(listed.2["session_id"], json!(session));
+    let events = fleet.events(&session).await;
+    let answered = events
+        .iter()
+        .filter(|e| e["type"] == "tool.completed")
+        .any(|e| e.to_string().contains("Build box"));
+    assert!(answered, "the list never reached the turn: {events:#?}");
+}

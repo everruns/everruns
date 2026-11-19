@@ -474,6 +474,24 @@ impl SessionHosting for RaftHosting {
         } else {
             crate::memory::attach(backends, lookups.clone(), session, &memory)
         };
+        // Decision (parity, step 10): a session's resources (fleet
+        // sandboxes, activated skills) and the leases of what its tools
+        // started at a provider stay in the control plane, as for a v1
+        // session: the console lists the resources, and the lease sweeper
+        // stops a sandbox a session left running. Without them a fleet
+        // tool fails its turn, and a provider sandbox is never reaped.
+        let mut backends = backends;
+        if let Some(lookups) = &lookups {
+            use everruns_internal_protocol::commands::{
+                CommandLeasedResourceStore, CommandSessionResourceRegistry,
+            };
+            backends.extensions.stores.session_resources = Some(std::sync::Arc::new(
+                CommandSessionResourceRegistry::new(lookups.clone()),
+            ));
+            backends.extensions.stores.leased_resources = Some(std::sync::Arc::new(
+                CommandLeasedResourceStore::new(lookups.clone()),
+            ));
+        }
         // The person's own MCP servers, in the control plane (`user_mcp.rs`).
         let backends = crate::user_mcp::attach(
             backends,
