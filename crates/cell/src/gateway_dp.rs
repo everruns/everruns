@@ -82,6 +82,12 @@ pub fn cell_router(node: Arc<Node>) -> Router {
             "/cell/orgs/{org}/connections/{connection}",
             get(cell_connection).post(cell_connection),
         )
+        .route(
+            "/cell/orgs/{org}/host-calls/{name}",
+            post(crate::host_calls::cell_host_call),
+        )
+        // The route host calls replaced, kept while executors of the
+        // release before roll over. Remove with the release after.
         .route("/cell/orgs/{org}/lookups", post(cell_lookup))
         .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
         .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
@@ -725,9 +731,10 @@ async fn cell_connection(
     ))
 }
 
-/// An executor's call-time lookup for `org`, passed on to the control plane
-/// over the link (`lookups.rs`). The answer comes back sealed with the
-/// org's data key and goes to the executor unopened.
+/// A legacy lookup from an executor of the release before host calls
+/// (`host_calls.rs`), passed on to the control plane's legacy route. The
+/// answer comes back sealed with the org's data key and goes to the
+/// executor unopened.
 async fn cell_lookup(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
@@ -737,8 +744,10 @@ async fn cell_lookup(
         StatusCode::SERVICE_UNAVAILABLE,
         "this cell has no control plane".to_owned(),
     ))?;
-    if request.command == everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE {
-        act_as_sender(&node, &mut request.params).await?;
+    if everruns_contracts::host_calls::by_command(&request.command)
+        .is_some_and(|call| call.acts_as == everruns_contracts::host_calls::ActsAs::Person)
+    {
+        crate::host_calls::act_as_sender(&node, &mut request.params).await?;
     }
     let failed = |error: reqwest::Error| {
         tracing::warn!(%org, %error, "a lookup did not reach the control plane");
@@ -763,40 +772,6 @@ async fn cell_lookup(
         ));
     }
     Ok(Json(reply.json().await.map_err(failed)?))
-}
-
-/// Set a platform call's `acting_user` to the person who sent its input
-/// message, from the session's own record (`senders.rs`), whatever the
-/// executor put there (THREAT[TM-AGENT-017]): `null` when no one did, which
-/// the control plane refuses.
-async fn act_as_sender(node: &Node, params: &mut serde_json::Value) -> Result<(), ApiError> {
-    let bad = |what: &str| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("a platform call needs {what}"),
-        )
-    };
-    let session = params["session_id"]
-        .as_str()
-        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
-        .ok_or_else(|| bad("its session"))?;
-    let message = params["input_message_id"]
-        .as_str()
-        .and_then(|id| everruns_contracts::typed_id::MessageId::parse(id).ok())
-        .ok_or_else(|| bad("its input message"))?;
-    let gateway = node.gateway.get().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        "this cell has no gateway".to_owned(),
-    ))?;
-    let found = gateway
-        .session_command(
-            session,
-            "sender",
-            &serde_json::json!({ "message": message }),
-        )
-        .await?;
-    params["acting_user"] = found["user"].clone();
-    Ok(())
 }
 
 /// Every session of `org` in this cell, with its full log (an export).

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use everruns_contracts::dataplane::{Connection, LookupAnswer};
+use everruns_contracts::dataplane::Connection;
+use everruns_contracts::host_calls::HostCallAnswer;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::McpServerActsAs;
@@ -14,12 +15,12 @@ use crate::providers::OrgMaterial;
 /// An org's material whose lookups answer from a script and are recorded.
 struct Material {
     reaches: bool,
-    answer: Mutex<Option<anyhow::Result<LookupAnswer>>>,
+    answer: Mutex<Option<anyhow::Result<HostCallAnswer>>>,
     asked: Mutex<Vec<(String, String, Value)>>,
 }
 
 impl Material {
-    fn new(reaches: bool, answer: anyhow::Result<LookupAnswer>) -> Arc<Self> {
+    fn new(reaches: bool, answer: anyhow::Result<HostCallAnswer>) -> Arc<Self> {
         Arc::new(Self {
             reaches,
             answer: Mutex::new(Some(answer)),
@@ -51,7 +52,7 @@ impl OrgMaterial for Material {
         org: &str,
         command: &str,
         params: Value,
-    ) -> anyhow::Result<LookupAnswer> {
+    ) -> anyhow::Result<HostCallAnswer> {
         self.asked
             .lock()
             .push((org.to_owned(), command.to_owned(), params));
@@ -92,7 +93,7 @@ fn resolver(material: &Arc<Material>, session: SessionId) -> Arc<dyn UserConnect
 
 #[tokio::test]
 async fn a_connection_token_is_looked_up_for_the_session_as_its_org() {
-    let material = Material::new(true, Ok(LookupAnswer::Value(json!("gh-token"))));
+    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("gh-token"))));
     let session = SessionId::new();
     let token = resolver(&material, session)
         .get_connection_token(session, "github")
@@ -109,7 +110,7 @@ async fn a_connection_token_is_looked_up_for_the_session_as_its_org() {
 
 #[tokio::test]
 async fn sandbox_keys_and_mcp_grants_stay_on_the_data_plane() {
-    let material = Material::new(true, Ok(LookupAnswer::Value(json!("never"))));
+    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("never"))));
     let session = SessionId::new();
     let resolver = resolver(&material, session);
     let credential = SessionSandboxCredential::default();
@@ -142,7 +143,7 @@ async fn sandbox_keys_and_mcp_grants_stay_on_the_data_plane() {
 async fn a_refusal_and_an_unreachable_control_plane_fail_the_lookup() {
     let refused = Material::new(
         true,
-        Ok(LookupAnswer::Error {
+        Ok(HostCallAnswer::Error {
             kind: 3,
             message: "Session not found".into(),
         }),
@@ -167,7 +168,7 @@ async fn a_refusal_and_an_unreachable_control_plane_fail_the_lookup() {
 
 #[tokio::test]
 async fn a_cell_without_a_control_plane_answers_as_a_host_without_org_settings() {
-    let material = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
+    let material = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
     let session = SessionId::new();
     let resolver = resolver(&material, session);
     assert_eq!(
@@ -207,7 +208,7 @@ fn poppy(
 
 #[tokio::test]
 async fn a_poppy_call_runs_in_the_control_plane_for_the_session() {
-    let material = Material::new(true, Ok(LookupAnswer::Value(json!({ "sent": true }))));
+    let material = Material::new(true, Ok(HostCallAnswer::Value(json!({ "sent": true }))));
     let session = SessionId::new();
     let call: everruns_capabilities::capabilities::PoppyCall =
         serde_json::from_value(json!({ "action": "discover", "company": "acme.example" })).unwrap();
@@ -261,7 +262,7 @@ async fn a_slack_action_runs_as_the_sessions_endpoint_and_keeps_its_error() {
     let session = SessionId::new();
     let done = Material::new(
         true,
-        Ok(LookupAnswer::Value(json!({
+        Ok(HostCallAnswer::Value(json!({
             "outcome": { "outcome": "reaction_added", "already_reacted": false }
         }))),
     );
@@ -277,7 +278,7 @@ async fn a_slack_action_runs_as_the_sessions_endpoint_and_keeps_its_error() {
     );
     {
         let asked = done.asked.lock();
-        assert_eq!(asked[0].1, everruns_contracts::dataplane::SLACK_ACTION);
+        assert_eq!(asked[0].1, everruns_contracts::host_calls::SLACK_ACTION);
         assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
         assert_eq!(asked[0].2["action"]["action"], json!("add_reaction"));
     }
@@ -285,7 +286,7 @@ async fn a_slack_action_runs_as_the_sessions_endpoint_and_keeps_its_error() {
     // The control plane's refusal is the model's to act on, intact.
     let refused = Material::new(
         true,
-        Ok(LookupAnswer::Value(
+        Ok(HostCallAnswer::Value(
             json!({ "error": SlackActionError::NoSlackSession }),
         )),
     );
@@ -299,7 +300,7 @@ async fn a_slack_action_runs_as_the_sessions_endpoint_and_keeps_its_error() {
         "{error:?}"
     );
 
-    let standalone = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
+    let standalone = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
     assert!(slack(&standalone, session).is_none());
 }
 
@@ -327,7 +328,7 @@ async fn a_sql_database_lives_in_the_control_plane_and_keeps_its_error_kind() {
     let session = SessionId::new();
     let rows = Material::new(
         true,
-        Ok(LookupAnswer::Value(json!({
+        Ok(HostCallAnswer::Value(json!({
             // As the control plane writes it: `truncated` left out when false.
             "ok": { "columns": ["n"], "rows": [[1]], "row_count": 1 }
         }))),
@@ -342,7 +343,7 @@ async fn a_sql_database_lives_in_the_control_plane_and_keeps_its_error_kind() {
     {
         let asked = rows.asked.lock();
         assert_eq!(asked[0].0, "org-a");
-        assert_eq!(asked[0].1, everruns_contracts::dataplane::SESSION_SQL_DB);
+        assert_eq!(asked[0].1, everruns_contracts::host_calls::SESSION_SQL_DB);
         assert_eq!(
             asked[0].2,
             json!({
@@ -357,7 +358,7 @@ async fn a_sql_database_lives_in_the_control_plane_and_keeps_its_error_kind() {
     // A timeout stays a timeout, so the tool tells the model what v1 does.
     let slow = Material::new(
         true,
-        Ok(LookupAnswer::Value(
+        Ok(HostCallAnswer::Value(
             json!({ "error": SessionSqlDbError::QueryTimeout(5) }),
         )),
     );
@@ -371,7 +372,7 @@ async fn a_sql_database_lives_in_the_control_plane_and_keeps_its_error_kind() {
     );
 
     // Another session's databases are refused before the call leaves.
-    let other = Material::new(true, Ok(LookupAnswer::Value(json!({ "ok": [] }))));
+    let other = Material::new(true, Ok(HostCallAnswer::Value(json!({ "ok": [] }))));
     let error = sqldb(&other, session)
         .unwrap()
         .list_databases(SessionId::new())
@@ -389,7 +390,7 @@ async fn a_sql_database_lives_in_the_control_plane_and_keeps_its_error_kind() {
         "{error:?}"
     );
 
-    let standalone = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
+    let standalone = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
     assert!(sqldb(&standalone, session).is_none());
 }
 
@@ -401,7 +402,7 @@ async fn a_company_refusal_reaches_the_model_and_anything_else_is_unavailable() 
     let session = SessionId::new();
     let refused = Material::new(
         true,
-        Ok(LookupAnswer::Error {
+        Ok(HostCallAnswer::Error {
             kind: everruns_internal_protocol::proto::command_error::Kind::BadRequest as i32,
             message: "acme.example has no poppy.json".into(),
         }),
@@ -421,7 +422,7 @@ async fn a_company_refusal_reaches_the_model_and_anything_else_is_unavailable() 
         .unwrap_err();
     assert_eq!(error, "Poppy is unavailable right now.");
 
-    let standalone = Material::new(false, Ok(LookupAnswer::Value(json!("never"))));
+    let standalone = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
     assert!(poppy(&standalone, session).is_none());
 }
 
@@ -431,7 +432,7 @@ async fn an_orgs_egress_grants_come_from_the_control_plane_as_that_org() {
     let org: everruns_contracts::typed_id::OrgId = org_id.parse().unwrap();
     let material = Material::new(
         true,
-        Ok(LookupAnswer::Value(
+        Ok(HostCallAnswer::Value(
             json!({ "patterns": ["api.acme.example"] }),
         )),
     );
@@ -461,7 +462,7 @@ async fn an_orgs_egress_grants_come_from_the_control_plane_as_that_org() {
 
 #[tokio::test]
 async fn a_platform_call_names_its_turn_and_never_a_person() {
-    let material = Material::new(true, Ok(LookupAnswer::Value(json!("3 agents"))));
+    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("3 agents"))));
     let session = SessionId::new();
     let weak: Arc<dyn OrgMaterial> = material.clone();
     let lookups = super::org_lookups(Some(&Arc::downgrade(&weak)), session).unwrap();
@@ -483,10 +484,7 @@ async fn a_platform_call_names_its_turn_and_never_a_person() {
         .unwrap();
     assert_eq!(output, "3 agents");
     let asked = material.asked.lock();
-    assert_eq!(
-        asked[0].1,
-        everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE
-    );
+    assert_eq!(asked[0].1, "platform_command_surface");
     assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
     assert_eq!(asked[0].2["input_message_id"], json!(input.to_string()));
     assert!(asked[0].2.get("acting_user").is_none());

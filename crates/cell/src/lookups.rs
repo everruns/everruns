@@ -8,11 +8,13 @@
 //! On a v1 worker they reach the control plane through internal
 //! commands; here the same resolver ([`CommandConnectionResolver`]) runs the
 //! same commands over the link: executor, directory cell, control plane
-//! (`POST /dp/v1/tenants/{org}/lookups`). The answer comes back sealed with
-//! the org's data key, so the cell that forwards it holds ciphertext only.
+//! as host calls (`everruns_contracts::host_calls`,
+//! `POST /dp/v1/tenants/{org}/host-calls/{name}`). The answer comes back
+//! sealed with the org's data key, so the cell that forwards it holds
+//! ciphertext only.
 //!
 //! Decisions:
-//! - Only the commands in [`LOOKUP_COMMANDS`] go over; the rest stay with
+//! - Only the commands a host call declares go over; the rest stay with
 //!   the data plane: sandbox keys are sealed org secrets the control plane
 //!   wrote when it pinned the sandbox (`sandbox.rs`), MCP credentials are
 //!   the org's MCP secrets (`mcp.rs`), and a cell leases nothing to clean
@@ -33,8 +35,8 @@ use std::sync::{Arc, Once, Weak};
 
 use async_trait::async_trait;
 use everruns_capabilities::capabilities::{PoppyCall, PoppyInvoker, PoppyInvokerExt};
-use everruns_contracts::dataplane::{LOOKUP_COMMANDS, LookupAnswer, SLACK_ACTION};
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::host_calls::{HostCallAnswer, SLACK_ACTION, by_command};
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
 use everruns_contracts::runtime::organization::org_public_id_from_internal;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
@@ -75,7 +77,7 @@ impl InternalCommandTransport for OrgLookups {
         name: &str,
         params: Value,
     ) -> Result<std::result::Result<Value, proto::CommandError>> {
-        if !LOOKUP_COMMANDS.contains(&name) {
+        if by_command(name).is_none() {
             return Ok(Err(proto::CommandError {
                 kind: proto::command_error::Kind::Forbidden as i32,
                 message: format!("{name} is not available on the data plane"),
@@ -86,8 +88,8 @@ impl InternalCommandTransport for OrgLookups {
             .upgrade()
             .ok_or_else(|| AgentLoopError::store("the executor is stopping"))?;
         match material.lookup(&self.org, name, params).await {
-            Ok(LookupAnswer::Value(value)) => Ok(Ok(value)),
-            Ok(LookupAnswer::Error { kind, message }) => {
+            Ok(HostCallAnswer::Value(value)) => Ok(Ok(value)),
+            Ok(HostCallAnswer::Error { kind, message }) => {
                 Ok(Err(proto::CommandError { kind, message }))
             }
             Err(error) => {

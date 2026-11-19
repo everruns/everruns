@@ -68,7 +68,7 @@ pub struct ColumnSchema {
 /// are distinguished by the caller when converting to ToolExecutionResult.
 ///
 /// Serializable so a data plane's lookup carries it back intact
-/// (`everruns_contracts::dataplane::SESSION_SQL_DB`).
+/// (`everruns_contracts::host_calls::SESSION_SQL_DB`).
 #[derive(Debug, thiserror::Error, Serialize, Deserialize)]
 #[serde(tag = "error", content = "detail", rename_all = "snake_case")]
 pub enum SessionSqlDbError {

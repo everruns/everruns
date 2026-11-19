@@ -2006,6 +2006,24 @@ stores such as knowledge, memory, the platform API) is the live check's
 (11.6c); a tool whose store a cell lacks answers with an error, as on a
 v1 host without it.
 
+**Parity, Phase A: host calls (2026-11-19).** The lookups below became
+host calls, the one way a data plane asks its control plane anything at
+call time. Each call is declared once in `everruns_contracts::host_calls`
+with who it acts as (the org, the person who sent the turn, or a channel
+bot), its effect, timeout, behaviour while the control plane is down, and
+what it is planned to become: six are values known before the call
+(policy, settings, sealed keys) that move to pushed state, the SQL
+databases move into the runtime, and the rest stay host calls. The path is
+fixed (executor, directory cell, `POST /dp/v1/tenants/{org}/host-calls/{name}`,
+one dispatcher in `crates/server/src/domains/data_plane/host_calls.rs`);
+the cell stamps the acting person, holds each org to 64 calls in flight,
+and stops calling a control plane that stopped answering for 10 s
+(`crates/cell/src/host_calls.rs`). Reads retry once, writes never.
+Both sides count each call by name and outcome. Two guards keep it the
+only path: the registry's printed copy (`host_calls_registry.txt`) must
+change with it, and `scripts/lib/check-cell-control-plane-calls.sh` fails
+on a control plane call outside the link and host call modules.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
@@ -2018,7 +2036,7 @@ request to the control plane over the link (`POST
 as the org's internal caller and seals the answer with the org's data
 key under the request's own id, so the cell in between passes on
 ciphertext (`crates/cell/src/lookups.rs`,
-`crates/server/src/domains/data_plane/lookups.rs`). Only those six
+`crates/server/src/domains/data_plane/host_calls.rs`). Only those six
 commands go over: sandbox keys and MCP credentials are already sealed
 org secrets on the data plane, and a cell leases nothing to clean up. A
 standalone cell, with no control plane, keeps the answers of a host

@@ -298,6 +298,16 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         &p.model_ttft_seconds,
     );
     w.counters(
+        "cell_host_calls_total",
+        "Host calls passed to the control plane, by call and outcome.",
+        &p.host_calls,
+    );
+    w.histograms(
+        "cell_host_call_duration_seconds",
+        "Host call round trips to the control plane, by call.",
+        &p.host_call_seconds,
+    );
+    w.counters(
         "cell_tool_calls_total",
         "Tool calls completed on this node, by tool and status.",
         &p.tool_calls,

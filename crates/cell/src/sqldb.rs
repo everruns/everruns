@@ -14,7 +14,7 @@
 //!   lookup that cannot reach the control plane is internal.
 
 use async_trait::async_trait;
-use everruns_contracts::dataplane::SESSION_SQL_DB;
+use everruns_contracts::host_calls::SESSION_SQL_DB;
 use everruns_contracts::session_sqldb::{
     DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult, SqlQueryResult,
     TableSchema,
