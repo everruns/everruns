@@ -22,8 +22,9 @@ struct Agent {
     config_hash: String,
 }
 
-/// An agent with a literal server (`docs`, a credential header) and a
-/// catalog preset it uses as its service identity (`crm`), authorized.
+/// An agent with a literal server (`docs`, a credential header), a catalog
+/// preset it uses as its service identity (`crm`), authorized, and the same
+/// preset acting as the turn's person (`mine`).
 async fn agent(cp: &ControlPlane, encryption: &crate::storage::EncryptionService) -> Agent {
     let harness = harness(&cp.db, ORG).await;
     let catalog = format!("crm-{}", uuid::Uuid::new_v4().simple());
@@ -88,6 +89,7 @@ async fn agent(cp: &ControlPlane, encryption: &crate::storage::EncryptionService
                         "headers": { "Authorization": "Bearer docs-key", "X-Team": "blue" },
                     },
                     "crm": { "use": format!("catalog:{catalog}"), "actsAs": "service" },
+                    "mine": { "use": format!("catalog:{catalog}"), "actsAs": "user" },
                 }),
                 network_access: None,
                 max_iterations: None,
@@ -241,6 +243,19 @@ async fn an_agents_mcp_credentials_travel_sealed_and_its_grant_comes_back_refres
     assert_eq!(held.resource.as_deref(), Some(CRM_URL));
     assert_eq!(held.token_endpoint.as_deref(), Some(TOKEN_URL));
     assert_eq!(held.client_id.as_deref(), Some("client-1"));
+
+    // The one acting as the turn's person keeps its provider: the data
+    // plane asks for the person's token per turn (a host call).
+    let mine = &servers["mine"];
+    assert_eq!(mine["url"], CRM_URL);
+    assert_eq!(mine["oauth_provider_id"], agent.provider.as_str(), "{mine}");
+    assert_eq!(mine["actsAs"], "user");
+    assert_eq!(mine["auth_mode"], "oauth");
+    assert!(
+        mine.get("headers")
+            .is_none_or(|h| h.get("Authorization").is_none()),
+        "{mine}"
+    );
 
     // Publishing again changes nothing.
     let (secret_rev, grant_rev) = (

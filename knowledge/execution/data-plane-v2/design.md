@@ -2126,6 +2126,22 @@ leave the config; running sessions keep their revision. Blueprint
 children and forked or workspace-seeded children stay refused until
 step 9.
 
+**Parity, Phase B: MCP servers that act as a person, and the shell's
+`everruns` command (2026-11-19).** An MCP server whose OAuth grant acts as
+the person who sent the turn (`actsAs: user`, or `user_or_service` with
+the person first, as on v1), or a preset backed by an org connection,
+reached a cell with no credential, so its calls went out unauthenticated.
+Its token now comes from the control plane on each call, through the
+`mcp_connection_token` host call. The call names the session and "the
+open turn"; the session's cell fills in the turn's input message and the
+person who sent it (THREAT[TM-AGENT-017]), and the control plane checks
+the server is attached and refreshes the grant, as for a v1 worker's
+call. The token is never kept on the data plane. A service grant still
+goes over as a sealed connection the data plane refreshes. The shell's
+`everruns` builtin is installed on a cell as on a worker: it forwards the
+line to the `platform` capability's `execute` tool, which runs the
+command catalog as the turn's person.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
@@ -2166,8 +2182,8 @@ admission path (the gateway, from a verified org token's subject; the
 control plane, for a message a person sent through it); a schedule's run
 or a task wake acts as the last person who wrote, as v1 copies the
 previous turn's record; a channel, trigger or webhook message acts as no
-one, so its platform calls are refused. The shell's `everruns` builtin is
-not installed on a cell yet. The `slack` tools' actions (react, update,
+one, so its platform calls are refused. The shell's `everruns` builtin
+forwards to the same tool (Phase B). The `slack` tools' actions (react, update,
 upload, look up a user) go over too, run by the control plane as the bot
 of the endpoint the session came through, so the bot token stays there.
 The conversation sender a v1 worker installs with them is left out: a

@@ -31,7 +31,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use everruns_contracts::dataplane::SealedSecret;
-use everruns_contracts::host_calls::{ActsAs, HostCall, HostCallRequest, by_name};
+use everruns_contracts::host_calls::{ActsAs, HostCall, HostCallRequest, OPEN_TURN, by_name};
 use parking_lot::Mutex;
 use tokio::sync::Semaphore;
 
@@ -183,6 +183,10 @@ async fn pass_on(
 /// there (THREAT[TM-AGENT-017]): `null` when no one did, or when the call
 /// names no input message (a lookup outside a turn), which the control
 /// plane treats as acting as no one.
+///
+/// An input message of [`OPEN_TURN`] (an MCP server's credential, asked
+/// for by session) is replaced with the input of the turn the session has
+/// open, as a bare UUID; with no turn open the call names none.
 pub(crate) async fn act_as_sender(
     node: &Node,
     params: &mut serde_json::Value,
@@ -191,6 +195,7 @@ pub(crate) async fn act_as_sender(
     let Some(message) = params["input_message_id"]
         .as_str()
         .filter(|id| !id.is_empty())
+        .map(str::to_owned)
     else {
         return Ok(());
     };
@@ -200,7 +205,11 @@ pub(crate) async fn act_as_sender(
             format!("a call acting as a person needs {what}"),
         )
     };
-    let message = input_message(message).ok_or_else(|| bad("a valid input message"))?;
+    let message = if message == OPEN_TURN {
+        None
+    } else {
+        Some(input_message(&message).ok_or_else(|| bad("a valid input message"))?)
+    };
     let session = params["session_id"]
         .as_str()
         .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
@@ -216,6 +225,15 @@ pub(crate) async fn act_as_sender(
             &serde_json::json!({ "message": message }),
         )
         .await?;
+    if message.is_none() {
+        params["input_message_id"] = match found["message"]
+            .as_str()
+            .and_then(|id| everruns_contracts::typed_id::MessageId::parse(id).ok())
+        {
+            Some(open) => serde_json::json!(open.uuid()),
+            None => serde_json::Value::Null,
+        };
+    }
     params["acting_user"] = found["user"].clone();
     Ok(())
 }
