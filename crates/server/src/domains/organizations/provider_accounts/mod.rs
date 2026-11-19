@@ -155,6 +155,8 @@ impl Command for UpdateOrganizationAccountName {
             .rename_organization_connection(ctx.org_id(), self.id, name)
             .await?
             .ok_or_else(|| CommandError::not_found("Account"))?;
+        // A search account's name is part of the pushed web search settings.
+        crate::domains::data_plane::org_settings::sync_logged(&ctx.db, ctx.org_id()).await;
         Ok(OrganizationAccountMetadata {
             id: row.id,
             name: row.name.unwrap_or(row.provider),

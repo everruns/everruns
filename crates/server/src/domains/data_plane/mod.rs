@@ -42,6 +42,7 @@ pub mod event_tap;
 pub mod feed;
 pub mod host_calls;
 pub mod mcp;
+pub mod org_settings;
 pub mod outbox;
 pub mod providers;
 pub mod sandboxes;
@@ -531,6 +532,11 @@ pub async fn enable_org(
         .await?;
     event_tap::sync(&cp.db, org_id).await?;
     providers::sync(cp, org_id).await?;
+    // Until its settings arrive the cell asks the control plane, so a
+    // setting that does not sync never keeps the org off its data plane.
+    if let Err(error) = org_settings::sync(cp, org_id).await {
+        tracing::warn!(org_id, %error, "the data plane's org settings were not synced");
+    }
     for key in cp.db.engine_agent_keys_for_edit(org_id, None).await? {
         if let Some((revision, _)) = cp.db.engine_agent_current(&key.agent_key).await? {
             agent_published(cp, &key.agent_key, org_id, &revision).await?;

@@ -823,4 +823,5 @@ async fn the_consoles_chat_stays_on_the_control_plane() {
 mod event_tap;
 mod host_calls;
 mod mcp;
+mod org_settings;
 mod sandboxes;

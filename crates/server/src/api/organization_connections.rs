@@ -208,6 +208,8 @@ pub async fn create_connection(
             ErrorResponse::new("Failed to store connection")
                 .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
+    // A search account's key travels with a data plane org's config.
+    crate::domains::data_plane::org_settings::sync_logged(&state.db, org.org_id).await;
     Ok((
         StatusCode::CREATED,
         Json(OrganizationConnectionResponse::from_row(row)),
@@ -283,6 +285,7 @@ pub async fn update_connection(
             ErrorResponse::new("Connection not found").into_response(StatusCode::NOT_FOUND)
         })?;
     review.finish(&connection_id.to_string()).await;
+    crate::domains::data_plane::org_settings::sync_logged(&state.db, org.org_id).await;
     Ok(Json(OrganizationConnectionResponse::from_row(row)))
 }
 
@@ -344,7 +347,10 @@ pub async fn delete_connection(
         .delete_organization_connection(org.org_id, connection_id)
         .await
     {
-        Ok(true) => Ok(StatusCode::NO_CONTENT),
+        Ok(true) => {
+            crate::domains::data_plane::org_settings::sync_logged(&state.db, org.org_id).await;
+            Ok(StatusCode::NO_CONTENT)
+        }
         Ok(false) => {
             Err(ErrorResponse::new("Connection not found").into_response(StatusCode::NOT_FOUND))
         }

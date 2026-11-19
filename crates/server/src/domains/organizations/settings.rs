@@ -252,6 +252,7 @@ impl Command for UpdateOrg {
                 )
                 .await?;
         }
+        let data_plane_settings = web_search_defaults.is_some() || tool_approval_policy.is_some();
         if let Some(defaults) = web_search_defaults {
             ctx.db
                 .set_org_web_search_defaults(row.org_id, &defaults)
@@ -261,6 +262,9 @@ impl Command for UpdateOrg {
             ctx.db
                 .set_org_tool_approval_policy(row.org_id, policy)
                 .await?;
+        }
+        if data_plane_settings {
+            crate::domains::data_plane::org_settings::sync_logged(&ctx.db, row.org_id).await;
         }
         if let Some(limits) = background_limits {
             ctx.db
