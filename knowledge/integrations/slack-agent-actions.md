@@ -59,6 +59,13 @@ can correct its request rather than receiving a generic internal failure.
 Generated installs request reaction permission; existing installations require
 renewed Slack consent before their bot token can use it.
 
+**File delivery uses the session filesystem.** The upload tool can send an
+existing file's bytes without putting them in model arguments. Both inline
+text and stored files use the same size cap, bot identity, and trusted
+originating-thread check. The model sees the thread root separately from the
+timestamp of an individual reply. Installations need the bot's file-write
+scope to deliver files.
+
 This is the first real use of `Capability::tools()` by a channel adapter, which
 the parity requirements anticipated and no adapter had exercised.
 
