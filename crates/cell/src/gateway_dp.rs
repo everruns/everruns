@@ -67,6 +67,14 @@ pub fn cell_router(node: Arc<Node>) -> Router {
     Router::new()
         .route("/cell/orgs/{org}/config", get(cell_position))
         .route("/cell/orgs/{org}/agents/{agent}", get(cell_agent))
+        .route(
+            "/cell/orgs/{org}/catalog/agents/{agent}",
+            get(cell_catalog_agent),
+        )
+        .route(
+            "/cell/orgs/{org}/catalog/harnesses/{harness}",
+            get(cell_catalog_harness),
+        )
         .route("/cell/orgs/{org}/full", get(cell_full))
         .route("/cell/orgs/{org}/commands/{command}", get(cell_command))
         .route("/cell/orgs/{org}/diff", post(cell_diff))
@@ -213,7 +221,13 @@ async fn org_session(
         with_capability(&mut package, entry);
     }
     let created = gateway
-        .create(package, None, Some(body.id), Some(org))
+        .create_running(
+            package,
+            None,
+            Some(body.id),
+            Some(org),
+            Some(body.agent_ref),
+        )
         .await?;
     if !body.initial_files.is_empty() {
         let seed = crate::api_files::FsOp::Seed {
@@ -302,7 +316,7 @@ async fn org_session_sse(
 /// `definition` running the pinned sandbox `entry`: it replaces the
 /// agent's other compute (a shell, the workspace's own file tools), as the
 /// platform's workers apply a managed sandbox.
-fn with_capability(definition: &mut serde_json::Value, entry: serde_json::Value) {
+pub(crate) fn with_capability(definition: &mut serde_json::Value, entry: serde_json::Value) {
     if !definition["capabilities"].is_array() {
         definition["capabilities"] = serde_json::json!([]);
     }
@@ -329,6 +343,36 @@ async fn position(
 
 impl Gateway {
     /// `org`'s current revision of `agent`.
+    /// The org's agent whose card names the host's agent `agent`, if any.
+    pub async fn catalog_agent(
+        &self,
+        org: &str,
+        agent: &str,
+    ) -> Result<Option<AgentDefinition>, ApiError> {
+        let directory = self.directory_cell()?;
+        self.call(
+            directory,
+            &format!("/cell/orgs/{org}/catalog/agents/{agent}"),
+            None,
+        )
+        .await
+    }
+
+    /// The host's harness `harness`, as the org's catalog carries it.
+    pub async fn catalog_harness(
+        &self,
+        org: &str,
+        harness: &str,
+    ) -> Result<Option<serde_json::Value>, ApiError> {
+        let directory = self.directory_cell()?;
+        self.call(
+            directory,
+            &format!("/cell/orgs/{org}/catalog/harnesses/{harness}"),
+            None,
+        )
+        .await
+    }
+
     pub async fn agent_revision(
         &self,
         org: &str,
@@ -386,6 +430,39 @@ async fn cell_agent(
             .and_then(|c| c.agents.get(&agent))
             .cloned(),
     ))
+}
+
+/// The org's agent whose card names the host's agent `agent` (parity gap
+/// 9): the agent on its own harness.
+async fn cell_catalog_agent(
+    State(node): State<Arc<Node>>,
+    Path((org, agent)): Path<(String, String)>,
+) -> Result<Json<Option<AgentDefinition>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(state.orgs.orgs.get(&org).and_then(|c| {
+        c.agents
+            .values()
+            .find(|a| a.card.as_ref().is_some_and(|card| card.agent_id == agent))
+            .cloned()
+    })))
+}
+
+/// The host's harness `harness` as a card of one of the org's agents
+/// carries it, inheritance resolved.
+async fn cell_catalog_harness(
+    State(node): State<Arc<Node>>,
+    Path((org, harness)): Path<(String, String)>,
+) -> Result<Json<Option<serde_json::Value>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(state.orgs.orgs.get(&org).and_then(|c| {
+        c.agents
+            .values()
+            .filter_map(|a| a.card.as_ref())
+            .find(|card| card.harness_id == harness)
+            .map(|card| card.harness.clone())
+    })))
 }
 
 // ------------------------------------------------------------ org admin

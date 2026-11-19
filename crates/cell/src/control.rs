@@ -294,10 +294,14 @@ impl Orgs {
         for change in update.changes.iter().filter_map(ConfigChange::parse) {
             match change {
                 ConfigChange::Agent(agent) => {
-                    let newer = config
-                        .agents
-                        .get(&agent.agent_id)
-                        .is_none_or(|current| agent.revision > current.revision);
+                    // A revision's card may arrive after the revision
+                    // itself (an agent published before the catalog,
+                    // parity gap 9); the package of a revision never
+                    // changes.
+                    let newer = config.agents.get(&agent.agent_id).is_none_or(|current| {
+                        agent.revision > current.revision
+                            || (agent.revision == current.revision && agent.card != current.card)
+                    });
                     if newer {
                         config.agents.insert(agent.agent_id.clone(), agent);
                     }

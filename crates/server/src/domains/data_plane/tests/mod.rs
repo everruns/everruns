@@ -875,6 +875,49 @@ async fn the_consoles_chat_stays_on_the_control_plane() {
     assert!(!sessions::stays_on_control_plane(None));
 }
 
+/// Every agent of a v2 org is in its data plane's catalog: its own key
+/// carries a card with the platform's ids, so a tool that names the agent
+/// finds it. A deleted agent leaves the catalog.
+#[tokio::test]
+async fn an_orgs_agents_are_in_its_data_planes_catalog() {
+    let (cp, _, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    // A real agent's public id carries its own id.
+    let id = everruns_contracts::typed_id::AgentId::new();
+    let mut helper = crate::platform_chat_agent::definition(harness, id);
+    helper.name = format!("helper-{}", uuid::Uuid::new_v4().simple());
+    helper.is_built_in = false;
+    let helper = cp
+        .db
+        .create_agent_with_id(ORG, id, helper)
+        .await
+        .unwrap()
+        .expect("a new id");
+
+    catalog::agent_edited(&cp, ORG, helper.id).await.unwrap();
+    let (key, _) =
+        crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, Some(helper.id))
+            .await
+            .unwrap();
+    let item = cp.db.dp_item(ORG, "agent", &key).await.unwrap().unwrap();
+    let body = item.body.unwrap();
+    assert_eq!(body["card"]["agent_id"], helper.id.to_string());
+    assert_eq!(body["card"]["harness_id"], harness.to_string());
+    assert_eq!(body["card"]["agent"]["name"], helper.name.as_str());
+
+    // Already carded: a second edit writes nothing.
+    catalog::agent_edited(&cp, ORG, helper.id).await.unwrap();
+    let again = cp.db.dp_item(ORG, "agent", &key).await.unwrap().unwrap();
+    assert_eq!(again.version, item.version);
+
+    // Deleted as the console does: archived, then deleted.
+    assert!(cp.db.delete_agent(ORG, helper.id).await.unwrap());
+    assert!(cp.db.destroy_agent(ORG, helper.id).await.unwrap());
+    catalog::agent_edited(&cp, ORG, helper.id).await.unwrap();
+    let live = cp.db.dp_items_live(ORG).await.unwrap();
+    assert!(live.iter().all(|item| item.item_id != key), "{live:?}");
+}
+
 mod event_tap;
 mod host_calls;
 mod mcp;

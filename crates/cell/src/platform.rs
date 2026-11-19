@@ -69,6 +69,12 @@ pub struct Platform {
     /// Who sent its input messages (`senders.rs`).
     #[serde(default, skip_serializing_if = "crate::senders::Senders::is_empty")]
     pub senders: crate::senders::Senders,
+    /// The control plane's key of the agent it runs, when the control
+    /// plane created it (`OrgSession.agent_ref`). Its subagents run that
+    /// agent's current revision, not the session's own definition, which
+    /// may carry the session's own settings (parity gaps 4 and 9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_ref: Option<String>,
 }
 
 impl Platform {
@@ -77,6 +83,7 @@ impl Platform {
             && self.tasks.is_empty()
             && self.task_messages.is_empty()
             && self.senders.is_empty()
+            && self.agent_ref.is_none()
     }
 
     /// Charge `micros` a committed model call cost to the schedule whose
@@ -183,6 +190,9 @@ pub enum Op {
     /// `user` sent input message `message` (`senders.rs`). Proposed by a
     /// trusted admission path before the message is admitted.
     Sender { message: MessageId, user: String },
+    /// The session runs the control plane's agent `agent_ref`
+    /// ([`Platform::agent_ref`]). Proposed once, with the create.
+    Agent { agent_ref: String },
 }
 
 /// The event types the control plane may record on a session.
@@ -312,6 +322,16 @@ impl CellState {
         if let Op::Storage(op) = op {
             return crate::session_storage::apply(state, session, op, changes);
         }
+        if let Op::Agent { agent_ref } = op {
+            // Set once: a retried create names the same agent.
+            if state.platform.agent_ref.is_none() {
+                state.platform.agent_ref = Some(agent_ref);
+                changes.push(Change::Session(session));
+            }
+            return Response::Value {
+                value: json!({ "agent_ref": state.platform.agent_ref }),
+            };
+        }
         if let Op::Sender { message, user } = op {
             state.platform.senders.record(message, user);
             changes.push(Change::Session(session));
@@ -400,7 +420,12 @@ impl CellState {
                 }
                 fire(state, session, schedule, now_ms, seed, changes, false)
             }
-            Op::Call(_) | Op::Task(_) | Op::Record { .. } | Op::Storage(_) | Op::Sender { .. } => {
+            Op::Call(_)
+            | Op::Task(_)
+            | Op::Record { .. }
+            | Op::Storage(_)
+            | Op::Sender { .. }
+            | Op::Agent { .. } => {
                 return Response::Ok;
             }
         };

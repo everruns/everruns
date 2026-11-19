@@ -328,7 +328,25 @@ pub async fn key_for(
 pub async fn drain(db: &StorageBackend, limit: i64) -> anyhow::Result<usize> {
     let edits = db.take_engine_agent_publishes(limit).await?;
     let mut seen = std::collections::HashSet::new();
+    let cp = crate::domains::data_plane::ControlPlane::from_env(std::sync::Arc::new(db.clone()));
     for edit in &edits {
+        // A v2 org's catalog follows its agents: a new agent gets its own
+        // key, a deleted one leaves (parity gap 9). An org-wide edit (a
+        // harness, the sweep) checks every agent.
+        let catalog = match edit.agent_id {
+            Some(agent) if edit.harness_id.is_none() => {
+                crate::domains::data_plane::catalog::agent_edited(
+                    &cp,
+                    edit.org_id,
+                    AgentId::from_uuid(agent),
+                )
+                .await
+            }
+            _ => crate::domains::data_plane::catalog::sync(&cp, edit.org_id).await,
+        };
+        if let Err(error) = catalog {
+            tracing::warn!(%error, org_id = edit.org_id, "agent catalog not updated");
+        }
         // A harness edit or an org default reaches every key of the org.
         let agent = if edit.harness_id.is_some() {
             None
