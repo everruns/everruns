@@ -258,27 +258,40 @@ async fn dropping_long_decode_stream_prevents_the_next_hop() {
 }
 
 #[tokio::test]
-async fn argon_thinking_levels_replace_budgets_without_affecting_older_models() {
+async fn gemini_4_thinking_levels_replace_budgets_without_affecting_older_models() {
     use everruns_contracts::ReasoningEffort;
     use serde_json::json;
-    for (effort, expected) in [
-        (None, None),
-        (Some(ReasoningEffort::None), None),
-        (Some(ReasoningEffort::Minimal), Some("low")),
-        (Some(ReasoningEffort::Low), Some("low")),
-        (Some(ReasoningEffort::Medium), Some("medium")),
-        (Some(ReasoningEffort::High), Some("high")),
-        (Some(ReasoningEffort::Xhigh), Some("high")),
-        (Some(ReasoningEffort::Max), Some("high")),
-    ] {
+    // Argon and Carbon reject `xhigh` with HTTP 400; Hydrogen and Neon take it.
+    let cases = |top| {
+        [
+            (None, None),
+            (Some(ReasoningEffort::None), None),
+            (Some(ReasoningEffort::Minimal), Some("low")),
+            (Some(ReasoningEffort::Low), Some("low")),
+            (Some(ReasoningEffort::Medium), Some("medium")),
+            (Some(ReasoningEffort::High), Some("high")),
+            (Some(ReasoningEffort::Xhigh), Some(top)),
+            (Some(ReasoningEffort::Max), Some(top)),
+        ]
+    };
+    for (model, effort, expected) in [
+        ("gemini-4-argon", "high"),
+        ("gemini-4-carbon", "high"),
+        ("gemini-4-hydrogen", "xhigh"),
+        ("gemini-4-neon", "xhigh"),
+    ]
+    .into_iter()
+    .flat_map(|(model, top)| cases(top).map(|(effort, level)| (model, effort, level)))
+    {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(sse(&[json!({"candidates":[{"finishReason":"STOP"}]})]))
             .expect(1)
             .mount(&server)
             .await;
-        let mut cfg = config("gemini-4-argon");
+        let mut cfg = config(model);
         cfg.reasoning_effort = effort;
+        cfg.temperature = Some(0.5);
         provider(&server)
             .chat_completion(vec![Message::text(MessageRole::User, "hi")], &cfg)
             .await
@@ -292,8 +305,11 @@ async fn argon_thinking_levels_replace_budgets_without_affecting_older_models() 
             expected.map_or(
                 json!(null),
                 |level| json!({"thinkingLevel":level,"includeThoughts":true})
-            )
+            ),
+            "{model} {effort:?}"
         );
+        assert!(request["generationConfig"].get("temperature").is_none());
+        assert_eq!(request["generationConfig"]["maxOutputTokens"], 65_536);
     }
     let server = MockServer::start().await;
     Mock::given(method("POST"))

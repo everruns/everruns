@@ -491,7 +491,7 @@ impl GeminiChatDriver {
                     .resolve("POST", url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let client = if is_argon(model) {
+                let client = if is_gemini_4(model) {
                     driver_helpers::shared_long_decode_http_client()
                 } else {
                     self.client()
@@ -603,7 +603,7 @@ impl ChatDriver for GeminiChatDriver {
     }
 
     fn stream_stall_timeout(&self, config: &LlmCallConfig) -> Option<std::time::Duration> {
-        (is_argon(&config.model) && config.max_tokens.is_some_and(|tokens| tokens > 65_536))
+        (is_gemini_4(&config.model) && config.max_tokens.is_some_and(|tokens| tokens > 65_536))
             .then_some(std::time::Duration::from_secs(1_200))
     }
 
@@ -762,14 +762,17 @@ impl std::fmt::Debug for GeminiChatDriver {
 pub const GEMINI_RECOMMENDED: everruns_contracts::recommended_models::ProviderRecommendedModels =
     everruns_contracts::recommended_models::ProviderRecommendedModels {
         provider: "gemini",
+        // Google: start with Hydrogen; Neon for complex software engineering;
+        // Carbon, the strongest reasoner, for research.
         recommended_models: &[
-            "gemini-4-argon",
+            "gemini-4-neon",
+            "gemini-4-carbon",
+            "gemini-4-hydrogen",
             "gemini-3.8-flash",
-            "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
         ],
-        coding_model: "gemini-4-argon",
-        research_model: "gemini-4-argon",
+        coding_model: "gemini-4-neon",
+        research_model: "gemini-4-carbon",
         chat_model: "gemini-3.8-flash",
         small_model: "gemini-3.5-flash-lite",
         decision_model: "gemini-3.5-flash-lite",
@@ -845,8 +848,12 @@ impl Default for GeminiChatDriver {
 // SSE Parsing
 // ============================================================================
 
-fn is_argon(model: &str) -> bool {
-    model.rsplit('/').next() == Some("gemini-4-argon")
+/// Gemini 4 models share long decode, thinking levels and implicit-only caching.
+fn is_gemini_4(model: &str) -> bool {
+    model
+        .rsplit('/')
+        .next()
+        .is_some_and(|id| id.starts_with("gemini-4-"))
 }
 
 /// Search metadata is cumulative within a request, but its source indices and
