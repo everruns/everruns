@@ -67,6 +67,8 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     assert_eq!(asked[0].1, "worker_get_connection_token");
     assert_eq!(asked[0].2["session_id"], json!(session));
     assert_eq!(asked[0].2["provider"], json!("github"));
+    // Outside a turn it acts as no one.
+    assert_eq!(asked[0].2["acting_user"], serde_json::Value::Null);
 
     // The control plane's refusal is the tool's failure, never a default.
     let error = resolver.get_web_search_settings(id).await.unwrap_err();
@@ -205,4 +207,23 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
         .await
         .unwrap();
     assert_eq!(cp.lookups()[1].2["acting_user"], serde_json::Value::Null);
+
+    // A connection lookup of the person's turn names them too (the
+    // resolver names the message as a bare UUID), so the control plane
+    // resolves their connection, not the session owner's.
+    cp.set_lookup(
+        "worker_get_connection_token",
+        HostCallAnswer::Value(json!("their-token")),
+    );
+    let id: SessionId = session.parse().unwrap();
+    let resolver =
+        everruns_cell::lookups::connections(Arc::new(NoKeys), Some(&Arc::downgrade(&material)), id)
+            .for_execution(theirs.uuid())
+            .expect("bound to the turn");
+    let token = resolver.get_connection_token(id, "linear").await.unwrap();
+    assert_eq!(token.as_deref(), Some("their-token"));
+    let asked = cp.lookups();
+    assert_eq!(asked[2].1, "worker_get_connection_token");
+    assert_eq!(asked[2].2["input_message_id"], json!(theirs.uuid()));
+    assert_eq!(asked[2].2["acting_user"], json!(person));
 }

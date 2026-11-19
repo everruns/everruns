@@ -180,26 +180,31 @@ async fn pass_on(
 
 /// Set a call's `acting_user` to the person who sent its input message,
 /// from the session's own record (`senders.rs`), whatever the executor put
-/// there (THREAT[TM-AGENT-017]): `null` when no one did, which the control
-/// plane refuses.
+/// there (THREAT[TM-AGENT-017]): `null` when no one did, or when the call
+/// names no input message (a lookup outside a turn), which the control
+/// plane treats as acting as no one.
 pub(crate) async fn act_as_sender(
     node: &Node,
     params: &mut serde_json::Value,
 ) -> Result<(), ApiError> {
+    params["acting_user"] = serde_json::Value::Null;
+    let Some(message) = params["input_message_id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+    else {
+        return Ok(());
+    };
     let bad = |what: &str| {
         (
             StatusCode::BAD_REQUEST,
             format!("a call acting as a person needs {what}"),
         )
     };
+    let message = input_message(message).ok_or_else(|| bad("a valid input message"))?;
     let session = params["session_id"]
         .as_str()
         .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
         .ok_or_else(|| bad("its session"))?;
-    let message = params["input_message_id"]
-        .as_str()
-        .and_then(|id| everruns_contracts::typed_id::MessageId::parse(id).ok())
-        .ok_or_else(|| bad("its input message"))?;
     let gateway = node.gateway.get().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         "this cell has no gateway".to_owned(),
@@ -213,6 +218,15 @@ pub(crate) async fn act_as_sender(
         .await?;
     params["acting_user"] = found["user"].clone();
     Ok(())
+}
+
+/// An input message id as a call names it: prefixed (`msg_...`, the
+/// platform tools) or a bare UUID (the connection resolver).
+fn input_message(id: &str) -> Option<everruns_contracts::typed_id::MessageId> {
+    use everruns_contracts::typed_id::MessageId;
+    MessageId::parse(id)
+        .ok()
+        .or_else(|| uuid::Uuid::parse_str(id).ok().map(MessageId::from_uuid))
 }
 
 #[cfg(test)]
@@ -232,6 +246,14 @@ mod tests {
         assert!(!limits.open(now + OPEN_FOR));
         limits.answered();
         assert!(!limits.open(now));
+    }
+
+    #[test]
+    fn an_input_message_is_prefixed_or_a_bare_uuid() {
+        let id = everruns_contracts::typed_id::MessageId::new();
+        assert_eq!(input_message(&id.to_string()), Some(id));
+        assert_eq!(input_message(&id.uuid().to_string()), Some(id));
+        assert_eq!(input_message("sess_nope"), None);
     }
 
     #[test]

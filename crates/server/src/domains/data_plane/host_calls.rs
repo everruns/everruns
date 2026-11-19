@@ -20,6 +20,17 @@
 //!   (`acting_user`), never as the internal caller: the session must
 //!   resolve `platform` and the person must still be an org member, with
 //!   their current role (THREAT[TM-AGENT-017]).
+//! - A call that acts as the turn's person (`ActsAs::Person`: a
+//!   connection token, a GitHub token, the agent's service key) records
+//!   the turn's invocation first, from the person the forwarding cell
+//!   names and the session's agent, as v1 records it when the message
+//!   comes through its API ([`record_turn`]). A v2 session's messages
+//!   reach the cell without the control plane, so without it every
+//!   credential check that reads the invocation (which person's
+//!   connection, which responder's service identity) would find none and
+//!   answer nothing. Only for a session the data plane runs, once per
+//!   turn; a person who is no longer a member records nothing, so the
+//!   lookup acts as no one and asks again next time (fail closed).
 //! - A Slack action ([`SLACK_ACTION`]) runs as the bot of the endpoint the
 //!   session came through, resolved within the org; its token stays here.
 //! - A session's SQL databases ([`SESSION_SQL_DB`]) stay in the control
@@ -31,15 +42,16 @@
 //!   another call's.
 //! - Each call is counted by name and outcome
 //!   (`everruns_dp_host_calls_total`).
-//! - Nothing is stored here. The calls are reads, except a Poppy call,
-//!   which keeps the session owner's company accounts and conversations in
-//!   the control plane, as on v1.
+//! - Nothing else is stored here. The calls are reads, except a Poppy
+//!   call, which keeps the session owner's company accounts and
+//!   conversations in the control plane, as on v1.
 
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
-    HostCall, HostCallAnswer, PLATFORM_COMMAND, SESSION_SQL_DB, SLACK_ACTION,
+    ActsAs, HostCall, HostCallAnswer, PLATFORM_COMMAND, SESSION_SQL_DB, SLACK_ACTION,
 };
+use everruns_contracts::typed_id::{MessageId, SessionId};
 
 use super::{ControlPlane, org_public};
 use crate::domains::common::Ctx;
@@ -47,10 +59,18 @@ use crate::storage::DpOrgRow;
 
 /// Run `call` with `params` as `ctx` (the org's internal caller).
 pub async fn answer(
+    cp: &ControlPlane,
     ctx: &Ctx,
     call: &HostCall,
     params: serde_json::Value,
 ) -> anyhow::Result<HostCallAnswer> {
+    if call.acts_as == ActsAs::Person
+        && call.name != PLATFORM_COMMAND
+        && let Err(error) = record_turn(cp, ctx, &params).await
+    {
+        // The lookup then finds no invocation and answers nothing.
+        tracing::warn!(call = call.name, %error, "could not record the turn's invocation");
+    }
     let answer = run(ctx, call, params).await;
     let outcome = match &answer {
         Ok(HostCallAnswer::Value(_)) => "ok",
@@ -100,6 +120,71 @@ async fn run(
             },
         ),
     }
+}
+
+/// Record the invocation of the turn a call names (`input_message_id`) on
+/// a session the data plane runs, as v1 does when the message comes
+/// through its API: the person the forwarding cell names (`acting_user`,
+/// `null` for a channel message or a trigger) with their default runtime
+/// identity, and the session's agent as the responder. The checks are the
+/// v1 ones (`record_runtime_invocation_with`): an active member, an active
+/// agent of the org. A call outside a turn, a v1 session's, or one already
+/// recorded is left alone.
+async fn record_turn(
+    cp: &ControlPlane,
+    ctx: &Ctx,
+    params: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let Some(message) = params["input_message_id"].as_str().and_then(input_message) else {
+        return Ok(());
+    };
+    let Some(session) = params["session_id"]
+        .as_str()
+        .and_then(|id| SessionId::parse(id).ok())
+    else {
+        return Ok(());
+    };
+    let org_id = ctx.org_id();
+    if !super::sessions::runs_on_data_plane(cp, org_id, session).await?
+        || ctx
+            .db
+            .runtime_invocation_exists(session, message.uuid())
+            .await?
+    {
+        return Ok(());
+    }
+    // Another org's session: the call itself refuses it.
+    let Some(row) = ctx.db.get_session(org_id, session).await? else {
+        return Ok(());
+    };
+    let person = match params["acting_user"].as_str() {
+        None => None,
+        Some(user) => {
+            let user = uuid::Uuid::parse_str(user)?;
+            Some((user, ctx.db.default_virtual_user(org_id, user).await?))
+        }
+    };
+    ctx.db
+        .record_runtime_invocation_with(
+            org_id,
+            session,
+            message.uuid(),
+            person.as_ref().map(|(_, subject)| subject.id),
+            person.as_ref().map(|(user, _)| *user),
+            row.agent_id.map(|agent| agent.uuid()),
+            crate::storage::runtime_identity::InvocationRows {
+                default_subject: person.as_ref().map(|(user, subject)| (*user, subject)),
+                responder: None,
+            },
+        )
+        .await
+}
+
+/// An input message id as a call names it: prefixed or a bare UUID.
+fn input_message(id: &str) -> Option<MessageId> {
+    MessageId::parse(id)
+        .ok()
+        .or_else(|| uuid::Uuid::parse_str(id).ok().map(MessageId::from_uuid))
 }
 
 /// A Slack action for one session of the org (`SLACK_ACTION`), as the bot
