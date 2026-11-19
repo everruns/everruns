@@ -12,6 +12,7 @@ use super::user_servers::UserMcpConnectionStatus;
 use crate::domains::common::*;
 use crate::domains::session_storage::queries::{parse_owned_session_id, verify_session_ownership};
 use crate::domains::sessions::record::Session;
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_services::SessionStorageStore;
 use everruns_core::{SessionMcpServer, SessionMcpServerSource};
 use serde::{Deserialize, Serialize};
@@ -36,7 +37,9 @@ pub async fn fold_session_records(storage: &dyn SessionStorageStore, session: &m
 // attachments are left out: their `ard_attach:` record drives ARD's own
 // listing and cap, so removing only the session record here would split them.
 // Sign-in state is the viewer's, because a chat-only server signs in as
-// whoever is chatting. Same authority as session storage: `SESSION_VIEW` to
+// whoever is chatting. A v2 session's records are in its storage on its cell
+// (data plane v2 parity, Phase B); the same commands read and remove them
+// there. Same authority as session storage: `SESSION_VIEW` to
 // list, `SESSION_MANAGE` to remove, and the session must belong to the
 // caller's organization.
 
@@ -57,9 +60,125 @@ pub struct ChatMcpServer {
     pub discovery: Option<String>,
 }
 
-fn session_store(ctx: &Ctx) -> crate::storage::DbSessionStorageStore {
-    // Session MCP records are plain KV values; no secret is read or written.
-    crate::storage::DbSessionStorageStore::new_without_encryption(ctx.db.database().clone())
+/// Where `session`'s MCP records are: the control plane's session storage,
+/// or, for a v2 session, its storage on its cell (data plane v2 parity,
+/// Phase B). Session MCP records are plain KV values; no secret is read or
+/// written.
+async fn session_store(
+    ctx: &Ctx,
+    session: SessionId,
+) -> Result<std::sync::Arc<dyn SessionStorageStore>, CommandError> {
+    if let Some(plane) =
+        crate::domains::session_storage::plane::PlaneStorage::of(ctx, session).await?
+    {
+        return Ok(std::sync::Arc::new(PlaneValues(plane)));
+    }
+    Ok(std::sync::Arc::new(
+        crate::storage::DbSessionStorageStore::new_without_encryption(ctx.db.database().clone()),
+    ))
+}
+
+/// A v2 session's storage values, for its MCP records; secrets are not
+/// read or written through it.
+struct PlaneValues(crate::domains::session_storage::plane::PlaneStorage);
+
+impl PlaneValues {
+    fn scope(&self, session: SessionId) -> everruns_contracts::error::Result<()> {
+        if session == self.0.plane().session {
+            Ok(())
+        } else {
+            Err(everruns_contracts::error::AgentLoopError::store(
+                "another session's storage",
+            ))
+        }
+    }
+}
+
+fn plane_err(error: CommandError) -> everruns_contracts::error::AgentLoopError {
+    everruns_contracts::error::AgentLoopError::store(error.to_string())
+}
+
+#[async_trait::async_trait]
+impl SessionStorageStore for PlaneValues {
+    async fn set_value(
+        &self,
+        session: SessionId,
+        key: &str,
+        value: &str,
+    ) -> everruns_contracts::error::Result<()> {
+        self.scope(session)?;
+        self.0.set_value(key, value).await.map_err(plane_err)
+    }
+
+    async fn get_value(
+        &self,
+        session: SessionId,
+        key: &str,
+    ) -> everruns_contracts::error::Result<Option<String>> {
+        self.scope(session)?;
+        self.0.value(key).await.map_err(plane_err)
+    }
+
+    async fn delete_value(
+        &self,
+        session: SessionId,
+        key: &str,
+    ) -> everruns_contracts::error::Result<bool> {
+        self.scope(session)?;
+        self.0.delete_value(key).await.map_err(plane_err)
+    }
+
+    async fn list_keys(
+        &self,
+        session: SessionId,
+    ) -> everruns_contracts::error::Result<Vec<everruns_core::session_services::KeyInfo>> {
+        self.scope(session)?;
+        let listed = self.0.listed().await.map_err(plane_err)?;
+        let epoch = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH;
+        Ok(listed
+            .values
+            .into_keys()
+            .map(|key| everruns_core::session_services::KeyInfo {
+                key,
+                created_at: epoch,
+                updated_at: epoch,
+            })
+            .collect())
+    }
+
+    async fn set_secret(
+        &self,
+        _session: SessionId,
+        _name: &str,
+        _value: &str,
+    ) -> everruns_contracts::error::Result<()> {
+        Err(everruns_contracts::error::AgentLoopError::store(
+            "session MCP records hold no secrets",
+        ))
+    }
+
+    async fn get_secret(
+        &self,
+        _session: SessionId,
+        _name: &str,
+    ) -> everruns_contracts::error::Result<Option<String>> {
+        Ok(None)
+    }
+
+    async fn delete_secret(
+        &self,
+        _session: SessionId,
+        _name: &str,
+    ) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
+    }
+
+    async fn list_secrets(
+        &self,
+        _session: SessionId,
+    ) -> everruns_contracts::error::Result<Vec<everruns_core::session_services::SecretInfo>> {
+        Ok(Vec::new())
+    }
 }
 
 /// The viewer's sign-in state for one chat-only server.
@@ -125,15 +244,16 @@ impl Command for ListChatMcpServers {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<ChatMcpServer>, CommandError> {
         let session_id = parse_owned_session_id(&self.session_id)?;
         verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        let store = session_store(ctx, session_id).await?;
         let mut records: Vec<_> =
-            everruns_core::load_session_mcp_servers(&session_store(ctx), session_id)
+            everruns_core::load_session_mcp_servers(store.as_ref(), session_id)
                 .await
                 .into_iter()
                 .filter(|record| record.source == SessionMcpServerSource::UserMcp)
                 .collect();
         records.sort_by(|a, b| a.name.cmp(&b.name));
         let discovery: std::collections::HashMap<String, super::scoped_mcp::ReadinessSnapshot> =
-            session_store(ctx)
+            store
                 .get_value(session_id, super::deferred::DISCOVERY_STATUS_KV_KEY)
                 .await
                 .ok()
@@ -226,14 +346,15 @@ impl Command for RemoveChatMcpServer {
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let session_id = parse_owned_session_id(&self.session_id)?;
         verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
-        let store = session_store(ctx);
-        let chat_only = everruns_core::get_session_mcp_server(&store, session_id, &self.name)
-            .await
-            .is_some_and(|record| record.source == SessionMcpServerSource::UserMcp);
+        let store = session_store(ctx, session_id).await?;
+        let chat_only =
+            everruns_core::get_session_mcp_server(store.as_ref(), session_id, &self.name)
+                .await
+                .is_some_and(|record| record.source == SessionMcpServerSource::UserMcp);
         if !chat_only {
             return Ok(false);
         }
-        everruns_core::remove_session_mcp_server(&store, session_id, &self.name)
+        everruns_core::remove_session_mcp_server(store.as_ref(), session_id, &self.name)
             .await
             .map_err(|error| CommandError::internal(anyhow::anyhow!(error.to_string())))
     }

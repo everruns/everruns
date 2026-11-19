@@ -23,6 +23,7 @@
 //! - A session event the org's policy asked for goes to the control
 //!   plane's listeners (`event_tap.rs`, step 11.5), and to the org's
 //!   warehouse files first when it exports them (`warehouse.rs`).
+//! - A v2 task's transition goes to its webhooks (`task_webhooks.rs`).
 //! - Feed lag (record time to stored) is logged per batch at debug level.
 //!   The gate measures it in the cell suite (`FakeCp::feed_lag`); a metric
 //!   comes with step 10's per-cell dashboards.
@@ -250,6 +251,14 @@ async fn store(
         }
         Record::Event { session_id, event } => {
             super::event_tap::deliver(cp, listeners, org_id, session_id, event).await?;
+        }
+        Record::TaskTransition {
+            transition,
+            task,
+            targets,
+            ..
+        } => {
+            super::task_webhooks::deliver(cp, org_id, transition, task, targets).await?;
         }
         Record::Health { .. } | Record::Unknown => {}
     }

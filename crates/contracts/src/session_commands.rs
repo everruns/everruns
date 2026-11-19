@@ -81,8 +81,12 @@ pub const RECORD: SessionCommand = command("record", "an event the control plane
 /// A person's change to the session's storage (values, sealed secrets).
 pub const STORAGE: SessionCommand =
     command("storage", "a person's change to the session's storage");
-/// The session's files: a message's uploads, copied before it is sent.
-pub const FS: SessionCommand = command("fs", "the session's files: a message's uploads");
+/// The session's files: a message's uploads, copied before it is sent, and
+/// every file with its content for a git commit (`snapshot`).
+pub const FS: SessionCommand = command(
+    "fs",
+    "the session's files: a message's uploads, a git commit's snapshot",
+);
 
 /// Event rows in a sequence range, by type or message.
 pub const EVENTS: SessionCommand = read("events", "event rows in a range, by type or message");
@@ -182,20 +186,22 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     // and pausing, resuming or deleting it.
     ("environment", Plane::Record),
     ("sandbox", Plane::Record),
+    // What a coding session changed in the repositories in its sandbox
+    // (the Changes tab): read from the pinned sandbox, as its lifecycle is.
+    ("repositories", Plane::Record),
+    // Commits of the session's files: the history the control plane keeps
+    // for both planes, a commit's files read from the session's cell.
+    ("git", Plane::Record),
+    // The MCP servers added to one chat: records in the session's storage.
+    ("mcp-servers", Plane::Record),
     // Known gaps (data plane v2 parity, Phase B).
     ("databases", Plane::Gap),
-    ("git", Plane::Gap),
-    ("mcp-servers", Plane::Gap),
-    ("repositories", Plane::Gap),
     ("voice", Plane::Gap),
 ];
 
 /// Paths under a [`Plane::Cell`] route the cell does not serve yet (it
 /// answers 501), relative to the session, as the public API spells them.
-pub const CELL_ROUTE_GAPS: &[&str] = &[
-    "tasks/{task_id}/push-configs",
-    "tasks/{task_id}/push-configs/{config_id}",
-];
+pub const CELL_ROUTE_GAPS: &[&str] = &[];
 
 /// The calls on one of a session's messages (`messages/{id}/{call}`) the
 /// control plane serves; every other message route is the cell's.
@@ -261,6 +267,7 @@ mod tests {
         assert!(find(Kind::Command, "events").is_none());
         assert_eq!(plane("archive"), Plane::Record);
         assert_eq!(plane("messages"), Plane::Cell);
-        assert_eq!(plane("git"), Plane::Gap);
+        assert_eq!(plane("git"), Plane::Record);
+        assert_eq!(plane("voice"), Plane::Gap);
     }
 }

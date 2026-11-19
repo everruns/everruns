@@ -30,6 +30,9 @@ pub struct ApiState {
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
     template: Arc<Ctx>,
+    /// The platform's outbound egress, for deliveries the control plane
+    /// makes itself (a v2 task's webhooks); none in a basic state.
+    egress: Option<Arc<dyn everruns_core::EgressService>>,
 }
 
 impl ApiState {
@@ -49,6 +52,7 @@ impl ApiState {
             capability_service: template.capability_service.clone(),
             auth,
             template: Arc::new(template),
+            egress: None,
         }
     }
 
@@ -61,13 +65,20 @@ impl ApiState {
             .map_or(&[], |events| events.listeners())
     }
 
+    /// The platform's outbound egress, if the service graph wired one.
+    pub fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
+        self.egress.clone()
+    }
+
     /// Share the services the MCP endpoint already wires, so a command sees
     /// the same context over REST and MCP.
     pub fn from_mcp(state: &super::mcp_endpoint::AppState) -> Self {
-        Self::new(
+        let mut api = Self::new(
             super::mcp_endpoint::domain_context(nobody(), state),
             state.auth.clone(),
-        )
+        );
+        api.egress = Some(state.egress.clone());
+        api
     }
 
     /// State with storage and capabilities only, for embedders and tests that

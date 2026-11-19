@@ -34,6 +34,7 @@ pub fn router(node: Arc<Node>) -> Router {
         .route("/cell/sessions/{session}/schedules", post(schedules))
         .route("/cell/sessions/{session}/tasks", post(tasks))
         .route("/cell/sessions/{session}/task", post(task))
+        .route("/cell/sessions/{session}/push-configs", post(push_configs))
         .route("/cell/sessions/{session}/record", post(record))
         .route(
             "/cell/sessions/{session}/storage",
@@ -443,6 +444,68 @@ async fn task(
         )),
         Err(reason) => Ok(Json(CellReply::Refused { reason })),
     }
+}
+
+/// A call on one task's push configs (`tasks.rs`).
+#[derive(Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+enum PushConfigs {
+    List {
+        task: String,
+    },
+    Add {
+        task: String,
+        config: crate::tasks::PushConfig,
+    },
+    Delete {
+        task: String,
+        config_id: String,
+    },
+}
+
+/// List, add or delete one task's push configs; null for a task the
+/// session does not have. A listing never shows a secret.
+async fn push_configs(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+    Json(call): Json<PushConfigs>,
+) -> Result<Json<CellReply>, ApiError> {
+    use crate::tasks::TaskOp;
+    let id = parse(&session)?;
+    let op = match call {
+        PushConfigs::List { task } => {
+            let found = crate::api::lookup(&node, id, |s| {
+                if !s.platform.tasks.contains_key(&task) {
+                    return Value::Null;
+                }
+                let listed: Vec<Value> = s
+                    .platform
+                    .task_push_configs
+                    .get(&task)
+                    .into_iter()
+                    .flatten()
+                    .map(crate::tasks::PushConfig::public)
+                    .collect();
+                json!(listed)
+            });
+            return Ok(Json(match found {
+                Lookup::Here(value) => CellReply::Ok { value },
+                Lookup::Moved { cell } => CellReply::Moved { cell },
+                Lookup::Missing => CellReply::NotFound,
+            }));
+        }
+        PushConfigs::Add { task, config } => TaskOp::AddPushConfig {
+            task_id: task,
+            config,
+        },
+        PushConfigs::Delete { task, config_id } => TaskOp::DeletePushConfig {
+            task_id: task,
+            config_id,
+        },
+    };
+    Ok(Json(
+        platform(&node, id, crate::platform::Op::Task(op)).await?,
+    ))
 }
 
 #[cfg(test)]
