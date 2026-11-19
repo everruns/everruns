@@ -4,6 +4,11 @@
 //! cell-drive load  --gateways http://127.0.0.1:7101 --agent worker --sessions 1000 --turns 3
 //! cell-drive check --gateways http://127.0.0.1:7101 --sessions-file s.txt --turns 3 --ledger l.txt
 //! ```
+//!
+//! Against a data plane joined to a control plane, the gateways want an org
+//! token: `--control-plane https://app.example.com/api --org <public id>`
+//! with the org member's API key in `EVERRUNS_API_KEY`
+//! (`everruns_cell_testkit::org_token`).
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -11,7 +16,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+use everruns_cell_testkit::org_token::OrgToken;
 use futures::stream::{self, StreamExt};
 use serde_json::{Value, json};
 
@@ -78,6 +84,8 @@ enum Mode {
         /// and big inputs instead of one-line turns.
         #[arg(long, default_value = "0")]
         message_bytes: usize,
+        #[command(flatten)]
+        join: Join,
     },
     /// Print a test agent's definition (what a client sends to create a
     /// session running it).
@@ -92,7 +100,39 @@ enum Mode {
         turns: u64,
         #[arg(long)]
         ledger: Option<PathBuf>,
+        #[command(flatten)]
+        join: Join,
     },
+}
+
+/// Sign in as an org of the control plane the fleet is joined to.
+#[derive(Args, Clone)]
+struct Join {
+    /// The control plane's API base (`https://app.example.com/api`). Without
+    /// it, requests carry no org token (a fleet run on its own).
+    #[arg(long)]
+    control_plane: Option<String>,
+    /// The org's public id.
+    #[arg(long, requires = "control_plane")]
+    org: Option<String>,
+    /// An API key of a member of the org.
+    #[arg(long, env = "EVERRUNS_API_KEY", hide_env_values = true)]
+    api_key: Option<String>,
+}
+
+impl Join {
+    fn token(self) -> anyhow::Result<Option<Arc<OrgToken>>> {
+        let Some(control_plane) = self.control_plane else {
+            return Ok(None);
+        };
+        let org = self
+            .org
+            .ok_or_else(|| anyhow::anyhow!("--control-plane needs --org"))?;
+        let key = self
+            .api_key
+            .ok_or_else(|| anyhow::anyhow!("--control-plane needs EVERRUNS_API_KEY"))?;
+        Ok(Some(Arc::new(OrgToken::new(&control_plane, key, org)?)))
+    }
 }
 
 struct Client {
@@ -104,6 +144,8 @@ struct Client {
     shed: AtomicUsize,
     /// Pad messages to this many bytes (`--message-bytes`).
     message_bytes: usize,
+    /// The org token every request carries (`--control-plane`).
+    token: Option<Arc<OrgToken>>,
 }
 
 /// How long a request keeps retrying refusals for load (429).
@@ -122,15 +164,33 @@ impl Client {
     async fn send(&self, method: &str, path: &str, body: Option<&Value>) -> anyhow::Result<Value> {
         let started = Instant::now();
         let deadline = started + Duration::from_secs(if self.persistent { 600 } else { 60 });
+        let mut refused = false;
         loop {
             let url = format!("{}{path}", self.base());
-            let request = match (method, body) {
+            let mut request = match (method, body) {
                 ("POST", Some(body)) => self.http.post(url).json(body),
                 _ => self.http.get(url),
             };
+            let token = match &self.token {
+                Some(source) => Some(source.get().await?),
+                None => None,
+            };
+            if let Some(token) = &token {
+                request = request.header(everruns_cell::org_token::HEADER, &**token);
+            }
             match request.timeout(Duration::from_secs(60)).send().await {
                 Ok(response) if response.status().is_success() => {
                     return Ok(response.json().await?);
+                }
+                // The token ran out under us: once more with a new one.
+                Ok(response)
+                    if response.status() == reqwest::StatusCode::UNAUTHORIZED
+                        && !refused
+                        && let (Some(source), Some(token)) = (&self.token, &token) =>
+                {
+                    drop(response);
+                    source.refused(token);
+                    refused = true;
                 }
                 Ok(response)
                     if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -269,6 +329,7 @@ async fn main() -> anyhow::Result<()> {
             stream,
             bursts,
             message_bytes,
+            join,
         } => {
             let shape = Shape {
                 sessions,
@@ -288,6 +349,7 @@ async fn main() -> anyhow::Result<()> {
                 sessions_file,
                 persistent,
                 scenario_list(&scenarios),
+                join.token()?,
             )
             .await
         }
@@ -296,7 +358,8 @@ async fn main() -> anyhow::Result<()> {
             sessions_file,
             turns,
             ledger,
-        } => check(gateways, sessions_file, turns, ledger).await,
+            join,
+        } => check(gateways, sessions_file, turns, ledger, join.token()?).await,
         Mode::Agent { name } => {
             let definition = everruns_cell_testkit::definition(&name)
                 .ok_or_else(|| anyhow::anyhow!("no test agent {name}"))?;
@@ -310,7 +373,7 @@ async fn main() -> anyhow::Result<()> {
     clippy::expect_used,
     reason = "a client with no TLS config only fails to build when the TLS backend cannot start, and the driver is useless without one"
 )]
-fn client(gateways: &str, persistent: bool) -> Arc<Client> {
+fn client(gateways: &str, persistent: bool, token: Option<Arc<OrgToken>>) -> Arc<Client> {
     Arc::new(Client {
         http: reqwest::Client::builder()
             .no_proxy() // fleet traffic is direct, whatever the system proxy says
@@ -323,6 +386,7 @@ fn client(gateways: &str, persistent: bool) -> Arc<Client> {
         persistent,
         shed: AtomicUsize::new(0),
         message_bytes: 0,
+        token,
     })
 }
 
@@ -492,9 +556,23 @@ fn streams(i: usize, share: f64) -> bool {
 fn follow(client: &Client, id: &str, progress: Arc<Progress>) -> tokio::task::JoinHandle<()> {
     let url = format!("{}/v1/sessions/{id}/sse", client.base());
     let http = client.http.clone();
+    let token = client.token.clone();
     tokio::spawn(async move {
         loop {
-            match http.get(&url).send().await {
+            let mut request = http.get(&url);
+            if let Some(source) = &token {
+                match source.get().await {
+                    Ok(token) => {
+                        request = request.header(everruns_cell::org_token::HEADER, &*token)
+                    }
+                    Err(_) => {
+                        progress.stream_errors.fetch_add(1, Ordering::Relaxed);
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        continue;
+                    }
+                }
+            }
+            match request.send().await {
                 Ok(mut response) if response.status().is_success() => {
                     while let Ok(Some(chunk)) = response.chunk().await {
                         let events = chunk.windows(6).filter(|w| w == b"event:").count();
@@ -658,8 +736,9 @@ async fn load(
     sessions_file: Option<PathBuf>,
     persistent: bool,
     scenarios: Vec<String>,
+    token: Option<Arc<OrgToken>>,
 ) -> anyhow::Result<()> {
-    let mut client = client(&gateways, persistent);
+    let mut client = client(&gateways, persistent, token);
     if let Some(c) = Arc::get_mut(&mut client) {
         c.message_bytes = shape.message_bytes;
     }
@@ -855,8 +934,9 @@ async fn check(
     sessions_file: PathBuf,
     turns: u64,
     ledger: Option<PathBuf>,
+    token: Option<Arc<OrgToken>>,
 ) -> anyhow::Result<()> {
-    let client = client(&gateways, true);
+    let client = client(&gateways, true, token);
     let ids: Vec<String> = std::fs::read_to_string(&sessions_file)?
         .lines()
         .filter(|l| !l.is_empty())
