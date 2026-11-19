@@ -1906,6 +1906,18 @@ differences on v2: a subagent's child session in the trace is found from
 the call's result; a reaction left for the agent's next turn reaches it only
 with a message the control plane admits.
 
+**Parity, Phase A: one reader for a session's events.** Every control plane
+feature reads a session's events through `domains::sessions::events`
+(`crates/server/src/domains/sessions/events.rs`), which takes the arguments
+of `StorageBackend::list_events` or `list_events_advanced` and answers the
+same rows from the table for a v1 session or from the cell for a v2 one, the
+table's quirks included. Before it, evals, health checks, A2A and AG-UI
+channels, the MCP endpoint, observers, Poppy and run summaries read only the
+table and saw a v2 session as empty. The waits for a turn to end (send and
+wait, health checks) poll the same reader. `scripts/lib/check-session-events-port.sh`
+fails CI on a direct table read outside the v1 runtime it allowlists, so a
+new feature works on both planes by default.
+
 **11.6 continued: the session's storage and the actions on it.** A v2
 session's values and secrets stay in its authority on the cell, where its
 agent's tools read them. The control plane keeps the Storage API (keys,

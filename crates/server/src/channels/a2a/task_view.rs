@@ -119,17 +119,17 @@ pub(super) async fn read_latest_turn(
         CONVERSATION_MESSAGE,
     ]
     .map(str::to_string);
-    let events = db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &filter_types,
-            &[],
-            None,
-            Some(TASK_EVENT_TAIL),
-        )
-        .await?;
+    let events = crate::domains::sessions::events::list(
+        db,
+        session_id,
+        None,
+        None,
+        &filter_types,
+        &[],
+        None,
+        Some(TASK_EVENT_TAIL),
+    )
+    .await?;
     Ok(project_latest_turn(&events))
 }
 

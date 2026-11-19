@@ -206,9 +206,17 @@ async fn last_turn_finished(
     let filter_types = [TURN_STARTED, TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED]
         .map(str::to_string)
         .to_vec();
-    let events = db
-        .list_events(session_id, None, None, &filter_types, &[], None, Some(500))
-        .await?;
+    let events = crate::domains::sessions::events::list(
+        db,
+        session_id,
+        None,
+        None,
+        &filter_types,
+        &[],
+        None,
+        Some(500),
+    )
+    .await?;
     Ok(events.last().is_some_and(|event| {
         matches!(
             event.event_type.as_str(),

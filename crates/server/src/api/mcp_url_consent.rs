@@ -288,19 +288,18 @@ async fn latest_user_controls(
     state: &AppState,
     session_id: SessionId,
 ) -> Option<everruns_core::message::Controls> {
-    let events = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["input.message".to_string()],
-            &[],
-            None,
-            Some(ELICITATION_LOOKBACK_EVENTS),
-        )
-        .await
-        .ok()?;
+    let events = crate::domains::sessions::events::list(
+        &state.db,
+        session_id,
+        None,
+        None,
+        &["input.message".to_string()],
+        &[],
+        None,
+        Some(ELICITATION_LOOKBACK_EVENTS),
+    )
+    .await
+    .ok()?;
     events.iter().rev().find_map(|event| {
         serde_json::from_value::<everruns_core::message::Controls>(
             event.data.get("message")?.get("controls")?.clone(),
@@ -322,18 +321,17 @@ async fn find_pending_elicitation(
     session_id: SessionId,
     tool_call_id: &str,
 ) -> anyhow::Result<Option<PendingElicitation>> {
-    let events = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(ELICITATION_LOOKBACK_EVENTS),
-        )
-        .await?;
+    let events = crate::domains::sessions::events::list(
+        &state.db,
+        session_id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(ELICITATION_LOOKBACK_EVENTS),
+    )
+    .await?;
 
     Ok(pending_in(
         events.iter().rev().map(|e| &e.data),

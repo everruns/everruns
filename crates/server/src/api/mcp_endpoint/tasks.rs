@@ -476,21 +476,20 @@ async fn turn_reply(
     input_sequence: i32,
     end_sequence: i32,
 ) -> anyhow::Result<Option<String>> {
-    let events = state
-        .db
-        .list_events(
-            session_id,
-            Some(input_sequence),
-            None,
-            &[
-                OUTPUT_MESSAGE_COMPLETED.to_string(),
-                CONVERSATION_MESSAGE.to_string(),
-            ],
-            &[],
-            None,
-            None,
-        )
-        .await?;
+    let events = crate::domains::sessions::events::list(
+        &state.db,
+        session_id,
+        Some(input_sequence),
+        None,
+        &[
+            OUTPUT_MESSAGE_COMPLETED.to_string(),
+            CONVERSATION_MESSAGE.to_string(),
+        ],
+        &[],
+        None,
+        None,
+    )
+    .await?;
     let said = events
         .iter()
         .filter(|event| event.sequence < end_sequence)

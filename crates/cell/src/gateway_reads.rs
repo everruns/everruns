@@ -248,6 +248,7 @@ impl Range {
                     sequence: e.sequence?,
                     event_type: e.event_type.clone(),
                     ts: e.ts,
+                    context: public["context"].clone(),
                     data: public["data"].clone(),
                 })
             })

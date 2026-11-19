@@ -2,6 +2,7 @@
 
 pub mod commands;
 mod ensure_platform_chat;
+pub mod events;
 pub mod record;
 pub use ensure_platform_chat::EnsurePlatformChat;
 pub mod limits;

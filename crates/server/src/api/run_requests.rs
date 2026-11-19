@@ -84,7 +84,7 @@ pub async fn get_run_requests(
 /// The session in `session`'s run that waits on `tool_call_ids`. Shared by
 /// the `/v1` answer endpoints.
 pub(crate) async fn route_answer(
-    db: &crate::storage::StorageBackend,
+    db: &std::sync::Arc<crate::storage::StorageBackend>,
     org_id: i64,
     session: &crate::domains::sessions::record::Session,
     tool_call_ids: &[&str],

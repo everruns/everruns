@@ -684,18 +684,17 @@ async fn stored_reply(
     message_id: &str,
 ) -> anyhow::Result<Option<(Reply, Vec<ToolRun>)>> {
     let filter_types = REPLY_EVENT_TYPES.map(str::to_string);
-    let events = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &filter_types,
-            &[],
-            None,
-            Some(REPLY_EVENT_TAIL),
-        )
-        .await?;
+    let events = crate::domains::sessions::events::list(
+        &state.db,
+        session_id,
+        None,
+        None,
+        &filter_types,
+        &[],
+        None,
+        Some(REPLY_EVENT_TAIL),
+    )
+    .await?;
     Ok(reply_to(&events, message_id).map(|reply| {
         let runs = turn_events(&events, message_id)
             .map(pact_delegated::tool_runs)

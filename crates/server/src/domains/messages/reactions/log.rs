@@ -178,6 +178,7 @@ mod tests {
             sequence,
             event_type: event_type.to_owned(),
             ts: chrono::Utc::now(),
+            context: serde_json::Value::Null,
             data,
         }
     }
