@@ -320,7 +320,7 @@ pub struct ListHarnesses {
 #[command(
     name = "list_harnesses",
     category = "harnesses",
-    description = "List all active harnesses. Use search for name search, include_archived=true to include archived.",
+    description = "List all active harnesses in the org. Use search for name search, include_archived=true to include archived. Ready-made harnesses such as coding are examples and appear here only after adoption: see list_harness_examples.",
     method = "GET",
     path = "/v1/harnesses",
     policy = HARNESS_VIEW,

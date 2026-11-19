@@ -23,10 +23,30 @@ the harness provides: an empty copy replaces the harness's settings with
 defaults. Preview the agent and resolve its findings before saving. Choose a model
 available in the target organization and preserve the user's explicit choice.
 
-Before writing a new definition, list the agent examples (`everruns agents
-examples list`) and start from the closest one with `everruns agents examples
-adopt <name>` when it fits; an example already pairs a prompt with the
-capabilities it needs. Adapt it rather than copying parts of it by hand.
+## Start from an example
+
+Review the examples before writing a new definition. They are ready-made
+agents and harnesses that ship with the deployment but are not in the
+organization until someone adopts them, so `agents list` and `harnesses list`
+do not show them. A harness missing from `harnesses list` may well be an
+example: Coding, the Yolop-based harness for software work on repositories,
+and Data Analyst are examples, not built-ins. Do not fall back to Sandbox
+Worker or Worker for coding work before checking.
+
+```bash
+everruns agents examples list       # MCP: list_agent_examples
+everruns harnesses examples list    # MCP: list_harness_examples
+everruns harnesses examples adopt coding --reason 'Coding agents need the Coding harness'
+everruns agents examples adopt pr-reviewer --reason 'Set up PR reviews for the repo'
+```
+
+Adopting creates an ordinary org agent or harness named after the example (a
+short suffix is added when the name is taken); check `harnesses list` first so
+you do not adopt the same harness twice. An adopted harness is then selected
+by name like any other. An agent example already pairs a prompt with the
+capabilities it needs; adapt it rather than copying parts of it by hand. A
+template's guided setup (GitHub App, connections, trigger) is not run by
+adoption: do those steps next.
 
 MCP catalog entries are presets, not automatically active tools. Discover the
 agent MCP attachment commands before adding a server. Select `actsAs` according

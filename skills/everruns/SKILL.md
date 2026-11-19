@@ -5,7 +5,7 @@ license: MIT
 compatibility: Framework work needs Rust 1.96+. Platform work needs the everruns CLI, an Everruns MCP connection, or HTTP access to an Everruns deployment.
 metadata:
   category: platform
-  version: "6.1"
+  version: "6.2"
   homepage: https://everruns.com
   docs: https://everruns.com/docs/
   repository: https://github.com/everruns/everruns
@@ -74,6 +74,13 @@ install first; offer the demo only as a way to look around.
 - **Every change carries a reason.** Platform changes are recorded in the
   entity's history: read the manager context first (`everruns context get
   <id>`), then pass `--reason` and `--context-revision`.
+- **Look at the examples before building from scratch.** Ready-made agents
+  and harnesses ship as examples that an organization adopts, so they are not
+  in `agents list` or `harnesses list` until someone does. Coding, the
+  Yolop-based coding harness, is one of them. List them with `everruns agents
+  examples list` and `everruns harnesses examples list` (MCP operations
+  `list_agent_examples` and `list_harness_examples`), adopt the closest with
+  `examples adopt <name>`, and adapt it.
 - **End with a check the person can see**: a health check, a session result, a
   link. Saved configuration is not proof that an agent works.
 
@@ -81,9 +88,14 @@ install first; offer the demo only as a way to look around.
 
 - **Agent**: a reusable definition of behavior, instructions, model selection,
   capabilities, and an execution harness.
+- **Example**: a ready-made agent or harness shipped with the deployment.
+  Adopting one creates an ordinary, editable agent or harness in the
+  organization; until then it only appears in the examples list.
 - **Harness**: a reusable execution setup. Conversation supports dialogue;
   Worker adds tools and files; Bashkit Worker adds a virtual shell; Sandbox
-  Worker supplies a full sandbox. Reuse an appropriate built-in harness.
+  Worker supplies a full sandbox. Reuse an appropriate built-in harness, or
+  adopt a harness example (Coding for software work, Data Analyst for data)
+  when one fits: `everruns harnesses examples list`.
 - **Capability**: tools, context, files, or behavior added to an agent or
   harness. Availability does not prove that an agent has it attached or that
   the person has connected the required account.

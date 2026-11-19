@@ -16,6 +16,12 @@ code navigation ([Code Navigation](code-navigation.md)), and a set of
 repositories per session. It requires a full sandbox but does not select a
 compute provider.
 
+An org adopts it from the console's Harnesses → Examples page, the CLI
+(`everruns harnesses examples adopt coding`), or MCP (`adopt_harness_example`);
+all three run one command. Because it is not built in, an agent that only
+lists the org's harnesses does not see it, which is why the Everruns skill and
+the MCP server instructions tell agents to review examples first.
+
 ## Decisions
 
 - **The Everruns loop works against a plain sandbox** (user, 2026-11-09). No
