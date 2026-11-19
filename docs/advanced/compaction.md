@@ -72,6 +72,9 @@ Compaction operates at two points:
 
 2. **Reactively**: if the LLM still returns a `RequestTooLarge` error (estimation can undercount), the compaction cascade runs and the request is retried automatically.
 
+Current raw tool evidence can trigger reduction below the working and model-window
+budgets. Lifetime token usage alone does not trigger another compaction.
+
 The proactive estimate includes the schemas offered to the model, not just messages.
 Deferred tools contribute their visible schema stubs, not the private full schemas
 kept for later discovery. History trimming reserves room for those declarations

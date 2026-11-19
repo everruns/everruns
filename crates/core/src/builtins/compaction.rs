@@ -578,7 +578,7 @@ pub fn should_compact_proactively(
     estimated > budget
 }
 
-/// Check whether cumulative prompt cost or raw tool evidence warrants a durable checkpoint.
+/// Check whether current raw tool evidence warrants a durable checkpoint.
 ///
 /// The marginal prompt floor prevents a large lifetime counter from compacting
 /// every short follow-up. Checkpoint suffix re-arming and retry watermarks remain

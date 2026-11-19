@@ -32,64 +32,33 @@ impl Command for GetSessionContextReport {
             .await?;
         let mut compaction =
             CompactionStatus::from_configs(&configs, ctx.capability_service.registry());
-        let plane = crate::domains::data_plane::session_plane::SessionPlane::of(
-            &ctx.db,
-            ctx.org_id(),
-            session.id,
-        )
-        .await?;
-        let latest = if let Some(plane) = &plane {
-            // Remote observations are bounded. During a large initial backfill
-            // there may be no main-request sample in this recent window.
-            let rows = plane
-                .events(1, i32::MAX, &["llm.generation"], Some(128))
-                .await?;
-            rows.into_iter().rev().find_map(|row| {
-                main_generation(&row.event_type, row.data)
-                    .map(|data| (i64::from(row.sequence), data))
-            })
-        } else {
-            ctx.db
-                .database()
-                .latest_context_generation(session_id)
-                .await
-                .map_err(anyhow::Error::from)?
-                .and_then(|row| {
-                    main_generation(&row.event_type, row.data)
-                        .map(|data| (i64::from(row.sequence), data))
-                })
-        };
+        let events =
+            crate::domains::sessions::events::SessionEvents::of(&ctx.db, session.id).await?;
+        let latest = events.latest_context_generation().await?.and_then(|row| {
+            main_generation(&row.event_type, row.data).map(|data| (i64::from(row.sequence), data))
+        });
         let types = [
             "context.compacting",
             "context.compacted",
             "context.compaction.skipped",
             "context.compaction.failed",
         ];
-        let observation = if let Some(plane) = &plane {
-            plane
-                .events(1, i32::MAX, &types, Some(1))
-                .await?
-                .pop()
-                .map(|row| deserialize_event_data(&row.event_type, row.data))
-        } else {
-            ctx.db
-                .list_events(
-                    session_id,
-                    None,
-                    None,
-                    &types.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
-                    &[],
-                    None,
-                    Some(1),
-                )
-                .await?
-                .pop()
-                .map(|row| deserialize_event_data(&row.event_type, row.data))
-        };
+        let observation = events
+            .list(
+                None,
+                None,
+                &types.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                &[],
+                None,
+                Some(1),
+            )
+            .await?
+            .pop()
+            .map(|row| deserialize_event_data(&row.event_type, row.data));
         compaction.last_event = observation
             .as_ref()
             .and_then(CompactionEventSummary::from_event);
-        if plane.is_none() {
+        if !events.on_data_plane() {
             let store = ctx.encryption.as_ref().map(|encryption| {
                 crate::storage::DbCompactionCheckpointStore::new(ctx.db.clone(), encryption.clone())
             });

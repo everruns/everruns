@@ -87,10 +87,16 @@ mod tests {
             assert_eq!(tools.contains(&"spawn_agent"), worker);
             assert_eq!(tools.contains(&"list_tasks"), worker);
             assert!(!tools.contains(&"secret_store"));
+            assert!(
+                tools.contains(&"query_history"),
+                "{preset:?} must retrieve compacted history"
+            );
             if preset == BuiltInHarnessPreset::Base {
-                // Base brings no tools beyond the approval gate.
+                // Base brings the approval gate and retained-history retrieval.
                 assert!(
-                    tools.iter().all(|tool| tool.contains("approval")),
+                    tools
+                        .iter()
+                        .all(|tool| tool.contains("approval") || *tool == "query_history"),
                     "unexpected tools: {tools:?}"
                 );
             }

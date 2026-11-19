@@ -93,8 +93,9 @@ sed -i '/^| \[E2B\](\/capabilities\/e2b\/) | \[Storage\]/d' "$WORK/repo/$INDEX"
 expect_drift "dependencies table drops a dependency" "\`e2b\` depends on ['session_storage']"
 
 scratch
-sed -i 's/configures 25 capabilities/configures 24 capabilities/' "$WORK/repo/docs/built-ins/harnesses/generic.md"
-expect_drift "harness page states a wrong count" 'says it configures 24 capabilities'
+sed -i -E 's/configures [0-9]+ capabilities/configures 0 capabilities/' "$WORK/repo/docs/built-ins/harnesses/generic.md"
+grep -q 'configures 0 capabilities' "$WORK/repo/docs/built-ins/harnesses/generic.md"
+expect_drift "harness page states a wrong count" 'says it configures 0 capabilities'
 
 scratch
 sed -i '/^| Platform |/d' "$WORK/repo/docs/built-ins/harnesses/platform-chat.md"
