@@ -114,7 +114,7 @@ docker logs	--name --no-follow <service>
 docker open	--name
 docker status	--name
 docker stop	--name
-docker up	--admin-email --auth --image-tag --name --no-open --port --provider --public-url --tunnel --yes/-y
+docker up	--admin-email --auth --data-plane --image-tag --name --no-open --port --provider --public-url --tunnel --yes/-y
 docker upgrade	--image-tag --name --no-backup --yes/-y
 durable executions get	--context-revision --execution-id --reason <execution_id>
 durable schedules create	--catch-up-missed --context-revision --cron-expression! --description --enabled --max-catch-up --max-concurrent --name! --reason --retry-policy --target! --timezone
@@ -206,7 +206,7 @@ k8s password	--name
 k8s port-forward	--name
 k8s status	--name
 k8s uninstall	--name
-k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --timeout --values/-f... --yes/-y
+k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --timeout --values/-f... --yes/-y
 k8s upgrade	--chart-version --name --no-backup --timeout --yes/-y
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
