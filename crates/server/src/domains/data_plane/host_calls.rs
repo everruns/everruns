@@ -4,11 +4,12 @@
 //! their one dispatcher.
 //!
 //! A hosted capability on a cell needs some answers only the control plane
-//! has now: a GitHub token for one use, the org's knowledge, a Poppy call,
-//! a platform tool's call as a person, a Slack action as the bot. Until
-//! they move to pushed state or into the runtime (`Fate`), the session's
-//! connection token, service API key, web search settings and keys, tool
-//! approval policy, egress grants and SQL databases come the same way.
+//! has now: a connection token, a GitHub token or a service key for the
+//! turn's person, the org's knowledge, a Poppy call, a platform tool's call
+//! as a person, a Slack action as the bot. The session's SQL databases come
+//! the same way until they move into the runtime, and the org's settings
+//! (`org_settings.rs`) until their pushed copy reaches the cell, as does
+//! the session owner's own approval settings (`Fate`).
 //!
 //! Decisions:
 //! - Only a declared host call runs, by its one handler: the v1 worker's

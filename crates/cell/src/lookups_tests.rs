@@ -17,6 +17,9 @@ struct Material {
     reaches: bool,
     answer: Mutex<Option<anyhow::Result<HostCallAnswer>>>,
     asked: Mutex<Vec<(String, String, Value)>>,
+    /// What the control plane pushed: settings and secrets, by id.
+    pushed: Mutex<std::collections::HashMap<String, Value>>,
+    secrets: Mutex<std::collections::HashMap<String, Vec<u8>>>,
 }
 
 impl Material {
@@ -25,6 +28,8 @@ impl Material {
             reaches,
             answer: Mutex::new(Some(answer)),
             asked: Mutex::new(Vec::new()),
+            pushed: Mutex::default(),
+            secrets: Mutex::default(),
         })
     }
 }
@@ -35,12 +40,35 @@ impl OrgMaterial for Material {
         Some("org-a".into())
     }
 
-    async fn connection(&self, _org: &str, _id: &str) -> anyhow::Result<Option<Connection>> {
-        Ok(None)
+    async fn connection(&self, _org: &str, id: &str) -> anyhow::Result<Option<Connection>> {
+        Ok(self.pushed.lock().get(id).map(|settings| Connection {
+            connection_id: id.to_owned(),
+            kind: everruns_contracts::dataplane::ORG_SETTING.to_owned(),
+            settings: settings.clone(),
+            token_secret_id: String::new(),
+            refresh_owner: Default::default(),
+        }))
     }
 
     async fn secret(&self, _org: &str, _secret_id: &str) -> anyhow::Result<Vec<u8>> {
         anyhow::bail!("no secrets")
+    }
+
+    async fn open_secret(
+        &self,
+        _org: &str,
+        secret_id: &str,
+    ) -> anyhow::Result<Option<crate::mcp::OpenedSecret>> {
+        Ok(self
+            .secrets
+            .lock()
+            .get(secret_id)
+            .map(|plain| crate::mcp::OpenedSecret {
+                revision: 1,
+                plain: plain.clone(),
+                data_key: [0; 32],
+                data_key_id: "dk".into(),
+            }))
     }
 
     fn looks_up(&self) -> bool {
@@ -488,4 +516,78 @@ async fn a_platform_call_names_its_turn_and_never_a_person() {
     assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
     assert_eq!(asked[0].2["input_message_id"], json!(input.to_string()));
     assert!(asked[0].2.get("acting_user").is_none());
+}
+
+/// The org's settings and search keys come from its pushed config, so a
+/// tool reads them while the control plane is down; the session owner's
+/// own approval settings are still asked, and without an answer the turn
+/// runs with none.
+#[tokio::test]
+async fn pushed_org_settings_are_read_without_asking_the_control_plane() {
+    use everruns_contracts::dataplane::{
+        TOOL_APPROVAL_SETTING, WEB_SEARCH_SETTING, web_search_key_secret,
+    };
+    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    let account = uuid::Uuid::new_v4();
+    down.pushed.lock().insert(
+        WEB_SEARCH_SETTING.into(),
+        serde_json::to_value(
+            everruns_contracts::runtime::web_search::WebSearchOrgSettings::default(),
+        )
+        .unwrap(),
+    );
+    down.pushed.lock().insert(
+        TOOL_APPROVAL_SETTING.into(),
+        json!({ "allowed_modes": ["normal"] }),
+    );
+    down.secrets
+        .lock()
+        .insert(web_search_key_secret(account), b"bs-key".to_vec());
+    let session = SessionId::new();
+    let resolver = resolver(&down, session);
+
+    let settings = resolver.get_web_search_settings(session).await.unwrap();
+    assert!(settings.is_some());
+    let key = resolver
+        .get_web_search_account_key(session, account)
+        .await
+        .unwrap();
+    assert_eq!(key.as_deref(), Some("bs-key"));
+    // Not one of the org's search accounts: none, and nothing asked.
+    let other = resolver
+        .get_web_search_account_key(session, uuid::Uuid::new_v4())
+        .await
+        .unwrap();
+    assert_eq!(other, None);
+    assert!(down.asked.lock().is_empty());
+
+    // The org's policy from the config; the owner's settings could not be
+    // asked, so none.
+    let policy = resolver
+        .get_tool_approval_policy(session)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(policy.org.allowed_modes, vec!["normal".to_owned()]);
+    assert_eq!(policy.personal, Default::default());
+    let asked = down.asked.lock();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].1, "worker_get_tool_approval_policy");
+}
+
+#[tokio::test]
+async fn pushed_egress_grants_are_enforced_without_asking() {
+    let org = everruns_contracts::typed_id::OrgId::new();
+    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    down.pushed.lock().insert(
+        everruns_contracts::dataplane::EGRESS_SETTING.into(),
+        json!({ "patterns": ["api.example.com"], "open": false }),
+    );
+    let weak: Arc<dyn OrgMaterial> = down.clone();
+    let grant = super::org_grant(Some(Arc::downgrade(&weak)), &org)
+        .await
+        .unwrap();
+    assert!(!grant.open);
+    assert!(grant.extension.is_some());
+    assert!(down.asked.lock().is_empty());
 }

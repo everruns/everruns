@@ -16,10 +16,12 @@
 //!   change to the registry changes that file too, so a new call shows in
 //!   review.
 //! - Each call says what it is planned to become (`Fate`). Four of today's
-//!   calls are org values known before the call (policy, settings, keys,
-//!   egress grants) and move to pushed state; the session's SQL databases
-//!   move into the runtime. Until then they travel here, under the same
-//!   rules. A connection token or a service key stays a call: which one
+//!   calls are values known before the call (web search settings and keys,
+//!   egress grants, the approval policy): the org's are pushed with its
+//!   config (`dataplane::ORG_SETTING`), and the call stays only as the
+//!   fallback until they arrive and for the session owner's own approval
+//!   settings. The session's SQL databases move into the runtime. Until
+//!   then they travel here, under the same rules. A connection token or a service key stays a call: which one
 //!   applies depends on the turn's person and responder, and the control
 //!   plane refreshes OAuth grants.
 //! - The path is fixed: executor, the session's directory cell, then
@@ -171,7 +173,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         ActsAs::Org,
         Effect::Read,
         Fate::Pushed,
-        "the org's egress grants: open egress, allowlist extension",
+        "the org's egress grants (open egress, allowlist extension), until they are pushed",
     ),
     call(
         "service_api_key",
@@ -187,7 +189,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         ActsAs::Org,
         Effect::Read,
         Fate::Pushed,
-        "the org's tool approval policy",
+        "the session owner's own approval settings; the org's policy is pushed",
     ),
     call(
         "web_search_key",
@@ -195,7 +197,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         ActsAs::Org,
         Effect::Read,
         Fate::Pushed,
-        "a web search account key",
+        "a web search account key, until the org's keys are pushed",
     ),
     call(
         "web_search_settings",
@@ -203,7 +205,7 @@ pub const HOST_CALLS: &[HostCall] = &[
         ActsAs::Org,
         Effect::Read,
         Fate::Pushed,
-        "the org's web search settings",
+        "the org's web search settings, until they are pushed",
     ),
     call(
         "knowledge",

@@ -2044,6 +2044,22 @@ carried yet. They stay host calls rather than pushed state: which
 connection applies depends on the turn, and OAuth grants refresh in the
 control plane.
 
+**Parity, Phase A: org settings are pushed (2026-11-19).** The answers
+known before any call (the org's web search defaults and accounts, each
+search account's key, the tool approval policy, the egress grants) now
+travel with the org's config instead of being asked at call time: each
+setting is an `org_setting` connection whose settings are the value, and
+each search key a secret sealed with the org's data key
+(`crates/server/src/domains/data_plane/org_settings.rs`). They sync
+whole when one of them changes and when the org is put on a data plane,
+and a sync never fails the change that caused it. A cell reads them from
+its directory cell (`crates/cell/src/lookups.rs`), so web search and
+egress keep working while the control plane is down. A setting that has
+not arrived is asked as before, which covers orgs placed before this
+change until their next settings change. The session owner's own
+approval settings are a person's and stay a host call; without an
+answer a turn runs with the org's policy alone, which only asks more.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

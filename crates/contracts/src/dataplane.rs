@@ -134,6 +134,28 @@ pub const LLM_PROVIDER: &str = "llm_provider";
 /// `oauth_provider_id`.
 pub const MCP_OAUTH: &str = "mcp_oauth";
 
+/// The connection kind of an org setting a data plane's tools read as they
+/// run (data plane v2 parity): its `settings` are the value, it has no
+/// token. Pushed whole whenever the setting changes, so a tool reads it
+/// from the org's config rather than asking the control plane, and it
+/// still reads it while the control plane is down.
+pub const ORG_SETTING: &str = "org_setting";
+/// The org's web search defaults and search accounts, without keys
+/// (`runtime::web_search::WebSearchOrgSettings`).
+pub const WEB_SEARCH_SETTING: &str = "setting:web_search";
+/// The org's tool approval policy
+/// (`tool_approval_policy::OrgToolApprovalPolicy`).
+pub const TOOL_APPROVAL_SETTING: &str = "setting:tool_approval";
+/// The egress grants the boundary enforces for the org: `{"patterns":
+/// [...], "open": bool}`, patterns only when granted.
+pub const EGRESS_SETTING: &str = "setting:egress";
+
+/// The secret holding the key of the org's search account `account` (an
+/// organization connection whose provider has a search driver).
+pub fn web_search_key_secret(account: uuid::Uuid) -> String {
+    format!("web-search-key:{account}")
+}
+
 /// The secret holding the value of the MCP header placeholder `binding`
 /// (`${BINDING}`) in an org's agent definitions.
 pub fn mcp_binding_secret(binding: &str) -> String {
