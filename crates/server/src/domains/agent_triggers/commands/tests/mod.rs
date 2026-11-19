@@ -275,6 +275,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let now = chrono::Utc::now();
     let agent = crate::storage::AgentRow {
         model_role: None,
+        model_preset: None,
         completion_check: Default::default(),
         localizations: Default::default(),
         avatar_id: None,

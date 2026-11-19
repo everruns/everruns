@@ -82,6 +82,12 @@ pub struct CreateAgentRequest {
     /// `default_model_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_role: Option<crate::domains::organizations::research_model::AgentModelRole>,
+    /// Model preset the agent takes its job models from (`automatic`,
+    /// `provider:gemini` or a custom preset id). Omit for the organization
+    /// defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "provider:gemini")]
+    pub model_preset: Option<String>,
     /// Harness ID used as this agent's base execution environment. If omitted,
     /// the organization default is used (Conversation for new organizations).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -214,6 +220,15 @@ pub struct UpdateAgentRequest {
     )]
     #[schema(value_type = Option<String>)]
     pub model_role: Option<Option<crate::domains::organizations::research_model::AgentModelRole>>,
+    /// Model preset the agent takes its job models from. Null returns to the
+    /// organization defaults; omit to leave unchanged.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "double_option"
+    )]
+    #[schema(value_type = Option<String>, example = "provider:gemini")]
+    pub model_preset: Option<Option<String>>,
     /// Harness ID used as this agent's base execution environment. Omit to leave unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]

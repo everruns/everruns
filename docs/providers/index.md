@@ -104,6 +104,44 @@ replaces `default_model_id`:
 everruns agents update agent_01h9 --name researcher --instructions "Research and cite sources" --model-role research
 ```
 
+## Organization coding model
+
+Under **Models → Defaults**, the **Coding model** row picks the model for
+agents on the Coding harness that set no model of their own. Left unset, they
+use the default model. Use `PATCH /v1/orgs/{org_id}` with `coding_model_id`, or
+`null` to clear it.
+
+## Model presets
+
+A model preset is a named set of models, one for each job: Default, Chat,
+Coding, Research, Small and Decision. The organization defaults stay what
+every agent uses; a preset is an alternative set an agent can pick under
+**Models from** on its page. **Models → Presets** lists them:
+
+- **Automatic**: the best usable model for each job across your connected
+  providers, following each provider's recommended models.
+- **One preset per connected provider**, such as **OpenAI** or **Gemini**,
+  filled from that provider's recommended models. These are read only and
+  follow new recommendations. If a recommended model is not enabled in your
+  organization, the provider's next recommended model is used and marked.
+- **Your own presets**: start blank or duplicate any preset, then change jobs
+  one at a time. A job left as **Organization default** follows the Defaults
+  tab.
+
+An agent's own default model still wins for its turns. On a preset, a research
+agent uses the Research job and a Coding harness agent the Coding job; other
+agents use Default. **Copy to organization defaults** writes a preset's models
+into the Defaults tab in one step.
+
+Presets work the same from the API, MCP and the CLI:
+
+```bash
+everruns model-presets list
+everruns model-presets create --name "Cheap council" --from provider:gemini
+everruns agents update agent_01h9 --name reviewer --instructions "Review the diff" --model-preset provider:gemini
+everruns model-presets apply provider:gemini
+```
+
 ## Organization small-model default
 
 Under **Models → Defaults**, admins can select a **Small model** for lightweight

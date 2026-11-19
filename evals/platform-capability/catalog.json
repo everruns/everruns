@@ -1087,6 +1087,29 @@
   },
   {
     "category": "models",
+    "cli": "model-presets apply",
+    "description": "Copy a preset's models into the organization defaults. Jobs the preset leaves empty keep their current default.",
+    "input_schema": {
+      "properties": {
+        "id": {
+          "description": "Preset id to copy into the organization defaults.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "apply_model_preset",
+    "output_shape": "unknown",
+    "path": "/v1/model-presets/{id}/apply",
+    "positional_arg": "id",
+    "read_only": false
+  },
+  {
+    "category": "models",
     "cli": "models selection apply",
     "description": "Atomically apply reviewed enablement changes. Rejects a model whose provider or enabled state changed while the picker was open.",
     "input_schema": {
@@ -3366,6 +3389,14 @@
         "mcpServers": {
           "$ref": "#/$defs/BTreeMap",
           "description": "Remote MCP servers scoped to this agent."
+        },
+        "model_preset": {
+          "description": "Model preset the agent takes its job models from (`automatic`,\n`provider:gemini` or a custom preset id). Omit for the organization\ndefaults.",
+          "example": "provider:gemini",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "model_role": {
           "oneOf": [
@@ -7415,6 +7446,96 @@
     "read_only": false
   },
   {
+    "category": "models",
+    "cli": "model-presets create",
+    "description": "Create a custom model preset, blank or copied from another preset with `from`.",
+    "input_schema": {
+      "$defs": {
+        "ModelPresetJobs": {
+          "description": "The model for each job. A missing job uses the organization default for it.",
+          "properties": {
+            "chat_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "coding_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "decision_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "research_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "small_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ModelPresetJobs"
+        },
+        {
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "from": {
+              "description": "Preset to copy jobs from (`automatic`, `provider:gemini` or a custom\nid). Jobs given in this request override the copied ones.",
+              "example": "provider:gemini",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "Display name, 1 to 100 characters.",
+              "example": "Cheap council",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Create a custom preset, blank or as a copy of another preset."
+    },
+    "method": "POST",
+    "name": "create_model_preset",
+    "output_shape": "unknown",
+    "path": "/v1/model-presets",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "observers",
     "cli": "observers create",
     "description": "Create an observer (online scoring).",
@@ -10798,6 +10919,29 @@
     "read_only": false
   },
   {
+    "category": "models",
+    "cli": "model-presets delete",
+    "description": "Delete a custom model preset. Refused while agents take their models from it.",
+    "input_schema": {
+      "properties": {
+        "id": {
+          "description": "Custom preset id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_model_preset",
+    "output_shape": "unknown",
+    "path": "/v1/model-presets/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "observers",
     "cli": "observers delete",
     "description": "Archive an observer.",
@@ -13419,6 +13563,29 @@
     "name": "get_model",
     "output_shape": "unknown",
     "path": "/v1/models/{id}",
+    "positional_arg": "id",
+    "read_only": true
+  },
+  {
+    "category": "models",
+    "cli": "model-presets get",
+    "description": "Get one model preset with its model per job and the jobs that use a fallback model.",
+    "input_schema": {
+      "properties": {
+        "id": {
+          "description": "Preset id: `automatic`, `provider:<driver>` or a custom preset id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_model_preset",
+    "output_shape": "unknown",
+    "path": "/v1/model-presets/{id}",
     "positional_arg": "id",
     "read_only": true
   },
@@ -16944,6 +17111,20 @@
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}/messages",
     "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "models",
+    "cli": "model-presets list",
+    "description": "List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job.",
+    "input_schema": {
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_model_presets",
+    "output_shape": "unknown",
+    "path": "/v1/model-presets",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -24337,6 +24518,14 @@
                 }
               ]
             },
+            "model_preset": {
+              "description": "Model preset the agent takes its job models from. Null returns to the\norganization defaults; omit to leave unchanged.",
+              "example": "provider:gemini",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "model_role": {
               "description": "Follow an organization model instead of pinning one: `research` uses\nthe organization research model and clears `default_model_id`. Null\nstops following it; setting `default_model_id` also clears it.",
               "type": [
@@ -27539,6 +27728,92 @@
     "read_only": false
   },
   {
+    "category": "models",
+    "cli": "model-presets update",
+    "description": "Rename a custom model preset or change its model per job; null returns a job to the organization default.",
+    "input_schema": {
+      "$defs": {
+        "UpdateModelPresetRequest": {
+          "description": "Change a custom preset. Omit a field to keep it; null clears a job back to\nthe organization default.",
+          "properties": {
+            "chat_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "coding_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "decision_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "default_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "research_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "small_model_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/UpdateModelPresetRequest"
+        },
+        {
+          "properties": {
+            "id": {
+              "description": "Custom preset id.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PATCH",
+    "name": "update_model_preset",
+    "output_shape": "unknown",
+    "path": "/v1/model-presets/{id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "observers",
     "cli": "observers update",
     "description": "Update an observer.",
@@ -28462,6 +28737,13 @@
             },
             "chat_model_id": {
               "description": "Independent model for the built-in Everruns Chat. Omit to preserve; null inherits\nthe agents/sessions default. Must be an available shared chat model with tools.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "coding_model_id": {
+              "description": "Default model for coding work (coding-harness agents and `coding` helpers).\nOmit to preserve; null falls back to the default model.",
               "type": [
                 "string",
                 "null"
@@ -30470,6 +30752,14 @@
             "mcpServers": {
               "$ref": "#/$defs/BTreeMap",
               "description": "Remote MCP servers scoped to this agent."
+            },
+            "model_preset": {
+              "description": "Model preset the agent takes its job models from (`automatic`,\n`provider:gemini` or a custom preset id). Omit for the organization\ndefaults.",
+              "example": "provider:gemini",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "model_role": {
               "oneOf": [

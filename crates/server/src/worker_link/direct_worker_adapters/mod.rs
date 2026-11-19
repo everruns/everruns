@@ -1106,6 +1106,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             org_id,
             session.model_id,
             agent.as_ref(),
+            harness.as_ref().map(|h| h.name.as_str()),
             harness.as_ref().and_then(|h| h.default_model_id),
         )
         .await

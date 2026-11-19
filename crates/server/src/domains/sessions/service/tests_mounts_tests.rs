@@ -90,6 +90,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         model_role: None,
+        model_preset: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -445,6 +446,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
 
     let other_agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         model_role: None,
+        model_preset: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -1393,6 +1395,7 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         model_role: None,
+        model_preset: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),

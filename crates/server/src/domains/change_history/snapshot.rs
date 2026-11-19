@@ -79,6 +79,8 @@ fn derived(kind: EntityKind) -> &'static [&'static str] {
         ],
         // Resolved from the org's models when Automatic.
         EntityKind::Organization => &["effective_research_model_id"],
+        // Computed from agents and the org's current models.
+        EntityKind::ModelPreset => &["agent_count", "fallback_jobs"],
         _ => &[],
     }
 }
@@ -575,6 +577,7 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::Workspace => ("update_workspace", "workspace_id"),
         EntityKind::VirtualUser => ("update_virtual_user", "id"),
         EntityKind::Observer => ("update_observer", "observer_id"),
+        EntityKind::ModelPreset => ("update_model_preset", "id"),
         EntityKind::Budget => ("update_budget", "budget_id"),
         EntityKind::PaymentAccount => ("update_payment_account", "payment_account_id"),
         EntityKind::PaymentPolicy => ("update_payment_policy", "payment_policy_id"),

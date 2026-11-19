@@ -5,10 +5,11 @@ import { useConfirmation } from "@/components/ui/confirmation-provider";
 //
 // Providers moved here from Settings: they are something people build and
 // maintain, like agents or MCP servers, and connecting one, syncing it and
-// choosing its models is one task. One page with three tabs keeps that task in
+// choosing its models is one task. One page with four tabs keeps that task in
 // one place (knowledge/ui/models-and-providers.md).
 //
-// Each tab is its own path (`/models`, `/models/providers`, `/models/defaults`)
+// Each tab is its own path (`/models`, `/models/presets`, `/models/providers`,
+// `/models/defaults`)
 // and the provider and status filters are query params, so links from
 // elsewhere land on the view they name. This shell is the tabs' layout: the
 // drawers and notices it owns survive switching tabs. Old `?tab=` links and
@@ -18,7 +19,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Cpu, Plus, PlugZap, SlidersHorizontal } from "lucide-react";
+import { Cpu, Layers, Plus, PlugZap, SlidersHorizontal } from "lucide-react";
 import { ModelsIcon } from "@/components/icons/facet-icons";
 import { Button } from "@/components/ui/button";
 import { Notice, NoticeDescription } from "@/components/ui/notice";
@@ -31,6 +32,7 @@ import {
 } from "@/components/layout";
 import { AddModelDialog } from "@/components/models/add-model-dialog";
 import { DefaultsTab } from "@/components/models/defaults-tab";
+import { PresetsTab } from "@/components/models/presets-tab";
 import { ModelSelectionDrawer } from "@/components/models/model-selection";
 import { ModelsTab, type StatusFilter } from "@/components/models/models-tab";
 import { ConnectProviderSheet } from "@/components/providers/connect-provider-sheet";
@@ -57,7 +59,7 @@ import { applyModelSelection } from "@/lib/api/model-selection";
 import { selectionChanges } from "@/lib/model-selection";
 import { tabFromPath, tabHref } from "@/lib/tab-routes";
 
-const TABS = ["models", "providers", "defaults"] as const;
+const TABS = ["models", "presets", "providers", "defaults"] as const;
 type Tab = (typeof TABS)[number];
 const tabPath = (tab: Tab) => tabHref("/models", tab, "models");
 type PageNotice = { kind: "success" | "error"; text: string };
@@ -252,6 +254,12 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
       count: counts.models,
     },
     {
+      value: "presets",
+      href: tabPath("presets"),
+      label: ui("Presets"),
+      icon: <Layers className="icon-sharp size-3.5" />,
+    },
+    {
       value: "providers",
       href: tabPath("providers"),
       label: ui("Providers"),
@@ -333,6 +341,9 @@ export function ModelsShell({ children }: { children?: ReactNode }) {
             onUpdate={handleUpdate}
             onDelete={(id) => void handleDelete(id)}
           />
+        )}
+        {tab === "presets" && (
+          <PresetsTab models={models} canManage={canManage} onNotice={setNotice} />
         )}
         {tab === "providers" && (
           <ProvidersTab

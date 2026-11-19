@@ -202,6 +202,11 @@ pub struct Manifest {
     /// use their default model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_role: Option<String>,
+    /// Model preset the agent takes its job models from, by id (`automatic`,
+    /// `provider:gemini` or a custom preset id). Hosts without the preset use
+    /// their organization defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_preset: Option<String>,
     /// Named harness requirement. Omission uses the host's default harness.
     #[serde(
         default,

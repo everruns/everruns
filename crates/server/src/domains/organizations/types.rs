@@ -34,6 +34,10 @@ pub struct OrganizationResponse {
     /// then another provider's), else the default model.
     #[schema(value_type = Option<String>)]
     pub effective_research_model_id: Option<everruns_contracts::typed_id::ModelId>,
+    /// Default for coding work: coding-harness agents and `coding` helpers.
+    /// None falls back to the default model.
+    #[schema(value_type = Option<String>)]
+    pub coding_model_id: Option<everruns_contracts::typed_id::ModelId>,
     /// Default harness to preselect in the UI.
     #[schema(value_type = Option<String>)]
     pub default_harness_id: Option<everruns_contracts::typed_id::HarnessId>,
@@ -118,6 +122,11 @@ pub struct UpdateOrganizationRequest {
     #[serde(default, deserialize_with = "double_option")]
     #[schema(value_type = Option<String>)]
     pub research_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
+    /// Default model for coding work (coding-harness agents and `coding` helpers).
+    /// Omit to preserve; null falls back to the default model.
+    #[serde(default, deserialize_with = "double_option")]
+    #[schema(value_type = Option<String>)]
+    pub coding_model_id: Option<Option<everruns_contracts::typed_id::ModelId>>,
     /// Default harness to preselect in the UI for new sessions.
     /// Mutually exclusive with `default_harness_name`.
     #[serde(skip_serializing_if = "Option::is_none")]

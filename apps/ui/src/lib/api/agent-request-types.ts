@@ -35,6 +35,7 @@ export interface CreateAgentRequest {
   default_model_id?: string;
   /** Follow an organization model instead of pinning one; exclusive with `default_model_id`. */
   model_role?: AgentModelRole;
+  model_preset?: string;
   tags?: string[];
   /** Capabilities with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];
@@ -71,6 +72,7 @@ export interface UpdateAgentRequest {
   default_model_id?: string;
   /** Follow an organization model; null stops following it. Setting `default_model_id` clears it. */
   model_role?: AgentModelRole | null;
+  model_preset?: string | null;
   tags?: string[];
   /** Capabilities with per-agent configuration */
   capabilities?: AgentCapabilityConfig[];

@@ -338,6 +338,13 @@
             }
           ]
         },
+        "model_preset": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Model preset the agent takes its job models from, by id (`automatic`,\n`provider:gemini` or a custom preset id). Hosts without the preset use\ntheir organization defaults."
+        },
         "model_role": {
           "type": [
             "string",

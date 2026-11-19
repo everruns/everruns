@@ -110,6 +110,11 @@ pub enum AgentsCommand {
         #[arg(long, value_parser = ["research"])]
         model_role: Option<String>,
 
+        /// Take job models from a model preset (`automatic`, `provider:gemini`
+        /// or a custom preset id) instead of the organization defaults
+        #[arg(long)]
+        model_preset: Option<String>,
+
         /// Harness ID or name (e.g. harness_xxx or "generic").
         /// Omit to default to the org's generic harness.
         #[arg(long, short = 'H')]
@@ -162,6 +167,11 @@ pub enum AgentsCommand {
         #[arg(long, value_parser = ["research"])]
         model_role: Option<String>,
 
+        /// Take job models from a model preset (`automatic`, `provider:gemini`
+        /// or a custom preset id) instead of the organization defaults
+        #[arg(long)]
+        model_preset: Option<String>,
+
         /// Harness ID or name (e.g. harness_xxx or "generic")
         #[arg(long, short = 'H')]
         harness: Option<String>,
@@ -207,6 +217,7 @@ pub async fn run(
             description,
             model,
             model_role,
+            model_preset,
             harness,
             tag,
             reason,
@@ -216,6 +227,7 @@ pub async fn run(
                 && description.is_none()
                 && model.is_none()
                 && model_role.is_none()
+                && model_preset.is_none()
                 && harness.is_none()
                 && tag.is_empty();
             let file = resolve_agent_file(file, use_default_file);
@@ -225,6 +237,7 @@ pub async fn run(
                     || description.is_some()
                     || model.is_some()
                     || model_role.is_some()
+                    || model_preset.is_some()
                     || harness.is_some()
                     || !tag.is_empty()
                 {
@@ -257,6 +270,7 @@ pub async fn run(
                     description,
                     model,
                     model_role,
+                    model_preset,
                     harness,
                     tag,
                     reason,
@@ -274,6 +288,7 @@ pub async fn run(
             description,
             model,
             model_role,
+            model_preset,
             harness,
             tag,
             reason,
@@ -284,6 +299,7 @@ pub async fn run(
                 && description.is_none()
                 && model.is_none()
                 && model_role.is_none()
+                && model_preset.is_none()
                 && harness.is_none()
                 && tag.is_empty();
             let file = resolve_agent_file(file, use_default_file);
@@ -294,6 +310,7 @@ pub async fn run(
                     || description.is_some()
                     || model.is_some()
                     || model_role.is_some()
+                    || model_preset.is_some()
                     || harness.is_some()
                     || !tag.is_empty()
                 {
@@ -328,6 +345,7 @@ pub async fn run(
                     description,
                     model,
                     model_role,
+                    model_preset,
                     harness,
                     tag,
                     reason,
@@ -1054,6 +1072,7 @@ async fn save_from_flags(
     description: Option<String>,
     model: Option<String>,
     model_role: Option<String>,
+    model_preset: Option<String>,
     harness: Option<String>,
     tags: Vec<String>,
     reason: Option<String>,
@@ -1075,6 +1094,7 @@ async fn save_from_flags(
             description,
             model,
             model_role,
+            model_preset,
             harness,
             tags,
         ),
@@ -1118,6 +1138,7 @@ fn agent_params(
     description: Option<String>,
     model: Option<String>,
     model_role: Option<String>,
+    model_preset: Option<String>,
     harness: Option<String>,
     tags: Vec<String>,
 ) -> serde_json::Value {
@@ -1133,6 +1154,9 @@ fn agent_params(
     }
     if let Some(role) = model_role {
         params["model_role"] = role.into();
+    }
+    if let Some(preset) = model_preset {
+        params["model_preset"] = preset.into();
     }
     match harness {
         Some(h) if is_prefixed_id(&h, "harness") => params["harness_id"] = h.into(),
