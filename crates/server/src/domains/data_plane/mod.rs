@@ -44,6 +44,7 @@ pub mod event_tap;
 pub mod feed;
 pub mod host_calls;
 pub mod mcp;
+pub mod memory;
 pub mod org_settings;
 pub mod outbox;
 pub mod providers;
@@ -156,6 +157,25 @@ pub fn org_internal(public: &str) -> Option<i64> {
     (org_public(internal) == public).then_some(internal)
 }
 
+/// A session the control plane creates on an org's data plane.
+pub struct NewSession<'a> {
+    /// The control plane's id for it: its record and the data plane's
+    /// session are one session.
+    pub id: everruns_contracts::typed_id::SessionId,
+    /// The org's agent it runs, at its current revision.
+    pub agent_key: &'a str,
+    /// Or the session's own declaration of that agent (its own settings on
+    /// top).
+    pub definition: Option<&'a Value>,
+    /// The session's own starter files.
+    pub initial_files: &'a [everruns_core::session_file::InitialFile],
+    /// The managed sandbox pinned for it, as a capability entry.
+    pub sandbox: Option<&'a Value>,
+    /// The control plane's Memory mounts it has (`/memory/user`, ...),
+    /// whose files stay in the control plane (`data_plane::memory`).
+    pub memory: &'a [String],
+}
+
 /// A data plane as the control plane talks to it. The v1 answer
 /// ([`NoDataPlane`]) takes every call and does nothing.
 #[async_trait::async_trait]
@@ -175,19 +195,9 @@ pub trait DataPlane: Send + Sync {
         path: &str,
         body: &Value,
     ) -> anyhow::Result<Value>;
-    /// `POST /dp/v1/orgs/{org}/sessions`: create the org's session `id`
-    /// running its agent `agent_key`, or `definition`, the session's own
-    /// declaration of that agent (its own settings on top). Creating again
-    /// is a no-op.
-    async fn create_session(
-        &self,
-        org: &str,
-        id: everruns_contracts::typed_id::SessionId,
-        agent_key: &str,
-        definition: Option<&Value>,
-        initial_files: &[everruns_core::session_file::InitialFile],
-        sandbox: Option<&Value>,
-    ) -> anyhow::Result<()>;
+    /// `POST /dp/v1/orgs/{org}/sessions`: create the org's session
+    /// ([`NewSession`]). Creating again is a no-op.
+    async fn create_session(&self, org: &str, session: &NewSession<'_>) -> anyhow::Result<()>;
     /// `POST /dp/v1/orgs/{org}/sessions/{id}/{command}`: a declared session
     /// command the control plane runs on one of the org's sessions itself
     /// (`messages`: an agent trigger's run, a channel's message, where a
@@ -246,15 +256,7 @@ impl DataPlane for NoDataPlane {
         Ok(Value::Null)
     }
 
-    async fn create_session(
-        &self,
-        _: &str,
-        _: everruns_contracts::typed_id::SessionId,
-        _: &str,
-        _: Option<&Value>,
-        _: &[everruns_core::session_file::InitialFile],
-        _: Option<&Value>,
-    ) -> anyhow::Result<()> {
+    async fn create_session(&self, _: &str, _: &NewSession<'_>) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -358,25 +360,20 @@ impl DataPlane for HttpDataPlane {
         Ok(request.send().await?.error_for_status()?.json().await?)
     }
 
-    async fn create_session(
-        &self,
-        org: &str,
-        id: everruns_contracts::typed_id::SessionId,
-        agent_key: &str,
-        definition: Option<&Value>,
-        initial_files: &[everruns_core::session_file::InitialFile],
-        sandbox: Option<&Value>,
-    ) -> anyhow::Result<()> {
+    async fn create_session(&self, org: &str, session: &NewSession<'_>) -> anyhow::Result<()> {
         let url = format!("{}{}/orgs/{org}/sessions", self.row.url, dp::PREFIX);
-        let mut body = serde_json::json!({ "id": id, "agent_ref": agent_key });
-        if let Some(definition) = definition {
+        let mut body = serde_json::json!({ "id": session.id, "agent_ref": session.agent_key });
+        if let Some(definition) = session.definition {
             body["definition"] = definition.clone();
         }
-        if !initial_files.is_empty() {
-            body["initial_files"] = serde_json::to_value(initial_files)?;
+        if !session.initial_files.is_empty() {
+            body["initial_files"] = serde_json::to_value(session.initial_files)?;
         }
-        if let Some(sandbox) = sandbox {
+        if let Some(sandbox) = session.sandbox {
             body["sandbox"] = sandbox.clone();
+        }
+        if !session.memory.is_empty() {
+            body["memory"] = serde_json::to_value(session.memory)?;
         }
         self.request(reqwest::Method::POST, url)
             .json(&body)

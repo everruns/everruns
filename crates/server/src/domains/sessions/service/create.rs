@@ -604,6 +604,23 @@ impl SessionService {
             !crate::domains::data_plane::sessions::stays_on_control_plane(agent.as_ref())
                 && crate::domains::data_plane::sessions::on_data_plane(&data_plane, org_id).await?;
         let row = self.db.create_session(input).await?;
+        let scoped_memory = ScopedMemoryContext {
+            agent_id,
+            harness_id: Some(harness_id),
+            // User memory is private to the resolved user; Playground sessions
+            // run as someone else's preview and never receive it.
+            user_id: if self.db.is_playground_session(row.id).await? {
+                None
+            } else {
+                resolved_owner_user_id
+            },
+        };
+        // A data plane is sent the session's Memory mounts with the create
+        // (`data_plane::memory`), resolved from Memories that must exist by
+        // then.
+        if on_data_plane {
+            self.ensure_scoped_memories(org_id, scoped_memory).await?;
+        }
         // Pinned before a data plane creates the session: it runs the
         // pinned sandbox (`data_plane::sandboxes`).
         if let Some(sandbox) = &resolved_sandbox {
@@ -655,18 +672,6 @@ impl SessionService {
 
         // Override agent_id with public_id (DB stores internal UUID as FK)
         session.agent_id = agent_public_id;
-
-        let scoped_memory = ScopedMemoryContext {
-            agent_id,
-            harness_id: Some(harness_id),
-            // User memory is private to the resolved user; Playground sessions
-            // run as someone else's preview and never receive it.
-            user_id: if self.db.is_playground_session(session.id).await? {
-                None
-            } else {
-                resolved_owner_user_id
-            },
-        };
 
         // Apply capability mounts (harness + agent + session capabilities) and
         // address the session's working tree, keyed by workspace id.

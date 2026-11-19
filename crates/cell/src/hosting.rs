@@ -441,6 +441,21 @@ impl SessionHosting for RaftHosting {
             .get_or_init(|| crate::detach::Runner::start(Port(self.inner.clone())))
             .attach(session, backends);
         let backends = crate::subagents::attach(session, backends, Port(self.inner.clone())).await;
+        // The session's Memory, in the control plane (`memory.rs`), and the
+        // read-only files its capabilities bring (`capability_files.rs`).
+        let (memory, definition) = self
+            .inner
+            .read(session, |s| {
+                (s.platform.memory.clone(), s.definition.clone())
+            })
+            .await?;
+        let backends = crate::capability_files::attach(backends, &definition);
+        let backends = if memory.is_empty() {
+            backends
+        } else {
+            let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
+            crate::memory::attach(backends, lookups, session, &memory)
+        };
         Ok(match self.inner.sandboxes.get() {
             Some(sandboxes) => sandboxes.attach(session, backends, self.files()),
             None => backends,

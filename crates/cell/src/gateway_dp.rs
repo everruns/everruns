@@ -192,6 +192,10 @@ struct OrgSession {
     /// is a sealed org secret, so the entry names no credential value.
     #[serde(default)]
     sandbox: Option<serde_json::Value>,
+    /// The control plane's Memory mounts the session has, whose files stay
+    /// there (`memory.rs`).
+    #[serde(default)]
+    memory: Vec<String>,
 }
 
 /// `POST /dp/v1/orgs/{org}/sessions`: the control plane creating an org's
@@ -220,6 +224,20 @@ async fn org_session(
         ))?;
         with_capability(&mut package, entry);
     }
+    if let Some(mount) = body
+        .memory
+        .iter()
+        .find(|mount| !crate::memory::MOUNTS.contains(&mount.as_str()))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("memory: {mount} is not a Memory mount"),
+        ));
+    }
+    // The session's own starter files, then its capabilities' inline files
+    // (`capability_files.rs`), both written only where absent.
+    let mut initial_files = body.initial_files;
+    initial_files.extend(crate::capability_files::starter_files(&package));
     let created = gateway
         .create_running(
             package,
@@ -227,11 +245,12 @@ async fn org_session(
             Some(body.id),
             Some(org),
             Some(body.agent_ref),
+            body.memory,
         )
         .await?;
-    if !body.initial_files.is_empty() {
+    if !initial_files.is_empty() {
         let seed = crate::api_files::FsOp::Seed {
-            files: body.initial_files,
+            files: initial_files,
         };
         let seed = serde_json::to_value(seed)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

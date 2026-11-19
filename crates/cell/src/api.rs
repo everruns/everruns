@@ -1124,6 +1124,10 @@ pub struct CreateBody {
     /// plane created it ([`crate::platform::Platform::agent_ref`]).
     #[serde(default)]
     pub agent_ref: Option<String>,
+    /// The control plane's Memory mounts it has
+    /// ([`crate::platform::Platform::memory`]).
+    #[serde(default)]
+    pub memory: Vec<String>,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -1158,7 +1162,10 @@ async fn create_session(
         }
     }
     if let (CellReply::Ok { .. }, Some(agent_ref)) = (&reply, body.agent_ref) {
-        let action = crate::platform::Op::Agent { agent_ref };
+        let action = crate::platform::Op::Agent {
+            agent_ref,
+            memory: body.memory,
+        };
         match crate::api_session::platform(&node, id, action).await? {
             CellReply::Ok { .. } => {}
             other => return Ok(Json(other)),

@@ -264,7 +264,7 @@ impl Host for StandardHost {
 /// The hosted catalog the v1 worker registers (portable builtins, the
 /// integrations, the hosted product capabilities), for this deployment's
 /// grade. Built once per process.
-fn hosted_registry() -> &'static everruns_core::capabilities::CapabilityRegistry {
+pub(crate) fn hosted_registry() -> &'static everruns_core::capabilities::CapabilityRegistry {
     static REGISTRY: std::sync::OnceLock<everruns_core::capabilities::CapabilityRegistry> =
         std::sync::OnceLock::new();
     REGISTRY.get_or_init(|| {

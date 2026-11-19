@@ -127,6 +127,14 @@ pub const SLACK_ACTION: &str = "slack_action";
 /// with its `name`, `sql` or `table`); the answer is `{"ok": ...}` or
 /// `{"error": ...}` (`session_sqldb::SessionSqlDbError`).
 pub const SESSION_SQL_DB: &str = "session_sql_db";
+/// The host call that runs one file operation in a session's Memory
+/// (`/memory/agent`, `/memory/user`, `/memory/shared`, `/team`, `/room`),
+/// which stays in the control plane (`op`: `read`, `write`,
+/// `write_if_matches`, `create_if_absent`, `delete`, `list`, `stat`,
+/// `mkdir`, with its `path`); the answer is `{"ok": ...}` or
+/// `{"error": message}`. Declared by a session the control plane gave
+/// Memory mounts.
+pub const MEMORY_FILE: &str = "memory_file";
 
 const fn call(
     name: &'static str,
@@ -291,6 +299,14 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Write,
         Fate::Runtime,
         "one operation on the session's SQL databases",
+    ),
+    call(
+        MEMORY_FILE,
+        "memory_file",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "one file operation in the session's Memory, shared across sessions in the control plane",
     ),
 ];
 
