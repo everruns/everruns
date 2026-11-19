@@ -207,8 +207,11 @@ class FsyncShim(unittest.TestCase):
                 return float(subprocess.run([sys.executable, "-c", probe], env=env, check=True,
                                             capture_output=True, text=True).stdout)
 
-            self.assertGreaterEqual(elapsed(40000), 0.2)
-            self.assertLess(elapsed(0), 0.2)
+            # The delay must dwarf real fsync latency: five fsyncs on a shared CI disk have
+            # taken ~0.4 s, so the no-delay bound sits far above that and the delayed run
+            # (5 x 0.2 s) far above the bound.
+            self.assertGreaterEqual(elapsed(200000), 1.0)
+            self.assertLess(elapsed(0), 1.0)
 
 
 unittest.main(argv=["stress"], verbosity=1)
