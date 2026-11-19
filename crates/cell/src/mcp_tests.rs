@@ -413,3 +413,29 @@ async fn a_fresh_grant_is_used_without_a_refresh_and_a_missing_one_gives_nothing
         .unwrap();
     assert!(missing.is_none());
 }
+
+/// A server acting as the turn's person declares the host call it asks
+/// per call, so the parity gate does not count it as undeclared; a pushed
+/// service grant (an `mcp_oauth:` connection) asks nothing.
+#[test]
+fn a_person_acting_server_declares_its_token_host_call() {
+    let definition = |provider: &str| {
+        serde_json::json!({
+            "name": "notes",
+            "instructions": "Take notes.",
+            "model": { "provider": "llmsim", "model": "echo" },
+            "mcpServers": {
+                "notes": {
+                    "url": "https://notes.example/mcp",
+                    "auth_mode": "oauth",
+                    "oauth_provider_id": provider,
+                    "actsAs": "user",
+                }
+            },
+        })
+    };
+    let token = everruns_contracts::host_calls::MCP_CONNECTION_TOKEN;
+    assert!(crate::host::declared_host_calls(&definition("mcp_oauth_notes")).contains(token));
+    let pushed = format!("{MCP_OAUTH}:grant-1");
+    assert!(!crate::host::declared_host_calls(&definition(&pushed)).contains(token));
+}
