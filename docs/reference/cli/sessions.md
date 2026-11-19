@@ -20,7 +20,7 @@ Running and archived sessions, their state and participants.
 | [`sessions delete`](#sessions-delete) | Delete a session. |
 | [`sessions fork`](#sessions-fork) | Fork a session into a new, independent session that copies its conversation history and workspace files. |
 | [`sessions get`](#sessions-get) | Get session details including status, agent, harness, and model. |
-| [`sessions context`](#sessions-context) | Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation. |
+| [`sessions context`](#sessions-context) | Inspect the last main model request, effective compaction policy, and safe checkpoint metadata. |
 | [`sessions facets`](#sessions-facets) | Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions. |
 | [`sessions stats`](#sessions-stats) | Get session counts by status. |
 | [`sessions list`](#sessions-list) | List sessions. |
@@ -245,7 +245,7 @@ everruns sessions get session_01h9
 
 ## sessions context
 
-Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.
+Inspect the last main model request, effective compaction policy, and safe checkpoint metadata. Inspection never compacts history or calls a model.
 
 ```bash
 everruns sessions context [OPTIONS] [SESSION]
