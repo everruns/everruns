@@ -14,9 +14,12 @@ echo "==> Caddyfile matches infra/docker-compose/docker-compose.yaml"
 python3 - "$ROOT/infra/docker-compose/docker-compose.yaml" "$CHART/files/Caddyfile" <<'PY'
 import re, sys
 compose, chart = (open(p).read() for p in sys.argv[1:])
-m = re.search(r"\n  caddyfile:\n    content: \|\n(.*?)\n  prometheus_scrape_config:", compose, re.S)
+m = re.search(r"\n  caddyfile:\n    content: \|\n(.*?)\n  (?=[#a-z_])", compose, re.S)
 if not m:
     sys.exit("caddyfile config not found in the compose file")
+# The next config's comment or key ends it; a Caddyfile ends with its site block.
+if not m.group(1).rstrip().endswith("}"):
+    sys.exit("the compose caddyfile config does not end with its site block")
 lines = [l[6:] if l.startswith("      ") else l.strip() for l in m.group(1).split("\n")]
 if "\n".join(lines).rstrip() + "\n" != chart:
     sys.exit("charts/everruns/files/Caddyfile differs from the compose Caddyfile; copy it over")

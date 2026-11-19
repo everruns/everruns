@@ -92,8 +92,3 @@
     reverse_proxy ui:9305
   }
 }
-
-# The data plane's layout: cell 0 (the directory cell) with one node.
-cell_topology:
-content: |
-{"directory_cell": 0, "cells": {"0": {"1": "cell:7000"}}}
