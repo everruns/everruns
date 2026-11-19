@@ -173,13 +173,14 @@ pub struct ImportHarnessQuery {
 /// POST /v1/harnesses/import - Adopt a harness example as a regular org-owned harness.
 ///
 /// Creates a normal harness (`is_built_in = false`) from a code-defined
-/// example. The new harness inherits from the org's `generic` harness by
-/// name — no UUIDs are hardcoded. Capabilities and other config flow through
+/// example. The new harness inherits from the example's parent harness
+/// (for example `sandbox-worker` for Coding), resolved by name in the org;
+/// no UUIDs are hardcoded. Capabilities and other config flow through
 /// the same validation paths as `POST /v1/harnesses`.
 ///
 /// Returns 201 on creation. If the example name collides with an existing
 /// harness in the org, a random alphanumeric suffix is appended (parity with
-/// agent example import).
+/// agent example import). Delegates to the `adopt_harness_example` command.
 #[utoipa::path(
     post,
     path = "/v1/harnesses/import",
@@ -197,125 +198,13 @@ pub async fn import_harness(
     State(state): State<AppState>,
     Query(query): Query<ImportHarnessQuery>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
-    let name = query.from_example.trim().to_string();
-    if name.is_empty() {
-        return Err(
-            ErrorResponse::new("`from-example` query parameter must not be empty")
-                .into_response(StatusCode::BAD_REQUEST),
-        );
+    // The `adopt_harness_example` command, so REST, CLI and MCP adopt
+    // through one path.
+    let harness = crate::domains::harnesses::AdoptHarnessExample {
+        name: query.from_example,
     }
-
-    let example = crate::harnesses::find_harness_example(&name)
-        .ok_or_else(|| ErrorResponse::not_found(&format!("harness example '{name}'")))?;
-
-    if example.dev_only && !state.grade.experimental_features_enabled() {
-        return Err(ErrorResponse::not_found(&format!(
-            "harness example '{name}'"
-        )));
-    }
-
-    let missing: Vec<&str> = example
-        .definition
-        .capabilities
-        .iter()
-        .map(|c| c.capability_id())
-        .filter(|id| !state.host_composition.capability_registry().has(id))
-        .collect();
-    if !missing.is_empty() {
-        return Err(ErrorResponse::new(format!(
-            "Example requires unregistered capabilities: {missing:?}"
-        ))
-        .into_response(StatusCode::BAD_REQUEST));
-    }
-
-    // Resolve parent harness ID by name within this org. Examples are required
-    // to inherit by name (no hardcoded UUIDs).
-    let parent_harness_id = if let Some(parent_name) = example.definition.parent_name.as_deref() {
-        let parent_row = state
-            .db
-            .get_harness_by_name(org.org_id, parent_name)
-            .await
-            .log_internal_error_json("resolve parent harness for example import")?
-            .ok_or_else(|| {
-                ErrorResponse::new(format!(
-                    "Required parent harness `{parent_name}` is not provisioned for this org"
-                ))
-                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-            })?;
-        Some(parent_row.id)
-    } else {
-        None
-    };
-
-    let capabilities: Vec<everruns_contracts::CapabilityRef> = example
-        .definition
-        .capabilities
-        .iter()
-        .map(|cap| {
-            everruns_contracts::CapabilityRef::with_config(
-                cap.typed_id().clone(),
-                cap.config_value().clone(),
-            )
-        })
-        .collect();
-
-    // Pick a non-colliding name with random suffix retry — same strategy as
-    // agent example import. Concurrency-safe enough for a manual UI action.
-    let unique_name = {
-        use rand::RngExt;
-        let base = example.definition.name.as_str();
-        let mut selected = None;
-
-        for attempt in 0..10 {
-            let candidate = if attempt == 0 {
-                base.to_string()
-            } else {
-                let suffix: String = rand::rng()
-                    .sample_iter(&rand::distr::Alphanumeric)
-                    .take(5)
-                    .map(|c| (c as char).to_ascii_lowercase())
-                    .collect();
-                format!("{base}-{suffix}")
-            };
-
-            let result = crate::domains::harnesses::CheckHarnessName {
-                name: candidate.clone(),
-                exclude_id: None,
-            }
-            .run(&state.ctx(&org))
-            .await?;
-
-            if result.available {
-                selected = Some(candidate);
-                break;
-            }
-        }
-
-        selected.ok_or_else(ErrorResponse::internal_error)?
-    };
-
-    let req = CreateHarnessRequest {
-        localizations: example.definition.localizations.clone(),
-        name: unique_name,
-        display_name: Some(example.definition.display_name.clone()),
-        description: Some(example.definition.description.clone()),
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt: Some(example.definition.system_prompt.clone()),
-        parent_harness_id,
-        default_model_id: None,
-        tags: example.definition.tags.clone(),
-        capabilities,
-        initial_files: vec![],
-        mcp_servers: Default::default(),
-        network_access: None,
-        embedder_metadata: Default::default(),
-    };
-
-    let harness = crate::domains::harnesses::CreateHarness(req)
-        .run(&state.ctx(&org))
-        .await?;
+    .run(&state.ctx(&org))
+    .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
 }

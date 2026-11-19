@@ -177,6 +177,8 @@ harnesses copy	--context-revision --id --reason <id>
 harnesses create	--capabilities --context-revision --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --localizations --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
 harnesses delete	--context-revision --id --reason <id>
 harnesses destroy	--context-revision --id --reason <id>
+harnesses examples adopt	--context-revision --name --reason <name>
+harnesses examples list	--context-revision --reason
 harnesses get	--context-revision --id --reason <id>
 harnesses list	--context-revision --include-archived --reason --search
 harnesses preview	--capabilities --context-revision --mcp-servers --parent-harness-id --reason --system-prompt

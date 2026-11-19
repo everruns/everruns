@@ -3,72 +3,18 @@
 // Decision: Examples live in code (see `crate::harnesses::examples`), not in DB.
 // Decision: Adoption is handled by `POST /v1/harnesses/import?from-example={name}`
 // Decision: Examples are identified by their `name` (slug).
-// Decision: Examples are filtered at request time by capability registration so
-//   that capability-gated harnesses only appear when
-//   the corresponding capability plugin is registered for the deployment.
+// Decision: the catalogue, its filter and adoption live in
+// `domains::harnesses::examples` as commands, so the CLI and MCP see the same
+// set; this route only serves it over REST.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::harnesses::{HarnessExampleDef, harness_examples};
+pub use crate::domains::harnesses::HarnessExample;
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::DeploymentGrade;
 use everruns_core::host::HostComposition;
-use serde::Serialize;
 use std::sync::Arc;
-use utoipa::ToSchema;
 
 use super::common::impl_auth_state;
-
-/// A read-only harness example defined in code.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct HarnessExample {
-    /// Locale-keyed display names and descriptions.
-    pub localizations: everruns_contracts::runtime::localization::EntityLocalizations,
-    /// Unique slug (e.g. `data-analyst`).
-    pub name: String,
-    /// Human-readable display name (e.g. `Data Analyst`).
-    pub display_name: String,
-    /// Short description.
-    pub description: String,
-    /// Display glyph name rendered by the UI (e.g. `bar-chart`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    /// Tags for categorization.
-    pub tags: Vec<String>,
-    /// Name of the parent harness this example inherits from when adopted
-    /// (e.g. `generic`). Resolved per-org at import time — no UUIDs are
-    /// hardcoded.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent_name: Option<String>,
-    /// Capabilities the example will assign with their per-harness config.
-    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
-    pub capabilities: Vec<everruns_contracts::CapabilityRef>,
-    /// Whether this example is only available when experimental features are on.
-    pub dev_only: bool,
-}
-
-fn example_to_dto(ex: &HarnessExampleDef) -> HarnessExample {
-    HarnessExample {
-        localizations: ex.definition.localizations.clone(),
-        name: ex.definition.name.clone(),
-        display_name: ex.definition.display_name.clone(),
-        description: ex.definition.description.clone(),
-        icon: ex.definition.icon.clone(),
-        tags: ex.definition.tags.clone(),
-        parent_name: ex.definition.parent_name.clone(),
-        capabilities: ex
-            .definition
-            .capabilities
-            .iter()
-            .map(|cap| {
-                everruns_contracts::CapabilityRef::with_config(
-                    cap.typed_id().clone(),
-                    cap.config_value().clone(),
-                )
-            })
-            .collect(),
-        dev_only: ex.dev_only,
-    }
-}
 
 /// App state for harness example routes.
 #[derive(Clone)]
@@ -100,23 +46,11 @@ pub async fn list_examples(
     _org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> Json<Vec<HarnessExample>> {
-    let include_dev = state.grade.experimental_features_enabled();
-    let platform = &state.host_composition;
-
-    let examples: Vec<HarnessExample> = harness_examples()
-        .iter()
-        .filter(|ex| {
-            if ex.dev_only && !include_dev {
-                return false;
-            }
-            // Only show examples whose capabilities are all registered.
-            ex.definition
-                .capabilities
-                .iter()
-                .all(|cap| platform.capability_registry().has(cap.capability_id()))
-        })
-        .map(example_to_dto)
-        .collect();
-
-    Json(examples)
+    let registry = state.host_composition.capability_registry();
+    Json(
+        crate::domains::harnesses::examples::offered_harness_examples(
+            state.grade.experimental_features_enabled(),
+            &|id| registry.has(id),
+        ),
+    )
 }

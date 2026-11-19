@@ -76,6 +76,12 @@ write failure, inspect current state before repeating it.
   on update to retain the choice, or use `default` to restore the driver default.
   Verify the saved provider after the authorized change. Keep credentials in
   the existing secure setup flow. Older deployments may not expose this field.
+- **Start from an example:** ready-made agents and harnesses are adoptable
+  examples, not in `agents list` or `harnesses list` until adopted. Review
+  `everruns agents examples list` and `everruns harnesses examples list`
+  before building from scratch, and adopt with `everruns harnesses examples
+  adopt coding --reason '...'` (Coding is the Yolop-based coding harness) or
+  `everruns agents examples adopt <name> --reason '...'`.
 - **Create or change an agent:** activate [agent-authoring.md](agent-authoring.md). Use the
   current host's command surface for its examples. In Platform Chat, its MCP
   transport instructions apply only to external clients: keep using the bound
