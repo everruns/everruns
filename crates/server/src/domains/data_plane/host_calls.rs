@@ -1,21 +1,22 @@
-//! `POST /dp/v1/tenants/{org}/lookups`: what a tool on the data plane asks
-//! the control plane at call time (data plane v2, step 11.6b).
+//! `POST /dp/v1/tenants/{org}/host-calls/{name}`: what a tool on the data
+//! plane asks the control plane at call time (data plane v2 parity, Phase
+//! A). The calls are declared in `everruns_contracts::host_calls`; this is
+//! their one dispatcher.
 //!
-//! A hosted capability on a cell needs the same org answers it gets on a v1
-//! worker: a session's connection token, a GitHub token for one use, the
-//! agent's service API key, the org's web search settings and account keys,
-//! the tool approval policy, the org's knowledge, a Poppy call, the org's
-//! egress grants. The v1 worker asks through internal commands; an executor
-//! asks the same commands over the link, and its cell forwards the request
-//! here.
+//! A hosted capability on a cell needs some answers only the control plane
+//! has now: a GitHub token for one use, the org's knowledge, a Poppy call,
+//! a platform tool's call as a person, a Slack action as the bot. Until
+//! they move to pushed state or into the runtime (`Fate`), the session's
+//! connection token, service API key, web search settings and keys, tool
+//! approval policy, egress grants and SQL databases come the same way.
 //!
 //! Decisions:
-//! - Only [`LOOKUP_COMMANDS`] run here, as the org's internal caller with
-//!   the org's feature flags: the same caller, checks and failures a v1
-//!   worker's `ExecuteCommand` gets (a session of another org is not
-//!   found).
-//! - A platform tool's call ([`PLATFORM_COMMAND_SURFACE`], Platform Chat)
-//!   runs on the command catalog as the person the forwarding cell names
+//! - Only a declared host call runs, by its one handler: the v1 worker's
+//!   internal command, as the org's internal caller with the org's feature
+//!   flags, the same caller, checks and failures a v1 worker's
+//!   `ExecuteCommand` gets (a session of another org is not found).
+//! - A platform tool's call ([`PLATFORM_COMMAND`], Platform Chat) runs on
+//!   the command catalog as the person the forwarding cell names
 //!   (`acting_user`), never as the internal caller: the session must
 //!   resolve `platform` and the person must still be an org member, with
 //!   their current role (THREAT[TM-AGENT-017]).
@@ -25,74 +26,80 @@
 //!   plane's store, as for a v1 session, so the console reads the same
 //!   ones; the session must be the org's.
 //! - Every answer, a refusal included, is sealed with the org's data key
-//!   as the request's own secret (`lookup:{request}`, revision 0): the
-//!   cells that pass it on hold ciphertext only, and an answer cannot pass
-//!   for another request's.
-//! - Nothing is stored here. The commands are reads, except a Poppy call,
+//!   as the call's own secret (`host-call:{call}`, revision 0): the cells
+//!   that pass it on hold ciphertext only, and an answer cannot pass for
+//!   another call's.
+//! - Each call is counted by name and outcome
+//!   (`everruns_dp_host_calls_total`).
+//! - Nothing is stored here. The calls are reads, except a Poppy call,
 //!   which keeps the session owner's company accounts and conversations in
 //!   the control plane, as on v1.
 
 use everruns_contracts::dataplane::SealedSecret;
-use everruns_contracts::dataplane::{
-    LOOKUP_COMMANDS, LookupAnswer, LookupRequest, PLATFORM_COMMAND_SURFACE, SESSION_SQL_DB,
-    SLACK_ACTION, lookup_secret,
-};
 use everruns_contracts::dataplane_seal as seal;
+use everruns_contracts::host_calls::{
+    HostCall, HostCallAnswer, PLATFORM_COMMAND, SESSION_SQL_DB, SLACK_ACTION,
+};
 
 use super::{ControlPlane, org_public};
 use crate::domains::common::Ctx;
 use crate::storage::DpOrgRow;
 
-/// Whether `command` is one a data plane may ask.
-pub fn allowed(command: &str) -> bool {
-    LOOKUP_COMMANDS.contains(&command)
+/// Run `call` with `params` as `ctx` (the org's internal caller).
+pub async fn answer(
+    ctx: &Ctx,
+    call: &HostCall,
+    params: serde_json::Value,
+) -> anyhow::Result<HostCallAnswer> {
+    let answer = run(ctx, call, params).await;
+    let outcome = match &answer {
+        Ok(HostCallAnswer::Value(_)) => "ok",
+        Ok(HostCallAnswer::Error { .. }) => "refused",
+        Err(_) => "failed",
+    };
+    metrics::counter!(
+        "everruns_dp_host_calls_total",
+        "call" => call.name,
+        "outcome" => outcome,
+    )
+    .increment(1);
+    answer
 }
 
-/// Run `request` as `ctx` (the org's internal caller) and seal its answer
-/// for `org`.
-pub async fn answer(
-    cp: &ControlPlane,
-    org: &DpOrgRow,
+async fn run(
     ctx: &Ctx,
-    request: LookupRequest,
-) -> anyhow::Result<SealedSecret> {
-    // A platform tool's call (Platform Chat) is not an internal command: it
-    // runs on the command catalog as the person the forwarding cell names.
-    if request.command == PLATFORM_COMMAND_SURFACE {
-        let answer = match crate::worker_link::platform_command_surface::data_plane_call(
-            ctx,
-            &request.params,
-        )
-        .await
-        {
-            Ok(output) => LookupAnswer::Value(serde_json::Value::String(output)),
-            Err((kind, message)) => LookupAnswer::Error {
-                kind: kind as i32,
-                message,
+    call: &HostCall,
+    params: serde_json::Value,
+) -> anyhow::Result<HostCallAnswer> {
+    match call.name {
+        // A platform tool's call (Platform Chat) is not an internal
+        // command: it runs on the command catalog as the person the
+        // forwarding cell names.
+        PLATFORM_COMMAND => Ok(
+            match crate::worker_link::platform_command_surface::data_plane_call(ctx, &params).await
+            {
+                Ok(output) => HostCallAnswer::Value(serde_json::Value::String(output)),
+                Err((kind, message)) => HostCallAnswer::Error {
+                    kind: kind as i32,
+                    message,
+                },
             },
-        };
-        return seal_answer(cp, org, &request.request, &answer);
+        ),
+        SESSION_SQL_DB => Ok(HostCallAnswer::Value(session_sql_db(ctx, &params).await)),
+        SLACK_ACTION => Ok(HostCallAnswer::Value(slack_action(ctx, &params).await)),
+        _ => Ok(
+            match crate::domains::common::dispatch(call.command, params, ctx).await {
+                Ok(json) => HostCallAnswer::Value(serde_json::from_str(&json)?),
+                Err(error) => {
+                    let error = crate::worker_link::grpc_service::command_error_to_proto(error);
+                    HostCallAnswer::Error {
+                        kind: error.kind,
+                        message: error.message,
+                    }
+                }
+            },
+        ),
     }
-    if request.command == SESSION_SQL_DB {
-        let answer = LookupAnswer::Value(session_sql_db(ctx, &request.params).await);
-        return seal_answer(cp, org, &request.request, &answer);
-    }
-    if request.command == SLACK_ACTION {
-        let answer = LookupAnswer::Value(slack_action(ctx, &request.params).await);
-        return seal_answer(cp, org, &request.request, &answer);
-    }
-    let answer = match crate::domains::common::dispatch(&request.command, request.params, ctx).await
-    {
-        Ok(json) => LookupAnswer::Value(serde_json::from_str(&json)?),
-        Err(error) => {
-            let error = crate::worker_link::grpc_service::command_error_to_proto(error);
-            LookupAnswer::Error {
-                kind: error.kind,
-                message: error.message,
-            }
-        }
-    };
-    seal_answer(cp, org, &request.request, &answer)
 }
 
 /// A Slack action for one session of the org (`SLACK_ACTION`), as the bot
@@ -174,19 +181,20 @@ async fn session_sql_db(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Va
     }
 }
 
-/// `answer` sealed for `org` as `request`'s secret.
+/// `answer` sealed for `org` as the secret `secret_id`
+/// (`host_calls::host_call_secret`, or a legacy lookup's).
 pub fn seal_answer(
     cp: &ControlPlane,
     org: &DpOrgRow,
-    request: &str,
-    answer: &LookupAnswer,
+    secret_id: &str,
+    answer: &HostCallAnswer,
 ) -> anyhow::Result<SealedSecret> {
     let key = cp.data_key(org)?;
     Ok(seal::seal(
         &key,
         &org.data_key_id,
         &org_public(org.org_id),
-        &lookup_secret(request),
+        secret_id,
         0,
         &serde_json::to_vec(answer)?,
         seal::random_nonce(),

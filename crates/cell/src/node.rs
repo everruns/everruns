@@ -156,6 +156,7 @@ pub struct Node {
     pub metrics: Metrics,
     /// Counters and histograms for `/metrics`.
     pub prom: crate::prom::Prom,
+    pub host_call_limits: crate::host_calls::Limits,
     /// Sessions this node runs an activation of now.
     running: Mutex<HashSet<SessionId>>,
     /// Peers the leader recently reached, for executor placement.
@@ -274,6 +275,7 @@ impl Node {
                 host,
                 metrics: Metrics::default(),
                 prom: Default::default(),
+                host_call_limits: Default::default(),
                 running: Mutex::default(),
                 alive: Mutex::default(),
                 dispatched: Mutex::default(),

@@ -1,0 +1,13 @@
+name version acts_as effect timeout_s when_down fate command
+connection_token v1 Org Read 10 Fail Pushed worker_get_connection_token
+github_token v1 Org Read 10 Fail HostCall worker_get_github_token
+egress_grants v1 Org Read 10 Fail Pushed worker_get_org_egress_allowlist
+service_api_key v1 Org Read 10 Fail Pushed worker_get_service_api_key_connection
+tool_approval_policy v1 Org Read 10 Fail Pushed worker_get_tool_approval_policy
+web_search_key v1 Org Read 10 Fail Pushed worker_get_web_search_account_key
+web_search_settings v1 Org Read 10 Fail Pushed worker_get_web_search_settings
+knowledge v1 Org Read 10 Fail HostCall worker_knowledge
+poppy_call v1 Org Write 10 Fail HostCall worker_poppy_call
+platform_command v1 Person Write 10 Fail HostCall platform_command_surface
+slack_action v1 ChannelBot Write 10 Fail HostCall slack_action
+session_sql_db v1 Org Write 10 Fail Runtime session_sql_db

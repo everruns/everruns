@@ -49,6 +49,7 @@ pub mod gateway_sse;
 pub mod gateway_v1;
 pub mod gateway_work;
 pub mod host;
+pub mod host_calls;
 pub mod hosting;
 pub mod inspect;
 pub mod lookups;

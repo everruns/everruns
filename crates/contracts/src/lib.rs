@@ -58,6 +58,7 @@ pub mod error;
 pub mod execution_api;
 pub mod execution_phase;
 pub mod form_elicitation_types;
+pub mod host_calls;
 pub mod hosted_mcp;
 #[cfg(feature = "http")]
 pub mod http_transport;

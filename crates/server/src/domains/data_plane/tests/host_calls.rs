@@ -1,11 +1,11 @@
-//! A data plane's call-time lookups (`lookups.rs`), on a real database: the
+//! A data plane's host calls (`host_calls.rs`), on a real database: the
 //! org's internal command runs as on a v1 worker, and its answer comes back
-//! sealed for the org under the request's own secret.
+//! sealed for the org under the call's own secret.
 
-use everruns_contracts::dataplane::{LookupAnswer, LookupRequest, lookup_secret};
+use everruns_contracts::host_calls::{self, HostCallAnswer, host_call_secret};
 
 use super::*;
-use crate::domains::data_plane::lookups;
+use crate::domains::data_plane::host_calls as dispatcher;
 
 /// The org's internal caller, as the route builds it.
 fn internal_ctx(cp: &ControlPlane, org_id: i64) -> crate::domains::common::Ctx {
@@ -18,7 +18,7 @@ fn internal_ctx(cp: &ControlPlane, org_id: i64) -> crate::domains::common::Ctx {
     )
 }
 
-async fn ask(cp: &ControlPlane, org_id: i64, command: &str, params: Value) -> LookupAnswer {
+async fn ask(cp: &ControlPlane, org_id: i64, command: &str, params: Value) -> HostCallAnswer {
     ask_as(cp, &internal_ctx(cp, org_id), command, params).await
 }
 
@@ -28,28 +28,18 @@ async fn ask_as(
     ctx: &crate::domains::common::Ctx,
     command: &str,
     params: Value,
-) -> LookupAnswer {
+) -> HostCallAnswer {
     let row = cp.db.dp_org(ORG).await.unwrap().unwrap();
-    let request = uuid::Uuid::now_v7().to_string();
-    let sealed = lookups::answer(
-        cp,
-        &row,
-        ctx,
-        LookupRequest {
-            request: request.clone(),
-            command: command.into(),
-            params,
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(sealed.secret_id, lookup_secret(&request));
+    let call = host_calls::by_command(command).expect("a declared host call");
+    let id = uuid::Uuid::now_v7().to_string();
+    let answer = dispatcher::answer(ctx, call, params).await.unwrap();
+    let sealed = dispatcher::seal_answer(cp, &row, &host_call_secret(&id), &answer).unwrap();
     assert_eq!(sealed.revision, 0);
     let key = cp.data_key(&row).unwrap();
     let plain = seal::unseal(&key, &org_public(ORG), &sealed).unwrap();
-    // Sealed for this request only: under another request's id it does not open.
+    // Sealed for this call only: under another call's id it does not open.
     let mut other = sealed.clone();
-    other.secret_id = lookup_secret("another");
+    other.secret_id = host_call_secret("another");
     assert!(seal::unseal(&key, &org_public(ORG), &other).is_err());
     serde_json::from_slice(&plain).unwrap()
 }
@@ -70,14 +60,14 @@ async fn a_lookup_runs_the_workers_command_and_comes_back_sealed() {
         json!({ "session_id": session.to_string() }),
     )
     .await;
-    let LookupAnswer::Value(settings) = answer else {
+    let HostCallAnswer::Value(settings) = answer else {
         panic!("settings, not {answer:?}");
     };
     assert!(settings.is_object(), "{settings}");
 }
 
 #[tokio::test]
-async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
+async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
     let (cp, _, _) = control_plane().await;
     // A session of the default org, asked as ORG.
     let stranger = cp
@@ -96,17 +86,21 @@ async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
     )
     .await;
     assert!(
-        matches!(answer, LookupAnswer::Error { kind: 3, .. }),
+        matches!(answer, HostCallAnswer::Error { kind: 3, .. }),
         "not found: {answer:?}"
     );
 
-    assert!(lookups::allowed("worker_get_connection_token"));
-    assert!(lookups::allowed("worker_knowledge"));
-    assert!(lookups::allowed("worker_poppy_call"));
-    assert!(lookups::allowed("worker_get_org_egress_allowlist"));
-    assert!(lookups::allowed("slack_action"));
-    assert!(lookups::allowed("platform_command_surface"));
-    assert!(lookups::allowed("session_sql_db"));
+    for command in [
+        "worker_get_connection_token",
+        "worker_knowledge",
+        "worker_poppy_call",
+        "worker_get_org_egress_allowlist",
+        "slack_action",
+        "platform_command_surface",
+        "session_sql_db",
+    ] {
+        assert!(host_calls::by_command(command).is_some(), "{command}");
+    }
     for command in [
         "worker_get_sandbox_connection_token",
         "worker_get_mcp_connection_token",
@@ -114,7 +108,10 @@ async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
         "session_storage_get",
         "agents_delete",
     ] {
-        assert!(!lookups::allowed(command), "{command} is not a lookup");
+        assert!(
+            host_calls::by_command(command).is_none(),
+            "{command} is not a host call"
+        );
     }
 }
 
@@ -123,7 +120,7 @@ async fn another_orgs_session_is_not_found_and_only_lookups_are_allowed() {
 /// resolves `platform`; without a person it runs as no one.
 #[tokio::test]
 async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
-    use everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE;
+    const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
 
     let (cp, _, _) = control_plane().await;
     // The default org, where the built-in harness the v1 worker's test uses
@@ -171,7 +168,7 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
         call(&platform, json!(member.to_string())),
     )
     .await;
-    let LookupAnswer::Value(Value::String(output)) = answer else {
+    let HostCallAnswer::Value(Value::String(output)) = answer else {
         panic!("a member's call runs: {answer:?}");
     };
     assert!(output.contains("list_models"), "{output}");
@@ -199,7 +196,7 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
         )
         .await;
         assert!(
-            matches!(answer, LookupAnswer::Error { kind: 2, .. }),
+            matches!(answer, HostCallAnswer::Error { kind: 2, .. }),
             "{why}: {answer:?}"
         );
     }
@@ -210,7 +207,7 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
 /// none, and the refusal comes back as the action's own error.
 #[tokio::test]
 async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
-    use everruns_contracts::dataplane::SLACK_ACTION;
+    use everruns_contracts::host_calls::SLACK_ACTION;
 
     let (cp, _, _) = control_plane().await;
     let mine = cp
@@ -238,7 +235,7 @@ async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
             json!({ "session_id": session.to_string(), "action": react }),
         )
         .await;
-        let LookupAnswer::Value(answer) = answer else {
+        let HostCallAnswer::Value(answer) = answer else {
             panic!("a refusal is the action's error: {answer:?}");
         };
         assert_eq!(
@@ -255,7 +252,7 @@ async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
         json!({ "session_id": mine.to_string(), "action": { "action": "open_dm" } }),
     )
     .await;
-    let LookupAnswer::Value(answer) = answer else {
+    let HostCallAnswer::Value(answer) = answer else {
         panic!("{answer:?}");
     };
     assert_eq!(
@@ -267,7 +264,7 @@ async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
 
 #[tokio::test]
 async fn a_sessions_sql_databases_are_the_control_planes_and_the_orgs_only() {
-    use everruns_contracts::dataplane::SESSION_SQL_DB;
+    use everruns_contracts::host_calls::SESSION_SQL_DB;
 
     let (cp, _, _) = control_plane().await;
     let backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
@@ -296,8 +293,8 @@ async fn a_sessions_sql_databases_are_the_control_planes_and_the_orgs_only() {
             .extend(extra.as_object().unwrap().clone());
         params
     };
-    let value = |answer: LookupAnswer| match answer {
-        LookupAnswer::Value(value) => value,
+    let value = |answer: HostCallAnswer| match answer {
+        HostCallAnswer::Value(value) => value,
         other => panic!("an SQL answer is a value: {other:?}"),
     };
 

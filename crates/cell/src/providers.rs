@@ -112,14 +112,14 @@ pub trait OrgMaterial: Send + Sync {
     fn looks_up(&self) -> bool {
         false
     }
-    /// Ask the control plane one of `org`'s call-time lookups
+    /// Make one of `org`'s host calls, named by its v1 worker command
     /// (`lookups.rs`).
     async fn lookup(
         &self,
         org: &str,
         command: &str,
         params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
         let _ = (org, command, params);
         anyhow::bail!("this node does not reach a control plane")
     }

@@ -40,7 +40,7 @@ pub mod attachments;
 pub mod default_plane;
 pub mod event_tap;
 pub mod feed;
-pub mod lookups;
+pub mod host_calls;
 pub mod mcp;
 pub mod outbox;
 pub mod providers;

@@ -266,35 +266,39 @@ impl Executor {
         }
     }
 
-    /// Ask the control plane one of `org`'s call-time lookups, through the
-    /// directory cell; the answer comes sealed with the org's data key and
-    /// is opened here (`lookups.rs`).
+    /// Make one of `org`'s host calls (`everruns_contracts::host_calls`),
+    /// named by the v1 worker command the shared resolvers issue, through
+    /// the directory cell; the answer comes sealed with the org's data key
+    /// and is opened here (`lookups.rs`). A read is retried once when the
+    /// directory cell cannot be reached; a write never is.
     pub async fn lookup(
         &self,
         org: &str,
         command: &str,
         params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
-        use everruns_contracts::dataplane::{LookupRequest, SealedSecret, lookup_secret};
-        let request = uuid::Uuid::new_v4().to_string();
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        use everruns_contracts::dataplane::SealedSecret;
+        use everruns_contracts::host_calls::{HostCallRequest, by_command, host_call_secret};
+        let call =
+            by_command(command).ok_or_else(|| anyhow::anyhow!("{command} is not a host call"))?;
         let directory = self.cfg.topology.read()?.directory_cell;
-        let sealed: SealedSecret = self
-            .remote
-            .post(
-                directory,
-                &format!("/cell/orgs/{org}/lookups"),
-                &LookupRequest {
-                    request: request.clone(),
-                    command: command.to_owned(),
-                    params,
-                },
-                Duration::from_secs(15),
-            )
-            .await?;
-        // The seal binds the secret id; the id must be this request's, or
-        // an answer to another lookup could stand in for this one.
-        if sealed.secret_id != lookup_secret(&request) || sealed.revision != 0 {
-            anyhow::bail!("the control plane answered another lookup");
+        let id = uuid::Uuid::new_v4().to_string();
+        let request = HostCallRequest {
+            call: id.clone(),
+            params,
+        };
+        let path = format!("/cell/orgs/{org}/host-calls/{}", call.name);
+        // The cell's own wait on the control plane, and a little more.
+        let wait = call.timeout() + Duration::from_secs(5);
+        let mut sent = self.remote.post(directory, &path, &request, wait).await;
+        if sent.is_err() && call.retries() {
+            sent = self.remote.post(directory, &path, &request, wait).await;
+        }
+        let sealed: SealedSecret = sent?;
+        // The seal binds the secret id; the id must be this call's, or an
+        // answer to another call could stand in for this one.
+        if sealed.secret_id != host_call_secret(&id) || sealed.revision != 0 {
+            anyhow::bail!("the control plane answered another host call");
         }
         let (key, _) = self
             .data_key(org)
@@ -683,7 +687,7 @@ impl crate::providers::OrgMaterial for Executor {
         org: &str,
         command: &str,
         params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
         Executor::lookup(self, org, command, params).await
     }
 
