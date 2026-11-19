@@ -92,6 +92,7 @@ async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
 
     for command in [
         "worker_get_connection_token",
+        "worker_get_mcp_connection_token",
         "worker_get_github_token",
         "worker_get_service_api_key_connection",
         "worker_knowledge",
@@ -105,7 +106,6 @@ async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
     }
     for command in [
         "worker_get_sandbox_connection_token",
-        "worker_get_mcp_connection_token",
         "worker_get_connection_token_for_connection",
         "session_storage_get",
         "agents_delete",

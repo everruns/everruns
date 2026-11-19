@@ -7,8 +7,16 @@
 //! identity names an `mcp_oauth:<id>` connection (`oauth_provider_id`)
 //! whose token secret is an OAuth token set. Both are opened per call, only on
 //! the executor that runs the session's turn, for the session's own org.
+//! A server whose grant depends on the turn (one that acts as the turn's
+//! person, or a connection-backed preset) keeps its OAuth provider instead,
+//! and its token is a host call per use ([`MCP_CONNECTION_COMMAND`]).
 //!
 //! Decisions:
+//! - A per-turn token names the session's open turn, not a message: the
+//!   session's cell, which recorded who sent it, names the person
+//!   (THREAT[TM-AGENT-017]). It is never kept, since the next turn may be
+//!   another person's; the control plane refreshes the grant, as for a v1
+//!   worker.
 //! - Placeholders are taken out of the definition before the agent is
 //!   built ([`take_bindings`]) and filled per call by [`AgentMcpAuth`]:
 //!   nodes build the same agents executors run but never open secrets.
@@ -34,7 +42,13 @@ use crate::providers::OrgMaterial;
 use crate::secrets::{SecretOp, SecretReply};
 
 pub use everruns_contracts::dataplane::{MCP_OAUTH, mcp_binding_secret};
+use everruns_contracts::host_calls::{HostCallAnswer, OPEN_TURN};
 
+/// The v1 worker command the [`MCP_CONNECTION_TOKEN`] host call runs, as
+/// lookups name it.
+///
+/// [`MCP_CONNECTION_TOKEN`]: everruns_contracts::host_calls::MCP_CONNECTION_TOKEN
+pub const MCP_CONNECTION_COMMAND: &str = "worker_get_mcp_connection_token";
 /// How long an opened binding value is reused.
 const KEEP: Duration = Duration::from_secs(30);
 /// How far ahead of its expiry a token is renewed.
@@ -50,11 +64,24 @@ pub struct Bindings {
     /// Servers that act as the agent's service identity: server name to
     /// the `mcp_oauth` connection whose token they send.
     pub oauth: BTreeMap<String, String>,
+    /// Servers whose token the control plane hands out per turn (one that
+    /// acts as the turn's person, or a connection-backed preset): server
+    /// name to its grant.
+    pub per_turn: BTreeMap<String, PerTurnGrant>,
+}
+
+/// An MCP server's grant that only the control plane can answer, for the
+/// turn running now ([`MCP_CONNECTION_COMMAND`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PerTurnGrant {
+    /// The attachment's OAuth provider (`mcp_oauth_<server>`).
+    pub provider: String,
+    pub acts_as: everruns_core::McpServerActsAs,
 }
 
 impl Bindings {
     pub fn is_empty(&self) -> bool {
-        self.headers.is_empty() && self.oauth.is_empty()
+        self.headers.is_empty() && self.oauth.is_empty() && self.per_turn.is_empty()
     }
 }
 
@@ -90,6 +117,18 @@ pub fn take_bindings(servers: &mut everruns_core::ScopedMcpServers) -> Bindings 
         {
             server.auth_mode = everruns_core::McpServerAuthMode::None;
             bindings.oauth.insert(name.clone(), id);
+        } else if server.auth_mode == everruns_core::McpServerAuthMode::OAuth
+            && !server.acts_as.is_none()
+            && let Some(provider) = server.oauth_provider_id.take()
+        {
+            server.auth_mode = everruns_core::McpServerAuthMode::None;
+            bindings.per_turn.insert(
+                name.clone(),
+                PerTurnGrant {
+                    provider,
+                    acts_as: std::mem::take(&mut server.acts_as),
+                },
+            );
         }
         let mut taken: Vec<(String, String)> = server
             .headers
@@ -341,6 +380,18 @@ impl OrgMcp {
                 credential.headers.insert(header.clone(), value);
             }
         }
+        if let Some(grant) = bindings.per_turn.get(request.server_name) {
+            let started = Instant::now();
+            let token = self
+                .per_turn_token(&material, &org, session, request.server_name, grant)
+                .await?;
+            self.resolve
+                .observe(&[("kind", "per_turn")], started.elapsed());
+            if let Some(token) = token {
+                credential.authorization = Some(format!("Bearer {token}"));
+                found = true;
+            }
+        }
         if let Some(id) = bindings.oauth.get(request.server_name) {
             let started = Instant::now();
             let tokens = self.token(&org, id).await?;
@@ -352,6 +403,38 @@ impl OrgMcp {
             }
         }
         Ok(found.then_some(credential))
+    }
+}
+
+impl OrgMcp {
+    /// The token the control plane hands out for `server`'s grant in the
+    /// turn `session` has open, as the person who sent it. Never kept: the
+    /// next turn may be another person's.
+    async fn per_turn_token(
+        &self,
+        material: &Arc<dyn OrgMaterial>,
+        org: &str,
+        session: uuid::Uuid,
+        server: &str,
+        grant: &PerTurnGrant,
+    ) -> anyhow::Result<Option<String>> {
+        let params = serde_json::json!({
+            "session_id": SessionId::from_uuid(session).to_string(),
+            "server_prefix": everruns_contracts::runtime::sanitize_mcp_server_name(server),
+            "provider": grant.provider,
+            "acts_as": grant.acts_as.to_string(),
+            "input_message_id": OPEN_TURN,
+        });
+        match material.lookup(org, MCP_CONNECTION_COMMAND, params).await? {
+            HostCallAnswer::Value(serde_json::Value::String(token)) => Ok(Some(token)),
+            HostCallAnswer::Value(_) => Ok(None),
+            HostCallAnswer::Error { message, .. } => {
+                // As a v1 worker: no grant is an unauthorized call, which
+                // tells the person to connect.
+                tracing::warn!(%org, server, %message, "no MCP grant for the turn");
+                Ok(None)
+            }
+        }
     }
 }
 

@@ -176,6 +176,9 @@ fn chat_model() -> Model {
 /// executor, before or after a move, plays the same step.
 struct FilesSim;
 
+/// The first words [`FilesSim`] plays.
+const FILES_COMMANDS: &[&str] = &["write", "read", "at", "ask", "later", "answer", "mcp", "sh"];
+
 #[async_trait::async_trait]
 impl everruns::ChatDriver for FilesSim {
     async fn chat_completion_stream(
@@ -190,11 +193,23 @@ impl everruns::ChatDriver for FilesSim {
                 SimTurn::Assistant(format!("Result: {}", last.content.to_text()))
             }
             _ => {
-                let text = messages
+                // The newest user message that says one of the commands: a
+                // capability's context update (the `platform` capability's
+                // skills note) can follow the person's message.
+                let said: Vec<String> = messages
                     .iter()
                     .rev()
-                    .find(|m| m.role == MessageRole::User)
+                    .filter(|m| m.role == MessageRole::User)
                     .map(|m| m.content.to_text())
+                    .collect();
+                let text = said
+                    .iter()
+                    .find(|text| {
+                        let verb = text.split_whitespace().next().unwrap_or_default();
+                        FILES_COMMANDS.contains(&verb)
+                    })
+                    .or(said.first())
+                    .cloned()
                     .unwrap_or_default();
                 let mut words = text.trim().splitn(3, ' ');
                 let call = |name: &str, arguments: Value| {
@@ -251,9 +266,17 @@ impl everruns::ChatDriver for FilesSim {
                             None => SimTurn::Assistant("No MCP lookup tool.".into()),
                         }
                     }
+                    // A sandbox's `bash` takes `command`, the in-process
+                    // shell's (`bashkit_shell`) `commands`.
                     (Some("sh"), Some(_), _) => {
                         let command = text.trim().trim_start_matches("sh").trim();
-                        call("bash", json!({ "command": command }))
+                        let parameter = config
+                            .tools
+                            .iter()
+                            .find(|tool| tool.name() == "bash")
+                            .filter(|tool| tool.parameters()["properties"]["commands"].is_object())
+                            .map_or("command", |_| "commands");
+                        call("bash", json!({ parameter: command }))
                     }
                     _ => SimTurn::Assistant("Say write, read, at, ask, mcp or sh.".into()),
                 }

@@ -22,6 +22,8 @@ const TOKEN_URL: &str = "https://auth.example/token";
 struct Directory {
     state: parking_lot::Mutex<(Orgs, Feed)>,
     sessions: parking_lot::Mutex<HashMap<SessionId, String>>,
+    /// Host calls made: (org, command, params).
+    lookups: parking_lot::Mutex<Vec<(String, String, serde_json::Value)>>,
 }
 
 impl Directory {
@@ -91,6 +93,22 @@ impl OrgMaterial for Directory {
             data_key: KEY,
             data_key_id: "dk".into(),
         }))
+    }
+
+    async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        let n = {
+            let mut lookups = self.lookups.lock();
+            lookups.push((org.into(), command.into(), params));
+            lookups.len()
+        };
+        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+            serde_json::json!(format!("person-token-{n}")),
+        ))
     }
 
     async fn secret_op(&self, org: &str, op: SecretOp) -> anyhow::Result<SecretReply> {
@@ -228,6 +246,68 @@ fn placeholders_leave_the_definition_and_literal_headers_stay() {
     assert_eq!(bindings.oauth.get("crm").map(String::as_str), Some(GRANT));
     assert_eq!(servers["crm"].oauth_provider_id, None);
     assert_eq!(servers["crm"].auth_mode, McpServerAuthMode::None);
+}
+
+/// A server that acts as the turn's person keeps its provider out of the
+/// definition, and its token is asked of the control plane for the
+/// session's open turn on every use, never kept: the next turn may be
+/// another person's.
+#[tokio::test]
+async fn a_person_acting_server_asks_for_the_open_turns_token_each_time() {
+    let mut servers: everruns_core::ScopedMcpServers = serde_json::from_value(serde_json::json!({
+        "My Notes": {
+            "url": "https://notes.example/mcp",
+            "auth_mode": "oauth",
+            "oauth_provider_id": "mcp_oauth_notes",
+            "acts_as": "user",
+        },
+        "plain": { "url": "https://plain.example/mcp", "auth_mode": "oauth" },
+    }))
+    .unwrap();
+    let bindings = take_bindings(&mut servers);
+    assert_eq!(
+        bindings.per_turn.get("My Notes"),
+        Some(&PerTurnGrant {
+            provider: "mcp_oauth_notes".into(),
+            acts_as: everruns_core::McpServerActsAs::User,
+        })
+    );
+    let notes = &servers["My Notes"];
+    assert_eq!(notes.oauth_provider_id, None);
+    assert_eq!(notes.auth_mode, McpServerAuthMode::None);
+    assert!(notes.acts_as.is_none());
+    // A server acting as no one is left as it is.
+    assert!(!bindings.per_turn.contains_key("plain"));
+
+    let directory = Arc::new(Directory::default());
+    let session = SessionId::new();
+    directory.sessions.lock().insert(session, ORG.into());
+    let auth = executor(&directory, Arc::new(TokenEndpoint::default())).for_agent(bindings);
+    for n in 1..=2 {
+        let credential = auth
+            .authorization(&request("My Notes", session))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            credential.authorization,
+            Some(format!("Bearer person-token-{n}"))
+        );
+    }
+    let lookups = directory.lookups.lock();
+    assert_eq!(lookups.len(), 2, "never kept");
+    let (org, command, params) = &lookups[0];
+    assert_eq!(org, ORG);
+    assert_eq!(command, MCP_CONNECTION_COMMAND);
+    assert_eq!(params["session_id"], session.to_string());
+    assert_eq!(params["server_prefix"], "my_notes");
+    assert_eq!(params["provider"], "mcp_oauth_notes");
+    assert_eq!(params["acts_as"], "user");
+    assert_eq!(params["input_message_id"], OPEN_TURN);
+    assert_eq!(
+        everruns_contracts::host_calls::by_command(command).map(|c| c.name),
+        Some(everruns_contracts::host_calls::MCP_CONNECTION_TOKEN)
+    );
 }
 
 #[tokio::test]

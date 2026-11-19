@@ -489,11 +489,15 @@ mod tests {
 
 #[derive(Deserialize)]
 struct SenderOf {
-    message: MessageId,
+    /// `None`: the input message of the turn the session has open.
+    #[serde(default)]
+    message: Option<MessageId>,
 }
 
-/// Who sent the session's input message `message` (`senders.rs`):
-/// `{"user": <user id or null>}`.
+/// Who sent the session's input message `message` (`senders.rs`), or the
+/// input of the turn it has open when none is named:
+/// `{"message": <id or null>, "user": <user id or null>}`. No open turn
+/// names no message and no one.
 async fn sender(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
@@ -501,11 +505,15 @@ async fn sender(
 ) -> Result<Json<CellReply>, ApiError> {
     let id = parse(&session)?;
     let found = crate::api::lookup(&node, id, |s| {
-        s.platform.senders.of(body.message).map(str::to_owned)
+        let message = body
+            .message
+            .or_else(|| s.authority.open.and(s.authority.open_input));
+        let user = message.and_then(|m| s.platform.senders.of(m).map(str::to_owned));
+        (message, user)
     });
     Ok(Json(match found {
-        Lookup::Here(user) => CellReply::Ok {
-            value: json!({ "user": user }),
+        Lookup::Here((message, user)) => CellReply::Ok {
+            value: json!({ "message": message, "user": user }),
         },
         Lookup::Moved { cell } => CellReply::Moved { cell },
         Lookup::Missing => CellReply::NotFound,

@@ -15,8 +15,9 @@
 //!   and the person's membership and role before it runs anything.
 //! - A call outside a turn (no input message bound) is refused here: there
 //!   is no person to act as.
-//! - The shell surface's `everruns` builtin (the v1 worker's catalog
-//!   command source) is not installed on a cell yet; the native tools are.
+//! - The shell's `everruns` builtin forwards its line to the `execute`
+//!   tool (bashkit's `ForwardingBuiltin`), so it runs here too, bound to
+//!   the same turn.
 
 use std::sync::Arc;
 
