@@ -16,6 +16,11 @@
 //   it is a separate step (org moves, data plane v2 finalization). So
 //   turning v2 on in an existing install moves its new orgs and leaves the
 //   ones in use alone.
+// - `EVERRUNS_DEFAULT_DATA_PLANE_SINCE` (RFC 3339) narrows that to orgs
+//   created at or after the time: a service with many orgs that signed up
+//   and never ran an agent moves only the ones that sign up from now on. A
+//   value that does not parse turns the default off rather than place every
+//   empty org.
 // - A poll, not a hook on every org-creation path (sign-up, invitations,
 //   the default org at start, the organizations API): one query every
 //   few seconds catches them all, before a person can set up a provider and
@@ -37,6 +42,8 @@ const BATCH: i64 = 100;
 pub struct DefaultDataPlane {
     pub id: String,
     pub url: String,
+    /// Only orgs created at or after this time; every org when unset.
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl DefaultDataPlane {
@@ -75,9 +82,27 @@ impl DefaultDataPlane {
             .map(|id| id.trim().to_owned())
             .filter(|id| !id.is_empty())
             .unwrap_or_else(|| "local".to_owned());
+        let since = match var("EVERRUNS_DEFAULT_DATA_PLANE_SINCE")
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+        {
+            None => None,
+            Some(value) => match chrono::DateTime::parse_from_rfc3339(&value) {
+                Ok(at) => Some(at.with_timezone(&chrono::Utc)),
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "EVERRUNS_DEFAULT_DATA_PLANE_SINCE is not an RFC 3339 time: \
+                         no default data plane"
+                    );
+                    return None;
+                }
+            },
+        };
         Some(Self {
             id,
             url: url.to_owned(),
+            since,
         })
     }
 }
@@ -85,7 +110,7 @@ impl DefaultDataPlane {
 /// Register `plane` and put every org it should take on it.
 pub async fn place_orgs(cp: &ControlPlane, plane: &DefaultDataPlane) -> anyhow::Result<usize> {
     let mut placed = 0;
-    for org_id in cp.db.dp_orgs_to_place(BATCH).await? {
+    for org_id in cp.db.dp_orgs_to_place(BATCH, plane.since).await? {
         enable_org(cp, org_id, &plane.id).await?;
         tracing::info!(org_id, data_plane = %plane.id, "org placed on the default data plane");
         placed += 1;
@@ -178,7 +203,8 @@ mod tests {
             plane(&[("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://cell:7000/")]),
             Some(DefaultDataPlane {
                 id: "local".into(),
-                url: "http://cell:7000".into()
+                url: "http://cell:7000".into(),
+                since: None,
             })
         );
         assert_eq!(
@@ -201,6 +227,29 @@ mod tests {
                 ("EVERRUNS_DATA_PLANE", "V1"),
             ]),
             None
+        );
+    }
+
+    #[test]
+    fn a_cutoff_limits_placement_to_orgs_created_after_it() {
+        let url = ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://cell:7000");
+        let at = plane(&[
+            url,
+            ("EVERRUNS_DEFAULT_DATA_PLANE_SINCE", "2026-11-19T01:00:00Z"),
+        ])
+        .and_then(|p| p.since);
+        assert_eq!(
+            at.map(|t| t.to_rfc3339()),
+            Some("2026-11-19T01:00:00+00:00".into())
+        );
+        // A cutoff that does not parse never widens placement to every org.
+        assert_eq!(
+            plane(&[url, ("EVERRUNS_DEFAULT_DATA_PLANE_SINCE", "tomorrow")]),
+            None
+        );
+        assert_eq!(
+            plane(&[url, ("EVERRUNS_DEFAULT_DATA_PLANE_SINCE", " ")]).map(|p| p.since),
+            Some(None)
         );
     }
 

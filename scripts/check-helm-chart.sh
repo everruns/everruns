@@ -62,8 +62,8 @@ if grep -q 'kind: NetworkPolicy' <<<"$one"; then fail "network policies render w
 
 echo "==> data plane v2 by default, v1 one setting away"
 grep -q 'name: check-everruns-cell$' <<<"$one" || fail "v2 is the default but no cell renders"
-grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-everruns-cell-0.check-everruns-cell:7000"' <<<"$one" \
-  || fail "the server does not put new organizations on the cell"
+grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-everruns-cell-gateway:7000"' <<<"$one" \
+  || fail "the server does not reach the cell through the gateway Service over its ready nodes"
 grep -q 'reverse_proxy check-everruns-edge:7100 check-everruns-server:9000' <<<"$one" \
   || fail "the proxy does not send session calls to the edge router"
 grep -q 'CELL_STORE, value: "file:///store"' <<<"$one" || fail "without S3 the cells do not share a store volume"

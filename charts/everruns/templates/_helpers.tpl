@@ -308,7 +308,7 @@ is and the link to the server.
 {{- if include "everruns.dataPlaneRuns" . }}
 {{- if eq .Values.dataPlane.version "v2" }}
 - { name: EVERRUNS_DEFAULT_DATA_PLANE, value: local }
-- { name: EVERRUNS_DEFAULT_DATA_PLANE_URL, value: {{ printf "http://%s" (include "everruns.cellAddr" (list . 0)) | quote }} }
+- { name: EVERRUNS_DEFAULT_DATA_PLANE_URL, value: {{ printf "http://%s-gateway:7000" (include "everruns.name" (list . "cell")) | quote }} }
 {{- end }}
 {{- $internal := include "everruns.internalSecretName" . }}
 - name: EVERRUNS_DP_TOKEN

@@ -672,8 +672,9 @@ set these; the Compose guide's `.env` needs the first two.
 |---|---|
 | `EVERRUNS_DP_TOKEN` | Bearer token the data plane and the API use with each other. Cells get the same value as `CELL_DP_TOKEN`. Generate with `openssl rand -hex 32`. |
 | `EVERRUNS_DP_KEY` | 32 random bytes in base64 that wrap each organization's data key. Cells get the same value as `CELL_DP_KEY`. Generate with `openssl rand -base64 32`. Keep it: a new key cannot open what the old one wrapped. |
-| `EVERRUNS_DEFAULT_DATA_PLANE_URL` | A node of the data plane's directory cell, such as `http://cell:7000`. The API registers it and puts every organization that has never had a session on it. |
+| `EVERRUNS_DEFAULT_DATA_PLANE_URL` | The data plane's gateway: a node of its directory cell, or a Service over its ready nodes, such as `http://cell:7000`. Any node forwards to the cell that holds an organization or session, so one address covers every cell. The API registers it and puts every organization that has never had a session on it. |
 | `EVERRUNS_DEFAULT_DATA_PLANE` | That data plane's id. Default `local`. |
+| `EVERRUNS_DEFAULT_DATA_PLANE_SINCE` | Optional RFC 3339 time: place only organizations created at or after it, so ones that signed up earlier and never ran an agent stay on v1. A value that does not parse turns the default data plane off. |
 | `EVERRUNS_DATA_PLANE` | `v1` turns placement off: new organizations run on the workers. |
 
 **Example (`.env`):**

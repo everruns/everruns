@@ -71,6 +71,19 @@ spec:
     - { name: cell, port: 7000 }
     - { name: raft, port: 7001 }
 ---
+# The server's one address for the data plane: any ready node, whose gateway
+# forwards to the leader, so a node that is down does not cut the link.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $cell }}-gateway
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cell
+spec:
+  selector: {{- include "everruns.selector" (list . "cell") | nindent 4 }}
+  ports:
+    - { name: cell, port: 7000 }
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
