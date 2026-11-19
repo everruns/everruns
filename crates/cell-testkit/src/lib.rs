@@ -193,12 +193,15 @@ impl everruns::ChatDriver for FilesSim {
                 SimTurn::Assistant(format!("Result: {}", last.content.to_text()))
             }
             _ => {
-                // The newest user message that says one of the commands: a
-                // capability's context update (the `platform` capability's
-                // skills note) can follow the person's message.
+                // The newest user message of this turn that says one of the
+                // commands: a capability's context update (the `platform`
+                // capability's skills note) can follow the person's message.
+                // Never an earlier turn's: a scheduled run's message would
+                // replay the `at` that scheduled it.
                 let said: Vec<String> = messages
                     .iter()
                     .rev()
+                    .take_while(|m| m.role != MessageRole::Assistant)
                     .filter(|m| m.role == MessageRole::User)
                     .map(|m| m.content.to_text())
                     .collect();
