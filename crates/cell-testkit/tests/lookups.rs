@@ -361,3 +361,123 @@ async fn the_shells_everruns_command_runs_the_catalog_as_the_turns_person() {
         .unwrap_or_else(|| panic!("no tool call completed: {events:?}"));
     assert!(completed.to_string().contains("3 agents"), "{completed}");
 }
+
+/// A session's Memory (data plane v2 parity, Phase B): the control plane
+/// names the session's Memory mounts with the create, and the agent's file
+/// tools reach them in the control plane, one host call per operation. A
+/// session without Memory never calls.
+#[tokio::test(flavor = "multi_thread")]
+async fn memory_files_are_read_from_the_control_plane() {
+    const MEMORY_FILE: &str = everruns_contracts::host_calls::MEMORY_FILE;
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(
+        MEMORY_FILE,
+        HostCallAnswer::Value(json!({ "ok": {
+            "id": uuid::Uuid::new_v4(),
+            "session_id": uuid::Uuid::new_v4(),
+            "path": "/memory/user/notes.md",
+            "name": "notes.md",
+            "content": "likes green tea",
+            "encoding": "text",
+            "is_directory": false,
+            "is_readonly": false,
+            "size_bytes": 15,
+            "created_at": "2026-11-19T00:00:00Z",
+            "updated_at": "2026-11-19T00:00:00Z",
+        }})),
+    );
+
+    let create = |session: &str, memory: serde_json::Value| {
+        json!({
+            "id": session,
+            "agent_ref": "files",
+            "definition": everruns_cell_testkit::definition("files").unwrap(),
+            "memory": memory,
+        })
+    };
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &create(&session, json!(["/memory/user"])),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let person = uuid::Uuid::new_v4().to_string();
+    say_as(
+        &fleet,
+        &session,
+        MessageId::new(),
+        &person,
+        "read /memory/user/notes.md",
+    )
+    .await;
+    fleet.turns(&session, 1).await;
+
+    let asked = cp.lookups();
+    let events = fleet.events(&session).await;
+    let (_, _, params) = asked
+        .iter()
+        .find(|(_, command, _)| command == MEMORY_FILE)
+        .unwrap_or_else(|| panic!("Memory was never asked: {asked:?}\n{events:#?}"));
+    assert_eq!(params["op"], json!("read"));
+    assert_eq!(params["path"], json!("/memory/user/notes.md"));
+    assert_eq!(params["session_id"], json!(session));
+    let completed = events
+        .iter()
+        .find(|e| e["type"] == "tool.completed")
+        .unwrap_or_else(|| panic!("no tool call completed: {events:?}"));
+    assert!(
+        completed.to_string().contains("likes green tea"),
+        "{completed}"
+    );
+
+    // A mount the control plane may not give is refused at the create.
+    let (status, _) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &create(&SessionId::new().to_string(), json!(["/workspace"])),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
+
+    // No Memory named: the same read stays in the session's own files.
+    let before = cp
+        .lookups()
+        .iter()
+        .filter(|(_, command, _)| command == MEMORY_FILE)
+        .count();
+    let plain = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &create(&plain, json!([])),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    say_as(
+        &fleet,
+        &plain,
+        MessageId::new(),
+        &person,
+        "read /memory/user/notes.md",
+    )
+    .await;
+    fleet.turns(&plain, 1).await;
+    let after = cp
+        .lookups()
+        .iter()
+        .filter(|(_, command, _)| command == MEMORY_FILE)
+        .count();
+    assert_eq!(before, after);
+}

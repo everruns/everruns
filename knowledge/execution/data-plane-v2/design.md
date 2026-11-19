@@ -2142,6 +2142,27 @@ goes over as a sealed connection the data plane refreshes. The shell's
 line to the `platform` capability's `execute` tool, which runs the
 command catalog as the turn's person.
 
+**Parity, Phase B: Memory and capability files (2026-11-19).** A v2
+session had no Memory (`/memory/agent`, `/memory/user`, `/memory/shared`,
+`/team`, `/room`) and none of the files its capabilities bring, so an
+agent told to read `/workspace/docs` or keep notes in `/memory/user`
+found nothing. Memory stays in the control plane: it is shared across
+sessions, people and agents of the org, so no one session's cell can own
+it. The control plane resolves a session's mounts from its record, as for
+a v1 session, and sends them with the create; the cell mounts only those,
+and each file operation is one `memory_file` host call, served only
+inside the session's own mounts (THREAT[TM-TENANT]). Nothing is cached, so
+a read sees what another session wrote a moment ago; a subagent's child
+has no Memory, and there is no content search over it yet (a shell's
+`grep` reads the files). A capability's virtual tree (the product docs)
+is mounted read-only from the cell's memory, built once and shared by
+every session; its inline files are written with the create, only where
+absent, as v1 copies them (`crates/cell/src/memory.rs`,
+`crates/cell/src/capability_files.rs`,
+`crates/server/src/domains/data_plane/memory.rs`). Console Chat still
+runs on the control plane: its person's own MCP servers, page context and
+threads come next.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

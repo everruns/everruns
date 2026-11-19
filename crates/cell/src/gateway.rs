@@ -560,12 +560,13 @@ impl Gateway {
         id: Option<SessionId>,
         tenant: Option<String>,
     ) -> Result<Value, ApiError> {
-        self.create_running(definition, cell, id, tenant, None)
+        self.create_running(definition, cell, id, tenant, None, Vec::new())
             .await
     }
 
     /// [`Self::create`] for a session of the control plane's agent
-    /// `agent_ref` ([`crate::platform::Platform::agent_ref`]).
+    /// `agent_ref` ([`crate::platform::Platform::agent_ref`]) with its
+    /// Memory mounts `memory` ([`crate::platform::Platform::memory`]).
     pub async fn create_running(
         &self,
         definition: Value,
@@ -573,6 +574,7 @@ impl Gateway {
         id: Option<SessionId>,
         tenant: Option<String>,
         agent_ref: Option<String>,
+        memory: Vec<String>,
     ) -> Result<Value, ApiError> {
         // Reject a malformed definition here, not at its first turn. Whether
         // a node has the tools and provider it names shows at the turn.
@@ -621,7 +623,12 @@ impl Gateway {
                 _ => cells.retain(|c| *c != cell),
             }
         };
-        let body = json!({ "definition": definition, "tenant": tenant, "agent_ref": agent_ref });
+        let body = json!({
+            "definition": definition,
+            "tenant": tenant,
+            "agent_ref": agent_ref,
+            "memory": memory,
+        });
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             let reply: CellReply = self
