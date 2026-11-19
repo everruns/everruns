@@ -719,23 +719,23 @@ pub fn pending_input(requested: &Value) -> PendingInput {
 
 /// What `session` waits on, read from its last `tool.call_requested`.
 pub async fn session_pending_input(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     session: &SessionRow,
 ) -> anyhow::Result<PendingInput> {
     if SessionStatus::from(session.status.as_str()) != SessionStatus::WaitingForToolResults {
         return Ok(PendingInput::default());
     }
-    let requested = db
-        .list_events(
-            session.id,
-            None,
-            None,
-            &[TOOL_CALL_REQUESTED.to_string()],
-            &[],
-            None,
-            Some(1),
-        )
-        .await?;
+    let requested = crate::domains::sessions::events::list(
+        db,
+        session.id,
+        None,
+        None,
+        &[TOOL_CALL_REQUESTED.to_string()],
+        &[],
+        None,
+        Some(1),
+    )
+    .await?;
     Ok(requested
         .last()
         .map(|row| pending_input(&row.data))
@@ -745,7 +745,7 @@ pub async fn session_pending_input(
 /// What `session` waits on, plus, on a run's first session, what the agents it
 /// handed work to wait on (`knowledge/runtime-resources/agents-using-agents.md`).
 pub async fn run_pending_input(
-    db: &StorageBackend,
+    db: &std::sync::Arc<StorageBackend>,
     session: &SessionRow,
 ) -> anyhow::Result<PendingInput> {
     let mut pending = session_pending_input(db, session).await?;

@@ -9,6 +9,8 @@
 # to pull published images anyway. So PRs that change the compose file, the
 # guide, or the script are checked against `latest`, every release is checked
 # right after its images publish, and a daily run catches drift from either.
+# Each smoke runs a turn on data plane v2 (the default) when the tag has a
+# cell image, else on v1 (scripts/lib/smoke-turn.sh); DATA_PLANE forces one.
 name: Compose Smoke
 
 on:
@@ -31,6 +33,7 @@ on:
       - '.github/workflows/compose-smoke.yml'
       - 'crates/cli/**'
       - 'scripts/smoke-everruns-docker.sh'
+      - 'scripts/lib/smoke-turn.sh'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

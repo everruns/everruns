@@ -265,6 +265,12 @@ async fn schedules(
             reason: "a sender is recorded with its message".into(),
         }));
     }
+    // The session's agent is set by its create (`api.rs` `create_session`).
+    if matches!(body.action, Some(crate::platform::Op::Agent { .. })) {
+        return Ok(Json(CellReply::Refused {
+            reason: "a session's agent is set when it is created".into(),
+        }));
+    }
     let Some(action) = body.action else {
         let listed = crate::api::lookup(&node, id, |s| {
             let live: Vec<_> = s

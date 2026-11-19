@@ -7,7 +7,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use everruns_contracts::dataplane::{
     AllowanceGrant, AllowanceRequest, FeedAck, FeedBatch, LookupRequest, SealedSecret,
+    lookup_secret,
 };
+use everruns_contracts::host_calls::{self, HostCallRequest, host_call_secret};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -21,6 +23,9 @@ pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/dp/v1/feed", post(feed))
         .route("/dp/v1/tenants/{org}/allowances", post(allowances))
+        .route("/dp/v1/tenants/{org}/host-calls/{name}", post(host_call))
+        // The route host calls replaced, kept while cells of the release
+        // before roll over. Remove with the release after.
         .route("/dp/v1/tenants/{org}/lookups", post(lookups))
         .route("/.well-known/jwks.json", get(jwks))
         .route("/v1/auth/token", post(token))
@@ -117,27 +122,65 @@ async fn allowances(
         .map_err(internal)
 }
 
-/// One lookup a tool on the org's data plane makes at call time, answered
-/// sealed (`domains/data_plane/lookups.rs`).
+/// One host call a tool on the org's data plane makes at call time,
+/// answered sealed (`domains/data_plane/host_calls.rs`).
+async fn host_call(
+    State(state): State<ApiState>,
+    Path((org, name)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(request): Json<HostCallRequest>,
+) -> Reply<SealedSecret> {
+    let call = host_calls::by_name(&name)
+        .ok_or((StatusCode::NOT_FOUND, format!("{name} is not a host call")))?;
+    answer_call(
+        &state,
+        &org,
+        &headers,
+        call,
+        request.params,
+        &host_call_secret(&request.call),
+    )
+    .await
+}
+
+/// A legacy lookup (`LookupRequest`): the host call its v1 command maps to.
 async fn lookups(
     State(state): State<ApiState>,
     Path(org): Path<String>,
     headers: HeaderMap,
     Json(request): Json<LookupRequest>,
 ) -> Reply<SealedSecret> {
-    let cp = control_plane(&state)?;
-    require_link(&cp, &headers)?;
-    let org_id = org_internal(&org).ok_or((StatusCode::NOT_FOUND, format!("no org {org}")))?;
+    let call = host_calls::by_command(&request.command).ok_or((
+        StatusCode::FORBIDDEN,
+        format!("{} is not a data plane lookup", request.command),
+    ))?;
+    answer_call(
+        &state,
+        &org,
+        &headers,
+        call,
+        request.params,
+        &lookup_secret(&request.request),
+    )
+    .await
+}
+
+/// Run `call` for `org` as the org's internal caller, sealed as `secret_id`.
+async fn answer_call(
+    state: &ApiState,
+    org: &str,
+    headers: &HeaderMap,
+    call: &host_calls::HostCall,
+    params: Value,
+    secret_id: &str,
+) -> Reply<SealedSecret> {
+    let cp = control_plane(state)?;
+    require_link(&cp, headers)?;
+    let org_id = org_internal(org).ok_or((StatusCode::NOT_FOUND, format!("no org {org}")))?;
     let row = cp.db.dp_org(org_id).await.map_err(internal)?.ok_or((
         StatusCode::NOT_FOUND,
         format!("org {org} is not on a data plane"),
     ))?;
-    if !dp_domain::lookups::allowed(&request.command) {
-        return Err((
-            StatusCode::FORBIDDEN,
-            format!("{} is not a data plane lookup", request.command),
-        ));
-    }
     let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org_id,
@@ -146,8 +189,10 @@ async fn lookups(
     .await
     .map_err(internal)?;
     let ctx = state.internal_ctx(org_id, flags);
-    dp_domain::lookups::answer(&cp, &row, &ctx, request)
+    let answer = dp_domain::host_calls::answer(&cp, &ctx, call, params)
         .await
+        .map_err(internal)?;
+    dp_domain::host_calls::seal_answer(&cp, &row, secret_id, &answer)
         .map(Json)
         .map_err(internal)
 }

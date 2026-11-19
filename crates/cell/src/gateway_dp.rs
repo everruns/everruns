@@ -27,6 +27,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
+use everruns_contracts::session_commands::{self, Kind};
 
 use crate::control::AdminCommand;
 use crate::dp::{
@@ -66,6 +67,14 @@ pub fn cell_router(node: Arc<Node>) -> Router {
     Router::new()
         .route("/cell/orgs/{org}/config", get(cell_position))
         .route("/cell/orgs/{org}/agents/{agent}", get(cell_agent))
+        .route(
+            "/cell/orgs/{org}/catalog/agents/{agent}",
+            get(cell_catalog_agent),
+        )
+        .route(
+            "/cell/orgs/{org}/catalog/harnesses/{harness}",
+            get(cell_catalog_harness),
+        )
         .route("/cell/orgs/{org}/full", get(cell_full))
         .route("/cell/orgs/{org}/commands/{command}", get(cell_command))
         .route("/cell/orgs/{org}/diff", post(cell_diff))
@@ -82,6 +91,12 @@ pub fn cell_router(node: Arc<Node>) -> Router {
             "/cell/orgs/{org}/connections/{connection}",
             get(cell_connection).post(cell_connection),
         )
+        .route(
+            "/cell/orgs/{org}/host-calls/{name}",
+            post(crate::host_calls::cell_host_call),
+        )
+        // The route host calls replaced, kept while executors of the
+        // release before roll over. Remove with the release after.
         .route("/cell/orgs/{org}/lookups", post(cell_lookup))
         .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
         .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
@@ -161,6 +176,14 @@ struct OrgSession {
     id: everruns_contracts::typed_id::SessionId,
     /// The org's agent, at its current revision.
     agent_ref: String,
+    /// Or the session's own declaration of that agent: the agent with the
+    /// session's own settings (prompt, client tools, MCP servers, network
+    /// access, iteration controls, capabilities) on top, compiled by the
+    /// control plane like any agent revision (parity gap 4). Sent with the
+    /// create rather than published as org config, so the org's config does
+    /// not grow with its sessions.
+    #[serde(default)]
+    definition: Option<serde_json::Value>,
     /// The session's own starter files, written where absent.
     #[serde(default)]
     initial_files: Vec<everruns_core::session_file::InitialFile>,
@@ -178,8 +201,18 @@ async fn org_session(
     Path(org): Path<String>,
     Json(body): Json<OrgSession>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let revision = gateway.agent_revision(&org, &body.agent_ref).await?;
-    let mut package = revision.package;
+    let mut package = match body.definition {
+        Some(definition) => {
+            // Checked as a published revision is: a readable format that
+            // names no stored record.
+            let declaration = everruns::hosting::RuntimeAgent::new(definition);
+            declaration
+                .validate()
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("definition: {e}")))?;
+            declaration.agent
+        }
+        None => gateway.agent_revision(&org, &body.agent_ref).await?.package,
+    };
     if let Some(sandbox) = &body.sandbox {
         let entry = crate::sandbox::capability_entry(sandbox).ok_or((
             StatusCode::BAD_REQUEST,
@@ -188,7 +221,13 @@ async fn org_session(
         with_capability(&mut package, entry);
     }
     let created = gateway
-        .create(package, None, Some(body.id), Some(org))
+        .create_running(
+            package,
+            None,
+            Some(body.id),
+            Some(org),
+            Some(body.agent_ref),
+        )
         .await?;
     if !body.initial_files.is_empty() {
         let seed = crate::api_files::FsOp::Seed {
@@ -209,25 +248,6 @@ async fn org_session(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
-/// The session commands the control plane runs on an org's session
-/// itself: admitting a message it produced (an agent trigger's run, step
-/// 11.4, or a channel's message, 11.5), cancelling the running turn, a
-/// channel's prior conversation, the result of a parked call the control
-/// plane resolved (a question set's answers, 11.6), and an event it
-/// records (a reaction, 11.6), and a person's change to the session's
-/// storage (11.6). The cell checks each body.
-const ORG_SESSION_COMMANDS: &[&str] = &[
-    "messages",
-    "cancel-turn",
-    "seed",
-    "tool-results",
-    "record",
-    "storage",
-    // A session's files: the control plane copies a message's uploads
-    // there before it sends the message (`gateway_input.rs`).
-    "fs",
-];
-
 /// The org's session `session`, or 404.
 async fn owned_session(
     gateway: &Gateway,
@@ -245,13 +265,15 @@ async fn owned_session(
 }
 
 /// `POST /dp/v1/orgs/{org}/sessions/{session}/{command}`: one of
-/// [`ORG_SESSION_COMMANDS`] on one of the org's sessions.
+/// a declared session command
+/// ([`everruns_contracts::session_commands::SESSION_COMMANDS`]) on one of
+/// the org's sessions. The cell checks each body.
 async fn org_session_command(
     State(gateway): State<Arc<Gateway>>,
     Path((org, session, command)): Path<(String, String, String)>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if !ORG_SESSION_COMMANDS.contains(&command.as_str()) {
+    if session_commands::find(Kind::Command, &command).is_none() {
         return Err((
             StatusCode::NOT_FOUND,
             format!("no session command {command}"),
@@ -264,13 +286,13 @@ async fn org_session_command(
 }
 
 /// `GET /dp/v1/orgs/{org}/sessions/{session}/{read}`: one of
-/// [`crate::gateway_reads::READS`] on one of the org's sessions (step 11.6).
+/// a declared session read on one of the org's sessions (step 11.6).
 async fn org_session_read(
     State(gateway): State<Arc<Gateway>>,
     Path((org, session, read)): Path<(String, String, String)>,
     axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if !crate::gateway_reads::READS.contains(&read.as_str()) {
+    if session_commands::find(Kind::Read, &read).is_none() {
         return Err((StatusCode::NOT_FOUND, format!("no session read {read}")));
     }
     let session = owned_session(&gateway, &org, &session).await?;
@@ -294,7 +316,7 @@ async fn org_session_sse(
 /// `definition` running the pinned sandbox `entry`: it replaces the
 /// agent's other compute (a shell, the workspace's own file tools), as the
 /// platform's workers apply a managed sandbox.
-fn with_capability(definition: &mut serde_json::Value, entry: serde_json::Value) {
+pub(crate) fn with_capability(definition: &mut serde_json::Value, entry: serde_json::Value) {
     if !definition["capabilities"].is_array() {
         definition["capabilities"] = serde_json::json!([]);
     }
@@ -321,6 +343,36 @@ async fn position(
 
 impl Gateway {
     /// `org`'s current revision of `agent`.
+    /// The org's agent whose card names the host's agent `agent`, if any.
+    pub async fn catalog_agent(
+        &self,
+        org: &str,
+        agent: &str,
+    ) -> Result<Option<AgentDefinition>, ApiError> {
+        let directory = self.directory_cell()?;
+        self.call(
+            directory,
+            &format!("/cell/orgs/{org}/catalog/agents/{agent}"),
+            None,
+        )
+        .await
+    }
+
+    /// The host's harness `harness`, as the org's catalog carries it.
+    pub async fn catalog_harness(
+        &self,
+        org: &str,
+        harness: &str,
+    ) -> Result<Option<serde_json::Value>, ApiError> {
+        let directory = self.directory_cell()?;
+        self.call(
+            directory,
+            &format!("/cell/orgs/{org}/catalog/harnesses/{harness}"),
+            None,
+        )
+        .await
+    }
+
     pub async fn agent_revision(
         &self,
         org: &str,
@@ -378,6 +430,39 @@ async fn cell_agent(
             .and_then(|c| c.agents.get(&agent))
             .cloned(),
     ))
+}
+
+/// The org's agent whose card names the host's agent `agent` (parity gap
+/// 9): the agent on its own harness.
+async fn cell_catalog_agent(
+    State(node): State<Arc<Node>>,
+    Path((org, agent)): Path<(String, String)>,
+) -> Result<Json<Option<AgentDefinition>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(state.orgs.orgs.get(&org).and_then(|c| {
+        c.agents
+            .values()
+            .find(|a| a.card.as_ref().is_some_and(|card| card.agent_id == agent))
+            .cloned()
+    })))
+}
+
+/// The host's harness `harness` as a card of one of the org's agents
+/// carries it, inheritance resolved.
+async fn cell_catalog_harness(
+    State(node): State<Arc<Node>>,
+    Path((org, harness)): Path<(String, String)>,
+) -> Result<Json<Option<serde_json::Value>>, ApiError> {
+    leader_only(&node)?;
+    let state = node.shared.state.read();
+    Ok(Json(state.orgs.orgs.get(&org).and_then(|c| {
+        c.agents
+            .values()
+            .filter_map(|a| a.card.as_ref())
+            .find(|card| card.harness_id == harness)
+            .map(|card| card.harness.clone())
+    })))
 }
 
 // ------------------------------------------------------------ org admin
@@ -725,9 +810,10 @@ async fn cell_connection(
     ))
 }
 
-/// An executor's call-time lookup for `org`, passed on to the control plane
-/// over the link (`lookups.rs`). The answer comes back sealed with the
-/// org's data key and goes to the executor unopened.
+/// A legacy lookup from an executor of the release before host calls
+/// (`host_calls.rs`), passed on to the control plane's legacy route. The
+/// answer comes back sealed with the org's data key and goes to the
+/// executor unopened.
 async fn cell_lookup(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
@@ -737,8 +823,10 @@ async fn cell_lookup(
         StatusCode::SERVICE_UNAVAILABLE,
         "this cell has no control plane".to_owned(),
     ))?;
-    if request.command == everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE {
-        act_as_sender(&node, &mut request.params).await?;
+    if everruns_contracts::host_calls::by_command(&request.command)
+        .is_some_and(|call| call.acts_as == everruns_contracts::host_calls::ActsAs::Person)
+    {
+        crate::host_calls::act_as_sender(&node, &mut request.params).await?;
     }
     let failed = |error: reqwest::Error| {
         tracing::warn!(%org, %error, "a lookup did not reach the control plane");
@@ -763,40 +851,6 @@ async fn cell_lookup(
         ));
     }
     Ok(Json(reply.json().await.map_err(failed)?))
-}
-
-/// Set a platform call's `acting_user` to the person who sent its input
-/// message, from the session's own record (`senders.rs`), whatever the
-/// executor put there (THREAT[TM-AGENT-017]): `null` when no one did, which
-/// the control plane refuses.
-async fn act_as_sender(node: &Node, params: &mut serde_json::Value) -> Result<(), ApiError> {
-    let bad = |what: &str| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("a platform call needs {what}"),
-        )
-    };
-    let session = params["session_id"]
-        .as_str()
-        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
-        .ok_or_else(|| bad("its session"))?;
-    let message = params["input_message_id"]
-        .as_str()
-        .and_then(|id| everruns_contracts::typed_id::MessageId::parse(id).ok())
-        .ok_or_else(|| bad("its input message"))?;
-    let gateway = node.gateway.get().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        "this cell has no gateway".to_owned(),
-    ))?;
-    let found = gateway
-        .session_command(
-            session,
-            "sender",
-            &serde_json::json!({ "message": message }),
-        )
-        .await?;
-    params["acting_user"] = found["user"].clone();
-    Ok(())
 }
 
 /// Every session of `org` in this cell, with its full log (an export).

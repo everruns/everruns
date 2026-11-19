@@ -9,9 +9,9 @@ mod support;
 
 use std::sync::Arc;
 
-use everruns_cell::dp::LookupAnswer;
 use everruns_cell::providers::OrgMaterial;
-use everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE;
+use everruns_contracts::host_calls::HostCallAnswer;
+const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::connection_services::UserConnectionResolver;
@@ -47,7 +47,7 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     cp.set_lookup(
         "worker_get_connection_token",
-        LookupAnswer::Value(json!("gh-token-1")),
+        HostCallAnswer::Value(json!("gh-token-1")),
     );
 
     // A turn on the executor, which then knows the session's org.
@@ -67,6 +67,8 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     assert_eq!(asked[0].1, "worker_get_connection_token");
     assert_eq!(asked[0].2["session_id"], json!(session));
     assert_eq!(asked[0].2["provider"], json!("github"));
+    // Outside a turn it acts as no one.
+    assert_eq!(asked[0].2["acting_user"], serde_json::Value::Null);
 
     // The control plane's refusal is the tool's failure, never a default.
     let error = resolver.get_web_search_settings(id).await.unwrap_err();
@@ -93,7 +95,7 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     // The org's knowledge, for the `knowledge` tools, the same way.
     cp.set_lookup(
         "worker_knowledge",
-        LookupAnswer::Value(json!({ "results": [], "warnings": ["empty"], "truncated": false })),
+        HostCallAnswer::Value(json!({ "results": [], "warnings": ["empty"], "truncated": false })),
     );
     let backends = everruns_cell::lookups::attach(
         everruns_core::host::HostBackends::in_memory(),
@@ -164,7 +166,7 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     cp.set_lookup(
         PLATFORM_COMMAND_SURFACE,
-        LookupAnswer::Value(json!("3 agents")),
+        HostCallAnswer::Value(json!("3 agents")),
     );
     let session = session(&fleet, &cp).await;
     fleet.say(&session, "ping").await;
@@ -191,7 +193,7 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
         .lookup(ORG, PLATFORM_COMMAND_SURFACE, ask(theirs))
         .await
         .unwrap();
-    assert_eq!(answer, LookupAnswer::Value(json!("3 agents")));
+    assert_eq!(answer, HostCallAnswer::Value(json!("3 agents")));
     let asked = cp.lookups();
     assert_eq!(asked[0].1, PLATFORM_COMMAND_SURFACE);
     assert_eq!(asked[0].2["acting_user"], json!(person));
@@ -205,4 +207,23 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
         .await
         .unwrap();
     assert_eq!(cp.lookups()[1].2["acting_user"], serde_json::Value::Null);
+
+    // A connection lookup of the person's turn names them too (the
+    // resolver names the message as a bare UUID), so the control plane
+    // resolves their connection, not the session owner's.
+    cp.set_lookup(
+        "worker_get_connection_token",
+        HostCallAnswer::Value(json!("their-token")),
+    );
+    let id: SessionId = session.parse().unwrap();
+    let resolver =
+        everruns_cell::lookups::connections(Arc::new(NoKeys), Some(&Arc::downgrade(&material)), id)
+            .for_execution(theirs.uuid())
+            .expect("bound to the turn");
+    let token = resolver.get_connection_token(id, "linear").await.unwrap();
+    assert_eq!(token.as_deref(), Some("their-token"));
+    let asked = cp.lookups();
+    assert_eq!(asked[2].1, "worker_get_connection_token");
+    assert_eq!(asked[2].2["input_message_id"], json!(theirs.uuid()));
+    assert_eq!(asked[2].2["acting_user"], json!(person));
 }

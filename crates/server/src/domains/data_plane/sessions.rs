@@ -12,15 +12,23 @@
 //! - A create the data plane refuses fails the request: a record with no
 //!   running session would take messages nothing answers. The data plane's
 //!   create is idempotent, so a retry is safe.
-//! - A session with overrides the Engine cannot express (its own prompt,
-//!   tools, MCP servers, network access, capabilities) is refused for a v2
-//!   org rather than silently run without them. Its own starter files are
-//!   taken (step 11.1): the data plane writes them into the session's
-//!   workspace with the create, only where absent, so a retried create
-//!   never puts back a file the agent changed.
+//! - A session created with its own settings (a prompt, client tools, MCP
+//!   servers, network access, iteration controls, capabilities) runs its
+//!   own declaration: the agent's layers with the session's settings
+//!   folded on top (`agent_definitions::PlatformLayers::session`), sent
+//!   with the create rather than published as config, so an org's config
+//!   does not grow with its sessions and every node does not hold every
+//!   session's agent. A v2 session keeps the definition it was created
+//!   with, as every v2 session does (parity gap 4). Its credentials are
+//!   bound under the session's own key (`{agent key}:{session}`), never
+//!   shared with the agent's.
+//! - Its own starter files are taken (step 11.1): the data plane writes
+//!   them into the session's workspace with the create, only where absent,
+//!   so a retried create never puts back a file the agent changed.
 //! - Its pinned managed sandbox goes with the create (step 11.3,
 //!   `sandboxes.rs`), so the record is pinned before the create.
 
+use everruns_contracts::session_commands;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 
 use crate::domains::common::CommandError;
@@ -28,8 +36,8 @@ use everruns_core::session_file::InitialFile;
 
 use super::{ControlPlane, agent_published, for_org, org_public, outbox};
 use crate::domains::agent_definitions::key_for;
-use crate::domains::agent_definitions::sessions::Overrides;
-use crate::storage::{CreateSessionRow, DpSessionSummary};
+use crate::storage::DpSessionSummary;
+use everruns_contracts::runtime::config_layer::AgentConfigOverlay;
 
 /// Tries at the data plane before the create fails.
 const TRIES: u32 = 3;
@@ -46,23 +54,56 @@ pub fn stays_on_control_plane(agent: Option<&crate::storage::AgentRow>) -> bool 
     agent.is_some_and(|a| a.is_built_in && a.name == crate::platform_chat_agent::NAME)
 }
 
-/// Why a session about to be created cannot run on a data plane yet, if
-/// it cannot: a session-level setting the data plane would drop.
-pub fn unsupported(row: &CreateSessionRow, own_capabilities: bool) -> Option<&'static str> {
-    if own_capabilities {
-        return Some("capabilities");
-    }
-    Overrides {
-        system_prompt: row.system_prompt.as_deref(),
-        tools: &row.tools,
-        mcp_servers: &row.mcp_servers,
-        // Seeded by the data plane with the create (`created`).
-        initial_files: &serde_json::Value::Null,
-        network_access: row.network_access.as_ref(),
-        max_iterations: row.max_iterations.is_some(),
-        parallel_tool_calls: row.parallel_tool_calls.is_some(),
-    }
-    .first()
+/// A session's own settings as a layer over its agent, or `None` when it
+/// has none. `capabilities` are the ones its creator named, not the
+/// resolved set the record stores; starter files go with the create
+/// separately ([`created`]).
+pub fn session_layer(
+    request: &crate::domains::sessions::types::CreateSessionRequest,
+) -> Option<AgentConfigOverlay> {
+    let layer = AgentConfigOverlay {
+        system_prompt: request
+            .system_prompt
+            .clone()
+            .filter(|prompt| !prompt.trim().is_empty()),
+        capabilities: request.capabilities.clone(),
+        tools: request.tools.clone(),
+        mcp_servers: request.mcp_servers.clone(),
+        network_access: request.network_access.clone(),
+        max_iterations: request.max_iterations,
+        parallel_tool_calls: request.parallel_tool_calls,
+        ..AgentConfigOverlay::default()
+    };
+    let empty = layer.system_prompt.is_none()
+        && layer.capabilities.is_empty()
+        && layer.tools.is_empty()
+        && layer.mcp_servers.is_empty()
+        && layer.network_access.is_none()
+        && layer.max_iterations.is_none()
+        && layer.parallel_tool_calls.is_none();
+    (!empty).then_some(layer)
+}
+
+/// The session's own declaration: its agent's layers with `layer` on top,
+/// its MCP servers bound under the session's own key.
+async fn session_definition(
+    cp: &ControlPlane,
+    org_id: i64,
+    agent_key: &str,
+    session: SessionId,
+    harness_id: HarnessId,
+    agent_id: Option<AgentId>,
+    layer: AgentConfigOverlay,
+) -> anyhow::Result<serde_json::Value> {
+    let mut layers =
+        crate::domains::agent_definitions::resolve(&cp.db, org_id, harness_id, agent_id).await?;
+    layers.session = Some(layer);
+    let declaration = crate::domains::agent_definitions::compile(&layers)?;
+    let mut package = declaration.agent;
+    let binding_key = format!("{agent_key}:{session}");
+    super::mcp::prepare_layers(cp, org_id, &binding_key, agent_id, &layers, &mut package).await?;
+    super::sandboxes::strip(&mut package);
+    Ok(package)
 }
 
 /// Create the record `session`'s running session on `org_id`'s data plane.
@@ -74,12 +115,19 @@ pub async fn created(
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
     initial_files: &[InitialFile],
+    layer: Option<AgentConfigOverlay>,
 ) -> anyhow::Result<()> {
     if !on_data_plane(cp, org_id).await? {
         return Ok(());
     }
     let (key, revision) = key_for(&cp.db, org_id, harness_id, agent_id).await?;
     agent_published(cp, &key, org_id, &revision).await?;
+    let definition = match layer {
+        Some(layer) => {
+            Some(session_definition(cp, org_id, &key, session, harness_id, agent_id, layer).await?)
+        }
+        None => None,
+    };
     // Sealed before the config is delivered below, so the data plane holds
     // the sandbox's key when the session first calls it.
     let sandbox = super::sandboxes::pinned(cp, org_id, session).await?;
@@ -104,7 +152,14 @@ pub async fn created(
             }
         }
         match plane
-            .create_session(&public, session, &key, initial_files, sandbox.as_ref())
+            .create_session(
+                &public,
+                session,
+                &key,
+                definition.as_ref(),
+                initial_files,
+                sandbox.as_ref(),
+            )
             .await
         {
             Ok(()) => {
@@ -204,7 +259,12 @@ impl TriggerRun<'_> {
         let body = serde_json::json!({ "id": message, "text": self.text, "origin": self.origin });
         for_org(cp, self.org_id)
             .await?
-            .session_command(&org_public(self.org_id), self.session, "messages", &body)
+            .session_command(
+                &org_public(self.org_id),
+                self.session,
+                &session_commands::MESSAGES,
+                &body,
+            )
             .await
             .map_err(|error| error.context("the data plane did not take the message"))?;
         Ok(true)

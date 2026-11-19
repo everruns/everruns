@@ -20,7 +20,8 @@
 
 use std::sync::Arc;
 
-use everruns_contracts::dataplane::PLATFORM_COMMAND_SURFACE;
+/// The v1 command the `platform_command` host call answers.
+const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::tool_context::{ExecutionServices, ExecutionServicesExt, ToolContext};

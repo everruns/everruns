@@ -9,6 +9,7 @@
 //! one place for both planes.
 
 use everruns_contracts::dataplane::SessionEventRow;
+use everruns_contracts::session_commands::{self, SessionCommand};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::{INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use serde_json::Value;
@@ -87,7 +88,7 @@ impl SessionPlane {
         let query = events_query(from, to, types, messages, last);
         let value = self
             .plane
-            .session_read(&self.org, self.session, "events", &query)
+            .session_read(&self.org, self.session, &session_commands::EVENTS, &query)
             .await?;
         Ok(serde_json::from_value(value)?)
     }
@@ -100,7 +101,12 @@ impl SessionPlane {
             let after = all.last().and_then(|e| e.sequence).unwrap_or(0);
             let value = self
                 .plane
-                .session_read(&self.org, self.session, "log", &format!("after={after}"))
+                .session_read(
+                    &self.org,
+                    self.session,
+                    &session_commands::LOG,
+                    &format!("after={after}"),
+                )
                 .await?;
             let page: Vec<everruns_core::events::Event> = serde_json::from_value(value)?;
             let short = page.len() < LOG_PAGE;
@@ -112,7 +118,7 @@ impl SessionPlane {
     }
 
     /// A read of the session other than its events (`trace`).
-    pub async fn read(&self, read: &str) -> anyhow::Result<Value> {
+    pub async fn read(&self, read: &'static SessionCommand) -> anyhow::Result<Value> {
         self.plane
             .session_read(&self.org, self.session, read, "")
             .await
@@ -126,12 +132,16 @@ impl SessionPlane {
             format!("everruns.said.{key}").as_bytes(),
         ));
         let body = serde_json::json!({ "id": id, "text": text });
-        self.command("messages", &body).await
+        self.command(&session_commands::MESSAGES, &body).await
     }
 
     /// A session command on the session (`tool-results`, ...): the cell's
     /// answer.
-    pub async fn command(&self, command: &str, body: &Value) -> anyhow::Result<Value> {
+    pub async fn command(
+        &self,
+        command: &'static SessionCommand,
+        body: &Value,
+    ) -> anyhow::Result<Value> {
         self.plane
             .session_command(&self.org, self.session, command, body)
             .await
@@ -172,6 +182,34 @@ mod tests {
         assert_eq!(
             events_query(2, 3, &["a.b", "c"], &["message_1".into()], Some(4)),
             "from=2&to=3&types=a.b%2Cc&messages=message_1&last=4"
+        );
+    }
+
+    /// Every session route the API serves says which plane serves it for a
+    /// v2 session, so the edge never sends a new one to the wrong plane
+    /// (the cell checks its side: what it declares, it serves).
+    #[test]
+    fn every_session_route_declares_its_plane() {
+        use everruns_contracts::session_commands::SESSION_ROUTES;
+        use utoipa::OpenApi as _;
+
+        let spec = serde_json::to_value(crate::openapi::ApiDoc::openapi()).unwrap();
+        let mut undeclared = Vec::new();
+        for path in spec["paths"].as_object().unwrap().keys() {
+            let Some(rest) = path.strip_prefix("/v1/sessions/{session_id}/") else {
+                continue;
+            };
+            let parts: Vec<&str> = rest.split('/').collect();
+            if !SESSION_ROUTES
+                .iter()
+                .any(|(segment, _)| *segment == parts[0])
+            {
+                undeclared.push(path.clone());
+            }
+        }
+        assert!(
+            undeclared.is_empty(),
+            "declare the plane of these routes in crates/contracts/src/session_commands.rs: {undeclared:?}"
         );
     }
 }

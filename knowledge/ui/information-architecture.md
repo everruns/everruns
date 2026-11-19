@@ -13,8 +13,8 @@ tags:
 ## Abstract
 
 The shell groups navigation by **what you do with a thing**, not by what the thing is.
-Five groups carry every destination: Chats, Operational, Building, Library, Quality,
-with Settings pinned below them. The data lives in
+Chats and Overview sit on top with no header; four groups carry every other destination:
+Build, Activity, Blocks, Quality, with Settings pinned below them. The data lives in
 [`navigation.ts`](../../apps/ui/src/lib/navigation.ts)
 and renders through the generic section renderer in
 [`sidebar-navigation.tsx`](../../apps/ui/src/components/layout/sidebar-navigation.tsx).
@@ -43,54 +43,57 @@ stored.
 
 The placement test for a new entity is a single question:
 
-> What does the user do with it, talk to it, look at what it did, author it, register it
-> once and reference it by name, or check the quality of something else with it?
+> What does the user do with it: talk to it, build and try an agent with it, look at
+> what ran, assemble agents from it, or check the quality of something else with it?
 
-The first answer that is true names the group. If two answers feel true, the earlier one
-in that list wins; a thing you author and also reference by name is Building, because
-authoring is the activity that brings the user to the page.
+The first answer that is true names the group. Build is deliberately narrow: only the
+agent itself and the place to try it. Anything an agent is made from or runs on
+(harnesses, capabilities, knowledge, identities, models, sandboxes) is a Block, even
+when the user authors it, because the user reaches it while assembling an agent rather
+than as a destination of its own.
 
 ## What each group asserts
 
 | Group | Assertion |
 |---|---|
 | **Chats** | Where you talk: Main chat, then the Side chats group with its new-side-chat affordance. First, no section header. |
-| **Operational** | Recordings and external exposure: Sessions and Exposures. |
-| **Building** | [Overview](org-home.md), then Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. Overview carries a count of the items waiting on it. |
-| **Library** | Reusable entries and curated resources, including Models, Web search, Knowledge indexes, and Memory. |
-| **Quality** | Evaluation, observation, and reporting. |
+| **Overview** | The org's [home](org-home.md), right under the chats with no section header. It carries a count of the items waiting on it. |
+| **Build** | Agents and Playground: the agent and the place to try it. |
+| **Activity** | What ran: Sessions, Rooms, and Monitoring. |
+| **Blocks** | Everything agents are made from and run on. What agents use by name first (Harnesses, Capabilities, Skills, Plugins, Knowledge, Memory, Extractions, Virtual Users), then the provider-backed pages (Models, Web search, Sandboxes), each with its own accounts tab. |
+| **Quality** | Evaluation and observation. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
 than being a thing the user works on. System (Health first, then the durable execution
 pages; formerly "Durable Execution") and Dev keep their existing policy and dev-mode
-gating and stay out of the five groups for the same reason.
+gating and stay out of the groups for the same reason.
 
 ## The hard cases, worked
 
-* **A Skill is a Registry entry, not Knowledge.** You register a skill once and then
-  reference it by name from an agent. You do not sit and author a skill as part of
-  building a specific agent, and you do not read it back as a record of what ran.
-  Registering-and-referencing beats its surface resemblance to Knowledge indexes.
-* **The group is called Library, not Registers.** "Registers" meant nothing to a new
-  user; Library says what the group holds: reusable entries agents draw from.
-* **Memory and Knowledge indexes are in Library.** They are curated resources referenced
-  by agents; keeping them with the other reusable entries leaves Building focused on
-  composing and trying agents.
-* **Sandboxes is Building, one entry with tabs.** Live execution environments sit beside
-  agents and harnesses. Their Templates and provider accounts are tabs of the same page,
-  organized like Models, rather than separate sidebar entries.
+* **One Blocks group, not Library plus Providers (2026-11-19).** Splitting reusable
+  entries (Library) from provider-backed pages (Runtime or Providers) was tried in
+  mockups and read as two groups mixing the same things: Web search is both a provider
+  account and a capability, Sandboxes both an account and a template catalog. One group
+  ordered by "used by name, then providers" keeps the line inside the group instead of
+  between two headers. It was called Library and before that Registers; Blocks says
+  what the group holds without implying a catalog you only read.
+* **Harnesses, Virtual Users and Extractions are Blocks, not Build.** A harness is
+  referenced by name from agents like a skill; a virtual user is an identity agents
+  act for or test as; Extractions is a model-backed utility. Keeping them out of Build
+  leaves Build with just the agent and Playground.
+* **Overview is not in a group.** It is the org's home, so it sits with the chats at the
+  top instead of leading a working group.
+* **Sandboxes is one entry with tabs.** The fleet, its Templates and provider accounts are
+  tabs of the same page, organized like Models, rather than separate sidebar entries.
 * **Page tabs are paths.** A registry page with tabs (Models, Web search, Sandboxes) gives
   each tab its own URL (`/models/providers`, `/sandboxes/templates`) so a tab can be linked,
   opened in a new browser tab and kept in history; filters stay query params. Retired
   `?tab=` links redirect ([`tab-routes.ts`](../../apps/ui/src/lib/tab-routes.ts)).
-* **Approvals stays within its session.** Operational stays focused on recordings and
-  external exposure.
-* **Identities is Building, not Library.** An identity is authored per agent
-  deployment with credentials and scope decisions, not registered once and forgotten.
+* **Approvals stays within its session.** Activity stays focused on what ran.
 
 ## Playground
 
-Playground belongs under Building: it is the team's place to try the agents they are authoring.
+Playground belongs under Build: it is the team's place to try the agents they are authoring.
 Chats remains the personal conversation surface and the unconditional landing route. Playground
 chats are ordinary organisation-scoped sessions, listed independently of personal Chats.
 They use the same header, transcript, composer, streaming context, and workspace viewer.
@@ -203,13 +206,13 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   as a thread, so a recording can always be turned back into something you can talk to
   without ever mutating the record.
 * **The breadcrumb names the owning group, and derives it from the nav table.** The
-  sidebar teaches the five-group model to people who navigate; the breadcrumb teaches it
+  sidebar teaches the group model to people who navigate; the breadcrumb teaches it
   to everyone arriving by a direct link or saved view. `PageBreadcrumb` reads the group from the
   section definitions in [`navigation.ts`](../../apps/ui/src/lib/navigation.ts) rather than
   taking it as a prop, so a page's group is never stated in two places that can disagree
   and moving a route between groups needs no page-level change. The group is a label, not a
   link, there is no group index page to point at, and inventing one would add a hop nobody
-  wants. Pages outside a labelled section (Chats, Settings) take no prefix.
+  wants. Pages outside a labelled section (Chats, Overview, Settings) take no prefix.
 
 ## Navigation loading
 

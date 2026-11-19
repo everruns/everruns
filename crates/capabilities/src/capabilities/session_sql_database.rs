@@ -24,6 +24,10 @@ impl Capability for SessionSqlDatabaseCapability {
         SESSION_SQL_DATABASE_CAPABILITY_ID
     }
 
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[everruns_contracts::host_calls::SESSION_SQL_DB]
+    }
+
     fn name(&self) -> &str {
         "SQL Database"
     }

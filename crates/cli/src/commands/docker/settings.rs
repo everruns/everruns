@@ -42,6 +42,17 @@ pub const COMPOSE_PROFILES: &str = "COMPOSE_PROFILES";
 pub const TS_AUTHKEY: &str = "TS_AUTHKEY";
 pub const CLOUDFLARE_TUNNEL_TOKEN: &str = "CLOUDFLARE_TUNNEL_TOKEN";
 pub const NGROK_AUTHTOKEN: &str = "NGROK_AUTHTOKEN";
+/// `v2` (cells, the default) or `v1` (workers): where new organizations run.
+pub const DATA_PLANE: &str = "EVERRUNS_DATA_PLANE";
+/// How many cell, executor and edge containers run: `1`, or `0` for an
+/// install that never ran v2.
+pub const DATA_PLANE_REPLICAS: &str = "DATA_PLANE_REPLICAS";
+/// `never` while no data plane container runs, so no cell image is pulled.
+pub const DATA_PLANE_PULL_POLICY: &str = "DATA_PLANE_PULL_POLICY";
+/// The link between the server and the data plane: a bearer token and the
+/// key that wraps each organization's data key.
+pub const DP_TOKEN: &str = "EVERRUNS_DP_TOKEN";
+pub const DP_KEY: &str = "EVERRUNS_DP_KEY";
 
 /// Every variable the compose file interpolates that `up` manages. A value of
 /// the same name in the caller's shell would override `.env` inside Compose,
@@ -68,6 +79,11 @@ pub const MANAGED_KEYS: &[&str] = &[
     CLOUDFLARE_TUNNEL_TOKEN,
     NGROK_AUTHTOKEN,
     "VICTORIAMETRICS_PORT",
+    DATA_PLANE,
+    DATA_PLANE_REPLICAS,
+    DATA_PLANE_PULL_POLICY,
+    DP_TOKEN,
+    DP_KEY,
 ];
 
 /// One local instance, named by `--name`.
@@ -271,6 +287,8 @@ impl Settings {
         self.set_missing(ENCRYPTION_KEY, encryption_key);
         self.set_missing(JWT_SECRET, || random_hex(32));
         self.set_missing(WORKER_TOKEN, || random_hex(32));
+        self.set_missing(DP_TOKEN, || random_hex(32));
+        self.set_missing(DP_KEY, data_plane_key);
     }
 }
 
@@ -281,6 +299,12 @@ pub fn encryption_key() -> String {
         "kek-v1:{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     )
+}
+
+/// The data plane link's wrapping key: 32 random bytes in base64.
+pub fn data_plane_key() -> String {
+    let bytes: [u8; 32] = rand::rng().random();
+    base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
 pub fn random_hex(bytes: usize) -> String {
@@ -360,6 +384,11 @@ mod tests {
             TS_AUTHKEY,
             CLOUDFLARE_TUNNEL_TOKEN,
             NGROK_AUTHTOKEN,
+            DATA_PLANE,
+            DATA_PLANE_REPLICAS,
+            DATA_PLANE_PULL_POLICY,
+            DP_TOKEN,
+            DP_KEY,
         ] {
             assert!(
                 COMPOSE_FILE.contains(&format!("${{{key}")),
@@ -388,6 +417,7 @@ mod tests {
         let first = s.render();
         assert!(s.value(ENCRYPTION_KEY).unwrap().starts_with("kek-v1:"));
         assert_eq!(s.value(JWT_SECRET).unwrap().len(), 64);
+        assert_eq!(s.value(DP_TOKEN).unwrap().len(), 64);
         s.fill_secrets();
         assert_eq!(s.render(), first, "a second fill must not replace anything");
     }
@@ -405,6 +435,15 @@ mod tests {
         let key = encryption_key();
         let raw = base64::engine::general_purpose::STANDARD
             .decode(key.strip_prefix("kek-v1:").unwrap())
+            .unwrap();
+        assert_eq!(raw.len(), 32);
+    }
+
+    #[test]
+    fn data_plane_key_decodes_to_32_bytes() {
+        // The shape the server's EVERRUNS_DP_KEY and the cell's CELL_DP_KEY read.
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(data_plane_key())
             .unwrap();
         assert_eq!(raw.len(), 32);
     }

@@ -245,10 +245,17 @@ async fn run_case(
     }
 
     // Collect transcript signals.
-    let events = match ctx
-        .db
-        .list_events(session.id, None, None, &[], &[], None, None)
-        .await
+    let events = match crate::domains::sessions::events::list(
+        &ctx.db,
+        session.id,
+        None,
+        None,
+        &[],
+        &[],
+        None,
+        None,
+    )
+    .await
     {
         Ok(ev) => ev,
         Err(e) => return errored_case(case, Some(session_pub), started, e.to_string()),
@@ -334,31 +341,28 @@ async fn run_turn(
         .await
         .map_err(|e| format!("send message failed: {e}"))?;
 
-    let deadline = Instant::now() + CASE_TIMEOUT;
     let filter = vec![TURN_COMPLETED.to_string(), TURN_FAILED.to_string()];
-    loop {
-        if Instant::now() >= deadline {
-            return Err("case timed out".to_string());
-        }
-        tokio::time::sleep(POLL_INTERVAL).await;
-        let events = ctx
-            .db
-            .list_events(session.id, Some(last_seq), None, &filter, &[], None, None)
-            .await
-            .map_err(|e| e.to_string())?;
-        for event in &events {
-            if event.event_type == TURN_COMPLETED {
-                return Ok(());
-            }
-            if event.event_type == TURN_FAILED {
-                let msg = event
-                    .data
-                    .get("error")
-                    .and_then(|e| e.get("message"))
-                    .and_then(|m| m.as_str())
-                    .unwrap_or("turn failed");
-                return Err(format!("agent turn failed: {msg}"));
-            }
+    let ended = crate::domains::sessions::events::wait_for(
+        &ctx.db,
+        session.id,
+        last_seq,
+        &filter,
+        POLL_INTERVAL,
+        CASE_TIMEOUT,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    match ended {
+        None => Err("case timed out".to_string()),
+        Some(event) if event.event_type == TURN_COMPLETED => Ok(()),
+        Some(event) => {
+            let msg = event
+                .data
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("turn failed");
+            Err(format!("agent turn failed: {msg}"))
         }
     }
 }

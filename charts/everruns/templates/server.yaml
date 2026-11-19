@@ -85,6 +85,7 @@ spec:
             {{- include "everruns.valkeyEnv" . | nindent 12 }}
             {{- include "everruns.egressProxyEnv" . | nindent 12 }}
             {{- include "everruns.sandboxEnv" . | nindent 12 }}
+            {{- include "everruns.serverDataPlaneEnv" . | nindent 12 }}
             - { name: AUTH_MODE, value: {{ .Values.auth.mode | quote }} }
             - { name: DEPLOYMENT_GRADE, value: {{ .Values.deploymentGrade | quote }} }
             - { name: AUTH_ADMIN_EMAIL, value: {{ .Values.auth.adminEmail | quote }} }

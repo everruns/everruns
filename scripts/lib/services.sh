@@ -415,6 +415,15 @@ case "$cmd" in
 
     configure_local_startup_auth
     echo "   🔐 Auth mode: $AUTH_MODE (shared by API, worker, UI proxy)"
+    # Data plane v2 is the default, as in the Compose file and the Helm
+    # chart: new orgs run on the local cell. DATA_PLANE=v1 runs workers only.
+    DATA_PLANE="${DATA_PLANE:-v2}"
+    case "$DATA_PLANE" in
+      v1|v2) ;;
+      *) echo "   ❌ DATA_PLANE must be v1 or v2, got '$DATA_PLANE'"; exit 2 ;;
+    esac
+    export DATA_PLANE
+    echo "   🧭 Data plane: $DATA_PLANE (DATA_PLANE=v1 runs the workers only)"
 
     if [ "$NO_WATCH" = false ]; then
       require_command cargo-watch "Run: just init (or use --no-watch)"
@@ -570,10 +579,12 @@ case "$cmd" in
     fi
     export WORKER_GRPC_AUTH_TOKEN
     export RUST_LOG=${RUST_LOG:-info}
-    # DATA_PLANE=v2: the API server is the control plane of a local data
-    # plane (scripts/lib/data-plane-local.sh).
+    # DATA_PLANE=v2 (the default): the API server is the control plane of
+    # a local data plane and puts new orgs on it (scripts/lib/data-plane-local.sh).
     if [ "${DATA_PLANE:-}" = "v2" ]; then
       data_plane_local_env
+    else
+      export EVERRUNS_DATA_PLANE=v1
     fi
     if [ "$NO_WATCH" = true ]; then
       echo "3️⃣  Starting API server (auto-migrates on startup)..."
@@ -602,7 +613,7 @@ case "$cmd" in
     fi
 
     if [ "${DATA_PLANE:-}" = "v2" ]; then
-      echo "5️⃣  Starting the local data plane (DATA_PLANE=v2)..."
+      echo "5️⃣  Starting the local data plane (data plane v2)..."
       data_plane_local_start || cleanup 1
     fi
 

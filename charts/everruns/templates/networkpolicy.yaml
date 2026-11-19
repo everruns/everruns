@@ -50,6 +50,16 @@ spec:
         {{- include "everruns.peer" (list . "ui") | nindent 8 }}
       ports:
         - { protocol: TCP, port: 9000 }
+    {{- if include "everruns.dataPlaneRuns" . }}
+    # The edge router passes calls on; cell nodes deliver their feed and ask
+    # for spend allowances; executors look up org settings.
+    - from:
+        {{- include "everruns.peer" (list . "edge") | nindent 8 }}
+        {{- include "everruns.peer" (list . "cell") | nindent 8 }}
+        {{- include "everruns.peer" (list . "executor") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 9000 }
+    {{- end }}
     # gRPC: workers only.
     - from:
         {{- include "everruns.peer" (list . "worker") | nindent 8 }}
@@ -78,6 +88,47 @@ spec:
         {{- include "everruns.peer" (list . "proxy") | nindent 8 }}
       ports:
         - { protocol: TCP, port: 9305 }
+{{- if include "everruns.dataPlaneRuns" . }}
+---
+# Cell nodes: the server (configuration), the edge router (session calls),
+# executors (turns) and each other (Raft).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "cell") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "cell") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "everruns.peer" (list . "server") | nindent 8 }}
+        {{- include "everruns.peer" (list . "edge") | nindent 8 }}
+        {{- include "everruns.peer" (list . "executor") | nindent 8 }}
+        {{- include "everruns.peer" (list . "cell") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 7000 }
+    - from:
+        {{- include "everruns.peer" (list . "cell") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 7001 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "everruns.name" (list . "edge") }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "everruns.selector" (list . "edge") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- include "everruns.peer" (list . "proxy") | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 7100 }
+{{- end }}
 {{- if and .Values.nats.enabled (not .Values.nats.url) }}
 ---
 # Only the server joins the event bus.
@@ -152,6 +203,9 @@ spec:
     - from:
         {{- include "everruns.peer" (list . "server") | nindent 8 }}
         {{- include "everruns.peer" (list . "worker") | nindent 8 }}
+        {{- if include "everruns.dataPlaneRuns" . }}
+        {{- include "everruns.peer" (list . "executor") | nindent 8 }}
+        {{- end }}
       ports:
         - { protocol: TCP, port: 4750 }
     {{- if .Values.sandboxes.kubernetes.enabled }}

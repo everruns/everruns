@@ -23,9 +23,6 @@ const STALE_REPORT: Duration = Duration::minutes(15);
 /// A rejected worker call this recent means a worker is locked out now.
 const RECENT_REJECTION: Duration = Duration::minutes(15);
 
-/// Check id of the worker's NATS report (`everruns_worker::self_checks`).
-const NATS_SELF_CHECK: &str = "nats";
-
 pub(crate) fn versions_check(live: &[WorkerInfo], server_version: &str) -> DoctorCheck {
     let check = DoctorCheck::new(AREA, "workers.versions", "Worker versions");
     if live.is_empty() {
@@ -174,13 +171,8 @@ fn status_of(raw: &str) -> CheckStatus {
 /// One kind of self-check as each worker reported it, by worker id.
 type Findings<'a> = Vec<(&'a str, SelfCheck)>;
 
-/// One check per kind of self-check, merged across workers. `server_nats`
-/// says whether this server delivers live updates through NATS.
-pub(crate) fn self_report_checks(
-    live: &[WorkerInfo],
-    server_nats: bool,
-    now: DateTime<Utc>,
-) -> Vec<DoctorCheck> {
+/// One check per kind of self-check, merged across workers.
+pub(crate) fn self_report_checks(live: &[WorkerInfo], now: DateTime<Utc>) -> Vec<DoctorCheck> {
     let mut by_check: BTreeMap<String, (String, Findings<'_>)> = BTreeMap::new();
     for worker in live {
         let Some((report, at)) = worker.self_checks() else {
@@ -201,13 +193,7 @@ pub(crate) fn self_report_checks(
     }
     by_check
         .into_iter()
-        .map(|(id, (title, findings))| {
-            if id == NATS_SELF_CHECK {
-                nats_check(&findings, server_nats)
-            } else {
-                merged_check(&id, &title, &findings)
-            }
-        })
+        .map(|(id, (title, findings))| merged_check(&id, &title, &findings))
         .collect()
 }
 
@@ -258,43 +244,5 @@ fn merged_check(id: &str, title: &str, findings: &[(&str, SelfCheck)]) -> Doctor
     match &first.fix {
         Some(fix) => check.fix(fix.clone()),
         None => check,
-    }
-}
-
-fn nats_check(findings: &[(&str, SelfCheck)], server_nats: bool) -> DoctorCheck {
-    let check = DoctorCheck::new(AREA, "workers.self.nats", "Live updates from workers");
-    let (with, without): (Vec<_>, Vec<_>) = findings
-        .iter()
-        .partition(|(_, finding)| status_of(&finding.status) == CheckStatus::Ok);
-    let names = |list: &[&(&str, SelfCheck)]| {
-        list.iter()
-            .map(|(worker, _)| *worker)
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    match (server_nats, with.is_empty(), without.is_empty()) {
-        (true, _, true) => check.ok("Workers and server both use NATS for live updates."),
-        (false, true, _) => check.info("Neither workers nor server use NATS for live updates."),
-        (true, _, false) => check
-            .warning(format!(
-                "The server uses NATS but {} not: {}.",
-                plural(without.len(), "worker does", "workers do"),
-                names(&without)
-            ))
-            .why("Those workers save every bit of streamed output through the server, so replies stream more slowly.")
-            .fix("Set NATS_URL on those workers to the server's value."),
-        (false, false, _) => check
-            .problem(format!(
-                "{} NATS_URL but the server does not use NATS: {}.",
-                plural(with.len(), "worker has", "workers have"),
-                names(&with)
-            ))
-            .why(
-                "Those workers send streamed output without waiting for the server and drop \
-                 pieces when it falls behind, which is only safe when the server carries live \
-                 updates over NATS. Here the server saves every piece, so streamed replies \
-                 can arrive with gaps.",
-            )
-            .fix("Set the same NATS_URL on the server, or remove it from those workers."),
     }
 }

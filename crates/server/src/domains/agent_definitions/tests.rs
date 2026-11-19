@@ -13,6 +13,7 @@ fn layers(agent: bool) -> PlatformLayers {
         }),
         sandbox_policy: None,
         model: Some(ModelSpec::on("OpenRouter", "muse-1.3-contributor")),
+        session: None,
     }
 }
 
@@ -73,4 +74,55 @@ fn platform_names_become_package_names() {
         .clone();
     assert_eq!(manifest.name, "support-bot");
     assert_eq!(manifest.display_name.as_deref(), Some("Support Bot"));
+}
+
+/// A session's own settings fold over its agent as one more layer, with a
+/// platform turn's rules: its prompt follows the agent's, its tools and
+/// capabilities add to the agent's, its iteration controls win, and its
+/// network access narrows the agent's (data plane v2 parity gap 4).
+#[test]
+fn a_session_layer_folds_over_its_agent() {
+    use everruns_contracts::tool_types::{ClientSideTool, ToolDefinition};
+    let mut agent = layers(true);
+    agent.agent.as_mut().unwrap().network_access =
+        Some(everruns_core::network_access::NetworkAccessList::allow_only(["*.example.com"]));
+    let shared = compile(&agent).unwrap();
+    let mut session = agent;
+    session.session = Some(AgentConfigOverlay {
+        system_prompt: Some("Answer in French.".into()),
+        capabilities: vec![AgentCapabilityConfig::new("session_sql_database")],
+        tools: vec![ToolDefinition::ClientSide(ClientSideTool::new(
+            "pick_date",
+            "Ask the person for a date.",
+            serde_json::json!({ "type": "object" }),
+        ))],
+        network_access: Some(
+            everruns_core::network_access::NetworkAccessList::allow_only([
+                "api.example.com",
+                "outside.net",
+            ]),
+        ),
+        max_iterations: Some(3),
+        parallel_tool_calls: Some(false),
+        ..Default::default()
+    });
+    let declaration = compile(&session).unwrap();
+    assert_ne!(declaration, shared);
+    let package = declaration.package().unwrap();
+    let manifest = package.manifest();
+    assert_eq!(
+        manifest.instructions,
+        "Base rules.\n\nHelp customers.\n\nAnswer in French."
+    );
+    let capabilities: Vec<_> = manifest.capabilities.iter().map(|c| c.id()).collect();
+    assert_eq!(
+        capabilities,
+        ["current_time", "web_fetch", "session_sql_database"]
+    );
+    assert_eq!(manifest.tools.len(), 1);
+    assert_eq!(manifest.max_iterations, Some(3));
+    assert_eq!(manifest.parallel_tool_calls, Some(false));
+    let access = manifest.network_access.as_ref().unwrap();
+    assert!(access.is_url_allowed("https://api.example.com"));
+    assert!(!access.is_url_allowed("https://outside.net"));
 }

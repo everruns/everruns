@@ -61,7 +61,7 @@ struct Ledger {
     /// Orgs whose lookups are answered: their data key and its id, and the
     /// answer per command.
     lookup_orgs: HashMap<String, (everruns_contracts::dataplane_seal::Key, String)>,
-    lookup_answers: HashMap<String, everruns_cell::dp::LookupAnswer>,
+    lookup_answers: HashMap<String, everruns_contracts::host_calls::HostCallAnswer>,
     /// Lookups asked: `(org, command, params)`.
     lookups: Vec<(String, String, serde_json::Value)>,
     requests: usize,
@@ -123,7 +123,7 @@ impl FakeCp {
         };
         let app = Router::new()
             .route("/dp/v1/tenants/{org}/allowances", post(allowance))
-            .route("/dp/v1/tenants/{org}/lookups", post(lookup))
+            .route("/dp/v1/tenants/{org}/host-calls/{name}", post(host_call))
             .route("/dp/v1/feed", post(feed))
             .route("/.well-known/jwks.json", axum::routing::get(jwks))
             .route("/v1/auth/token", post(exchange))
@@ -222,7 +222,11 @@ impl FakeCp {
     /// Answer the lookup `command` with `answer` from now on (a command
     /// with none is not found, as the control plane answers an unknown
     /// session).
-    pub fn set_lookup(&self, command: &str, answer: everruns_cell::dp::LookupAnswer) {
+    pub fn set_lookup(
+        &self,
+        command: &str,
+        answer: everruns_contracts::host_calls::HostCallAnswer,
+    ) {
         self.ledger
             .lock()
             .lookup_answers
@@ -437,21 +441,21 @@ async fn jwks(State(cp): State<FakeCp>) -> Reply<jsonwebtoken::jwk::JwkSet> {
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-/// A lookup, answered sealed for the org as the control plane answers it.
-async fn lookup(
+/// A host call, answered sealed for the org as the control plane answers
+/// it. Answers and the ledger are kept by the call's v1 command.
+async fn host_call(
     State(cp): State<FakeCp>,
-    Path(org): Path<String>,
+    Path((org, name)): Path<(String, String)>,
     headers: axum::http::HeaderMap,
-    Json(request): Json<everruns_cell::dp::LookupRequest>,
+    Json(request): Json<everruns_contracts::host_calls::HostCallRequest>,
 ) -> Reply<everruns_cell::dp::SealedSecret> {
     use everruns_contracts::dataplane_seal as seal;
+    use everruns_contracts::host_calls::{HostCallAnswer, by_name, host_call_secret};
     cp.admit(&headers)?;
     if cp.knobs.down.load(Ordering::SeqCst) {
         return Err(unavailable());
     }
-    if !everruns_cell::dp::LOOKUP_COMMANDS.contains(&request.command.as_str()) {
-        return Err((StatusCode::FORBIDDEN, "not a lookup".into()));
-    }
+    let call = by_name(&name).ok_or((StatusCode::NOT_FOUND, "not a host call".to_owned()))?;
     let mut ledger = cp.ledger.lock();
     let (key, key_id) = ledger.lookup_orgs.get(&org).cloned().ok_or((
         StatusCode::NOT_FOUND,
@@ -459,22 +463,23 @@ async fn lookup(
     ))?;
     ledger
         .lookups
-        .push((org.clone(), request.command.clone(), request.params.clone()));
-    let answer = ledger
-        .lookup_answers
-        .get(&request.command)
-        .cloned()
-        .unwrap_or(everruns_cell::dp::LookupAnswer::Error {
-            kind: 3,
-            message: "Session not found".into(),
-        });
+        .push((org.clone(), call.command.to_owned(), request.params.clone()));
+    let answer =
+        ledger
+            .lookup_answers
+            .get(call.command)
+            .cloned()
+            .unwrap_or(HostCallAnswer::Error {
+                kind: 3,
+                message: "Session not found".into(),
+            });
     let plain = serde_json::to_vec(&answer)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     seal::seal(
         &key,
         &key_id,
         &org,
-        &everruns_cell::dp::lookup_secret(&request.request),
+        &host_call_secret(&request.call),
         0,
         &plain,
         seal::random_nonce(),

@@ -1,6 +1,6 @@
 "use client";
 
-// Rooms (Operational, next to Sessions): every room in the organization,
+// Rooms (Activity, next to Sessions): every room in the organization,
 // whoever made it, for inspection. Apps own the people-facing room UI; the
 // Playground is where a builder talks in one (knowledge/runtime-resources/rooms.md).
 

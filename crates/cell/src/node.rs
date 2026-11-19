@@ -53,6 +53,9 @@ pub struct NodeConfig {
     /// Turns one node runs at once. A session whose turn would exceed it
     /// waits, queued, until a slot frees.
     pub max_turns_per_node: usize,
+    /// Turns the cell runs at once while it is short of memory (Full or
+    /// worse, see `pressure.rs`); queued work waits until memory frees.
+    pub pressure_turns: usize,
     /// Entries between snapshots.
     pub snapshot_every: u64,
     /// Entries kept behind each snapshot. A follower further behind than
@@ -153,6 +156,7 @@ pub struct Node {
     pub metrics: Metrics,
     /// Counters and histograms for `/metrics`.
     pub prom: crate::prom::Prom,
+    pub host_call_limits: crate::host_calls::Limits,
     /// Sessions this node runs an activation of now.
     running: Mutex<HashSet<SessionId>>,
     /// Peers the leader recently reached, for executor placement.
@@ -271,6 +275,7 @@ impl Node {
                 host,
                 metrics: Metrics::default(),
                 prom: Default::default(),
+                host_call_limits: Default::default(),
                 running: Mutex::default(),
                 alive: Mutex::default(),
                 dispatched: Mutex::default(),
@@ -1260,6 +1265,12 @@ impl Node {
             }
             if !self.allowance_ready(&state, s, now) {
                 return; // the control loop is asking for its tenant's money
+            }
+            if self.holds_turns(&state) {
+                if matches!(self.cfg.executors, ExecutorMode::Pull { .. }) {
+                    self.dispatch.queue(session);
+                }
+                return;
             }
             if self
                 .dispatched

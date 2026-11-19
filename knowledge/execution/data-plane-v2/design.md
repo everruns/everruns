@@ -1414,9 +1414,10 @@ the cells run the turns. Decisions (approved 2026-11-12):
   come. Messages to such a session never reach the platform's workers.
   Feed summaries keep the record's status and last turn current.
 - **Stage 1 is chat.** Session files, MCP servers, sandboxes and per-session
-  overrides answer 501 with the feature's name on a cell, the control
-  plane refuses a v2 session that asks for them, and the console hides
-  them for a v2 org (`data_plane` in the org's feature flags). The `/fs`
+  overrides answered 501 with the feature's name on a cell, the control
+  plane refused a v2 session that asked for them, and the console hid
+  them for a v2 org (since replaced: per-session overrides run as the
+  session's own declaration, "Parity, Phase B" below) (`data_plane` in the org's feature flags). The `/fs`
   routes ([fs.md](fs.md)) move to stage 2 with the rest.
 - **An org's own model provider** reaches executors as an `llm_provider`
   connection whose key is a sealed secret; only the executor running the
@@ -1443,7 +1444,8 @@ the cells run the turns. Decisions (approved 2026-11-12):
 - **Local full v2:** `DATA_PLANE=v2 just start-all` adds one cell of three
   nodes, one executor and the edge next to the usual stack, and
   `just dp-enable <org>` moves an org onto it
-  (`scripts/lib/data-plane-local.sh`).
+  (`scripts/lib/data-plane-local.sh`). Since the self-hosted default
+  (below) it is the default and places new orgs itself.
 
 Gate, measured:
 
@@ -1905,6 +1907,18 @@ differences on v2: a subagent's child session in the trace is found from
 the call's result; a reaction left for the agent's next turn reaches it only
 with a message the control plane admits.
 
+**Parity, Phase A: one reader for a session's events.** Every control plane
+feature reads a session's events through `domains::sessions::events`
+(`crates/server/src/domains/sessions/events.rs`), which takes the arguments
+of `StorageBackend::list_events` or `list_events_advanced` and answers the
+same rows from the table for a v1 session or from the cell for a v2 one, the
+table's quirks included. Before it, evals, health checks, A2A and AG-UI
+channels, the MCP endpoint, observers, Poppy and run summaries read only the
+table and saw a v2 session as empty. The waits for a turn to end (send and
+wait, health checks) poll the same reader. `scripts/lib/check-session-events-port.sh`
+fails CI on a direct table read outside the v1 runtime it allowlists, so a
+new feature works on both planes by default.
+
 **11.6 continued: the session's storage and the actions on it.** A v2
 session's values and secrets stay in its authority on the cell, where its
 agent's tools read them. The control plane keeps the Storage API (keys,
@@ -1993,6 +2007,125 @@ stores such as knowledge, memory, the platform API) is the live check's
 (11.6c); a tool whose store a cell lacks answers with an error, as on a
 v1 host without it.
 
+**Parity, Phase A: host calls (2026-11-19).** The lookups below became
+host calls, the one way a data plane asks its control plane anything at
+call time. Each call is declared once in `everruns_contracts::host_calls`
+with who it acts as (the org, the person who sent the turn, or a channel
+bot), its effect, timeout, behaviour while the control plane is down, and
+what it is planned to become: four are org values known before the call
+(policy, settings, web search keys, egress grants) that move to pushed
+state, the SQL databases move into the runtime, and the rest stay host
+calls. The path is
+fixed (executor, directory cell, `POST /dp/v1/tenants/{org}/host-calls/{name}`,
+one dispatcher in `crates/server/src/domains/data_plane/host_calls.rs`);
+the cell stamps the acting person, holds each org to 64 calls in flight,
+and stops calling a control plane that stopped answering for 10 s
+(`crates/cell/src/host_calls.rs`). Reads retry once, writes never.
+Both sides count each call by name and outcome. Two guards keep it the
+only path: the registry's printed copy (`host_calls_registry.txt`) must
+change with it, and `scripts/lib/check-cell-control-plane-calls.sh` fails
+on a control plane call outside the link and host call modules.
+
+**Parity, Phase A: credentials act as the turn's person (2026-11-19).**
+On v1 the control plane records each turn's invocation (who sent the
+message, their runtime identity, the responding agent) when the message
+comes through its API, and every credential check reads it: which
+person's connection a GitHub tool uses, whether the agent's service
+identity applies. A v2 session's messages reach the cell without the
+control plane, so those checks found no invocation and a connection
+token, a GitHub token or a service key came back empty on a cell. The
+three calls now act as the person (`ActsAs::Person`): the cell stamps
+who sent the turn's message from its own record, and the control plane
+records the turn's invocation from it before the lookup, with the v1
+checks (an active member, an active agent), once per turn and only for
+a session the data plane runs. A turn no person sent (a channel message,
+a trigger) acts as no one, so only the agent's own connections apply, as
+on v1; a channel's external users mapped to runtime identities are not
+carried yet. They stay host calls rather than pushed state: which
+connection applies depends on the turn, and OAuth grants refresh in the
+control plane.
+
+**Parity, Phase A: org settings are pushed (2026-11-19).** The answers
+known before any call (the org's web search defaults and accounts, each
+search account's key, the tool approval policy, the egress grants) now
+travel with the org's config instead of being asked at call time: each
+setting is an `org_setting` connection whose settings are the value, and
+each search key a secret sealed with the org's data key
+(`crates/server/src/domains/data_plane/org_settings.rs`). They sync
+whole when one of them changes and when the org is put on a data plane,
+and a sync never fails the change that caused it. A cell reads them from
+its directory cell (`crates/cell/src/lookups.rs`), so web search and
+egress keep working while the control plane is down. A setting that has
+not arrived is asked as before, which covers orgs placed before this
+change until their next settings change. The session owner's own
+approval settings are a person's and stay a host call; without an
+answer a turn runs with the org's policy alone, which only asks more.
+
+**Parity, Phase A: session commands and route planes are declared
+(2026-11-19).** The other direction gets the host calls' discipline: the
+control plane reaches a v2 session only through a declared session command
+or read (`POST`/`GET /dp/v1/orgs/{org}/sessions/{id}/{name}`), named by
+constant on both sides, and every public session route
+(`/v1/sessions/{id}/{segment}`) declares the plane that serves it for a v2
+session: the cell, the control plane's record, or a known gap
+(`crates/contracts/src/session_commands.rs`, printed to
+`session_commands_registry.txt`). The edge routes by that table. A server
+test fails on a session route in the API document that declares no plane;
+a cell test sends every route of a cell segment to the cell's router and
+fails when one answers "not available yet" without being a declared gap,
+or when a declared gap is served, so closing a gap updates the table in
+the same change. A session route the server serves outside the API
+document (`commands`, `environment`) is declared by hand.
+
+**Parity, Phase A: the parity gate (2026-11-19).** Each capability
+declares the host calls its tools make (`Capability::host_calls`); two
+calls are the turn's own and need no declaration (`host_calls::TURN_CALLS`:
+the approval policy and the egress grants). The capability matrix
+(`cell-testkit/tests/capabilities.rs`) runs on a fleet with no control
+plane, so "runs" means it runs without one, and lists beside each
+capability the host calls it may still make; a name that is not a declared
+host call fails it. An executor counts a session's host call its agent's
+capabilities do not declare (`executor_host_calls_undeclared_total`) and
+still makes it. Decision: counted before refused, because a capability
+reaches some calls through shared parts (a pinned sandbox's git
+credential, the egress boundary) that a turn on the simulated model does
+not exercise; once the live fleet shows none, an undeclared call is
+refused.
+
+**Parity, Phase B: a session's own settings (2026-11-19).** A session
+created with its own prompt, client tools, MCP servers, network access,
+iteration controls or capabilities ran nowhere on v2: the control plane
+refused it, so API callers and evals could not use a v2 org. It now runs
+its own declaration of its agent: the agent's layers with the session's
+settings folded on top as one more layer, by the merge a platform turn
+applies (prompts concatenate, tools and capabilities add, network access
+narrows, iteration controls follow the session). The control plane
+compiles it and sends it with the create
+(`POST /dp/v1/orgs/{org}/sessions`, `definition`), checked like a
+published revision. Decision: sent with the create, not published as org
+config, so an org's config does not grow with its sessions and no node
+holds every session's agent; a v2 session keeps the definition it was
+created with, as every v2 session does. Its MCP credentials are bound
+under the session's own key, never shared with the agent's.
+
+**Parity, Phase B: the agent catalog (2026-11-19).** Tools that hand work
+to another agent (coordination, handoff, teams, subagents) name it by the
+platform's agent id. A cell knew only the agents a session had run, so
+most of them failed. Every agent of a v2 org now has its own key
+published (the agent on its own harness), whose revision carries the
+agent's card: the platform's ids for it and its harness, and the
+definitions the tools read, MCP credentials redacted
+(`crates/server/src/domains/data_plane/catalog.rs`). The cell's directory
+answers tools from the cards (`/cell/orgs/{org}/catalog/...`). Decisions:
+platform ids appear only on cards, so Engine records stay id-free; a card
+is never run, a session runs its key's package. A session records the
+agent key it runs (`Platform.agent_ref`), so a child of the parent's own
+agent runs that agent's current revision plus the parent's pinned
+sandbox, never the parent's own session settings. A deleted agent's keys
+leave the config; running sessions keep their revision. Blueprint
+children and forked or workspace-seeded children stay refused until
+step 9.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
@@ -2005,7 +2138,7 @@ request to the control plane over the link (`POST
 as the org's internal caller and seals the answer with the org's data
 key under the request's own id, so the cell in between passes on
 ciphertext (`crates/cell/src/lookups.rs`,
-`crates/server/src/domains/data_plane/lookups.rs`). Only those six
+`crates/server/src/domains/data_plane/host_calls.rs`). Only those six
 commands go over: sandbox keys and MCP credentials are already sealed
 org secrets on the data plane, and a cell leases nothing to clean up. A
 standalone cell, with no control plane, keeps the answers of a host
@@ -2061,6 +2194,36 @@ the test node answers in process behind the agents' egress
 the MCP transport refuses a server whose address is private, which an
 in-cluster one would be. `crates/cell-testkit/tests/mix.rs` runs the mix on
 a fleet and checks what each kind of session answered.
+
+The first EKS run with the mix (saas run 44355318472, run 6 shape, chaos
+on) ran 71,762 agents and 717,620 turns with 0 errors at 216 turns/s,
+about $3e-05 per agent-hour; every feature's turns completed (files 35,940,
+schedules, subagents and MCP 23,960 each, sandboxes 11,980), and turn p50
+was 90 s against 138 s for chat alone, all of it queueing. It missed the
+no-out-of-memory gate: the mix holds about 0.5 GB more per cell node (9.1 to
+9.4 GB before chaos; subagent sessions add 9% more sessions), and after
+chaos killed a node of cell 1 its slow commits drew the executor pool in
+(2,600 to 17,000 running turns, the other cells steady at 2,700). Its other
+two nodes went past 12 GiB three times. A cell short of memory now starts
+no turns past `--pressure-turns` (1024): queued input waits, see
+`pressure.rs`.
+
+With that fix (saas run 44383590806) the mix ran 72,421 agents with 0
+errors, but one node of cell 1 was still killed: its memory rose from 9.2
+to 12 GB below the 85% gate. Per-node samples of the next run show why:
+every node of a cell jumps by 2 to 3 GB at the same moment, when the log
+reaches its longest (about 1.1 GB) and all three build a snapshot at the
+same index. `build_snapshot` clones the cell state and encodes it to JSON
+in memory, so the copy, the encoding and the full log coexist for a few
+seconds; the memory budget does not count the first two. Run 44396952768
+gave the nodes 14Gi with the same 9 GiB budget (executors 4608Mi, which
+peak at 3.5 GiB, so the fleet still fits one 48 vCPU node) and **passed the
+11.7 gate**: 72,301 agents, 723,010 turns, 0 errors, no restarts, 220
+turns/s, turn p50 84 s (queueing), $3e-05 per agent-hour, cells 11.0
+cores and executors 16.0 cores on average, peak node 13.2 GB. Left for
+the finalization work: encode a snapshot without a full copy of the
+state, and stagger the nodes' snapshots; after chaos the cell that lost
+a node still draws 16,000 running turns against 2,700 elsewhere.
 
 ### Corrections after the architecture review (2026-11-09)
 
@@ -2407,3 +2570,29 @@ asked for all of it to be fixed; what changed:
 | 2026-11-09 | grok (independent review) | Conditional go: move generations, feed record ids, grant accounting, turn revision retention, recovery consistency, workspace versions, execution authority, capacity assumptions, slot reservation; gates in a revised order | Applied (13-21) |
 | 2026-11-09 | claude-everruns (funout author, from `0a0c0ec`) | Go for steps 0, 1, 5. (1) Long-session numbers stale: Engine hosting now 115.5/s flat vs 131 pre-Engine. (2) Fixes live in the funout adapter (write pipeline 23→11 waited writes/turn; `session.started` read); move them into Engine before PostgreSQL hosting; add "waited round trips per turn" budget, target ≤5. (3) Background usage events lost and model call re-run when input admitted mid-step; add an invariant of one usage record per provider call. (4) Constant build id disables the retained guard; retain `(agent_revision, protocol_major)` per turn. (5) ~115 turns/s per cell → ~11 cells, not 5–8; executor affinity and an LRU for Engine's per-session cache. Confirms grok's move-generation and feed-identity findings. Details in thread. | Applied (23-29, 32) |
 | 2026-11-09 | grok (follow-up) | (8) live deltas need attempt fencing and one membership view; (9) search catalogs must outlive placement; (10) speculative appends through a crash-durable EventLog; refinements on provider attempts, compatibility identity, 11 cells as saturation | Applied (25-31) |
+
+## Self-hosted default (after the full v2 decision)
+
+The user chose full v2 on 2026-11-18, with one condition first: self-hosted
+installs run v2 by default and keep v1 one setting away. Each install shape
+does it the same way:
+
+- **The server places new orgs.** `EVERRUNS_DEFAULT_DATA_PLANE_URL` (with
+  the link's token and key) makes the server register its data plane and
+  put every org that has never had a session on it, by a poll and at
+  creation (`domains/data_plane/default_plane.rs`). Orgs with v1 sessions
+  stay on the workers: moving history is the org-moves step of
+  finalization. `EVERRUNS_DATA_PLANE=v1` turns placement off.
+- **One cell.** Docker Compose runs one node, one executor and the edge;
+  the Helm chart runs 1 (or 3/5) nodes; local dev runs three. A fleet of
+  cells stays the hosted service's shape.
+- **Production binary.** `everruns-cell` (StandardHost plus the `llmsim`
+  driver the worker also registers) is published as
+  `ghcr.io/everruns/everruns-cell` with every release; `cell-testnode`
+  stays the test and load-run host.
+- **Switching back keeps the cell.** An install that ran v2 and switches to
+  v1 keeps its cell running (`DATA_PLANE_REPLICAS`, `dataPlane.keepRunning`):
+  its v2 orgs' sessions live there.
+- **Smokes follow the images.** The Compose, `docker up`, Helm and `k8s up`
+  smokes run a turn and check where it ran: v2 when the tag has a cell
+  image, v1 for older tags (`scripts/lib/smoke-turn.sh`).

@@ -20,7 +20,7 @@
 //!   build the same agents executors run, and nothing outside a session
 //!   can call a model with an org's key.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
@@ -112,14 +112,26 @@ pub trait OrgMaterial: Send + Sync {
     fn looks_up(&self) -> bool {
         false
     }
-    /// Ask the control plane one of `org`'s call-time lookups
+    /// The host calls `session`'s agent declares (its capabilities'
+    /// `host_calls`); `None` when the session is not known here, and then
+    /// nothing is checked.
+    fn declared_host_calls(&self, session: SessionId) -> Option<BTreeSet<&'static str>> {
+        let _ = session;
+        None
+    }
+    /// A session made host call `call`, which its capabilities do not
+    /// declare (counted for the matrix's declarations to be checked live).
+    fn undeclared_host_call(&self, call: &str) {
+        let _ = call;
+    }
+    /// Make one of `org`'s host calls, named by its v1 worker command
     /// (`lookups.rs`).
     async fn lookup(
         &self,
         org: &str,
         command: &str,
         params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::dataplane::LookupAnswer> {
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
         let _ = (org, command, params);
         anyhow::bail!("this node does not reach a control plane")
     }
@@ -145,6 +157,10 @@ impl OrgProviders {
     pub fn host_providers(self: &Arc<Self>) -> HostProviders {
         let mut drivers = DriverRegistry::new();
         everruns_drivers::register_drivers(&mut drivers);
+        // Decision: the worker's deterministic LlmSim driver too, so an org's
+        // LlmSim provider (a self-hosted install's keyless first agent, the
+        // Compose smoke test) answers on a cell as it does on a worker.
+        everruns_llmsim::register_driver(&mut drivers);
         HostProviders::shared(self.clone(), drivers)
     }
 

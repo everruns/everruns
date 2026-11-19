@@ -63,6 +63,13 @@ there and the rebalancer evens out the rest) or give the nodes more memory. Lowe
 budget does not help: with too little room for events, every turn pages history from the object
 store and throughput collapses (SaaS load run 43755911240).
 
+Size the container at about 1.5 times the memory budget, not the budget plus a margin. The budget
+counts events and the Raft log, but a snapshot copies the whole cell state and encodes it while
+the log is at its longest, and the nodes of a cell snapshot at the same index: in the 75k feature
+mix run that added about 3 GB to all three nodes of a cell at once, to 13.2 GB on a 9 GiB budget.
+12Gi nodes with that budget were killed (SaaS load runs 44355318472 and 44383590806); 14Gi nodes
+were not (44396952768).
+
 ## A cell that stops committing
 
 A leader with entries it has not applied, and whose applied index has not moved for 5 s, sheds

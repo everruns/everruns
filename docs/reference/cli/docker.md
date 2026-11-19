@@ -42,6 +42,7 @@ everruns docker up [OPTIONS]
 | `--no-open` | Do not open the browser. |
 | `--public-url <URL>` | Public HTTPS address people and webhooks use, such as https://agents.example.com. Passed to the server as PUBLIC_APP_URL; an empty value removes it. |
 | `--tunnel <TUNNEL>` | Give the instance a public address through a tunnel that runs with the stack: tailscale (free stable *.ts.net), cloudflare (named with --public-url, else a quick one whose address changes), ngrok, or none. One of `none`, `tailscale`, `cloudflare`, `ngrok`. |
+| `--data-plane <DATA_PLANE>` | Where new organizations run agents: v2 (cells, the default) or v1 (workers). Organizations that already have sessions stay where they are. One of `v2`, `v1`. |
 
 
 ## docker status

@@ -375,8 +375,10 @@ else
   fail "log error-field guard failed"
 fi
 
-# 28. Server layering: domains/storage/services/records never import crate::api
-echo "28/33 Server API layering guard"
+# 28. Server layering: domains/storage/services/records never import crate::api,
+#     features read session events through the port, and a cell calls its
+#     control plane only through host calls (data plane v2)
+echo "28/33 Server API layering and data plane boundary guards"
 if SERVER_API_LAYERING_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-server-api-layering.sh" 2>&1
 )"; then
@@ -384,6 +386,22 @@ if SERVER_API_LAYERING_OUTPUT="$(
 else
   printf '%s\n' "$SERVER_API_LAYERING_OUTPUT" | sed 's/^/   /'
   fail "server API layering guard failed"
+fi
+if SESSION_EVENTS_PORT_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-session-events-port.sh" 2>&1
+)"; then
+  pass "$SESSION_EVENTS_PORT_OUTPUT"
+else
+  printf '%s\n' "$SESSION_EVENTS_PORT_OUTPUT" | sed 's/^/   /'
+  fail "session events port guard failed"
+fi
+if CELL_CP_CALLS_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-cell-control-plane-calls.sh" 2>&1
+)"; then
+  pass "$CELL_CP_CALLS_OUTPUT"
+else
+  printf '%s\n' "$CELL_CP_CALLS_OUTPUT" | sed 's/^/   /'
+  fail "cell control plane calls guard failed"
 fi
 
 # 29. Server module layout: folder modules use mod.rs, no path attributes

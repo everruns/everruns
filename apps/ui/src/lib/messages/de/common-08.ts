@@ -269,6 +269,7 @@ export const messages: Readonly<Record<string, string>> = {
   Workspace: "Arbeitsbereich",
   "Write a note or OKF concept": "Schreiben Sie eine Notiz oder ein OKF-Konzept",
   "Write file output": "Dateiausgabe schreiben",
+  "Edit file diff": "Datei-Diff bearbeiten",
   "Write Markdown, optionally with OKF metadata…":
     "Markdown schreiben, optional mit OKF-Metadaten…",
   "Wrong address?": "Falsche Adresse?",

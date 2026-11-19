@@ -612,7 +612,7 @@ jobs:
           ref: ${{ needs.changes.outputs.revision }}
 
       - name: Install Rust MSRV toolchain
-        uses: dtolnay/rust-toolchain@1.94.0
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -977,6 +977,10 @@ jobs:
       run: bash scripts/lib/check-no-ignored-tests.sh
     - name: Check domains, storage, services and records never import crate::api
       run: bash scripts/lib/check-server-api-layering.sh
+    - name: Check control plane features read session events through the port
+      run: bash scripts/lib/check-session-events-port.sh
+    - name: Check a cell calls its control plane only through host calls
+      run: bash scripts/lib/check-cell-control-plane-calls.sh
     - name: Check server modules use folder mod.rs and no path attributes
       run: bash scripts/lib/check-server-module-layout.sh
     - name: Check every crate is on the lint floor or has recorded debt

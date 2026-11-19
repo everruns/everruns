@@ -14,6 +14,7 @@
 //   query groups them: consecutive steps of one tool, or one step of any
 //   other kind, with the same percentiles.
 
+use everruns_contracts::session_commands;
 use std::collections::HashMap;
 
 use anyhow::Result;
@@ -43,7 +44,7 @@ pub struct DataPlaneTrace {
 impl DataPlaneTrace {
     /// The rows of `plane`'s session, read from its data plane now.
     pub async fn read(plane: SessionPlane) -> Result<Self> {
-        let rows = serde_json::from_value(plane.read("trace").await?)?;
+        let rows = serde_json::from_value(plane.read(&session_commands::TRACE).await?)?;
         Ok(Self { rows, plane })
     }
 

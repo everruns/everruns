@@ -298,6 +298,16 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         &p.model_ttft_seconds,
     );
     w.counters(
+        "cell_host_calls_total",
+        "Host calls passed to the control plane, by call and outcome.",
+        &p.host_calls,
+    );
+    w.histograms(
+        "cell_host_call_duration_seconds",
+        "Host call round trips to the control plane, by call.",
+        &p.host_call_seconds,
+    );
+    w.counters(
         "cell_tool_calls_total",
         "Tool calls completed on this node, by tool and status.",
         &p.tool_calls,
@@ -1110,6 +1120,10 @@ pub struct CreateBody {
     /// The tenant the session's spend is billed to, if metered.
     #[serde(default)]
     pub tenant: Option<String>,
+    /// The control plane's key of the agent it runs, when the control
+    /// plane created it ([`crate::platform::Platform::agent_ref`]).
+    #[serde(default)]
+    pub agent_ref: Option<String>,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -1141,6 +1155,13 @@ async fn create_session(
             .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
         if let Response::Rejected { reason } = assigned {
             return Ok(Json(CellReply::Refused { reason }));
+        }
+    }
+    if let (CellReply::Ok { .. }, Some(agent_ref)) = (&reply, body.agent_ref) {
+        let action = crate::platform::Op::Agent { agent_ref };
+        match crate::api_session::platform(&node, id, action).await? {
+            CellReply::Ok { .. } => {}
+            other => return Ok(Json(other)),
         }
     }
     Ok(Json(reply))

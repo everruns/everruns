@@ -757,9 +757,7 @@ async fn read_page(
         limit: Some(PAGE + 1),
         ..Default::default()
     };
-    let mut rows = state
-        .db
-        .list_events_advanced(&params)
+    let mut rows = crate::domains::sessions::events::advanced(&state.db, &params)
         .await
         .map_err(internal)?;
     let has_more = rows.len() > PAGE as usize;

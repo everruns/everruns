@@ -24,6 +24,7 @@ pub(crate) use crate::domains::tool_results::ask_user_result::{
 };
 use crate::domains::tool_results::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::storage::{ClaimWaitingTurnResult, WaitingTurnResolutionPlan, WaitingTurnSessionValue};
+use everruns_contracts::session_commands;
 use everruns_contracts::tool_types::{FORM_ELICITATION_CALL_ID_PREFIX, MCP_ELICITATION_ARGUMENT};
 use everruns_core::builtins::ask_user::{
     ASK_USER_TOOL_NAME, AskUserAnswer, AskUserAnsweredBy, AskUserQuestion, AskUserQuestionKind,
@@ -252,19 +253,18 @@ pub(crate) async fn resolve_question_answers_with_source(
         return resolve_on_data_plane(&storage, tool_call_id, status, answered_by, submitted).await;
     }
 
-    let requested = state
-        .db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(QUESTION_LOOKBACK_EVENTS),
-        )
-        .await
-        .map_err(|error| ResolveError::Internal(error.to_string()))?;
+    let requested = crate::domains::sessions::events::list(
+        state.db,
+        session_id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(QUESTION_LOOKBACK_EVENTS),
+    )
+    .await
+    .map_err(|error| ResolveError::Internal(error.to_string()))?;
     if requested.is_empty() {
         return Err(ResolveError::NoPendingQuestions);
     }
@@ -387,19 +387,18 @@ pub(crate) async fn resolve_question_answers_with_source(
     {
         ClaimWaitingTurnResult::Claimed(claim) => claim,
         ClaimWaitingTurnResult::Conflict { current_status } => {
-            let completed = state
-                .db
-                .list_events(
-                    session_id,
-                    None,
-                    None,
-                    &["tool.completed".to_string()],
-                    &[],
-                    None,
-                    Some(QUESTION_LOOKBACK_EVENTS),
-                )
-                .await
-                .map_err(|error| ResolveError::Internal(error.to_string()))?;
+            let completed = crate::domains::sessions::events::list(
+                state.db,
+                session_id,
+                None,
+                None,
+                &["tool.completed".to_string()],
+                &[],
+                None,
+                Some(QUESTION_LOOKBACK_EVENTS),
+            )
+            .await
+            .map_err(|error| ResolveError::Internal(error.to_string()))?;
             if completed.iter().any(|event| {
                 event.data.get("tool_call_id").and_then(|v| v.as_str())
                     == Some(&pending.tool_call_id)
@@ -519,7 +518,7 @@ async fn resolve_on_data_plane(
         "command": command,
         "tool_results": [{ "tool_call_id": pending.tool_call_id, "result": payload }],
     });
-    match plane.command("tool-results", &body).await {
+    match plane.command(&session_commands::TOOL_RESULTS, &body).await {
         Ok(_) => {
             if let Some(spoken) = spoken {
                 // The model never made the engine's synthetic call, so the
@@ -606,18 +605,18 @@ async fn latest_user_controls(
     db: &std::sync::Arc<crate::storage::StorageBackend>,
     session_id: everruns_contracts::typed_id::SessionId,
 ) -> Option<everruns_core::message::Controls> {
-    let events = db
-        .list_events(
-            session_id,
-            None,
-            None,
-            &["input.message".to_string()],
-            &[],
-            None,
-            Some(QUESTION_LOOKBACK_EVENTS),
-        )
-        .await
-        .ok()?;
+    let events = crate::domains::sessions::events::list(
+        db,
+        session_id,
+        None,
+        None,
+        &["input.message".to_string()],
+        &[],
+        None,
+        Some(QUESTION_LOOKBACK_EVENTS),
+    )
+    .await
+    .ok()?;
     events.iter().rev().find_map(|event| {
         serde_json::from_value::<everruns_core::message::Controls>(
             event.data.get("message")?.get("controls")?.clone(),

@@ -157,13 +157,19 @@ async fn a_v1_org_has_no_data_plane() {
     assert!(cp.db.dp_items_live(3).await.unwrap().is_empty());
 }
 
+/// What a newly enabled org's full snapshot holds: its policy, then the
+/// org settings it was enabled with (web search, tool approval, egress).
+fn snapshot_kinds() -> [&'static str; 4] {
+    ["Policy", "Connection", "Connection", "Connection"]
+}
+
 #[tokio::test]
 async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
     let (cp, seen, dp_key) = control_plane().await;
     let epoch = cp.db.dp_epoch().await.unwrap();
     assert_eq!(outbox::deliver_due(&cp).await.unwrap(), 1);
     let org = cp.db.dp_org(ORG).await.unwrap().unwrap();
-    {
+    let snapshot = {
         let seen = seen.lock();
         assert_eq!(seen.enabled.len(), 1);
         // The data plane can open the data key with its own key.
@@ -181,8 +187,9 @@ async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
             first.base_version, 0,
             "the first delivery is a full snapshot"
         );
-        assert_eq!(kinds(first), ["Policy"]);
-    }
+        assert_eq!(kinds(first), snapshot_kinds());
+        first.version
+    };
     assert_eq!(
         outbox::deliver_due(&cp).await.unwrap(),
         0,
@@ -196,7 +203,7 @@ async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
     let (secret, version) = {
         let seen = seen.lock();
         let (_, update) = seen.updates.last().unwrap();
-        assert_eq!(update.base_version, 1);
+        assert_eq!(update.base_version, snapshot);
         assert_eq!(kinds(update), ["Secret"]);
         let ConfigChange::Secret(sealed) = ConfigChange::parse(&update.changes[0]).unwrap() else {
             panic!("a secret");
@@ -219,7 +226,7 @@ async fn an_org_is_enabled_then_gets_its_config_once_and_in_order() {
         assert_eq!(seen.updates[n - 2].1.base_version, version);
         assert_eq!(kinds(&seen.updates[n - 2].1), ["Removal"]);
         assert_eq!(seen.updates[n - 1].1.base_version, 0);
-        assert_eq!(kinds(&seen.updates[n - 1].1), ["Policy"]);
+        assert_eq!(kinds(&seen.updates[n - 1].1), snapshot_kinds());
     }
 
     // A new epoch (a restore) sends a full snapshot in it.
@@ -582,8 +589,6 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
     row.harness_id = Some(harness);
     // A session's own starter files ride along with the create.
     row.initial_files = json!([{ "path": "/brief.md", "content": "Read me." }]);
-    assert_eq!(sessions::unsupported(&row, false), None);
-    assert_eq!(sessions::unsupported(&row, true), Some("capabilities"));
     let id = cp.db.create_session(row).await.unwrap().id;
     assert!(!sessions::runs_on_data_plane(&cp, ORG, id).await.unwrap());
 
@@ -593,7 +598,7 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         encoding: "text".into(),
         is_readonly: false,
     };
-    sessions::created(&cp, ORG, id, harness, None, &[brief])
+    sessions::created(&cp, ORG, id, harness, None, &[brief], None)
         .await
         .unwrap();
     let (key, _) = crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, None)
@@ -606,6 +611,8 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         assert_eq!(body["id"], json!(id.to_string()));
         assert_eq!(body["agent_ref"], json!(key));
         assert_eq!(body["initial_files"][0]["path"], "/brief.md");
+        // No settings of its own: it runs its agent's shared declaration.
+        assert!(body.get("definition").is_none());
         // The agent was delivered before the create.
         let agents: Vec<&ConfigUpdate> = seen
             .updates
@@ -634,12 +641,60 @@ async fn a_v2_session_runs_on_the_data_plane_under_its_records_id() {
         .await;
     if let Ok(v1) = v1 {
         let before = seen.lock().sessions.len();
-        sessions::created(&cp, 3, v1.id, harness, None, &[])
+        sessions::created(&cp, 3, v1.id, harness, None, &[], None)
             .await
             .unwrap();
         assert_eq!(seen.lock().sessions.len(), before);
         assert!(!sessions::runs_on_data_plane(&cp, 3, v1.id).await.unwrap());
     }
+}
+
+/// A v2 session created with its own settings runs its own declaration of
+/// its agent, sent with the create: the session's prompt after the agent's,
+/// its client tools and iteration cap (data plane v2 parity gap 4).
+#[tokio::test]
+async fn a_v2_session_with_its_own_settings_runs_its_own_declaration() {
+    let (cp, seen, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    let mut row = crate::storage::test_database::test_session_row(ORG);
+    row.harness_id = Some(harness);
+    let id = cp.db.create_session(row).await.unwrap().id;
+    let request: crate::domains::sessions::types::CreateSessionRequest =
+        serde_json::from_value(json!({
+            "system_prompt": "Grade the answer.",
+            "tools": [{
+                "type": "client_side",
+                "name": "submit_grade",
+                "description": "Record the grade.",
+                "parameters": { "type": "object" }
+            }],
+            "max_iterations": 4
+        }))
+        .unwrap();
+    let layer = sessions::session_layer(&request).expect("the session has its own settings");
+    sessions::created(&cp, ORG, id, harness, None, &[], Some(layer))
+        .await
+        .unwrap();
+    let (key, _) = crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, None)
+        .await
+        .unwrap();
+    let seen = seen.lock();
+    let (_, body, _) = seen.sessions.last().expect("created on the data plane");
+    assert_eq!(body["agent_ref"], json!(key));
+    let definition = everruns::hosting::RuntimeAgent::new(body["definition"].clone());
+    let package = definition.package().expect("a valid declaration");
+    let manifest = package.manifest();
+    assert!(
+        manifest.instructions.ends_with("\n\nGrade the answer."),
+        "{}",
+        manifest.instructions
+    );
+    assert_eq!(manifest.tools.len(), 1);
+    assert_eq!(manifest.max_iterations, Some(4));
+    // No setting of its own: no declaration of its own.
+    let plain: crate::domains::sessions::types::CreateSessionRequest =
+        serde_json::from_value(json!({ "system_prompt": "  " })).unwrap();
+    assert!(sessions::session_layer(&plain).is_none());
 }
 
 /// An agent trigger's run on a v2 session goes to the data plane under the
@@ -669,7 +724,7 @@ async fn a_trigger_run_on_a_v2_session_goes_to_the_data_plane() {
     assert!(!run(false).admit(&cp).await.unwrap());
     assert!(seen.lock().messages.is_empty());
 
-    sessions::created(&cp, ORG, id, harness, None, &[])
+    sessions::created(&cp, ORG, id, harness, None, &[], None)
         .await
         .unwrap();
     assert!(run(false).admit(&cp).await.unwrap());
@@ -820,7 +875,51 @@ async fn the_consoles_chat_stays_on_the_control_plane() {
     assert!(!sessions::stays_on_control_plane(None));
 }
 
+/// Every agent of a v2 org is in its data plane's catalog: its own key
+/// carries a card with the platform's ids, so a tool that names the agent
+/// finds it. A deleted agent leaves the catalog.
+#[tokio::test]
+async fn an_orgs_agents_are_in_its_data_planes_catalog() {
+    let (cp, _, _) = control_plane().await;
+    let harness = harness(&cp.db, ORG).await;
+    // A real agent's public id carries its own id.
+    let id = everruns_contracts::typed_id::AgentId::new();
+    let mut helper = crate::platform_chat_agent::definition(harness, id);
+    helper.name = format!("helper-{}", uuid::Uuid::new_v4().simple());
+    helper.is_built_in = false;
+    let helper = cp
+        .db
+        .create_agent_with_id(ORG, id, helper)
+        .await
+        .unwrap()
+        .expect("a new id");
+
+    catalog::agent_edited(&cp, ORG, helper.id).await.unwrap();
+    let (key, _) =
+        crate::domains::agent_definitions::key_for(&cp.db, ORG, harness, Some(helper.id))
+            .await
+            .unwrap();
+    let item = cp.db.dp_item(ORG, "agent", &key).await.unwrap().unwrap();
+    let body = item.body.unwrap();
+    assert_eq!(body["card"]["agent_id"], helper.id.to_string());
+    assert_eq!(body["card"]["harness_id"], harness.to_string());
+    assert_eq!(body["card"]["agent"]["name"], helper.name.as_str());
+
+    // Already carded: a second edit writes nothing.
+    catalog::agent_edited(&cp, ORG, helper.id).await.unwrap();
+    let again = cp.db.dp_item(ORG, "agent", &key).await.unwrap().unwrap();
+    assert_eq!(again.version, item.version);
+
+    // Deleted as the console does: archived, then deleted.
+    assert!(cp.db.delete_agent(ORG, helper.id).await.unwrap());
+    assert!(cp.db.destroy_agent(ORG, helper.id).await.unwrap());
+    catalog::agent_edited(&cp, ORG, helper.id).await.unwrap();
+    let live = cp.db.dp_items_live(ORG).await.unwrap();
+    assert!(live.iter().all(|item| item.item_id != key), "{live:?}");
+}
+
 mod event_tap;
-mod lookups;
+mod host_calls;
 mod mcp;
+mod org_settings;
 mod sandboxes;

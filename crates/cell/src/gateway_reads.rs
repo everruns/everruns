@@ -30,13 +30,10 @@ use crate::gateway::Gateway;
 
 type ApiError = (StatusCode, String);
 
-/// The reads `GET /dp/v1/orgs/{org}/sessions/{id}/{read}` serves.
-pub const READS: &[&str] = &["trace", "events", "log", "storage", "secrets", "sandbox"];
-
 /// Events one `events` or `log` read returns at most.
 const MAX_EVENTS: usize = 1_000;
 
-/// One of [`READS`] on `session`, its query as sent.
+/// A declared session read on `session`, its query as sent.
 pub async fn read(
     gateway: &Arc<Gateway>,
     session: SessionId,
@@ -248,6 +245,7 @@ impl Range {
                     sequence: e.sequence?,
                     event_type: e.event_type.clone(),
                     ts: e.ts,
+                    context: public["context"].clone(),
                     data: public["data"].clone(),
                 })
             })

@@ -4,7 +4,8 @@
 #
 # Steps mirror the guide: generate secrets, write .env, pull, up, sign in,
 # create a personal access token, create an agent, start a session, send a
-# message, and wait for the turn to complete. The agent runs on LlmSim so no
+# message, wait for the turn to complete, and check which data plane ran it
+# (v2, cells, by default; v1 for image tags published before the cell image). The agent runs on LlmSim so no
 # LLM API key is needed. Startup no longer creates provider rows for built-in
 # drivers (only connected providers are listed), so the smoke connects LlmSim
 # through the API and enables an `llmsim-default` model under it; images that
@@ -26,8 +27,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_SRC="${1:-$ROOT/infra/docker-compose/docker-compose.yaml}"
 PORT="${EXAMPLE_PROXY_PORT:-9300}"
 BASE="http://localhost:$PORT"
-# LlmSim's default model name (crates/server/src/setup/seed/models.rs).
-LLMSIM_MODEL_NAME="llmsim-default"
+# shellcheck source=lib/smoke-turn.sh
+. "$ROOT/scripts/lib/smoke-turn.sh"
 
 WORKDIR="$(mktemp -d)"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-everruns-smoke}"
@@ -36,7 +37,7 @@ step() { printf '\n==> %s\n' "$*"; }
 fail() {
   echo "::error title=Compose smoke::$*" >&2
   docker compose ps -a >&2 || true
-  docker compose logs --tail 80 server worker-1 >&2 || true
+  docker compose logs --tail 80 server worker-1 cell executor edge >&2 || true
   exit 1
 }
 cleanup() {
@@ -52,13 +53,22 @@ trap cleanup EXIT
 cd "$WORKDIR"
 cp "$COMPOSE_SRC" docker-compose.yaml
 
-step "Generate secrets and write .env (guide steps 2-3)"
+DATA_PLANE="$(smoke_data_plane "${EVERRUNS_TAG:-latest}")"
+
+step "Generate secrets and write .env (guide steps 2-3, data plane $DATA_PLANE)"
 {
   echo "SECRETS_ENCRYPTION_KEY=$(python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())")"
   echo "AUTH_JWT_SECRET=$(openssl rand -hex 32)"
   echo "WORKER_GRPC_AUTH_TOKEN=$(openssl rand -hex 32)"
   echo "AUTH_ADMIN_EMAIL=admin@example.com"
   echo "AUTH_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+  echo "EVERRUNS_DP_TOKEN=$(openssl rand -hex 32)"
+  echo "EVERRUNS_DP_KEY=$(openssl rand -base64 32)"
+  if [ "$DATA_PLANE" = v1 ]; then
+    echo "EVERRUNS_DATA_PLANE=v1"
+    echo "DATA_PLANE_REPLICAS=0"
+    echo "DATA_PLANE_PULL_POLICY=never"
+  fi
   echo "COMPOSE_PROFILES=${SMOKE_PROFILES-scale,metrics}"
 } > .env
 # shellcheck disable=SC1091
@@ -123,51 +133,11 @@ EVERRUNS_TOKEN="$(curl -fsS -X POST "$BASE/api/v1/auth/personal-access-tokens" \
   -H "Content-Type: application/json" \
   -d '{"name":"compose-smoke"}' | jq -r .token)"
 case "$EVERRUNS_TOKEN" in evr_pat_*) ;; *) fail "PAT does not start with evr_pat_" ;; esac
-auth=(-H "Authorization: Bearer $EVERRUNS_TOKEN" -H "Content-Type: application/json")
 
-step "Connect LlmSim and create an agent on it"
-provider_id="$(curl -fsS "$BASE/api/v1/providers" "${auth[@]}" \
-  | jq -r '[.data[] | select(.provider_type == "llmsim")][0].id // empty')" \
-  || fail "could not list providers"
-if [ -z "$provider_id" ]; then
-  provider_id="$(curl -fsS -X POST "$BASE/api/v1/providers" "${auth[@]}" \
-    -d '{"name":"LlmSim","provider_type":"llmsim"}' | jq -r .id)" \
-    || fail "could not connect the LlmSim provider"
-fi
-case "$provider_id" in provider_*) ;; *) fail "LlmSim provider id is '$provider_id'" ;; esac
-LLMSIM_MODEL="$(curl -fsS "$BASE/api/v1/models?limit=500" "${auth[@]}" \
-  | jq -r --arg p "$provider_id" --arg m "$LLMSIM_MODEL_NAME" \
-    '[.data[] | select(.provider_id == $p and .model_id == $m)][0].id // empty')" \
-  || fail "could not list models"
-if [ -z "$LLMSIM_MODEL" ]; then
-  LLMSIM_MODEL="$(curl -fsS -X POST "$BASE/api/v1/providers/$provider_id/models" "${auth[@]}" \
-    -d "{\"model_id\":\"$LLMSIM_MODEL_NAME\",\"display_name\":\"LlmSim Default\",\"capabilities\":[\"chat\",\"tools\"],\"enabled\":true}" \
-    | jq -r .id)" || fail "could not create the LlmSim model"
-fi
-case "$LLMSIM_MODEL" in model_*) ;; *) fail "LlmSim model id is '$LLMSIM_MODEL'" ;; esac
-curl -fsS -X PATCH "$BASE/api/v1/models/$LLMSIM_MODEL" "${auth[@]}" -d '{"enabled":true}' >/dev/null \
-  || fail "could not enable the LlmSim model"
-agent_id="$(curl -fsS -X POST "$BASE/api/v1/agents" "${auth[@]}" \
-  -d "{\"name\":\"compose-smoke\",\"system_prompt\":\"You are helpful.\",\"default_model_id\":\"$LLMSIM_MODEL\"}" | jq -r .id)"
-case "$agent_id" in agent_*) ;; *) fail "agent create returned '$agent_id'" ;; esac
+step "Run a turn on LlmSim (guide: Start a Session)"
+smoke_turn "$BASE" "$EVERRUNS_TOKEN" compose-smoke >/dev/null
 
-step "Start a session and send a message (guide: Start a Session)"
-session_id="$(curl -fsS -X POST "$BASE/api/v1/sessions" "${auth[@]}" \
-  -d "{\"agent_id\": \"$agent_id\"}" | jq -r .id)"
-case "$session_id" in session_*) ;; *) fail "session create returned '$session_id'" ;; esac
-curl -fsS -X POST "$BASE/api/v1/sessions/$session_id/messages" "${auth[@]}" \
-  -d '{"message": {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}}' >/dev/null \
-  || fail "send message failed"
-
-step "Wait for a worker to complete the turn"
-events=""
-for _ in $(seq 1 60); do
-  events="$(curl -fsS "$BASE/api/v1/sessions/$session_id/events?limit=100" "${auth[@]}" | jq -r '.data[].type')"
-  grep -qx turn.completed <<<"$events" && break
-  grep -qx turn.failed <<<"$events" && fail "turn failed: $(tr '\n' ' ' <<<"$events")"
-  sleep 2
-done
-grep -qx turn.completed <<<"$events" || fail "no turn.completed; events: $(tr '\n' ' ' <<<"$events")"
-grep -qx output.message.completed <<<"$events" || fail "turn completed without an assistant message"
+step "Check the data plane that ran it ($DATA_PLANE)"
+smoke_check_plane "$DATA_PLANE" docker compose exec -T postgres psql -U everruns -d everruns -tAc
 
 step "Compose quickstart smoke passed"

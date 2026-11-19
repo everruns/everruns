@@ -17,8 +17,14 @@
 //!   capabilities, the platform chat agent gets its page tools, and the
 //!   model follows the agent, its model role, the harness, then the org.
 //! - What depends on the turn rather than the agent (the author's own MCP
-//!   servers, the session's overlay, history) is not in the declaration: the
-//!   host and the Engine's live controls supply it per turn.
+//!   servers, the session's live overlay, history) is not in the
+//!   declaration: the host and the Engine's live controls supply it per turn.
+//! - A session created with its own settings (a prompt, client tools, MCP
+//!   servers, network access, iteration controls, capabilities) runs a
+//!   session-scoped declaration: its agent's layers with the session's
+//!   settings folded on top as one more layer ([`PlatformLayers::session`]),
+//!   with the merge rules a platform turn applies
+//!   (`ResolvedExecutionSnapshot::project`). Data plane v2 parity gap 4.
 
 use everruns::hosting::RuntimeAgent;
 use everruns_contracts::model_spec::ModelSpec;
@@ -44,16 +50,29 @@ pub struct PlatformLayers {
     pub sandbox_policy: Option<Value>,
     /// The resolved model, by provider and model name.
     pub model: Option<ModelSpec>,
+    /// The session's own settings, folded over the agent; `None` for an
+    /// agent's shared declaration.
+    pub session: Option<AgentConfigOverlay>,
+}
+
+impl PlatformLayers {
+    /// The layers folded in order: harness, agent, session.
+    fn merged(&self) -> AgentConfigOverlay {
+        let mut overlays = vec![AgentConfigOverlay::from(&self.harness)];
+        if let Some(agent) = &self.agent {
+            overlays.push(AgentConfigOverlay::from(agent));
+        }
+        if let Some(session) = &self.session {
+            overlays.push(session.clone());
+        }
+        AgentConfigOverlay::fold(overlays)
+    }
 }
 
 /// Compile `layers` into a declaration. Pure: equal layers give equal
 /// declarations.
 pub fn compile(layers: &PlatformLayers) -> anyhow::Result<RuntimeAgent> {
-    let mut overlays = vec![AgentConfigOverlay::from(&layers.harness)];
-    if let Some(agent) = &layers.agent {
-        overlays.push(AgentConfigOverlay::from(agent));
-    }
-    let merged = AgentConfigOverlay::fold(overlays);
+    let merged = layers.merged();
     let mut manifest = Map::new();
     manifest.insert("schema_version".into(), json!(1));
     match &layers.agent {
@@ -141,11 +160,7 @@ pub fn compile(layers: &PlatformLayers) -> anyhow::Result<RuntimeAgent> {
 /// The MCP servers `layers` attach, merged, credentials as written: what
 /// the data plane's copy is made from (`data_plane::mcp`).
 pub fn mcp_servers(layers: &PlatformLayers) -> everruns_core::ScopedMcpServers {
-    let mut overlays = vec![AgentConfigOverlay::from(&layers.harness)];
-    if let Some(agent) = &layers.agent {
-        overlays.push(AgentConfigOverlay::from(agent));
-    }
-    AgentConfigOverlay::fold(overlays).mcp_servers
+    layers.merged().mcp_servers
 }
 
 /// Resolve the layers of a turn on `harness_id` answered by `agent_id`, with
@@ -222,6 +237,7 @@ pub async fn resolve(
             .transpose()?,
         agent: agent.as_ref().map(|agent| agent.definition()),
         model: model_row.map(|row| ModelSpec::on(row.provider_name, row.model_id)),
+        session: None,
     })
 }
 
@@ -312,7 +328,25 @@ pub async fn key_for(
 pub async fn drain(db: &StorageBackend, limit: i64) -> anyhow::Result<usize> {
     let edits = db.take_engine_agent_publishes(limit).await?;
     let mut seen = std::collections::HashSet::new();
+    let cp = crate::domains::data_plane::ControlPlane::from_env(std::sync::Arc::new(db.clone()));
     for edit in &edits {
+        // A v2 org's catalog follows its agents: a new agent gets its own
+        // key, a deleted one leaves (parity gap 9). An org-wide edit (a
+        // harness, the sweep) checks every agent.
+        let catalog = match edit.agent_id {
+            Some(agent) if edit.harness_id.is_none() => {
+                crate::domains::data_plane::catalog::agent_edited(
+                    &cp,
+                    edit.org_id,
+                    AgentId::from_uuid(agent),
+                )
+                .await
+            }
+            _ => crate::domains::data_plane::catalog::sync(&cp, edit.org_id).await,
+        };
+        if let Err(error) = catalog {
+            tracing::warn!(%error, org_id = edit.org_id, "agent catalog not updated");
+        }
         // A harness edit or an org default reaches every key of the org.
         let agent = if edit.harness_id.is_some() {
             None

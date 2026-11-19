@@ -93,6 +93,10 @@ impl Capability for E2BCapability {
         "e2b"
     }
 
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[everruns_contracts::host_calls::CONNECTION_TOKEN]
+    }
+
     fn name(&self) -> &str {
         "E2B"
     }

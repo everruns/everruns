@@ -530,6 +530,10 @@ impl Capability for SandboxFleetCapability {
     fn id(&self) -> &str {
         "sandbox_fleet"
     }
+
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[everruns_contracts::host_calls::CONNECTION_TOKEN]
+    }
     fn name(&self) -> &str {
         "Sandbox Fleet"
     }
@@ -601,6 +605,13 @@ impl Capability for SandboxFleetCapability {
 impl Capability for DaytonaCapability {
     fn id(&self) -> &str {
         "daytona"
+    }
+
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[
+            everruns_contracts::host_calls::GITHUB_TOKEN,
+            everruns_contracts::host_calls::CONNECTION_TOKEN,
+        ]
     }
 
     fn name(&self) -> &str {

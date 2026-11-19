@@ -161,19 +161,18 @@ pub(crate) async fn submit_results(
     }
     // THREAT[TM-TENANT-016]: `session` is the thread's own; a result can only
     // answer a call this thread's turn made.
-    let rows = services
-        .db
-        .list_events(
-            session.id,
-            None,
-            None,
-            &["tool.call_requested".to_string()],
-            &[],
-            None,
-            Some(QUESTION_LOOKBACK_EVENTS),
-        )
-        .await
-        .map_err(ResumeError::Internal)?;
+    let rows = crate::domains::sessions::events::list(
+        services.db,
+        session.id,
+        None,
+        None,
+        &["tool.call_requested".to_string()],
+        &[],
+        None,
+        Some(QUESTION_LOOKBACK_EVENTS),
+    )
+    .await
+    .map_err(ResumeError::Internal)?;
     let Some(row) = rows.last() else {
         warn_unrecognised(session, results.iter());
         return Ok(ResumeOutcome::NothingParked);

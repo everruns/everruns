@@ -24,9 +24,6 @@ pub const REPORT_INTERVAL: Duration = Duration::from_secs(5 * 60);
 /// Upper bound for one reachability probe.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Check id the server compares with its own NATS setting.
-pub const NATS_CHECK: &str = "nats";
-
 /// One finding. `status` is `ok`, `info`, `warning` or `problem`, as in the
 /// system doctor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -63,7 +60,6 @@ pub struct SelfCheckEnv {
     pub egress_proxy_secret_len: usize,
     pub sandbox_proxy_address: Option<String>,
     pub sandbox_proxy_tls: Option<String>,
-    pub nats: bool,
 }
 
 impl SelfCheckEnv {
@@ -79,16 +75,13 @@ impl SelfCheckEnv {
             egress_proxy_secret_len: set(EGRESS_PROXY_SECRET_ENV).map_or(0, |secret| secret.len()),
             sandbox_proxy_address: set(SANDBOX_PROXY_ADDRESS_ENV),
             sandbox_proxy_tls: set(SANDBOX_PROXY_TLS_ENV),
-            // Same test as the event emitter's: the worker assumes the server
-            // delivers live updates through NATS exactly when it has NATS_URL.
-            nats: std::env::var("NATS_URL").is_ok(),
         }
     }
 }
 
 /// Run every check once.
 pub async fn run(env: &SelfCheckEnv) -> Vec<SelfCheck> {
-    vec![egress_proxy(env).await, sandbox_proxy(env), nats(env)]
+    vec![egress_proxy(env).await, sandbox_proxy(env)]
 }
 
 async fn egress_proxy(env: &SelfCheckEnv) -> SelfCheck {
@@ -217,36 +210,9 @@ fn sandbox_proxy(env: &SelfCheckEnv) -> SelfCheck {
     )
 }
 
-fn nats(env: &SelfCheckEnv) -> SelfCheck {
-    const TITLE: &str = "Live updates from this worker";
-    if env.nats {
-        SelfCheck::new(
-            NATS_CHECK,
-            TITLE,
-            "ok",
-            "NATS_URL is set: streamed output goes out through NATS.".to_string(),
-        )
-    } else {
-        SelfCheck::new(
-            NATS_CHECK,
-            TITLE,
-            "info",
-            "NATS_URL is not set: streamed output is saved through the server.".to_string(),
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn status(checks: &[SelfCheck], id: &str) -> &'static str {
-        checks
-            .iter()
-            .find(|check| check.id == id)
-            .expect("check present")
-            .status
-    }
 
     #[tokio::test]
     async fn an_unconfigured_worker_reports_notes_only() {
@@ -290,15 +256,6 @@ mod tests {
         assert!(sandbox_proxy(&env).summary.contains("without TLS"));
         env.sandbox_proxy_address = Some("no-port".to_string());
         assert_eq!(sandbox_proxy(&env).status, "problem");
-    }
-
-    #[tokio::test]
-    async fn nats_use_is_reported_for_the_server_to_compare() {
-        let env = SelfCheckEnv {
-            nats: true,
-            ..Default::default()
-        };
-        assert_eq!(status(&run(&env).await, NATS_CHECK), "ok");
     }
 
     #[test]

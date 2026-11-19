@@ -41,6 +41,7 @@ mod blob_fetch;
 mod checkpoint_availability;
 mod compaction_checkpoints;
 mod connect;
+mod ephemeral_skip;
 mod event_batch;
 mod history_cache;
 mod load_messages;
@@ -1222,14 +1223,7 @@ fn proto_model_to_model_spec(proto: proto::ResolvedModel) -> Result<ModelSpec> {
 // EventEmitter implementation
 // ============================================================================
 
-/// Whether the control plane has NATS-backed event delivery, meaning ephemeral
-/// events skip PG. When true, the worker can fire-and-forget for deltas.
-/// When false, all events go to PG — must use blocking gRPC for correct id/sequence.
-pub(crate) fn server_supports_ephemeral_skip() -> bool {
-    // Matches the server-side check: EventDelivery::Nats is active only when NATS_URL is set.
-    // Worker and server share the same environment in typical deployments.
-    std::env::var("NATS_URL").is_ok()
-}
+pub(crate) use ephemeral_skip::{server_supports_ephemeral_skip, set_server_skips_ephemeral};
 
 #[async_trait]
 impl EventEmitter for GrpcAdapter {

@@ -347,3 +347,46 @@ async fn with_the_control_plane_down_a_session_keeps_working() {
         .await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
+
+/// The load driver against a joined fleet (`cell-drive load
+/// --control-plane`): it signs in as the org with an API key, and one
+/// token serves the whole run.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_load_driver_signs_in_as_an_org_of_the_control_plane() {
+    let s = setup().await;
+    let drive = |join: bool| {
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_cell-drive"));
+        command.args([
+            "load",
+            "--gateways",
+            &s.fleet.bases().join(","),
+            "--agent",
+            "echo",
+            "--sessions",
+            "6",
+            "--turns",
+            "2",
+        ]);
+        if join {
+            command
+                .args(["--control-plane", &s.cp.url, "--org", ORG])
+                .env("EVERRUNS_API_KEY", "user-org-a");
+        }
+        command.output()
+    };
+
+    let output = drive(true).await.unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["errors"], 0, "{report}");
+    assert_eq!(report["turns_completed"], 12, "{report}");
+    assert_eq!(s.cp.exchanges(), 1, "one token for the whole run");
+
+    // Without a token the joined fleet turns the driver away.
+    let output = drive(false).await.unwrap();
+    let refused = !output.status.success()
+        || serde_json::from_slice::<Value>(&output.stdout)
+            .is_ok_and(|report| report["turns_completed"] == 0);
+    assert!(refused, "{}", String::from_utf8_lossy(&output.stdout));
+}

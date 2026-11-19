@@ -235,6 +235,7 @@ impl Command for SetOrgEgressAllowlist {
             "egress_allowlist",
             serde_json::json!({ "patterns": row.patterns }),
         );
+        crate::domains::data_plane::org_settings::sync_logged(&ctx.db, org_id).await;
         Ok(OrgEgressAllowlistResponse::from_row(ctx, &self.org, row))
     }
 }
@@ -288,6 +289,7 @@ impl Command for SetOrgEgressAllowlistGrant {
             "egress_allowlist_grant",
             serde_json::json!({ "granted": row.granted, "open": row.open }),
         );
+        crate::domains::data_plane::org_settings::sync_logged(&ctx.db, org_id).await;
         Ok(OrgEgressAllowlistResponse::from_row(ctx, &self.org, row))
     }
 }

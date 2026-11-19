@@ -191,6 +191,8 @@ pub async fn start_case_pool(
     let config = WorkerPoolConfig::new(vec![EVAL_CASE_ACTIVITY.to_string()])
         .with_worker_id(format!("server-evals-{}", Uuid::now_v7()))
         .with_worker_group("server-evals")
+        // Runs in the server, so it reports the server's version (System doctor).
+        .with_version(env!("CARGO_PKG_VERSION"))
         .with_max_concurrency(concurrency_from_env())
         // The server's stale-task reaper (durable_reaper.rs) owns reclaim.
         .without_stale_reclaim();
@@ -771,28 +773,56 @@ async fn execute_case_inner(
         "output.message.completed".to_string(),
         "conversation.message".to_string(),
     ];
-    let msg_events = ctx
-        .db
-        .list_events(session_id, None, None, &msg_filter, &[], None, None)
-        .await?;
+    let msg_events = crate::domains::sessions::events::list(
+        &ctx.db,
+        session_id,
+        None,
+        None,
+        &msg_filter,
+        &[],
+        None,
+        None,
+    )
+    .await?;
 
     let tool_filter = vec![TOOL_COMPLETED.to_string()];
-    let tool_events = ctx
-        .db
-        .list_events(session_id, None, None, &tool_filter, &[], None, None)
-        .await?;
+    let tool_events = crate::domains::sessions::events::list(
+        &ctx.db,
+        session_id,
+        None,
+        None,
+        &tool_filter,
+        &[],
+        None,
+        None,
+    )
+    .await?;
     // Arguments ride on the call, not on its completion.
     let call_filter = vec![TOOL_STARTED.to_string(), TOOL_CALL_REQUESTED.to_string()];
-    let call_events = ctx
-        .db
-        .list_events(session_id, None, None, &call_filter, &[], None, None)
-        .await?;
+    let call_events = crate::domains::sessions::events::list(
+        &ctx.db,
+        session_id,
+        None,
+        None,
+        &call_filter,
+        &[],
+        None,
+        None,
+    )
+    .await?;
 
     let turn_filter = vec![TURN_COMPLETED.to_string()];
-    let turn_events = ctx
-        .db
-        .list_events(session_id, None, None, &turn_filter, &[], None, None)
-        .await?;
+    let turn_events = crate::domains::sessions::events::list(
+        &ctx.db,
+        session_id,
+        None,
+        None,
+        &turn_filter,
+        &[],
+        None,
+        None,
+    )
+    .await?;
 
     // Extract final assistant message content
     let final_assistant_content = extract_final_assistant_content(&msg_events);
@@ -915,11 +945,18 @@ async fn count_events_of(
     types: &[&str],
 ) -> Result<usize> {
     let filter: Vec<String> = types.iter().map(|t| t.to_string()).collect();
-    Ok(ctx
-        .db
-        .list_events(session_id, None, None, &filter, &[], None, None)
-        .await?
-        .len())
+    Ok(crate::domains::sessions::events::list(
+        &ctx.db,
+        session_id,
+        None,
+        None,
+        &filter,
+        &[],
+        None,
+        None,
+    )
+    .await?
+    .len())
 }
 
 /// Stop when the run was cancelled under this case (its result is skipped).
@@ -986,10 +1023,17 @@ async fn wait_for_settled_turns(
             ensure_run_active(ctx, sctx.result_id).await?;
         }
         polls += 1;
-        let settled = ctx
-            .db
-            .list_events(sctx.session_id, None, None, &filter, &[], None, None)
-            .await?;
+        let settled = crate::domains::sessions::events::list(
+            &ctx.db,
+            sctx.session_id,
+            None,
+            None,
+            &filter,
+            &[],
+            None,
+            None,
+        )
+        .await?;
         if settled.len() >= expected {
             let event = &settled[expected - 1];
             return match event.event_type.as_str() {
@@ -1029,34 +1073,32 @@ async fn wait_for_settled_turns(
 /// responses. Idempotent: calls with a completion are skipped, and a claim
 /// that loses (the turn moved on) is a no-op.
 async fn answer_fixture_calls(ctx: &EvalRunContext, sctx: &SessionCtx) -> Result<()> {
-    let requested = ctx
-        .db
-        .list_events(
-            sctx.session_id,
-            None,
-            None,
-            &[TOOL_CALL_REQUESTED.to_string()],
-            &[],
-            None,
-            None,
-        )
-        .await?;
+    let requested = crate::domains::sessions::events::list(
+        &ctx.db,
+        sctx.session_id,
+        None,
+        None,
+        &[TOOL_CALL_REQUESTED.to_string()],
+        &[],
+        None,
+        None,
+    )
+    .await?;
     let calls = requested_calls(&requested);
     if calls.is_empty() {
         return Ok(());
     }
-    let completed = ctx
-        .db
-        .list_events(
-            sctx.session_id,
-            None,
-            None,
-            &[TOOL_COMPLETED.to_string()],
-            &[],
-            None,
-            None,
-        )
-        .await?;
+    let completed = crate::domains::sessions::events::list(
+        &ctx.db,
+        sctx.session_id,
+        None,
+        None,
+        &[TOOL_COMPLETED.to_string()],
+        &[],
+        None,
+        None,
+    )
+    .await?;
     let answered: HashSet<String> = completed
         .iter()
         .filter_map(|e| e.data.get("tool_call_id").and_then(|v| v.as_str()))
@@ -1114,10 +1156,17 @@ async fn conversation_lines(ctx: &EvalRunContext, session_id: SessionId) -> Resu
         OUTPUT_MESSAGE_COMPLETED.to_string(),
         CONVERSATION_MESSAGE.to_string(),
     ];
-    let events = ctx
-        .db
-        .list_events(session_id, None, None, &filter, &[], None, None)
-        .await?;
+    let events = crate::domains::sessions::events::list(
+        &ctx.db,
+        session_id,
+        None,
+        None,
+        &filter,
+        &[],
+        None,
+        None,
+    )
+    .await?;
     Ok(lines_from_events(&events))
 }
 

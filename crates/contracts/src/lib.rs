@@ -58,6 +58,7 @@ pub mod error;
 pub mod execution_api;
 pub mod execution_phase;
 pub mod form_elicitation_types;
+pub mod host_calls;
 pub mod hosted_mcp;
 #[cfg(feature = "http")]
 pub mod http_transport;
@@ -106,6 +107,7 @@ pub mod retry_failure;
 pub mod rt;
 pub mod runtime_provider;
 pub mod secret_scrub;
+pub mod session_commands;
 pub mod stream_accumulator;
 mod stream_error;
 pub mod stream_event;

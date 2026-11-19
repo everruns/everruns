@@ -222,26 +222,27 @@ sidebar: the logo row, the organization switcher, search, then the groups.
       <div class="ds-sidebar-logo"><img src="/docs/favicon.svg" alt="" width="22" height="22" />Everruns</div>
       <div class="ds-input ds-sidebar-search"><DsIcon name="search" size={14} class="ds-muted" /><span class="ds-placeholder">Search</span><span class="ds-kbd" style="margin-left: auto">⌘K</span></div>
       <span class="ds-nav-item" style="color: hsl(var(--foreground)); font-weight: 600"><DsIcon name="facet:chat" />Chat</span>
+      <span class="ds-nav-item"><DsIcon name="facet:organization" />Overview</span>
       <div class="ds-nav-gap" />
-      <div class="ds-nav-label">Building</div>
+      <div class="ds-nav-label">Build</div>
       <span class="ds-nav-item" aria-current="page"><DsIcon name="facet:agent" />Agents</span>
       <span class="ds-nav-item"><DsIcon name="facet:playground" />Playground</span>
-      <span class="ds-nav-item"><DsIcon name="facet:harness" />Harnesses</span>
-      <span class="ds-nav-item"><DsIcon name="facet:sandbox" />Sandboxes</span>
       <div class="ds-nav-gap" />
-      <div class="ds-nav-label">Operational</div>
-      <span class="ds-nav-item"><DsIcon name="facet:durable" />Monitoring<DsIcon name="flask-conical" size={14} class="ds-flask" /></span>
+      <div class="ds-nav-label">Activity</div>
       <span class="ds-nav-item"><DsIcon name="facet:session" />Sessions</span>
+      <span class="ds-nav-item"><DsIcon name="facet:durable" />Monitoring<DsIcon name="flask-conical" size={14} class="ds-flask" /></span>
       <div class="ds-nav-gap" />
-      <div class="ds-nav-label">Library</div>
-      <span class="ds-nav-item"><DsIcon name="facet:models" />Models</span>
+      <div class="ds-nav-label">Blocks</div>
+      <span class="ds-nav-item"><DsIcon name="facet:harness" />Harnesses</span>
       <span class="ds-nav-item"><DsIcon name="facet:knowledge" />Knowledge<DsIcon name="flask-conical" size={14} class="ds-flask" /></span>
+      <span class="ds-nav-item"><DsIcon name="facet:models" />Models</span>
+      <span class="ds-nav-item"><DsIcon name="facet:sandbox" />Sandboxes</span>
     </nav>
     <div class="ds-page bg-brand-dots" />
   </div>
 </DsExample>
 
-- Groups, in order: Chat (no label), Building, Operational, Library, Quality, then Settings,
+- Groups, in order: Chat and Overview (no label), Build, Activity, Blocks, Quality, then Settings,
   System (collapsed), and Dev in development builds. The navigation model in
   `lib/navigation.ts` owns the item list; breadcrumbs take their group name from it.
 - Group labels are 12px medium muted sentence case. Groups are separated by 12px of space,

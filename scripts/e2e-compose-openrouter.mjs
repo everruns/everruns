@@ -258,12 +258,14 @@ try {
     `SECRETS_ENCRYPTION_KEY=kek-v1:${randomBytes(32).toString("base64")}`,
     `AUTH_JWT_SECRET=${randomBytes(32).toString("hex")}`,
     `WORKER_GRPC_AUTH_TOKEN=${randomBytes(32).toString("hex")}`,
+    `EVERRUNS_DP_TOKEN=${randomBytes(32).toString("hex")}`,
+    `EVERRUNS_DP_KEY=${randomBytes(32).toString("base64")}`,
     "AUTH_ADMIN_EMAIL=admin@example.com",
     `AUTH_ADMIN_PASSWORD=${password}`,
     "",
   ].join("\n");
   await writeFile(join(work, ".env"), secrets, { mode: 0o600 });
-  log("Generated private .env with encryption, JWT, worker, and admin secrets (values excluded)");
+  log("Generated private .env with encryption, JWT, worker, data plane, and admin secrets (values excluded)");
   if (!setupOnly) {
     env.DEFAULT_OPENROUTER_API_KEY = key;
     env.SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV = "true";

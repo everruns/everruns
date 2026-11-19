@@ -186,6 +186,10 @@ pub struct Prom {
     /// Schedules this node fired as leader, and how late each committed.
     pub schedules_fired: Counters,
     pub schedule_lag_seconds: Histograms,
+    /// Host calls this node passed to the control plane, by call and
+    /// outcome, with duration (`host_calls.rs`).
+    pub host_calls: Counters,
+    pub host_call_seconds: Histograms,
 }
 
 impl Prom {

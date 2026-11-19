@@ -28,6 +28,9 @@ export RUST_BACKTRACE=0
 unset EVERRUNS_API_KEY EVERRUNS_API_URL EVERRUNS_PROFILE
 
 step() { printf '\n==> %s\n' "$*"; }
+# shellcheck source=lib/smoke-turn.sh
+. "$ROOT/scripts/lib/smoke-turn.sh"
+DATA_PLANE="$(smoke_data_plane "$TAG")"
 fail() {
   echo "::error title=everruns k8s smoke::$*" >&2
   kubectl -n "$NS" get pods -o wide >&2 || true
@@ -75,7 +78,10 @@ step "Without --yes and a terminal, up refuses to pick a cluster"
 "$BIN" k8s up --name "$NAME" --namespace "$NS" --bundled-postgres </dev/null && fail "up installed without confirmation"
 
 step "First install, no prompts"
-up --bundled-postgres --admin-email smoke@example.com --provider skip || fail "first up failed"
+up --bundled-postgres --admin-email smoke@example.com --provider skip --data-plane "$DATA_PLANE" \
+  || fail "first up failed"
+[ "$(helm get values "$NAME" -n "$NS" -o json | jq -r .dataPlane.version)" = "$DATA_PLANE" ] \
+  || fail "the release does not record data plane $DATA_PLANE"
 
 step "CLI is signed in to the install"
 with_forward signed_in || fail "the CLI profile does not work"

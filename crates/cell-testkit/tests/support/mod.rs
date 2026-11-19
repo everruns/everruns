@@ -200,6 +200,7 @@ impl Fleet {
                     unload_idle: None,
                     claim_ttl: Duration::from_secs(2),
                     max_turns_per_node: 64,
+                    pressure_turns: 1024,
                     snapshot_every: 100_000,
                     keep_log: 256,
                     executors: ExecutorMode::Pull { max_running: 64 },
@@ -349,9 +350,14 @@ impl Fleet {
 
     /// Restart a node with its memory pressure measured against `bytes`.
     pub fn restart_with_memory_limit(&mut self, cell: u32, node: u64, bytes: u64) {
+        self.restart_with(cell, node, |cfg| cfg.memory_limit = bytes);
+    }
+
+    /// Restart a node with its configuration changed by `change`.
+    pub fn restart_with(&mut self, cell: u32, node: u64, change: impl FnOnce(&mut NodeConfig)) {
         self.kill_node(cell, node);
         if let Some(cfg) = self.configs.get_mut(&(cell, node)) {
-            cfg.memory_limit = bytes;
+            change(cfg);
         }
         self.start_node(cell, node);
     }

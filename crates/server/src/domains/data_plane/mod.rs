@@ -31,16 +31,20 @@ use std::sync::Arc;
 
 use everruns_contracts::dataplane::{self as dp, ConfigChange, TenantPolicy};
 use everruns_contracts::dataplane_seal as seal;
+use everruns_contracts::session_commands::{Kind, SessionCommand};
 use serde_json::Value;
 
 use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 
 pub mod allowances;
 pub mod attachments;
+pub mod catalog;
+pub mod default_plane;
 pub mod event_tap;
 pub mod feed;
-pub mod lookups;
+pub mod host_calls;
 pub mod mcp;
+pub mod org_settings;
 pub mod outbox;
 pub mod providers;
 pub mod sandboxes;
@@ -172,35 +176,39 @@ pub trait DataPlane: Send + Sync {
         body: &Value,
     ) -> anyhow::Result<Value>;
     /// `POST /dp/v1/orgs/{org}/sessions`: create the org's session `id`
-    /// running its agent `agent_key`. Creating again is a no-op.
+    /// running its agent `agent_key`, or `definition`, the session's own
+    /// declaration of that agent (its own settings on top). Creating again
+    /// is a no-op.
     async fn create_session(
         &self,
         org: &str,
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
+        definition: Option<&Value>,
         initial_files: &[everruns_core::session_file::InitialFile],
         sandbox: Option<&Value>,
     ) -> anyhow::Result<()>;
-    /// `POST /dp/v1/orgs/{org}/sessions/{id}/{command}`: a command the
-    /// control plane runs on one of the org's sessions itself: `messages`
-    /// (an agent trigger's run, a channel's message; a retry with the same
-    /// message id admits once), `cancel-turn`, or `seed` (a channel's
-    /// prior conversation). The cell's answer.
+    /// `POST /dp/v1/orgs/{org}/sessions/{id}/{command}`: a declared session
+    /// command the control plane runs on one of the org's sessions itself
+    /// (`messages`: an agent trigger's run, a channel's message, where a
+    /// retry with the same message id admits once; `cancel-turn`; `seed`, a
+    /// channel's prior conversation; see [`everruns_contracts::session_commands`]).
+    /// The cell's answer.
     async fn session_command(
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        command: &str,
+        command: &'static SessionCommand,
         body: &Value,
     ) -> anyhow::Result<Value>;
-    /// `GET /dp/v1/orgs/{org}/sessions/{id}/{read}?{query}`: a view of one
-    /// of the org's sessions the control plane builds from its events
-    /// (`trace`, `events`; step 11.6).
+    /// `GET /dp/v1/orgs/{org}/sessions/{id}/{read}?{query}`: a declared
+    /// session read of one of the org's sessions (`trace`, `events`, ...;
+    /// step 11.6).
     async fn session_read(
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        read: &str,
+        read: &'static SessionCommand,
         query: &str,
     ) -> anyhow::Result<Value>;
     /// `GET /dp/v1/orgs/{org}/sessions/{id}/sse`: the session's committed
@@ -243,6 +251,7 @@ impl DataPlane for NoDataPlane {
         _: &str,
         _: everruns_contracts::typed_id::SessionId,
         _: &str,
+        _: Option<&Value>,
         _: &[everruns_core::session_file::InitialFile],
         _: Option<&Value>,
     ) -> anyhow::Result<()> {
@@ -253,7 +262,7 @@ impl DataPlane for NoDataPlane {
         &self,
         _: &str,
         session: everruns_contracts::typed_id::SessionId,
-        _: &str,
+        _: &'static SessionCommand,
         _: &Value,
     ) -> anyhow::Result<Value> {
         anyhow::bail!("session {session} is not on a data plane")
@@ -263,7 +272,7 @@ impl DataPlane for NoDataPlane {
         &self,
         _: &str,
         _: everruns_contracts::typed_id::SessionId,
-        _: &str,
+        _: &'static SessionCommand,
         _: &str,
     ) -> anyhow::Result<Value> {
         anyhow::bail!("the org has no data plane")
@@ -354,11 +363,15 @@ impl DataPlane for HttpDataPlane {
         org: &str,
         id: everruns_contracts::typed_id::SessionId,
         agent_key: &str,
+        definition: Option<&Value>,
         initial_files: &[everruns_core::session_file::InitialFile],
         sandbox: Option<&Value>,
     ) -> anyhow::Result<()> {
         let url = format!("{}{}/orgs/{org}/sessions", self.row.url, dp::PREFIX);
         let mut body = serde_json::json!({ "id": id, "agent_ref": agent_key });
+        if let Some(definition) = definition {
+            body["definition"] = definition.clone();
+        }
         if !initial_files.is_empty() {
             body["initial_files"] = serde_json::to_value(initial_files)?;
         }
@@ -377,13 +390,15 @@ impl DataPlane for HttpDataPlane {
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        command: &str,
+        command: &'static SessionCommand,
         body: &Value,
     ) -> anyhow::Result<Value> {
+        debug_assert_eq!(command.kind, Kind::Command);
         let url = format!(
-            "{}{}/orgs/{org}/sessions/{session}/{command}",
+            "{}{}/orgs/{org}/sessions/{session}/{}",
             self.row.url,
-            dp::PREFIX
+            dp::PREFIX,
+            command.name
         );
         Ok(self
             .request(reqwest::Method::POST, url)
@@ -399,13 +414,15 @@ impl DataPlane for HttpDataPlane {
         &self,
         org: &str,
         session: everruns_contracts::typed_id::SessionId,
-        read: &str,
+        read: &'static SessionCommand,
         query: &str,
     ) -> anyhow::Result<Value> {
+        debug_assert_eq!(read.kind, Kind::Read);
         let mut url = format!(
-            "{}{}/orgs/{org}/sessions/{session}/{read}",
+            "{}{}/orgs/{org}/sessions/{session}/{}",
             self.row.url,
-            dp::PREFIX
+            dp::PREFIX,
+            read.name
         );
         if !query.is_empty() {
             url.push('?');
@@ -530,10 +547,19 @@ pub async fn enable_org(
         .await?;
     event_tap::sync(&cp.db, org_id).await?;
     providers::sync(cp, org_id).await?;
+    // Until its settings arrive the cell asks the control plane, so a
+    // setting that does not sync never keeps the org off its data plane.
+    if let Err(error) = org_settings::sync(cp, org_id).await {
+        tracing::warn!(org_id, %error, "the data plane's org settings were not synced");
+    }
     for key in cp.db.engine_agent_keys_for_edit(org_id, None).await? {
         if let Some((revision, _)) = cp.db.engine_agent_current(&key.agent_key).await? {
             agent_published(cp, &key.agent_key, org_id, &revision).await?;
         }
+    }
+    // Every agent, for tools that hand work to another one (parity gap 9).
+    if let Err(error) = catalog::sync(cp, org_id).await {
+        tracing::warn!(org_id, %error, "the data plane's agent catalog was not synced");
     }
     Ok(org)
 }
@@ -568,6 +594,7 @@ pub async fn agent_published(
         revision: n,
         format: 1,
         package,
+        card: catalog::card(cp, org_id, agent_key).await?,
     });
     db.dp_put_item(
         org_id,

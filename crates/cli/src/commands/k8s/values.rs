@@ -9,7 +9,7 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::commands::docker::AuthChoice;
+use crate::commands::docker::{AuthChoice, DataPlaneChoice};
 
 /// Where the database comes from.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +31,8 @@ pub struct Answers {
     /// Chart key under `providerKeys` (openai, anthropic, gemini, openrouter) and the key.
     pub provider_key: Option<(&'static str, String)>,
     pub image_tag: Option<String>,
+    /// Where new organizations run agents (`--data-plane`).
+    pub data_plane: Option<DataPlaneChoice>,
 }
 
 /// What the release already answers.
@@ -72,6 +74,12 @@ impl Known<'_> {
 
     pub fn public_url(&self) -> Option<&str> {
         self.str(&["publicUrl"])
+    }
+
+    /// The chart's `dataPlane.version`, when the release set one.
+    pub fn data_plane(&self) -> Option<DataPlaneChoice> {
+        self.str(&["dataPlane", "version"])
+            .and_then(DataPlaneChoice::parse)
     }
 
     pub fn autoscaling(&self) -> bool {
@@ -132,6 +140,17 @@ pub fn build(current: &Value, answers: &Answers) -> Value {
     if let Some(tag) = &answers.image_tag {
         set(&mut v, &["image", "tag"], json!(tag));
     }
+    if let Some(plane) = answers.data_plane {
+        // Decision: a release that ran v2 keeps its cell when it goes back
+        // to v1, since its organizations' sessions live there. A release with
+        // no recorded choice ran the chart's default, v2.
+        let installed = !current.is_null();
+        let ran_v2 = installed && Known(current).data_plane() != Some(DataPlaneChoice::V1);
+        set(&mut v, &["dataPlane", "version"], json!(plane.as_str()));
+        if plane == DataPlaneChoice::V1 && ran_v2 {
+            set(&mut v, &["dataPlane", "keepRunning"], json!(true));
+        }
+    }
     v
 }
 
@@ -180,6 +199,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn data_plane_choice_is_recorded_and_v1_keeps_a_cell_that_ran() {
+        use DataPlaneChoice::{V1, V2};
+        let with = |plane| Answers {
+            data_plane: Some(plane),
+            ..Default::default()
+        };
+        // A new release records the choice; v1 from the start runs no cell.
+        let v = build(&Value::Null, &with(V1));
+        assert_eq!(v["dataPlane"]["version"], "v1");
+        assert!(v["dataPlane"].get("keepRunning").is_none());
+        // A release that ran the default (v2) keeps its cell on v1.
+        let v = build(&json!({"auth": {"mode": "admin"}}), &with(V1));
+        assert_eq!(v["dataPlane"]["keepRunning"], true);
+        let v = build(&json!({"dataPlane": {"version": "v2"}}), &with(V1));
+        assert_eq!(v["dataPlane"]["keepRunning"], true);
+        // One that was already on v1 does not start one.
+        let v = build(&json!({"dataPlane": {"version": "v1"}}), &with(V1));
+        assert!(v["dataPlane"].get("keepRunning").is_none());
+        let v = build(&Value::Null, &with(V2));
+        assert_eq!(v["dataPlane"]["version"], "v2");
+        // No flag leaves the release as it is.
+        let v = build(
+            &json!({"dataPlane": {"version": "v1"}}),
+            &Answers::default(),
+        );
+        assert_eq!(v["dataPlane"]["version"], "v1");
+    }
+
+    #[test]
     fn a_first_install_gets_every_answer() {
         let answers = Answers {
             auth: Some(AuthChoice::Single),
@@ -189,6 +237,7 @@ mod tests {
             ingress_class: Some("nginx".into()),
             provider_key: Some(("openai", "sk-test".into())),
             image_tag: None,
+            data_plane: None,
         };
         let v = build(&Value::Null, &answers);
         assert_eq!(v["auth"]["mode"], "admin");

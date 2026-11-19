@@ -82,6 +82,31 @@ pub struct AgentDefinition {
     pub format: u32,
     /// The agent package manifest. Secrets only as [`SealedSecret`] ids.
     pub package: Value,
+    /// The host's own names for this agent, when this key is an agent on
+    /// its own harness (data plane v2 parity gap 9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<AgentCard>,
+}
+
+/// What a tool that picks another agent by the host's id (coordination,
+/// handoff, teams) finds on the data plane: the org's agent catalog, one
+/// card per agent, pushed with the agent's own key.
+///
+/// Decision: the Engine stays id-free. Its declarations name things, and a
+/// card is never what a session runs: a session runs `package`. A card
+/// maps the host's ids, which those tools carry in their configuration, to
+/// the key a child runs, and answers their reads of the agent and its
+/// harness. MCP credentials in a card are redacted.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AgentCard {
+    /// The host's agent id.
+    pub agent_id: String,
+    /// The host's id of the harness the agent runs on.
+    pub harness_id: String,
+    /// The host's agent definition, as the runtime's `AgentDefinition`.
+    pub agent: Value,
+    /// Its harness, inheritance resolved, as the runtime's `HarnessDefinition`.
+    pub harness: Value,
 }
 
 fn one() -> u32 {
@@ -133,6 +158,28 @@ pub const LLM_PROVIDER: &str = "llm_provider";
 /// Its id starts with this kind, so an agent's server names it by
 /// `oauth_provider_id`.
 pub const MCP_OAUTH: &str = "mcp_oauth";
+
+/// The connection kind of an org setting a data plane's tools read as they
+/// run (data plane v2 parity): its `settings` are the value, it has no
+/// token. Pushed whole whenever the setting changes, so a tool reads it
+/// from the org's config rather than asking the control plane, and it
+/// still reads it while the control plane is down.
+pub const ORG_SETTING: &str = "org_setting";
+/// The org's web search defaults and search accounts, without keys
+/// (`runtime::web_search::WebSearchOrgSettings`).
+pub const WEB_SEARCH_SETTING: &str = "setting:web_search";
+/// The org's tool approval policy
+/// (`tool_approval_policy::OrgToolApprovalPolicy`).
+pub const TOOL_APPROVAL_SETTING: &str = "setting:tool_approval";
+/// The egress grants the boundary enforces for the org: `{"patterns":
+/// [...], "open": bool}`, patterns only when granted.
+pub const EGRESS_SETTING: &str = "setting:egress";
+
+/// The secret holding the key of the org's search account `account` (an
+/// organization connection whose provider has a search driver).
+pub fn web_search_key_secret(account: uuid::Uuid) -> String {
+    format!("web-search-key:{account}")
+}
 
 /// The secret holding the value of the MCP header placeholder `binding`
 /// (`${BINDING}`) in an org's agent definitions.
@@ -395,86 +442,21 @@ pub struct AllowanceGrant {
 
 // --------------------------------------------------------------- lookups
 
-/// The control plane lookups a tool on the data plane may make at call
-/// time, by the internal command that answers each: the session's
-/// connection tokens, GitHub tokens, the agent's service API keys, web
-/// search settings and account keys, the tool approval policy, the org's
-/// knowledge the session's agent attaches (search and browse), and the
-/// session's Poppy calls (the owner's keys and conversations stay in the
-/// control plane), the org's egress grants, the platform tools' calls
-/// ([`PLATFORM_COMMAND_SURFACE`]), the session's Slack actions
-/// ([`SLACK_ACTION`]) and its SQL databases ([`SESSION_SQL_DB`]).
-///
-/// Decision (step 11.6b): these are the v1 worker's own commands, run as
-/// the org's internal caller with the same checks (the session belongs to
-/// the org). Lookups the data plane answers itself stay out: MCP grants
-/// (sealed org secrets, `mcp.rs`), sandbox keys (sealed when the sandbox
-/// is pinned), and leased-resource cleanup (a cell leases nothing).
-pub const LOOKUP_COMMANDS: &[&str] = &[
-    "worker_get_connection_token",
-    "worker_get_github_token",
-    "worker_get_org_egress_allowlist",
-    "worker_get_service_api_key_connection",
-    "worker_get_tool_approval_policy",
-    "worker_get_web_search_account_key",
-    "worker_get_web_search_settings",
-    "worker_knowledge",
-    "worker_poppy_call",
-    PLATFORM_COMMAND_SURFACE,
-    SLACK_ACTION,
-    SESSION_SQL_DB,
-];
-
-/// The lookup that runs one operation on a session's SQL databases, which
-/// live in the control plane as for a v1 session, so the console's
-/// Databases panel reads the same ones. Its params name the session and
-/// the operation (`op`: `create`, `list`, `get`, `delete`, `execute`,
-/// `query`, `schema`) with its `name`, `sql` or `table`; the answer is
-/// `{"ok": ...}` or `{"error": ...}` (`session_sqldb::SessionSqlDbError`).
-pub const SESSION_SQL_DB: &str = "session_sql_db";
-
-/// The lookup that performs a Slack action (post, react, update, upload,
-/// look up a user) as the bot of the Slack endpoint the session came
-/// through. Its params name the session and the action
-/// (`slack_action::SlackAction`); the answer is `{"outcome": ...}` or
-/// `{"error": ...}` (`slack_action::SlackActionError`). The endpoint's bot
-/// token never leaves the control plane, as on v1.
-pub const SLACK_ACTION: &str = "slack_action";
-
-/// The lookup that runs a platform tool's call (discover, query, execute,
-/// run) on the control plane's command catalog, as the person who sent the
-/// turn's input message. Its params name the session and the input
-/// message; the cell that forwards it sets `acting_user` from the
-/// session's own record, and the control plane checks that person.
-pub const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
-
-/// `POST /dp/v1/tenants/{org}/lookups`: one lookup, answered once.
+/// `POST /dp/v1/tenants/{org}/lookups`: the route host calls
+/// (`host_calls`) replaced, kept while cells and executors of the release
+/// before roll over. `command` is the v1 worker command; the control plane
+/// answers it as the host call `host_calls::by_command` names. Remove with
+/// the release after.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LookupRequest {
     /// A fresh id per lookup: the answer is sealed under
     /// [`lookup_secret`] of it, so it cannot pass for another's.
     pub request: String,
-    /// One of [`LOOKUP_COMMANDS`].
     pub command: String,
     pub params: Value,
 }
 
-/// What a lookup answered. Its JSON travels as a [`SealedSecret`] named
-/// [`lookup_secret`] (revision 0) under the org's data key, because most
-/// answers are credentials and the cells between pass them on unopened.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum LookupAnswer {
-    Value(Value),
-    /// The command refused: its kind (the internal protocol's
-    /// `CommandError` kind) and a message safe to show.
-    Error {
-        kind: i32,
-        message: String,
-    },
-}
-
-/// The secret id a lookup's answer is sealed under.
+/// The secret id a legacy lookup's answer is sealed under.
 pub fn lookup_secret(request: &str) -> String {
     format!("lookup:{request}")
 }
@@ -686,6 +668,10 @@ pub struct SessionEventRow {
     pub sequence: i32,
     pub event_type: String,
     pub ts: chrono::DateTime<chrono::Utc>,
+    /// The event's context (its turn, input message), as the stream
+    /// serves it. Absent from a cell older than the field.
+    #[serde(default)]
+    pub context: Value,
     pub data: Value,
 }
 

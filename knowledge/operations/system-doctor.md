@@ -101,13 +101,13 @@ Workers send their version, host name and
 register, and a short list of checks on their own setup at registration and
 every five minutes
 ([`self_checks`](../../crates/worker/src/self_checks.rs)): whether the egress
-proxy is reachable from the worker, whether sandbox egress settings are
-usable, and whether the worker uses NATS. Only what differs per worker is
-checked there; the server judges everything else. The server merges the
-reports per check across workers and names the workers that differ. It
-compares the NATS report with its own setting, because a worker with
-`NATS_URL` against a server without it sends streamed output in a way only
-NATS makes safe. Reports older than fifteen minutes are ignored.
+proxy is reachable from the worker and whether sandbox egress settings are
+usable. Only what differs per worker
+is checked there; the server judges everything else. The server merges the
+reports per check across workers and names the workers that differ. Reports
+older than fifteen minutes are ignored. Workers do not report NATS: they never
+connect to it, and the server tells each worker at registration and on every
+heartbeat whether streamed deltas skip PostgreSQL, so the two cannot disagree.
 
 Refused worker calls are counted per server process, so a worker locked out
 by a wrong token shows up without reading the worker's log.

@@ -16,6 +16,8 @@ import {
   todoToolResult,
   writeFileToolCall,
   writeFileToolResult,
+  editFileToolCall,
+  editFileToolResult,
 } from "@/app/dev/_fixtures/tool-showcase-fixtures";
 import { fallbackDetails } from "@/app/dev/_fixtures/web-search-fixtures";
 import { ToolApprovalRequests } from "@/components/chat/tool-approval-tool-call";
@@ -299,6 +301,11 @@ export default function ToolActivityDevPage() {
                 toolCall={writeFileToolCall}
                 toolResult={writeFileToolResult}
               />
+            </div>
+
+            <div className="space-y-2" data-testid="edit-file-showcase">
+              <p className="text-sm font-medium text-foreground">{ui("Edit file diff")}</p>
+              <WriteFileToolCallCard toolCall={editFileToolCall} toolResult={editFileToolResult} />
             </div>
 
             <div className="space-y-2">

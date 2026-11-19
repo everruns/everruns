@@ -268,6 +268,7 @@ export const messages: Readonly<Record<string, string>> = {
   Workspace: "Робоча область",
   "Write a note or OKF concept": "Напишіть замітку або концепцію OKF",
   "Write file output": "Записати вихідний файл",
+  "Edit file diff": "Diff редагування файлу",
   "Write Markdown, optionally with OKF metadata…":
     "Записати Markdown, необов’язково з метаданими OKF…",
   "Wrong address?": "Неправильна адреса?",

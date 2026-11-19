@@ -536,14 +536,14 @@ describe("Sidebar", () => {
   // cosmetic refactors while asserting no behavior. Active-state/routing tests
   // that verify *which* item is highlighted are kept below.
 
-  it("links Sandboxes as one Building entry", () => {
+  it("links Sandboxes as one Blocks entry", () => {
     mockPathname.mockReturnValue("/sandboxes/templates/template-1");
     render(<Sidebar />);
     expect(screen.getByRole("link", { name: "Sandboxes" })).toHaveAttribute("href", "/sandboxes");
     expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
   });
 
-  it("hangs the side chats directly under Main chat and starts Building with Overview", () => {
+  it("hangs the side chats directly under Main chat, then Overview with no group header", () => {
     mockThreads.mockReturnValue([{ id: "sess_1", title: "Standup" }]);
 
     render(<Sidebar />);
@@ -655,7 +655,7 @@ describe("Sidebar with config", () => {
     expect(screen.getByText("Custom")).toBeInTheDocument();
     expect(screen.getByText("Custom Page")).toBeInTheDocument();
     // Default items should not appear
-    expect(screen.queryByText("Building")).not.toBeInTheDocument();
+    expect(screen.queryByText("Build")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^system$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Custom Page" })).toHaveAttribute(
       "data-prefetch",
@@ -675,7 +675,7 @@ describe("Sidebar with config", () => {
 
     // Default items still present
     expect(screen.getByText("Sessions")).toBeInTheDocument();
-    expect(screen.getByText("Building")).toBeInTheDocument();
+    expect(screen.getByText("Build")).toBeInTheDocument();
     // Extra section appended
     expect(screen.getByText("Billing")).toBeInTheDocument();
     expect(screen.getByText("Usage")).toBeInTheDocument();
