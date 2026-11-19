@@ -67,6 +67,7 @@ step "Generate secrets and write .env (guide steps 2-3, data plane $DATA_PLANE)"
   if [ "$DATA_PLANE" = v1 ]; then
     echo "EVERRUNS_DATA_PLANE=v1"
     echo "DATA_PLANE_REPLICAS=0"
+    echo "DATA_PLANE_PULL_POLICY=never"
   fi
   echo "COMPOSE_PROFILES=${SMOKE_PROFILES-scale,metrics}"
 } > .env

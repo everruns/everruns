@@ -378,6 +378,8 @@ async fn up(args: UpArgs) -> Result<()> {
     }
     s.set(settings::DATA_PLANE, plane.as_str());
     s.set(settings::DATA_PLANE_REPLICAS, replicas);
+    let pull = if replicas == "0" { "never" } else { "missing" };
+    s.set(settings::DATA_PLANE_PULL_POLICY, pull);
 
     // LLM provider. The server only turns a default key into the default
     // organization's provider when nobody can sign themselves up; with

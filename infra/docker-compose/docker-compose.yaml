@@ -6,7 +6,8 @@
 # - Server (control plane): HTTP API + gRPC server
 # - Data plane v2 (the default): one cell node, one executor and the edge
 #   router. New orgs' sessions run there; set EVERRUNS_DATA_PLANE=v1 and
-#   DATA_PLANE_REPLICAS=0 in .env to run every org on workers instead.
+#   DATA_PLANE_REPLICAS=0 and DATA_PLANE_PULL_POLICY=never in .env to run every
+#   org on workers instead.
 # - 1 Worker by default; 3 with the `scale` profile (v1 orgs' sessions and
 #   control plane agents such as Platform Chat)
 # - UI (Next.js dashboard)
@@ -234,6 +235,8 @@ services:
     volumes:
       - cell_data:/data
       - cell_store:/store
+    # v1 sets never, so no data plane image is pulled (older tags have none).
+    pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
       replicas: ${DATA_PLANE_REPLICAS:-1}
     depends_on:
@@ -250,6 +253,8 @@ services:
         target: /etc/cell/topology.json
     volumes:
       - cell_store:/store
+    # v1 sets never, so no data plane image is pulled (older tags have none).
+    pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
       replicas: ${DATA_PLANE_REPLICAS:-1}
     depends_on:
@@ -263,6 +268,8 @@ services:
     configs:
       - source: cell_topology
         target: /etc/cell/topology.json
+    # v1 sets never, so no data plane image is pulled (older tags have none).
+    pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
       replicas: ${DATA_PLANE_REPLICAS:-1}
     depends_on:

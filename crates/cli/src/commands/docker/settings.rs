@@ -47,6 +47,8 @@ pub const DATA_PLANE: &str = "EVERRUNS_DATA_PLANE";
 /// How many cell, executor and edge containers run: `1`, or `0` for an
 /// install that never ran v2.
 pub const DATA_PLANE_REPLICAS: &str = "DATA_PLANE_REPLICAS";
+/// `never` while no data plane container runs, so no cell image is pulled.
+pub const DATA_PLANE_PULL_POLICY: &str = "DATA_PLANE_PULL_POLICY";
 /// The link between the server and the data plane: a bearer token and the
 /// key that wraps each organization's data key.
 pub const DP_TOKEN: &str = "EVERRUNS_DP_TOKEN";
@@ -79,6 +81,7 @@ pub const MANAGED_KEYS: &[&str] = &[
     "VICTORIAMETRICS_PORT",
     DATA_PLANE,
     DATA_PLANE_REPLICAS,
+    DATA_PLANE_PULL_POLICY,
     DP_TOKEN,
     DP_KEY,
 ];
@@ -383,6 +386,7 @@ mod tests {
             NGROK_AUTHTOKEN,
             DATA_PLANE,
             DATA_PLANE_REPLICAS,
+            DATA_PLANE_PULL_POLICY,
             DP_TOKEN,
             DP_KEY,
         ] {

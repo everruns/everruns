@@ -68,6 +68,7 @@ EVERRUNS_DP_KEY=<data-plane-key>
 # Optional: run agents on the workers only (data plane v1), see below
 # EVERRUNS_DATA_PLANE=v1
 # DATA_PLANE_REPLICAS=0
+# DATA_PLANE_PULL_POLICY=never
 
 # Optional: two extra workers and VictoriaMetrics (see Profiles below)
 COMPOSE_PROFILES=scale,metrics
@@ -140,11 +141,13 @@ To run every organization on the workers instead, add to `.env`:
 ```bash
 EVERRUNS_DATA_PLANE=v1
 DATA_PLANE_REPLICAS=0
+DATA_PLANE_PULL_POLICY=never
 ```
 
-`DATA_PLANE_REPLICAS=0` stops the cell, executor and edge containers. Leave
-it out when switching an install that already ran v2: its v2 organizations'
-sessions live in the cell. Data plane v2 needs images from the release that
+`DATA_PLANE_REPLICAS=0` stops the cell, executor and edge containers, and
+`DATA_PLANE_PULL_POLICY=never` skips pulling their image. Leave both out when
+switching an install that already ran v2: its v2 organizations' sessions live
+in the cell. Data plane v2 needs images from the release that
 made it the default or later; an older `EVERRUNS_TAG` has no `everruns-cell`
 image, so run v1 with it.
 

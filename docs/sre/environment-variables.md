@@ -28,6 +28,7 @@ a working default; each row links to the section that documents it.
 | [`EVERRUNS_EGRESS_*`](#outbound-egress) | API and workers | No | Tenant traffic may reach any public host, directly from the deployment's address. |
 | [`EGRESS_PROXY_*`](#tenant-egress-proxy) | `everruns-egress-proxy` | Only when running the proxy | No proxy. |
 | [`KUBERNETES_SANDBOX_*`](#isolated-sandboxes) | API and workers | Only for Isolated sandboxes | The Isolated sandbox target is off. |
+| [`EVERRUNS_DP_TOKEN`, `EVERRUNS_DP_KEY`, `EVERRUNS_DEFAULT_DATA_PLANE_URL`, `EVERRUNS_DATA_PLANE`](#data-plane-v2) | API (the token and key also on cells, as `CELL_DP_*`) | For data plane v2 (the Compose, Helm and local default) | New organizations run on the workers (v1). |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration), [`SERVER_SHUTDOWN_*`](#server-shutdown) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits, a 5 s linger and 20 s drain on shutdown. |
 | [`EVENT_GROUP_COMMIT`](#throughput-tuning), [`SESSION_ACTOR_STICKY_GRACE_MS`](#throughput-tuning) | API | No | Event writes share commits over 4 lanes, a session waits 300 ms for the worker that ran its last turn. |
@@ -660,6 +661,31 @@ Read by the `everruns-egress-proxy` binary. Every cap is off unless set.
 Usage without a control endpoint is logged once per org, session and minute on the `everruns::egress::usage` target.
 
 The proxy also counts abuse signals per org and minute: attempts on blocked (SMTP) ports, destinations that resolve to private addresses, requests refused by a cap, and how many distinct hosts the org reached. They go to the control endpoint in the same usage batches (`signals`), or are logged on the `everruns::egress::signals` target. The proxy only counts them; acting on them, such as suspending an org, is up to the control plane.
+
+## Data plane v2
+
+The link between the API (control plane) and its data plane, and where new
+organizations run. Docker Compose, the Helm chart and `everruns docker up`
+set these; the Compose guide's `.env` needs the first two.
+
+| Variable | Value |
+|---|---|
+| `EVERRUNS_DP_TOKEN` | Bearer token the data plane and the API use with each other. Cells get the same value as `CELL_DP_TOKEN`. Generate with `openssl rand -hex 32`. |
+| `EVERRUNS_DP_KEY` | 32 random bytes in base64 that wrap each organization's data key. Cells get the same value as `CELL_DP_KEY`. Generate with `openssl rand -base64 32`. Keep it: a new key cannot open what the old one wrapped. |
+| `EVERRUNS_DEFAULT_DATA_PLANE_URL` | A node of the data plane's directory cell, such as `http://cell:7000`. The API registers it and puts every organization that has never had a session on it. |
+| `EVERRUNS_DEFAULT_DATA_PLANE` | That data plane's id. Default `local`. |
+| `EVERRUNS_DATA_PLANE` | `v1` turns placement off: new organizations run on the workers. |
+
+**Example (`.env`):**
+
+```bash
+EVERRUNS_DP_TOKEN=3f1c...e9a2          # openssl rand -hex 32
+EVERRUNS_DP_KEY=q8m3...Zk0=            # openssl rand -base64 32
+```
+
+**Notes:**
+- Without the token and key, the API logs a warning and new organizations run on v1.
+- Organizations with v1 sessions stay on the workers.
 
 ## UI API Proxy Architecture
 
