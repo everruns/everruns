@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
-    "@copilotkit/core": "1.83.0",
+    "@copilotkit/core": "1.87.0",
     "@copilotkit/react-core": "1.83.0",
     "@copilotkit/shared": "1.83.0",
     "@everruns/generative-ui": "file:generative-ui",
