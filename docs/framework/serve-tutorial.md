@@ -17,7 +17,7 @@ This is a guided lesson, so it makes the choices for you. The
 
 ## What you need
 
-- Rust 1.94 or later, with `cargo`.
+- Rust 1.96 or later, with `cargo`.
 - An OpenAI API key in `OPENAI_API_KEY`. The agent uses `openai/gpt-6.2-sol`.
 - For the client: Python 3.10 or later, Node.js 22 or later, or Rust.
 - `curl` and `jq` for the checks along the way.

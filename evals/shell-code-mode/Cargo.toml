@@ -9,7 +9,7 @@
 name = "everruns-shell-code-mode-evals"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.96.0"
 description = "Mira eval study: whether a model finds and calls tools through the shell `tools` command"
 publish = false
 
