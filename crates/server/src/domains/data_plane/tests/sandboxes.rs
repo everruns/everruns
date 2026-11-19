@@ -171,6 +171,10 @@ fn a_published_package_carries_no_sandbox_of_its_own() {
         package["capabilities"],
         json!([{ "ref": "session_file_system" }])
     );
+    // A package with no capabilities keeps none: a null would not parse.
+    let mut bare = json!({ "name": "plain" });
+    sandboxes::strip(&mut bare);
+    assert_eq!(bare, json!({ "name": "plain" }));
 }
 
 #[tokio::test]
