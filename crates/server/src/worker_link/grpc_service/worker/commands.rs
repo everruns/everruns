@@ -28,10 +28,20 @@ impl WorkerServiceImpl {
             )));
         }
 
-        if req.params_json.len() > MAX_EXECUTE_COMMAND_PARAMS_BYTES {
+        // The file adapter sends base64 for binary artifacts. Keep ordinary
+        // commands at 1 MiB and leave storage quotas to the file service.
+        let max_params_bytes = match req.name.as_str() {
+            "create_workspace_file" | "update_workspace_file"
+                if req.acting_for_session_id.is_some() && req.platform_session_id.is_none() =>
+            {
+                12 * 1024 * 1024
+            }
+            _ => MAX_EXECUTE_COMMAND_PARAMS_BYTES,
+        };
+        if req.params_json.len() > max_params_bytes {
             return Err(Status::resource_exhausted(format!(
                 "Command params payload too large: size exceeds {} byte limit",
-                MAX_EXECUTE_COMMAND_PARAMS_BYTES
+                max_params_bytes
             )));
         }
 

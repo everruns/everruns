@@ -143,3 +143,71 @@ async fn the_grpc_command_ctx_file_service_lists_virtual_mount_entries() {
         "the ctx's service must list the virtual mount's entries, got {names:?}"
     );
 }
+
+#[tokio::test]
+async fn worker_file_commands_can_store_large_binary_artifacts() {
+    use base64::Engine;
+    use everruns_internal_protocol::uuid_to_proto_uuid;
+
+    let service = test_worker_service().await;
+    let (session_id, _) = super::tests::create_grpc_test_session(&service).await;
+    let bytes = vec![0xf8; 1024 * 1024];
+    let content = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let request = |name: &str, session: Option<_>| {
+        tonic::Request::new(proto::ExecuteCommandRequest {
+            name: name.to_string(),
+            api_version: "v1".to_string(),
+            params_json: serde_json::to_vec(&serde_json::json!({
+                "session_id": session_id.to_string(),
+                "path": "/out/large-media.bin",
+                "encoding": "base64",
+                "content": content,
+            }))
+            .expect("serialize file"),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            acting_for_session_id: session,
+            ..Default::default()
+        })
+    };
+
+    for name in ["create_workspace_file", "update_workspace_file"] {
+        let response = service
+            .handle_execute_command(request(name, Some(uuid_to_proto_uuid(session_id.uuid()))))
+            .await
+            .expect("worker file request fits the dedicated envelope")
+            .into_inner();
+        assert!(matches!(
+            response.result,
+            Some(proto::execute_command_response::Result::OkJson(_))
+        ));
+    }
+
+    let ctx = service.domain_ctx_for_caller(everruns_core::Caller::internal(
+        everruns_core::DEFAULT_ORG_ID,
+    ));
+    let file = crate::domains::session_files::queries::service(&ctx)
+        .read_file(session_id.uuid(), "/out/large-media.bin")
+        .await
+        .expect("read saved artifact")
+        .expect("saved artifact exists");
+    assert_eq!(
+        base64::engine::general_purpose::STANDARD
+            .decode(file.content.expect("binary body"))
+            .expect("decode saved artifact"),
+        bytes,
+    );
+
+    for oversized in [
+        request("create_workspace_file", None),
+        request(
+            "get_workspace_file",
+            Some(uuid_to_proto_uuid(session_id.uuid())),
+        ),
+    ] {
+        let error = service
+            .handle_execute_command(oversized)
+            .await
+            .expect_err("ordinary 1 MiB envelope still applies");
+        assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+    }
+}
