@@ -48,15 +48,15 @@ everruns model-presets create [OPTIONS] --name <name>
 
 | Flag | Description |
 |---|---|
-| `--chat-model-id <CHAT_MODEL_ID>` |  |
-| `--coding-model-id <CODING_MODEL_ID>` |  |
-| `--decision-model-id <DECISION_MODEL_ID>` |  |
-| `--default-model-id <DEFAULT_MODEL_ID>` |  |
-| `--description <DESCRIPTION>` |  |
+| `--chat-model-id <CHAT_MODEL_ID>` | Model for the built-in Everruns Chat. |
+| `--coding-model-id <CODING_MODEL_ID>` | Model for coding-harness agents and coding helpers. |
+| `--decision-model-id <DECISION_MODEL_ID>` | Model for quick gate checks and the Auto helper pick. |
+| `--default-model-id <DEFAULT_MODEL_ID>` | Model for agents and sessions with no model of their own. |
+| `--description <DESCRIPTION>` | What the preset is for. |
 | `--from <FROM>` | Preset to copy jobs from (`automatic`, `provider:gemini` or a custom id). |
 | `--name <NAME>` | Required. Display name, 1 to 100 characters. |
-| `--research-model-id <RESEARCH_MODEL_ID>` |  |
-| `--small-model-id <SMALL_MODEL_ID>` |  |
+| `--research-model-id <RESEARCH_MODEL_ID>` | Model for research-role agents and deep helpers. |
+| `--small-model-id <SMALL_MODEL_ID>` | Model for titles, summaries and fast helpers. |
 
 Example:
 
@@ -128,15 +128,15 @@ everruns model-presets update [OPTIONS] --id <id>
 
 | Flag | Description |
 |---|---|
-| `--chat-model-id <CHAT_MODEL_ID>` |  |
-| `--coding-model-id <CODING_MODEL_ID>` |  |
-| `--decision-model-id <DECISION_MODEL_ID>` |  |
-| `--default-model-id <DEFAULT_MODEL_ID>` |  |
-| `--description <DESCRIPTION>` |  |
+| `--chat-model-id <CHAT_MODEL_ID>` | Model for the built-in Everruns Chat. |
+| `--coding-model-id <CODING_MODEL_ID>` | Model for coding-harness agents and coding helpers. |
+| `--decision-model-id <DECISION_MODEL_ID>` | Model for quick gate checks and the Auto helper pick. |
+| `--default-model-id <DEFAULT_MODEL_ID>` | Model for agents and sessions with no model of their own. |
+| `--description <DESCRIPTION>` | What the preset is for. |
 | `--id <ID>` | Required. Custom preset id. |
-| `--name <NAME>` |  |
-| `--research-model-id <RESEARCH_MODEL_ID>` |  |
-| `--small-model-id <SMALL_MODEL_ID>` |  |
+| `--name <NAME>` | Display name. |
+| `--research-model-id <RESEARCH_MODEL_ID>` | Model for research-role agents and deep helpers. |
+| `--small-model-id <SMALL_MODEL_ID>` | Model for titles, summaries and fast helpers. |
 
 Example:
 

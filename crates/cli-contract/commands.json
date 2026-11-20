@@ -9248,31 +9248,36 @@
         "field": "chat_model_id",
         "long": "chat-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for the built-in Everruns Chat."
       },
       {
         "field": "coding_model_id",
         "long": "coding-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for coding-harness agents and coding helpers."
       },
       {
         "field": "decision_model_id",
         "long": "decision-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for quick gate checks and the Auto helper pick."
       },
       {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for agents and sessions with no model of their own."
       },
       {
         "field": "description",
         "long": "description",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "What the preset is for."
       },
       {
         "field": "from",
@@ -9292,13 +9297,15 @@
         "field": "research_model_id",
         "long": "research-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for research-role agents and deep helpers."
       },
       {
         "field": "small_model_id",
         "long": "small-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for titles, summaries and fast helpers."
       }
     ],
     "examples": [
@@ -9390,31 +9397,36 @@
         "field": "chat_model_id",
         "long": "chat-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for the built-in Everruns Chat."
       },
       {
         "field": "coding_model_id",
         "long": "coding-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for coding-harness agents and coding helpers."
       },
       {
         "field": "decision_model_id",
         "long": "decision-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for quick gate checks and the Auto helper pick."
       },
       {
         "field": "default_model_id",
         "long": "default-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for agents and sessions with no model of their own."
       },
       {
         "field": "description",
         "long": "description",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "What the preset is for."
       },
       {
         "field": "id",
@@ -9427,19 +9439,22 @@
         "field": "name",
         "long": "name",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Display name."
       },
       {
         "field": "research_model_id",
         "long": "research-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for research-role agents and deep helpers."
       },
       {
         "field": "small_model_id",
         "long": "small-model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Model for titles, summaries and fast helpers."
       }
     ],
     "examples": [

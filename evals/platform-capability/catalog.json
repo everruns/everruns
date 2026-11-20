@@ -7455,36 +7455,42 @@
           "description": "The model for each job. A missing job uses the organization default for it.",
           "properties": {
             "chat_model_id": {
+              "description": "Model for the built-in Everruns Chat.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "coding_model_id": {
+              "description": "Model for coding-harness agents and coding helpers.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "decision_model_id": {
+              "description": "Model for quick gate checks and the Auto helper pick.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "default_model_id": {
+              "description": "Model for agents and sessions with no model of their own.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "research_model_id": {
+              "description": "Model for research-role agents and deep helpers.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "small_model_id": {
+              "description": "Model for titles, summaries and fast helpers.",
               "type": [
                 "string",
                 "null"
@@ -7496,11 +7502,13 @@
       },
       "allOf": [
         {
-          "$ref": "#/$defs/ModelPresetJobs"
+          "$ref": "#/$defs/ModelPresetJobs",
+          "description": "The model for each job."
         },
         {
           "properties": {
             "description": {
+              "description": "What the preset is for.",
               "type": [
                 "string",
                 "null"
@@ -27737,48 +27745,56 @@
           "description": "Change a custom preset. Omit a field to keep it; null clears a job back to\nthe organization default.",
           "properties": {
             "chat_model_id": {
+              "description": "Model for the built-in Everruns Chat.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "coding_model_id": {
+              "description": "Model for coding-harness agents and coding helpers.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "decision_model_id": {
+              "description": "Model for quick gate checks and the Auto helper pick.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "default_model_id": {
+              "description": "Model for agents and sessions with no model of their own.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "description": {
+              "description": "What the preset is for.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "name": {
+              "description": "Display name.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "research_model_id": {
+              "description": "Model for research-role agents and deep helpers.",
               "type": [
                 "string",
                 "null"
               ]
             },
             "small_model_id": {
+              "description": "Model for titles, summaries and fast helpers.",
               "type": [
                 "string",
                 "null"
