@@ -45,6 +45,7 @@ pub mod feed;
 pub mod host_calls;
 pub mod mcp;
 pub mod memory;
+pub mod moves;
 pub mod org_settings;
 pub mod outbox;
 pub mod providers;

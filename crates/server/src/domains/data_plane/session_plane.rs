@@ -148,6 +148,33 @@ impl SessionPlane {
     }
 }
 
+/// The message an event carries into a seeded conversation: a person's or
+/// the agent's message with its text and media only. Tool calls and their
+/// results stay behind: a seeded call without its result would be refused
+/// by a model provider. Shared by a fork (`fork_plane.rs`) and a move
+/// (`moves.rs`).
+pub fn conversation_message(
+    event_type: &str,
+    data: &Value,
+) -> Option<everruns_core::message::RuntimeMessage> {
+    use everruns_core::message::ContentPart;
+    if event_type != INPUT_MESSAGE && event_type != OUTPUT_MESSAGE_COMPLETED {
+        return None;
+    }
+    let mut message: everruns_core::message::RuntimeMessage =
+        serde_json::from_value(data["message"].clone()).ok()?;
+    message.content.retain(|part| {
+        matches!(
+            part,
+            ContentPart::Text(_)
+                | ContentPart::Image(_)
+                | ContentPart::ImageFile(_)
+                | ContentPart::File(_)
+        )
+    });
+    (!message.content.is_empty()).then_some(message)
+}
+
 /// The `events` read's query (built apart from the read: the serializer is
 /// not `Send`).
 fn events_query(

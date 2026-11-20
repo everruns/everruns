@@ -2278,6 +2278,26 @@ together:
   from that record (`data_plane/subagents.rs`), so the console lists it
   and its Memory, connections and calls resolve as its parent's do.
 
+**Phase C: moving a running v1 session (2026-11-20).** Decision 4A: a v1
+session of an org on a data plane is moved, not left on the workers. It
+keeps its id, record and history and runs on a cell from then on
+(`data_plane/moves.rs`, `everruns-dataplane move <org> [<session>]`, which
+without a session moves every v1 session of the org). The move switches
+first: one transaction records it (`dp_session_moves`) and marks the
+session as the data plane's, so no message reaches the workers again; the
+control plane refuses its messages ("moving, send again") until the import
+is done. Only a session with no turn running or waiting is switched, and a
+turn that started just before the switch is waited out; a turn waiting on
+tool results is not moved, since its call would be left without an answer.
+The import carries what a fork carries: the conversation (the newest
+messages that fit one seed call, text and media only), the values and the
+secrets (sealed again for the session), and the workspace's files (one
+call each when large; the data plane's session commands take a file as
+big as a cell holds). A bound secret stays behind, since a cell has no
+egress binding yet. The v1 log stays in the control plane's `events`, and
+the move records where it ends and what stayed behind. Every step is
+retry-safe, so a move that stopped midway is run again and continues.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

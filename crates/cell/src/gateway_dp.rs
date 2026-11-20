@@ -51,9 +51,15 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
             "/dp/v1/orgs/{org}/sessions/{session}/sse",
             get(org_session_sse),
         )
+        // A session command may carry a whole file (`fs`: a moved v1
+        // session's files, one per call when large), as big as a cell
+        // holds, base64 encoded. Only the control plane reaches these
+        // routes (the link token).
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/{command}",
-            post(org_session_command).get(org_session_read),
+            post(org_session_command).get(org_session_read).layer(
+                axum::extract::DefaultBodyLimit::max(crate::api_files::FILE_MAX * 2),
+            ),
         )
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
