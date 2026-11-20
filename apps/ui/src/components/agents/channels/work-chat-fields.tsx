@@ -1,4 +1,8 @@
 "use client";
+import { useId } from "react";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
+import type { ChannelFormState } from "./channel-form";
+import { FormSection } from "./form-section";
 import {
   Select as SharedSelect,
   SelectTrigger as SharedSelectTrigger,
@@ -54,7 +58,7 @@ export function isWorkChatMembershipValid(
   );
 }
 
-export function WorkChatFields({
+function WorkChatFields({
   mode,
   onModeChange,
   membership,
@@ -210,5 +214,62 @@ export function WorkChatFields({
         onChange={(next) => onChange({ ...next, errors: "public" })}
       />
     </div>
+  );
+}
+
+export function WorkChatSection({
+  state,
+  onChange,
+}: {
+  state: ChannelFormState;
+  onChange: (state: ChannelFormState) => void;
+}) {
+  const ui = useUiTranslations();
+  const viewsEnabled = useOptionalFeatureFlags()?.flags.agent_views;
+  const placementId = useId();
+  return (
+    <FormSection title="Chat site" hint="How conversations are organized.">
+      <WorkChatFields
+        mode={state.chatInterface}
+        onModeChange={(mode) => onChange({ ...state, chatInterface: mode })}
+        membership={state.chatMembership}
+        memberEmail={state.chatMemberEmail}
+        invites={state.chatInvites}
+        onMembershipChange={(next) =>
+          onChange({
+            ...state,
+            chatMembership: next.membership,
+            chatMemberEmail: next.memberEmail,
+            chatInvites: next.invites,
+          })
+        }
+        value={state.api}
+        onChange={(api) => onChange({ ...state, api })}
+      />
+      {viewsEnabled && (
+        <div className="space-y-2">
+          <Label htmlFor={placementId}>{ui("Published view")}</Label>
+          <select
+            id={placementId}
+            className="h-9 w-full border bg-background px-2 text-sm"
+            value={state.chatViewPlacement}
+            onChange={(event) => {
+              const value = event.target.value;
+              onChange({
+                ...state,
+                chatViewPlacement: value === "page" || value === "panel" ? value : "none",
+              });
+            }}
+          >
+            <option value="none">{ui("None")}</option>
+            <option value="panel">{ui("Show alongside chat")}</option>
+            <option value="page">{ui("Open on the published page")}</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {ui("This shares the Agent’s view with people who can sign into this channel.")}
+          </p>
+        </div>
+      )}
+    </FormSection>
   );
 }

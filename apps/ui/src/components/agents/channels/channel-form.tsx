@@ -49,7 +49,6 @@ import type {
   WebhookChannelConfig,
 } from "@/lib/api/types";
 import { agentIdChannelAuth, agentIdClientId, isAgentIdChannelAuth } from "@/lib/agentid";
-import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { AgentIdSignInFields, PublicChatSignInFields } from "./sign-in-fields";
 import {
   buildVoiceChannelConfig,
@@ -79,7 +78,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { cn } from "@/lib/utils";
 
 import {
-  WorkChatFields,
+  WorkChatSection,
   inviteList,
   isWorkChatMembershipValid,
   type WorkChatMembership,
@@ -630,8 +629,6 @@ export function ChannelForm({
   const ui = useUiTranslations();
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
-  const viewsEnabled = useOptionalFeatureFlags()?.flags.agent_views;
-  const placementId = useId();
   // Without public HTTPS, Socket Mode's Add to Slack creates the app; the install ends in Slack.
   const slackInstallAvailable = slackInstallCapability?.connected === true;
   const slackFinishInSlack = SocketMode.finishesInSlack(state.slackConnection);
@@ -1249,51 +1246,7 @@ export function ChannelForm({
           </FormSection>
         </>
       )}
-      {state.kind === "work_chat" && (
-        <FormSection title="Chat site" hint="How conversations are organized.">
-          <WorkChatFields
-            mode={state.chatInterface}
-            onModeChange={(mode) => update("chatInterface", mode)}
-            membership={state.chatMembership}
-            memberEmail={state.chatMemberEmail}
-            invites={state.chatInvites}
-            onMembershipChange={(next) =>
-              onChange({
-                ...state,
-                chatMembership: next.membership,
-                chatMemberEmail: next.memberEmail,
-                chatInvites: next.invites,
-              })
-            }
-            value={state.api}
-            onChange={(api) => update("api", api)}
-          />
-          {viewsEnabled && (
-            <div className="space-y-2">
-              <Label htmlFor={placementId}>{ui("Published view")}</Label>
-              <select
-                id={placementId}
-                className="h-9 w-full border bg-background px-2 text-sm"
-                value={state.chatViewPlacement}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  update(
-                    "chatViewPlacement",
-                    value === "page" || value === "panel" ? value : "none",
-                  );
-                }}
-              >
-                <option value="none">{ui("None")}</option>
-                <option value="panel">{ui("Show alongside chat")}</option>
-                <option value="page">{ui("Open on the published page")}</option>
-              </select>
-              <p className="text-xs text-muted-foreground">
-                {ui("This shares the Agent’s view with people who can sign into this channel.")}
-              </p>
-            </div>
-          )}
-        </FormSection>
-      )}
+      {state.kind === "work_chat" && <WorkChatSection state={state} onChange={onChange} />}
       {state.kind === "api" && (
         <FormSection
           title="Calls"
