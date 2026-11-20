@@ -59,6 +59,7 @@ impl DbAgentStore {
 
                 Ok(Some(Agent {
                     model_role: None,
+                    model_preset: None,
                     localizations: row.localizations.clone(),
                     avatar: row
                         .avatar_id

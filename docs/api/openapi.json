@@ -20605,6 +20605,237 @@
         }
       }
     },
+    "/v1/model-presets": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "List model presets",
+        "description": "List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job.",
+        "operationId": "list_model_presets",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_ModelPreset"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      },
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Create a custom model preset",
+        "description": "Create a custom model preset, blank or copied from another preset with `from`.",
+        "operationId": "create_model_preset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModelPresetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPreset"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/model-presets/{id}": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get a model preset",
+        "description": "Get one model preset with its model per job and the jobs that use a fallback model.",
+        "operationId": "get_model_preset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPreset"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model preset not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      },
+      "delete": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Delete a custom model preset",
+        "description": "Delete a custom model preset. Refused while agents take their models from it.",
+        "operationId": "delete_model_preset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Model preset not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      },
+      "patch": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Update a custom model preset",
+        "description": "Rename a custom model preset or change its model per job; null returns a job to the organization default.",
+        "operationId": "update_model_preset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelPresetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPreset"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model preset not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/model-presets/{id}/apply": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Copy a preset's models into the organization defaults",
+        "description": "Copy a preset's models into the organization defaults. Jobs the preset leaves empty keep their current default.",
+        "operationId": "apply_model_preset",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyModelPresetResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Model preset not found"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "models-integrations",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/model-profiles": {
       "get": {
         "tags": [
@@ -37882,6 +38113,14 @@
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
           },
+          "model_preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model preset the agent takes its job models from (`automatic`,\n`provider:gemini` or a custom preset id). Unset = organization defaults.\nA pinned `default_model_id` still wins for the agent's own turns.",
+            "example": "provider:gemini"
+          },
           "model_role": {
             "oneOf": [
               {
@@ -40667,6 +40906,35 @@
           "text": {
             "type": "string",
             "description": "The paragraph to add, markdown."
+          }
+        }
+      },
+      "ApplyModelPresetResult": {
+        "type": "object",
+        "description": "What copying a preset into the organization defaults changed.",
+        "required": [
+          "applied_jobs",
+          "skipped_jobs",
+          "organization"
+        ],
+        "properties": {
+          "applied_jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelJob"
+            },
+            "description": "Jobs whose organization default now uses the preset's model."
+          },
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationResponse",
+            "description": "The organization after the copy."
+          },
+          "skipped_jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelJob"
+            },
+            "description": "Jobs left as they were: the preset has no model for them, or the\nmodel cannot serve that default (decision defaults need a calibrated\ndecision model)."
           }
         }
       },
@@ -45313,6 +45581,14 @@
             "$ref": "#/components/schemas/BTreeMap",
             "description": "Remote MCP servers scoped to this agent."
           },
+          "model_preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model preset the agent takes its job models from (`automatic`,\n`provider:gemini` or a custom preset id). Omit for the organization\ndefaults.",
+            "example": "provider:gemini"
+          },
           "model_role": {
             "oneOf": [
               {
@@ -46623,6 +46899,43 @@
             "$ref": "#/components/schemas/TurnWaitResponse"
           }
         ]
+      },
+      "CreateModelPresetRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ModelPresetJobs",
+            "description": "The model for each job."
+          },
+          {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What the preset is for."
+              },
+              "from": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Preset to copy jobs from (`automatic`, `provider:gemini` or a custom\nid). Jobs given in this request override the copied ones.",
+                "example": "provider:gemini"
+              },
+              "name": {
+                "type": "string",
+                "description": "Display name, 1 to 100 characters.",
+                "example": "Cheap council"
+              }
+            }
+          }
+        ],
+        "description": "Create a custom preset, blank or as a copy of another preset."
       },
       "CreateModelRequest": {
         "type": "object",
@@ -55942,6 +56255,14 @@
                   "$ref": "#/components/schemas/BTreeMap",
                   "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
                 },
+                "model_preset": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Model preset the agent takes its job models from (`automatic`,\n`provider:gemini` or a custom preset id). Unset = organization defaults.\nA pinned `default_model_id` still wins for the agent's own turns.",
+                  "example": "provider:gemini"
+                },
                 "model_role": {
                   "oneOf": [
                     {
@@ -58175,6 +58496,99 @@
           }
         }
       },
+      "ListResponse_ModelPreset": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/ModelPresetJobs",
+                  "description": "The model for each job."
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "read_only",
+                    "agent_count"
+                  ],
+                  "properties": {
+                    "agent_count": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Live agents whose models come from this preset."
+                    },
+                    "created_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "When the custom preset was created; absent for built-ins."
+                    },
+                    "description": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "What the preset is for."
+                    },
+                    "fallback_jobs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ModelJob"
+                      },
+                      "description": "Jobs of a provider preset whose curated model is not usable in the\norganization and that use the provider's next recommended model."
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Stable id: `automatic`, `provider:<driver>` or the custom preset's key.",
+                      "example": "provider:gemini"
+                    },
+                    "kind": {
+                      "$ref": "#/components/schemas/ModelPresetKind",
+                      "description": "Where the preset comes from: automatic, provider or custom."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Display name."
+                    },
+                    "provider_type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Driver of a provider preset (`gemini`)."
+                    },
+                    "read_only": {
+                      "type": "boolean",
+                      "description": "Built-in presets cannot be changed; duplicate one to customize it."
+                    },
+                    "updated_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "When the custom preset last changed; absent for built-ins."
+                    }
+                  }
+                }
+              ],
+              "description": "A named set of models, one per job."
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_ModelProfileResponse": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -58402,6 +58816,13 @@
                     "null"
                   ],
                   "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+                },
+                "coding_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model."
                 },
                 "created_at": {
                   "type": "string",
@@ -61426,6 +61847,13 @@
               }
             ]
           },
+          "model_preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model preset the agent takes its job models from, by id (`automatic`,\n`provider:gemini` or a custom preset id). Hosts without the preset use\ntheir organization defaults."
+          },
           "model_role": {
             "type": [
               "string",
@@ -63060,6 +63488,18 @@
           }
         }
       },
+      "ModelJob": {
+        "type": "string",
+        "description": "A job a preset assigns a model to.",
+        "enum": [
+          "default",
+          "chat",
+          "coding",
+          "research",
+          "small",
+          "decision"
+        ]
+      },
       "ModelLimits": {
         "type": "object",
         "description": "Token limits for the model",
@@ -63148,6 +63588,143 @@
             "description": "Supported output modalities"
           }
         }
+      },
+      "ModelPreset": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ModelPresetJobs",
+            "description": "The model for each job."
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "kind",
+              "read_only",
+              "agent_count"
+            ],
+            "properties": {
+              "agent_count": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Live agents whose models come from this preset."
+              },
+              "created_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When the custom preset was created; absent for built-ins."
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What the preset is for."
+              },
+              "fallback_jobs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelJob"
+                },
+                "description": "Jobs of a provider preset whose curated model is not usable in the\norganization and that use the provider's next recommended model."
+              },
+              "id": {
+                "type": "string",
+                "description": "Stable id: `automatic`, `provider:<driver>` or the custom preset's key.",
+                "example": "provider:gemini"
+              },
+              "kind": {
+                "$ref": "#/components/schemas/ModelPresetKind",
+                "description": "Where the preset comes from: automatic, provider or custom."
+              },
+              "name": {
+                "type": "string",
+                "description": "Display name."
+              },
+              "provider_type": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Driver of a provider preset (`gemini`)."
+              },
+              "read_only": {
+                "type": "boolean",
+                "description": "Built-in presets cannot be changed; duplicate one to customize it."
+              },
+              "updated_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When the custom preset last changed; absent for built-ins."
+              }
+            }
+          }
+        ],
+        "description": "A named set of models, one per job."
+      },
+      "ModelPresetJobs": {
+        "type": "object",
+        "description": "The model for each job. A missing job uses the organization default for it.",
+        "properties": {
+          "chat_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for the built-in Everruns Chat."
+          },
+          "coding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for coding-harness agents and coding helpers."
+          },
+          "decision_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for quick gate checks and the Auto helper pick."
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for agents and sessions with no model of their own."
+          },
+          "research_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for research-role agents and deep helpers."
+          },
+          "small_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for titles, summaries and fast helpers."
+          }
+        }
+      },
+      "ModelPresetKind": {
+        "type": "string",
+        "description": "Where a preset comes from.",
+        "enum": [
+          "automatic",
+          "provider",
+          "custom"
+        ]
       },
       "ModelProfile": {
         "type": "object",
@@ -65610,6 +66187,13 @@
               "null"
             ],
             "description": "Default for the built-in Everruns Chat. None inherits the agents/sessions default."
+          },
+          "coding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default for coding work: coding-harness agents and `coding` helpers.\nNone falls back to the default model."
           },
           "created_at": {
             "type": "string",
@@ -82521,6 +83105,14 @@
               }
             ]
           },
+          "model_preset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model preset the agent takes its job models from. Null returns to the\norganization defaults; omit to leave unchanged.",
+            "example": "provider:gemini"
+          },
           "model_role": {
             "type": [
               "string",
@@ -83629,6 +84221,68 @@
           }
         }
       },
+      "UpdateModelPresetRequest": {
+        "type": "object",
+        "description": "Change a custom preset. Omit a field to keep it; null clears a job back to\nthe organization default.",
+        "properties": {
+          "chat_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for the built-in Everruns Chat."
+          },
+          "coding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for coding-harness agents and coding helpers."
+          },
+          "decision_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for quick gate checks and the Auto helper pick."
+          },
+          "default_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for agents and sessions with no model of their own."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the preset is for."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name."
+          },
+          "research_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for research-role agents and deep helpers."
+          },
+          "small_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model for titles, summaries and fast helpers."
+          }
+        }
+      },
       "UpdateModelRequest": {
         "type": "object",
         "description": "Request to update an LLM model. Only provided fields will be updated.",
@@ -83872,6 +84526,13 @@
               "null"
             ],
             "description": "Independent model for the built-in Everruns Chat. Omit to preserve; null inherits\nthe agents/sessions default. Must be an available shared chat model with tools."
+          },
+          "coding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default model for coding work (coding-harness agents and `coding` helpers).\nOmit to preserve; null falls back to the default model."
           },
           "default_harness_id": {
             "type": [
@@ -85748,6 +86409,14 @@
               "mcpServers": {
                 "$ref": "#/components/schemas/BTreeMap",
                 "description": "Remote MCP servers scoped to this agent and inherited by its sessions."
+              },
+              "model_preset": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Model preset the agent takes its job models from (`automatic`,\n`provider:gemini` or a custom preset id). Unset = organization defaults.\nA pinned `default_model_id` still wins for the agent's own turns.",
+                "example": "provider:gemini"
               },
               "model_role": {
                 "oneOf": [

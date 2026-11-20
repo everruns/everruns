@@ -7,6 +7,10 @@ import type { ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { PageDraftAdapter } from "@/components/chat-mode/page-draft";
 
 let mockChatMode: ChatModeState | null = null;
+jest.mock("@/hooks/use-model-presets", () => ({
+  useModelPresets: () => ({ data: [] }),
+  useModelPresetMutations: () => ({}),
+}));
 jest.mock("@/components/chat-mode/chat-mode-context", () => ({
   ...jest.requireActual("@/components/chat-mode/chat-mode-context"),
   useChatMode: () => mockChatMode,

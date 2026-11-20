@@ -120,50 +120,31 @@ impl SessionService {
                 .map(|model| model.id));
         }
 
-        let mut chat_agent = None;
-        if let Some(agent_id) = session.agent_id {
-            let agent = match self
+        let agent = match session.agent_id {
+            Some(agent_id) => match self
                 .db
                 .get_agent_by_public_id(org_id, &agent_id.to_string())
                 .await?
             {
                 Some(agent) => Some(agent),
                 None => self.db.get_agent_config(org_id, agent_id).await?,
-            };
-            if let Some(model_id) = agent.as_ref().and_then(|agent| agent.default_model_id) {
-                return Ok(Some(model_id));
-            }
-            if let Some(model_id) =
-                crate::domains::organizations::research_model::agent_role_model_id(
-                    &self.db,
-                    org_id,
-                    crate::domains::organizations::research_model::AgentModelRole::from_db(
-                        agent.as_ref().and_then(|agent| agent.model_role.as_deref()),
-                    ),
-                )
-                .await?
-            {
-                return Ok(Some(model_id));
-            }
-            chat_agent = agent;
+            },
+            None => None,
         }
-
-        if let Some(harness) = self
+        .map(|row| crate::storage::row_to_agent(row, Vec::new()));
+        let harness = self
             .resolve_effective_harness(org_id, session.harness_id)
-            .await?
-            && let Some(model_id) = harness.default_model_id
-        {
-            return Ok(Some(model_id));
-        }
-
-        if let Some(agent) = chat_agent
-            && let Some(id) = crate::platform_chat_agent::org_chat_model_id(
-                &self.db,
-                org_id,
-                &agent.name,
-                agent.is_built_in,
-            )
-            .await?
+            .await?;
+        // Same chain as turns, so the session shows the model it runs on.
+        if let Some(id) = crate::domains::organizations::research_model::turn_model_id(
+            self.db.as_ref(),
+            org_id,
+            None,
+            agent.as_ref(),
+            harness.as_ref().map(|h| h.name.as_str()),
+            harness.as_ref().and_then(|h| h.default_model_id),
+        )
+        .await?
         {
             return Ok(Some(id));
         }

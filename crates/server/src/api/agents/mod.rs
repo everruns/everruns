@@ -658,6 +658,7 @@ pub async fn upsert_agent(
                 .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
                 let update_req = UpdateAgentRequest {
                     model_role: None,
+                    model_preset: None,
                     localizations: Some(req.localizations.clone()),
                     service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 

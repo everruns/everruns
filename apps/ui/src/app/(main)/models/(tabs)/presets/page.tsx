@@ -1,0 +1,4 @@
+// Presets tab: content lives in the shell (../layout.tsx).
+export default function ModelsPresetsPage() {
+  return null;
+}

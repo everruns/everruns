@@ -34,6 +34,8 @@ mod auth;
 pub use auth::rows::*;
 mod budgets;
 pub use budgets::rows::*;
+mod model_presets;
+pub use model_presets::rows::*;
 mod compaction_checkpoints;
 pub use compaction_checkpoints::rows::*;
 mod virtual_user_connections;

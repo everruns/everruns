@@ -45,7 +45,7 @@ const PREFERRED_PROVIDERS: [&str; 2] = ["anthropic", "openai"];
 
 /// Whether a model can serve turns now: enabled, a chat model on an active,
 /// shared provider with credentials.
-fn usable(model: &ModelWithProviderRow) -> bool {
+pub(crate) fn usable(model: &ModelWithProviderRow) -> bool {
     model.enabled
         && model.provider_status == "active"
         && (model.provider_api_key_set || model.provider_type == "llmsim")
@@ -123,23 +123,62 @@ pub async fn agent_role_model_id(
     }
 }
 
-/// The model a turn runs on before the organization default: the session's,
-/// the agent's pinned model or model role, the harness default, then the
-/// built-in Chat agent's org Chat model. `None` means the org default.
+/// Name of the built-in coding harness, whose turns use the Coding job.
+pub const CODING_HARNESS: &str = "coding";
+
+/// The model a turn runs on before the organization default:
+/// 1. the session's model, else the agent's pinned model;
+/// 2. the agent's research role: its preset's Research job, else the org
+///    research model;
+/// 3. the agent's model preset: Coding on the coding harness, else Default;
+/// 4. the harness default;
+/// 5. the org Coding default on the coding harness;
+/// 6. the built-in Chat agent's org Chat model.
+///
+/// `None` means the org default. A preset job left empty falls through.
 pub async fn turn_model_id(
     db: &StorageBackend,
     org_id: i64,
     session_model: Option<ModelId>,
     agent: Option<&crate::domains::agents::record::Agent>,
+    harness_name: Option<&str>,
     harness_model: Option<ModelId>,
 ) -> Result<Option<ModelId>> {
+    use crate::domains::model_presets::{ModelJob, service::job_model};
     if let Some(id) = session_model.or(agent.and_then(|a| a.default_model_id)) {
         return Ok(Some(id));
     }
-    if let Some(id) = agent_role_model_id(db, org_id, agent.and_then(|a| a.model_role)).await? {
-        return Ok(Some(id));
+    let preset = agent.and_then(|a| a.model_preset.as_deref());
+    let coding = harness_name == Some(CODING_HARNESS);
+    if agent.and_then(|a| a.model_role) == Some(AgentModelRole::Research) {
+        if let Some(preset) = preset
+            && let Some(id) = job_model(db, org_id, preset, ModelJob::Research).await?
+        {
+            return Ok(Some(id));
+        }
+        if let Some(id) = org_research_model_id(db, org_id).await? {
+            return Ok(Some(id));
+        }
+    }
+    if let Some(preset) = preset {
+        let job = if coding {
+            ModelJob::Coding
+        } else {
+            ModelJob::Default
+        };
+        if let Some(id) = job_model(db, org_id, preset, job).await? {
+            return Ok(Some(id));
+        }
     }
     if let Some(id) = harness_model {
+        return Ok(Some(id));
+    }
+    if coding
+        && let Some(id) = db
+            .get_organization_settings(org_id)
+            .await?
+            .and_then(|settings| settings.coding_model_id)
+    {
         return Ok(Some(id));
     }
     match agent {

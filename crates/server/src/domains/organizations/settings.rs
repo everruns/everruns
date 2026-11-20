@@ -82,6 +82,7 @@ impl Command for UpdateOrg {
             chat_model_id,
             small_model_id,
             research_model_id,
+            coding_model_id,
             mut default_harness_id,
             default_harness_name,
             base_harness_id,
@@ -143,6 +144,7 @@ impl Command for UpdateOrg {
             (chat_model_id.as_ref(), "Chat model"),
             (small_model_id.as_ref(), "Small model"),
             (research_model_id.as_ref(), "Research model"),
+            (coding_model_id.as_ref(), "Coding model"),
         ] {
             if let Some(Some(id)) = selection {
                 let model = ctx
@@ -223,6 +225,7 @@ impl Command for UpdateOrg {
             || chat_model_id.is_some()
             || small_model_id.is_some()
             || research_model_id.is_some()
+            || coding_model_id.is_some()
             || default_harness_id.is_some()
             || base_harness_id.is_some()
             || default_provider_per_service.is_some()
@@ -241,6 +244,7 @@ impl Command for UpdateOrg {
                         chat_model_id: model_field(chat_model_id),
                         small_model_id: model_field(small_model_id),
                         research_model_id: model_field(research_model_id),
+                        coding_model_id: model_field(coding_model_id),
                         default_harness_id: default_harness_id
                             .map_or(UpdateField::Unchanged, UpdateField::from_option),
                         base_harness_id: base_harness_id
