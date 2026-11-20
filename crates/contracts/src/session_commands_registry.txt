@@ -47,11 +47,9 @@ run Record
 resume Record
 environment Record
 sandbox Record
-git Gap
-mcp-servers Gap
-repositories Gap
+repositories Record
+git Record
+mcp-servers Record
 voice Gap
 messages/{id}/reactions Record
 messages/{id}/feedback Record
-tasks/{task_id}/push-configs Gap
-tasks/{task_id}/push-configs/{config_id} Gap

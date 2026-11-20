@@ -8,7 +8,8 @@
 //!   running turn, tool approvals and client-side tool results; the
 //!   session's files are `gateway_fs.rs` (step 11.1), and its schedules
 //!   are here since step 11.4 (`platform.rs`), with its tasks (`tasks.rs`;
-//!   cancelling and messaging one since 11.6, push configs not yet), its
+//!   cancelling and messaging one since 11.6, their push configs since
+//!   parity Phase B), its
 //!   images and files (`gateway_input.rs`) and its Work tab reads
 //!   (`gateway_work.rs`). Every other call on a
 //!   session answers 501 with the feature's name, and the console hides
@@ -76,6 +77,14 @@ pub fn routes() -> Router<Arc<Gateway>> {
         .route(
             "/v1/sessions/{session}/tasks/{task}/messages",
             post(message_task),
+        )
+        .route(
+            "/v1/sessions/{session}/tasks/{task}/push-configs",
+            get(list_push_configs).post(create_push_config),
+        )
+        .route(
+            "/v1/sessions/{session}/tasks/{task}/push-configs/{config}",
+            axum::routing::delete(delete_push_config),
         )
         // The session's SQL databases (`sqldb.rs`).
         .merge(crate::sqldb::gateway_routes())
@@ -920,6 +929,98 @@ async fn message_task(
     body["task"] = json!(task);
     body["cancel"] = json!(false);
     write_task(&gateway, &session, body).await
+}
+
+/// `GET /v1/sessions/{id}/tasks/{task_id}/push-configs`: the task's push
+/// configs, secrets never shown.
+async fn list_push_configs(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    let listed = gateway
+        .session_command(
+            session,
+            "push-configs",
+            &json!({ "op": "list", "task": task }),
+        )
+        .await?;
+    if listed.is_null() {
+        return Err((StatusCode::NOT_FOUND, "Session task not found".into()));
+    }
+    Ok(Json(listed))
+}
+
+#[derive(Deserialize)]
+struct PushConfigBody {
+    url: String,
+    #[serde(default)]
+    secret: Option<String>,
+    #[serde(default)]
+    event_filter: Option<Vec<String>>,
+}
+
+/// `POST /v1/sessions/{id}/tasks/{task_id}/push-configs`: add a webhook
+/// for the task's transitions, with the control plane's checks: an address
+/// that is not private or internal (delivery pins DNS too), and known
+/// event names.
+async fn create_push_config(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task)): Path<(String, String)>,
+    Json(body): Json<PushConfigBody>,
+) -> Result<Json<Value>, ApiError> {
+    let session = parse(&session)?;
+    everruns_contracts::url_validation::validate_safe_url(&body.url).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid webhook URL: {error}"),
+        )
+    })?;
+    let event_filter = crate::tasks::event_filter(body.event_filter)
+        .map_err(|reason| (StatusCode::BAD_REQUEST, reason))?;
+    let now = chrono::Utc::now();
+    // Made once, before the gateway's retries, so a retry adds it once.
+    let config = crate::tasks::PushConfig {
+        id: format!("tpc_{}", uuid::Uuid::new_v4().simple()),
+        url: body.url,
+        secret: body.secret.filter(|s| !s.is_empty()),
+        event_filter,
+        created_at: now,
+        updated_at: now,
+    };
+    let added = gateway
+        .session_command(
+            session,
+            "push-configs",
+            &json!({ "op": "add", "task": task, "config": config }),
+        )
+        .await?;
+    if added.is_null() {
+        return Err((StatusCode::NOT_FOUND, "Session task not found".into()));
+    }
+    Ok(Json(added))
+}
+
+/// `DELETE /v1/sessions/{id}/tasks/{task_id}/push-configs/{config_id}`.
+async fn delete_push_config(
+    State(gateway): State<Arc<Gateway>>,
+    Path((session, task, config)): Path<(String, String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let session = parse(&session)?;
+    let deleted = gateway
+        .session_command(
+            session,
+            "push-configs",
+            &json!({ "op": "delete", "task": task, "config_id": config }),
+        )
+        .await?;
+    if deleted.is_null() {
+        return Err((StatusCode::NOT_FOUND, "Session task not found".into()));
+    }
+    if deleted["deleted"] != true {
+        return Err((StatusCode::NOT_FOUND, "Push config not found".into()));
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// The public API's session routes against the declared plane table

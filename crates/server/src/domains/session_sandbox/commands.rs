@@ -488,13 +488,26 @@ impl Command for GetSessionRepositories {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionRepositoriesResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session_access(ctx, session_id).await?;
-
         let empty = |sandbox_state: &str| SessionRepositoriesResponse {
             sandbox_state: sandbox_state.to_string(),
             work_branch: None,
             repositories: Vec::new(),
         };
+        // A v2 session: its pinned sandbox, whose state is on its cell
+        // (`plane.rs`, data plane v2 parity Phase B).
+        if let Some(plane) =
+            crate::domains::session_storage::plane::PlaneStorage::of(ctx, session_id).await?
+        {
+            crate::domains::session_storage::queries::verify_session_ownership(
+                &ctx.db,
+                ctx.org_id(),
+                session_id,
+            )
+            .await?;
+            return plane_repositories(ctx, session_id, plane).await;
+        }
+        q::verify_session_access(ctx, session_id).await?;
+
         let Some(capabilities) =
             crate::domains::sandbox_templates::queries::effective_session_capabilities(
                 &ctx.db, session_id,
@@ -542,6 +555,99 @@ impl Command for GetSessionRepositories {
         response.repositories.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(response)
     }
+}
+
+/// [`GetSessionRepositories`] for a v2 session: the same read, against the
+/// sandbox the control plane pinned for it, whose state its cell keeps.
+/// As on v1, a page view never starts or resumes the sandbox: only a
+/// running one is read.
+async fn plane_repositories(
+    ctx: &Ctx,
+    session_id: everruns_contracts::typed_id::SessionId,
+    plane: crate::domains::session_storage::plane::PlaneStorage,
+) -> Result<SessionRepositoriesResponse, CommandError> {
+    use everruns_core::session_services::SessionStorageStore as _;
+    let empty = |sandbox_state: &str| SessionRepositoriesResponse {
+        sandbox_state: sandbox_state.to_string(),
+        work_branch: None,
+        repositories: Vec::new(),
+    };
+    let Some(capabilities) =
+        crate::domains::sandbox_templates::queries::effective_session_capabilities(
+            &ctx.db, session_id,
+        )
+        .await?
+    else {
+        return Err(CommandError::not_found("Session not found"));
+    };
+    let Some(repositories) = capabilities.iter().find(|capability| {
+        capability.capability_id() == everruns_integrations::github::REPOSITORIES_CAPABILITY_ID
+    }) else {
+        return Ok(empty("none"));
+    };
+    let Some(pinned) = ctx.db.get_primary_sandbox(session_id).await? else {
+        return Ok(empty("not_started"));
+    };
+    if pinned.spec.target.kind
+        != crate::domains::sandbox_templates::record::SandboxTargetKind::Managed
+    {
+        return Ok(empty("none"));
+    }
+    let storage = super::plane::PlaneSandboxStorage::new(plane);
+    let state = storage
+        .get_secret(
+            session_id,
+            everruns_contracts::session_sandbox::SESSION_SANDBOX_SECRET_NAME,
+        )
+        .await
+        .map_err(|error| CommandError::internal(anyhow::anyhow!(error.to_string())))?
+        .and_then(|raw| {
+            serde_json::from_str::<everruns_contracts::session_sandbox::SessionSandboxState>(&raw)
+                .ok()
+        });
+    let state = match state.map(|state| state.status) {
+        None => "not_started",
+        Some(everruns_contracts::session_sandbox::SessionSandboxStatus::Running) => "running",
+        Some(everruns_contracts::session_sandbox::SessionSandboxStatus::Paused) => "paused",
+        Some(everruns_contracts::session_sandbox::SessionSandboxStatus::Lost) => "lost",
+    };
+    if state != "running" {
+        return Ok(empty(state));
+    }
+    let service = q::session_sandbox_service(ctx)?;
+    let mut tool_context = service.plane_tool_context(session_id, storage).await;
+    // The pinned sandbox, which the data plane runs, not the agent's
+    // current one.
+    let mut installed: Vec<_> = capabilities
+        .iter()
+        .filter(|capability| {
+            capability.capability_id()
+                != everruns_capabilities::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID
+        })
+        .cloned()
+        .collect();
+    installed
+        .push(crate::domains::sandbox_templates::resolution::capability_for_sandbox(&pinned.spec));
+    everruns_capabilities::capabilities::install_sandbox_workspace(
+        &mut tool_context.extensions,
+        &installed,
+    );
+    let marker = uuid::Uuid::new_v4().simple().to_string();
+    let changes = everruns_integrations::github::read_repository_changes(
+        &tool_context,
+        repositories.config_value(),
+        &marker,
+    )
+    .await
+    .map_err(CommandError::bad_request)?;
+    let mut response: SessionRepositoriesResponse = serde_json::from_value(json!({
+        "sandbox_state": state,
+        "work_branch": changes["work_branch"],
+        "repositories": changes["repositories"],
+    }))
+    .map_err(|error| CommandError::internal(anyhow::anyhow!(error)))?;
+    response.repositories.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(response)
 }
 
 #[cfg(test)]

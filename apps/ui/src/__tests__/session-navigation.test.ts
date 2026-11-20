@@ -181,7 +181,7 @@ describe("buildSessionNavigation", () => {
 });
 
 describe("buildSessionNavigation on a data plane", () => {
-  it("shows files and work but hides changes, which a data plane does not serve yet", () => {
+  it("shows files, changes and work", () => {
     const features = new Set(["file_system", "repositories", "schedules", "leased_resources"]);
     const keys = buildSessionNavigation({
       basePath: "/sessions/session_1",
@@ -191,7 +191,7 @@ describe("buildSessionNavigation on a data plane", () => {
       dataPlane: true,
     }).map((item) => item.key);
     expect(keys).toContain("files");
-    expect(keys).not.toContain("changes");
+    expect(keys).toContain("changes");
     expect(keys).toContain("work");
     // Leased resources alone are no work on a data plane.
     const leasedOnly = buildSessionNavigation({

@@ -12,6 +12,18 @@
 //!   derives from the task, attempt and transition: a retry admits once.
 //! - Tasks are kept as JSON with their raw spec: `SessionTask`'s own
 //!   serializer redacts webhook secrets, which would lose them in the log.
+//! - Push configs (parity, Phase B) live here too, beside the task they
+//!   watch, with their signing secrets, which the API never shows. The
+//!   control plane cannot keep them for a v2 task: its table refers to its
+//!   own task rows.
+//! - A transition a webhook may want goes on the feed
+//!   (`Record::TaskTransition`) from the state machine, with the targets
+//!   that ask for it, and the control plane delivers it: every terminal
+//!   state (the org's task webhooks fire on those), and waiting for input
+//!   or an outbound message only when a push config names it. The feed is
+//!   the channel the control plane drains once per position, so a leader
+//!   change neither loses nor repeats a delivery; a cell has no outbound
+//!   webhook path of its own.
 
 use std::sync::Arc;
 
@@ -27,6 +39,8 @@ use everruns_core::session_task::{
 use everruns_core::task_observer::TaskTransition;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+use everruns_contracts::dataplane::{PushTarget, Record};
 
 use crate::hosting::Port;
 use crate::state::{Change, Command, Response, SessionState};
@@ -54,6 +68,155 @@ pub enum TaskOp {
         message: Box<TaskMessage>,
         expected_attempt: Option<i32>,
     },
+    /// Add a push config to the task, unless its id exists.
+    AddPushConfig {
+        task_id: String,
+        config: PushConfig,
+    },
+    /// Remove one of the task's push configs.
+    DeletePushConfig {
+        task_id: String,
+        config_id: String,
+    },
+}
+
+/// The push configs a task may have.
+pub const MAX_PUSH_CONFIGS: usize = 20;
+
+/// The `event_filter` members a push config may name.
+pub const EVENT_FILTERS: &[&str] = &["terminal", "awaiting_input", "message"];
+
+/// A push config made through the API, kept with its secret.
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct PushConfig {
+    /// `tpc_` and 32 hex digits.
+    pub id: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+    pub event_filter: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl std::fmt::Debug for PushConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PushConfig")
+            .field("id", &self.id)
+            .field("url", &self.url)
+            .field("has_secret", &self.secret.is_some())
+            .field("event_filter", &self.event_filter)
+            .finish()
+    }
+}
+
+impl PushConfig {
+    /// As the API shows it: whether it has a secret, never the secret.
+    pub fn public(&self) -> Value {
+        json!({
+            "id": self.id,
+            "url": self.url,
+            "has_secret": self.secret.is_some(),
+            "event_filter": self.event_filter,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        })
+    }
+}
+
+/// `filter` with duplicates dropped, terminal-only when empty; the
+/// control plane's rules (`normalize_event_filter`).
+pub fn event_filter(filter: Option<Vec<String>>) -> std::result::Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    for member in filter.unwrap_or_default() {
+        if !EVENT_FILTERS.contains(&member.as_str()) {
+            return Err(format!(
+                "Unknown event_filter \"{member}\". Valid values: {}.",
+                EVENT_FILTERS.join(", ")
+            ));
+        }
+        if !out.contains(&member) {
+            out.push(member);
+        }
+    }
+    if out.is_empty() {
+        out.push("terminal".into());
+    }
+    Ok(out)
+}
+
+/// The targets of `task`'s push configs, made through the API (`stored`)
+/// or given at spawn (`spec.push_configs`), that ask for `transition`. A
+/// spawn-time config with no filter asks for terminal states only.
+fn targets(
+    stored: &[PushConfig],
+    task: &SessionTask,
+    transition: TaskTransition,
+) -> Vec<PushTarget> {
+    let event = transition.filter_value();
+    let mut out: Vec<PushTarget> = stored
+        .iter()
+        .filter(|c| c.event_filter.iter().any(|f| f == event))
+        .map(|c| PushTarget {
+            label: c.id.clone(),
+            url: c.url.clone(),
+            secret: c.secret.clone(),
+        })
+        .collect();
+    for entry in task
+        .spec
+        .get("push_configs")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(url) = entry.get("url").and_then(Value::as_str) else {
+            continue;
+        };
+        let wanted = match entry.get("event_filter").and_then(Value::as_array) {
+            Some(filters) => filters.iter().any(|f| f.as_str() == Some(event)),
+            None => transition == TaskTransition::Terminal,
+        };
+        if wanted {
+            out.push(PushTarget {
+                label: "spec".into(),
+                url: url.to_owned(),
+                secret: entry
+                    .get("secret")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+            });
+        }
+    }
+    out
+}
+
+/// The feed record `transition` of `task` owes the control plane, if any.
+fn notice(state: &SessionState, task: &SessionTask, transition: TaskTransition) -> Option<Record> {
+    let stored = state
+        .platform
+        .task_push_configs
+        .get(&task.id)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let targets = targets(stored, task, transition);
+    if transition != TaskTransition::Terminal && targets.is_empty() {
+        return None;
+    }
+    Some(Record::TaskTransition {
+        session_id: task.session_id.to_string(),
+        transition: transition.filter_value().into(),
+        task: json!({
+            "id": task.id,
+            "display_name": task.display_name,
+            "kind": task.kind,
+            "state": task.state.to_string(),
+            "session_id": task.session_id,
+            "summary": task.summary,
+            "result_path": task.result_path,
+        }),
+        targets,
+    })
 }
 
 /// JSON of `task` with its raw spec.
@@ -77,7 +240,8 @@ fn rejected(reason: impl Into<String>) -> Response {
     }
 }
 
-/// Apply `op` to `state`, the session that owns the tasks.
+/// Apply `op` to `state`, the session that owns the tasks. The feed
+/// records its transitions owe the control plane go to `notices`.
 pub(crate) fn apply(
     state: &mut SessionState,
     session: SessionId,
@@ -85,6 +249,7 @@ pub(crate) fn apply(
     now_ms: i64,
     seed: EventId,
     changes: &mut Vec<Change>,
+    notices: &mut Vec<Record>,
 ) -> Response {
     let now = at(now_ms);
     let tasks = &mut state.platform.tasks;
@@ -124,6 +289,7 @@ pub(crate) fn apply(
             let value = stored(&task);
             tasks.insert(task_id, value.clone());
             if wants_terminal && !prior.is_terminal() && task.state.is_terminal() {
+                notices.extend(notice(state, &task, TaskTransition::Terminal));
                 wake(
                     state,
                     session,
@@ -138,6 +304,7 @@ pub(crate) fn apply(
                 && prior != SessionTaskState::AwaitingInput
                 && task.state == SessionTaskState::AwaitingInput
             {
+                notices.extend(notice(state, &task, TaskTransition::AwaitingInput));
                 wake(
                     state,
                     session,
@@ -204,6 +371,7 @@ pub(crate) fn apply(
                 state.platform.tasks.insert(task.id.clone(), stored(&task));
             }
             if message.direction == TaskMessageDirection::Outbound {
+                notices.extend(notice(state, &task, TaskTransition::Message));
                 wake(
                     state,
                     session,
@@ -215,6 +383,45 @@ pub(crate) fn apply(
                 );
             }
             json!(message)
+        }
+        TaskOp::AddPushConfig { task_id, config } => {
+            if !tasks.contains_key(&task_id) {
+                return Response::Value { value: Value::Null };
+            }
+            let configs = state.platform.task_push_configs.entry(task_id).or_default();
+            if let Some(existing) = configs.iter().find(|c| c.id == config.id) {
+                return Response::Value {
+                    value: existing.public(),
+                };
+            }
+            if configs.len() >= MAX_PUSH_CONFIGS {
+                return rejected(format!(
+                    "a task takes at most {MAX_PUSH_CONFIGS} push configs"
+                ));
+            }
+            let value = config.public();
+            configs.push(config);
+            value
+        }
+        TaskOp::DeletePushConfig { task_id, config_id } => {
+            if !tasks.contains_key(&task_id) {
+                return Response::Value { value: Value::Null };
+            }
+            let configs = state
+                .platform
+                .task_push_configs
+                .get_mut(&task_id)
+                .map(std::mem::take)
+                .unwrap_or_default();
+            let before = configs.len();
+            let kept: Vec<PushConfig> = configs.into_iter().filter(|c| c.id != config_id).collect();
+            let deleted = kept.len() < before;
+            if !kept.is_empty() {
+                state.platform.task_push_configs.insert(task_id, kept);
+            } else {
+                state.platform.task_push_configs.remove(&task_id);
+            }
+            json!({ "deleted": deleted })
         }
     };
     changes.push(Change::Session(session));

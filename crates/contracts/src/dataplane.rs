@@ -553,6 +553,24 @@ pub enum Record {
         session_id: String,
         event: Value,
     },
+    /// One of a session's tasks reached a state its webhooks name
+    /// (parity, Phase B): a terminal state (always, for the org's task
+    /// webhooks), or waiting for input or an outbound message when one of
+    /// the task's push configs asks for it. The control plane delivers it,
+    /// once per feed position, as it does a v1 task's.
+    TaskTransition {
+        session_id: String,
+        /// `terminal`, `awaiting_input` or `message`: the push configs'
+        /// `event_filter` member.
+        transition: String,
+        /// The task in the webhook payload's form: `id`, `display_name`,
+        /// `kind`, `state`, `session_id`, `summary`, `result_path`.
+        task: Value,
+        /// The task's push configs (made through the API or given at
+        /// spawn) that ask for this transition.
+        #[serde(default)]
+        targets: Vec<PushTarget>,
+    },
     OrgEvent {
         /// `budget_exhausted`, `limit_hit`, `suspended`.
         kind: String,
@@ -612,6 +630,27 @@ pub enum Record {
     /// A record of a type this reader does not know.
     #[serde(other)]
     Unknown,
+}
+
+/// Where a task's webhook goes ([`Record::TaskTransition`]).
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PushTarget {
+    /// The config's id, or `spec` for one given at spawn; for logs only.
+    pub label: String,
+    pub url: String,
+    /// The HMAC-SHA256 signing key, when the config has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+}
+
+impl std::fmt::Debug for PushTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PushTarget")
+            .field("label", &self.label)
+            .field("url", &self.url)
+            .field("secret", &self.secret.as_ref().map(|_| "[redacted]"))
+            .finish()
+    }
 }
 
 /// One tenant's population in a cell's minute report.
