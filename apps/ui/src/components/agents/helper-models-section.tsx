@@ -46,14 +46,7 @@ import {
 } from "@/lib/helper-models";
 import { cn } from "@/lib/utils";
 
-const JOBS: ModelJob[] = [
-  "default",
-  "coding",
-  "research",
-  "small",
-  "chat",
-  "decision",
-];
+const JOBS: ModelJob[] = ["default", "coding", "research", "small", "chat", "decision"];
 
 /** One select value per target, so targets fit a single Select. */
 function encodeTarget(target: HelperModelTarget): string {
@@ -108,16 +101,11 @@ export function HelperModelsSection({
   const settings = helperSettings(capabilities);
   if (!settings.enabled) return null;
 
-  const modelName = (id: string) =>
-    models.find((model) => model.id === id)?.display_name;
+  const modelName = (id: string) => models.find((model) => model.id === id)?.display_name;
   const orgJobModel = (job: ModelJob) => {
     if (!organization) return undefined;
-    const org = organization as unknown as Record<
-      string,
-      string | null | undefined
-    >;
-    if (job === "research")
-      return org.effective_research_model_id ?? org.research_model_id;
+    const org = organization as unknown as Record<string, string | null | undefined>;
+    if (job === "research") return org.effective_research_model_id ?? org.research_model_id;
     if (job === "coding") return org.coding_model_id ?? org.default_model_id;
     return org[`${job}_model_id`];
   };
@@ -132,8 +120,7 @@ export function HelperModelsSection({
   return (
     <div className="flex flex-col gap-1.5" data-testid="helper-models">
       <span className="text-xs font-medium text-muted-foreground">
-        {ui("Helper models")} ·{" "}
-        {settings.pick === "auto" ? ui("Auto picks") : ui("agent picks")}
+        {ui("Helper models")} · {settings.pick === "auto" ? ui("Auto picks") : ui("agent picks")}
       </span>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
         {settings.models.map((model) => (
@@ -200,9 +187,7 @@ function HelperModelsSheet({
   const [pick, setPick] = useState<HelperModelPick>(initialPick);
   const errors = helperModelErrors(rows);
   const update = (index: number, patch: Partial<HelperModel>) =>
-    setRows((current) =>
-      current.map((row, i) => (i === index ? { ...row, ...patch } : row)),
-    );
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
   const targetOptions: { value: string; label: string }[] = [
     { value: "same", label: ui("Parent's model") },
@@ -228,10 +213,7 @@ function HelperModelsSheet({
 
   return (
     <Drawer open onOpenChange={(next) => !next && onClose()}>
-      <DrawerContent
-        scopeToPage
-        className="gap-0 overflow-y-auto p-0 sm:max-w-xl"
-      >
+      <DrawerContent scopeToPage className="gap-0 overflow-y-auto p-0 sm:max-w-xl">
         <DrawerHeader className="border-b p-5 pr-12">
           <DrawerTitle>{ui("Helper models")}</DrawerTitle>
           <DrawerDescription>
@@ -275,35 +257,25 @@ function HelperModelsSheet({
                 />
                 <span className="flex flex-col gap-0.5">
                   <span className="text-sm font-medium">{ui(title)}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {ui(hint)}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{ui(hint)}</span>
                 </span>
               </label>
             ))}
           </fieldset>
 
           <div className="flex flex-col gap-2">
-            <Label className="text-xs font-medium text-muted-foreground">
-              {ui("Keys")}
-            </Label>
+            <Label className="text-xs font-medium text-muted-foreground">{ui("Keys")}</Label>
             {rows.map((row, index) => {
               const builtIn =
-                BUILTIN_KEYS.has(row.key) &&
-                initialModels.some((m) => m.key === row.key);
+                BUILTIN_KEYS.has(row.key) && initialModels.some((m) => m.key === row.key);
               return (
-                <div
-                  key={index}
-                  className="flex flex-col gap-2 rounded-md border p-3"
-                >
+                <div key={index} className="flex flex-col gap-2 rounded-md border p-3">
                   <div className="flex items-center gap-2">
                     <Input
                       aria-label={ui("Key")}
                       value={row.key}
                       disabled={builtIn}
-                      onChange={(event) =>
-                        update(index, { key: event.target.value.trim() })
-                      }
+                      onChange={(event) => update(index, { key: event.target.value.trim() })}
                       className="w-40 font-mono"
                     />
                     <Select
@@ -312,14 +284,10 @@ function HelperModelsSheet({
                         value && update(index, { target: decodeTarget(value) })
                       }
                     >
-                      <SelectTrigger
-                        aria-label={ui("Target")}
-                        className="flex-1 bg-background"
-                      >
+                      <SelectTrigger aria-label={ui("Target")} className="flex-1 bg-background">
                         <SelectValue>
-                          {targetOptions.find(
-                            (o) => o.value === encodeTarget(row.target),
-                          )?.label ?? encodeTarget(row.target)}
+                          {targetOptions.find((o) => o.value === encodeTarget(row.target))?.label ??
+                            encodeTarget(row.target)}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
@@ -334,11 +302,7 @@ function HelperModelsSheet({
                       variant="ghost"
                       size="icon"
                       aria-label={ui("Remove {key}", { key: row.key })}
-                      onClick={() =>
-                        setRows((current) =>
-                          current.filter((_, i) => i !== index),
-                        )
-                      }
+                      onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
                     >
                       <Trash2 className="size-4" />
                     </Button>
@@ -347,9 +311,7 @@ function HelperModelsSheet({
                     aria-label={ui("When to use")}
                     placeholder={ui("When to use")}
                     value={row.when}
-                    onChange={(event) =>
-                      update(index, { when: event.target.value })
-                    }
+                    onChange={(event) => update(index, { when: event.target.value })}
                   />
                 </div>
               );
@@ -387,10 +349,7 @@ function HelperModelsSheet({
           </div>
         </div>
         <DrawerFooter className="flex-row gap-2 border-t p-4">
-          <Button
-            disabled={errors.length > 0}
-            onClick={() => onSave(rows, pick)}
-          >
+          <Button disabled={errors.length > 0} onClick={() => onSave(rows, pick)}>
             {ui("Apply")}
           </Button>
           <Button variant="ghost" onClick={onClose}>

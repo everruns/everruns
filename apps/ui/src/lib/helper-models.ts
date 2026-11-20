@@ -50,9 +50,7 @@ export const BUILTIN_HELPER_MODELS: HelperModel[] = [
   },
 ];
 
-export const BUILTIN_KEYS = new Set(
-  BUILTIN_HELPER_MODELS.map((model) => model.key),
-);
+export const BUILTIN_KEYS = new Set(BUILTIN_HELPER_MODELS.map((model) => model.key));
 
 export function helperSettings(capabilities: AgentCapabilityConfig[]): {
   enabled: boolean;
@@ -81,8 +79,7 @@ export function withHelperSettings(
   models: HelperModel[],
   pick: HelperModelPick,
 ): AgentCapabilityConfig[] {
-  const builtin =
-    JSON.stringify(models) === JSON.stringify(BUILTIN_HELPER_MODELS);
+  const builtin = JSON.stringify(models) === JSON.stringify(BUILTIN_HELPER_MODELS);
   return capabilities.map((capability) => {
     if (capability.ref !== SUBAGENTS_CAPABILITY) return capability;
     const config = { ...capability.config };
@@ -119,8 +116,7 @@ export function targetLabel(
     case "job":
       return `Job: ${jobLabel(target.job)}`;
     case "preset": {
-      const name =
-        presets.find((p) => p.id === target.preset)?.name ?? target.preset;
+      const name = presets.find((p) => p.id === target.preset)?.name ?? target.preset;
       return `${name} preset · ${jobLabel(target.job)}`;
     }
     case "model":
@@ -139,18 +135,11 @@ export function targetModelId(
 ): string | undefined {
   const fromPreset = (id: string | undefined, job: ModelJob) => {
     const preset = id ? presets.find((p) => p.id === id) : undefined;
-    return (
-      (preset?.[`${job}_model_id` as const] as string | null | undefined) ??
-      undefined
-    );
+    return (preset?.[`${job}_model_id` as const] as string | null | undefined) ?? undefined;
   };
   switch (target.type) {
     case "job":
-      return (
-        fromPreset(agentPreset, target.job) ??
-        orgJobModel(target.job) ??
-        undefined
-      );
+      return fromPreset(agentPreset, target.job) ?? orgJobModel(target.job) ?? undefined;
     case "preset":
       return fromPreset(target.preset, target.job);
     case "model":
@@ -165,18 +154,13 @@ export function helperModelErrors(models: HelperModel[]): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
   if (models.length === 0) errors.push("Keep at least one key, such as same.");
-  if (models.length > MAX_HELPER_MODELS)
-    errors.push(`At most ${MAX_HELPER_MODELS} keys.`);
+  if (models.length > MAX_HELPER_MODELS) errors.push(`At most ${MAX_HELPER_MODELS} keys.`);
   for (const model of models) {
     if (!/^[a-z0-9_-]{1,40}$/.test(model.key)) {
-      errors.push(
-        `"${model.key}" must be 1 to 40 lowercase letters, digits, _ or -.`,
-      );
+      errors.push(`"${model.key}" must be 1 to 40 lowercase letters, digits, _ or -.`);
     }
     if (!model.when.trim() || model.when.length > 300) {
-      errors.push(
-        `"${model.key}" needs a "when to use" line of 1 to 300 characters.`,
-      );
+      errors.push(`"${model.key}" needs a "when to use" line of 1 to 300 characters.`);
     }
     if (seen.has(model.key)) errors.push(`"${model.key}" is listed twice.`);
     seen.add(model.key);

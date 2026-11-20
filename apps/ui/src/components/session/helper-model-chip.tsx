@@ -22,9 +22,7 @@ export function helperModelSpec(spec: unknown): HelperModelSpec | undefined {
 }
 
 /** "Agent picked", "Auto: <reason>", or nothing for the default `same`. */
-export function helperModelPickLabel(
-  spec: HelperModelSpec,
-): string | undefined {
+export function helperModelPickLabel(spec: HelperModelSpec): string | undefined {
   if (spec.model_pick === "agent") return "agent picked";
   if (spec.model_pick === "auto") {
     return spec.model_pick_reason ? `Auto: ${spec.model_pick_reason}` : "Auto";
@@ -36,8 +34,7 @@ export function HelperModelChip({ spec }: { spec: HelperModelSpec }) {
   const ui = useUiTranslations();
   const { data: models = [] } = useModels();
   const name = spec.model_id
-    ? (models.find((model) => model.id === spec.model_id)?.display_name ??
-      undefined)
+    ? (models.find((model) => model.id === spec.model_id)?.display_name ?? undefined)
     : undefined;
   const pick = helperModelPickLabel(spec);
   return (
@@ -49,9 +46,7 @@ export function HelperModelChip({ spec }: { spec: HelperModelSpec }) {
         <span className="font-mono text-foreground">{spec.model}</span>
         {name && <span>· {name}</span>}
       </span>
-      {pick && (
-        <span>{pick === "agent picked" ? ui("agent picked") : pick}</span>
-      )}
+      {pick && <span>{pick === "agent picked" ? ui("agent picked") : pick}</span>}
     </span>
   );
 }

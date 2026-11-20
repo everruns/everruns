@@ -13,42 +13,21 @@
 // Task reads are keyed by the task's owning session, so callers pass
 // `sessionId` (the task's `session_id`).
 
-import {
-  useLocale as useFormattingLocale,
-  useUiTranslations,
-} from "@/providers/locale-provider";
+import { useLocale as useFormattingLocale, useUiTranslations } from "@/providers/locale-provider";
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  ChevronDown,
-  ChevronRight,
-  ListTodo,
-  MessageSquare,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, ListTodo, MessageSquare } from "lucide-react";
 import { useSessionTask } from "@/hooks/use-session-tasks";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  HelperModelChip,
-  helperModelSpec,
-} from "@/components/session/helper-model-chip";
+import { HelperModelChip, helperModelSpec } from "@/components/session/helper-model-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatRelativeTime } from "@/lib/formatting";
 import { isTerminalTaskState } from "@/lib/api/types";
-import type {
-  SessionTask,
-  SessionTaskState,
-  TaskMessage,
-} from "@/lib/api/types";
+import type { SessionTask, SessionTaskState, TaskMessage } from "@/lib/api/types";
 
 export function taskStateBadge(state: SessionTaskState) {
   switch (state) {
@@ -64,9 +43,7 @@ export function taskStateBadge(state: SessionTaskState) {
       );
     case "succeeded":
       return (
-        <Badge className="border-transparent bg-success text-success-foreground">
-          Succeeded
-        </Badge>
+        <Badge className="border-transparent bg-success text-success-foreground">Succeeded</Badge>
       );
     case "failed":
       return <Badge variant="destructive">Failed</Badge>;
@@ -79,26 +56,15 @@ export function taskStateBadge(state: SessionTaskState) {
 
 export function TaskProgressBar({ task }: { task: SessionTask }) {
   const progress = task.progress;
-  if (
-    !progress ||
-    progress.current == null ||
-    progress.total == null ||
-    progress.total <= 0
-  ) {
+  if (!progress || progress.current == null || progress.total == null || progress.total <= 0) {
     return null;
   }
-  const percent = Math.min(
-    100,
-    Math.max(0, (progress.current / progress.total) * 100),
-  );
+  const percent = Math.min(100, Math.max(0, (progress.current / progress.total) * 100));
   const line = `${progress.label ? `${progress.label}: ` : ""}${progress.current}/${progress.total}${progress.unit ? ` ${progress.unit}` : ""}`;
   return (
     <div className="space-y-1">
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-primary"
-          style={{ width: `${percent}%` }}
-        />
+        <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
       </div>
       <div className="text-xs">{line}</div>
     </div>
@@ -110,13 +76,7 @@ export function TaskProgressBar({ task }: { task: SessionTask }) {
  * not typed here: session detail is a read-only recording (EVE-854), so the
  * prompt is a fact. Fork the session into a chat to actually answer it.
  */
-function TaskInputPrompt({
-  task,
-  replyHint,
-}: {
-  task: SessionTask;
-  replyHint?: string;
-}) {
+function TaskInputPrompt({ task, replyHint }: { task: SessionTask; replyHint?: string }) {
   const ui = useUiTranslations();
   if (task.state !== "awaiting_input" || !task.input_request) return null;
 
@@ -124,8 +84,7 @@ function TaskInputPrompt({
     <div className="space-y-1 rounded border border-warning/50 bg-warning/10 px-3 py-2">
       <div className="text-sm text-foreground">{task.input_request.prompt}</div>
       <div className="text-xs text-muted-foreground">
-        {replyHint ??
-          ui("Waiting for input. Fork this session into a chat to answer.")}
+        {replyHint ?? ui("Waiting for input. Fork this session into a chat to answer.")}
       </div>
     </div>
   );
@@ -149,10 +108,7 @@ function TaskMessageRow({ message }: { message: TaskMessage }) {
         </div>
         {message.content.map((part, index) =>
           part.type === "text" ? (
-            <div
-              key={index}
-              className="whitespace-pre-wrap break-words text-sm"
-            >
+            <div key={index} className="whitespace-pre-wrap break-words text-sm">
               {part.text}
             </div>
           ) : (
@@ -172,13 +128,7 @@ function TaskMessageRow({ message }: { message: TaskMessage }) {
 /** Per-task drill-down: lifecycle timeline + the live message thread.
  *  Fetched lazily when the card is expanded; the list hook's SSE stream keeps
  *  the thread fresh by invalidating this task's detail key on task.message.*. */
-function TaskDrilldown({
-  task,
-  sessionId,
-}: {
-  task: SessionTask;
-  sessionId: string | undefined;
-}) {
+function TaskDrilldown({ task, sessionId }: { task: SessionTask; sessionId: string | undefined }) {
   const { displayLocale } = useFormattingLocale();
   const ui = useUiTranslations();
   const { data: detail, isLoading, error } = useSessionTask(sessionId, task.id);
@@ -191,24 +141,20 @@ function TaskDrilldown({
     <div className="mt-3 space-y-3 border-t border-border/60 pt-3">
       <div className="grid gap-0.5 text-xs text-muted-foreground">
         <div>
-          {ui("Created")}{" "}
-          {formatRelativeTime(snapshot.created_at, displayLocale)}
+          {ui("Created")} {formatRelativeTime(snapshot.created_at, displayLocale)}
         </div>
         {snapshot.started_at ? (
           <div>
-            {ui("Started")}{" "}
-            {formatRelativeTime(snapshot.started_at, displayLocale)}
+            {ui("Started")} {formatRelativeTime(snapshot.started_at, displayLocale)}
           </div>
         ) : null}
         {snapshot.finished_at ? (
           <div>
-            {ui("Finished")}{" "}
-            {formatRelativeTime(snapshot.finished_at, displayLocale)}
+            {ui("Finished")} {formatRelativeTime(snapshot.finished_at, displayLocale)}
           </div>
         ) : (
           <div>
-            {ui("Last update")}{" "}
-            {formatRelativeTime(snapshot.updated_at, displayLocale)}
+            {ui("Last update")} {formatRelativeTime(snapshot.updated_at, displayLocale)}
           </div>
         )}
         {snapshot.state_detail ? (
@@ -231,9 +177,7 @@ function TaskDrilldown({
           <Skeleton className="h-16 w-full" />
         ) : error ? (
           <div className="text-xs text-destructive">
-            {error instanceof Error
-              ? error.message
-              : ui("Failed to load thread")}
+            {error instanceof Error ? error.message : ui("Failed to load thread")}
           </div>
         ) : messages.length === 0 ? (
           <div className="text-xs text-muted-foreground">
@@ -280,9 +224,7 @@ export function TaskCard({
             <ListTodo className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0">
               <CardTitle className="break-words text-base">
-                <EntityIdentity value={task.id}>
-                  {task.display_name || task.id}
-                </EntityIdentity>
+                <EntityIdentity value={task.id}>{task.display_name || task.id}</EntityIdentity>
               </CardTitle>
               <CardDescription>
                 <span className="flex flex-wrap items-center gap-2">
@@ -295,18 +237,14 @@ export function TaskCard({
           <div className="flex flex-wrap items-center gap-2">
             {taskStateBadge(task.state)}
             {!terminal && task.cancel_requested_at ? (
-              <span className="text-xs text-muted-foreground">
-                {ui("Cancel requested")}
-              </span>
+              <span className="text-xs text-muted-foreground">{ui("Cancel requested")}</span>
             ) : null}
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              aria-label={
-                expanded ? ui("Hide task details") : ui("Show task details")
-              }
+              aria-label={expanded ? ui("Hide task details") : ui("Show task details")}
             >
               {expanded ? (
                 <ChevronDown className="h-4 w-4" />
@@ -321,8 +259,7 @@ export function TaskCard({
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <div className="grid gap-1">
           <div>
-            {ui("Created:")}{" "}
-            {formatRelativeTime(task.created_at, displayLocale)}
+            {ui("Created:")} {formatRelativeTime(task.created_at, displayLocale)}
           </div>
           {task.state_detail ? (
             <div>
@@ -385,9 +322,7 @@ export function TaskCard({
                 ) : (
                   <span>
                     {artifact.name}
-                    {artifact.path
-                      ? ui(" ({value0})", { value0: artifact.path })
-                      : ""}
+                    {artifact.path ? ui(" ({value0})", { value0: artifact.path }) : ""}
                   </span>
                 )}
               </div>
