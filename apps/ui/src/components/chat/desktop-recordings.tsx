@@ -1,5 +1,6 @@
 /**
- * Desktop recordings: the video of what an agent did on its Sandbox desktop,
+ * Session files shown in chat: files an agent sent with a message, and
+ * desktop recordings, the video of what an agent did on its Sandbox desktop,
  * shown under the turn that did it.
  *
  * When a Session with a recorded desktop goes idle, the server stops the
@@ -11,7 +12,7 @@
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
-import { Download, MonitorPlay } from "lucide-react";
+import { Download, FileText, MonitorPlay } from "lucide-react";
 import type { Event } from "@/lib/api/types";
 import { getApiBaseUrl } from "@/lib/api/client";
 import { getLastVisibleEventIdByTurn } from "@/components/chat/turn-delimiter";
@@ -125,5 +126,39 @@ export function DesktopRecordingCards({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Files an agent sent with a message (`send_message` `files`), shown under
+ * that message. Each one downloads the exact session file the agent named.
+ */
+export function SentFiles({ sessionId, paths }: { sessionId: string; paths?: string[] }) {
+  const ui = useUiTranslations();
+  if (!paths?.length) return null;
+  return (
+    <ul aria-label={ui("Files sent with this message")} className="mt-2 flex flex-wrap gap-2">
+      {paths.map((path) => {
+        const name = path.split("/").filter(Boolean).pop() ?? path;
+        return (
+          <li key={path}>
+            <a
+              href={sessionFileDownloadUrl(sessionId, path)}
+              download={name}
+              title={path}
+              data-slot="sent-file"
+              className="flex max-w-64 items-center gap-2 rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-sm hover:bg-muted"
+            >
+              <FileText className="h-4 w-4 flex-none text-muted-foreground" />
+              <span className="truncate font-medium">{name}</span>
+              <Download
+                className="h-3.5 w-3.5 flex-none text-muted-foreground"
+                aria-label={ui("Download")}
+              />
+            </a>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

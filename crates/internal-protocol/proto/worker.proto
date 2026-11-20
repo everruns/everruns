@@ -1897,6 +1897,12 @@ message SlackPostMessage {
     string input_message_id = 1;
     string tool_call_id = 2;
     string text = 3;
+    repeated SlackFile files = 4;
+}
+
+message SlackFile {
+    string filename = 1;
+    bytes content = 2;
 }
 
 message SlackUpdateMessage {
@@ -1910,6 +1916,7 @@ message SlackLookupUser {
 }
 
 message SlackUploadFile {
+    // Empty: the session's own conversation, chosen by the control plane.
     string channel = 1;
     optional string thread_ts = 2;
     string filename = 3;

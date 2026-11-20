@@ -226,6 +226,10 @@ pub struct ConversationMessageData {
     /// The `send_message` call that sent it.
     pub tool_call_id: String,
 
+    /// Session paths of the files delivered with the message, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+
     /// Where an external platform accepted it, when the conversation lives on
     /// one (a Slack thread). Absent when the conversation is the session
     /// itself (web chat, API, A2A, AG-UI, MCP).

@@ -4,6 +4,7 @@ import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import { X, Loader2, AlertCircle, ImageIcon, Download } from "lucide-react";
 import type { PendingImage } from "@/lib/api/images";
+import { isImageFilePart, type ContentPart } from "@/lib/api/types";
 import { getThumbnailUrl, getImageUrl } from "@/lib/api/images";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -166,4 +167,14 @@ export function ImagePlaceholder({ filename }: { filename?: string }) {
       )}
     </div>
   );
+}
+
+/** The image files in a message's content, for `MessageImage`. */
+export function getMessageImages(
+  content: ContentPart[],
+): Array<{ image_id: string; filename?: string }> {
+  return content.filter(isImageFilePart).map((part) => ({
+    image_id: part.image_id,
+    filename: part.filename,
+  }));
 }

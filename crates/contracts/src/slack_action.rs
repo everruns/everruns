@@ -47,6 +47,9 @@ pub enum SlackAction {
         input_message_id: String,
         tool_call_id: String,
         text: String,
+        /// Files shared into the same conversation right after the text.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        files: Vec<SlackFile>,
     },
     /// `reactions.add` — acknowledge a message with an emoji.
     AddReaction {
@@ -70,8 +73,12 @@ pub enum SlackAction {
     /// `files.getUploadURLExternal` + `files.completeUploadExternal` — share a
     /// file into the conversation. The legacy `files.upload` is retired.
     UploadFile {
-        channel: String,
-        /// Thread to share into, when the conversation is threaded.
+        /// `None` shares into this session's own conversation, chosen by the
+        /// host (the tool's default). `Some` is checked against it.
+        #[serde(default)]
+        channel: Option<String>,
+        /// Thread to share into, when the conversation is threaded. Ignored
+        /// when `channel` is `None`.
         thread_ts: Option<String>,
         filename: String,
         /// The file's bytes.
@@ -79,6 +86,25 @@ pub enum SlackAction {
         /// Optional message posted alongside the file.
         initial_comment: Option<String>,
     },
+}
+
+/// One file attached to a posted message.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SlackFile {
+    /// Filename shown in Slack, including its extension.
+    pub filename: String,
+    /// The file's bytes.
+    pub content: Vec<u8>,
+}
+
+impl std::fmt::Debug for SlackFile {
+    // Bytes stay out of logs.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlackFile")
+            .field("filename", &self.filename)
+            .field("bytes", &self.content.len())
+            .finish()
+    }
 }
 
 impl SlackAction {

@@ -1,10 +1,11 @@
 //! Slack delivers an explicit agent's sent messages through the existing
 //! endpoint action service. The same adapter works for direct and remote hosts.
 
+use crate::slack_action::SlackFile;
 use crate::slack_action::{SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::MessageId;
-use everruns_core::conversation::{ConversationSender, ConversationSenderExt};
+use everruns_core::conversation::{ConversationSender, ConversationSenderExt, OutgoingFile};
 use everruns_core::events::ConversationDelivery;
 use everruns_core::tools::ToolExecutionResult;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ impl ConversationSender for SlackConversationSender {
     async fn send(
         &self,
         text: &str,
+        files: &[OutgoingFile],
         input_message_id: MessageId,
         tool_call_id: &str,
     ) -> Result<Option<ConversationDelivery>, ToolExecutionResult> {
@@ -26,6 +28,13 @@ impl ConversationSender for SlackConversationSender {
                 text: text.into(),
                 input_message_id: input_message_id.to_string(),
                 tool_call_id: tool_call_id.into(),
+                files: files
+                    .iter()
+                    .map(|file| SlackFile {
+                        filename: file.filename.clone(),
+                        content: file.content.clone(),
+                    })
+                    .collect(),
             })
             .await
         {

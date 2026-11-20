@@ -20,10 +20,18 @@ impl From<SlackAction> for proto::invoke_slack_action_request::Action {
                 input_message_id,
                 tool_call_id,
                 text,
+                files,
             } => Self::PostMessage(proto::SlackPostMessage {
                 input_message_id,
                 tool_call_id,
                 text,
+                files: files
+                    .into_iter()
+                    .map(|file| proto::SlackFile {
+                        filename: file.filename,
+                        content: file.content,
+                    })
+                    .collect(),
             }),
             SlackAction::AddReaction {
                 channel,
@@ -53,7 +61,7 @@ impl From<SlackAction> for proto::invoke_slack_action_request::Action {
                 content,
                 initial_comment,
             } => Self::UploadFile(proto::SlackUploadFile {
-                channel,
+                channel: channel.unwrap_or_default(),
                 thread_ts,
                 filename,
                 content,
@@ -71,6 +79,14 @@ impl From<proto::invoke_slack_action_request::Action> for SlackAction {
                 input_message_id: a.input_message_id,
                 tool_call_id: a.tool_call_id,
                 text: a.text,
+                files: a
+                    .files
+                    .into_iter()
+                    .map(|file| crate::slack_action::SlackFile {
+                        filename: file.filename,
+                        content: file.content,
+                    })
+                    .collect(),
             },
             Action::AddReaction(a) => Self::AddReaction {
                 channel: a.channel,
@@ -84,7 +100,7 @@ impl From<proto::invoke_slack_action_request::Action> for SlackAction {
             },
             Action::LookupUser(a) => Self::LookupUser { user_id: a.user_id },
             Action::UploadFile(a) => Self::UploadFile {
-                channel: a.channel,
+                channel: Some(a.channel).filter(|channel| !channel.is_empty()),
                 thread_ts: a.thread_ts,
                 filename: a.filename,
                 content: a.content,
@@ -216,6 +232,16 @@ mod tests {
             input_message_id: "message-1".into(),
             tool_call_id: "call-1".into(),
             text: "**Hello**".into(),
+            files: vec![],
+        });
+        round_trip_action(SlackAction::PostMessage {
+            input_message_id: "message-1".into(),
+            tool_call_id: "call-1".into(),
+            text: "chart attached".into(),
+            files: vec![crate::slack_action::SlackFile {
+                filename: "chart.png".into(),
+                content: b"\x89PNG".to_vec(),
+            }],
         });
         round_trip_action(SlackAction::AddReaction {
             channel: "C1".to_string(),
@@ -231,7 +257,7 @@ mod tests {
             user_id: "U1".to_string(),
         });
         round_trip_action(SlackAction::UploadFile {
-            channel: "C1".to_string(),
+            channel: Some("C1".to_string()),
             thread_ts: Some("1.2".to_string()),
             filename: "report.md".to_string(),
             content: b"hello".to_vec(),
@@ -239,7 +265,15 @@ mod tests {
         });
         // The absent-optional shape is the one a `None` mapping gets wrong.
         round_trip_action(SlackAction::UploadFile {
-            channel: "C1".to_string(),
+            channel: Some("C1".to_string()),
+            thread_ts: None,
+            filename: "report.md".to_string(),
+            content: b"hello".to_vec(),
+            initial_comment: None,
+        });
+        // The host-chosen conversation, which the tool always sends now.
+        round_trip_action(SlackAction::UploadFile {
+            channel: None,
             thread_ts: None,
             filename: "report.md".to_string(),
             content: b"hello".to_vec(),

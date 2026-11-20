@@ -107,7 +107,7 @@ talk", that explains them to the model. You do not add them yourself.
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `send_message` | `text` (required): the complete message, in Markdown | Sends the message to the conversation the turn came from. Success means it was delivered. |
+| `send_message` | `text` (required): the complete message, in Markdown. `files` (optional): up to 10 session file paths, 8 MiB combined | Sends the message, and any files, to the conversation the turn came from. Success means it was delivered. |
 | `no_reply` | `reason` (optional): why no reply is needed | Ends the turn without saying anything. The reason stays in the transcript and is never shown to the person. |
 
 The Agent never chooses where a message goes. The destination is always the
@@ -123,6 +123,10 @@ conversation of the input that started the turn.
 | AG-UI | Streamed to the client as text messages. |
 | MCP | Returned as what the Agent said in session status. |
 | FCP and the channel API | Returned as the reply. |
+
+Files sent with a message are uploaded into the Slack thread and shown in web
+chat. Other surfaces get their session paths in the `conversation.message`
+event; the files stay readable through the session's files API.
 | CLI chat | Printed as the Agent's reply. |
 | Voice | Spoken to the caller. Notes are not spoken. |
 | Subagents | Returned to the parent Agent as the subagent's result. |
@@ -137,6 +141,8 @@ Each sent message is recorded as a
 message id, its text, and the `send_message` tool call that sent it. When an
 external platform such as Slack accepted the message, the event also carries a
 `delivery` object with the platform, channel and platform message reference.
+A message sent with files lists their session paths in `files`; the web chat
+shows them under the message, ready to download.
 
 The Agent's assistant text is still recorded, as `output.message.completed`
 with `message.phase: "commentary"`. Treat it as working notes: the web UI shows

@@ -66,6 +66,17 @@ originating-thread check. The model sees the thread root separately from the
 timestamp of an individual reply. Installations need the bot's file-write
 scope to deliver files.
 
+**Files ride on `send_message`; the upload tool names no destination.** An
+explicit agent lists session paths in `send_message`'s `files`, so text and
+files are one call and every surface gets them: Slack uploads them into the
+same thread right after the text (the text goes first because its timestamp is
+the editable message reference), web chat renders them from the
+`conversation.message` event. A file failure after the text is reported as
+partial delivery so the agent does not resend the text. `slack_upload_file`
+stays for direct agents, which have no `send_message`, and no longer takes
+`channel` or `thread_ts`: the model only ever copied back values the control
+plane then had to verify, so the host fills them from trusted ingress instead.
+
 This is the first real use of `Capability::tools()` by a channel adapter, which
 the parity requirements anticipated and no adapter had exercised.
 

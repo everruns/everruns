@@ -35,7 +35,7 @@ import type {
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { getEventData, isImageFilePart, isTextPart } from "@/lib/api/types";
+import { getEventData, isTextPart } from "@/lib/api/types";
 import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
@@ -51,7 +51,7 @@ import {
 } from "@/components/chat/message-reactions";
 import { parseCoordinatorMessage, parseTaskUpdate } from "@/lib/chat-thread-messages";
 import { TraceLink } from "@/components/chat/trace-link";
-import { MessageImage } from "@/components/chat/image-attachments";
+import { MessageImage, getMessageImages } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
 import { WorkLogNarration } from "@/components/chat/work-log-narration";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
@@ -107,6 +107,7 @@ import {
 import { RunCards } from "@/components/chat/run-card";
 import {
   DesktopRecordingCards,
+  SentFiles,
   assignRecordingsToEvents,
 } from "@/components/chat/desktop-recordings";
 import type { ChatRun } from "@/components/chat/run-cards";
@@ -242,13 +243,6 @@ function getFirstPlainLine(text: string): string {
     )
     .find(Boolean);
   return line ?? "";
-}
-
-function getMessageImages(content: ContentPart[]): Array<{ image_id: string; filename?: string }> {
-  return content.filter(isImageFilePart).map((part) => ({
-    image_id: part.image_id,
-    filename: part.filename,
-  }));
 }
 
 function getMessageAnnotations(content: ContentPart[] | undefined): TextAnnotation[] {
@@ -1166,6 +1160,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                       <div className={chatSurfaceStyles.agentMessageRow}>
                         <div className={chatSurfaceStyles.agentMessage}>
                           <MessageContent text={sentMessage.text} />
+                          <SentFiles sessionId={sessionId} paths={sentMessage.files} />
                         </div>
                         <div
                           className={cn(

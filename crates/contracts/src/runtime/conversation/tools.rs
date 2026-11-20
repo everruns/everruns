@@ -24,6 +24,11 @@ pub const SEND_MESSAGE_TOOL_NAME: &str = "send_message";
 pub const NO_REPLY_TOOL_NAME: &str = "no_reply";
 /// Maximum Unicode characters in one sent message.
 pub const MAX_MESSAGE_CHARS: usize = 12_000;
+/// Most session files one sent message carries.
+pub const MAX_MESSAGE_FILES: usize = 10;
+/// Combined size of the files one sent message carries. Matches the Slack
+/// upload cap, so a message that passes here is never refused there for size.
+pub const MAX_MESSAGE_FILE_BYTES: usize = 8 * 1024 * 1024;
 
 const PROMPT_MARKER: &str = "# How you talk";
 const SYSTEM_PROMPT: &str = r#"# How you talk
@@ -32,6 +37,7 @@ People do not see what you write as an assistant. That text is your private work
 
 To say something to the person, call `send_message`. Everything they see from you comes through it.
 - Send a message when you have something worth saying: an answer, a question, or a result. Write it complete, in Markdown, for the person reading it.
+- To share a file you made (an image, a PDF, a report), save it in the session and list its path in `files`. It is delivered with the message.
 - Do not narrate tool calls or repeat yourself. One clear message beats several small ones.
 - A step that only sends a message ends the turn. The person already has it. If you still have tools to run, call them before the message or in the same step.
 - A successful result means the message was delivered. Do not send the same content again.
@@ -45,7 +51,8 @@ To say something to the person, call `send_message`. Everything they see from yo
 /// `conversation.message` event is the delivery.
 #[async_trait]
 pub trait ConversationSender: Send + Sync {
-    /// Deliver `text` to the conversation that `input_message_id` came from.
+    /// Deliver `text`, followed by `files`, to the conversation that
+    /// `input_message_id` came from.
     ///
     /// Identifiers come from the executor, never from model arguments. Return
     /// only after the platform accepted the message, or `Ok(None)` when that
@@ -54,9 +61,22 @@ pub trait ConversationSender: Send + Sync {
     async fn send(
         &self,
         text: &str,
+        files: &[OutgoingFile],
         input_message_id: MessageId,
         tool_call_id: &str,
     ) -> Result<Option<ConversationDelivery>, ToolExecutionResult>;
+}
+
+/// A session file sent with a message. The tool reads the bytes from session
+/// storage, so they never pass through model arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutgoingFile {
+    /// Session path the agent named.
+    pub path: String,
+    /// Name shown to the person: the path's last segment.
+    pub filename: String,
+    /// The file's exact bytes.
+    pub content: Vec<u8>,
 }
 
 /// Sender installed by a host into the tool-context extension bag.
@@ -101,6 +121,11 @@ pub fn sent_message(
     }
     let message_id = serde_json::from_value(result.get("message_id")?.clone()).ok()?;
     let text = arguments.get("text")?.as_str()?.to_owned();
+    // The result lists the paths the tool actually read, in send order.
+    let files = result
+        .get("files")
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
+        .unwrap_or_default();
     let delivery = result
         .get("delivery")
         .and_then(|value| serde_json::from_value(value.clone()).ok());
@@ -108,6 +133,7 @@ pub fn sent_message(
         message_id,
         text,
         tool_call_id: tool_call_id.to_owned(),
+        files,
         delivery,
     })
 }
@@ -119,6 +145,8 @@ pub struct SendMessageTool;
 #[serde(deny_unknown_fields)]
 struct SendArguments {
     text: String,
+    #[serde(default)]
+    files: Vec<String>,
 }
 
 #[async_trait]
@@ -132,14 +160,21 @@ impl Tool for SendMessageTool {
     }
 
     fn description(&self) -> &str {
-        "Send a message to the person you are talking with. This is the only way they see anything from you; your assistant text is private notes. Use it for answers, questions and results. Write the complete message in Markdown. The runtime picks the destination: the conversation this turn came from. Success means it was delivered. If this is the only tool in the step, the turn ends after delivery."
+        "Send a message to the person you are talking with. This is the only way they see anything from you; your assistant text is private notes. Use it for answers, questions and results. Write the complete message in Markdown. To share files you made (images, PDFs, reports), list their session paths in `files`; they are delivered with the message. The runtime picks the destination: the conversation this turn came from. Success means it was delivered. If this is the only tool in the step, the turn ends after delivery."
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({"type":"object", "properties": {"text": {
-            "type":"string", "minLength":1, "maxLength":MAX_MESSAGE_CHARS,
-            "description":"The complete message for the person. Markdown."
-        }}, "required":["text"], "additionalProperties":false})
+        json!({"type":"object", "properties": {
+            "text": {
+                "type":"string", "minLength":1, "maxLength":MAX_MESSAGE_CHARS,
+                "description":"The complete message for the person. Markdown."
+            },
+            "files": {
+                "type":"array", "maxItems":MAX_MESSAGE_FILES, "uniqueItems":true,
+                "items": {"type":"string", "minLength":1},
+                "description":"Optional paths of existing session files to deliver with the message, such as \"/out/chart.png\". 8 MiB combined."
+            }
+        }, "required":["text"], "additionalProperties":false})
     }
 
     fn requires_context(&self) -> bool {
@@ -205,9 +240,15 @@ impl Tool for SendMessageTool {
                 "Message text must not exceed {MAX_MESSAGE_CHARS} characters; share a file for longer content"
             ));
         }
+        // Read every file before anything is sent, so a bad path never leaves
+        // a half-delivered message behind.
+        let files = match read_files(&args.files, context).await {
+            Ok(files) => files,
+            Err(error) => return error,
+        };
         let delivery = match external_target(context) {
             Some((sender, input_id, call_id)) => {
-                match sender.0.send(&args.text, input_id, call_id).await {
+                match sender.0.send(&args.text, &files, input_id, call_id).await {
                     Ok(delivery) => delivery,
                     Err(error) => return error,
                 }
@@ -215,11 +256,98 @@ impl Tool for SendMessageTool {
             None => None,
         };
         let mut result = json!({"sent": true, "message_id": MessageId::new()});
+        if !files.is_empty() {
+            result["files"] = json!(files.iter().map(|file| &file.path).collect::<Vec<_>>());
+        }
         if let Some(delivery) = delivery {
             result["delivery"] = json!(delivery);
         }
         ToolExecutionResult::success(result)
     }
+}
+
+/// Read the named session files, enforcing the count and combined-size caps.
+async fn read_files(
+    paths: &[String],
+    context: &ToolContext,
+) -> Result<Vec<OutgoingFile>, ToolExecutionResult> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    if paths.len() > MAX_MESSAGE_FILES {
+        return Err(ToolExecutionResult::tool_error(format!(
+            "A message can carry at most {MAX_MESSAGE_FILES} files"
+        )));
+    }
+    let Some(store) = &context.file_store else {
+        return Err(ToolExecutionResult::tool_error(
+            "Session files are unavailable here; send the message without files",
+        ));
+    };
+    let mut files: Vec<OutgoingFile> = Vec::with_capacity(paths.len());
+    let mut total = 0usize;
+    for path in paths {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(ToolExecutionResult::tool_error(
+                "File paths must not be empty",
+            ));
+        }
+        if files.iter().any(|file| file.path == path) {
+            return Err(ToolExecutionResult::tool_error(format!(
+                "File {path} is listed twice"
+            )));
+        }
+        let file = match store.read_file(context.session_id, path).await {
+            Ok(Some(file)) if !file.is_directory => file,
+            Ok(Some(_)) => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "{path} is a directory; list the files inside it instead"
+                )));
+            }
+            Ok(None) => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "Session file {path} not found; nothing was sent"
+                )));
+            }
+            Err(error) => return Err(ToolExecutionResult::internal_error(error)),
+        };
+        let content = match &file.content {
+            Some(content) => {
+                match crate::runtime::session_file::SessionFile::decode_content(
+                    content,
+                    &file.encoding,
+                ) {
+                    Ok(bytes) => bytes,
+                    Err(error) => return Err(ToolExecutionResult::internal_error(error)),
+                }
+            }
+            None => Vec::new(),
+        };
+        if content.is_empty() {
+            return Err(ToolExecutionResult::tool_error(format!(
+                "Session file {path} is empty; nothing was sent"
+            )));
+        }
+        total += content.len();
+        if total > MAX_MESSAGE_FILE_BYTES {
+            return Err(ToolExecutionResult::tool_error(format!(
+                "Files exceed the {} MiB combined limit for one message; nothing was sent",
+                MAX_MESSAGE_FILE_BYTES / (1024 * 1024)
+            )));
+        }
+        let filename = path
+            .rsplit('/')
+            .find(|segment| !segment.is_empty())
+            .unwrap_or(path)
+            .to_owned();
+        files.push(OutgoingFile {
+            path: path.to_owned(),
+            filename,
+            content,
+        });
+    }
+    Ok(files)
 }
 
 /// The installed sender plus the trusted identifiers it needs, when this call

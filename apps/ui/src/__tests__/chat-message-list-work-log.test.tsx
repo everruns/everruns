@@ -1,5 +1,5 @@
 import type React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { WORK_LOG_PAGE_SIZE } from "@/components/chat/turn-work-log";
 import type { Event } from "@/lib/api/types";
@@ -318,6 +318,44 @@ describe("ChatMessageList work-log narration", () => {
     expect(screen.getByTestId("work-log-narration")).toHaveTextContent(note);
     expect(screen.getByTestId("tool-output")).toBeInTheDocument();
     expect(screen.getAllByText(reply)).toHaveLength(1);
+  });
+
+  it("lists the files sent with a conversation.message as downloads", () => {
+    const chatEvents = [
+      event("sent", "conversation.message", {
+        message_id: "message_sent_1",
+        text: "Chart attached.",
+        tool_call_id: "call-send",
+        files: ["/out/signups.png", "/out/raw data.csv"],
+      }),
+    ];
+    render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={() => ""}
+        getToolCalls={() => []}
+      />,
+    );
+
+    const list = screen.getByRole("list", { name: "Files sent with this message" });
+    const links = within(list).getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual(["signups.png", "raw data.csv"]);
+    expect(links[0]).toHaveAttribute(
+      "href",
+      expect.stringContaining("/v1/sessions/session-1/fs/_/download/out/signups.png"),
+    );
+    expect(links[1]).toHaveAttribute(
+      "href",
+      expect.stringContaining("/v1/sessions/session-1/fs/_/download/out/raw%20data.csv"),
+    );
   });
 
   it("skips an empty conversation.message", () => {

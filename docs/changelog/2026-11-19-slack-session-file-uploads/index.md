@@ -24,3 +24,9 @@ The bot needs the `files:write` scope. See the [Slack capability guide](/capabil
   "session_path": "/out/promo.png"
 }
 ```
+
+## Update 2026-11-20
+
+`slack_upload_file` no longer takes `channel` or `thread_ts`: it always shares
+into the session's own thread. Agents with explicit communication attach files
+to `send_message` instead. See [Agents send files with their messages](/changelog/2026-11-20-send-message-files/).
