@@ -802,6 +802,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             ),
         ))
     }
+    fn session_spend_reader(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::runtime::session_spend::SessionSpendReader>> {
+        Some(Arc::new(
+            crate::internal_commands::CommandSessionSpendReader::new(GrpcAdapter::new_org_scoped(
+                self.client.clone(),
+                org_id,
+            )),
+        ))
+    }
     fn poppy_invoker(
         &self,
         org_id: i64,

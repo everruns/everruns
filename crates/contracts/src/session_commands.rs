@@ -100,6 +100,12 @@ pub const STORAGE_READ: SessionCommand = read("storage", "the session's storage 
 pub const SECRETS: SessionCommand = read("secrets", "the session's sealed secrets, without values");
 /// The pinned sandbox's state on the cell.
 pub const SANDBOX: SessionCommand = read("sandbox", "the pinned sandbox's state");
+/// What the session's model calls, turns and image tools spent, unpriced
+/// (`runtime::session_spend::SpendInputs`).
+pub const SPEND: SessionCommand = read(
+    "spend",
+    "the session's model calls, turn outcomes and image results",
+);
 
 /// Every session command and read the control plane may use.
 pub const SESSION_COMMANDS: &[SessionCommand] = &[
@@ -116,6 +122,7 @@ pub const SESSION_COMMANDS: &[SessionCommand] = &[
     STORAGE_READ,
     SECRETS,
     SANDBOX,
+    SPEND,
 ];
 
 /// The declared command (`Kind::Command`) or read named `name`.

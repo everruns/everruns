@@ -106,6 +106,7 @@ pub mod recommended_models;
 pub mod retry_failure;
 pub mod rt;
 pub mod runtime_provider;
+pub mod sandbox_prices;
 pub mod secret_scrub;
 pub mod session_commands;
 pub mod stream_accumulator;

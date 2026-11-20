@@ -45,6 +45,15 @@ pub(super) struct DirectInternalCommands {
 }
 
 impl DirectWorkerAdapters {
+    /// `get_session_info`'s spend, through the same internal commands.
+    pub(super) fn session_spend(&self, org_id: i64) -> SpendReader {
+        Some(Arc::new(
+            everruns_worker::internal_commands::CommandSessionSpendReader::new(
+                self.internal_commands(org_id),
+            ),
+        ))
+    }
+
     pub(super) fn internal_commands(&self, org_id: i64) -> DirectInternalCommands {
         DirectInternalCommands {
             db: self.db.clone(),
@@ -168,4 +177,13 @@ impl InternalCommandTransport for DirectInternalCommands {
             },
         )
     }
+}
+
+/// The spend reader a direct worker hands its sessions.
+pub(super) type SpendReader =
+    Option<Arc<dyn everruns_contracts::runtime::session_spend::SessionSpendReader>>;
+
+// Helper to create store errors
+pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
+    AgentLoopError::store(msg)
 }

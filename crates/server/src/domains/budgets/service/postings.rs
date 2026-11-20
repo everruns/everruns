@@ -502,10 +502,18 @@ impl BudgetService {
                 )
                 .await
                 .unwrap_or_default();
+            let list_usd = crate::domains::budgets::costs::sandbox_list_usd(
+                &span.provider,
+                span.options.as_ref().unwrap_or(&serde_json::Value::Null),
+                seconds,
+                0.0,
+                span.end_at,
+            );
             let rated = crate::domains::budgets::costs::rate_sandbox(
                 &span.provider,
                 span.profile_name.as_deref(),
                 seconds,
+                list_usd,
                 &rates,
             );
             let session = match span.session_id {

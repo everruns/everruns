@@ -729,6 +729,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// What a session spent so far, for `get_session_info`. Default: none,
+    /// and the tool reports token usage only.
+    fn session_spend_reader(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_contracts::runtime::session_spend::SessionSpendReader>> {
+        None
+    }
+
     /// Knowledge store backing the `search_knowledge` tool. Default: `None`.
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         None

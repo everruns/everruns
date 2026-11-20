@@ -5,8 +5,11 @@
 // Decision: only closed spans are metered. A running sandbox is charged when
 // it stops (or is paused), never estimated while it runs, so each span is
 // recorded exactly once (`BudgetService::meter_sandbox_spans` skips spans that
-// already have a usage record). Without a price-list row for the provider the
-// usage is recorded as unpriced: sandboxes have no list price.
+// already have a usage record). Without a price-list row the provider's list
+// price applies (`everruns_contracts::sandbox_prices`); a provider with none
+// (boxd, self-hosted) is recorded as unpriced. Stopped time is not metered
+// here: an org rate is per running hour. A session's own spend
+// (`get_session_info`) adds a provider's stopped-disk charge.
 
 use std::sync::Arc;
 use std::time::Duration;

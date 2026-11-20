@@ -150,32 +150,69 @@ pub fn rate_model(usage: &ModelUsage<'_>, rates: &[CostRateRow]) -> RatedCost {
     }
 }
 
-/// Rate sandbox running time. Sandboxes have no list price: without a rate
-/// they are unpriced.
+/// Rate sandbox time. `list_usd` is the provider's list price for the same
+/// time (`everruns_contracts::sandbox_prices`), `None` when the provider has
+/// none. An org rate wins: a unit price is per hour running, a multiplier
+/// scales the list price; without a rate the list price applies.
 pub fn rate_sandbox(
     provider: &str,
     size: Option<&str>,
     seconds: f64,
+    list_usd: Option<f64>,
     rates: &[CostRateRow],
 ) -> RatedCost {
     let facts = [("provider", Some(provider)), ("size", size)];
     match best_rate(rates, &facts) {
-        Some(rate) => match rate.unit_price_usd {
-            // Sandbox rates are per hour running.
-            Some(price) => RatedCost {
+        Some(rate) => match (rate.unit_price_usd, rate.list_price_multiplier) {
+            (Some(price), _) => RatedCost {
                 amount: Some(seconds.max(0.0) / 3600.0 * price),
                 basis: CostBasis::Rate,
                 rate_id: Some(rate.id),
             },
-            None if rate.list_price_multiplier == Some(0.0) => RatedCost {
-                amount: Some(0.0),
-                basis: CostBasis::Rate,
-                rate_id: Some(rate.id),
+            (None, Some(multiplier)) => match (list_usd, multiplier) {
+                (Some(list), _) => RatedCost {
+                    amount: Some(list * multiplier),
+                    basis: CostBasis::Rate,
+                    rate_id: Some(rate.id),
+                },
+                (None, 0.0) => RatedCost {
+                    amount: Some(0.0),
+                    basis: CostBasis::Rate,
+                    rate_id: Some(rate.id),
+                },
+                (None, _) => RatedCost::unpriced(),
+            },
+            (None, None) => RatedCost::unpriced(),
+        },
+        None => match list_usd {
+            Some(list) => RatedCost {
+                amount: Some(list),
+                basis: CostBasis::ListPrice,
+                rate_id: None,
             },
             None => RatedCost::unpriced(),
         },
-        None => RatedCost::unpriced(),
     }
+}
+
+/// List price of `seconds` running and `stopped_seconds` stopped for a
+/// sandbox of `provider` with profile `options`, on `at`'s date.
+pub fn sandbox_list_usd(
+    provider: &str,
+    options: &serde_json::Value,
+    running_seconds: f64,
+    stopped_seconds: f64,
+    at: chrono::DateTime<chrono::Utc>,
+) -> Option<f64> {
+    use everruns_contracts::sandbox_prices::{list_price, list_price_usd, sandbox_resources};
+    let price = list_price(provider, &at.format("%Y-%m-%d").to_string())?;
+    let resources = sandbox_resources(provider, options)?;
+    Some(list_price_usd(
+        price,
+        resources,
+        running_seconds,
+        stopped_seconds,
+    ))
 }
 
 #[cfg(test)]
@@ -273,14 +310,46 @@ mod tests {
     }
 
     #[test]
-    fn sandboxes_are_unpriced_until_a_rate_exists() {
+    fn sandboxes_take_a_rate_then_the_list_price() {
+        // No rate and no list price (boxd, self-hosted): unpriced.
         assert_eq!(
-            rate_sandbox("daytona", Some("small"), 7200.0, &[]).basis,
+            rate_sandbox("boxd", None, 7200.0, None, &[]).basis,
             CostBasis::Unpriced
         );
+        // No rate: the list price.
+        let listed = rate_sandbox("daytona", Some("small"), 7200.0, Some(0.14), &[]);
+        assert_eq!(
+            (listed.amount, listed.basis),
+            (Some(0.14), CostBasis::ListPrice)
+        );
+        // A unit price per running hour wins.
         let mut r = rate(serde_json::json!({"provider": "daytona"}), Some(0.06), None);
         r.meter = METER_SANDBOX_TIME.into();
-        let rated = rate_sandbox("daytona", Some("small"), 7200.0, &[r]);
+        let rated = rate_sandbox("daytona", Some("small"), 7200.0, Some(0.14), &[r]);
         assert!((rated.amount.unwrap() - 0.12).abs() < 1e-9);
+        // A multiplier scales the list price (a 50% discount).
+        let mut half = rate(serde_json::json!({"provider": "daytona"}), None, Some(0.5));
+        half.meter = METER_SANDBOX_TIME.into();
+        let rated = rate_sandbox("daytona", None, 7200.0, Some(0.14), &[half]);
+        assert!((rated.amount.unwrap() - 0.07).abs() < 1e-9);
+        assert_eq!(rated.basis, CostBasis::Rate);
+    }
+
+    #[test]
+    fn daytona_list_price_follows_profile_size() {
+        let at = chrono::Utc::now();
+        let small = sandbox_list_usd("daytona", &serde_json::Value::Null, 3600.0, 0.0, at).unwrap();
+        let large = sandbox_list_usd(
+            "daytona",
+            &serde_json::json!({"size": "large"}),
+            3600.0,
+            0.0,
+            at,
+        )
+        .unwrap();
+        assert!(large > small * 3.0);
+        assert!(
+            sandbox_list_usd("kubernetes", &serde_json::Value::Null, 3600.0, 0.0, at).is_none()
+        );
     }
 }

@@ -161,6 +161,8 @@ pub const SESSION_RESOURCE_DEREGISTER: &str = "session_resource_deregister";
 /// What the skills capabilities ask: an activated skill is a session
 /// resource, so a second activation in the session answers from it.
 pub const SKILL_ACTIVATIONS: &[&str] = &[SESSION_RESOURCES_LIST, SESSION_RESOURCE_REGISTER];
+/// The calls the session capability makes (`get_session_info`'s spend).
+pub const SESSION_INFO: &[&str] = &[SESSION_SPEND];
 /// Take or renew the lease of something a tool started at a provider (a
 /// sandbox, a browser). Leases stay in the control plane, whose sweeper
 /// stops what a session left running when its lease ends.
@@ -191,6 +193,10 @@ pub const AGENT_SCRIPTS: &str = "agent_scripts";
 /// save`), as the turn's management user under `AGENT_MANAGE`, as on v1
 /// (THREAT[TM-TOOL-067]).
 pub const AGENT_SCRIPT_SAVE: &str = "agent_script_save";
+/// What the session spent so far (models, background calls, images,
+/// sandboxes, subagents), for `get_session_info`. The control plane prices
+/// it: it holds the price tables, the org's rates and the sandbox spans.
+pub const SESSION_SPEND: &str = "session_spend";
 
 const fn call(
     name: &'static str,
@@ -484,6 +490,14 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Write,
         Fate::HostCall,
         "save a script on the session's agent as the turn's management user",
+    ),
+    call(
+        SESSION_SPEND,
+        "worker_get_session_spend",
+        ActsAs::Org,
+        Effect::Read,
+        Fate::HostCall,
+        "what the session spent so far, for get_session_info",
     ),
 ];
 

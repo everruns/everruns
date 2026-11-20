@@ -14,7 +14,7 @@
 
 pub use everruns_internal_protocol::commands::{
     CommandConnectionResolver, CommandLeasedResourceStore, CommandOrgEgressAllowlist,
-    CommandSessionResourceRegistry, InternalCommandTransport,
+    CommandSessionResourceRegistry, CommandSessionSpendReader, InternalCommandTransport,
 };
 use everruns_internal_protocol::commands::{call, call_secret, decode, failure, is_bad_request};
 

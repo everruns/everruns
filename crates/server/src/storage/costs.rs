@@ -85,6 +85,8 @@ pub struct SandboxSpanRow {
     pub agent_id: Option<Uuid>,
     pub provider: String,
     pub profile_name: Option<String>,
+    /// The pinned profile's `target.options`, for the list price.
+    pub options: Option<serde_json::Value>,
     pub start_at: DateTime<Utc>,
     pub end_at: DateTime<Utc>,
 }
@@ -477,7 +479,8 @@ impl StorageBackend {
                 WHERE tr.at > now() - interval '35 days'
             )
             SELECT t.id AS transition_id, t.org_id, t.sandbox_id, s.session_id, s.agent_id,
-                   s.provider, s.profile_name, t.at AS start_at, t.next_at AS end_at
+                   s.provider, s.profile_name, s.profile_snapshot->'target'->'options' AS options,
+                   t.at AS start_at, t.next_at AS end_at
             FROM t
             JOIN sandboxes s ON s.id = t.sandbox_id
             WHERE t.state = 'ready' AND t.next_at IS NOT NULL

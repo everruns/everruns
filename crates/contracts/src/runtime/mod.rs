@@ -82,6 +82,7 @@ pub mod session_path;
 pub mod session_resource;
 pub mod session_schedule;
 pub mod session_services;
+pub mod session_spend;
 pub mod session_task;
 pub mod skill;
 pub mod subagent_delegation;

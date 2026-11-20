@@ -128,7 +128,7 @@ impl Command for ListConnectionProviders {
     }
 }
 
-mod worker;
+pub(crate) mod worker;
 pub use worker::*;
 
 #[cfg(test)]
