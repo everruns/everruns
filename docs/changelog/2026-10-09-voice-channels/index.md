@@ -28,3 +28,10 @@ transcript.
 session, and serve's `voice` feature gives every top-level agent browser calls.
 
 See [Voice](/features/voice/), [Framework voice](/framework/voice/) and [#4394](https://github.com/everruns/everruns/pull/4394), [#4402](https://github.com/everruns/everruns/pull/4402), [#4406](https://github.com/everruns/everruns/pull/4406).
+
+Cascaded OpenAI speech now defaults to `gpt-realtime-2.1-mini` over Realtime,
+while the Framework still receives 24 kHz PCM. Explicit Speech API model
+overrides keep their existing transport until those models retire. OpenAI
+[shuts down the older speech models on January 6, 2027](https://developers.openai.com/api/docs/guides/text-to-speech).
+The model is instructed to read the supplied answer without conversation
+history or tools; generative speech is not guaranteed to be verbatim.

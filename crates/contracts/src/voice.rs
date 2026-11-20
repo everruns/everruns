@@ -74,7 +74,7 @@ pub const DEFAULT_FILLER: &str = "One moment.";
 /// Default speech-to-text model, for the caller's side in both modes.
 pub const DEFAULT_TRANSCRIPTION_MODEL: &str = "gpt-4o-transcribe";
 /// Default text-to-speech model for cascaded channels.
-pub const DEFAULT_SPEECH_MODEL: &str = "gpt-4o-mini-tts";
+pub const DEFAULT_SPEECH_MODEL: &str = "gpt-realtime-2.1-mini";
 /// Sample rate of cascaded call audio: 16-bit little-endian PCM, mono.
 pub const AUDIO_SAMPLE_RATE: u32 = 24_000;
 /// Bytes of cascaded call audio per second.
@@ -97,7 +97,7 @@ pub struct VoiceChannelConfig {
     /// Speech-to-text model for the caller; `gpt-4o-transcribe` when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transcription_model: Option<String>,
-    /// Text-to-speech model for cascaded calls; `gpt-4o-mini-tts` when unset.
+    /// Text-to-speech model for cascaded calls; `gpt-realtime-2.1-mini` when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speech_model: Option<String>,
     /// Provider voice, e.g. `marin`.
@@ -303,7 +303,8 @@ pub enum RealtimeEvent {
 // Exhaustive on purpose: every driver must implement every command.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RealtimeCommand {
-    /// Speak `text` exactly, without adding to the provider's conversation.
+    /// Ask the speech model to read `text` without adding conversation context.
+    /// Generative speech is not guaranteed to be verbatim.
     Speak { text: String },
     /// Stop the current spoken response and drop queued audio.
     StopSpeaking,

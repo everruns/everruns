@@ -33,6 +33,8 @@ pub(crate) mod embeddings;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod realtime;
 #[cfg(not(target_arch = "wasm32"))]
+mod realtime_speech;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod speech;
 mod types;
 

@@ -278,7 +278,7 @@ impl VoiceChannel {
     }
 
     /// Text-to-speech model of a cascaded channel, such as
-    /// `gpt-4o-mini-tts`.
+    /// `gpt-realtime-2.1-mini`.
     pub fn speech_model(mut self, model: impl Into<String>) -> Self {
         self.config.speech_model = Some(model.into());
         self

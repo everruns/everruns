@@ -20,7 +20,7 @@ They differ in what listens and speaks, and in where the audio goes.
 | Mode | Listens and speaks | Audio path | Use it for |
 |---|---|---|---|
 | **Delegated** (default) | A speech-to-speech model, `gpt-realtime-2` | Browser to OpenAI over WebRTC; never through your server | Browser calls with the lowest latency |
-| **Cascaded** | A speech-to-text model (`gpt-4o-transcribe`) and a text-to-speech model (`gpt-4o-mini-tts`) | Through your process as PCM | Native and mobile apps, your own transport, picking each model separately |
+| **Cascaded** | A speech-to-text model (`gpt-4o-transcribe`) and a text-to-speech model (`gpt-realtime-2.1-mini`) | Through your process as PCM | Native and mobile apps, your own transport, picking each model separately |
 
 ## How a delegated call works
 
@@ -94,7 +94,7 @@ use everruns::providers::openai::OpenAI;
 use everruns::voice::{AudioOut, VoiceChannel};
 
 let voice = VoiceChannel::cascaded(OpenAI::from_env()?.speech())
-    .speech_model("gpt-4o-mini-tts")
+    .speech_model("gpt-realtime-2.1-mini")
     .voice("marin")
     .greeting("Hi, you are talking to an AI assistant. How can I help?");
 
@@ -126,7 +126,7 @@ as in delegated mode.
 |---|---|---|
 | `model` | `gpt-realtime-2` | Speech-to-speech model of a delegated channel. |
 | `transcription_model` | `gpt-4o-transcribe` | Speech-to-text model for the caller, in both modes. |
-| `speech_model` | `gpt-4o-mini-tts` | Text-to-speech model of a cascaded channel. |
+| `speech_model` | `gpt-realtime-2.1-mini` | Text-to-speech model of a cascaded channel. |
 | `voice` | `marin` | Provider voice. |
 | `language` | none | Language hint for transcribing the caller, such as `en`. |
 | `greeting` | none | Spoken when the call connects. Say that the caller is talking to an AI. |
@@ -228,7 +228,7 @@ Set `mode = "cascaded"` and the app takes calls over a WebSocket instead:
 ```toml
 [voice]
 mode = "cascaded"
-speech_model = "gpt-4o-mini-tts"
+speech_model = "gpt-realtime-2.1-mini"
 voice = "marin"
 ```
 
@@ -271,3 +271,20 @@ delegated when it moves.
 - Native mode, where the speech model answers by itself and calls the
   agent's tools.
 - Phone numbers.
+
+### OpenAI speech model retirement
+
+Cascaded OpenAI speech defaults to `gpt-realtime-2.1-mini` over an authenticated
+Realtime WebSocket. It still emits 24 kHz mono 16-bit PCM, with the configured
+voice and speaking style. Each utterance has no conversation history or tools.
+The model is instructed to read only the supplied text; generative speech is
+not guaranteed to reproduce it verbatim. Live latency and voice quality depend
+on the provider and have not been established by mocked transport tests.
+
+Explicit `speech_model` overrides are preserved, including stored channel
+configuration and custom provider models. OpenAI Speech API overrides such as
+`gpt-4o-mini-tts`, its dated aliases, `tts-1` and `tts-1-hd` still use
+`/v1/audio/speech`; they must be deliberately updated before their January 6,
+2027 shutdown. No persisted configuration is rewritten automatically. Realtime
+models use the Realtime workflow, not the Speech API. See the
+[OpenAI migration notice](https://developers.openai.com/api/docs/guides/text-to-speech).

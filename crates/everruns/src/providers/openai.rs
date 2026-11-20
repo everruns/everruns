@@ -209,7 +209,7 @@ impl OpenAI {
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let voice = VoiceChannel::cascaded(OpenAI::from_env()?.speech())
-    ///     .speech_model("gpt-4o-mini-tts")
+    ///     .speech_model("gpt-realtime-2.1-mini")
     ///     .voice("marin");
     /// # let _ = voice;
     /// # Ok(())
