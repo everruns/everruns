@@ -1,3 +1,6 @@
+#[cfg(all(test, feature = "builtins"))]
+#[path = "native_usage_tests.rs"]
+mod native_usage_tests;
 #[path = "request_budget.rs"]
 mod request_budget;
 
@@ -210,6 +213,9 @@ pub(super) async fn try_apply_native_compaction(
     let tokens_after = compact_response
         .usage
         .as_ref()
+        // Explicit Responses usage measures billed generation, not the retained
+        // window. Preserve that usage on the response and compare bytes here.
+        .filter(|_| llm_config.reasoning_state.is_none())
         .and_then(|usage| usage.output_tokens)
         .map(u64::from);
     let cost_usd = compact_response.usage.as_ref().and_then(|usage| usage.cost);

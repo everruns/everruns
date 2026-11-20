@@ -77,6 +77,10 @@ installation failure can reuse the candidate. Messages arriving during a summary
 remain in the raw suffix. The first compaction of an existing large session can
 require several calls; subsequent calls process new history incrementally.
 
+Explicit native compaction preserves generated-token usage for billing. Those
+tokens do not measure the retained window. When its token count is unavailable,
+the trace reports serialized byte measurements instead.
+
 ## Triggers and provider modes
 
 Compaction operates at two points:

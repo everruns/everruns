@@ -594,7 +594,14 @@ async fn astra_explicit_compaction_preserves_output_and_reasserts_effort() {
         .unwrap()
         .unwrap();
     assert_eq!(compacted.output.len(), 3);
-    assert_eq!(compacted.usage.unwrap().output_tokens, None);
+    let usage = compacted.usage.as_ref().unwrap();
+    assert_eq!(usage.input_tokens, Some(1000));
+    assert_eq!(
+        usage.output_tokens,
+        Some(12),
+        "billed generation tokens must survive compaction"
+    );
+    assert_eq!(usage.total_tokens, Some(1012));
     let mut cfg = config("gpt-6-astra");
     cfg.reasoning_effort = Some(Low);
     cfg.reasoning_state = Some(astra_state(Some(Max)));
