@@ -64,7 +64,7 @@ pub struct ChatMcpServer {
 /// or, for a v2 session, its storage on its cell (data plane v2 parity,
 /// Phase B). Session MCP records are plain KV values; no secret is read or
 /// written.
-async fn session_store(
+pub(crate) async fn session_store(
     ctx: &Ctx,
     session: SessionId,
 ) -> Result<std::sync::Arc<dyn SessionStorageStore>, CommandError> {

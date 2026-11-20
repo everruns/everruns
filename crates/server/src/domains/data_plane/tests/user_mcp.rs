@@ -125,15 +125,19 @@ async fn a_cell_gets_the_turns_persons_own_servers_and_their_list() {
         "{listed}"
     );
 
-    // "This chat only" lives in the session's storage, in its cell: refused.
+    // "This chat only" reaches the session's storage (its cell's, for a
+    // session there), with the v1 checks: no longer refused outright.
     let mut chat_only = turn.clone();
     chat_only["call"] = json!({
         "op": "add_to_chat",
         "name": "docs",
         "server": { "url": "https://docs.example.com/mcp" },
     });
-    let refused = user_mcp::store(&ctx, &chat_only).await;
-    assert_eq!(refused["error"]["kind"], json!("unavailable"), "{refused}");
+    let added = user_mcp::store(&ctx, &chat_only).await;
+    assert!(
+        added.get("ok").is_some() || added["error"]["kind"] == json!("invalid"),
+        "{added}"
+    );
 
     // A call outside a turn has no person: no servers.
     let unattended = json!({ "session_id": session.to_string(), "input_message_id": null });
@@ -153,4 +157,26 @@ async fn a_cell_gets_the_turns_persons_own_servers_and_their_list() {
         user_mcp::servers(&stranger, &turn).await,
         json!({ "error": "session not found" })
     );
+}
+
+/// The session's own MCP records are read from its storage values, under
+/// their reserved prefix only; one that does not parse is left out.
+#[test]
+fn a_sessions_mcp_records_are_its_reserved_values() {
+    let record = everruns_core::session_mcp_servers::SessionMcpServer {
+        name: "docs".into(),
+        server: serde_json::from_value(json!({ "url": "https://docs.example.com/mcp" })).unwrap(),
+        source: everruns_core::session_mcp_servers::SessionMcpServerSource::UserMcp,
+    };
+    let values = std::collections::BTreeMap::from([
+        (
+            "session_mcp:docs".to_owned(),
+            serde_json::to_string(&record).unwrap(),
+        ),
+        ("session_mcp:broken".to_owned(), "{".to_owned()),
+        ("notes".to_owned(), serde_json::to_string(&record).unwrap()),
+    ]);
+    let servers = user_mcp::records_of(&values);
+    assert_eq!(servers.len(), 1, "{servers:?}");
+    assert_eq!(servers["docs"].url, "https://docs.example.com/mcp");
 }

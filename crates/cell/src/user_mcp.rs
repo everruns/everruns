@@ -13,9 +13,19 @@
 //!   the open turn's input message), and they join the turn through the
 //!   runtime's `TurnMcpServers` hook, under the agent's own.
 //!
+//! The same call brings the session's own MCP records (chat-only servers
+//! and ARD MCP targets, kept in the session's storage on this cell), which
+//! join every agent's turns, not only `user_mcp` ones, as v1 folds them
+//! into the session's `mcpServers`.
+//!
 //! Decisions:
-//! - Only a turn whose input has a recorded sender asks: a channel
-//!   message, a schedule run or a subagent's task has no person, so no call.
+//! - Only a turn whose input has a recorded sender asks for the person's
+//!   servers: a channel message, a schedule run or a subagent's task has no
+//!   person. A turn asks at all only when it wants the person's servers or
+//!   the session has a record (a local read), so a session with neither
+//!   makes no call.
+//! - The records are read by the control plane from this cell, never sent
+//!   with the call: an executor names no server.
 //! - The servers join the turn's resolution only, never the session
 //!   record: a person's key travels as a literal header, and a record
 //!   written back (a session override) must not keep it.
@@ -45,6 +55,7 @@ use everruns_core::mcp::{
     UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
 };
 use everruns_core::session::ExecutionSession;
+use everruns_core::session_mcp_servers::SESSION_MCP_SERVER_KV_PREFIX;
 use everruns_internal_protocol::commands::InternalCommandTransport;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -99,10 +110,16 @@ pub(crate) fn attach(
     let Some(lookups) = lookups else {
         return backends;
     };
-    let Some(uses) = crate::host::package(definition)
+    let uses = crate::host::package(definition)
         .ok()
-        .and_then(|package| user_mcp(&package.manifest().capabilities))
-    else {
+        .and_then(|package| user_mcp(&package.manifest().capabilities));
+    backends.extensions.hooks.turn_mcp_servers = Some(Arc::new(PersonServers {
+        lookups: lookups.clone(),
+        port,
+        session,
+        person: uses == Some(true),
+    }));
+    let Some(_) = uses else {
         return backends;
     };
     let invoker: Arc<dyn UserMcpCallInvoker> = Arc::new(CellUserMcpStore {
@@ -118,13 +135,6 @@ pub(crate) fn attach(
         install_user_mcp_store(&mut extensions, invoker.clone(), None);
         extensions
     }));
-    if uses {
-        backends.extensions.hooks.turn_mcp_servers = Some(Arc::new(PersonServers {
-            lookups,
-            port,
-            session,
-        }));
-    }
     backends
 }
 
@@ -164,31 +174,54 @@ impl UserMcpCallInvoker for CellUserMcpStore {
     }
 }
 
-/// The servers of the person whose turn `session` runs.
+/// The servers a turn of `session` adds: its person's (when its agent has
+/// `user_mcp` with `use` on) and the session's own MCP records.
 struct PersonServers {
     lookups: OrgLookups,
     port: Port,
     session: SessionId,
+    person: bool,
+}
+
+/// What a turn asks the control plane for.
+struct Ask {
+    message: MessageId,
+    /// The person's servers: their message is recorded.
+    person: bool,
+    /// The session has MCP records.
+    records: bool,
 }
 
 impl PersonServers {
-    /// The open turn's input message, when its sender is recorded.
-    async fn open_turn(&self) -> Option<MessageId> {
+    /// The open turn, and what it asks for.
+    async fn open_turn(&self) -> Option<Ask> {
+        let person = self.person;
         self.port
-            .read(self.session, |s| {
+            .read(self.session, move |s| {
                 let message = s.authority.open.and(s.authority.open_input)?;
-                s.platform.senders.of(message).map(|_| message)
+                Some(Ask {
+                    message,
+                    person: person && s.platform.senders.of(message).is_some(),
+                    records: s
+                        .authority
+                        .values
+                        .keys()
+                        .any(|key| key.starts_with(SESSION_MCP_SERVER_KV_PREFIX)),
+                })
             })
             .await
             .ok()
             .flatten()
     }
 
-    async fn ask(&self, message: MessageId) -> ScopedMcpServers {
-        let params = json!({
+    async fn ask(&self, ask: &Ask) -> ScopedMcpServers {
+        let mut params = json!({
             "session_id": self.session.to_string(),
-            "input_message_id": message.uuid().to_string(),
+            "session_servers": ask.records,
         });
+        if ask.person {
+            params["input_message_id"] = json!(ask.message.uuid().to_string());
+        }
         let answer = match self
             .lookups
             .execute_internal_command(USER_MCP_SERVERS, params)
@@ -221,15 +254,20 @@ impl TurnMcpServers for PersonServers {
         if session.id != self.session {
             return ScopedMcpServers::new();
         }
-        let Some(message) = self.open_turn().await else {
+        let Some(ask) = self.open_turn().await else {
             return ScopedMcpServers::new();
         };
+        if !ask.person && !ask.records {
+            TURNS.lock().remove(&self.session);
+            return ScopedMcpServers::new();
+        }
+        let message = ask.message;
         if let Some(turn) = TURNS.lock().get(&self.session)
             && turn.message == message
         {
             return turn.servers.clone();
         }
-        let mut servers = self.ask(message).await;
+        let mut servers = self.ask(&ask).await;
         let taken = crate::mcp::take_bindings(&mut servers);
         let grants = taken
             .per_turn

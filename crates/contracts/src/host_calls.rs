@@ -144,7 +144,9 @@ pub const USER_MCP_STORE: &str = "user_mcp_store";
 /// that signs in as the person with its OAuth provider, whose token is
 /// then [`MCP_CONNECTION_TOKEN`] per use. Its params name the session and
 /// `input_message_id: "open"`; the answer is `{"ok": servers}`, empty when
-/// the turn has no single person.
+/// the turn has no single person. With `session_servers: true` the answer
+/// also holds the session's own MCP records, which the control plane reads
+/// from the session's cell; then `input_message_id` may be left out.
 pub const USER_MCP_SERVERS: &str = "user_mcp_servers";
 
 const fn call(
@@ -200,10 +202,19 @@ pub const KNOWLEDGE: &str = "knowledge";
 pub const POPPY_CALL: &str = "poppy_call";
 
 /// The host calls any turn may make, whatever its agent's capabilities:
-/// the approval policy every tool call is checked against, and the egress
-/// grants every outbound request is. Every other call is declared by the
-/// capabilities that make it (`Capability::host_calls`).
-pub const TURN_CALLS: &[&str] = &[TOOL_APPROVAL_POLICY, EGRESS_GRANTS];
+/// the approval policy every tool call is checked against, the egress
+/// grants every outbound request is, and the session's own MCP records
+/// (chat-only servers, ARD MCP targets), which join any agent's turns as
+/// on v1: asked for resolved ([`USER_MCP_SERVERS`]), and a token per use
+/// for one that signs in as the person ([`MCP_CONNECTION_TOKEN`]). Every
+/// other call is declared by the capabilities that make it
+/// (`Capability::host_calls`).
+pub const TURN_CALLS: &[&str] = &[
+    TOOL_APPROVAL_POLICY,
+    EGRESS_GRANTS,
+    USER_MCP_SERVERS,
+    MCP_CONNECTION_TOKEN,
+];
 
 /// Every host call, by name.
 pub const HOST_CALLS: &[HostCall] = &[

@@ -474,7 +474,7 @@ impl SessionHosting for RaftHosting {
         } else {
             crate::memory::attach(backends, lookups.clone(), session, &memory)
         };
-        // The person's own MCP servers, in the control plane (`user_mcp.rs`).
+        // The person's own MCP servers and the session's MCP records (`user_mcp.rs`).
         let backends = crate::user_mcp::attach(
             backends,
             lookups,

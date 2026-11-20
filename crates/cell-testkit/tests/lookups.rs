@@ -613,6 +613,103 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
     assert_eq!(asked_for(USER_MCP_SERVERS).len(), 2);
 }
 
+/// The session's own MCP records (a server added to this chat only, an
+/// ARD MCP target) join any agent's turns, as on v1: a turn of a session
+/// with a record asks the control plane for them resolved, naming no
+/// person when nobody sent it; a session without one never asks.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sessions_own_mcp_servers_join_its_turns() {
+    use everruns_cell_testkit::stub_mcp;
+    const USER_MCP_SERVERS: &str = everruns_contracts::host_calls::USER_MCP_SERVERS;
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    let asked = || {
+        cp.lookups()
+            .into_iter()
+            .filter(|(_, c, _)| c == USER_MCP_SERVERS)
+            .map(|(_, _, params)| params)
+            .collect::<Vec<_>>()
+    };
+    cp.set_lookup(
+        USER_MCP_SERVERS,
+        HostCallAnswer::Value(json!({ "ok": {
+            "notes": { "url": stub_mcp::URL, "headers": { "Authorization": "Bearer chat-key" } },
+        }})),
+    );
+    // An agent without `user_mcp`.
+    let session = SessionId::new().to_string();
+    let definition = everruns_cell_testkit::definition("files").unwrap();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": session, "agent_ref": "files", "definition": definition }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+
+    // No record yet: the turn asks for nothing.
+    say_as(
+        &fleet,
+        &session,
+        MessageId::new(),
+        &uuid::Uuid::new_v4().to_string(),
+        "hello",
+    )
+    .await;
+    fleet.turns(&session, 1).await;
+    assert!(asked().is_empty(), "{:?}", asked());
+
+    // A record in the session's storage, as "this chat only" writes it.
+    let record = json!({
+        "name": "notes",
+        "server": { "url": stub_mcp::URL },
+        "source": { "type": "user_mcp" },
+    });
+    let (status, set) = support::org::command(
+        &fleet,
+        &cp,
+        ORG,
+        &session,
+        "storage",
+        json!({ "kind": "set_value", "key": "session_mcp:notes", "value": record.to_string() }),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{set}");
+    let message = MessageId::new();
+    say_as(
+        &fleet,
+        &session,
+        message,
+        &uuid::Uuid::new_v4().to_string(),
+        "mcp green tea",
+    )
+    .await;
+    fleet.turns(&session, 2).await;
+
+    let events = fleet.events(&session).await;
+    let asked = asked();
+    assert_eq!(asked.len(), 1, "{asked:?}\n{events:#?}");
+    assert_eq!(asked[0]["session_id"], json!(session));
+    assert_eq!(asked[0]["session_servers"], json!(true));
+    // Not a `user_mcp` agent: the person's servers are not asked for.
+    assert!(asked[0].get("input_message_id").is_none(), "{:?}", asked[0]);
+    assert!(
+        events.iter().any(
+            |e| e["type"] == "tool.completed" && e.to_string().contains("stub found green tea")
+        ),
+        "{events:#?}"
+    );
+    assert!(
+        stub_mcp::AUTHORIZATIONS
+            .lock()
+            .unwrap()
+            .contains(&"Bearer chat-key".to_owned())
+    );
+}
+
 /// A tool the client runs (the console's page tools, Console Chat on
 /// cells): the session's definition declares it, the turn parks on its
 /// call until the browser answers, and the answer reaches the model.
