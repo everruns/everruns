@@ -56,6 +56,9 @@ struct Ledger {
     org_events: Vec<(String, String)>,
     /// Tapped session events: `(org, session, event)`.
     events: Vec<(String, String, serde_json::Value)>,
+    /// Task transitions for webhooks: `(org, session, transition, task,
+    /// target urls)`.
+    task_transitions: Vec<TaskTransitionSeen>,
     /// Secrets the data plane refreshed: (org, secret id, revision).
     refreshed: Vec<(String, String, u64)>,
     /// Orgs whose lookups are answered: their data key and its id, and the
@@ -301,6 +304,12 @@ impl FakeCp {
 
     pub fn org_events(&self) -> Vec<(String, String)> {
         self.ledger.lock().org_events.clone()
+    }
+
+    /// The task transitions the cells put on the feed for webhooks, in
+    /// feed order.
+    pub fn task_transitions(&self) -> Vec<TaskTransitionSeen> {
+        self.ledger.lock().task_transitions.clone()
     }
 
     /// The session events the cells tapped onto the feed, in feed order.
@@ -558,6 +567,16 @@ async fn allowance(
     Ok(Json(answer))
 }
 
+/// A task transition the feed carried (`Record::TaskTransition`).
+#[derive(Debug, Clone)]
+pub struct TaskTransitionSeen {
+    pub org: String,
+    pub session: String,
+    pub transition: String,
+    pub task: serde_json::Value,
+    pub targets: Vec<everruns_contracts::dataplane::PushTarget>,
+}
+
 async fn feed(
     State(cp): State<FakeCp>,
     headers: axum::http::HeaderMap,
@@ -637,6 +656,18 @@ async fn feed(
                         .events
                         .push((record.org_id.clone(), session_id, event));
                 }
+                Record::TaskTransition {
+                    session_id,
+                    transition,
+                    task,
+                    targets,
+                } => ledger.task_transitions.push(TaskTransitionSeen {
+                    org: record.org_id.clone(),
+                    session: session_id,
+                    transition,
+                    task,
+                    targets,
+                }),
                 Record::Health { .. } | Record::Unknown => {}
             }
         }

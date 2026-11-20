@@ -62,6 +62,10 @@ pub struct Platform {
     /// Each task's message channel, oldest first.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub task_messages: BTreeMap<String, Vec<everruns_core::session_task::TaskMessage>>,
+    /// Each task's push configs made through the API, with their secrets
+    /// (`tasks.rs`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub task_push_configs: BTreeMap<String, Vec<crate::tasks::PushConfig>>,
     /// The latest run of each schedule with a spend cap: its message id
     /// and the schedule's id, so what the run costs is charged to it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -324,7 +328,19 @@ impl CellState {
             return crate::detach::apply(state, session, op, now_ms, changes);
         }
         if let Op::Task(op) = op {
-            return crate::tasks::apply(state, session, op, now_ms, seed, changes);
+            let org = state.tenant.clone();
+            let mut notices = Vec::new();
+            let response =
+                crate::tasks::apply(state, session, op, now_ms, seed, changes, &mut notices);
+            // A transition a webhook may want goes on the feed, in the state
+            // machine, so every replica decides the same (`tasks.rs`).
+            if let Some(org) = org {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                for record in notices {
+                    self.feed.push(index, &org, now_ms, record);
+                }
+            }
+            return response;
         }
         if let Op::Record { event_id, request } = op {
             return record(state, session, event_id, *request, changes);

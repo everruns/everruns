@@ -51,6 +51,7 @@ pub mod providers;
 pub mod sandboxes;
 pub mod session_plane;
 pub mod sessions;
+pub mod task_webhooks;
 pub mod tokens;
 pub mod user_mcp;
 pub mod warehouse;
@@ -89,6 +90,8 @@ pub struct ControlPlane {
     pub encryption: Option<Arc<EncryptionService>>,
     pub link: Link,
     pub http: reqwest::Client,
+    /// Delivers v2 tasks' webhooks (`task_webhooks.rs`); none drops them.
+    pub egress: Option<Arc<dyn everruns_core::EgressService>>,
 }
 
 impl ControlPlane {
@@ -102,7 +105,14 @@ impl ControlPlane {
             encryption,
             link,
             http: reqwest::Client::new(),
+            egress: None,
         }
+    }
+
+    /// With `egress` for the webhooks the feed asks for.
+    pub fn with_egress(mut self, egress: Arc<dyn everruns_core::EgressService>) -> Self {
+        self.egress = Some(egress);
+        self
     }
 
     /// For a request path (a session create, a provider edit): the link and
@@ -126,6 +136,7 @@ impl ControlPlane {
             encryption: encryption.clone(),
             link: link.clone(),
             http: http.clone(),
+            egress: None,
         }
     }
 

@@ -2181,6 +2181,26 @@ its definition was last published; a change reaches new chats with the
 next republish, within the ten-minute sweep (`crates/cell/src/user_mcp.rs`,
 `crates/server/src/domains/data_plane/user_mcp.rs`).
 
+**Parity, Phase B: Changes, git, chat MCP servers and task push configs
+(2026-11-19).** Four session routes answered "not available yet" on v2.
+Three are now served by the control plane against the session's cell, as
+the sandbox's lifecycle and storage are: the Changes tab
+(`/repositories`) reads the repositories in the sandbox the control plane
+pinned, after its state on the cell says it runs (a page view never starts
+one); `/git` keeps a session's commits in the control plane's history
+tables for both planes, and a commit takes the workspace from the cell in
+one snapshot (the `fs` command's `snapshot`, at most 64 MiB); and
+`/mcp-servers` lists and removes the chat-only MCP records in the session's
+storage on its cell. Task push configs are the cell's: they live beside the
+task, with their signing secrets, since the control plane's table refers
+to its own task rows. A transition a webhook may want goes on the feed
+(`Record::TaskTransition`) from the state machine, with the push configs
+that ask for it, and the control plane delivers it as it does a v1 task's,
+the org's task webhooks included (`data_plane/task_webhooks.rs`).
+Decision: delivery goes through the feed, the channel the control plane
+drains once per position, rather than from a cell, which has no outbound
+webhook path; it stays best-effort, as on v1.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
