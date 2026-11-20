@@ -150,11 +150,22 @@ impl Host for StandardHost {
         let manifest = package.manifest();
         let mut builder = Agent::builder();
         for tool in &manifest.tools {
-            let factory = self
-                .tools
-                .get(tool.name())
-                .ok_or_else(|| format!("this node has no tool {}", tool.name()))?;
-            builder = builder.tool(factory());
+            if let Some(factory) = self.tools.get(tool.name()) {
+                builder = builder.tool(factory());
+                continue;
+            }
+            // Decision: a declared tool this node has no code for is run by
+            // the client (the console's page tools, a session's own client
+            // tools); its calls park until the client answers. A package
+            // declares both kinds alike, so the node's registry decides.
+            let everruns_contracts::tool_types::ToolDefinition::ClientSide(client) = tool else {
+                return Err(format!("this node has no tool {}", tool.name()));
+            };
+            builder = builder.client_tool(
+                client.name.clone(),
+                client.description.clone(),
+                client.parameters.clone(),
+            );
         }
         let model = manifest
             .model
@@ -234,8 +245,10 @@ impl Host for StandardHost {
         };
         // An org's MCP servers get their credentials per call, from the
         // calling session's org (`mcp.rs`).
+        // A turn's person's own servers (`user_mcp.rs`) too.
         if let Some(orgs) = orgs
-            && !manifest.mcp_servers.is_empty()
+            && (!manifest.mcp_servers.is_empty()
+                || crate::user_mcp::user_mcp(&manifest.capabilities) == Some(true))
         {
             services = services.shared_mcp_auth(Arc::new(orgs.mcp.for_agent(bindings)));
         }

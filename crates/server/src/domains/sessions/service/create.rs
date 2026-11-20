@@ -601,8 +601,7 @@ impl SessionService {
         // the org's data plane (see `data_plane::sessions`).
         let data_plane = crate::domains::data_plane::ControlPlane::from_env(self.db.clone());
         let on_data_plane =
-            !crate::domains::data_plane::sessions::stays_on_control_plane(agent.as_ref())
-                && crate::domains::data_plane::sessions::on_data_plane(&data_plane, org_id).await?;
+            crate::domains::data_plane::sessions::on_data_plane(&data_plane, org_id).await?;
         let row = self.db.create_session(input).await?;
         let scoped_memory = ScopedMemoryContext {
             agent_id,

@@ -34,6 +34,9 @@
 //!   lookup acts as no one and asks again next time (fail closed).
 //! - A Slack action ([`SLACK_ACTION`]) runs as the bot of the endpoint the
 //!   session came through, resolved within the org; its token stays here.
+//! - The turn's person's own MCP servers ([`USER_MCP_STORE`],
+//!   [`USER_MCP_SERVERS`], `user_mcp.rs`) stay in the control plane, as
+//!   does a session's Memory ([`MEMORY_FILE`], `memory.rs`).
 //! - A v2 session's SQL databases are no call: they live in the session's
 //!   cell (data plane v2 parity, step 9).
 //! - Every answer, a refusal included, is sealed with the org's data key
@@ -50,6 +53,7 @@ use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
     ActsAs, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
+    USER_MCP_SERVERS, USER_MCP_STORE,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
 
@@ -109,6 +113,12 @@ async fn run(
             super::memory::answer(ctx, &params).await,
         )),
         SLACK_ACTION => Ok(HostCallAnswer::Value(slack_action(ctx, &params).await)),
+        USER_MCP_STORE => Ok(HostCallAnswer::Value(
+            super::user_mcp::store(ctx, &params).await,
+        )),
+        USER_MCP_SERVERS => Ok(HostCallAnswer::Value(
+            super::user_mcp::servers(ctx, &params).await,
+        )),
         _ => Ok(
             match crate::domains::common::dispatch(call.command, params, ctx).await {
                 Ok(json) => HostCallAnswer::Value(serde_json::from_str(&json)?),

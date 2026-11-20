@@ -177,7 +177,9 @@ fn chat_model() -> Model {
 struct FilesSim;
 
 /// The first words [`FilesSim`] plays.
-const FILES_COMMANDS: &[&str] = &["write", "read", "at", "ask", "later", "answer", "mcp", "sh"];
+const FILES_COMMANDS: &[&str] = &[
+    "write", "read", "at", "ask", "later", "answer", "mcp", "sh", "call",
+];
 
 #[async_trait::async_trait]
 impl everruns::ChatDriver for FilesSim {
@@ -228,6 +230,14 @@ impl everruns::ChatDriver for FilesSim {
                         json!({ "path": path, "content": content.unwrap_or_default() }),
                     ),
                     (Some("read"), Some(path), _) => call("read_file", json!({ "path": path })),
+                    // Any tool by name, its arguments as JSON (a client's own
+                    // tool, which the session declares).
+                    (Some("call"), Some(name), arguments) => call(
+                        name,
+                        arguments
+                            .and_then(|a| serde_json::from_str(a).ok())
+                            .unwrap_or_else(|| json!({})),
+                    ),
                     (Some("at"), Some(time), what) => call(
                         "create_schedule",
                         json!({ "scheduled_at": time, "description": what.unwrap_or("wake up") }),

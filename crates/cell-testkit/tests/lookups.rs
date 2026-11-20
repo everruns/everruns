@@ -481,3 +481,215 @@ async fn memory_files_are_read_from_the_control_plane() {
         .count();
     assert_eq!(before, after);
 }
+
+/// The person's own MCP servers (`user_mcp`, Console Chat on cells): a turn
+/// a person sent asks the control plane for their servers once, as that
+/// person, and the agent calls them with the person's key; a server that
+/// signs in as the person gets the person's token per use. A turn nobody
+/// sent never asks.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_persons_own_mcp_servers_join_their_turns() {
+    use everruns_cell_testkit::stub_mcp;
+    const USER_MCP_SERVERS: &str = everruns_contracts::host_calls::USER_MCP_SERVERS;
+    const MCP_TOKEN: &str = everruns_cell::mcp::MCP_CONNECTION_COMMAND;
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    let authorizations = || stub_mcp::AUTHORIZATIONS.lock().unwrap().clone();
+    let create = |session: &str| {
+        let mut definition = everruns_cell_testkit::definition("files").unwrap();
+        definition["capabilities"] = json!([{ "ref": "user_mcp" }]);
+        json!({ "id": session, "agent_ref": "chat", "definition": definition })
+    };
+    let asked_for = |command: &str| {
+        cp.lookups()
+            .into_iter()
+            .filter(|(_, c, _)| c == command)
+            .map(|(_, _, params)| params)
+            .collect::<Vec<_>>()
+    };
+
+    // A server with the person's own key.
+    cp.set_lookup(
+        USER_MCP_SERVERS,
+        HostCallAnswer::Value(json!({ "ok": {
+            "notes": { "url": stub_mcp::URL, "headers": { "Authorization": "Bearer person-key" } },
+        }})),
+    );
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &create(&session),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let person = uuid::Uuid::new_v4().to_string();
+    let theirs = MessageId::new();
+    say_as(&fleet, &session, theirs, &person, "mcp green tea").await;
+    fleet.turns(&session, 1).await;
+
+    let events = fleet.events(&session).await;
+    let asked = asked_for(USER_MCP_SERVERS);
+    assert_eq!(
+        asked.len(),
+        1,
+        "asked once for the turn: {asked:?}\n{events:#?}"
+    );
+    assert_eq!(asked[0]["session_id"], json!(session));
+    assert_eq!(
+        asked[0]["input_message_id"],
+        json!(theirs.uuid().to_string())
+    );
+    assert_eq!(asked[0]["acting_user"], json!(person));
+    let completed = events
+        .iter()
+        .find(|e| e["type"] == "tool.completed")
+        .unwrap_or_else(|| panic!("no tool call completed: {events:#?}"));
+    assert!(
+        completed.to_string().contains("stub found green tea"),
+        "{completed}"
+    );
+    assert!(
+        authorizations().contains(&"Bearer person-key".to_owned()),
+        "{:?}",
+        authorizations()
+    );
+
+    // A server that signs in as the person: its token per use, as them.
+    cp.set_lookup(
+        USER_MCP_SERVERS,
+        HostCallAnswer::Value(json!({ "ok": {
+            "notes": {
+                "url": stub_mcp::URL,
+                "auth_mode": "oauth",
+                "oauth_provider_id": "mcp_oauth_notes",
+                "actsAs": "user",
+            },
+        }})),
+    );
+    cp.set_lookup(MCP_TOKEN, HostCallAnswer::Value(json!("their-mcp-token")));
+    let second = MessageId::new();
+    say_as(&fleet, &session, second, &person, "mcp oolong").await;
+    fleet.turns(&session, 2).await;
+    assert_eq!(asked_for(USER_MCP_SERVERS).len(), 2);
+    let tokens = asked_for(MCP_TOKEN);
+    let events = fleet.events(&session).await;
+    let token = tokens
+        .last()
+        .unwrap_or_else(|| panic!("the token was never asked: {events:#?}"));
+    assert_eq!(token["provider"], json!("mcp_oauth_notes"));
+    assert_eq!(token["acts_as"], json!("user"));
+    assert_eq!(token["server_prefix"], json!("notes"));
+    assert_eq!(token["acting_user"], json!(person));
+    assert!(
+        authorizations().contains(&"Bearer their-mcp-token".to_owned()),
+        "{:?}",
+        authorizations()
+    );
+
+    // A message nobody sent (a channel's, a schedule's): no person, no call.
+    let mut replies = Vec::new();
+    let mut taken = false;
+    for base in fleet.bases() {
+        let reply = fleet
+            .http
+            .post(format!("{base}/cell/sessions/{session}/messages"))
+            .json(&json!({ "text": "mcp jasmine", "id": MessageId::new() }))
+            .send()
+            .await
+            .unwrap();
+        let body: serde_json::Value = reply.json().await.unwrap_or_default();
+        if body["reply"] == "ok" {
+            taken = true;
+            break;
+        }
+        replies.push(body);
+    }
+    assert!(taken, "no node took the message: {replies:?}");
+    fleet.turns(&session, 3).await;
+    assert_eq!(asked_for(USER_MCP_SERVERS).len(), 2);
+}
+
+/// A tool the client runs (the console's page tools, Console Chat on
+/// cells): the session's definition declares it, the turn parks on its
+/// call until the browser answers, and the answer reaches the model.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_side_tool_parks_until_the_client_answers() {
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    definition["tools"] = json!([{
+        "type": "client_side",
+        "name": "read_page",
+        "description": "Read the page beside Chat.",
+        "parameters": { "type": "object", "properties": { "binding": { "type": "string" } } },
+    }]);
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": session, "agent_ref": "chat", "definition": definition }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let person = uuid::Uuid::new_v4().to_string();
+    say_as(
+        &fleet,
+        &session,
+        MessageId::new(),
+        &person,
+        r#"call read_page {"binding":"draft"}"#,
+    )
+    .await;
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let call = loop {
+        let events = fleet.events(&session).await;
+        if let Some(asked) = events.iter().find(|e| e["type"] == "tool.call_requested") {
+            break asked["data"]["tool_calls"][0].clone();
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the turn never parked on the client's tool: {events:#?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
+    assert_eq!(call["name"], json!("read_page"), "{call}");
+    assert_eq!(call["arguments"]["binding"], json!("draft"), "{call}");
+
+    let answer = json!({
+        "command": uuid::Uuid::new_v4(),
+        "tool_results": [{ "tool_call_id": call["id"], "result": { "title": "Billing settings" } }],
+    });
+    let mut replies = Vec::new();
+    let mut taken = false;
+    for base in fleet.bases() {
+        let reply = fleet
+            .http
+            .post(format!("{base}/cell/sessions/{session}/tool-results"))
+            .json(&answer)
+            .send()
+            .await
+            .unwrap();
+        let body: serde_json::Value = reply.json().await.unwrap_or_default();
+        if body["reply"] == "ok" {
+            taken = true;
+            break;
+        }
+        replies.push(body);
+    }
+    assert!(taken, "no node took the answer: {replies:?}");
+    fleet.turns(&session, 1).await;
+    let events = fleet.events(&session).await;
+    let replied = events
+        .iter()
+        .filter(|e| e["type"] == "output.message.completed")
+        .any(|e| e.to_string().contains("Billing settings"));
+    assert!(replied, "the answer never reached the model: {events:#?}");
+}

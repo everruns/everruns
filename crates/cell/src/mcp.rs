@@ -380,7 +380,16 @@ impl OrgMcp {
                 credential.headers.insert(header.clone(), value);
             }
         }
-        if let Some(grant) = bindings.per_turn.get(request.server_name) {
+        // The agent's own grant, else the turn's person's own server's
+        // (`user_mcp.rs`), only at that server's address.
+        let person = || crate::user_mcp::grant(session, request.server_name, request.server_url);
+        if let Some(grant) = bindings
+            .per_turn
+            .get(request.server_name)
+            .cloned()
+            .or_else(person)
+            .as_ref()
+        {
             let started = Instant::now();
             let token = self
                 .per_turn_token(&material, &org, session, request.server_name, grant)

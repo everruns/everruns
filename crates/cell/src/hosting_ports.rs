@@ -1,5 +1,5 @@
-//! Engine's session record, session storage and compaction checkpoint
-//! ports over the cell. Split from `hosting.rs` for size.
+//! Engine's session record, session storage, compaction checkpoint and
+//! event log ports over the cell. Split from `hosting.rs` for size.
 
 use super::*;
 
@@ -337,5 +337,72 @@ impl CompactionCheckpointStore for Ports {
         })
         .await
         .map(|_| ())
+    }
+}
+
+#[async_trait]
+impl EventReader for Ports {
+    async fn read_page(
+        &self,
+        request: EventReadRequest,
+    ) -> std::result::Result<EventPage, EventLogError> {
+        let backend = |detail: String| EventLogError::Backend { detail };
+        self.scope(request.session_id())
+            .map_err(|e| backend(e.to_string()))?;
+        let after = request.cursor().map_or(0, |c| c.after_sequence());
+        let limit = request.limit().get();
+        let t = std::time::Instant::now();
+        let (events, high, partial) = self
+            .window(after, limit)
+            .await
+            .map_err(|e| backend(e.to_string()))?;
+        crate::prof::add("read_page", t, 1);
+        crate::prof::add(
+            "read_page_events",
+            std::time::Instant::now(),
+            events.len() as u64,
+        );
+        read_page_at(&events, request, high, partial)
+    }
+
+    async fn last_sequence(
+        &self,
+        session: SessionId,
+    ) -> std::result::Result<Option<i32>, EventLogError> {
+        if session != self.session {
+            return Ok(None);
+        }
+        let high = self
+            .inner
+            .read(session, |s| s.last_sequence().unwrap_or(0))
+            .await
+            .map_err(|e| EventLogError::Backend {
+                detail: e.to_string(),
+            })?;
+        let pending = self.pending_after(high);
+        Ok(Some(
+            pending
+                .last()
+                .and_then(|e| e.sequence)
+                .unwrap_or(high)
+                .max(high),
+        ))
+    }
+}
+
+#[async_trait]
+impl EventLog for Ports {
+    async fn append(&self, request: EventRequest) -> std::result::Result<Event, EventLogError> {
+        Ports::append(self, request, None).await
+    }
+    async fn append_conditional(
+        &self,
+        request: EventRequest,
+        expected: Option<i32>,
+    ) -> std::result::Result<Event, EventLogError> {
+        Ports::append(self, request, Some(expected)).await
+    }
+    fn durability(&self) -> EventDurability {
+        EventDurability::CrashDurable
     }
 }
