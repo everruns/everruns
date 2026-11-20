@@ -255,8 +255,10 @@ pub struct TriggerRun<'a> {
     pub key: Option<String>,
     pub text: &'a str,
     pub origin: &'a everruns_core::message::MessageOrigin,
-    /// The run is a saved script, which only the platform's workers run.
-    pub script: bool,
+    /// The saved script the run runs instead of the model (Shell Code Mode
+    /// D9), carried as the message's reserved script-run metadata; the
+    /// cell's turn runs it as a worker's does.
+    pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
 }
 
 impl TriggerRun<'_> {
@@ -267,11 +269,6 @@ impl TriggerRun<'_> {
         if !runs_on_data_plane(cp, self.org_id, self.session).await? {
             return Ok(false);
         }
-        if self.script {
-            return Err(CommandError::bad_request(
-                "Saved script triggers are not available for sessions on a data plane yet",
-            ));
-        }
         let message = match &self.key {
             Some(key) => MessageId::from_uuid(uuid::Uuid::new_v5(
                 &uuid::Uuid::NAMESPACE_OID,
@@ -279,7 +276,14 @@ impl TriggerRun<'_> {
             )),
             None => MessageId::new(),
         };
-        let body = serde_json::json!({ "id": message, "text": self.text, "origin": self.origin });
+        let mut body =
+            serde_json::json!({ "id": message, "text": self.text, "origin": self.origin });
+        if let Some(run) = self.script {
+            body["metadata"] = serde_json::json!({
+                everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY:
+                    serde_json::to_value(run).map_err(anyhow::Error::from)?,
+            });
+        }
         for_org(cp, self.org_id)
             .await?
             .session_command(

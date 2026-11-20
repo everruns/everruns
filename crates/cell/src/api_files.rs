@@ -144,7 +144,8 @@ pub enum FsOp {
         max_bytes: Option<usize>,
     },
     /// Every file with its content, for a git commit of the workspace
-    /// (the control plane's `/git/commit`, parity Phase B); refused when
+    /// (the control plane's `/git/commit`, parity Phase B) and a fork's
+    /// copy of the files; refused when
     /// the files add up to more than [`SNAPSHOT_MAX`].
     Snapshot,
 }
@@ -364,6 +365,7 @@ async fn run(
                     "path": path,
                     "encoding": entry.encoding,
                     "content": files.content(entry).await?.unwrap_or_default(),
+                    "readonly": entry.readonly,
                 }));
             }
             done(json!({ "files": out }))

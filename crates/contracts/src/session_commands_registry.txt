@@ -50,6 +50,6 @@ sandbox Record
 repositories Record
 git Record
 mcp-servers Record
-voice Gap
+voice Record
 messages/{id}/reactions Record
 messages/{id}/feedback Record

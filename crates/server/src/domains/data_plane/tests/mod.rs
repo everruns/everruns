@@ -37,6 +37,10 @@ struct Seen {
     messages: Vec<(String, String, Value)>,
     /// Other session commands: (session, command, body).
     commands: Vec<(String, String, Value)>,
+    /// A session's files as its cell's `snapshot` answers them.
+    files: std::collections::HashMap<String, Vec<Value>>,
+    /// Refuse a `snapshot` as too large, as a cell does past its limit.
+    snapshot_refused: bool,
 }
 
 type Stub = Arc<Mutex<Seen>>;
@@ -106,10 +110,34 @@ async fn stub() -> (String, Stub) {
                 .commands
                 .iter()
                 .any(|(s, c, _)| s == &session && c == "seed");
-        seen.commands.push((session, command.clone(), body));
-        Json(match command.as_str() {
-            "seed" => json!({ "seeded": first_seed }),
-            "fs" => json!({ "result": "ok" }),
+        seen.commands
+            .push((session.clone(), command.clone(), body.clone()));
+        let files = seen.files.get(&session).cloned().unwrap_or_default();
+        Json(match (command.as_str(), body["op"].as_str()) {
+            ("seed", _) => json!({ "seeded": first_seed }),
+            ("fs", Some("snapshot")) if seen.snapshot_refused => {
+                json!({ "result": "failed", "status": 413, "message": "too large" })
+            }
+            ("fs", Some("snapshot")) => {
+                json!({ "result": "done", "value": { "files": files } })
+            }
+            ("fs", Some("get")) => {
+                let mut data: Vec<Value> = files
+                    .iter()
+                    .map(|f| {
+                        json!({ "path": f["path"], "is_directory": false, "is_readonly": f["readonly"] })
+                    })
+                    .collect();
+                data.push(json!({ "path": "/dir", "is_directory": true, "is_readonly": false }));
+                json!({ "result": "done", "value": { "data": data } })
+            }
+            ("fs", Some("raw")) => match files.iter().find(|f| f["path"] == body["path"]) {
+                Some(f) => json!({ "result": "done", "value": {
+                    "name": "", "encoding": f["encoding"], "content": f["content"],
+                }}),
+                None => json!({ "result": "failed", "status": 404, "message": "File not found" }),
+            },
+            ("fs", _) => json!({ "result": "ok" }),
             _ => json!(true),
         })
     }
@@ -724,7 +752,7 @@ async fn a_v2_session_with_its_own_settings_runs_its_own_declaration() {
 
 /// An agent trigger's run on a v2 session goes to the data plane under the
 /// trigger's origin, with an id a retried dispatch repeats; a v1 session is
-/// left to the ordinary path, and a saved script is refused on v2.
+/// left to the ordinary path, and a saved script's run carries its script.
 #[tokio::test]
 async fn a_trigger_run_on_a_v2_session_goes_to_the_data_plane() {
     let (cp, seen, _) = control_plane().await;
@@ -737,7 +765,9 @@ async fn a_trigger_run_on_a_v2_session_goes_to_the_data_plane() {
     )
     .with_source_id("trigger_1".to_string())
     .with_name("Schedule");
-    let run = |script: bool| sessions::TriggerRun {
+    let script: everruns_contracts::runtime::saved_scripts::ScriptRun =
+        serde_json::from_value(json!({ "script": "triage" })).unwrap();
+    let run = |script| sessions::TriggerRun {
         org_id: ORG,
         session: id,
         key: Some("trigger_1:request_1".into()),
@@ -746,14 +776,14 @@ async fn a_trigger_run_on_a_v2_session_goes_to_the_data_plane() {
         script,
     };
     // Not on the data plane yet: the ordinary path takes it.
-    assert!(!run(false).admit(&cp).await.unwrap());
+    assert!(!run(None).admit(&cp).await.unwrap());
     assert!(seen.lock().messages.is_empty());
 
     sessions::created(&cp, ORG, id, harness, None, &[], None)
         .await
         .unwrap();
-    assert!(run(false).admit(&cp).await.unwrap());
-    assert!(run(false).admit(&cp).await.unwrap());
+    assert!(run(None).admit(&cp).await.unwrap());
+    assert!(run(None).admit(&cp).await.unwrap());
     {
         let seen = seen.lock();
         assert_eq!(seen.messages.len(), 2);
@@ -767,8 +797,14 @@ async fn a_trigger_run_on_a_v2_session_goes_to_the_data_plane() {
             "a retry repeats the id"
         );
     }
-    let refused = run(true).admit(&cp).await.unwrap_err();
-    assert_eq!(refused.status(), axum::http::StatusCode::BAD_REQUEST);
+    assert!(run(Some(&script)).admit(&cp).await.unwrap());
+    let seen = seen.lock();
+    let body = &seen.messages[2].2;
+    assert_eq!(
+        body["metadata"][everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY]["script"],
+        "triage",
+        "{body}"
+    );
 }
 
 /// An org's model provider reaches the data plane as a connection and a

@@ -968,6 +968,39 @@ impl Command for CancelSession {
         let session = q::get_session(ctx, session_id, None).await?;
         let strings = everruns_core::localization::cancellation_strings(session.locale.as_deref());
 
+        // A session on a data plane runs its turns on its cell, which
+        // cancels the one running (or answers no-op) and records its
+        // events; the control plane's status row does not follow it.
+        if let Some(plane) = crate::domains::data_plane::session_plane::SessionPlane::of(
+            &ctx.db,
+            ctx.org_id(),
+            session_id,
+        )
+        .await?
+        {
+            let reply = plane
+                .command(
+                    &everruns_contracts::session_commands::CANCEL_TURN,
+                    &serde_json::json!({ "command": uuid::Uuid::new_v4() }),
+                )
+                .await
+                .map_err(CommandError::internal)?;
+            let cancelled = reply["status"].as_str() == Some("cancelled");
+            return Ok(CancelTurnResponse {
+                status: if cancelled {
+                    CancelStatus::Cancelled
+                } else {
+                    CancelStatus::NoOp
+                },
+                message: if cancelled {
+                    strings.turn_cancelled
+                } else {
+                    strings.no_turn_running
+                }
+                .to_string(),
+            });
+        }
+
         if session.status != crate::domains::sessions::record::SessionStatus::Active {
             return Ok(CancelTurnResponse {
                 status: CancelStatus::NoOp,

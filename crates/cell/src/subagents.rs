@@ -46,6 +46,8 @@ use everruns_core::host::{HostBackends, SessionBuilder};
 use everruns_core::session::ExecutionSession;
 use everruns_core::{AgentDefinition, HarnessDefinition};
 
+use everruns_contracts::runtime::saved_scripts::SavedScripts;
+
 use crate::api::{Lookup, SessionView};
 use crate::gateway::Gateway;
 use crate::hosting::Port;
@@ -66,6 +68,15 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
     let calls = lookups
         .clone()
         .map(|lookups| crate::platform_calls::PlatformCalls::new(lookups, session));
+    // The shell's saved scripts (`saved_scripts.rs`). A save is allowed here
+    // and decided by the control plane, which reads the agent's shell
+    // settings and the turn's person.
+    let scripts = lookups.clone().map(|lookups| SavedScripts {
+        store: Arc::new(crate::saved_scripts::CellSavedScripts::new(
+            lookups, session,
+        )),
+        can_save: true,
+    });
     let bind = calls.is_some();
     let store: Arc<dyn PlatformStore> = Arc::new(CellPlatformStore {
         parent: session,
@@ -82,7 +93,7 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
     // The platform tools' calls run as the person of each turn's input
     // message (`platform_calls.rs`): bind the store to it.
     if bind {
-        let binding = Arc::new(crate::platform_calls::binding(store));
+        let binding = Arc::new(crate::platform_calls::binding(store, scripts.clone()));
         let inner = backends.tool_context_extensions_factory.take();
         backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
             let mut extensions = inner
@@ -90,6 +101,9 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
                 .map(|factory| factory(org, session))
                 .unwrap_or_default();
             extensions.insert(binding.clone());
+            if let Some(scripts) = &scripts {
+                extensions.insert(Arc::new(scripts.clone()));
+            }
             extensions
         }));
     }

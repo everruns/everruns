@@ -36,6 +36,7 @@ use serde_json::Value;
 
 use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 
+pub mod agent_scripts;
 pub mod allowances;
 pub mod attachments;
 pub mod catalog;

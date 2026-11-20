@@ -339,7 +339,14 @@ pub async fn end_call(
     ensure_voice_enabled(&org)?;
     let session_id = parse_session_id(&session_id)?;
     authorize_session(&state, &org, session_id).await?;
-    call::end(&state, session_id, &voice_connection_id, req.reason).await?;
+    call::end(
+        &state,
+        org.org_id,
+        session_id,
+        &voice_connection_id,
+        req.reason,
+    )
+    .await?;
     Ok(Json(VoiceEndResponse {
         voice_connection_id,
         status: "ended".to_string(),

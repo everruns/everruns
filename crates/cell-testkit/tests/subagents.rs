@@ -265,3 +265,81 @@ async fn an_org_subagent_is_recorded_and_its_push_secret_is_not_kept() {
         "the cell keeps no secret: {detail} {listed}"
     );
 }
+
+/// A trigger's saved-script run on a cell: the control plane admits the
+/// message with its script-run mark, the turn runs the script through the
+/// shell with no model call, and the shell reads the agent's scripts from
+/// the control plane by session.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_triggers_saved_script_runs_on_a_cell() {
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, support::org::DATA_KEY, support::org::DATA_KEY_ID);
+    cp.set_lookup(
+        "list_agent_scripts",
+        everruns_contracts::host_calls::HostCallAnswer::Value(serde_json::json!([{
+            "id": "scr_1",
+            "name": "triage",
+            "description": "Triage the queue",
+            "input_schema": null,
+            "body": "echo triaged-queue",
+        }])),
+    );
+    let ack = cp
+        .push_config(
+            &fleet.base(),
+            ORG,
+            &everruns_cell::dp::ConfigUpdate {
+                epoch: 1,
+                version: 2,
+                base_version: 1,
+                changes: vec![serde_json::json!({
+                    "kind": "Agent",
+                    "agent_id": "scripts",
+                    "revision": 1,
+                    "package": everruns_cell_testkit::definition("scripts").unwrap(),
+                })],
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(ack, everruns_cell::dp::ConfigAck::Ok { applied_version: 2 });
+    let session = everruns_contracts::typed_id::SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &serde_json::json!({ "id": session, "agent_ref": "scripts" }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let (status, admitted) = support::org::command(
+        &fleet,
+        &cp,
+        ORG,
+        &session,
+        "messages",
+        serde_json::json!({
+            "id": everruns_contracts::typed_id::MessageId::new(),
+            "text": "Run the triage script",
+            "metadata": {
+                everruns_contracts::runtime::saved_scripts::SCRIPT_RUN_METADATA_KEY:
+                    { "script": "triage" },
+            },
+        }),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{admitted}");
+    fleet.turns(&session, 1).await;
+
+    let events = serde_json::to_string(&fleet.events(&session).await).unwrap();
+    assert!(events.contains("triaged-queue"), "the script ran: {events}");
+    let listed: Vec<_> = cp
+        .lookups()
+        .into_iter()
+        .filter(|(_, command, _)| command == "list_agent_scripts")
+        .collect();
+    assert!(!listed.is_empty());
+    assert_eq!(listed[0].2["session_id"], session.as_str(), "{listed:?}");
+}

@@ -2,7 +2,9 @@
 //! `voice.*` events. Only sanitized metadata is stored.
 
 use super::*;
+use crate::domains::data_plane::session_plane::SessionPlane;
 use crate::kernel_imports::{LeasedResource, UpsertLeasedResource};
+use everruns_contracts::typed_id::EventId;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, VoiceOutputInterruptedData, VoiceSessionEndedData,
     VoiceSessionFailedData, VoiceSessionStartedData, VoiceTranscriptData,
@@ -83,12 +85,48 @@ pub(super) async fn release_lease(
         })
 }
 
-pub(super) async fn emit(state: &AppState, session_id: SessionId, data: impl Into<EventData>) {
-    if let Err(error) = state
-        .event_service
-        .emit(EventRequest::new(session_id, EventContext::empty(), data))
+/// The session's data plane, when it runs on one (data plane v2): its
+/// call's events are recorded there and its answers followed from there.
+pub(super) async fn plane(
+    state: &AppState,
+    org_id: i64,
+    session_id: SessionId,
+) -> Result<Option<Arc<SessionPlane>>, (StatusCode, Json<ErrorResponse>)> {
+    SessionPlane::of(&state.db, org_id, session_id)
         .await
-    {
+        .map(|plane| plane.map(Arc::new))
+        .map_err(|error| {
+            tracing::error!(error = %error, "failed to find the session's data plane");
+            ErrorResponse::internal_error()
+        })
+}
+
+/// Record a call's event on the session: in its log on its cell for a v2
+/// session (one of the cell's `RECORDABLE` events), else through the event
+/// service.
+pub(super) async fn emit(
+    state: &AppState,
+    plane: Option<&SessionPlane>,
+    session_id: SessionId,
+    data: impl Into<EventData>,
+) {
+    let request = EventRequest::new(session_id, EventContext::empty(), data);
+    let result = match plane {
+        Some(plane) => {
+            let body = serde_json::json!({ "event_id": EventId::new(), "event": request });
+            plane
+                .command(&everruns_contracts::session_commands::RECORD, &body)
+                .await
+                .map(|_| ())
+        }
+        None => state
+            .event_service
+            .emit(request)
+            .await
+            .map(|_| ())
+            .map_err(|error| anyhow::anyhow!(error.to_string())),
+    };
+    if let Err(error) = result {
         tracing::warn!(session_id = %session_id, error = %error, "failed to emit voice event");
     }
 }

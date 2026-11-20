@@ -1389,7 +1389,7 @@ pub(super) async fn dispatch_trigger_message(
             .map(|r| format!("{trigger_id}:{session_id}:{r}")),
         text: &rendered_message,
         origin: &origin,
-        script: script.is_some(),
+        script,
     };
     if run.admit(&message_service.data_plane()).await? {
         return Ok(());

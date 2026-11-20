@@ -828,6 +828,12 @@ pub fn definition(name: &str) -> Option<Value> {
             sandbox["capabilities"] = json!([local_sandbox::capability(0, 0)]);
             sandbox
         }
+        "scripts" => {
+            // The shell (`tools scripts`), for saved-script runs.
+            let mut scripts = agent("scripts", "Use the shell.", "files", &[]);
+            scripts["capabilities"] = json!([{ "ref": "shell_code_mode" }]);
+            scripts
+        }
         "lead" => {
             let mut lead = agent("lead", "Delegate, then report.", "lead", &["delegate"]);
             lead["agents"] = json!([definition("worker3")?]);

@@ -10,10 +10,9 @@
 //! - The parent's values and secrets are copied into the child's storage on
 //!   its cell; a secret is opened with the org's data key and sealed again
 //!   for the child, and the sandbox's state stays with the parent. Its
-//!   files, databases and compaction checkpoints are not yet: a workspace
-//!   fork comes with the workspace's tree in the object store (fs.md, step
-//!   8), and the fork starts without them until then (design.md records
-//!   it as a v2 difference).
+//!   files are copied as v1 copies a workspace: every file, from one
+//!   `snapshot` of the parent's files, or file by file when the workspace
+//!   is larger than a snapshot carries. Databases stay, as on v1.
 //! - Branching from a message stops where v1 stops: at the end of the turn
 //!   the message started, or at the message itself.
 
@@ -138,6 +137,7 @@ pub(crate) async fn seed_fork(
             .await
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     }
+    crate::domains::data_plane::moves::copy_files(parent, &child_plane).await?;
     Ok(fork_sequence)
 }
 

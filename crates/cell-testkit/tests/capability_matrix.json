@@ -186,6 +186,10 @@
       "leased_resource_release",
       "leased_resource_upsert"
     ],
+    "shell_code_mode": [
+      "agent_script_save",
+      "agent_scripts"
+    ],
     "skills": [
       "session_resource_register",
       "session_resources_list"
