@@ -911,7 +911,13 @@ async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     loop {
         let row = cp.dream_state(ORG, &job).unwrap();
-        if attempts(&row) >= 1 && row["due_at"].as_i64() > Some(0) {
+        // The fenced claim increments attempts and sets due_at before the
+        // runner reads Memory. Observe that effect, not just its admission.
+        let memory_reached = cp
+            .lookups()
+            .iter()
+            .any(|(_, name, params)| name == MEMORY_FILE && params["session_id"] == json!(session));
+        if attempts(&row) >= 1 && row["due_at"].as_i64() > Some(0) && memory_reached {
             break;
         }
         assert!(
