@@ -88,6 +88,7 @@ pub mod subagents;
 pub mod tasks;
 pub mod tenants;
 pub mod types;
+mod user_mcp;
 pub mod wal;
 
 pub use host::{Host, StandardHost};

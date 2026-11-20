@@ -34,6 +34,8 @@ pub const URL: &str = "https://93.184.216.34/stub-mcp";
 pub static CALLS: AtomicU64 = AtomicU64::new(0);
 /// `tools/call` requests the stub answered.
 pub static TOOL_CALLS: AtomicU64 = AtomicU64::new(0);
+/// The `Authorization` each `tools/call` came with, for tests.
+pub static AUTHORIZATIONS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// Answers [`URL`] itself and sends everything else on to `next`.
 pub struct StubMcpEgress {
@@ -86,6 +88,16 @@ impl StubMcpEgress {
             }),
             "tools/call" => {
                 TOOL_CALLS.fetch_add(1, Ordering::Relaxed);
+                if let Some((_, value)) = request
+                    .headers
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case("authorization"))
+                {
+                    AUTHORIZATIONS
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .push(value.clone());
+                }
                 tokio::time::sleep(self.delay).await;
                 let query = body["params"]["arguments"]["query"]
                     .as_str()

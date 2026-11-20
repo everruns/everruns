@@ -119,6 +119,54 @@ async fn custom_tools_export_schema_and_require_matching_binding() {
     );
 }
 
+/// A client-side tool travels with its package: the client runs it, so
+/// applying the package binds nothing and the agent still declares it.
+#[test]
+fn client_tools_travel_with_their_package() {
+    let parameters = json!({"type":"object","properties":{"binding":{"type":"string"}}});
+    let package = Agent::builder()
+        .name("page")
+        .instructions("Read the page")
+        .model(Model::simulated("ok"))
+        .client_tool(
+            "read_page",
+            "Read the page beside the chat.",
+            parameters.clone(),
+        )
+        .build()
+        .unwrap()
+        .to_package()
+        .unwrap();
+    let declared = |package: &AgentPackage| {
+        package
+            .manifest()
+            .tools
+            .iter()
+            .map(|tool| (tool.name().to_owned(), tool.parameters().clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(declared(&package), [("read_page".to_owned(), parameters)]);
+    // A package declares host-bound and client-run tools alike: the host
+    // says which, or the tool must be bound.
+    assert!(
+        package
+            .apply_to(Agent::builder().model(Model::simulated("ok")))
+            .is_err()
+    );
+    let rebuilt = package
+        .apply_to(Agent::builder().model(Model::simulated("ok")).client_tool(
+            "read_page",
+            "",
+            json!({"type":"object"}),
+        ))
+        .expect("a tool the host runs on the client needs no binding")
+        .build()
+        .unwrap()
+        .to_package()
+        .unwrap();
+    assert_eq!(declared(&rebuilt), declared(&package));
+}
+
 #[test]
 fn unknown_runtime_dependencies_fail() {
     let package = AgentPackage::parse(

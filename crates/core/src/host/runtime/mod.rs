@@ -873,6 +873,12 @@ impl InProcessRuntime {
             &self.host_composition.capability_registry(),
         );
         let explicit = crate::host::mcp::merge_session_scoped_servers(&harness, agent, session);
+        let contributed = match &self.extensions.hooks.turn_mcp_servers {
+            Some(host) => {
+                crate::merge_scoped_mcp_servers(&host.servers(session).await, &contributed)
+            }
+            None => contributed,
+        };
         crate::merge_scoped_mcp_servers(&contributed, &explicit)
     }
     /// Create a builder for the in-process runtime.

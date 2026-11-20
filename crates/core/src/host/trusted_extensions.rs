@@ -134,6 +134,23 @@ pub struct HookExtensions {
     /// The turn's MCP servers, served by the host in place of the agent's
     /// declared ones.
     pub mcp: Option<Arc<dyn HostMcp>>,
+    /// MCP servers the host adds to a turn, under the agent's own.
+    pub turn_mcp_servers: Option<Arc<dyn TurnMcpServers>>,
+}
+
+/// MCP servers a host adds to a session's turn, under its capabilities' and
+/// its harness, agent and session's own (a server of the same name there
+/// wins). Stability: experimental.
+///
+/// Decision: they join only the turn's resolution, never the session
+/// record, so a record written back (a session override, an MCP edit)
+/// cannot keep them: a data plane cell adds the turn's person's own servers
+/// this way, whose credentials are the person's and whose list changes with
+/// whoever sent the turn.
+#[async_trait]
+pub trait TurnMcpServers: Send + Sync {
+    /// The servers `session`'s turn running now adds; empty for none.
+    async fn servers(&self, session: &crate::session::ExecutionSession) -> crate::ScopedMcpServers;
 }
 
 /// MCP a trusted host serves: its own server registry, credentials, OAuth

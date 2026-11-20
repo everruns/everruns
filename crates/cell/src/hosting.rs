@@ -468,12 +468,20 @@ impl SessionHosting for RaftHosting {
             })
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
+        let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
         let backends = if memory.is_empty() {
             backends
         } else {
-            let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
-            crate::memory::attach(backends, lookups, session, &memory)
+            crate::memory::attach(backends, lookups.clone(), session, &memory)
         };
+        // The person's own MCP servers, in the control plane (`user_mcp.rs`).
+        let backends = crate::user_mcp::attach(
+            backends,
+            lookups,
+            Port(self.inner.clone()),
+            session,
+            &definition,
+        );
         let backends = attach_databases(backends, self.databases());
         Ok(match self.inner.sandboxes.get() {
             Some(sandboxes) => sandboxes.attach(session, backends, self.files()),
@@ -1397,73 +1405,6 @@ impl SessionEpoch for Ports {
         })
         .await
         .map(|_| ())
-    }
-}
-
-#[async_trait]
-impl EventReader for Ports {
-    async fn read_page(
-        &self,
-        request: EventReadRequest,
-    ) -> std::result::Result<EventPage, EventLogError> {
-        let backend = |detail: String| EventLogError::Backend { detail };
-        self.scope(request.session_id())
-            .map_err(|e| backend(e.to_string()))?;
-        let after = request.cursor().map_or(0, |c| c.after_sequence());
-        let limit = request.limit().get();
-        let t = std::time::Instant::now();
-        let (events, high, partial) = self
-            .window(after, limit)
-            .await
-            .map_err(|e| backend(e.to_string()))?;
-        crate::prof::add("read_page", t, 1);
-        crate::prof::add(
-            "read_page_events",
-            std::time::Instant::now(),
-            events.len() as u64,
-        );
-        read_page_at(&events, request, high, partial)
-    }
-
-    async fn last_sequence(
-        &self,
-        session: SessionId,
-    ) -> std::result::Result<Option<i32>, EventLogError> {
-        if session != self.session {
-            return Ok(None);
-        }
-        let high = self
-            .inner
-            .read(session, |s| s.last_sequence().unwrap_or(0))
-            .await
-            .map_err(|e| EventLogError::Backend {
-                detail: e.to_string(),
-            })?;
-        let pending = self.pending_after(high);
-        Ok(Some(
-            pending
-                .last()
-                .and_then(|e| e.sequence)
-                .unwrap_or(high)
-                .max(high),
-        ))
-    }
-}
-
-#[async_trait]
-impl EventLog for Ports {
-    async fn append(&self, request: EventRequest) -> std::result::Result<Event, EventLogError> {
-        Ports::append(self, request, None).await
-    }
-    async fn append_conditional(
-        &self,
-        request: EventRequest,
-        expected: Option<i32>,
-    ) -> std::result::Result<Event, EventLogError> {
-        Ports::append(self, request, Some(expected)).await
-    }
-    fn durability(&self) -> EventDurability {
-        EventDurability::CrashDurable
     }
 }
 

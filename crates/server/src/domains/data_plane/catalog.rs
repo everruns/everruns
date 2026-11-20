@@ -14,8 +14,9 @@
 //!   platform's ids for it and its harness, and the definitions the tools
 //!   read. A session runs the key's package, never the card.
 //! - Cards redact MCP credentials, as packages do.
-//! - The console's own Platform Chat agent stays out: it runs on the
-//!   control plane (`sessions::stays_on_control_plane`).
+//! - The console's own Platform Chat agent is in it too: its sessions run
+//!   on the data plane like any agent's (parity, Phase B), and its
+//!   coordination hands work to the same agent.
 //! - A deleted agent's keys leave the data plane's config, so no tool
 //!   starts it; its running sessions keep the revision they run.
 
@@ -43,7 +44,7 @@ pub async fn card(
         return Ok(None);
     };
     let harness_id = HarnessId::from_uuid(target.harness_id);
-    if row.harness_id != harness_id || super::sessions::stays_on_control_plane(Some(&row)) {
+    if row.harness_id != harness_id {
         return Ok(None);
     }
     let layers =
@@ -101,9 +102,6 @@ pub async fn agent_edited(cp: &ControlPlane, org_id: i64, agent_id: AgentId) -> 
     }
     match cp.db.get_agent(org_id, agent_id).await? {
         Some(row) if row.status != "deleted" => {
-            if super::sessions::stays_on_control_plane(Some(&row)) {
-                return Ok(());
-            }
             let (key, revision) = crate::domains::agent_definitions::key_for(
                 &cp.db,
                 org_id,

@@ -1,5 +1,6 @@
 //! Every test agent definition builds on the test host, and a definition
-//! naming what the host lacks is refused with a reason.
+//! naming what the host lacks is refused with a reason (a client-side tool
+//! excepted: the client runs it).
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -25,12 +26,22 @@ fn unknown_tools_and_providers_are_refused() {
     };
     assert!(error.contains("does not serve"), "{error}");
 
+    // A built-in tool comes through a capability, never by name.
     let mut definition = everruns_cell_testkit::definition("worker").unwrap();
-    definition["tools"][0]["name"] = "launch".into();
+    definition["tools"][0]["type"] = "builtin".into();
     let Err(error) = host.agent(&definition) else {
-        panic!("no such tool")
+        panic!("a built-in tool by name")
     };
-    assert!(error.contains("no tool launch"), "{error}");
+    assert!(
+        error.contains("built-in tools through capabilities"),
+        "{error}"
+    );
+
+    // A declared tool the node has no code for is the client's to run.
+    let mut definition = everruns_cell_testkit::definition("worker").unwrap();
+    definition["tools"][0]["name"] = "read_page".into();
+    host.agent(&definition)
+        .expect("a client-side tool needs no code on the node");
 }
 
 #[test]

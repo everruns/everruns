@@ -157,7 +157,7 @@ pub use org_egress_allowlist::{
 };
 pub use trusted_extensions::{
     AuthorityExtensions, CompositionExtensions, HookExtensions, HostExtensions, HostMcp, PerAgent,
-    PerInput, StoreExtensions, add_automatic_knowledge, automatic_knowledge,
+    PerInput, StoreExtensions, TurnMcpServers, add_automatic_knowledge, automatic_knowledge,
 };
 #[cfg(feature = "direct-egress")]
 pub use web_bot_auth::WebBotAuth;

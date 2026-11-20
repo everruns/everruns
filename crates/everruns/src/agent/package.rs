@@ -80,6 +80,13 @@ impl Agent {
                 }
             }
         }
+        // A client-side tool needs no host code: the client runs it.
+        m.tools.extend(
+            self.client_tools
+                .iter()
+                .cloned()
+                .map(everruns_contracts::tool_types::ToolDefinition::ClientSide),
+        );
         crate::AgentPackage::new(m)
     }
 }
@@ -142,6 +149,16 @@ impl AgentBuilder {
             self = self.capability(reference.clone());
         }
         for required in &m.tools {
+            // A package declares host-bound and client-run tools alike, so
+            // the host says which: one it declared with
+            // `AgentBuilder::client_tool` is run by the client and takes the
+            // package's full definition; any other must be bound here.
+            if let everruns_contracts::tool_types::ToolDefinition::ClientSide(tool) = required
+                && let Some(declared) = self.client_tools.iter_mut().find(|t| t.name == tool.name)
+            {
+                *declared = tool.clone();
+                continue;
+            }
             let bound = self
                 .tools
                 .iter()

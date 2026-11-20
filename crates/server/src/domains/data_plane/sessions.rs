@@ -47,13 +47,6 @@ pub async fn on_data_plane(cp: &ControlPlane, org_id: i64) -> anyhow::Result<boo
     Ok(cp.db.dp_org(org_id).await?.is_some())
 }
 
-/// Whether a session of `agent` runs on the control plane even in a v2
-/// org. The console's own Chat does: its page tools are the console's, and
-/// a data plane runs only the org's published agents (stage 1).
-pub fn stays_on_control_plane(agent: Option<&crate::storage::AgentRow>) -> bool {
-    agent.is_some_and(|a| a.is_built_in && a.name == crate::platform_chat_agent::NAME)
-}
-
 /// A session's own settings as a layer over its agent, or `None` when it
 /// has none. `capabilities` are the ones its creator named, not the
 /// resolved set the record stores; starter files go with the create

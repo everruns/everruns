@@ -53,6 +53,7 @@ pub mod session_plane;
 pub mod sessions;
 pub mod task_webhooks;
 pub mod tokens;
+pub mod user_mcp;
 pub mod warehouse;
 
 #[cfg(test)]

@@ -12,3 +12,5 @@ poppy_call v1 Org Write 10 Fail HostCall worker_poppy_call
 platform_command v1 Person Write 10 Fail HostCall platform_command_surface
 slack_action v1 ChannelBot Write 10 Fail HostCall slack_action
 memory_file v1 Org Write 10 Fail HostCall memory_file
+user_mcp_store v1 Person Write 10 Fail HostCall user_mcp_store
+user_mcp_servers v1 Person Read 10 Fail HostCall user_mcp_servers

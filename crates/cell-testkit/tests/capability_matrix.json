@@ -164,6 +164,11 @@
     "slack": [
       "slack_action"
     ],
+    "user_mcp": [
+      "mcp_connection_token",
+      "user_mcp_servers",
+      "user_mcp_store"
+    ],
     "web_search": [
       "connection_token",
       "web_search_key",
