@@ -5,8 +5,7 @@
 use super::*;
 use crate::domains::data_plane::user_mcp;
 use crate::domains::mcp_servers::user_servers::{AddUserMcpServerRequest, UserMcpServers};
-use crate::storage::CreateVirtualUserRow;
-use everruns_contracts::typed_id::{SessionId, VirtualUserId};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::McpServerAuthMode;
 
 /// The org's internal caller, as the route builds it.
@@ -33,37 +32,14 @@ fn server(name: &str, auth: McpServerAuthMode, api_key: Option<&str>) -> AddUser
 /// A Console Chat session whose turn `message` a person sent, the person
 /// with a server that takes their key and one they sign in to.
 async fn chat_turn(cp: &ControlPlane) -> (SessionId, uuid::Uuid) {
-    let harness = harness(&cp.db, ORG).await;
-    // The test database is shared: the org may have its Chat already.
-    let name = crate::platform_chat_agent::NAME;
-    let chat = match cp.db.get_agent_by_name(ORG, name).await.unwrap() {
-        Some(chat) => chat,
-        None => cp
-            .db
-            .create_agent(
-                ORG,
-                crate::platform_chat_agent::definition(
-                    harness,
-                    everruns_contracts::typed_id::AgentId::new(),
-                ),
-            )
-            .await
-            .unwrap(),
-    };
+    let chat = super::console_chat(cp).await;
+    // A member of the org, whose turns run as their default end user.
     let person = cp.db.create_test_user(uuid::Uuid::now_v7()).await;
     cp.db
-        .create_virtual_user(CreateVirtualUserRow {
-            org_id: ORG,
-            id: VirtualUserId::from_uuid(person),
-            usage: "end_user".to_string(),
-            name: "Alice".to_string(),
-            description: None,
-            avatar_url: None,
-            locale: None,
-            timezone: None,
-        })
+        .add_organization_member(ORG, person, "member")
         .await
         .unwrap();
+    let subject = cp.db.default_virtual_user(ORG, person).await.unwrap().id;
     let mut row = crate::storage::test_database::test_session_row(ORG);
     row.harness_id = Some(chat.harness_id);
     row.agent_id = Some(chat.id);
@@ -74,7 +50,7 @@ async fn chat_turn(cp: &ControlPlane) -> (SessionId, uuid::Uuid) {
             ORG,
             session,
             message,
-            Some(VirtualUserId::from_uuid(person)),
+            Some(subject),
             Some(person),
             Some(chat.id.uuid()),
         )
@@ -84,7 +60,7 @@ async fn chat_turn(cp: &ControlPlane) -> (SessionId, uuid::Uuid) {
         db: &cp.db,
         encryption: cp.encryption.as_deref(),
         org_id: ORG,
-        owner: person,
+        owner: subject.uuid(),
         egress: None,
     };
     theirs

@@ -839,6 +839,31 @@ async fn a_providers_key_travels_sealed_and_only_when_it_changed() {
     assert!(live.iter().all(|item| item.item_id != id), "{live:?}");
 }
 
+/// The org's console Chat, as `platform_chat_agent::initialize` makes it:
+/// its public id carries its own id, and it has the platform and the
+/// person's own MCP servers.
+async fn console_chat(cp: &ControlPlane) -> crate::storage::AgentRow {
+    let harness = harness(&cp.db, ORG).await;
+    let id = everruns_contracts::typed_id::AgentId::new();
+    let chat = cp
+        .db
+        .create_agent_with_id(ORG, id, crate::platform_chat_agent::definition(harness, id))
+        .await
+        .unwrap()
+        .expect("a new id");
+    cp.db
+        .set_agent_capabilities(
+            id.uuid(),
+            vec![
+                ("platform".into(), 0, json!({ "surface": "native" })),
+                ("user_mcp".into(), 1, json!({ "manage": true })),
+            ],
+        )
+        .await
+        .unwrap();
+    chat
+}
+
 /// The console's own Chat runs on the data plane in a v2 org (parity,
 /// Phase B): its declaration carries the page tools as tools the browser
 /// runs, with the platform tools, and it is in the org's catalog like any
@@ -847,23 +872,7 @@ async fn a_providers_key_travels_sealed_and_only_when_it_changed() {
 async fn the_consoles_chat_runs_on_the_data_plane_with_its_page_tools() {
     use everruns_contracts::tool_types::ToolDefinition;
     let (cp, _, _) = control_plane().await;
-    let harness = harness(&cp.db, ORG).await;
-    // The test database is shared: the org may have its Chat already.
-    let name = crate::platform_chat_agent::NAME;
-    let chat = match cp.db.get_agent_by_name(ORG, name).await.unwrap() {
-        Some(chat) => chat,
-        None => cp
-            .db
-            .create_agent(
-                ORG,
-                crate::platform_chat_agent::definition(
-                    harness,
-                    everruns_contracts::typed_id::AgentId::new(),
-                ),
-            )
-            .await
-            .unwrap(),
-    };
+    let chat = console_chat(&cp).await;
     let layers =
         crate::domains::agent_definitions::resolve(&cp.db, ORG, chat.harness_id, Some(chat.id))
             .await
