@@ -5,6 +5,23 @@ use everruns_contracts::typed_id::{AgentId, SessionId, TurnId};
 use serde_json::Value;
 use uuid::Uuid;
 
+#[derive(sqlx::FromRow)]
+struct PendingAgentView {
+    agent_id: Uuid,
+    settings_revision: i64,
+    agent_scope: bool,
+    started_at: DateTime<Utc>,
+    draft: Option<Value>,
+}
+
+#[derive(sqlx::FromRow)]
+pub(crate) struct PublishedAgentViewRow {
+    pub revision: i64,
+    pub definition: Value,
+    pub publication: Option<Value>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
 impl StorageBackend {
     pub(crate) async fn get_agent_view_settings(
         &self,
@@ -20,7 +37,7 @@ impl StorageBackend {
         )
         .bind(org_id)
         .bind(agent_id.to_string())
-        .fetch_optional(self.database().pool())
+        .fetch_optional(self.database().tx_pool())
         .await?)
     }
 
@@ -32,7 +49,7 @@ impl StorageBackend {
         expected_revision: i64,
         view: Option<Value>,
     ) -> Result<Option<i64>> {
-        let mut tx = self.database().pool().begin().await?;
+        let mut tx = self.database().tx_pool().begin().await?;
         let editable = sqlx::query_scalar::<_, bool>(
             "SELECT true FROM agents
              WHERE org_id = $1 AND id = $2 AND status = 'active' AND NOT is_built_in
@@ -93,7 +110,7 @@ impl StorageBackend {
             )",
         )
         .bind(org_id)
-        .fetch_one(self.database().pool())
+        .fetch_one(self.database().tx_pool())
         .await?)
     }
 
@@ -121,7 +138,7 @@ impl StorageBackend {
         .bind(agent_scope)
         .bind(started_at)
         .bind(agent.to_string())
-        .execute(self.database().pool())
+        .execute(self.database().tx_pool())
         .await?;
         Ok(())
     }
@@ -142,7 +159,7 @@ impl StorageBackend {
         .bind(turn.uuid())
         .bind(sequence)
         .bind(draft)
-        .execute(self.database().pool())
+        .execute(self.database().tx_pool())
         .await?;
         Ok(())
     }
@@ -153,8 +170,8 @@ impl StorageBackend {
         turn: TurnId,
         publish: impl FnOnce(Value, Value) -> Option<Value>,
     ) -> Result<()> {
-        let mut tx = self.database().pool().begin().await?;
-        let pending: Option<(Uuid, i64, bool, DateTime<Utc>, Option<Value>)> = sqlx::query_as(
+        let mut tx = self.database().tx_pool().begin().await?;
+        let pending = sqlx::query_as::<_, PendingAgentView>(
             "DELETE FROM agent_view_pending WHERE session_id = $1 AND turn_id = $2
              RETURNING agent_id, settings_revision, agent_scope, started_at, draft",
         )
@@ -163,7 +180,14 @@ impl StorageBackend {
         .fetch_optional(&mut *tx)
         .await?;
 
-        if let Some((agent, revision, agent_scope, started_at, Some(draft))) = pending {
+        if let Some(PendingAgentView {
+            agent_id: agent,
+            settings_revision: revision,
+            agent_scope,
+            started_at,
+            draft: Some(draft),
+        }) = pending
+        {
             let settings: Option<Value> = sqlx::query_scalar(
                 "SELECT view FROM agent_view_settings
                  WHERE agent_id = $1 AND revision = $2 AND view IS NOT NULL FOR SHARE",
@@ -186,7 +210,7 @@ impl StorageBackend {
                          < (EXCLUDED.started_at, EXCLUDED.turn_id)",
                 )
                 .bind(agent)
-                .bind((!agent_scope).then(|| session.uuid()))
+                .bind((!agent_scope).then_some(session.uuid()))
                 .bind(revision)
                 .bind(started_at)
                 .bind(turn.uuid())
@@ -205,9 +229,9 @@ impl StorageBackend {
         agent: AgentId,
         session: Option<SessionId>,
         agent_scope: bool,
-    ) -> Result<Option<(i64, Value, Option<Value>, Option<DateTime<Utc>>)>> {
+    ) -> Result<Option<PublishedAgentViewRow>> {
         Ok(sqlx::query_as(
-            "SELECT v.revision, v.view, snapshot.publication, snapshot.updated_at
+            "SELECT v.revision, v.view AS definition, snapshot.publication, snapshot.updated_at
              FROM agent_view_settings v
              JOIN agents a ON a.id = v.agent_id AND a.org_id = $1 AND a.status = 'active'
              LEFT JOIN LATERAL (
@@ -222,7 +246,7 @@ impl StorageBackend {
         .bind(agent.uuid())
         .bind(session.map(|id| id.uuid()))
         .bind(agent_scope)
-        .fetch_optional(self.database().pool())
+        .fetch_optional(self.database().tx_pool())
         .await?)
     }
 
@@ -241,7 +265,7 @@ impl StorageBackend {
         .bind(audience)
         .bind(viewer)
         .bind(revision)
-        .fetch_optional(self.database().pool())
+        .fetch_optional(self.database().tx_pool())
         .await?
         .flatten())
     }
@@ -268,7 +292,7 @@ impl StorageBackend {
         .bind(viewer)
         .bind(revision)
         .bind(layout)
-        .execute(self.database().pool())
+        .execute(self.database().tx_pool())
         .await?
         .rows_affected()
             > 0)

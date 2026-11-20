@@ -7690,7 +7690,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Read a published view from Platform Chat */
+    /**
+     * Read a published view from Platform Chat
+     * @description Read the published Agent view for a visible session or an authorized Agent reference.
+     */
     get: operations["get_session_agent_view"];
     /** Save a private layout for your view of this Agent */
     put: operations["set_session_agent_view_preference"];

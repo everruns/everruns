@@ -59,14 +59,16 @@ pub(crate) async fn read(
     viewer: Option<(&str, Uuid)>,
     agent_scope: bool,
 ) -> anyhow::Result<Option<PublishedAgentView>> {
-    let Some((revision, definition, publication, updated_at)) = db
+    let Some(row) = db
         .read_published_agent_view(org_id, agent, session, agent_scope)
         .await?
     else {
         return Ok(None);
     };
-    let definition: AgentViewDefinition = serde_json::from_value(definition)?;
-    let publication: Option<Publication> = publication.map(serde_json::from_value).transpose()?;
+    let revision = row.revision;
+    let definition: AgentViewDefinition = serde_json::from_value(row.definition)?;
+    let publication: Option<Publication> =
+        row.publication.map(serde_json::from_value).transpose()?;
     let (data, layout) = publication
         .map(|publication| (publication.data, publication.layout))
         .unwrap_or_default();
@@ -83,7 +85,7 @@ pub(crate) async fn read(
         title: definition.title,
         layout: layout.unwrap_or(definition.layout),
         allow_personalization: definition.allow_personalization,
-        updated_at,
+        updated_at: row.updated_at,
         data,
         personal_layout,
     }))
