@@ -23,6 +23,7 @@ tasks Cell
 schedules Cell
 work Cell
 resources Cell
+databases Cell
 archive Record
 pin Record
 cost Record
@@ -49,7 +50,6 @@ sandbox Record
 repositories Record
 git Record
 mcp-servers Record
-databases Gap
 voice Gap
 messages/{id}/reactions Record
 messages/{id}/feedback Record

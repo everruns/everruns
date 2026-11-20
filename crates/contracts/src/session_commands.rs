@@ -153,6 +153,8 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     ("schedules", Plane::Cell),
     ("work", Plane::Cell),
     ("resources", Plane::Cell),
+    // The session's SQL databases (parity step 9).
+    ("databases", Plane::Cell),
     // The record the control plane keeps for both planes.
     ("archive", Plane::Record),
     ("pin", Plane::Record),
@@ -195,7 +197,6 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     // The MCP servers added to one chat: records in the session's storage.
     ("mcp-servers", Plane::Record),
     // Known gaps (data plane v2 parity, Phase B).
-    ("databases", Plane::Gap),
     ("voice", Plane::Gap),
 ];
 
