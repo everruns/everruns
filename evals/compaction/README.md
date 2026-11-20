@@ -122,7 +122,39 @@ do not capture the full diversity of natural trajectories. Strict JSON/exact
 identifiers can fail on formatting despite a correct paraphrase; audit failures
 against retained transcripts before changing product behavior. Repeated trials
 provide stochastic evidence, not a universal reliability guarantee.
+The probes request JSON in text; they do not enable provider-enforced JSON-schema
+output.
 
 Saved Mira reports and the budget ledger are ignored by Git. Keep private
 production replay artifacts outside this public synthetic dataset and do not
 publish them through Mira or another result sink without authorization.
+
+## Qualification snapshot — 2026-11-20
+
+The [engine candidate](https://github.com/everruns/everruns/commit/da7f6c83cd38d8cd187bf0e6d1407aaf2fdaa8a6)
+fixed two observed failures: unsupported forced sampling on internal summaries,
+and Framework history search excluding tool-result bodies. Receipt recovery
+improved from 4/10 to 10/10 phase probes. Four additional trials moved the receipt
+to pages 23/24 and passed 20/20 probes, including original-source citations.
+
+The calibrated qualification passed factual, source-citation and checkpoint
+checks in all 12 cases. Overall **11/12** passed: one native task-pivot response
+returned correct facts and IDs with the wrong JSON shape. That format failure
+remains visible; its cause is not established.
+
+This qualification combines ten post-fix executions with two reruns of a
+clarified skill-authority question ([probe revision](https://github.com/everruns/everruns/commit/329b0f2c10cb37fb12af60021f88ff09bd7e475e)).
+The first post-fix full run scored 8/12 before grading calibration. Its strict results
+were retained: the bare `vendor_rule` field was ambiguous between quoted text
+and authority, equivalent verification wording was rejected, and a correct
+singular citation was classified as a missing source. Calibration separates
+these issues from memory loss; it does not change recorded responses or discard
+the output-schema failure. Only receipt recovery uses an unchanged before/after
+question. These small, correlated synthetic trials establish no SOTA ranking.
+
+Across calibration, diagnosis, qualification and holdouts, priced usage was
+**$19.4897**: $2.3191 provider-reported, $8.2381 estimated, and $8.9326 native
+usage priced at an upper bound. Final conservative holds were **$22.0707**,
+including a $0.64234 reservation for a rejected calibration attempt with no usage
+record. All 514 admitted attempts, including that rejection, share the same
+ledger. These figures are not invoice reconciliation.
