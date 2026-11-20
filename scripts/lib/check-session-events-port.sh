@@ -47,6 +47,7 @@ ALLOWED=(
   "domains/sessions/commands/mod.rs"          # reads after its own data plane branch
   "domains/sessions/service/fork.rs"          # v1 fork; fork_plane.rs forks a v2 session
   "domains/messages/service/mod.rs"           # v1 admission; a v2 session admits in its cell
+  "domains/data_plane/moves.rs"               # imports the v1 log of a session already switched to its cell
 )
 
 allowed() {

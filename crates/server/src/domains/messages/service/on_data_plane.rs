@@ -35,6 +35,14 @@ pub(super) async fn create(
     platform_metadata: Vec<(String, Value)>,
 ) -> Result<Message> {
     let session = SessionId::from_uuid(ctx.session_id);
+    // A v1 session moving onto its data plane takes messages again once its
+    // import is done (`data_plane::moves`).
+    if db.dp_session_moving(&session.to_string()).await? {
+        return Err(crate::errors::ConflictError::new(
+            "The session is moving to the data plane; send the message again in a moment",
+        )
+        .into());
+    }
     let content: Vec<ContentPart> = req
         .message
         .content
