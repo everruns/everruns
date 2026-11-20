@@ -1,6 +1,5 @@
 //! Helper models for `spawn_agent`'s subagent target: the `model` enum the
-//! spawning model sees, and how one spawn's key is chosen
-//! (knowledge/foundations/model-presets.md, "Helper models").
+//! spawning model sees, and how one spawn's key is chosen.
 
 use super::subagents::SpawnSubagentAsAgentTool;
 use everruns_core::ToolContext;
