@@ -251,6 +251,8 @@ pub use everruns_contracts::runtime::turn_agent;
 pub mod runtime_context;
 /// Deployment-owned decision checks, answered by the source the org picked.
 pub mod system_decisions;
+/// The models an agent's spawned subagents may run on.
+pub use everruns_contracts::runtime::helper_models;
 pub use everruns_contracts::runtime::session_files;
 pub use everruns_contracts::runtime::session_services;
 /// Narrow child-session delegation contract: core owns the host-neutral

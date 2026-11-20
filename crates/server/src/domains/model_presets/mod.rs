@@ -2,6 +2,7 @@
 
 pub mod builtin;
 pub mod commands;
+pub mod helper;
 pub mod service;
 pub mod types;
 

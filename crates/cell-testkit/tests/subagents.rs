@@ -82,6 +82,9 @@ async fn a_subagent_on_another_cell_answers_its_parent() {
         .get(&format!("/v1/sessions/{parent}/tasks/{id}"))
         .await;
     assert_eq!(detail["task"]["id"], id);
+    // No helper key named: the child runs on the parent's model (`same`).
+    assert_eq!(detail["task"]["spec"]["model"], "same", "{detail}");
+    assert_eq!(detail["task"]["spec"]["model_pick"], "default", "{detail}");
     let running = fleet
         .get(&format!("/v1/sessions/{parent}/tasks?state=running"))
         .await;

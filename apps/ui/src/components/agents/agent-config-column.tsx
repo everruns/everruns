@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useModelPresets } from "@/hooks/use-model-presets";
+import { HelperModelsSection } from "@/components/agents/helper-models-section";
 import { useOrganization } from "@/hooks/use-organizations";
 import { RESEARCH_MODEL_OPTION, agentModelId } from "@/lib/agent-model-role";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
@@ -235,6 +236,13 @@ export function AgentConfigColumn({
                 )}
               </span>
             </ChatChangeMark>
+
+            <HelperModelsSection
+              capabilities={draft.capabilities}
+              agentPreset={draft.fields.model_preset || undefined}
+              readOnly={readOnly}
+              onChange={edit(draft.setCapabilities)}
+            />
 
             <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
               <Label className="text-xs font-medium text-muted-foreground" htmlFor="communication">

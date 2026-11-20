@@ -72,6 +72,32 @@ REST (`/v1/model-presets`), MCP, the in-session platform capability and the
 are recorded in change history. The Models page shows presets on their own tab (Models, Presets,
 Providers, Defaults); the agent page's Model section picks "Models from".
 
+### Helper models
+
+An agent with the Subagents capability lists the models its subagents may run on as *helper
+keys* in that capability's config (`helper_models`, `helper_model_pick`; contract in
+`crates/contracts/src/runtime/helper_models.rs`). Built-ins: `same` (the parent's model),
+`fast` (Small job), `coding` (Coding job), `deep` (Research job) and `second_opinion` (Default
+job of the first provider preset whose provider differs from the parent's). Owners repoint,
+remove or add keys; a target is always a job, a preset job, an org model, or another provider's
+preset, never a raw model name, so the owner controls cost and which providers see the data.
+
+- `spawn_agent` gets `model`, an enum of the keys with their "when to use" lines, built when the
+  session starts. An unknown key is a tool error that lists the keys. Only `same` hides the field.
+- Who picks: the spawning model names a key (none means `same`), or on **Auto** the Decision
+  model reads the brief and picks; a missing or failing decision service keeps `same`.
+- The control plane resolves the key when it creates the child
+  (`crates/server/src/domains/model_presets/helper.rs`) and stores it as the child's session
+  model, so it sticks for follow-ups. `same` copies the person's explicit parent choice (session
+  model, else the latest message's model). Unusable targets leave the child on ordinary
+  resolution rather than failing the spawn.
+- Cells ask the same resolution over the `helper_model` host call and write the answer into the
+  child's definition; `same` copies the parent's definition model. Framework (local) runs every
+  key on the parent's model.
+- The task spec records `model`, `model_pick`, `model_pick_reason` and `model_id`; the session's
+  Subagents tab shows them as a chip. Hand-offs keep the member agent's own model. Fixed
+  blueprints refuse a key.
+
 ## Design Decisions
 
 | Decision | Why |
@@ -80,4 +106,6 @@ Providers, Defaults); the agent page's Model section picks "Models from".
 | Built-ins computed, not stored | Curated picks change with releases; a stored copy would go stale. |
 | Provider presets read only | They follow the curated picks; customizing means duplicating. |
 | Preset jobs fall through when empty | A custom preset can change one job and inherit the rest. |
+| Helper keys, not model names, at spawn | The owner decides cost and data exposure; the model only chooses among approved keys. |
+| Helper resolution on the control plane | One answer on every plane, inside the org's usable catalog. |
 | A preset is the simple form of a model router | One route per job, one model each. When routers ship, a job can point at a route. |

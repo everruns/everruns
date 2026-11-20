@@ -184,6 +184,23 @@ impl Command for CreateSession {
             .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
+        // A spawned subagent: resolve the helper key it asked for (`same`
+        // copies the person's explicit parent model). Hand-offs send none and
+        // keep the member agent's own model.
+        if req.model_id.is_none()
+            && let Some(helper) = req.helper_model.clone()
+            && let Some(parent_id) = req.parent_session_id
+            && let Some(parent) = ctx.db.get_session(ctx.org_id(), parent_id).await?
+        {
+            req.model_id = crate::domains::model_presets::helper::resolve(
+                &ctx.db,
+                ctx.org_id(),
+                &parent,
+                &helper,
+            )
+            .await?;
+        }
+
         if let Some(model_id) = req.model_id {
             ctx.db
                 .get_model(ctx.org_id(), model_id.uuid())

@@ -835,6 +835,7 @@ async fn start_thread(
                 "start_thread",
                 &format!("start thread \"{title}\""),
             ),
+            helper_model: None,
         })
         .await
         .map_err(ToolExecutionResult::internal_error)?;
