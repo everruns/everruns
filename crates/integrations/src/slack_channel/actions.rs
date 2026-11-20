@@ -1,7 +1,7 @@
 //! Slack vendor operations shared by Server and application-owned Framework bots.
 use super::markdown::{markdown_block, neutralize_broadcasts};
 use super::web_api::{SlackApiError, parse_retry_after, slack_api_call};
-use everruns_contracts::slack_action::{SlackActionError, SlackActionOutcome};
+use everruns_contracts::slack_action::{SlackActionError, SlackActionOutcome, SlackFile};
 use serde_json::{Value, json};
 use tracing::warn;
 // THREAT[TM-DOS-031]: validate at the vendor seam as well as in model-facing tool arguments.
@@ -230,6 +230,49 @@ pub async fn upload_file(
         payload["thread_ts"] = json!(thread_ts);
     }
     complete_upload(api_base, bot_token, payload, file_id).await
+}
+
+/// Share the files of a message whose text Slack already accepted, into the
+/// same conversation, in order.
+///
+/// The text is posted first because it carries the message reference later
+/// edits need, and reads naturally above what it introduces. A failure here
+/// is therefore partial delivery, reported as a rejection that says so: a
+/// blind retry of the whole message would post the text twice.
+pub async fn share_message_files(
+    api_base: &str,
+    bot_token: &str,
+    channel: &str,
+    thread_ts: Option<&str>,
+    files: Vec<SlackFile>,
+) -> Result<(), SlackActionError> {
+    let total = files.len();
+    for (index, file) in files.into_iter().enumerate() {
+        let filename = file.filename.clone();
+        if let Err(error) = upload_file(
+            api_base,
+            bot_token,
+            channel,
+            thread_ts,
+            &file.filename,
+            file.content,
+            None,
+        )
+        .await
+        {
+            let reason = match &error {
+                SlackActionError::Rejected(message) if message.contains("missing_scope") => {
+                    "the Slack app lacks files:write; reconnect it to approve file uploads"
+                        .to_string()
+                }
+                other => other.to_string(),
+            };
+            return Err(SlackActionError::Rejected(format!(
+                "The message text was posted, and {index} of {total} files, but {filename} was not: {reason}. Do not resend the text."
+            )));
+        }
+    }
+    Ok(())
 }
 
 async fn complete_upload(

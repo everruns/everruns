@@ -133,6 +133,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Desktop recording": "桌面录音",
   "Desktop recording {value0}": "桌面录音 {value0}",
   "Desktop recordings of this turn": "本回合桌面录音",
+  "Files sent with this message": "随此消息发送的文件",
   "Detail:": "详情：",
   "Details and raw": "详细信息和原始信息",
   "Details and raw response": "详细信息和原始响应",

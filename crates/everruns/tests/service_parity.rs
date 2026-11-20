@@ -206,7 +206,7 @@ async fn slack_native_actions_use_shared_operations_and_keep_credentials_out_of_
         ("slack_lookup_user", json!({"user_id":"U1"})),
         (
             "slack_upload_file",
-            json!({"channel":"C1","thread_ts":"1.0","filename":"note.txt","content":"Hello"}),
+            json!({"filename":"note.txt","content":"Hello"}),
         ),
         (
             "slack_add_reaction",

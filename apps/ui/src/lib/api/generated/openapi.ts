@@ -13690,6 +13690,8 @@ export interface components {
      */
     ConversationMessageData: {
       delivery?: components["schemas"]["ConversationDelivery"] | null;
+      /** @description Session paths of the files delivered with the message, in order. */
+      files?: string[];
       /**
        * @description Identifier of this sent message, for later references (edits, replies).
        * @example message_550e8400e29b41d4a716446655440000

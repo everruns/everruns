@@ -37,7 +37,7 @@ use tracing::{debug, warn};
 use crate::storage::{EncryptionService, StorageBackend};
 pub(super) use everruns_integrations::slack_channel::actions::action_error;
 use everruns_integrations::slack_channel::actions::{
-    add_reaction, lookup_user, update_message, upload_file,
+    add_reaction, lookup_user, share_message_files, update_message, upload_file,
 };
 use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, slack_api_call};
 
@@ -212,8 +212,9 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 input_message_id,
                 tool_call_id,
                 text,
+                files,
             } => {
-                post_message::post_message(
+                let outcome = post_message::post_message(
                     &self.api_base,
                     self.session_id,
                     &context,
@@ -221,7 +222,14 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                     tool_call_id,
                     text,
                 )
-                .await?
+                .await?;
+                if !files.is_empty() {
+                    // Same trusted conversation the text just went to.
+                    let thread = Some(context.thread_ts.as_str()).filter(|ts| !ts.is_empty());
+                    share_message_files(&self.api_base, bot_token, &context.channel, thread, files)
+                        .await?;
+                }
+                outcome
             }
             SlackAction::AddReaction {
                 channel,
@@ -275,8 +283,20 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 content,
                 initial_comment,
             } => {
-                context.authorize_channel(&channel)?;
-                context.authorize_thread(thread_ts.as_deref())?;
+                // THREAT[TM-SLACK-005]: no channel means the session's own
+                // conversation, read from trusted ingress; a named one must
+                // match it.
+                let (channel, thread_ts) = match channel {
+                    None => (
+                        context.channel.clone(),
+                        Some(context.thread_ts.clone()).filter(|ts| !ts.is_empty()),
+                    ),
+                    Some(channel) => {
+                        context.authorize_channel(&channel)?;
+                        context.authorize_thread(thread_ts.as_deref())?;
+                        (channel, thread_ts)
+                    }
+                };
                 upload_file(
                     &self.api_base,
                     bot_token,
@@ -1101,7 +1121,7 @@ mod tests {
             .invoker(ORG, session_id)
             .with_api_base("http://127.0.0.1:1".to_string())
             .invoke(SlackAction::UploadFile {
-                channel: "C1".to_string(),
+                channel: Some("C1".to_string()),
                 thread_ts: Some("1.2".to_string()),
                 filename: "empty.txt".to_string(),
                 content: Vec::new(),
@@ -1154,7 +1174,7 @@ mod tests {
             .invoker(ORG, session_id)
             .with_api_base(server.uri())
             .invoke(SlackAction::UploadFile {
-                channel: "C1".to_string(),
+                channel: Some("C1".to_string()),
                 thread_ts: Some("1.2".to_string()),
                 filename: "report.md".to_string(),
                 content: b"hello".to_vec(),
@@ -1185,7 +1205,7 @@ mod tests {
             .invoker(ORG, session_id)
             .with_api_base(server.uri())
             .invoke(SlackAction::UploadFile {
-                channel: "C1".to_string(),
+                channel: Some("C1".to_string()),
                 thread_ts: None,
                 filename: "report.md".to_string(),
                 content: b"hello".to_vec(),
@@ -1230,7 +1250,7 @@ mod tests {
             .invoker(ORG, session_id)
             .with_api_base(server.uri())
             .invoke(SlackAction::UploadFile {
-                channel: "C1".to_string(),
+                channel: Some("C1".to_string()),
                 thread_ts: Some("1.2".to_string()),
                 filename: "report.md".to_string(),
                 content: b"hello".to_vec(),

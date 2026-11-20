@@ -137,6 +137,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Desktop recording": "Enregistrement sur le bureau",
   "Desktop recording {value0}": "Enregistrement de bureau {value0}",
   "Desktop recordings of this turn": "Enregistrements de bureau de ce tour",
+  "Files sent with this message": "Fichiers envoyés avec ce message",
   "Detail:": "Détail :",
   "Details and raw": "Détails et bruts",
   "Details and raw response": "Détails et réponse brute",

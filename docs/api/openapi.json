@@ -44799,6 +44799,13 @@
               }
             ]
           },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Session paths of the files delivered with the message, in order."
+          },
           "message_id": {
             "type": "string",
             "description": "Identifier of this sent message, for later references (edits, replies).",

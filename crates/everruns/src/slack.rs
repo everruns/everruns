@@ -124,9 +124,14 @@ impl SlackActionInvoker for SlackActions {
                 content,
                 initial_comment,
             } => {
+                let expected = (!self.thread.is_empty()).then_some(self.thread.clone());
+                // No channel: this binding's own conversation.
+                let (channel, thread_ts) = match channel {
+                    None => (self.channel.clone(), expected.clone()),
+                    Some(channel) => (channel, thread_ts),
+                };
                 self.authorize(&channel)?;
-                let expected = (!self.thread.is_empty()).then_some(self.thread.as_str());
-                if thread_ts.as_deref() != expected {
+                if thread_ts != expected {
                     return Err(SlackActionError::InvalidArgument(
                         "Slack upload targets a different thread".into(),
                     ));
@@ -146,6 +151,7 @@ impl SlackActionInvoker for SlackActions {
                 input_message_id,
                 tool_call_id,
                 text,
+                files,
             } => {
                 self.authorize(&self.channel)?;
                 let id = uuid::Uuid::new_v5(
@@ -162,9 +168,21 @@ impl SlackActionInvoker for SlackActions {
                 let timestamp = result["ts"].as_str().ok_or_else(|| {
                     SlackActionError::Transient("Slack did not return a message timestamp".into())
                 })?;
+                let timestamp = timestamp.to_string();
+                if !files.is_empty() {
+                    let thread = (!self.thread.is_empty()).then_some(self.thread.as_str());
+                    actions::share_message_files(
+                        &self.api_base,
+                        &self.token,
+                        &self.channel,
+                        thread,
+                        files,
+                    )
+                    .await?;
+                }
                 Ok(SlackActionOutcome::MessagePosted {
                     channel: self.channel.clone(),
-                    timestamp: timestamp.into(),
+                    timestamp,
                 })
             }
         }

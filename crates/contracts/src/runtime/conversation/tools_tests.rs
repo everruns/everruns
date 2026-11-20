@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 struct RecordingSender {
     sends: Mutex<Vec<(String, MessageId, String)>>,
+    files: Mutex<Vec<OutgoingFile>>,
     outcome: Outcome,
 }
 
@@ -18,6 +19,7 @@ impl RecordingSender {
     fn new(outcome: Outcome) -> Arc<Self> {
         Arc::new(Self {
             sends: Mutex::new(vec![]),
+            files: Mutex::new(vec![]),
             outcome,
         })
     }
@@ -28,9 +30,11 @@ impl ConversationSender for RecordingSender {
     async fn send(
         &self,
         text: &str,
+        files: &[OutgoingFile],
         input: MessageId,
         call: &str,
     ) -> Result<Option<ConversationDelivery>, ToolExecutionResult> {
+        self.files.lock().unwrap().extend_from_slice(files);
         match self.outcome {
             Outcome::Refused => Err(ToolExecutionResult::tool_error("channel refused")),
             Outcome::NotExternal => Ok(None),
@@ -244,4 +248,178 @@ fn narration_previews_the_message_in_each_phase_and_locale() {
             Some(expected)
         );
     }
+}
+
+/// Read-only session files for the `files` argument: path to (content, encoding).
+struct Files(Vec<(&'static str, &'static str, &'static str)>);
+
+#[async_trait]
+impl crate::runtime::session_files::SessionFileSystem for Files {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+    async fn read_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> crate::runtime::error::Result<Option<crate::runtime::session_file::SessionFile>> {
+        Ok(self
+            .0
+            .iter()
+            .find(|(p, _, _)| *p == path || p.starts_with(&format!("{path}/")))
+            .map(|(p, content, encoding)| {
+                let is_directory = *p != path;
+                crate::runtime::session_file::SessionFile {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.uuid(),
+                    path: path.into(),
+                    name: path.rsplit('/').next().unwrap_or(path).into(),
+                    content: (!is_directory).then(|| content.to_string()),
+                    encoding: encoding.to_string(),
+                    is_directory,
+                    is_readonly: false,
+                    size_bytes: content.len() as i64,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }
+            }))
+    }
+    async fn write_file(
+        &self,
+        _: SessionId,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> crate::runtime::error::Result<crate::runtime::session_file::SessionFile> {
+        unreachable!("send_message never writes")
+    }
+    async fn delete_file(
+        &self,
+        _: SessionId,
+        _: &str,
+        _: bool,
+    ) -> crate::runtime::error::Result<bool> {
+        unreachable!("send_message never deletes")
+    }
+    async fn list_directory(
+        &self,
+        _: SessionId,
+        _: &str,
+    ) -> crate::runtime::error::Result<Vec<crate::runtime::session_file::FileInfo>> {
+        unreachable!("send_message never lists")
+    }
+    async fn stat_file(
+        &self,
+        _: SessionId,
+        _: &str,
+    ) -> crate::runtime::error::Result<Option<crate::runtime::session_file::FileStat>> {
+        unreachable!("send_message reads, it does not stat")
+    }
+    async fn grep_files(
+        &self,
+        _: SessionId,
+        _: &str,
+        _: Option<&str>,
+    ) -> crate::runtime::error::Result<Vec<crate::runtime::session_file::GrepMatch>> {
+        unreachable!("send_message never searches")
+    }
+    async fn create_directory(
+        &self,
+        _: SessionId,
+        _: &str,
+    ) -> crate::runtime::error::Result<crate::runtime::session_file::FileInfo> {
+        unreachable!("send_message never creates directories")
+    }
+}
+
+fn with_files(mut ctx: ToolContext) -> ToolContext {
+    ctx.file_store = Some(Arc::new(Files(vec![
+        ("/out/chart.png", "iVBORw==", "base64"),
+        ("/out/notes.md", "# Notes", "utf-8"),
+        ("/out/empty.txt", "", "utf-8"),
+        ("/out/dir/inner.txt", "x", "utf-8"),
+    ])));
+    ctx
+}
+
+#[tokio::test]
+async fn files_are_read_from_the_session_and_delivered_with_the_text() {
+    let sender = RecordingSender::new(Outcome::Delivered);
+    let ctx = with_files(context(Some(sender.clone())));
+    let args = json!({"text":"Here you go", "files":["/out/chart.png", "/out/notes.md"]});
+    let ToolExecutionResult::Success(value) = send(args.clone(), &ctx).await else {
+        panic!("send failed");
+    };
+    assert_eq!(value["files"], json!(["/out/chart.png", "/out/notes.md"]));
+    assert_eq!(
+        *sender.files.lock().unwrap(),
+        vec![
+            OutgoingFile {
+                path: "/out/chart.png".into(),
+                filename: "chart.png".into(),
+                content: b"\x89PNG".to_vec(),
+            },
+            OutgoingFile {
+                path: "/out/notes.md".into(),
+                filename: "notes.md".into(),
+                content: b"# Notes".to_vec(),
+            },
+        ]
+    );
+    let sent = sent_message(SEND_MESSAGE_TOOL_NAME, "call-1", &args, Some(&value)).unwrap();
+    assert_eq!(sent.files, vec!["/out/chart.png", "/out/notes.md"]);
+}
+
+#[tokio::test]
+async fn files_are_recorded_when_the_session_is_the_conversation() {
+    let ctx = with_files(context(None));
+    let ToolExecutionResult::Success(value) =
+        send(json!({"text":"Chart", "files":["/out/chart.png"]}), &ctx).await
+    else {
+        panic!("send failed");
+    };
+    assert_eq!(value["files"], json!(["/out/chart.png"]));
+    assert!(value.get("delivery").is_none());
+}
+
+#[tokio::test]
+async fn a_bad_file_sends_nothing() {
+    let sender = RecordingSender::new(Outcome::Delivered);
+    let too_many: Vec<String> = (0..=MAX_MESSAGE_FILES).map(|i| format!("/f{i}")).collect();
+    for files in [
+        json!(["/out/missing.png"]),
+        json!(["/out/empty.txt"]),
+        json!(["/out/dir"]),
+        json!(["/out/chart.png", "/out/chart.png"]),
+        json!([""]),
+        json!(too_many),
+    ] {
+        let ctx = with_files(context(Some(sender.clone())));
+        let result = send(json!({"text":"hi", "files": files}), &ctx).await;
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(_)),
+            "{files}: {result:?}"
+        );
+    }
+    // Without session storage, files cannot be read at all.
+    let ctx = context(Some(sender.clone()));
+    let result = send(json!({"text":"hi", "files":["/out/chart.png"]}), &ctx).await;
+    assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+    assert!(sender.sends.lock().unwrap().is_empty());
+    assert!(sender.files.lock().unwrap().is_empty());
+}
+
+#[test]
+fn files_are_omitted_from_a_text_only_message() {
+    let ok = json!({"sent": true, "message_id": MessageId::new()});
+    let sent = sent_message(
+        SEND_MESSAGE_TOOL_NAME,
+        "c",
+        &json!({"text":"hi"}),
+        Some(&ok),
+    )
+    .unwrap();
+    assert!(sent.files.is_empty());
+    let serialized = serde_json::to_value(&sent).unwrap();
+    assert!(serialized.get("files").is_none(), "{serialized}");
 }

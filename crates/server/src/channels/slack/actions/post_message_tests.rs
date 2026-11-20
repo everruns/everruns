@@ -124,6 +124,7 @@ async fn answer_goes_to_the_thread_of_the_message_that_steered_the_turn() {
             input_message_id: turn_input.to_string(),
             tool_call_id: "call-1".into(),
             text: "hello".into(),
+            files: vec![],
         })
     };
     // A second question steers the running turn; the answer belongs under it.
@@ -164,6 +165,7 @@ async fn untrusted_missing_and_sibling_endpoint_inputs_cannot_authorize_posts() 
                 input_message_id: id.to_string(),
                 tool_call_id: "call-1".into(),
                 text: "hello".into(),
+                files: vec![],
             })
             .await;
         assert!(matches!(result, Err(SlackActionError::NoSlackSession)));
@@ -196,6 +198,7 @@ async fn posting_reports_rate_limits_and_does_not_blindly_retry_uncertain_sends(
                 input_message_id: message.to_string(),
                 tool_call_id: "call-1".into(),
                 text: "hello".into(),
+                files: vec![],
             })
             .await;
         if expected_rate_limit {
@@ -301,6 +304,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
             input_message_id: message.id.to_string(),
             tool_call_id: "resume-call".into(),
             text: "Continuing".into(),
+            files: vec![],
         })
         .await
         .unwrap();
@@ -385,6 +389,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
         input_message_id: message.to_string(),
         tool_call_id: "native-call".into(),
         text: "Hello".into(),
+        files: vec![],
     };
     assert!(
         matches!(invoker.invoke(action.clone()).await.unwrap(), SlackActionOutcome::MessagePosted {channel,timestamp} if channel=="C1" && timestamp=="9.8")
@@ -522,6 +527,7 @@ async fn a_top_level_dm_input_is_answered_in_the_dm_itself() {
             input_message_id: id.to_string(),
             tool_call_id: "call-1".into(),
             text: "hello".into(),
+            files: vec![],
         })
         .await
         .unwrap();
@@ -604,6 +610,7 @@ async fn post_scheduled(
             input_message_id: input_message_id.to_string(),
             tool_call_id: "call-1".into(),
             text: "07:00 briefing".into(),
+            files: vec![],
         })
         .await
 }
@@ -693,4 +700,123 @@ async fn a_scheduled_turn_without_a_signed_slack_input_has_no_slack_session() {
         "{result:?}"
     );
     assert!(slack.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn sent_files_follow_the_text_into_the_same_thread() {
+    use everruns_core::host::InMemorySessionFileStore;
+    use everruns_core::session_files::SessionFileSystem;
+    let (fixture, session, app, endpoint) = setup().await;
+    let slack = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
+        .mount(&slack)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/files.getUploadURLExternal"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true, "upload_url": format!("{}/upload-here", slack.uri()), "file_id": "F1",
+        })))
+        .mount(&slack)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/upload-here"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&slack)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/files.completeUploadExternal"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true, "files": [{ "id": "F1" }],
+        })))
+        .mount(&slack)
+        .await;
+    let message = input(&fixture, session, &app, &endpoint, "C_FIRST", "3.4", true).await;
+    let store = Arc::new(InMemorySessionFileStore::new());
+    store
+        .write_file(session, "/out/chart.png", "iVBORw==", "base64")
+        .await
+        .unwrap();
+    let mut ctx = ToolContext::new(session);
+    ctx.file_store = Some(store);
+    ctx.event_context = Some(EventContext {
+        input_message_id: Some(message),
+        ..Default::default()
+    });
+    ctx.tool_call_id = Some("call-1".into());
+    let invoker = fixture.invoker(1, session).with_api_base(slack.uri());
+    ctx.extensions
+        .insert(Arc::new(ConversationSenderExt(Arc::new(
+            SlackConversationSender(Arc::new(invoker)),
+        ))));
+
+    let result = SendMessageTool
+        .execute_with_context(
+            json!({"text":"Chart attached", "files":["/out/chart.png"]}),
+            &ctx,
+        )
+        .await;
+
+    let ToolExecutionResult::Success(value) = result else {
+        panic!("send failed: {result:?}");
+    };
+    assert_eq!(value["files"], json!(["/out/chart.png"]));
+    assert_eq!(value["delivery"]["message_ref"], "9.8");
+    let requests = slack.received_requests().await.unwrap();
+    let paths: Vec<&str> = requests.iter().map(|r| r.url.path()).collect();
+    assert_eq!(
+        paths,
+        vec![
+            "/chat.postMessage",
+            "/files.getUploadURLExternal",
+            "/upload-here",
+            "/files.completeUploadExternal"
+        ]
+    );
+    assert_eq!(requests[2].body, b"\x89PNG");
+    let reserve: Value = serde_json::from_slice(&requests[1].body).unwrap();
+    assert_eq!(reserve["filename"], "chart.png");
+    let complete: Value = serde_json::from_slice(&requests[3].body).unwrap();
+    assert_eq!(complete["channel_id"], "C_FIRST");
+    assert_eq!(complete["thread_ts"], "3.4");
+}
+
+#[tokio::test]
+async fn a_failed_file_after_the_text_says_the_text_was_delivered() {
+    let (fixture, session, app, endpoint) = setup().await;
+    let slack = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat.postMessage"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"ts":"9.8"})))
+        .mount(&slack)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/files.getUploadURLExternal"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"ok": false, "error": "missing_scope"})),
+        )
+        .mount(&slack)
+        .await;
+    let message = input(&fixture, session, &app, &endpoint, "C_FIRST", "3.4", true).await;
+    let error = fixture
+        .invoker(1, session)
+        .with_api_base(slack.uri())
+        .invoke(SlackAction::PostMessage {
+            input_message_id: message.to_string(),
+            tool_call_id: "call-1".into(),
+            text: "Chart attached".into(),
+            files: vec![everruns_contracts::slack_action::SlackFile {
+                filename: "chart.png".into(),
+                content: b"\x89PNG".to_vec(),
+            }],
+        })
+        .await
+        .expect_err("the file upload failed");
+    let SlackActionError::Rejected(message) = error else {
+        panic!("expected a rejection, got {error:?}");
+    };
+    assert!(message.contains("text was posted"), "{message}");
+    assert!(message.contains("files:write"), "{message}");
 }

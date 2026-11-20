@@ -27,8 +27,9 @@ use super::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
 mod tools;
 
 pub use tools::{
-    ConversationSender, ConversationSenderExt, MAX_MESSAGE_CHARS, NO_REPLY_TOOL_NAME, NoReplyTool,
-    SEND_MESSAGE_TOOL_NAME, SendMessageTool, apply_explicit_communication, sent_message,
+    ConversationSender, ConversationSenderExt, MAX_MESSAGE_CHARS, MAX_MESSAGE_FILE_BYTES,
+    MAX_MESSAGE_FILES, NO_REPLY_TOOL_NAME, NoReplyTool, OutgoingFile, SEND_MESSAGE_TOOL_NAME,
+    SendMessageTool, apply_explicit_communication, sent_message,
 };
 
 /// How an agent talks to the people in its conversations. The agent owns this

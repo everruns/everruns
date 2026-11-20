@@ -199,6 +199,9 @@ Agent's **Communication** setting and [Explicit communication](/features/explici
 With explicit communication, `send_message` posts into the thread that started
 the turn, as this channel's bot, at most once per call. The Agent cannot choose
 another channel or thread. Messages can be up to 12,000 characters of Markdown.
+To share files the Agent made, it lists their session paths in `send_message`'s
+`files` (up to 10 files, 8 MiB combined). Slack shows them in the same thread,
+right under the text. The bot needs the `files:write` scope.
 Success means Slack accepted the post; the `conversation.message` event carries
 `platform`, `channel` and `message_ref`. For Slack, `message_ref` is the message
 timestamp: use it as `timestamp` with `slack_update_message` when the Slack
@@ -231,7 +234,7 @@ written. Slack differs from GitHub Markdown in a few places:
 | Markdown | In Slack |
 |---|---|
 | `<@U0123ABCD>` | Mentions that person. A plain `@name` is text and notifies no one. |
-| `![alt](url)` | A link, not an image. Share images with `slack_upload_file`. |
+| `![alt](url)` | A link, not an image. Share images as files: `send_message` `files`, or `slack_upload_file`. |
 | HTML, footnotes, math | Shown as raw text. |
 | `#####` and deeper | Rendered as a level 4 heading. |
 | `<!here>`, `<!channel>`, `<!everyone>` | Posted as plain `@here` text: an Agent never notifies a whole channel. |
@@ -442,16 +445,18 @@ Returns only those addressing fields. Email, phone, and title are not exposed to
 
 #### `slack_upload_file`
 
-Share inline text or an existing session file into the originating Slack thread. The bot
+Share inline text or an existing session file into the Slack thread this session is in. The
+Agent does not name the channel or thread: Everruns uses the session's own conversation. The bot
 needs the `files:write` scope. Reconnect an existing install to grant that scope.
+
+An Agent with explicit communication should attach files to `send_message` instead, so they
+arrive with its message. This tool is for Agents that reply directly.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `channel` | string | yes | Channel ID to share into |
 | `filename` | string | yes | Filename shown in Slack, including its extension |
 | `content` | string | conditional | Inline text. Supply exactly one of `content` and `session_path`. |
 | `session_path` | string | conditional | Existing text or binary file in the session workspace |
-| `thread_ts` | string | yes | Thread timestamp of the current conversation |
 | `initial_comment` | string | no | Message posted alongside the file |
 
 Content is capped at 8 MiB.
