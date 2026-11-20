@@ -15,8 +15,9 @@ and [how-to guide](https://everruns.com/docs/how-to/define-agents-as-files/).
 | [coding-review-agent](coding-review-agent) | Repository review, file access and Bashkit | “Review this change for material defects.” |
 | [research-agent](research-agent) | Research workflow with a plan and evidence | “Research an engineering decision.” |
 | [incident-commander-agent](incident-commander-agent) | Incident coordination workflow | “Triage the current incident.” |
+| [builder-verifier](builder-verifier) | Helper models: a verifier subagent on another provider (`second_opinion`) | “Write a function that parses ISO 8601 durations.” |
 
-No provider model is pinned: choose the organization's enabled model, or bind a
+Except builder-verifier (which pins gpt-6.2-sol and needs a second provider), no provider model is pinned: choose the organization's enabled model, or bind a
 model in Framework code. Bashkit and file tools still depend on host policy.
 These packages configure behavior; they do not include Framework code-defined
 tools or production service integrations.

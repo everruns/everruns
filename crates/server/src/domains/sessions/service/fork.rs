@@ -135,6 +135,7 @@ impl SessionService {
             budget_root_session_id: None,
             seed: SessionSeedMode::Fork,
             fork_up_to_sequence,
+            helper_model: None,
             workspace_id: None,
         };
 

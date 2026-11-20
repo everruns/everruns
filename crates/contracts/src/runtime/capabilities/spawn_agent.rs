@@ -65,7 +65,7 @@ pub(crate) fn validate_spawn_agent_target_fields(
     arguments: &serde_json::Value,
     target_type: &str,
 ) -> Result<(), String> {
-    for field in ["blueprint", "config"] {
+    for field in ["blueprint", "config", "model"] {
         if target_type != "subagent" && arguments.get(field).is_some_and(|value| !value.is_null()) {
             return Err(format!(
                 "{field} is only valid for subagent targets, not {target_type}."
@@ -148,47 +148,8 @@ impl UnifiedSpawnAgentTool {
     // exactly the mismatch #2787 set out to close.
 }
 
-#[async_trait]
-impl Tool for UnifiedSpawnAgentTool {
-    fn narrate(
-        &self,
-        tool_call: &ToolCall,
-        phase: crate::runtime::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-        ctx: crate::runtime::tool_narration::ToolNarrationContext<'_>,
-    ) -> Option<String> {
-        // A call still streaming its arguments, or one naming an unknown
-        // target, must not fall back to "Running Spawn Agent": narrate the
-        // delegation directly so the line always names the agent being spawned.
-        let from_provider = tool_call
-            .arguments
-            .get("target")
-            .and_then(|target| target.get("type"))
-            .and_then(serde_json::Value::as_str)
-            .and_then(|target_type| self.provider_for(target_type))
-            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx));
-        Some(from_provider.unwrap_or_else(|| {
-            crate::runtime::tool_narration::narrate_subagent_spawn(
-                &tool_call.arguments,
-                phase,
-                locale,
-            )
-        }))
-    }
-
-    fn name(&self) -> &str {
-        "spawn_agent"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Spawn Agent")
-    }
-
-    fn description(&self) -> &str {
-        "Delegate work to another agent target. Set target.type to one of the advertised target types; background returns a task_id for generic task tools, and foreground waits for the result."
-    }
-
-    fn parameters_schema(&self) -> serde_json::Value {
+impl UnifiedSpawnAgentTool {
+    fn base_parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "object",
             "properties": {
@@ -276,6 +237,65 @@ impl Tool for UnifiedSpawnAgentTool {
             "required": ["name", "instructions", "target"],
             "additionalProperties": false
         })
+    }
+}
+
+#[async_trait]
+impl Tool for UnifiedSpawnAgentTool {
+    fn narrate(
+        &self,
+        tool_call: &ToolCall,
+        phase: crate::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        ctx: crate::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        // A call still streaming its arguments, or one naming an unknown
+        // target, must not fall back to "Running Spawn Agent": narrate the
+        // delegation directly so the line always names the agent being spawned.
+        let from_provider = tool_call
+            .arguments
+            .get("target")
+            .and_then(|target| target.get("type"))
+            .and_then(serde_json::Value::as_str)
+            .and_then(|target_type| self.provider_for(target_type))
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx));
+        Some(from_provider.unwrap_or_else(|| {
+            crate::runtime::tool_narration::narrate_subagent_spawn(
+                &tool_call.arguments,
+                phase,
+                locale,
+            )
+        }))
+    }
+
+    fn name(&self) -> &str {
+        "spawn_agent"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Spawn Agent")
+    }
+
+    fn description(&self) -> &str {
+        "Delegate work to another agent target. Set target.type to one of the advertised target types; background returns a task_id for generic task tools, and foreground waits for the result."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        let mut schema = self.base_parameters_schema();
+        // The subagent provider owns the helper-model keys: its `model`
+        // property (an enum of the agent's keys and when to use each) is
+        // advertised as-is, and absent when the agent cannot switch models.
+        if let Some(model) = self
+            .provider_for("subagent")
+            .map(|tool| tool.parameters_schema())
+            .and_then(|schema| schema.pointer("/properties/model").cloned())
+            && let Some(properties) = schema
+                .get_mut("properties")
+                .and_then(serde_json::Value::as_object_mut)
+        {
+            properties.insert("model".to_string(), model);
+        }
+        schema
     }
 
     fn hints(&self) -> crate::runtime::tool_types::ToolHints {

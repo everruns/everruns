@@ -25,19 +25,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useModelPresets } from "@/hooks/use-model-presets";
+import { HelperModelsSection } from "@/components/agents/helper-models-section";
 import { useOrganization } from "@/hooks/use-organizations";
 import { RESEARCH_MODEL_OPTION, agentModelId } from "@/lib/agent-model-role";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { CommunicationSelect } from "@/components/agents/communication-select";
-import { getCommunicationOption, normalizeCommunication } from "@/lib/agent-communication";
+import {
+  getCommunicationOption,
+  normalizeCommunication,
+} from "@/lib/agent-communication";
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent, Capability, ModelWithProvider } from "@/lib/api/types";
 import { AgentCapabilityList } from "./agent-capability-list";
 import { CapabilityEditorContext } from "./capability-editor-context";
 import { normalizeTags } from "@/lib/tags";
-import { MoreSettingsNav, type MoreSettingsRow } from "@/components/workspace/more-settings-nav";
+import {
+  MoreSettingsNav,
+  type MoreSettingsRow,
+} from "@/components/workspace/more-settings-nav";
 import { cn } from "@/lib/utils";
-import { ChatChangeMark, useChatChanges } from "@/components/chat-mode/chat-change-mark";
+import {
+  ChatChangeMark,
+  useChatChanges,
+} from "@/components/chat-mode/chat-change-mark";
 
 /** Picker value for "Organization defaults" (no model preset). */
 const ORG_DEFAULTS = "__org_defaults__";
@@ -96,8 +106,14 @@ export function AgentConfigColumn({
       <div className="flex flex-col gap-4 border-b p-4">
         {!external && (
           <>
-            <ChatChangeMark field="harness_id" className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-muted-foreground" htmlFor="harness">
+            <ChatChangeMark
+              field="harness_id"
+              className="flex flex-col gap-1.5"
+            >
+              <Label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="harness"
+              >
                 {ui("Harness")}
               </Label>
               {readOnly ? (
@@ -110,21 +126,31 @@ export function AgentConfigColumn({
                 <HarnessSelect
                   id="harness"
                   value={draft.fields.harness_id}
-                  onValueChange={edit((value: string) => draft.setField("harness_id", value))}
+                  onValueChange={edit((value: string) =>
+                    draft.setField("harness_id", value),
+                  )}
                   placeholder={ui("Select a harness")}
                   className="w-full bg-background"
                 />
               )}
               {draft.errors.harness_id && (
-                <p className="text-xs text-destructive">{draft.errors.harness_id}</p>
+                <p className="text-xs text-destructive">
+                  {draft.errors.harness_id}
+                </p>
               )}
             </ChatChangeMark>
 
-            <ChatChangeMark field="capabilities" className="flex flex-col gap-1.5">
+            <ChatChangeMark
+              field="capabilities"
+              className="flex flex-col gap-1.5"
+            >
               {editing ? (
                 <CapabilityEditorContext.Provider
                   value={{
-                    modelId: agentModelId(draft.fields.default_model_id, organization),
+                    modelId: agentModelId(
+                      draft.fields.default_model_id,
+                      organization,
+                    ),
                     agentId: agent.id,
                   }}
                 >
@@ -163,17 +189,27 @@ export function AgentConfigColumn({
               )}
             </ChatChangeMark>
 
-            <ChatChangeMark field="default_model_id" className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-muted-foreground" htmlFor="default-model">
+            <ChatChangeMark
+              field="default_model_id"
+              className="flex flex-col gap-1.5"
+            >
+              <Label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="default-model"
+              >
                 {ui("Default model")}
               </Label>
               {readOnly ? (
                 <span className="text-[13px] text-muted-foreground">
                   {agent.model_role === "research"
-                    ? [ui("Organization research model"), defaultModel?.display_name]
+                    ? [
+                        ui("Organization research model"),
+                        defaultModel?.display_name,
+                      ]
                         .filter(Boolean)
                         .join(" · ")
-                    : (defaultModel?.display_name ?? ui("Organization default"))}
+                    : (defaultModel?.display_name ??
+                      ui("Organization default"))}
                 </span>
               ) : (
                 <ModelPicker
@@ -181,26 +217,39 @@ export function AgentConfigColumn({
                   additionalOptions={[
                     {
                       value: RESEARCH_MODEL_OPTION,
-                      label: [ui("Organization research model"), researchModel?.display_name]
+                      label: [
+                        ui("Organization research model"),
+                        researchModel?.display_name,
+                      ]
                         .filter(Boolean)
                         .join(" · "),
                     },
                   ]}
                   value={draft.fields.default_model_id}
-                  onChange={edit((value: string) => draft.setField("default_model_id", value))}
+                  onChange={edit((value: string) =>
+                    draft.setField("default_model_id", value),
+                  )}
                   placeholder={ui("Use default model")}
                   className="w-full bg-background"
                 />
               )}
             </ChatChangeMark>
 
-            <ChatChangeMark field="model_preset" className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-muted-foreground" htmlFor="model-preset">
+            <ChatChangeMark
+              field="model_preset"
+              className="flex flex-col gap-1.5"
+            >
+              <Label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="model-preset"
+              >
                 {ui("Models from")}
               </Label>
               {readOnly ? (
                 <span className="text-[13px] text-muted-foreground">
-                  {modelPresets.find((preset) => preset.id === agent.model_preset)?.name ??
+                  {modelPresets.find(
+                    (preset) => preset.id === agent.model_preset,
+                  )?.name ??
                     agent.model_preset ??
                     ui("Organization defaults")}
                 </span>
@@ -208,19 +257,28 @@ export function AgentConfigColumn({
                 <Select
                   value={draft.fields.model_preset || ORG_DEFAULTS}
                   onValueChange={edit((value: string | null) =>
-                    draft.setField("model_preset", !value || value === ORG_DEFAULTS ? "" : value),
+                    draft.setField(
+                      "model_preset",
+                      !value || value === ORG_DEFAULTS ? "" : value,
+                    ),
                   )}
                 >
-                  <SelectTrigger id="model-preset" className="w-full bg-background">
+                  <SelectTrigger
+                    id="model-preset"
+                    className="w-full bg-background"
+                  >
                     <SelectValue>
                       {draft.fields.model_preset
-                        ? (modelPresets.find((preset) => preset.id === draft.fields.model_preset)
-                            ?.name ?? draft.fields.model_preset)
+                        ? (modelPresets.find(
+                            (preset) => preset.id === draft.fields.model_preset,
+                          )?.name ?? draft.fields.model_preset)
                         : ui("Organization defaults")}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={ORG_DEFAULTS}>{ui("Organization defaults")}</SelectItem>
+                    <SelectItem value={ORG_DEFAULTS}>
+                      {ui("Organization defaults")}
+                    </SelectItem>
                     {modelPresets.map((preset) => (
                       <SelectItem key={preset.id} value={preset.id}>
                         {preset.name}
@@ -236,8 +294,21 @@ export function AgentConfigColumn({
               </span>
             </ChatChangeMark>
 
-            <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
-              <Label className="text-xs font-medium text-muted-foreground" htmlFor="communication">
+            <HelperModelsSection
+              capabilities={draft.capabilities}
+              agentPreset={draft.fields.model_preset || undefined}
+              readOnly={readOnly}
+              onChange={edit(draft.setCapabilities)}
+            />
+
+            <ChatChangeMark
+              field="communication"
+              className="flex flex-col gap-1.5"
+            >
+              <Label
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor="communication"
+              >
                 {ui("Communication")}
               </Label>
               {readOnly ? (
@@ -248,7 +319,9 @@ export function AgentConfigColumn({
                 <CommunicationSelect
                   id="communication"
                   value={normalizeCommunication(draft.fields.communication)}
-                  onValueChange={edit((value: string) => draft.setField("communication", value))}
+                  onValueChange={edit((value: string) =>
+                    draft.setField("communication", value),
+                  )}
                   className="bg-background"
                 />
               )}
@@ -257,13 +330,18 @@ export function AgentConfigColumn({
         )}
 
         <ChatChangeMark field="tags" className="flex flex-col gap-1.5">
-          <Label className="text-xs font-medium text-muted-foreground" htmlFor="tags">
+          <Label
+            className="text-xs font-medium text-muted-foreground"
+            htmlFor="tags"
+          >
             {ui("Tags")}
           </Label>
           {readOnly ? (
             <div className="flex flex-wrap gap-1">
               {normalizeTags(agent.tags).length === 0 ? (
-                <span className="text-[13px] text-muted-foreground">{ui("No tags")}</span>
+                <span className="text-[13px] text-muted-foreground">
+                  {ui("No tags")}
+                </span>
               ) : (
                 normalizeTags(agent.tags).map((tag) => (
                   <Badge key={tag} variant="outline">

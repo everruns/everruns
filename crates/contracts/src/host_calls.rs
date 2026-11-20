@@ -167,6 +167,11 @@ pub const LEASED_RESOURCE_UPSERT: &str = "leased_resource_upsert";
 pub const LEASED_RESOURCE_RELEASE: &str = "leased_resource_release";
 /// A session's leases.
 pub const LEASED_RESOURCES_LIST: &str = "leased_resources_list";
+/// The model a spawned subagent's helper key resolves to in the org's
+/// catalog (`helper_models`). Its params name the parent session and the
+/// spawn's helper model; the answer is `{"provider": key, "model": name}`
+/// for the child's definition, or `null` to keep the parent agent's model.
+pub const HELPER_MODEL: &str = "helper_model";
 /// Dreaming's maintenance state for a session the data plane runs (turn
 /// counters, the dream job, daily budgets), and the org's due dreams.
 pub const DREAMING_STATE: &str = "dreaming_state";
@@ -413,6 +418,14 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Read,
         Fate::HostCall,
         "the session's leases",
+    ),
+    call(
+        HELPER_MODEL,
+        "worker_resolve_helper_model",
+        ActsAs::Org,
+        Effect::Read,
+        Fate::HostCall,
+        "the model a subagent's helper key resolves to: presets and the org's catalog stay in the control plane",
     ),
     call(
         DREAMING_STATE,

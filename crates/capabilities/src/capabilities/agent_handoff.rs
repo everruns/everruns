@@ -1184,6 +1184,8 @@ impl Tool for SpawnAgentHandoffTool {
                 budget_root_session_id,
                 seed,
                 reason: crate::platform_store::handoff_reason(&name, &target.id),
+                // Hand-offs keep the member agent's own model.
+                helper_model: None,
             })
             .await
         {

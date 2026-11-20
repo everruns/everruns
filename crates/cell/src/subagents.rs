@@ -62,7 +62,9 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
     let Some(gateway) = port.gateway() else {
         return backends;
     };
-    let calls = crate::lookups::org_lookups(port.material(), session)
+    let lookups = crate::lookups::org_lookups(port.material(), session);
+    let calls = lookups
+        .clone()
         .map(|lookups| crate::platform_calls::PlatformCalls::new(lookups, session));
     let bind = calls.is_some();
     let store: Arc<dyn PlatformStore> = Arc::new(CellPlatformStore {
@@ -71,6 +73,7 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
         gateway,
         children: Default::default(),
         calls,
+        lookups,
     });
     let mut backends = backends.with_platform_store_factory({
         let store = store.clone();
@@ -112,6 +115,8 @@ struct CellPlatformStore {
     children: Arc<parking_lot::Mutex<HashMap<SessionId, ExecutionSession>>>,
     /// The platform tools' calls, when the executor reaches a control plane.
     calls: Option<crate::platform_calls::PlatformCalls>,
+    /// The org's host calls, for a child's helper model.
+    lookups: Option<crate::lookups::OrgLookups>,
 }
 
 impl CellPlatformStore {
@@ -253,6 +258,43 @@ impl CellPlatformStore {
             .and_then(|revision| revision.card))
     }
 
+    /// The `model` a child's definition takes for its helper key: the
+    /// parent's own for `same` (the session's model rides in its
+    /// definition), else what the control plane resolves the key to
+    /// (host call `helper_model`). `None` keeps the child's agent model,
+    /// also on a cell without a control plane.
+    async fn helper_model(
+        &self,
+        parent: &Parent,
+        helper: &everruns_core::helper_models::SpawnHelperModel,
+    ) -> Result<Option<serde_json::Value>> {
+        use everruns_core::helper_models::HelperModelTarget;
+        use everruns_internal_protocol::commands::InternalCommandTransport;
+        if helper.target == HelperModelTarget::Same {
+            return Ok(parent.definition.get("model").cloned());
+        }
+        let Some(lookups) = &self.lookups else {
+            return Ok(None);
+        };
+        let answer = lookups
+            .execute_internal_command(
+                "worker_resolve_helper_model",
+                serde_json::json!({ "session_id": self.parent.to_string(), "helper": helper }),
+            )
+            .await?;
+        Ok(match answer {
+            Ok(choice) if choice.is_object() => Some(serde_json::json!({
+                "provider": choice["provider"],
+                "model": choice["model"],
+            })),
+            Ok(_) => None,
+            Err(error) => {
+                tracing::warn!(error = %error.message, "helper model lookup refused; keeping the agent model");
+                None
+            }
+        })
+    }
+
     /// What a child of the parent's own agent runs, and its agent key.
     async fn parent_agent(&self, parent: &Parent) -> Result<(serde_json::Value, Option<String>)> {
         let Some(revision) = self.parent_revision(parent).await? else {
@@ -322,6 +364,7 @@ impl PlatformStore for CellPlatformStore {
             gateway: self.gateway.clone(),
             children: self.children.clone(),
             calls: Some(calls.bound(MessageId::from_uuid(input_message_id))),
+            lookups: self.lookups.clone(),
         }))
     }
 
@@ -422,6 +465,12 @@ impl PlatformStore for CellPlatformStore {
             }
             _ => self.parent_agent(&parent).await?,
         };
+        let mut definition = definition;
+        if let Some(helper) = &request.helper_model
+            && let Some(model) = self.helper_model(&parent, helper).await?
+        {
+            definition["model"] = model;
+        }
         // Decision: a child gets a session record on the control plane
         // first (`subagent_record`), as a v1 subagent has, and runs under the
         // id that record has, with the Memory mounts resolved from it. A cell

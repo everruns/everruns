@@ -89,6 +89,7 @@ fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
         budget_root_session_id: None,
         seed: everruns_core::SessionSeedMode::Fresh,
         fork_up_to_sequence: None,
+        helper_model: None,
     }
 }
 

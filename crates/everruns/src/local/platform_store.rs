@@ -178,6 +178,8 @@ impl PlatformStore for LocalPlatformStore {
         if request.blueprint_id.is_some() {
             return Err(unsupported("create_session(blueprint)"));
         }
+        // Helper models: a local runner has no model catalog or presets, so
+        // every key runs on the parent's model (`same`).
         self.runner.create_session_with_options(request).await
     }
 

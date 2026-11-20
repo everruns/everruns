@@ -77,6 +77,10 @@ The current enum representation and owned string types live in
 `crates/contracts/src/runtime/capabilities/mod.rs`. Concrete model identifiers belong to each
 blueprint implementation.
 
+A spawn's helper key (`spawn_agent.model`, see
+[model presets, Helper models](../foundations/model-presets.md#helper-models)) applies to
+Default and Inherit blueprints; a Fixed blueprint refuses one before any model call.
+
 Fixed selection is useful when specialist work has a known cost/quality target.
 Default selection supports controlled operator choice. Inheritance is for work
 that genuinely needs the parent's model characteristics.

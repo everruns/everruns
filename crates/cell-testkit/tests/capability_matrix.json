@@ -150,7 +150,8 @@
     ],
     "github_scout": [
       "connection_token",
-      "github_token"
+      "github_token",
+      "helper_model"
     ],
     "jev": [
       "connection_token"
@@ -191,6 +192,9 @@
     ],
     "slack": [
       "slack_action"
+    ],
+    "subagents": [
+      "helper_model"
     ],
     "user_mcp": [
       "mcp_connection_token",

@@ -582,3 +582,69 @@ async fn agent_on_a_model_preset_runs_on_its_jobs_and_keeps_the_preset_alive() {
         .unwrap()
     );
 }
+
+fn helper(
+    target: everruns_core::helper_models::HelperModelTarget,
+) -> everruns_core::helper_models::SpawnHelperModel {
+    everruns_core::helper_models::SpawnHelperModel {
+        key: "k".to_string(),
+        target,
+        picked_by: everruns_core::helper_models::HelperModelPickedBy::Agent,
+        reason: None,
+    }
+}
+
+#[tokio::test]
+async fn spawned_child_copies_the_parent_explicit_model() {
+    use everruns_core::helper_models::HelperModelTarget;
+    let db = Arc::new(StorageBackend::test_database());
+    let caller = Caller::internal(DEFAULT_ORG_ID);
+    let ctx = test_ctx(caller.clone(), db.clone())
+        .await
+        .with_session_service(Arc::new(SessionService::new(db.clone())));
+    let service = SessionService::new(db.clone());
+    let harness_id = org_init::base_harness_id(&db, caller.org_id).await.unwrap();
+    let agent_default = create_model(&db, caller.org_id, "agent-default").await;
+    let picked = create_model(&db, caller.org_id, "picked-for-chat").await;
+    let agent = agent_with_model(&ctx, Some(agent_default)).await;
+    let parent = service
+        .create(
+            &caller,
+            harness_id.uuid(),
+            Some(agent.internal_id),
+            Some(agent.public_id),
+            SessionSource::Api,
+            build_create_request(harness_id, Some(agent.public_id), Some(picked)),
+        )
+        .await
+        .unwrap();
+
+    let spawn = |target: Option<HelperModelTarget>| {
+        let mut req = build_create_request(harness_id, Some(agent.public_id), None);
+        req.parent_session_id = Some(parent.id);
+        req.helper_model = target.map(helper);
+        crate::domains::sessions::CreateSession(req)
+    };
+
+    // `same`: the child runs on the model the person picked for the parent,
+    // not on the agent default.
+    let child = spawn(Some(HelperModelTarget::Same))
+        .execute(&ctx)
+        .await
+        .unwrap();
+    assert_eq!(child.model_id, Some(picked));
+
+    // A concrete target outside the usable catalog leaves the child on the
+    // ordinary resolution instead of failing the spawn.
+    let child = spawn(Some(HelperModelTarget::Model {
+        model_id: ModelId::new().to_string(),
+    }))
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(child.model_id, None);
+
+    // Hand-offs send no helper model and keep the member agent's own model.
+    let child = spawn(None).execute(&ctx).await.unwrap();
+    assert_eq!(child.model_id, None);
+}

@@ -43,7 +43,7 @@ Inspired by Claude Code's Agent tool, Cursor's sub-agents, and OpenAI Codex's mu
 | Background-first | Parallelism is the point of subagents: spawn returns a `task_id` immediately and the parent keeps working; the task's `OnTerminal` wake policy notifies it on completion. `mode: "foreground"` opts back into block-and-return for results the parent cannot proceed without. |
 | Governed nesting | Allows coordinator -> worker -> specialist flows while bounding runaway delegation. |
 | Human-readable names | "Test Runner" is more natural than `test-runner` in conversation. |
-| Inherit parent config | Subagent uses same harness, agent, and model. No capability escalation. |
+| Inherit parent config | Subagent uses same harness and agent, and the parent's model unless the spawn names a helper key. No capability escalation. |
 | Generic lifecycle tools | `list_tasks`, `get_task`, `message_task`, `cancel_task` work for all task kinds including subagents. |
 
 ## Data Model
@@ -224,7 +224,13 @@ Parent Agent                          System                           Child Ses
 
 The child session inherits:
 - **Harness**: Same harness as parent session
-- **Agent**: Same agent configuration (model, system prompt, capabilities)
+- **Agent**: Same agent configuration (system prompt, capabilities)
+- **Model**: The person's explicit parent choice (session model, else the latest
+  message's model), or the model a helper key resolves to when the spawn names
+  one (`spawn_agent.model`; see
+  [model presets, Helper models](../foundations/model-presets.md#helper-models)).
+  The resolved model is the child's session model and is recorded on the task
+  (`spec.model`, `spec.model_pick`, `spec.model_id`).
 - **Organization**: Same org scope (multitenancy)
 - **Budget pool**: Session-scoped budgets resolve to the delegation tree's
   `root_session_id`, so every descendant turn spends from the root session's
