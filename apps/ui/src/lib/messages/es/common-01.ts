@@ -291,8 +291,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Un administrador de la organización puede continuar los chats de Playground como otro usuario virtual.",
   "An organisation is your team’s shared workspace. Agents, harnesses, sessions, and settings all live here.":
     "Una organización es el espacio de trabajo compartido de su equipo. Agentes, entornos de ejecución, sesiones y configuraciones viven aquí.",
-  "An organization administrator can enable Monitoring in Settings → Features.":
-    "Un administrador de la organización puede habilitar la supervisión en Configuración → Funciones.",
+  "You need permission to view sessions in this organization.":
+    "Necesitas permiso para ver las sesiones de esta organización.",
   "An organization search account. Searches bill its key.":
     "Una cuenta de búsqueda de organización. Las búsquedas facturan su clave.",
   "An unexpected error occurred. Please try again.":

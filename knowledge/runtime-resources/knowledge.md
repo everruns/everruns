@@ -14,7 +14,7 @@ tags:
 ## Status and scope
 
 **Implementation, 2026-10-23.** Replaces the two undeployed product surfaces with
-one capability, management API and UI. Knowledge is Adoption-grade: available on hosted deployments, disabled until an organization owner/admin or platform operator opts in. Existing explicit organization overrides remain effective. Implementation lives in the
+one capability, management API and UI. Knowledge is available on hosted and self-hosted deployments. Collection management permissions and session attachments control access. Implementation lives in the
 [Knowledge domain](../../crates/server/src/domains/knowledge/mod.rs),
 [capability](../../crates/capabilities/src/capabilities/knowledge.rs),
 [neutral runtime port](../../crates/contracts/src/knowledge.rs) and

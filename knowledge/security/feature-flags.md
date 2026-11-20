@@ -74,9 +74,10 @@ the resolved grade, inherited default, optional stored override, effective state
 viewer's configuration authority. The [UI flag hooks](../../apps/ui/src/hooks/use-org-feature-flags.ts)
 displays effective switch state so production defaults appear on even without a record.
 
-Knowledge is an explicit Adoption-grade organization opt-in on development and hosted deployments. Its management surfaces and runtime capability retain organization-effective enforcement; available registration alone does not authorize collection access.
-
-Dreaming in the built-in Worker harness is an explicit Adoption-grade organization opt-in. Runtime capability filtering gates inherited and explicitly configured dreaming alike.
+Dreaming, Monitoring, and Knowledge are available across organizations. The
+retired rollout keys are ignored, including stored opt-outs. Session-read and
+platform permissions still apply to Monitoring. Dreaming and Knowledge continue
+to enforce Memory and collection access.
 
 Extractions is an explicit Adoption-grade organization opt-in. The console route
 and navigation require the organization-effective flag, and the extraction API

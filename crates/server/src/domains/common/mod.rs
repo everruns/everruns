@@ -377,7 +377,6 @@ impl CommandMeta {
             "evals" => Some("evals"),
             "skills" => Some("skills"),
             "memories" => Some("memory"),
-            "knowledge" | "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
             "payments" => Some("machine_payments"),

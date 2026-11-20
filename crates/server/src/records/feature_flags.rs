@@ -22,12 +22,6 @@ pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
-    /// Organization-scoped live execution monitoring. Adoption opt-in.
-    #[serde(default)]
-    pub monitoring: bool,
-    /// Background Worker memory consolidation. Organization adoption opt-in.
-    #[serde(default)]
-    pub dreaming: bool,
     /// Evals (user-facing behavioral evals for agents). Organization adoption opt-in.
     pub evals: bool,
     /// Native typed extraction API and console. Organization adoption opt-in.
@@ -36,8 +30,6 @@ pub struct FeatureFlags {
     pub skills: bool,
     /// Workspace memory management UI. Experimental.
     pub memory: bool,
-    /// Unified Knowledge files and optional search. Organization adoption opt-in.
-    pub knowledge: bool,
     /// Plugin marketplace and installed-plugin management UI. Experimental.
     pub plugins: bool,
     /// Voice channels and the chat microphone (Adoption).
@@ -112,18 +104,6 @@ pub fn is_known_feature_flag(name: &str) -> bool {
 /// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
-        name: "dreaming",
-        label: "Dreaming",
-        description: "Let Worker harnesses consolidate completed experience into authorized Memory.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "monitoring",
-        label: "Monitoring",
-        description: "Monitor live execution, actor leases, and durable progress across your organization.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
         name: "mistral",
         label: "Mistral AI provider",
         description: "Connect Mistral AI directly with your own API key.",
@@ -156,12 +136,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Manage knowledge stores agents can read, including manual notes and \
              synchronized files.",
         grade: FeatureFlagGrade::Dev,
-    },
-    FeatureFlagDefinition {
-        name: "knowledge",
-        label: "Knowledge",
-        description: "Mount versioned files and source trees with optional keyword or hybrid search.",
-        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "plugins",
@@ -298,8 +272,6 @@ impl FeatureFlags {
     /// is irrelevant to JSON consumers.
     pub fn to_map(&self) -> FeatureFlagMap {
         let mut map = BTreeMap::from([
-            ("monitoring".to_string(), self.monitoring),
-            ("dreaming".to_string(), self.dreaming),
             ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
@@ -308,7 +280,6 @@ impl FeatureFlags {
             ("extractions".to_string(), self.extractions),
             ("skills".to_string(), self.skills),
             ("memory".to_string(), self.memory),
-            ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
             ("voice".to_string(), self.voice),
             ("observers".to_string(), self.observers),
@@ -327,8 +298,6 @@ impl FeatureFlags {
     /// Look up a flag by name (for dynamic/string-based access).
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
-            "monitoring" => self.monitoring,
-            "dreaming" => self.dreaming,
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
@@ -337,7 +306,6 @@ impl FeatureFlags {
             "extractions" => self.extractions,
             "skills" => self.skills,
             "memory" => self.memory,
-            "knowledge" => self.knowledge,
             "plugins" => self.plugins,
             "voice" => self.voice,
             "observers" => self.observers,
@@ -350,13 +318,10 @@ impl FeatureFlags {
 
     fn set(&mut self, name: &str, enabled: bool) {
         match name {
-            "monitoring" => self.monitoring = enabled,
-            "dreaming" => self.dreaming = enabled,
             "evals" => self.evals = enabled,
             "extractions" => self.extractions = enabled,
             "skills" => self.skills = enabled,
             "memory" => self.memory = enabled,
-            "knowledge" => self.knowledge = enabled,
             "plugins" => self.plugins = enabled,
             "voice" => self.voice = enabled,
             "observers" => self.observers = enabled,
@@ -386,14 +351,12 @@ impl FeatureFlags {
     /// Feature flag required by a capability, when one exists.
     pub fn required_for_capability(capability_id: &str) -> Option<&'static str> {
         match capability_id {
-            "dreaming" => Some("dreaming"),
             "docker_container" => Some("docker_capability"),
             "container_sandbox" => Some("container_sandbox"),
             "lua" | "lua_code_mode" => Some("lua"),
             "parallel" => Some("machine_payments"),
             "skills" => Some("skills"),
             "memory" => Some("memory"),
-            "knowledge" | "knowledge_index" | "knowledge_base" => Some("knowledge"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
             _ => {
@@ -421,8 +384,6 @@ impl FeatureFlags {
     #[cfg(test)]
     pub fn all_enabled() -> Self {
         Self {
-            monitoring: true,
-            dreaming: true,
             docker_capability: true,
             container_sandbox: true,
             lua: true,
@@ -431,7 +392,6 @@ impl FeatureFlags {
             extractions: true,
             skills: true,
             memory: true,
-            knowledge: true,
             plugins: true,
             voice: true,
             observers: true,
@@ -460,40 +420,18 @@ mod tests {
     }
 
     #[test]
-    fn dreaming_requires_org_adoption_and_revocation_filters_the_capability() {
-        let definition = API_FEATURE_FLAG_DEFINITIONS
-            .iter()
-            .find(|d| d.name == "dreaming")
-            .unwrap();
-        assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
-        for deployment in [
-            DeploymentGrade::Dev,
-            DeploymentGrade::Preview,
-            DeploymentGrade::Prod,
-        ] {
-            let available = policy(deployment, definition.grade);
-            assert!(
-                !available
-                    .for_org(&HashMap::new())
-                    .is_capability_enabled("dreaming")
-            );
-            let enrolled = HashMap::from([("dreaming".to_string(), true)]);
-            assert!(
-                available
-                    .for_org(&enrolled)
-                    .is_capability_enabled("dreaming")
-            );
-            assert!(
-                !available
-                    .for_org(&HashMap::from([("dreaming".to_string(), false)]))
-                    .is_capability_enabled("dreaming")
-            );
-            assert!(
-                !available
-                    .with_grade("dreaming", FeatureFlagGrade::Off)
-                    .for_org(&enrolled)
-                    .is_capability_enabled("dreaming")
-            );
+    fn retired_flags_are_ignored_even_with_explicit_org_opt_outs() {
+        let retired = ["dreaming", "monitoring", "knowledge"];
+        let overrides = HashMap::from(retired.map(|name| (name.to_string(), false)));
+        let policy = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off);
+        let flags = policy.for_org(&overrides);
+        for name in retired {
+            assert!(!is_known_feature_flag(name));
+            assert!(!policy.deployment_flags().to_map().0.contains_key(name));
+            assert!(!flags.to_map().0.contains_key(name));
+        }
+        for capability in ["dreaming", "knowledge", "knowledge_base", "knowledge_index"] {
+            assert!(flags.is_capability_enabled(capability), "{capability}");
         }
     }
 
@@ -594,7 +532,7 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        let adoption_flags = ["evals", "extractions", "observers", "voice", "knowledge"];
+        let adoption_flags = ["evals", "extractions", "observers", "voice"];
         let opted_in = adoption_flags
             .iter()
             .map(|name| (name.to_string(), true))
@@ -693,9 +631,6 @@ mod tests {
             "skills",
             "skill:example",
             "memory",
-            "knowledge",
-            "knowledge_base",
-            "knowledge_index",
             "plugin:example",
             "docker_container",
             "container_sandbox",

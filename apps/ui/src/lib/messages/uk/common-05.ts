@@ -89,7 +89,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Відстежуйте поведінку та якість агента з часом.",
   Monitoring: "Моніторинг",
   "Monitoring could not load": "Не вдалося завантажити моніторинг",
-  "Monitoring is not enabled": "Моніторинг не ввімкнено",
+  "Session access required": "Потрібен доступ до сеансів",
   "Monitoring is unavailable": "Моніторинг недоступний",
   "Monitoring sections": "Розділи моніторингу",
   Moonshot: "Місячний постріл",

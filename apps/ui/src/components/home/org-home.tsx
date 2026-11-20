@@ -9,13 +9,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useChatPageRows } from "@/components/chat-mode/page-view-state";
 import { OrganizationIcon } from "@/components/icons/facet-icons";
 import { PageContainer, PageMasthead } from "@/components/layout";
+import { usePolicies } from "@/hooks/use-policies";
 import { useFilteredSessions } from "@/hooks/use-sessions";
 import { usePageTitle } from "@/hooks";
 import { getMonitoringTimeline } from "@/lib/api/monitoring";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
 import { busiestAgents, countOpenIssues, hourlyTotals } from "@/lib/org-home";
 import { EMPTY_SESSION_FILTERS } from "@/lib/session-filters";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
 import { HomeHourlyChart, HomeTimelineCharts } from "./home-activity";
@@ -38,7 +38,8 @@ export function OrgHome() {
   const ui = useUiTranslations();
   usePageTitle(ui("Overview"));
   const { currentOrg } = useOrg();
-  const monitoring = useFeatureFlag("monitoring");
+  const { can } = usePolicies("monitoring");
+  const monitoringAllowed = !!currentOrg && can("monitoring.view");
   const {
     items,
     agents,
@@ -55,7 +56,7 @@ export function OrgHome() {
   const timeline = useQuery({
     queryKey: ["monitoring-timeline", "organization", { range: "24h" }],
     queryFn: () => getMonitoringTimeline("organization", { range: "24h" }),
-    enabled: monitoring,
+    enabled: monitoringAllowed,
     refetchInterval: 60_000,
     retry: false,
   });
@@ -91,11 +92,12 @@ export function OrgHome() {
     AGENT_ROWS,
   ).filter((item) => item.runs > 0 || item.running_sessions > 0);
 
-  const activityChart = timeline.data ? (
-    <HomeTimelineCharts data={timeline.data} />
-  ) : activity.data && hourly.length > 0 && (!monitoring || timeline.isError) ? (
-    <HomeHourlyChart hourly={hourly} windowStart={activity.data.window_start} />
-  ) : null;
+  const activityChart =
+    monitoringAllowed && timeline.data ? (
+      <HomeTimelineCharts data={timeline.data} />
+    ) : activity.data && hourly.length > 0 && (!monitoringAllowed || timeline.isError) ? (
+      <HomeHourlyChart hourly={hourly} windowStart={activity.data.window_start} />
+    ) : null;
 
   return (
     <PageContainer className="@container/home">

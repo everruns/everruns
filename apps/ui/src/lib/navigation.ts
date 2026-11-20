@@ -162,8 +162,6 @@ export const defaultActivityNavigation: NavigationItem[] = [
     description: "Inspect running sessions, actors and leases.",
     href: "/monitoring",
     icon: DurableIcon,
-    flag: "monitoring",
-    experimental: true,
     keywords: ["execution", "actors", "leases", "monitor"],
   },
 ];
@@ -194,8 +192,6 @@ export const defaultBlocksNavigation: NavigationItem[] = [
     description: "Organize collections, sources and searchable knowledge for agents.",
     href: "/knowledge",
     icon: KnowledgeIcon,
-    flag: "knowledge",
-    experimental: true,
     keywords: ["knowledge", "index", "search", "retrieval"],
   },
   {

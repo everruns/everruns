@@ -110,7 +110,11 @@ async fn test_gated_capability_metadata_stays_readable() {
     assert_eq!(skills["icon"], "wand");
     assert_eq!(skills["feature_flag"], "skills");
 
-    for (id, flag) in [("memory", "memory"), ("knowledge", "knowledge")] {
+    for (id, flag) in [
+        ("memory", json!("memory")),
+        ("knowledge", Value::Null),
+        ("dreaming", Value::Null),
+    ] {
         let capability = capability_by_id(&named, id).unwrap_or_else(|| panic!("{id} metadata"));
         assert!(
             !capability["name"].as_str().unwrap_or("").is_empty(),

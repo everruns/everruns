@@ -22,7 +22,7 @@ Built-ins form a tree by use case, not one chain. Each layer answers one questio
 
 Capability additions and configurations are owned by [the shared preset definition](../../crates/contracts/src/capability/presets.rs); do not duplicate its inventory here. Hosted labels, icons and execution rules are owned by [levels](../../crates/server/src/harnesses/levels.rs) and the [sandbox worker definition](../../crates/server/src/harnesses/sandbox_worker.rs). The public diagram is `docs/images/features/harness-tree.svg`.
 
-Worker bundles [dreaming](../runtime-resources/dreaming.md); child harnesses inherit it. Hosted use requires explicit organization adoption before background consolidation runs.
+Worker bundles [dreaming](../runtime-resources/dreaming.md); child harnesses inherit it. Background consolidation requires a host-authorized writable Memory destination.
 
 ## Execution rules
 

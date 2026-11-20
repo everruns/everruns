@@ -6,14 +6,13 @@ use crate::auth::{
     routes::AuthConfigResponse,
 };
 use crate::domains::organizations::record::OrgMembership;
-use crate::records::{FeatureFlagGrade, FeatureFlagPolicy};
 use crate::storage::test_database::test_session_row;
 use async_trait::async_trait;
 use axum::{
     body::{Body, to_bytes},
     http::Request,
 };
-use everruns_core::{DeploymentGrade, OrgRole};
+use everruns_core::OrgRole;
 use tower::ServiceExt;
 
 struct Backend {
@@ -64,8 +63,6 @@ async fn state(db: Arc<StorageBackend>, platform: bool) -> AppState {
         Arc::new(Backend { platform }),
     );
     auth.db = Some(db.clone());
-    auth.feature_flag_policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod)
-        .with_grade("monitoring", FeatureFlagGrade::Adoption);
     AppState::new(db, auth)
 }
 
@@ -82,9 +79,6 @@ impl everruns_core::PermissionResolver for DenyReads {
 #[tokio::test]
 async fn configured_session_read_denial_applies_to_all_org_endpoints() {
     let db = Arc::new(StorageBackend::test_database());
-    db.replace_org_feature_flags(2, &HashMap::from([("monitoring".into(), true)]))
-        .await
-        .unwrap();
     let mut state = state(db, false).await;
     state.auth.permission_resolver = Arc::new(DenyReads);
     let app = routes(state);
@@ -137,16 +131,9 @@ async fn tenant_admin_cannot_access_any_fleet_route() {
 }
 
 #[tokio::test]
-async fn adoption_is_enforced_on_every_read_even_after_a_snapshot_is_cached() {
+async fn org_monitoring_ignores_a_previous_opt_out() {
     let db = Arc::new(StorageBackend::test_database());
     let app = routes(state(db.clone(), false).await);
-    assert_eq!(
-        get(app.clone(), "/v1/monitoring").await.0,
-        StatusCode::NOT_FOUND
-    );
-    db.replace_org_feature_flags(2, &HashMap::from([("monitoring".into(), true)]))
-        .await
-        .unwrap();
     assert_eq!(get(app.clone(), "/v1/monitoring").await.0, StatusCode::OK);
     db.replace_org_feature_flags(2, &HashMap::from([("monitoring".into(), false)]))
         .await
@@ -154,25 +141,15 @@ async fn adoption_is_enforced_on_every_read_even_after_a_snapshot_is_cached() {
     for uri in [
         "/v1/monitoring",
         "/v1/monitoring/actors",
-        "/v1/monitoring/actors/session_00000000000000000000000000000001",
         "/v1/monitoring/timeline",
     ] {
-        assert_eq!(get(app.clone(), uri).await.0, StatusCode::NOT_FOUND);
+        assert_eq!(get(app.clone(), uri).await.0, StatusCode::OK);
     }
-    assert_eq!(
-        get(routes(state(db, true).await), "/v1/durable/monitoring")
-            .await
-            .0,
-        StatusCode::OK
-    );
 }
 
 #[tokio::test]
 async fn org_scope_hides_foreign_actors_and_global_worker_capacity() {
     let db = Arc::new(StorageBackend::test_database());
-    db.replace_org_feature_flags(2, &HashMap::from([("monitoring".into(), true)]))
-        .await
-        .unwrap();
     let a = db.create_session(test_session_row(2)).await.unwrap().id;
     let b = db.create_session(test_session_row(3)).await.unwrap().id;
     db.mark_session_actor_runnable(a, 2, 1).await.unwrap();
@@ -205,9 +182,6 @@ async fn org_scope_hides_foreign_actors_and_global_worker_capacity() {
 #[tokio::test]
 async fn timeline_returns_zero_filled_buckets_scoped_to_the_org() {
     let db = Arc::new(StorageBackend::test_database());
-    db.replace_org_feature_flags(2, &HashMap::from([("monitoring".into(), true)]))
-        .await
-        .unwrap();
     let a = db.create_session(test_session_row(2)).await.unwrap().id;
     let b = db.create_session(test_session_row(3)).await.unwrap().id;
     db.mark_session_actor_runnable(a, 2, 1).await.unwrap();

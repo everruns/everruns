@@ -3,6 +3,7 @@ import {
   AgentIcon,
   SessionIcon,
   HarnessDomainIcon,
+  KnowledgeIcon,
   SkillsIcon,
 } from "@/components/icons/facet-icons";
 import { useGlobalSearch } from "@/hooks/use-global-search";
@@ -51,17 +52,24 @@ const mockUseMemories = jest.fn((_options?: { enabled?: boolean }) => ({
 jest.mock("@/hooks/use-memory", () => ({
   useMemories: (options?: { enabled?: boolean }) => mockUseMemories(options),
 }));
-const mockUseKnowledgeIndexes = jest.fn((_options?: { enabled?: boolean }) => ({
-  data: [
-    {
-      id: "kidx_docs",
-      name: "Documentation Index",
-      description: "Published documentation",
-    },
-  ],
+const mockUseKnowledgeCollections = jest.fn((_options?: { enabled?: boolean }) => ({
+  data: {
+    pages: [
+      {
+        data: [
+          {
+            id: "kn_docs",
+            name: "Documentation Collection",
+            description: "Published documentation",
+          },
+        ],
+      },
+    ],
+  },
 }));
-jest.mock("@/hooks/use-knowledge-indexes", () => ({
-  useKnowledgeIndexes: (options?: { enabled?: boolean }) => mockUseKnowledgeIndexes(options),
+jest.mock("@/components/knowledge/use-knowledge", () => ({
+  useKnowledgeCollections: (options?: { enabled?: boolean }) =>
+    mockUseKnowledgeCollections(options),
 }));
 const mockUseInstalledPlugins = jest.fn((_options?: { enabled?: boolean }) => ({
   data: [
@@ -93,7 +101,6 @@ const mockFeatureFlags = {
   extractions: true,
   skills: true,
   memory: true,
-  knowledge: true,
   plugins: true,
   observers: true,
   machine_payments: true,
@@ -141,14 +148,13 @@ describe("useGlobalSearch", () => {
     mockUseSkills.mockClear();
     mockUseEvals.mockClear();
     mockUseMemories.mockClear();
-    mockUseKnowledgeIndexes.mockClear();
+    mockUseKnowledgeCollections.mockClear();
     mockUseInstalledPlugins.mockClear();
     Object.assign(mockFeatureFlags, {
       evals: false,
       extractions: true,
       skills: true,
       memory: true,
-      knowledge: true,
       plugins: true,
       observers: true,
       machine_payments: true,
@@ -166,7 +172,6 @@ describe("useGlobalSearch", () => {
       evals: false,
       skills: false,
       memory: false,
-      knowledge: false,
       plugins: false,
     });
 
@@ -175,7 +180,7 @@ describe("useGlobalSearch", () => {
     expect(mockUseSkills).toHaveBeenCalledWith({ enabled: false });
     expect(mockUseEvals).toHaveBeenCalledWith({ enabled: false });
     expect(mockUseMemories).toHaveBeenCalledWith({ enabled: false });
-    expect(mockUseKnowledgeIndexes).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseKnowledgeCollections).toHaveBeenCalledWith({ enabled: true });
     expect(mockUseInstalledPlugins).toHaveBeenCalledWith({ enabled: false });
     expect(result.current).not.toContainEqual(expect.objectContaining({ href: "/memory" }));
     expect(result.current).not.toContainEqual(
@@ -187,6 +192,7 @@ describe("useGlobalSearch", () => {
     renderHook(() => useGlobalSearch(""));
 
     expect(mockUseAgents).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseKnowledgeCollections).toHaveBeenCalledWith({ enabled: false });
   });
 
   it("finds organizations and switches to the selected organization", () => {
@@ -351,6 +357,11 @@ describe("useGlobalSearch", () => {
     expect(result.current.some((item) => item.href.startsWith("/apps"))).toBe(false);
   });
 
+  it("searches for Knowledge without treating the word as a collection ID", () => {
+    const { result } = renderHook(() => useGlobalSearch("knowledge"));
+    expect(result.current.some((item) => item.category === "id")).toBe(false);
+  });
+
   it("hides Payments navigation when machine payments are disabled", () => {
     mockFeatureFlags.machine_payments = false;
 
@@ -364,6 +375,7 @@ describe("useGlobalSearch", () => {
     ["session_unknown", "/sessions/session_unknown", SessionIcon],
     ["harness_unknown", "/harnesses/harness_unknown", HarnessDomainIcon],
     ["skill_unknown", "/skills/skill_unknown", SkillsIcon],
+    ["kn_unknown", "/knowledge/kn_unknown", KnowledgeIcon],
   ])("uses the entity's own domain glyph for an ID lookup: %s", (query, href, icon) => {
     const { result } = renderHook(() => useGlobalSearch(query));
     expect(result.current).toContainEqual(expect.objectContaining({ category: "id", href, icon }));
@@ -371,7 +383,7 @@ describe("useGlobalSearch", () => {
 
   it.each([
     ["product notes", "memory:mem_product", "/memory/mem_product"],
-    ["documentation index", "knowledge-index:kidx_docs", "/knowledge-indexes/kidx_docs"],
+    ["documentation collection", "knowledge:kn_docs", "/knowledge/kn_docs"],
     ["email service", "plugin:plugin_email", "/plugins"],
     ["answer quality", "observer:observer_quality", "/observers/observer_quality"],
   ])("finds the %s entity", (query, id, href) => {

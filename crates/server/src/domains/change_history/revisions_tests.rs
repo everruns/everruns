@@ -82,13 +82,6 @@ fn knowledge_field_inverse_keeps_unselected_replacement_settings() {
 #[tokio::test]
 async fn guarded_knowledge_name_undo_preserves_current_collection_configuration() {
     let ctx = owner();
-    ctx.db
-        .replace_org_feature_flags(
-            DEFAULT_ORG_ID,
-            &std::collections::HashMap::from([("knowledge".into(), true)]),
-        )
-        .await
-        .unwrap();
     let original = run(
         "create_knowledge",
         json!({

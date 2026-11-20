@@ -10,14 +10,14 @@ fn has_dreaming(configs: &[String]) -> bool {
 }
 
 #[tokio::test]
-async fn standalone_runtime_reads_obey_dreaming_adoption_and_revocation() {
+async fn standalone_runtime_reads_keep_dreaming_after_org_opt_out() {
     let service = test_worker_service().await;
     let org = everruns_core::DEFAULT_ORG_ID;
     service
         .db
         .replace_org_feature_flags(
             org,
-            &std::collections::HashMap::from([("dreaming".to_string(), true)]),
+            &std::collections::HashMap::from([("dreaming".to_string(), false)]),
         )
         .await
         .unwrap();
@@ -38,61 +38,45 @@ async fn standalone_runtime_reads_obey_dreaming_adoption_and_revocation() {
     })).await;
     let session_id: everruns_contracts::typed_id::SessionId =
         session["id"].as_str().unwrap().parse().unwrap();
-    for enabled in [false, true, false] {
-        service
-            .db
-            .replace_org_feature_flags(
-                org,
-                &std::collections::HashMap::from([("dreaming".to_string(), enabled)]),
-            )
-            .await
-            .unwrap();
-        let agent = service
-            .get_agent(trusted_request(GetAgentRequest {
-                org_id: org,
-                agent_id: Some(proto::Uuid {
-                    value: agent_id.uuid().to_string(),
-                }),
-            }))
-            .await
-            .unwrap()
-            .into_inner()
-            .agent
-            .unwrap();
-        assert_eq!(
-            agent.capability_ids.iter().any(|id| id == "dreaming"),
-            enabled
-        );
-        assert_eq!(has_dreaming(&agent.capabilities), enabled);
-        let harness = service
-            .get_harness(trusted_request(GetHarnessRequest {
-                org_id: org,
-                harness_id: Some(proto::Uuid {
-                    value: harness.id.uuid().to_string(),
-                }),
-            }))
-            .await
-            .unwrap()
-            .into_inner()
-            .harness
-            .unwrap();
-        assert_eq!(
-            harness.capability_ids.iter().any(|id| id == "dreaming"),
-            enabled
-        );
-        assert_eq!(has_dreaming(&harness.capabilities), enabled);
-        let session = service
-            .get_session(trusted_request(GetSessionRequest {
-                org_id: org,
-                session_id: Some(proto::Uuid {
-                    value: session_id.uuid().to_string(),
-                }),
-            }))
-            .await
-            .unwrap()
-            .into_inner()
-            .session
-            .unwrap();
-        assert_eq!(has_dreaming(&session.capabilities), enabled);
-    }
+    let agent = service
+        .get_agent(trusted_request(GetAgentRequest {
+            org_id: org,
+            agent_id: Some(proto::Uuid {
+                value: agent_id.uuid().to_string(),
+            }),
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .agent
+        .unwrap();
+    assert!(agent.capability_ids.iter().any(|id| id == "dreaming"));
+    assert!(has_dreaming(&agent.capabilities));
+    let harness = service
+        .get_harness(trusted_request(GetHarnessRequest {
+            org_id: org,
+            harness_id: Some(proto::Uuid {
+                value: harness.id.uuid().to_string(),
+            }),
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .harness
+        .unwrap();
+    assert!(harness.capability_ids.iter().any(|id| id == "dreaming"));
+    assert!(has_dreaming(&harness.capabilities));
+    let session = service
+        .get_session(trusted_request(GetSessionRequest {
+            org_id: org,
+            session_id: Some(proto::Uuid {
+                value: session_id.uuid().to_string(),
+            }),
+        }))
+        .await
+        .unwrap()
+        .into_inner()
+        .session
+        .unwrap();
+    assert!(has_dreaming(&session.capabilities));
 }

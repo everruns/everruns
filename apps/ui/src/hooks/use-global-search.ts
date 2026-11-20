@@ -13,7 +13,7 @@
  * 9. ID-based lookup (detects prefixed IDs and provides direct navigation)
  * 10. Evals (client-side filter over cached list)
  * 11. Virtual Users (client-side filter over cached list)
- * 12. Memories, knowledge indexes, plugins, and observers
+ * 12. Memories, knowledge collections, plugins, and observers
  *
  * All entity searches are client-side over already-fetched React Query data.
  * Backend search endpoints are available for server-side filtering when needed.
@@ -44,7 +44,7 @@ import { useCapabilities, useDeclarativeCapabilities } from "@/hooks/use-capabil
 import { useEvals } from "@/hooks/use-evals";
 import { useVirtualUsers } from "@/hooks/use-virtual-users";
 import { useMemories } from "@/hooks/use-memory";
-import { useKnowledgeIndexes } from "@/hooks/use-knowledge-indexes";
+import { useKnowledgeCollections } from "@/components/knowledge/use-knowledge";
 import { useInstalledPlugins } from "@/hooks/use-plugins";
 import { useObservers } from "@/hooks/use-observers";
 import { getDisplayName } from "@/lib/entity-lifecycle";
@@ -74,7 +74,7 @@ export type SearchResultCategory =
   | "capability"
   | "eval"
   | "memory"
-  | "knowledge_index"
+  | "knowledge"
   | "plugin"
   | "observer"
   | "organization"
@@ -121,12 +121,7 @@ const ID_PREFIX_MAP: Record<
   },
   eval_: { category: "eval", label: "Eval", path: "/evals", flag: "evals" },
   mem_: { category: "id", label: "Memory", path: "/memory", flag: "memory" },
-  kidx_: {
-    category: "knowledge_index",
-    label: "Knowledge Index",
-    path: "/knowledge-indexes",
-    flag: "knowledge",
-  },
+  kn_: { category: "knowledge", label: "Knowledge", path: "/knowledge" },
   plugin_: {
     category: "plugin",
     label: "Plugin",
@@ -172,7 +167,6 @@ export function useGlobalSearch(query: string) {
   const skillsEnabled = featureFlags.skills;
   const evalsEnabled = featureFlags.evals;
   const memoryEnabled = featureFlags.memory;
-  const knowledgeEnabled = featureFlags.knowledge;
   const pluginsEnabled = featureFlags.plugins;
   const observersEnabled = featureFlags.observers;
   const { can } = usePolicies("durable");
@@ -248,8 +242,8 @@ export function useGlobalSearch(query: string) {
   const { data: evalsData } = useEvals({ enabled: evalsEnabled && entitySearchEnabled });
   const { data: virtualUsersData } = useVirtualUsers({ enabled: entitySearchEnabled });
   const { data: memoriesData } = useMemories({ enabled: memoryEnabled && entitySearchEnabled });
-  const { data: knowledgeIndexesData } = useKnowledgeIndexes({
-    enabled: knowledgeEnabled && entitySearchEnabled,
+  const { data: knowledgeData } = useKnowledgeCollections({
+    enabled: entitySearchEnabled,
   });
   const { data: installedPluginsData } = useInstalledPlugins({
     enabled: pluginsEnabled && entitySearchEnabled,
@@ -268,7 +262,10 @@ export function useGlobalSearch(query: string) {
   const evals = evalsEnabled ? (evalsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const virtualUsers = virtualUsersData ?? EMPTY_ARRAY;
   const memories = memoryEnabled ? (memoriesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
-  const knowledgeIndexes = knowledgeEnabled ? (knowledgeIndexesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
+  const knowledgeCollections = useMemo(
+    () => knowledgeData?.pages.flatMap((page) => page.data) ?? EMPTY_ARRAY,
+    [knowledgeData],
+  );
   const installedPlugins = pluginsEnabled ? (installedPluginsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const observers = observersEnabled ? (observersData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
 
@@ -294,9 +291,10 @@ export function useGlobalSearch(query: string) {
     // 1. ID-based lookup — resolve entity name from cached data when possible
     for (const [prefix, meta] of Object.entries(ID_PREFIX_MAP)) {
       if (meta.flag && !featureFlags[meta.flag]) continue;
-      if (q.startsWith(prefix) || q.startsWith(prefix.replace("_", ""))) {
-        // Normalize: allow "session3242" or "session_3242"
-        const idValue = q.startsWith(prefix) ? q : `${prefix}${q.slice(prefix.length - 1)}`;
+      const hasPrefix = q.startsWith(prefix);
+      // Require the separator in kn_ so "knowledge" stays a text search.
+      if (hasPrefix || (prefix !== "kn_" && q.startsWith(prefix.slice(0, -1)))) {
+        const idValue = hasPrefix ? q : `${prefix}${q.slice(prefix.length - 1)}`;
 
         // Try to resolve a friendly name from cached data
         let resolvedName: string | undefined;
@@ -321,8 +319,8 @@ export function useGlobalSearch(query: string) {
           resolvedName = virtualUsers.find((ai) => ai.id === idValue)?.name;
         } else if (prefix === "mem_") {
           resolvedName = memories.find((memory) => memory.id === idValue)?.name;
-        } else if (prefix === "kidx_") {
-          resolvedName = knowledgeIndexes.find((index) => index.id === idValue)?.name;
+        } else if (prefix === "kn_") {
+          resolvedName = knowledgeCollections.find((collection) => collection.id === idValue)?.name;
         } else if (prefix === "plugin_") {
           const plugin = installedPlugins.find((candidate) => candidate.id === idValue);
           resolvedName = plugin?.display_name ?? plugin?.name;
@@ -622,22 +620,22 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 14. Knowledge indexes
-    let knowledgeIndexCount = 0;
-    for (const index of knowledgeIndexes) {
-      if (knowledgeIndexCount >= MAX_PER_CATEGORY) break;
+    // 14. Knowledge collections
+    let knowledgeCount = 0;
+    for (const collection of knowledgeCollections) {
+      if (knowledgeCount >= MAX_PER_CATEGORY) break;
       if (
-        matchesTokens(tokens, index.name, index.description, index.id, "knowledge index retrieval")
+        matchesTokens(tokens, collection.name, collection.description, collection.id, "knowledge")
       ) {
         results.push({
-          id: `knowledge-index:${index.id}`,
-          category: "knowledge_index",
+          id: `knowledge:${collection.id}`,
+          category: "knowledge",
           icon: KnowledgeIcon,
-          title: index.name,
-          subtitle: `Knowledge Indexes > ${index.name}`,
-          href: `/knowledge-indexes/${index.id}`,
+          title: collection.name,
+          subtitle: `Knowledge > ${collection.name}`,
+          href: `/knowledge/${collection.id}`,
         });
-        knowledgeIndexCount++;
+        knowledgeCount++;
       }
     }
 
@@ -696,7 +694,7 @@ export function useGlobalSearch(query: string) {
     evals,
     virtualUsers,
     memories,
-    knowledgeIndexes,
+    knowledgeCollections,
     installedPlugins,
     observers,
   ]);

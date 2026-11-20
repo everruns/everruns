@@ -113,7 +113,13 @@ async fn test_knowledge_create_enqueues_source_and_rejects_chat_model() {
 
 #[tokio::test]
 async fn test_org_feature_flags_opt_in() {
-    let server = TestServer::new().await;
+    let policy =
+        everruns_server::records::FeatureFlagPolicy::from_env(everruns_core::DeploymentGrade::Dev)
+            .with_grade(
+                "extractions",
+                everruns_server::records::FeatureFlagGrade::Adoption,
+            );
+    let server = TestServer::in_memory_with_feature_policy(policy).await;
     let org_id = "org_00000000000000000000000000000001";
 
     let settings: serde_json::Value = server
@@ -131,31 +137,41 @@ async fn test_org_feature_flags_opt_in() {
             .iter()
             .all(|flag| flag["name"] != "chat_threads" && flag["name"] != "chat_mode")
     );
-    let monitoring = flags
+    for name in ["dreaming", "monitoring", "knowledge"] {
+        assert!(flags.iter().all(|flag| flag["name"] != name));
+        server
+            .patch(
+                &format!("/v1/orgs/{org_id}/feature-flags"),
+                json!({ "flags": { (name): false } }),
+            )
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+    let extractions = flags
         .iter()
-        .find(|flag| flag["name"] == "monitoring")
-        .expect("monitoring adoption setting");
-    assert_eq!(monitoring["grade"], "adoption");
-    assert_eq!(monitoring["default_enabled"], false);
-    assert_eq!(monitoring["effective"], false);
-    assert_eq!(monitoring["can_manage"], true);
+        .find(|flag| flag["name"] == "extractions")
+        .expect("extractions adoption setting");
+    assert_eq!(extractions["grade"], "adoption");
+    assert_eq!(extractions["default_enabled"], false);
+    assert_eq!(extractions["effective"], false);
+    assert_eq!(extractions["can_manage"], true);
 
     let patched: serde_json::Value = server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            serde_json::json!({ "flags": { "monitoring": true } }),
+            serde_json::json!({ "flags": { "extractions": true } }),
         )
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(patched["monitoring"], true);
+    assert_eq!(patched["extractions"], true);
 
     let effective: serde_json::Value = server
         .get(&format!("/v1/orgs/{org_id}/feature-flags"))
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(effective["monitoring"], true);
+    assert_eq!(effective["extractions"], true);
     assert!(effective.get("mcp_endpoint").is_none());
     assert_eq!(
         effective["machine_payments"],
@@ -165,7 +181,7 @@ async fn test_org_feature_flags_opt_in() {
     server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            json!({ "flags": { "monitoring": false } }),
+            json!({ "flags": { "extractions": false } }),
         )
         .await
         .assert_status(StatusCode::OK);
@@ -174,7 +190,7 @@ async fn test_org_feature_flags_opt_in() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(disabled["monitoring"], false);
+    assert_eq!(disabled["extractions"], false);
 
     server
         .patch(

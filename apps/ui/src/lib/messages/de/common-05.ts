@@ -90,7 +90,7 @@ export const messages: Readonly<Record<string, string>> = {
     "Überwachen Sie das Verhalten und die Qualität der Agenten im Laufe der Zeit.",
   Monitoring: "Überwachung",
   "Monitoring could not load": "Überwachung konnte nicht geladen werden",
-  "Monitoring is not enabled": "Überwachung ist nicht aktiviert",
+  "Session access required": "Sitzungszugriff erforderlich",
   "Monitoring is unavailable": "Überwachung ist nicht verfügbar",
   "Monitoring sections": "Überwachungsabschnitte",
   Moonshot: "Mondschuss",

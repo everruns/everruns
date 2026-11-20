@@ -7,7 +7,7 @@ tags: [everruns, memory, dreaming, framework]
 
 # Dreaming
 
-Dreaming is opt-in background maintenance over completed experience. It neither
+Dreaming is background maintenance over completed experience. It neither
 rewrites foreground history nor changes compaction checkpoints. Configuration
 and validation belong to the [neutral contract](../../crates/contracts/src/runtime/dreaming.rs);
 shared execution belongs to the [portable runner](../../crates/core/src/engine/dreaming/runner.rs)
@@ -35,9 +35,9 @@ and [host orchestration](../../crates/core/src/host/dreaming.rs).
   terminal event. Recovery covers queued work; a later turn or manual dream
   rediscovers experience if the process stops before enqueue.
 
-## Rollout
+## Availability
 
-Worker includes dreaming and its child harnesses inherit it. Hosted execution requires the organization-effective Adoption-grade `dreaming` flag; the shared capability filter also applies to explicit agent configuration and commands. Framework presets share the capability data, while embedded hosts own adoption and Memory authorization. Changelog publication is held until explicit user approval.
+Worker includes Dreaming and its child harnesses inherit it. Agents and harnesses can configure Dreaming explicitly. Framework presets share the capability data, and each host authorizes writable Memory.
 
 ## Hosting
 

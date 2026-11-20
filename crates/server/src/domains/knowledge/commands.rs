@@ -348,9 +348,6 @@ pub struct WorkerKnowledge {
 impl Command for WorkerKnowledge {
     type Output = Value;
     async fn execute(self, ctx: &Ctx) -> Result<Value, CommandError> {
-        if !ctx.feature_flags.knowledge {
-            return Err(CommandError::feature_not_enabled("knowledge"));
-        }
         let session = self
             .session_id
             .parse()

@@ -18,10 +18,9 @@ secondary. Agent names and conversation content are excluded from the overview.
 
 ## Requirements
 
-- Organization monitoring is an adoption feature, disabled until opt-in. Every
-  read enforces the resolved organization and the configured session-read policy.
-- Cross-organization monitoring requires platform-user authority. Tenant roles
-  and adoption never imply fleet access. Organization views expose only their
+- Organization monitoring is available to every organization. Each read
+  enforces the resolved organization and the configured session-read policy.
+- Cross-organization monitoring requires platform-user authority. Platform-user authority is independent of tenant roles. Organization views expose only their
   own ownership and omit global worker capacity and heartbeat telemetry.
 - Live refreshes report observation time and stale status. Lease expiry, worker
   heartbeat freshness, current ownership, and reported work load are distinct.
@@ -59,8 +58,8 @@ envelopes, and the existing trace index. Ownership history is produced by actor
 row transitions in the same transaction and expires through the existing
 cluster-job mechanism.
 
-Organization adoption and authorization are checked before the shared snapshot
-cache, so revocation is observed on the next request. Cache entries and concurrent
+Organization authorization is checked before reading the shared snapshot cache,
+so revocation is observed on the next request. Cache entries and concurrent
 reads are bounded. State classification and SQL bounds belong to
 [the repository](../../crates/server/src/storage/repositories/monitoring/mod.rs);
 authorization, response shapes, and caching belong to

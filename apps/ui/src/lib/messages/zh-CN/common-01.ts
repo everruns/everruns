@@ -285,8 +285,7 @@ export const messages: Readonly<Record<string, string>> = {
     "组织管理员可以作为另一个虚拟用户继续 Playground 聊天。",
   "An organisation is your team’s shared workspace. Agents, harnesses, sessions, and settings all live here.":
     "组织是您团队的共享工作空间。智能体、执行框架、会话和设置都位于此处。",
-  "An organization administrator can enable Monitoring in Settings → Features.":
-    "组织管理员可以在“设置”→“功能”中启用监控。",
+  "You need permission to view sessions in this organization.": "你需要权限才能查看此组织的会话。",
   "An organization search account. Searches bill its key.": "组织搜索帐户。搜索账单其关键。",
   "An unexpected error occurred. Please try again.": "发生意外错误。请再试一次。",
   "An unexpected error occurred. Your work is safe. Try again or return to the dashboard.":

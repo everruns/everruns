@@ -21496,7 +21496,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the monitoring feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
           "support": "preview"
         }
@@ -21557,7 +21557,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the monitoring feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
           "support": "preview"
         }
@@ -21605,7 +21605,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the monitoring feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
           "support": "preview"
         }
@@ -21632,7 +21632,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the monitoring feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
           "support": "preview"
         }
@@ -21732,7 +21732,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the monitoring feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
           "support": "preview"
         }
@@ -21811,7 +21811,7 @@
         },
         "x-docs": {
           "audience": "public",
-          "availability": "Requires organization adoption of the monitoring feature flag",
+          "availability": "Everruns Cloud and self-hosted Platform",
           "group": "operations-billing",
           "support": "preview"
         }

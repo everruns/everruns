@@ -120,7 +120,7 @@ async fn test_mcp_is_available_when_obsolete_org_flag_is_disabled() {
 #[tokio::test]
 async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
     let server = TestServer::in_memory().await;
-    let enabled_flags = std::collections::HashMap::from([
+    let disabled_flags = std::collections::HashMap::from([
         ("evals".to_string(), false),
         ("skills".to_string(), false),
         ("memory".to_string(), false),
@@ -129,25 +129,16 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
     ]);
     server
         .db
-        .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &enabled_flags)
+        .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &disabled_flags)
         .await
         .expect("disable gated surfaces while leaving MCP available");
 
-    let api_body: Value = server
-        .get("/v1/evals")
-        .await
-        .assert_status(StatusCode::NOT_FOUND)
-        .json();
-    assert_eq!(api_body["detail"], "Feature 'evals' is not enabled");
-    assert_eq!(api_body["code"], "feature_not_enabled");
-
     for (path, flag) in [
+        ("/v1/evals", "evals"),
         ("/v1/skills", "skills"),
         ("/v1/skills/config", "skills"),
         ("/v1/memories", "memory"),
         ("/v1/memories/memory_missing/fs", "memory"),
-        ("/v1/knowledge", "knowledge"),
-        ("/v1/knowledge-indexers", "knowledge"),
         ("/v1/plugins", "plugins"),
     ] {
         let response = server.get(path).await;
@@ -163,11 +154,14 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         assert_eq!(body["code"], "feature_not_enabled");
     }
 
-    // Delegation has no feature flag: adding the capability is the opt-in.
-    server
-        .get("/v1/capabilities/agent_handoff")
-        .await
-        .assert_status(StatusCode::OK);
+    for path in [
+        "/v1/knowledge",
+        "/v1/knowledge-indexers",
+        "/v1/capabilities/knowledge",
+        "/v1/capabilities/agent_handoff",
+    ] {
+        server.get(path).await.assert_status(StatusCode::OK);
+    }
 
     let discovered = mcp_tool_call(
         &server,
@@ -176,16 +170,16 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
     )
     .await;
     let discovery: Value = serde_json::from_str(&tool_text(&discovered)).expect("discovery JSON");
-    assert!(
-        discovery["categories"]
-            .as_array()
-            .expect("categories")
-            .iter()
-            .all(|category| !matches!(
-                category["category"].as_str(),
-                Some("evals" | "skills" | "memories" | "knowledge" | "plugins")
-            ))
-    );
+    let categories: Vec<_> = discovery["categories"]
+        .as_array()
+        .expect("categories")
+        .iter()
+        .filter_map(|category| category["category"].as_str())
+        .collect();
+    assert!(categories.contains(&"knowledge"));
+    for gated in ["evals", "skills", "memories", "plugins"] {
+        assert!(!categories.contains(&gated), "{gated}");
+    }
 
     let invoked = mcp_tool_call(&server, "query", json!({ "commands": "list_evals" })).await;
     assert!(tool_is_error(&invoked));

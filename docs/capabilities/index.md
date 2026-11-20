@@ -178,7 +178,7 @@ Performance and cost optimization for LLM interactions.
 |---|---|---|
 | [Infinity Context](/capabilities/infinity-context/) | `infinity_context` (deprecated) | 1 |
 | [Context Compaction](/advanced/compaction/) | `compaction` | 0 |
-| [Dreaming](/features/dreaming/) | `dreaming` | 0; `FEATURE_DREAMING` grade; organization Adoption opt-in |
+| [Dreaming](/features/dreaming/) | `dreaming` | 0 |
 | [Auto Tool Search](/capabilities/tool-search/#auto-tool-search) | `auto_tool_search` | 0 (adds `tool_search` on models without native tool search) |
 | [OpenAI Tool Search](/capabilities/tool-search/#hosted-openai) | `openai_tool_search` | 0 |
 | [Claude Tool Search](/capabilities/tool-search/#hosted-claude) | `claude_tool_search` | 0 |

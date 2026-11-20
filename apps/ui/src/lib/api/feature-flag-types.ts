@@ -1,8 +1,4 @@
 export interface FeatureFlags {
-  /** Worker memory consolidation. Organization adoption opt-in. */
-  dreaming?: boolean;
-  /** Organization execution monitoring. Adoption opt-in. */
-  monitoring?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;
@@ -14,8 +10,6 @@ export interface FeatureFlags {
   skills: boolean;
   /** Workspace memory management UI. Experimental. */
   memory: boolean;
-  /** Unified Knowledge files and optional search. Organization adoption opt-in. */
-  knowledge: boolean;
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
   voice: boolean;

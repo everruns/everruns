@@ -12,7 +12,7 @@ Verify background consolidation produces authorized Memory notes and a separate 
 
 ## Preconditions
 
-Canonical local stack with `AUTH_MODE=none`, a real priced model, organization Adoption flag `dreaming` enabled, and an agent with writable user Memory and Dreaming configured. Use an isolated session and record its ID and initial event cursor. See [Dreaming](../../../runtime-resources/dreaming.md).
+Canonical local stack with `AUTH_MODE=none`, a real priced model, and a Worker agent with writable user Memory. Use an isolated session and record its ID and initial event cursor. See [Dreaming](../../../runtime-resources/dreaming.md).
 
 ## Test Data
 
@@ -31,7 +31,7 @@ Canonical local stack with `AUTH_MODE=none`, a real priced model, organization A
 5. Repeat `/dream` without new experience. Re-read the Memory files and confirm no duplicate artifact.
 6. Repeat with proposal mode in a fresh session. Confirm active Memory is unchanged before `/dream accept`; inspect `/dream proposals`, accept, and verify the artifact. In another proposal session, discard and verify no artifact.
 
-7. Disable the organization Dreaming feature flag. Confirm `/dream` is unavailable and new Worker sessions do not run dreaming. Re-enable it and confirm Worker inheritance becomes available without adding the capability to the agent.
+7. Repeat with a read-only or missing Memory destination. Confirm that Dreaming creates no artifact.
 
 ## Expected Result
 

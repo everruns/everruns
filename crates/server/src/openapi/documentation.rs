@@ -268,7 +268,6 @@ fn apply(spec: &mut Value) {
                 "support": if experimental { "experimental" } else { "preview" },
                 "audience": if internal { "internal" } else { "public" },
                 "availability": if experimental { "Requires machine_payments; disabled by default" }
-                    else if tag == "monitoring" { "Requires organization adoption of the monitoring feature flag" }
                     else if tag == "evals" { "Requires the evals feature flag" }
                     else if tag == "extractions" { "Requires an organization-owned provider and an enabled extraction model" }
                     else { "Everruns Cloud and self-hosted Platform" },

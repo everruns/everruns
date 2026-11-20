@@ -43,13 +43,6 @@ impl Command for WorkerDreamingState {
         Some(&SESSION_MANAGE)
     }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        // Global due discovery remains infrastructure; tenant effects and budget
-        // reservations re-read adoption before every operation, including revocation.
-        if self.operation != "due" && !ctx.feature_flags.dreaming {
-            return Err(CommandError::forbidden(
-                "Dreaming requires organization adoption",
-            ));
-        }
         // State can retain bounded evidence plus four serialized proposals.
         // Artifact paths use filesystem limits, independently of opaque state keys.
         let key_limit = if self.operation == "create_artifact" {
@@ -147,14 +140,8 @@ impl Command for WorkerDreamingState {
             }
             "due" => {
                 // Authenticated internal workers already have cross-org execution authority.
-                let policy = crate::records::FeatureFlagPolicy::current();
-                if !policy.deployment_flags().dreaming {
-                    return Ok(serde_json::json!([]));
-                }
-                let default_enabled = policy.for_org(&std::collections::HashMap::new()).dreaming;
-                // Filter before LIMIT so revoked tenants cannot starve adopted work.
                 // A session the data plane runs dreams there (`due_org`), never on a worker.
-                let rows=sqlx::query(concat!("SELECT d.org_id,d.session_id FROM dreaming_state d LEFT JOIN org_feature_flags f ON f.org_id=d.org_id AND f.flag_name='dreaming' WHERE d.due_at<=$1 AND d.session_id IS NOT NULL AND COALESCE(f.enabled,$3) AND NOT ", on_data_plane!(), " ORDER BY d.due_at LIMIT $2")).bind(self.now.unwrap_or_else(||chrono::Utc::now().timestamp())).bind(i64::from(self.limit.unwrap_or(32).min(100))).bind(default_enabled).fetch_all(pool).await.map_err(|error| CommandError::internal(error.into()))?;
+                let rows=sqlx::query(concat!("SELECT d.org_id,d.session_id FROM dreaming_state d WHERE d.due_at<=$1 AND d.session_id IS NOT NULL AND NOT ", on_data_plane!(), " ORDER BY d.due_at LIMIT $2")).bind(self.now.unwrap_or_else(||chrono::Utc::now().timestamp())).bind(i64::from(self.limit.unwrap_or(32).min(100))).fetch_all(pool).await.map_err(|error| CommandError::internal(error.into()))?;
                 let ids: Vec<(i64, SessionId)> = rows
                     .iter()
                     .map(|r| (r.get("org_id"), SessionId::from_uuid(r.get("session_id"))))
@@ -188,7 +175,6 @@ mod tests {
             EncryptionService::new("v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap(),
         );
         Ctx::minimal_for_test(Caller::internal(org), db, Some(encryption))
-            .with_feature_flags(crate::records::FeatureFlags::all_enabled())
     }
     async fn run(ctx: &Ctx, value: serde_json::Value) -> serde_json::Value {
         serde_json::from_str(&dispatch("worker_dreaming_state", value, ctx).await.unwrap()).unwrap()
@@ -227,24 +213,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 0);
-    }
-
-    #[tokio::test]
-    async fn disabled_adoption_blocks_queued_work_before_budget_or_memory_effects() {
-        let db = Arc::new(StorageBackend::test_database());
-        let mut c = ctx(db, DEFAULT_ORG_ID);
-        c.feature_flags.dreaming = false;
-        for operation in ["get", "cas", "scope", "create_artifact"] {
-            assert!(
-                dispatch(
-                    "worker_dreaming_state",
-                    json!({"operation": operation, "key":"job:disabled"}),
-                    &c
-                )
-                .await
-                .is_err()
-            );
-        }
     }
 
     #[tokio::test]
