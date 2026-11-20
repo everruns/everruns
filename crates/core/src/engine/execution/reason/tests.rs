@@ -1,5 +1,4 @@
 use super::compaction::materially_reduced;
-use super::generation_outcome::add_compaction_cost;
 use super::*;
 use crate::engine::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheRetention,
@@ -8,27 +7,6 @@ use crate::engine::driver_registry::{
 use crate::engine::events::CapabilityUsageKind;
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 use serde_json::json;
-
-#[test]
-fn compaction_cost_preserves_estimated_generation_cost() {
-    let mut usage = TokenUsage::new(1_000_000, 500_000).with_cost(None, Some(7.5));
-
-    add_compaction_cost(&mut usage, 0.0125);
-
-    assert_eq!(usage.actual_cost_usd, None);
-    assert_eq!(usage.estimated_cost_usd, Some(7.5));
-    assert_eq!(usage.effective_cost_usd(), Some(7.5125));
-}
-
-#[test]
-fn compaction_cost_combines_with_actual_generation_cost() {
-    let mut usage = TokenUsage::new(10, 5).with_cost(Some(0.25), Some(0.2));
-
-    add_compaction_cost(&mut usage, 0.0125);
-
-    assert_eq!(usage.actual_cost_usd, Some(0.2625));
-    assert_eq!(usage.effective_cost_usd(), Some(0.2625));
-}
 
 fn replay_metadata() -> LlmCompletionMetadata {
     let mut metadata = LlmCompletionMetadata::default();
@@ -1157,6 +1135,7 @@ fn lifecycle_test_context<'a>(
         session_id: crate::engine::typed_id::SessionId::new(),
         message_source_sequence: Some(7),
         provider_type: "stub-provider",
+        provider_id: "stub-account",
         model: "stub-model",
         system_prompt: None,
         stateful_response_continuation: false,
@@ -1236,11 +1215,16 @@ async fn proactive_checkpoint_install_failure_emits_failed() {
     let events = emitter.events().await;
     assert_eq!(
         events.len(),
-        2,
-        "attempt plus terminal failed, got {events:?}"
+        3,
+        "attempt, paid generation and terminal failure, got {events:?}"
     );
     assert!(matches!(&events[0].data, EventData::ContextCompacting(_)));
-    match &events[1].data {
+    let EventData::LlmGeneration(native) = &events[1].data else {
+        panic!("paid native call must survive checkpoint installation failure");
+    };
+    assert_eq!(native.metadata.usage.as_ref().unwrap().input_tokens, 90_000);
+    assert!(config.provider_opaque_context.is_none());
+    match &events[2].data {
         EventData::ContextCompactionFailed(failed) => {
             assert_eq!(failed.stage, CompactionFailStage::CheckpointInstall);
             assert_eq!(failed.trigger, CompactionTrigger::ContextBudget);

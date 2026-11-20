@@ -844,6 +844,16 @@ async fn context_report_excludes_summary_calls_and_preserves_session_scope() {
     ))
     .await
     .unwrap();
+    let native = serde_json::json!({"messages":[],"output":{},"metadata":{"model":"native-model","success":true,"usage":{"input_tokens":999999,"output_tokens":20000},"request_options":{"metadata":{"purpose":"context_compaction"}}}});
+    db.create_event(row(session.id, native.clone()))
+        .await
+        .unwrap();
+    db.create_event(row(
+        session.id,
+        serde_json::json!({"type":"llm.generation","data":native}),
+    ))
+    .await
+    .unwrap();
     db.create_event(row(other.id, serde_json::json!({"messages":[],"output":{},"metadata":{"model":"other-session","success":true}}))).await.unwrap();
     let before = db.count_events(session.id, &[]).await.unwrap();
     let report = GetSessionContextReport {

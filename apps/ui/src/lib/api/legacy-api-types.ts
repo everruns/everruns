@@ -1,5 +1,5 @@
-import type { CompactionStatus, ContextCompactedData } from "./compaction-types";
-export type { ContextCompactedData } from "./compaction-types";
+import type { CompactionStatus, ContextCompactedData, LlmCompactionInfo } from "./compaction-types";
+export type { ContextCompactedData, LlmCompactionInfo } from "./compaction-types";
 import type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
 export type { EvalRunStatus, EvalRunSummaryView, RunSummary } from "./eval-run-types";
 export type {
@@ -1879,14 +1879,6 @@ export interface ToolCompletedData {
 export interface LlmGenerationOutput {
   text?: string;
   tool_calls: ToolCall[];
-}
-
-/** Information about context compaction during LLM generation */
-export interface LlmCompactionInfo {
-  compacted: boolean;
-  input_tokens_before?: number;
-  input_tokens_after?: number;
-  duration_ms?: number;
 }
 
 /** LLM generation metadata */

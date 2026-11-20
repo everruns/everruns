@@ -808,6 +808,7 @@ impl ReasonAtom {
                     session_id,
                     message_source_sequence,
                     provider_type: model_with_provider.provider_type.as_str(),
+                    provider_id: model_with_provider.provider.as_str(),
                     model: &model_with_provider.model,
                     system_prompt: has_system_prompt.then_some(turn_agent.system_prompt.as_str()),
                     stateful_response_continuation,
@@ -924,6 +925,7 @@ impl ReasonAtom {
                             session_id,
                             message_source_sequence,
                             provider_type: model_with_provider.provider_type.as_str(),
+                            provider_id: model_with_provider.provider.as_str(),
                             model: &model_with_provider.model,
                             summarization_model_fallback: &turn_agent.model,
                             system_prompt: has_system_prompt
@@ -1888,7 +1890,7 @@ impl ReasonAtom {
             .with_truncation_gate(truncation.label())
             .with_tool_changes(tool_changes.record.clone());
         if let Some(info) = compaction_info {
-            generation_data = generation_outcome::with_compaction(generation_data, info);
+            generation_data = generation_data.with_compaction(info);
         }
 
         generation_data = observability::with_completed_request_options(
@@ -1924,9 +1926,9 @@ impl ReasonAtom {
             return Err(truncation.failure());
         }
 
-        // 17. Assistant-message metadata; a retried generation is stamped.
-        let mut metadata = generation_outcome::assistant_metadata(
+        let mut metadata = generation_outcome::assistant_metadata_for(
             &turn_agent.model,
+            &model_with_provider,
             llm_config.reasoning_state.as_ref(),
             llm_config
                 .reasoning_state
@@ -1934,10 +1936,8 @@ impl ReasonAtom {
                 .and_then(|state| state.effective)
                 .or(reasoning_effort)
                 .map(|effort| effort.as_str()),
-            &model_with_provider.provider_type.to_string(),
             response_id.as_deref(),
         );
-        transcript::stamp_replay(&mut metadata, &model_with_provider);
         truncation.stamp(&mut metadata);
         tool_changes.stamp(&mut metadata);
         context_updates.stamp(&mut metadata);

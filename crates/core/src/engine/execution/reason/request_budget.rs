@@ -210,6 +210,7 @@ mod tests {
                 session_id: crate::engine::typed_id::SessionId::new(),
                 message_source_sequence: None,
                 provider_type: "test",
+                provider_id: "test-account",
                 model: "test",
                 system_prompt: Some("system"),
                 stateful_response_continuation: false,

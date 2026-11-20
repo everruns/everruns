@@ -22580,10 +22580,8 @@ export interface components {
        * Format: double
        * @description Provider-reported cost of the compaction call itself, in USD.
        *
-       *     Compaction is a separate billable model call, so its cost is also folded
-       *     into the generation's `usage.actual_cost_usd` — that is what budgets and
-       *     `llm_generations` read. This field keeps the split visible, so an
-       *     operator can see how much of a turn's spend was compaction (EVE-895).
+       *     Attribution only: the native call has its own `llm.generation` usage
+       *     record. Consumers must not add this amount to the main call again.
        */
       cost_usd?: number | null;
       /**
@@ -22591,6 +22589,12 @@ export interface components {
        * @description Duration of the compaction operation in milliseconds
        */
       duration_ms?: number | null;
+      /**
+       * Format: double
+       * @description Price-table estimate for the native compaction call, kept distinct from
+       *     authoritative provider cost and used in effective spend when it is absent.
+       */
+      estimated_cost_usd?: number | null;
       /**
        * Format: int32
        * @description Number of input tokens after compaction

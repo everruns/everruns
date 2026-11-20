@@ -17,7 +17,7 @@ New configurations need no separate `infinity_context` entry.
 
 Portable summaries bridge model changes and recover after restarts on persistent
 backends. Native checkpoints retain their provider/model scope. Original history
-stays queryable. Summary calls are billed separately; fidelity depends on the model.
+stays queryable. Summary calls have separate usage; native cost estimates stay labelled.
 
 **In the UI:** Chat and Playground have a **Context** inspector. Capability
 settings expose working budgets, proactive mode and summary options. Transcript

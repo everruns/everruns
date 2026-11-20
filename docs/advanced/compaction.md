@@ -80,6 +80,11 @@ require several calls; subsequent calls process new history incrementally.
 Explicit native compaction preserves generated-token usage for billing. Those
 tokens do not measure the retained window. When its token count is unavailable,
 the trace reports serialized byte measurements instead.
+Native calls have separate `llm.generation` usage records, including completed
+responses rejected for insufficient reduction. When the provider omits its price,
+available token usage and model pricing supply a labelled estimate. Compaction
+metadata retains attribution; the next main call does not include that spend again.
+Native estimates assume uncached input when compact usage has no cache breakdown.
 
 ## Triggers and provider modes
 
@@ -433,8 +438,10 @@ Each step in the cascade is recorded with its strategy name, resulting message c
 Provider-encrypted native compact content is never included in these public events.
 Request-local masking may emit a `context.compacted` measurement when it reduces
 the estimated prompt size; that event alone does not establish a durable checkpoint.
-Portable summary generation also emits a separate `llm.generation` usage event
-with request metadata `purpose: continuity_summary`.
+Portable summaries and native calls emit separate `llm.generation` usage events
+with request metadata `purpose: continuity_summary` and `purpose: context_compaction`,
+respectively. These auxiliary calls do not replace the main request in context-size
+inspection. Native usage events omit the provider-encrypted replacement content.
 
 An oversized source, a rejected or non-reducing summary, and a request that still
 cannot fit after permitted compaction end the attempt with an error. Replaying

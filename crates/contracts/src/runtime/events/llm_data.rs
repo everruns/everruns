@@ -327,12 +327,15 @@ pub struct LlmCompactionInfo {
 
     /// Provider-reported cost of the compaction call itself, in USD.
     ///
-    /// Compaction is a separate billable model call, so its cost is also folded
-    /// into the generation's `usage.actual_cost_usd` — that is what budgets and
-    /// `llm_generations` read. This field keeps the split visible, so an
-    /// operator can see how much of a turn's spend was compaction (EVE-895).
+    /// Attribution only: the native call has its own `llm.generation` usage
+    /// record. Consumers must not add this amount to the main call again.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost_usd: Option<f64>,
+
+    /// Price-table estimate for the native compaction call, kept distinct from
+    /// authoritative provider cost and used in effective spend when it is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_cost_usd: Option<f64>,
 }
 
 impl LlmCompactionInfo {
@@ -349,7 +352,14 @@ impl LlmCompactionInfo {
             input_tokens_after,
             duration_ms,
             cost_usd,
+            estimated_cost_usd: None,
         }
+    }
+
+    /// Attach a separately attributable estimate without declaring it actual.
+    pub fn with_estimated_cost(mut self, cost: Option<f64>) -> Self {
+        self.estimated_cost_usd = cost;
+        self
     }
 }
 

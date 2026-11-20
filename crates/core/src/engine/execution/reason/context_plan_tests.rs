@@ -965,6 +965,7 @@ mod lifecycle_tests {
                 session_id: session,
                 message_source_sequence: Some(100),
                 provider_type: "openrouter",
+                provider_id: "test-account",
                 model: "model-a",
                 summarization_model_fallback: "model-a",
                 system_prompt: None,

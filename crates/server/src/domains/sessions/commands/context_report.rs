@@ -122,10 +122,10 @@ fn main_generation(
     let EventData::LlmGeneration(data) = deserialize_event_data(kind, data) else {
         return None;
     };
-    let summary = data.metadata.request_options.as_ref().is_some_and(|o| {
+    let compaction = data.metadata.request_options.as_ref().is_some_and(|o| {
         o.metadata
             .get("purpose")
-            .is_some_and(|p| p == "continuity_summary")
+            .is_some_and(|p| matches!(p.as_str(), "continuity_summary" | "context_compaction"))
     });
-    (!summary).then_some(data)
+    (!compaction).then_some(data)
 }

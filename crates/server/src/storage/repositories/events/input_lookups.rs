@@ -19,7 +19,7 @@ impl Database {
         sqlx::query_as::<_, EventRow>(sql!(
             "SELECT {EventRow} FROM events WHERE session_id = $1 AND event_type = 'llm.generation' \
              AND COALESCE(data->'metadata'->'request_options'->'metadata'->>'purpose', \
-                          data->'data'->'metadata'->'request_options'->'metadata'->>'purpose', '') <> 'continuity_summary' \
+                          data->'data'->'metadata'->'request_options'->'metadata'->>'purpose', '') NOT IN ('continuity_summary', 'context_compaction') \
              ORDER BY sequence DESC LIMIT 1"
         )).bind(session_id.uuid()).fetch_optional(&self.pool).await
     }

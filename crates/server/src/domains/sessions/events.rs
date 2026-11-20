@@ -199,7 +199,7 @@ async fn latest_context_generation_from(pages: &impl Pages) -> Result<Option<Eve
                     .pointer("/data/metadata/request_options/metadata/purpose")
                     .and_then(serde_json::Value::as_str)
             });
-        purpose != Some("continuity_summary")
+        !matches!(purpose, Some("continuity_summary" | "context_compaction"))
     }))
 }
 
@@ -612,14 +612,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn context_measurement_skips_flat_and_legacy_summaries_in_a_cells_log() {
-        let mut log = log(4, |_| "llm.generation");
+    async fn context_measurement_skips_flat_and_legacy_compaction_calls_in_a_cells_log() {
+        let mut log = log(6, |_| "llm.generation");
         log.rows[0].data = json!({"metadata":{"model":"old-main"}});
         log.rows[1].data = json!({"metadata":{"model":"last-main"}});
         let summary =
             json!({"metadata":{"request_options":{"metadata":{"purpose":"continuity_summary"}}}});
         log.rows[2].data = summary.clone();
         log.rows[3].data = json!({"type":"llm.generation","data":summary});
+        let native =
+            json!({"metadata":{"request_options":{"metadata":{"purpose":"context_compaction"}}}});
+        log.rows[4].data = native.clone();
+        log.rows[5].data = json!({"type":"llm.generation","data":native});
         let row = latest_context_generation_from(&log).await.unwrap().unwrap();
         assert_eq!(row.sequence, 2);
         assert_eq!(row.data["metadata"]["model"], "last-main");

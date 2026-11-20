@@ -856,10 +856,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     }));
 }
 
-/// EVE-895: compaction is a separate billable model call. Its provider-reported
-/// cost must reach the generation's `usage.actual_cost_usd` — the only field
-/// `UsageTrackingListener` reads — and stay separately visible on the
-/// compaction metadata so the split can still be seen.
+/// Native compaction is separately billed once, with attribution on the main call.
 #[tokio::test]
 async fn native_compaction_cost_reaches_generation_usage_and_stays_attributable() {
     let rig = ProactiveTestRig::new(
@@ -872,41 +869,49 @@ async fn native_compaction_cost_reaches_generation_usage_and_stays_attributable(
     .await;
     rig.execute(None).await.unwrap();
     assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
-
     let events = rig.event_emitter.events().await;
-    let generation = events
+    let generations: Vec<_> = events
         .iter()
-        .find_map(|event| match &event.data {
-            everruns_core::EventData::LlmGeneration(data) if data.metadata.compaction.is_some() => {
-                Some(data)
-            }
+        .filter_map(|event| match &event.data {
+            everruns_core::EventData::LlmGeneration(data) => Some(data),
             _ => None,
         })
-        .expect("the compacted turn must emit a generation event");
-
-    let compaction = generation
-        .metadata
-        .compaction
-        .as_ref()
-        .expect("compaction metadata");
+        .collect();
+    let main = generations
+        .iter()
+        .find(|data| data.metadata.compaction.is_some())
+        .unwrap();
     assert_eq!(
-        compaction.cost_usd,
-        Some(PROACTIVE_COMPACT_COST_USD),
-        "compaction cost stays separately attributable"
+        main.metadata.compaction.as_ref().unwrap().cost_usd,
+        Some(PROACTIVE_COMPACT_COST_USD)
     );
-
-    // This fixture's generation reports no usage of its own, so the compaction
-    // cost has to be carried on a usage record created for it — otherwise the
-    // spend disappears, which is exactly the gap being closed.
-    let usage = generation
-        .metadata
-        .usage
-        .as_ref()
-        .expect("compaction cost must create usage when the generation has none");
-    let billed = usage.actual_cost_usd.expect("compaction cost is billed");
     assert!(
-        (billed - PROACTIVE_COMPACT_COST_USD).abs() < f64::EPSILON,
-        "compaction cost must be folded into the billed generation cost, got {billed}"
+        main.metadata.usage.is_none(),
+        "main fixture reports no usage; attribution must not fabricate it"
+    );
+    let native: Vec<_> = generations
+        .iter()
+        .filter(|data| {
+            data.metadata.request_options.as_ref().is_some_and(|o| {
+                o.metadata
+                    .get("purpose")
+                    .is_some_and(|p| p == "context_compaction")
+            })
+        })
+        .collect();
+    assert_eq!(native.len(), 1);
+    assert_eq!(
+        native[0].metadata.usage.as_ref().unwrap().actual_cost_usd,
+        Some(PROACTIVE_COMPACT_COST_USD)
+    );
+    let total: f64 = generations
+        .iter()
+        .filter_map(|data| data.metadata.usage.as_ref())
+        .filter_map(|usage| usage.effective_cost_usd())
+        .sum();
+    assert_eq!(
+        total, PROACTIVE_COMPACT_COST_USD,
+        "native spend must reach usage tracking exactly once"
     );
 }
 

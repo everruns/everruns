@@ -46,7 +46,7 @@ Explicit custom harnesses retain control over their capability lists.
 [Status projection](../../crates/core/src/compaction_status.rs) shares policy
 resolution with execution and exposes metadata rather than saved content.
 The [API context report](../../crates/server/src/domains/sessions/commands/context_report.rs)
-measures the last main request, excluding separately traced summary work. It
+measures the last main request, excluding separately traced summary and native work. It
 reports missing measurements explicitly, and distinguishes unreported remote
 store availability from an inspected empty store. Neither API nor Framework
 inspection initiates a compaction. Backend availability is not crash durability.
@@ -165,11 +165,13 @@ preserves those counters; reduction validation uses serialized bytes when window
 token counts are unavailable. Byte reduction of opaque state is a heuristic, not
 proof of semantic fidelity or the next request's token count.
 
-Portable summary calls have separate generation events, including rejected paid
-responses. Native provider-reported cost remains attributable through compaction
-metadata and the generation's effective usage. When a native provider omits its
-inline cost, preserving driver token counters alone does not establish complete
-session spend or invoice reconciliation. Inspection must not manufacture missing
+Portable summaries and native calls have separate generation events, including
+completed responses rejected before checkpoint installation. Main-generation usage
+never includes that spend again. Native provider-reported cost and price-table
+estimates also remain attributable through compaction metadata. Effective spend
+prefers reported cost and otherwise uses an available estimate without marking it
+actual. See [native accounting](../../crates/core/src/engine/execution/reason/native_compaction.rs). Missing counters or model pricing remain unknown; neither estimates nor
+preserved usage establish invoice reconciliation. Inspection must not manufacture missing
 measurements or present a message-count change as a token-saving measurement.
 
 Initial backfill may need multiple calls. Subsequent portable work is incremental
