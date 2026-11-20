@@ -44,6 +44,7 @@ pub mod feature_flag_grade;
 pub mod finalized_tool_calls;
 mod github_credential;
 pub mod harness_definition;
+pub mod helper_models;
 pub mod hook_executor;
 pub mod image_services;
 pub mod input_context;

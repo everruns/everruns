@@ -765,7 +765,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .unwrap(),
     );
 
-    let spawn_tool = everruns_capabilities::capabilities::SpawnSubagentAsAgentTool;
+    let spawn_tool = everruns_capabilities::capabilities::SpawnSubagentAsAgentTool::default();
     let spawn_result = spawn_tool
         .execute_with_context(
             serde_json::json!({

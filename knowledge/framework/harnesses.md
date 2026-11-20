@@ -28,7 +28,7 @@ A preset names capabilities but does not activate optional compile-time integrat
 
 ## Binding and requirements
 
-A framework Harness is optional. Creating a session from an agent without binding a harness retains the existing empty foundation. Constructors do not change that default.
+A framework Harness is optional. With `builtins` enabled, a session without an explicit harness gets compaction and bounded history retrieval by default. An explicitly bound custom harness retains its configured foundation. [Default-continuity tests](../../crates/everruns/tests/compaction_defaults.rs) cover both paths and explicit agent configuration.
 
 A harness may declare compute and containment requirements. Session startup negotiates them against the selected Environment and fails with a typed error naming the missing capability or insufficient containment. Changing the execution target changes the Environment rather than the agent's role or instructions.
 

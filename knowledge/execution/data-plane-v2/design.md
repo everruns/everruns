@@ -2208,8 +2208,8 @@ tables for both planes, and a commit takes the workspace from the cell in
 one snapshot (the `fs` command's `snapshot`, at most 64 MiB); and
 `/mcp-servers` lists and removes the chat-only MCP records in the session's
 storage on its cell. Task push configs are the cell's: they live beside the
-task, with their signing secrets, since the control plane's table refers
-to its own task rows. A transition a webhook may want goes on the feed
+task, since the control plane's table refers to its own task rows; their
+signing secrets do not (see the review fixes below). A transition a webhook may want goes on the feed
 (`Record::TaskTransition`) from the state machine, with the push configs
 that ask for it, and the control plane delivers it as it does a v1 task's,
 the org's task webhooks included (`data_plane/task_webhooks.rs`).
@@ -2223,6 +2223,87 @@ control plane reads the records from the cell, never from the call, and
 resolves them as it does the person's. As on v1 they join any agent's
 turns and win a name clash with the person's server, so the call and the
 per-use token join the calls any turn may make (`TURN_CALLS`).
+
+**Parity, Phase B: the capabilities left (step 10, 2026-11-19).** A
+capability a deployment turns on by flag (Docker, the container sandbox,
+paid Parallel) registers on a cell from the same catalog and grade as on a
+v1 worker, so it builds and runs once the operator turns it on for both
+planes; the capability matrix records it so turned on. A session's
+resources (fleet sandboxes, activated skills) and the leases of what its
+tools started at a provider (a sandbox, a browser) stay in the control
+plane, reached by the v1 worker's own commands as host calls
+(`session_resource_*`, `leased_resource_*`): the console lists the
+resources, and the lease sweeper stops a provider sandbox a session left
+running. Before this a fleet tool failed its turn on a cell, and a cell
+never leased the provider sandboxes it started, so none would have been
+reaped. A cell with no control plane has neither, as on a Framework host.
+Phase C must move the lease sweeper off the v1 worker before workers
+retire.
+
+**Parity, Phase B: dreaming (step 10, 2026-11-19).** Before this a cell
+kept dreaming's state (turn counters, the dream job, the daily budget a
+Memory scope shares) in process memory: a dream lived only as long as
+its turn's timer and its executor, and budgets reset per session. The
+state now stays in the control plane's `dreaming_state`, through the v1
+worker's command as the host call `dreaming_state`, scoped to the
+session as an Engine session's store is (`crates/cell/src/hosting.rs`,
+`crates/internal-protocol/src/commands/dreaming.rs`). A turn still runs
+its dream from its own timer; for one that timer did not finish, each
+executor sweeps the orgs whose sessions it mirrors and asks the control
+plane for that org's due dreams (`due_org`, `crates/cell/src/executor.rs`).
+The control plane answers a cell for its own org only, and a v1 worker's
+discovery skips every session the data plane runs, so no dream runs on
+both planes. Reader ports carry the session's Memory so a swept dream can
+write it.
+
+**Parity, review fixes (2026-11-20).** A review found four gaps, fixed
+together:
+- A write host call runs at most once. The executor sends a write once,
+  trying another member only when none accepted the connection
+  (`Remote::post_once`); an answer that did not arrive is the tool's
+  failure, worded as an outcome that is unknown, never a retry. The
+  control plane keeps a receipt per call id (`dp_host_call_receipts`): a
+  duplicate that still arrives gets the first run's sealed answer, or a
+  refusal while the first has not finished. Receipts expire after a day,
+  since a call is retried within seconds.
+- An org settings change cannot leave the old policy on the cells. A
+  trigger on the settings' tables counts each change in the change's own
+  transaction (`dp_orgs.settings_rev`), and the dispatcher syncs every org
+  whose count is ahead of the last sync, so a sync that failed right after
+  revoking open egress is retried, never lost
+  (`data_plane/org_settings.rs`).
+- A push config's signing secret never enters a cell's replicated state.
+  The cell that takes the config hands the secret to the control plane
+  (the `task_push_secret` host call, run once per config id), which keeps
+  it encrypted with the server's secrets key (`dp_task_push_secrets`); the
+  config says only that it has one, and the control plane fills the secret
+  in when it delivers (`data_plane/task_webhooks.rs`). A session with no
+  control plane refuses a secret.
+- A subagent a cell starts gets a session record under its parent, as on
+  v1: the cell asks first (the `subagent_record` host call), runs the child
+  under the record's id, and creates it with the Memory mounts resolved
+  from that record (`data_plane/subagents.rs`), so the console lists it
+  and its Memory, connections and calls resolve as its parent's do.
+
+**Phase C: moving a running v1 session (2026-11-20).** Decision 4A: a v1
+session of an org on a data plane is moved, not left on the workers. It
+keeps its id, record and history and runs on a cell from then on
+(`data_plane/moves.rs`, `everruns-dataplane move <org> [<session>]`, which
+without a session moves every v1 session of the org). The move switches
+first: one transaction records it (`dp_session_moves`) and marks the
+session as the data plane's, so no message reaches the workers again; the
+control plane refuses its messages ("moving, send again") until the import
+is done. Only a session with no turn running or waiting is switched, and a
+turn that started just before the switch is waited out; a turn waiting on
+tool results is not moved, since its call would be left without an answer.
+The import carries what a fork carries: the conversation (the newest
+messages that fit one seed call, text and media only), the values and the
+secrets (sealed again for the session), and the workspace's files (one
+call each when large; the data plane's session commands take a file as
+big as a cell holds). A bound secret stays behind, since a cell has no
+egress binding yet. The v1 log stays in the control plane's `events`, and
+the move records where it ends and what stayed behind. Every step is
+retry-safe, so a move that stopped midway is run again and continues.
 
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for

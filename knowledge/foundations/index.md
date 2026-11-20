@@ -4,6 +4,7 @@
 * [Architecture Specification](architecture.md) - System architecture, crate structure, infrastructure.
 * [Code Organization](code-organization.md) - Developer conventions: formatting, testing, error handling, UI patterns.
 * [Data Models Specification](models.md) - Data models (Agent, Session, Message, etc.).
+* [Model Presets](model-presets.md) - Named sets of models, one per job, that agents can take their models from instead of the organization defaults.
 * [ID Schema Specification](id-schema.md) - Standardized prefixed ID format.
 * [Domain Modules](domains.md) - Domain modules: Command trait, feature-oriented structure, MCP catalog generation.
 * [Runtime Specification](runtime.md) - Supported low-level execution host contract.

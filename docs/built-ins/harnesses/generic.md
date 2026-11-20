@@ -3,7 +3,7 @@ title: Generic Harness (deprecated)
 description: The default harness, bundling core capabilities for general-purpose agent sessions.
 ---
 
-The **Generic** harness is deprecated. Existing agents, sessions and child harnesses retain its legacy behavior. Choose [Conversation](/built-ins/harnesses/conversation/) for dialogue, [Worker](/built-ins/harnesses/worker/) for files, skills and delegation, or [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) or [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) for a shell. Generic is not an alias for Worker. It configures 25 capabilities. Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
+The **Generic** harness is deprecated. Existing agents, sessions and child harnesses retain its legacy behavior. Choose [Conversation](/built-ins/harnesses/conversation/) for dialogue, [Worker](/built-ins/harnesses/worker/) for files, skills and delegation, or [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) or [Sandbox Worker](/built-ins/harnesses/sandbox-worker/) for a shell. Generic is not an alias for Worker. It configures 24 capabilities. Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
 
 ## Legacy use
 
@@ -32,9 +32,8 @@ The **Generic** harness is deprecated. Existing agents, sessions and child harne
 | [Session Schedules](/capabilities/session-schedules/) | Create and manage cron-style schedules that wake the session |
 | [AGENTS.md](/capabilities/agent-instructions/) | Reads AGENTS.md from workspace and injects project-level instructions |
 | [Agent Skills](/capabilities/agent-skills/) | Discover and activate skills from `/.agents/skills/` |
-| [Infinity Context](/capabilities/infinity-context/) | Trims older messages from the live prompt while exposing earlier history via `query_history` |
 | [Auto Tool Search](/capabilities/tool-search/#auto-tool-search) | Defers tool schema loading to reduce prompt size, using the provider's native tool search where available |
-| [Context Compaction](/advanced/compaction/) | Auto-compacts context at 85% budget via cascading strategies |
+| [Context Compaction](/advanced/compaction/) | Manages working context and durable continuity, including permitted `query_history` retrieval |
 | [Budgeting](/capabilities/budgeting/) | Budget awareness in the system prompt and a `check_budget` tool, which currently returns a placeholder; use the REST budget-check endpoint for detailed status |
 | [Self-Budget](/capabilities/self-budget/) | Prompt-only guidance for reasoning about a user-requested indicative budget using session usage data |
 | [Ask User](/capabilities/ask-user/) | Ask the user 1–4 structured questions, or collect a credential, and wait for the answer |
@@ -50,10 +49,10 @@ The **Generic** harness is deprecated. Existing agents, sessions and child harne
 | Tool Loop Detection | Detects repeated tool loops and injects a warning to break them |
 | Error Disclosure | Shows full provider error detail (`detailed` mode) |
 
-Infinity Context and Context Compaction work together to bound the active context while retaining older history. See [Context Compaction](/advanced/compaction/#worker-harness-defaults) for details.
+Context Compaction includes history retrieval through its compatibility dependency; no separate Infinity Context entry is needed. See [Context Compaction](/advanced/compaction/#worker-harness-defaults) for details.
 
 ## See Also
 
-- [Base Harness](/built-ins/harnesses/base/), empty harness for full control
+- [Base Harness](/built-ins/harnesses/base/), minimal safeguards and context compaction
 - [Platform Chat Harness](/built-ins/harnesses/platform-chat/), focused operator chat built on Base
 - [Harnesses feature guide](/features/harnesses/), harness selection and API management

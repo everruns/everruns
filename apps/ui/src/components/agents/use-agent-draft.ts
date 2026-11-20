@@ -45,6 +45,8 @@ export interface AgentDraftFields {
   tags: string;
   harness_id: string;
   default_model_id: string;
+  /** Model preset id; empty = organization defaults. */
+  model_preset: string;
   /** `direct` | `explicit`; see `@/lib/agent-communication`. */
   communication: string;
   /** Output token ceiling as typed; empty means the provider default. */
@@ -61,6 +63,7 @@ const EMPTY_FIELDS: AgentDraftFields = {
   tags: "",
   harness_id: "",
   default_model_id: "",
+  model_preset: "",
   communication: DEFAULT_COMMUNICATION,
   max_output_tokens: "",
 };
@@ -87,6 +90,7 @@ function fieldsFromAgent(agent: Agent | undefined): AgentDraftFields {
     tags: joinTags(agent.tags),
     harness_id: agent.effective_harness?.id || agent.harness_id || "",
     default_model_id: agentModelValue(agent),
+    model_preset: agent.model_preset || "",
     communication: normalizeCommunication(agent.communication),
     max_output_tokens: agent.max_output_tokens ? String(agent.max_output_tokens) : "",
   };
@@ -154,6 +158,7 @@ export function useAgentDraft(agent: Agent | undefined) {
   const communicationChanged = fields.communication !== initialFields.communication;
   const maxOutputTokensChanged =
     fields.max_output_tokens.trim() !== initialFields.max_output_tokens;
+  const modelPresetChanged = fields.model_preset !== initialFields.model_preset;
   const harnessChanged =
     fieldChanges.harness_id !== undefined && fieldChanges.harness_id !== initialFields.harness_id;
 
@@ -204,6 +209,7 @@ export function useAgentDraft(agent: Agent | undefined) {
         tags: parseTagList(data.tags),
         ...(harnessChanged && { harness_id: data.harness_id }),
         ...agentModelRequest(data.default_model_id, initialFields.default_model_id),
+        ...(modelPresetChanged && { model_preset: fields.model_preset || null }),
         ...(communicationChanged && {
           communication: normalizeCommunication(fields.communication),
         }),

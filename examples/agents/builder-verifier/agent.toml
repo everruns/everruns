@@ -1,0 +1,30 @@
+#:schema https://everruns.com/docs/schemas/agent/v1.json
+schema_version = 1
+name = "builder-verifier"
+display_name = "Builder and verifier"
+description = "Writes a small function, then has a verifier on another provider check it before answering"
+tags = ["demo", "subagents", "helper-models"]
+
+# The builder runs on gpt-6.2-sol. Its verifier runs on `second_opinion`: the
+# Default job of the first connected provider other than OpenAI.
+[model]
+provider = "openai"
+model = "gpt-6.2-sol"
+
+[[capabilities]]
+ref = "subagents"
+
+[capabilities.config]
+helper_model_pick = "agent"
+# The verifier reviews; it does not spawn a verifier of its own.
+max_subagent_depth = 1
+
+[[capabilities.config.helper_models]]
+key = "same"
+when = "Most work. Runs on your own model."
+target = { type = "same" }
+
+[[capabilities.config.helper_models]]
+key = "second_opinion"
+when = "Verify or review work you did. A different provider than yours."
+target = { type = "other_provider", job = "default" }

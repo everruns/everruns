@@ -417,3 +417,100 @@ async fn a_persons_lookup_records_the_turn_it_acts_for() {
         );
     }
 }
+
+/// A session's resources and leases are the control plane's (parity, step
+/// 10): registered, listed and released through the v1 worker's commands,
+/// for the org's own session only.
+#[tokio::test]
+async fn a_sessions_resources_and_leases_are_kept_here_for_its_org() {
+    let (cp, _, _) = control_plane().await;
+    let session = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(ORG))
+        .await
+        .unwrap()
+        .id
+        .to_string();
+    let registered = ask(
+        &cp,
+        ORG,
+        "worker_register_session_resource",
+        json!({
+            "session_id": session,
+            "resource_id": "sandbox_build",
+            "kind": "sandbox",
+            "display_name": "Build box",
+            "status": "active",
+            "metadata": { "role": "resource" },
+        }),
+    )
+    .await;
+    assert!(
+        matches!(&registered, HostCallAnswer::Value(entry) if entry["resource_id"] == "sandbox_build"),
+        "{registered:?}"
+    );
+    let HostCallAnswer::Value(listed) = ask(
+        &cp,
+        ORG,
+        "worker_list_session_resources",
+        json!({ "session_id": session }),
+    )
+    .await
+    else {
+        panic!("a list");
+    };
+    assert_eq!(listed[0]["display_name"], json!("Build box"), "{listed}");
+
+    let leased = ask(
+        &cp,
+        ORG,
+        "worker_upsert_leased_resource",
+        json!({
+            "session_id": session,
+            "provider": "e2b",
+            "resource_type": "sandbox",
+            "external_id": "sbx-1",
+            "lease_duration_seconds": 600,
+            "metadata": {},
+        }),
+    )
+    .await;
+    assert!(
+        matches!(&leased, HostCallAnswer::Value(lease) if lease["external_id"] == "sbx-1"),
+        "{leased:?}"
+    );
+    let released = ask(
+        &cp,
+        ORG,
+        "worker_release_leased_resource",
+        json!({
+            "session_id": session,
+            "provider": "e2b",
+            "resource_type": "sandbox",
+            "external_id": "sbx-1",
+        }),
+    )
+    .await;
+    assert!(matches!(released, HostCallAnswer::Value(_)), "{released:?}");
+
+    // Another org's session is not found.
+    let stranger = cp
+        .db
+        .create_session(crate::storage::test_database::test_session_row(
+            everruns_core::DEFAULT_ORG_ID,
+        ))
+        .await
+        .unwrap()
+        .id;
+    let answer = ask(
+        &cp,
+        ORG,
+        "worker_list_session_resources",
+        json!({ "session_id": stranger.to_string() }),
+    )
+    .await;
+    assert!(
+        matches!(answer, HostCallAnswer::Error { kind: 3, .. }),
+        "not found: {answer:?}"
+    );
+}

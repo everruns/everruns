@@ -207,6 +207,7 @@ pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
 pub use everruns_contracts::runtime::tool_surface;
 pub mod compaction_checkpoint;
+pub mod compaction_status;
 pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;
 pub use everruns_contracts::runtime::computer_use;
@@ -250,6 +251,8 @@ pub use everruns_contracts::runtime::turn_agent;
 pub mod runtime_context;
 /// Deployment-owned decision checks, answered by the source the org picked.
 pub mod system_decisions;
+/// The models an agent's spawned subagents may run on.
+pub use everruns_contracts::runtime::helper_models;
 pub use everruns_contracts::runtime::session_files;
 pub use everruns_contracts::runtime::session_services;
 /// Narrow child-session delegation contract: core owns the host-neutral

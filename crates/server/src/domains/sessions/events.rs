@@ -62,6 +62,18 @@ impl SessionEvents {
         Ok(Self::Platform(db.clone(), session))
     }
 
+    /// Last main-model generation, excluding separately billed continuity work.
+    /// Platform reads use the indexed lookup; cell reads inspect at most 128
+    /// recent generations and return None when no main sample is in that bound.
+    pub async fn latest_context_generation(&self) -> Result<Option<EventRow>> {
+        match self {
+            Self::Platform(db, session) => {
+                Ok(db.database().latest_context_generation(*session).await?)
+            }
+            Self::DataPlane(plane) => latest_context_generation_from(plane.as_ref()).await,
+        }
+    }
+
     /// Whether the session runs on a data plane.
     pub fn on_data_plane(&self) -> bool {
         matches!(self, Self::DataPlane(_))
@@ -168,6 +180,27 @@ pub async fn list(
             limit,
         )
         .await
+}
+
+async fn latest_context_generation_from(pages: &impl Pages) -> Result<Option<EventRow>> {
+    let params = ListEventsParams {
+        session_id: pages.session(),
+        filter_types: vec!["llm.generation".into()],
+        order_desc: true,
+        ..Default::default()
+    };
+    Ok(select(pages, &params, 128).await?.into_iter().find(|row| {
+        let purpose = row
+            .data
+            .pointer("/metadata/request_options/metadata/purpose")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| {
+                row.data
+                    .pointer("/data/metadata/request_options/metadata/purpose")
+                    .and_then(serde_json::Value::as_str)
+            });
+        !matches!(purpose, Some("continuity_summary" | "context_compaction"))
+    }))
 }
 
 /// `StorageBackend::list_events_advanced` for any session.
@@ -575,6 +608,38 @@ mod tests {
         assert_eq!(
             sequences(&select(&log, &search, 10).await.unwrap()),
             vec![4]
+        );
+    }
+
+    #[tokio::test]
+    async fn context_measurement_skips_flat_and_legacy_compaction_calls_in_a_cells_log() {
+        let mut log = log(6, |_| "llm.generation");
+        log.rows[0].data = json!({"metadata":{"model":"old-main"}});
+        log.rows[1].data = json!({"metadata":{"model":"last-main"}});
+        let summary =
+            json!({"metadata":{"request_options":{"metadata":{"purpose":"continuity_summary"}}}});
+        log.rows[2].data = summary.clone();
+        log.rows[3].data = json!({"type":"llm.generation","data":summary});
+        let native =
+            json!({"metadata":{"request_options":{"metadata":{"purpose":"context_compaction"}}}});
+        log.rows[4].data = native.clone();
+        log.rows[5].data = json!({"type":"llm.generation","data":native});
+        let row = latest_context_generation_from(&log).await.unwrap().unwrap();
+        assert_eq!(row.sequence, 2);
+        assert_eq!(row.data["metadata"]["model"], "last-main");
+    }
+
+    #[tokio::test]
+    async fn context_measurement_is_unavailable_outside_the_recent_generation_bound() {
+        let mut log = log(130, |_| "llm.generation");
+        for row in &mut log.rows[1..] {
+            row.data = json!({"metadata":{"request_options":{"metadata":{"purpose":"continuity_summary"}}}});
+        }
+        assert!(
+            latest_context_generation_from(&log)
+                .await
+                .unwrap()
+                .is_none()
         );
     }
 }

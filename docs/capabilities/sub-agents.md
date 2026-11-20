@@ -36,8 +36,47 @@ generic session task tools to monitor, message, or cancel the subagent.
 | `instructions` | string | yes | Instructions for what the subagent should do. This becomes the subagent's initial prompt. |
 | `target.type` | string | yes | Must be `subagent`. |
 | `mode` | string | no | `background` (default) returns immediately with a `task_id`; `foreground` blocks until the subagent completes and returns its result inline. |
+| `model` | string | no | A helper model key from the agent's list (built in: `same`, `fast`, `coding`, `deep`, `second_opinion`). Omit to run on the parent's model, or on Auto to let the Decision model pick. Only shown when the agent may switch models. |
 | `blueprint` | string | no | Optional specialist blueprint ID, such as `github_scout`, that supplies its own prompt, model, and private tools. |
 | `config` | object | no | Blueprint-specific configuration, validated against the blueprint's schema before the child session is created. Only valid when `blueprint` is set. |
+
+## Helper models
+
+An agent lists the models its subagents may run on as **helper models**: keys
+the spawning model names, each with a "when to use" line. The model never sees
+or names a raw model; each key points at a job of the agent's preset or the
+organization defaults, a job of another preset, a model of the organization,
+or another provider's preset.
+
+| Key | Runs on | Typical use |
+|---|---|---|
+| `same` | The parent's model (the default) | Most subagents |
+| `fast` | The Small job | Search, lookups, summaries |
+| `coding` | The Coding job | Implementation work |
+| `deep` | The Research job | Hard reasoning, planning |
+| `second_opinion` | The Default job of a provider other than the parent's | Verifier, reviewer |
+
+Edit the list on the agent page under **Helper models**: repoint or remove
+built-in keys, add your own (for example `gemini` on the Gemini preset), and
+choose who picks: the agent, or **Auto**, where the organization's Decision
+model reads the task and picks a key. Keep only `same` to stop subagents from
+switching models. The list lives in the Subagents capability config
+(`helper_models`, `helper_model_pick`), so the API, MCP, CLI and agent
+packages carry it:
+
+```json
+{"ref": "subagents", "config": {
+  "helper_models": [
+    {"key": "same", "when": "Most work.", "target": {"type": "same"}},
+    {"key": "verifier", "when": "Review a finished change.",
+     "target": {"type": "other_provider", "job": "default"}}
+  ],
+  "helper_model_pick": "agent"
+}}
+```
+
+The subagent keeps the resolved model for follow-ups, and the session's
+Subagents tab shows each subagent's key, model and who picked it.
 
 ## Managing subagents after spawn
 
@@ -63,7 +102,7 @@ prefer `wait_task` over polling.
 - **Shared budget pool**: nested subagents spend from the root session's session-scoped budget.
 - **Background mode (default)**: spawning returns immediately with a `task_id`. The final result lands on the task record (`summary` via `get_task`), and the parent session is woken when the subagent reaches a terminal state. Background runs are capped at 6 hours.
 - **Foreground mode**: `mode: "foreground"` blocks until the subagent completes and returns its result inline. Foreground execution has a 5-minute timeout.
-- **Inherited configuration**: subagents inherit the parent's harness and agent configuration.
+- **Inherited configuration**: subagents inherit the parent's harness and agent configuration, and the model you chose for the parent chat unless the spawn names a helper key.
 - **Blueprints**: specialist blueprints can run with their own prompt, model, and private tools while still using the same subagent lifecycle.
 
 ## See Also

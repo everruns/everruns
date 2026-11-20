@@ -46,7 +46,7 @@ Subagents are bundled in Worker and remain independently composable on lower fou
 
 ## Shared framework definition
 
-The hosted platform and application framework consume the same capability data. Hosted rows retain live parent relationships; framework constructors flatten that same chain. [Framework Harness](../../crates/everruns/src/harness.rs) exposes `base`, `conversation`, `worker` and `bashkit_worker`; `worker_base` is a deprecated alias of `bashkit_worker`. Sandbox Worker is hosted-only because the framework binds compute in the host and keeps the deprecated Generic constructor's behavior. Optional integrations must still be compiled into the host. Creating a framework session without binding a harness retains the existing empty-harness behavior.
+The hosted platform and application framework consume the same capability data. Hosted rows retain live parent relationships; framework constructors flatten that same chain. [Framework Harness](../../crates/everruns/src/harness.rs) exposes `base`, `conversation`, `worker` and `bashkit_worker`; `worker_base` is a deprecated alias of `bashkit_worker`. Sandbox Worker is hosted-only because the framework binds compute in the host and keeps the deprecated Generic constructor's behavior. Optional integrations must still be compiled into the host. [Framework Harnesses](../framework/harnesses.md#binding-and-requirements) owns implicit compaction defaults and explicit custom-harness control.
 
 ## Default and explicit selection
 

@@ -191,6 +191,19 @@ pub(crate) fn org_lookups(
     })
 }
 
+/// `org`'s lookups outside any one session (the executor's dream sweep),
+/// when `material` reaches a control plane.
+pub(crate) fn for_org(material: Weak<dyn OrgMaterial>, org: String) -> Option<OrgLookups> {
+    if !material.upgrade()?.looks_up() {
+        return None;
+    }
+    Some(OrgLookups {
+        material,
+        org,
+        declared: None,
+    })
+}
+
 /// The connection resolver of one activation of `session`: `keys` for its
 /// sandbox, and the control plane's lookups when `material` reaches one.
 pub fn connections(

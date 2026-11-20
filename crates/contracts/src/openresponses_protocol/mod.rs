@@ -1172,11 +1172,6 @@ impl OpenResponsesProtocolChatDriver {
             // /responses output uses the latest compaction as its replacement
             // boundary. Retain every following item, including opaque reasoning.
             compact_response.output.drain(..boundary);
-            // Responses usage counts generation, not the size of the resulting
-            // compacted window. The engine compares serialized bytes instead.
-            if let Some(usage) = compact_response.usage.as_mut() {
-                usage.output_tokens = None;
-            }
         }
 
         Ok(compact_response)

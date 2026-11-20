@@ -148,6 +148,42 @@ pub const USER_MCP_STORE: &str = "user_mcp_store";
 /// also holds the session's own MCP records, which the control plane reads
 /// from the session's cell; then `input_message_id` may be left out.
 pub const USER_MCP_SERVERS: &str = "user_mcp_servers";
+/// Register (or update) one of a session's resources: a fleet sandbox, an
+/// activated skill. A session's resources stay in the control plane, which
+/// lists them in the console (the Resources panel).
+pub const SESSION_RESOURCE_REGISTER: &str = "session_resource_register";
+/// Change the status of one of a session's resources.
+pub const SESSION_RESOURCE_STATUS: &str = "session_resource_status";
+/// A session's resources, optionally by kind and status.
+pub const SESSION_RESOURCES_LIST: &str = "session_resources_list";
+/// Remove one of a session's resources.
+pub const SESSION_RESOURCE_DEREGISTER: &str = "session_resource_deregister";
+/// What the skills capabilities ask: an activated skill is a session
+/// resource, so a second activation in the session answers from it.
+pub const SKILL_ACTIVATIONS: &[&str] = &[SESSION_RESOURCES_LIST, SESSION_RESOURCE_REGISTER];
+/// Take or renew the lease of something a tool started at a provider (a
+/// sandbox, a browser). Leases stay in the control plane, whose sweeper
+/// stops what a session left running when its lease ends.
+pub const LEASED_RESOURCE_UPSERT: &str = "leased_resource_upsert";
+/// Release a lease, when the tool stopped what it started.
+pub const LEASED_RESOURCE_RELEASE: &str = "leased_resource_release";
+/// A session's leases.
+pub const LEASED_RESOURCES_LIST: &str = "leased_resources_list";
+/// The model a spawned subagent's helper key resolves to in the org's
+/// catalog (`helper_models`). Its params name the parent session and the
+/// spawn's helper model; the answer is `{"provider": key, "model": name}`
+/// for the child's definition, or `null` to keep the parent agent's model.
+pub const HELPER_MODEL: &str = "helper_model";
+/// Dreaming's maintenance state for a session the data plane runs (turn
+/// counters, the dream job, daily budgets), and the org's due dreams.
+pub const DREAMING_STATE: &str = "dreaming_state";
+/// Keep a task push config's signing secret in the control plane, which
+/// delivers the webhooks: the cell keeps only that the config has one.
+pub const TASK_PUSH_SECRET: &str = "task_push_secret";
+/// Record a subagent the data plane started as a session of the control
+/// plane (its parent's owner, agent and org), so the calls that read a
+/// session's record serve it, and answer its Memory mounts.
+pub const SUBAGENT_RECORD: &str = "subagent_record";
 
 const fn call(
     name: &'static str,
@@ -337,6 +373,94 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Read,
         Fate::HostCall,
         "the turn's person's own MCP servers, resolved for the turn",
+    ),
+    call(
+        SESSION_RESOURCE_REGISTER,
+        "worker_register_session_resource",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "register or update one of the session's resources, kept in the control plane",
+    ),
+    call(
+        SESSION_RESOURCE_STATUS,
+        "worker_update_session_resource_status",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "change the status of one of the session's resources",
+    ),
+    call(
+        SESSION_RESOURCES_LIST,
+        "worker_list_session_resources",
+        ActsAs::Org,
+        Effect::Read,
+        Fate::HostCall,
+        "the session's resources",
+    ),
+    call(
+        SESSION_RESOURCE_DEREGISTER,
+        "worker_deregister_session_resource",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "remove one of the session's resources",
+    ),
+    call(
+        LEASED_RESOURCE_UPSERT,
+        "worker_upsert_leased_resource",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "take or renew the lease of something a tool started at a provider",
+    ),
+    call(
+        LEASED_RESOURCE_RELEASE,
+        "worker_release_leased_resource",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "release a lease the session holds",
+    ),
+    call(
+        LEASED_RESOURCES_LIST,
+        "worker_list_session_leased_resources",
+        ActsAs::Org,
+        Effect::Read,
+        Fate::HostCall,
+        "the session's leases",
+    ),
+    call(
+        HELPER_MODEL,
+        "worker_resolve_helper_model",
+        ActsAs::Org,
+        Effect::Read,
+        Fate::HostCall,
+        "the model a subagent's helper key resolves to: presets and the org's catalog stay in the control plane",
+    ),
+    call(
+        DREAMING_STATE,
+        "worker_dreaming_state",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "dreaming's maintenance state",
+    ),
+    call(
+        TASK_PUSH_SECRET,
+        "task_push_secret",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "keep a task push config's signing secret",
+    ),
+    call(
+        SUBAGENT_RECORD,
+        "subagent_record",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "record a subagent session the data plane started",
     ),
 ];
 

@@ -24,6 +24,7 @@ use super::delegation_result::{
 };
 #[cfg(test)]
 use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
+use super::subagent_helper_models::{choose_helper_model, fixed_blueprint_refuses_model};
 use super::{
     Capability, CapabilityLocalization, CapabilityStatus, DelegationTargetProvider, RiskLevel,
     SPAWN_AGENT_CONCURRENCY_CLASS, SpawnMode,
@@ -32,6 +33,7 @@ use crate::background_run::{BackgroundRunPermit, try_acquire_background_run_perm
 use async_trait::async_trait;
 use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::helper_models::{HelperModelSettings, SpawnHelperModel};
 use everruns_core::session::SessionSeedMode;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
@@ -57,6 +59,10 @@ pub struct SubagentCapability;
 impl Capability for SubagentCapability {
     fn id(&self) -> &str {
         SUBAGENTS_CAPABILITY_ID
+    }
+
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[everruns_contracts::host_calls::HELPER_MODEL]
     }
 
     fn name(&self) -> &str {
@@ -98,6 +104,8 @@ impl Capability for SubagentCapability {
     }
 
     fn config_schema(&self) -> Option<Value> {
+        let (helper_models_schema, helper_model_pick_schema) =
+            everruns_core::helper_models::helper_model_config_schema();
         Some(json!({
             "type": "object",
             "additionalProperties": false,
@@ -148,7 +156,9 @@ impl Capability for SubagentCapability {
                     "maximum": 10000,
                     "default": everruns_core::delegation_services::DEFAULT_MAX_TOTAL_DETACHED_TASKS,
                     "description": "Maximum detached peer session task records allowed under one origin root session before rejecting new detached spawns."
-                }
+                },
+                "helper_models": helper_models_schema,
+                "helper_model_pick": helper_model_pick_schema
             }
         }))
     }
@@ -198,7 +208,7 @@ impl Capability for SubagentCapability {
                 return Err("max_active_detached_tasks must be <= 1024".to_string());
             }
         }
-        Ok(())
+        everruns_core::helper_models::validate_helper_model_config(config)
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -209,10 +219,12 @@ impl Capability for SubagentCapability {
         vec![]
     }
 
-    fn delegation_target_with_config(&self, _config: &Value) -> Option<DelegationTargetProvider> {
+    fn delegation_target_with_config(&self, config: &Value) -> Option<DelegationTargetProvider> {
         Some(DelegationTargetProvider {
             target_type: "subagent",
-            tool: Box::new(SpawnSubagentAsAgentTool),
+            tool: Box::new(SpawnSubagentAsAgentTool {
+                helpers: HelperModelSettings::from_config(config),
+            }),
         })
     }
 }
@@ -687,7 +699,13 @@ async fn find_subagent_task(context: &ToolContext, child_id: SessionId) -> Optio
 
 // =============================================================================
 /// Unified delegation wrapper for the subagent target of `spawn_agent`.
-pub struct SpawnSubagentAsAgentTool;
+///
+/// Carries the agent's helper models (from the `subagents` capability
+/// config) so the `model` enum is fixed for the session.
+#[derive(Default)]
+pub struct SpawnSubagentAsAgentTool {
+    pub helpers: HelperModelSettings,
+}
 
 #[async_trait]
 impl Tool for SpawnSubagentAsAgentTool {
@@ -718,7 +736,7 @@ impl Tool for SpawnSubagentAsAgentTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
+        let mut schema = json!({
             "type": "object",
             "properties": {
                 "name": {
@@ -785,7 +803,13 @@ impl Tool for SpawnSubagentAsAgentTool {
             },
             "required": ["name", "instructions", "target"],
             "additionalProperties": false
-        })
+        });
+        if let Some(model) = self.model_property()
+            && let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut)
+        {
+            properties.insert("model".to_string(), model);
+        }
+        schema
     }
 
     fn hints(&self) -> ToolHints {
@@ -811,7 +835,7 @@ impl Tool for SpawnSubagentAsAgentTool {
                 "spawn_agent target.type must be \"subagent\" for the subagents capability",
             );
         }
-        spawn_agent_subagent_impl(arguments, context)
+        spawn_agent_subagent_impl(arguments, context, &self.helpers)
             .await
             .unwrap_or_else(|e| e)
     }
@@ -861,6 +885,7 @@ fn resolve_spawn_mode(
 async fn spawn_agent_subagent_impl(
     arguments: Value,
     context: &ToolContext,
+    helpers: &HelperModelSettings,
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
     let name = require_str(&arguments, "name")?.trim().to_string();
     let instructions = require_str(&arguments, "instructions")?.to_string();
@@ -894,6 +919,14 @@ async fn spawn_agent_subagent_impl(
             "The `config` parameter is only valid when `blueprint` is set.",
         ));
     }
+
+    if let Some(refusal) =
+        fixed_blueprint_refuses_model(&arguments, blueprint_param.as_deref(), context)
+    {
+        return Ok(refusal);
+    }
+    let helper_model =
+        choose_helper_model(&arguments, context, helpers, &name, &instructions).await?;
 
     // Nesting check: allow governed nesting up to the resolved depth cap.
     let parent_session = match session_store.get_session(context.session_id).await {
@@ -1091,6 +1124,7 @@ async fn spawn_agent_subagent_impl(
                     &result_schema,
                     &message_schema,
                     &push_configs,
+                    &helper_model,
                     mode,
                     lifetime,
                     seed,
@@ -1119,6 +1153,7 @@ async fn spawn_agent_subagent_impl(
         &result_schema,
         &message_schema,
         &push_configs,
+        &helper_model,
         mode,
         lifetime,
         seed,
@@ -1170,6 +1205,7 @@ async fn spawn_create_and_wait(
     result_schema: &Option<Value>,
     message_schema: &Option<Value>,
     push_configs: &Option<Value>,
+    helper_model: &SpawnHelperModel,
     mode: SpawnMode,
     lifetime: SpawnLifetime,
     seed: SessionSeedMode,
@@ -1258,6 +1294,7 @@ async fn spawn_create_and_wait(
             budget_root_session_id,
             seed,
             reason: crate::platform_store::subagent_reason(name),
+            helper_model: Some(helper_model.clone()),
         })
         .await
     {
@@ -1276,6 +1313,12 @@ async fn spawn_create_and_wait(
         "mode": mode.as_str(),
         "lifetime": lifetime.as_str(),
         "seed": seed.as_str(),
+        // Which helper model the child runs on and who picked it; the
+        // resolved model is the child session's own model_id.
+        "model": helper_model.key,
+        "model_pick": helper_model.picked_by.as_str(),
+        "model_pick_reason": helper_model.reason,
+        "model_id": child_session.model_id.map(|id| id.to_string()),
     });
     if let Some(schema) = result_schema
         && let Some(spec) = task_spec.as_object_mut()
@@ -1932,6 +1975,10 @@ inventory::submit! {
 }
 
 #[cfg(test)]
+#[path = "subagents_policy_tests.rs"]
+mod policy_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use everruns_core::Tool;
@@ -1939,63 +1986,6 @@ mod tests {
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants
     // and by subagent_test.rs::test_subagent_capability_registration (features()).
-
-    #[test]
-    fn terminal_subagent_status_maps_only_terminal_wait_states() {
-        // `idle` is not terminal: a failed turn also idles the worker, so it
-        // must not settle the subagent as completed.
-        assert_eq!(terminal_subagent_status("idle"), None);
-        assert_eq!(
-            terminal_subagent_status("completed"),
-            Some(everruns_core::session::SubagentStatus::Completed)
-        );
-        assert_eq!(
-            terminal_subagent_status("failed"),
-            Some(everruns_core::session::SubagentStatus::Failed)
-        );
-        assert_eq!(
-            terminal_subagent_status("cancelled"),
-            Some(everruns_core::session::SubagentStatus::Cancelled)
-        );
-        assert_eq!(
-            terminal_subagent_status("sealed"),
-            Some(everruns_core::session::SubagentStatus::Sealed)
-        );
-        assert_eq!(
-            terminal_subagent_task_state(&everruns_core::session::SubagentStatus::Completed),
-            SessionTaskState::Succeeded
-        );
-        // A sealed subagent settles as a terminal, non-retryable failed task.
-        assert_eq!(
-            terminal_subagent_task_state(&everruns_core::session::SubagentStatus::Sealed),
-            SessionTaskState::Failed
-        );
-        assert_eq!(
-            terminal_subagent_task_state(&everruns_core::session::SubagentStatus::Cancelled),
-            SessionTaskState::Canceled
-        );
-        assert_eq!(
-            terminal_subagent_task_state(
-                &everruns_core::session::SubagentStatus::MaxIterationsReached
-            ),
-            SessionTaskState::Failed
-        );
-        assert_eq!(terminal_subagent_status("waiting_for_tool_results"), None);
-        assert_eq!(terminal_subagent_status("paused"), None);
-    }
-
-    #[test]
-    fn subagent_nesting_policy_resolves_platform_org_agent_precedence() {
-        let platform = everruns_core::delegation_services::SubagentNestingPolicy::default()
-            .with_platform_default(4);
-        assert_eq!(platform.max_subagent_depth(), 4);
-
-        let org = platform.with_org_override(Some(3));
-        assert_eq!(org.max_subagent_depth(), 3);
-
-        let agent = org.with_agent_override(Some(1));
-        assert_eq!(agent.max_subagent_depth(), 1);
-    }
 
     use std::sync::Arc;
 
@@ -2092,7 +2082,7 @@ mod tests {
                 .entry("target")
                 .or_insert_with(|| json!({"type": "subagent"}));
         }
-        SpawnSubagentAsAgentTool
+        SpawnSubagentAsAgentTool::default()
             .execute_with_context(args, context)
             .await
     }
@@ -2275,7 +2265,7 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_subagent_rejects_other_target_types() {
         let context = ToolContext::new(SessionId::new());
-        let result = SpawnSubagentAsAgentTool
+        let result = SpawnSubagentAsAgentTool::default()
             .execute_with_context(
                 json!({
                     "name": "Runner",
@@ -2298,7 +2288,7 @@ mod tests {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
 
-        let result = SpawnSubagentAsAgentTool
+        let result = SpawnSubagentAsAgentTool::default()
             .execute_with_context(
                 json!({
                     "name": "Runner",
@@ -3002,7 +2992,7 @@ mod tests {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
 
-        let result = SpawnSubagentAsAgentTool
+        let result = SpawnSubagentAsAgentTool::default()
             .execute_with_context(
                 json!({
                     "name": "Runner",
@@ -3232,7 +3222,7 @@ mod tests {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
 
-        let result = SpawnSubagentAsAgentTool
+        let result = SpawnSubagentAsAgentTool::default()
             .execute_with_context(
                 json!({
                     "name": "Runner",

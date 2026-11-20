@@ -203,6 +203,7 @@ pub async fn resolve(
         org_id,
         None,
         agent.as_ref(),
+        Some(harness_definition.name.as_str()),
         harness_definition.default_model_id,
     )
     .await?;

@@ -5242,6 +5242,78 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/model-presets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List model presets
+     * @description List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job.
+     */
+    get: operations["list_model_presets"];
+    put?: never;
+    /**
+     * Create a custom model preset
+     * @description Create a custom model preset, blank or copied from another preset with `from`.
+     */
+    post: operations["create_model_preset"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/model-presets/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a model preset
+     * @description Get one model preset with its model per job and the jobs that use a fallback model.
+     */
+    get: operations["get_model_preset"];
+    put?: never;
+    post?: never;
+    /**
+     * Delete a custom model preset
+     * @description Delete a custom model preset. Refused while agents take their models from it.
+     */
+    delete: operations["delete_model_preset"];
+    options?: never;
+    head?: never;
+    /**
+     * Update a custom model preset
+     * @description Rename a custom model preset or change its model per job; null returns a job to the organization default.
+     */
+    patch: operations["update_model_preset"];
+    trace?: never;
+  };
+  "/v1/model-presets/{id}/apply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Copy a preset's models into the organization defaults
+     * @description Copy a preset's models into the organization defaults. Jobs the preset leaves empty keep their current default.
+     */
+    post: operations["apply_model_preset"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/model-profiles": {
     parameters: {
       query?: never;
@@ -10098,6 +10170,13 @@ export interface components {
       max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      /**
+       * @description Model preset the agent takes its job models from (`automatic`,
+       *     `provider:gemini` or a custom preset id). Unset = organization defaults.
+       *     A pinned `default_model_id` still wins for the agent's own turns.
+       * @example provider:gemini
+       */
+      model_preset?: string | null;
       model_role?: components["schemas"]["AgentModelRole"] | null;
       /**
        * @description Name, unique per org (e.g. "customer-support").
@@ -11528,6 +11607,19 @@ export interface components {
       /** @description The paragraph to add, markdown. */
       text: string;
     };
+    /** @description What copying a preset into the organization defaults changed. */
+    ApplyModelPresetResult: {
+      /** @description Jobs whose organization default now uses the preset's model. */
+      applied_jobs: components["schemas"]["ModelJob"][];
+      /** @description The organization after the copy. */
+      organization: components["schemas"]["OrganizationResponse"];
+      /**
+       * @description Jobs left as they were: the preset has no model for them, or the
+       *     model cannot serve that default (decision defaults need a calibrated
+       *     decision model).
+       */
+      skipped_jobs: components["schemas"]["ModelJob"][];
+    };
     /** @description Apply a set of reviewed model enablement changes in one transaction. */
     ApplyModelSelection: {
       changes: components["schemas"]["ModelSelectionChange"][];
@@ -12885,6 +12977,35 @@ export interface components {
      * @enum {string}
      */
     Communication: "direct" | "explicit";
+    /** @description Content-free lifecycle information suitable for chat and API inspection. */
+    CompactionEventSummary: {
+      /** @description Whether this observation installed a checkpoint rather than only masking a request. */
+      checkpoint_id?: string | null;
+      /**
+       * Format: int64
+       * @description Recorded elapsed reduction time.
+       */
+      duration_ms?: number | null;
+      /**
+       * Format: int64
+       * @description Replaced journal boundary when available.
+       */
+      source_sequence?: number | null;
+      /** @description compacting, completed, skipped, or failed. */
+      state: string;
+      /** @description Strategy recorded by the runtime, not a forecast of the next provider call. */
+      strategy: string;
+      /**
+       * Format: int64
+       * @description Output token estimate or native provider measurement, when available.
+       */
+      tokens_after?: number | null;
+      /**
+       * Format: int64
+       * @description Input token estimate or native provider measurement, when available.
+       */
+      tokens_before?: number | null;
+    };
     /**
      * @description Which stage of a compaction attempt failed.
      * @enum {string}
@@ -12907,6 +13028,31 @@ export interface components {
       | "native_returned_none"
       | "no_material_reduction"
       | "guard_rejected";
+    /** @description Effective configured policy and the last compatible saved checkpoint. */
+    CompactionStatus: {
+      /**
+       * Format: float
+       * @description Native request pressure threshold as a fraction of the model window.
+       */
+      budget_percent?: number | null;
+      checkpoint?: components["schemas"]["ContextCheckpoint"] | null;
+      /**
+       * @description Store availability, not a promise about the backend's crash durability.
+       *     None when a remote host has not reported its store.
+       */
+      checkpoint_store_available?: boolean | null;
+      /** @description Soft working-history target, distinct from the provider hard window. */
+      context_budget_tokens?: number | null;
+      /** @description Whether a compaction policy is configured after inheritance and dependencies. */
+      enabled: boolean;
+      /** @description Whether raw history retrieval is allowed by the configured prompt hooks. */
+      history_retrieval_available: boolean;
+      last_event?: components["schemas"]["CompactionEventSummary"] | null;
+      /** @description Whether proactive reduction is enabled. */
+      proactive: boolean;
+      /** @description Configured strategy; runtime/provider eligibility still controls execution. */
+      strategy?: string | null;
+    };
     /** @description A single step in a compaction cascade. */
     CompactionStepData: {
       /**
@@ -13122,6 +13268,22 @@ export interface components {
           /** @enum {string} */
           type: "provider_opaque";
         });
+    /** @description Credential-free metadata for an installed checkpoint. */
+    ContextCheckpoint: {
+      /** @description Public-safe identifier for correlating the checkpoint with trace events. */
+      id: string;
+      /** @description portable_summary, provider_native, legacy_summary, or legacy_trim. */
+      kind: string;
+      /** @description Model scope for native checkpoints; portable notes have no model scope. */
+      model?: string | null;
+      /** @description Provider scope for native checkpoints; portable notes have no provider scope. */
+      provider?: string | null;
+      /**
+       * Format: int64
+       * @description Exact journal boundary replaced by this checkpoint.
+       */
+      source_sequence: number;
+    };
     /** @description Data for context.compacted event (compaction completed). */
     ContextCompactedData: {
       /**
@@ -14172,6 +14334,13 @@ export interface components {
       max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      /**
+       * @description Model preset the agent takes its job models from (`automatic`,
+       *     `provider:gemini` or a custom preset id). Omit for the organization
+       *     defaults.
+       * @example provider:gemini
+       */
+      model_preset?: string | null;
       model_role?: components["schemas"]["AgentModelRole"] | null;
       /**
        * @description Name, unique per org. Lowercase alphanumeric and hyphens.
@@ -14883,6 +15052,22 @@ export interface components {
     CreateMessageResult:
       | components["schemas"]["Message"]
       | components["schemas"]["TurnWaitResponse"];
+    /** @description Create a custom preset, blank or as a copy of another preset. */
+    CreateModelPresetRequest: components["schemas"]["ModelPresetJobs"] & {
+      /** @description What the preset is for. */
+      description?: string | null;
+      /**
+       * @description Preset to copy jobs from (`automatic`, `provider:gemini` or a custom
+       *     id). Jobs given in this request override the copied ones.
+       * @example provider:gemini
+       */
+      from?: string | null;
+      /**
+       * @description Display name, 1 to 100 characters.
+       * @example Cheap council
+       */
+      name: string;
+    };
     /** @description Request to create a new LLM model for a provider */
     CreateModelRequest: {
       /**
@@ -20036,6 +20221,13 @@ export interface components {
         max_output_tokens?: number | null;
         /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
         mcpServers?: components["schemas"]["BTreeMap"];
+        /**
+         * @description Model preset the agent takes its job models from (`automatic`,
+         *     `provider:gemini` or a custom preset id). Unset = organization defaults.
+         *     A pinned `default_model_id` still wins for the agent's own turns.
+         * @example provider:gemini
+         */
+        model_preset?: string | null;
         model_role?: components["schemas"]["AgentModelRole"] | null;
         /**
          * @description Name, unique per org (e.g. "customer-support").
@@ -21326,6 +21518,50 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
+    ListResponse_ModelPreset: {
+      /** @description Array of items returned by the list operation. */
+      data: (components["schemas"]["ModelPresetJobs"] & {
+        /**
+         * Format: int64
+         * @description Live agents whose models come from this preset.
+         */
+        agent_count: number;
+        /**
+         * Format: date-time
+         * @description When the custom preset was created; absent for built-ins.
+         */
+        created_at?: string | null;
+        /** @description What the preset is for. */
+        description?: string | null;
+        /**
+         * @description Jobs of a provider preset whose curated model is not usable in the
+         *     organization and that use the provider's next recommended model.
+         */
+        fallback_jobs?: components["schemas"]["ModelJob"][];
+        /**
+         * @description Stable id: `automatic`, `provider:<driver>` or the custom preset's key.
+         * @example provider:gemini
+         */
+        id: string;
+        /** @description Where the preset comes from: automatic, provider or custom. */
+        kind: components["schemas"]["ModelPresetKind"];
+        /** @description Display name. */
+        name: string;
+        /** @description Driver of a provider preset (`gemini`). */
+        provider_type?: string | null;
+        /** @description Built-in presets cannot be changed; duplicate one to customize it. */
+        read_only: boolean;
+        /**
+         * Format: date-time
+         * @description When the custom preset last changed; absent for built-ins.
+         */
+        updated_at?: string | null;
+      })[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
     ListResponse_ModelProfileResponse: {
       /** @description Array of items returned by the list operation. */
       data: {
@@ -21419,6 +21655,11 @@ export interface components {
         base_harness_id?: string | null;
         /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
         chat_model_id?: string | null;
+        /**
+         * @description Default for coding work: coding-harness agents and `coding` helpers.
+         *     None falls back to the default model.
+         */
+        coding_model_id?: string | null;
         /**
          * Format: date-time
          * @description When the organization was created
@@ -22510,10 +22751,8 @@ export interface components {
        * Format: double
        * @description Provider-reported cost of the compaction call itself, in USD.
        *
-       *     Compaction is a separate billable model call, so its cost is also folded
-       *     into the generation's `usage.actual_cost_usd` — that is what budgets and
-       *     `llm_generations` read. This field keeps the split visible, so an
-       *     operator can see how much of a turn's spend was compaction (EVE-895).
+       *     Attribution only: the native call has its own `llm.generation` usage
+       *     record. Consumers must not add this amount to the main call again.
        */
       cost_usd?: number | null;
       /**
@@ -22521,6 +22760,12 @@ export interface components {
        * @description Duration of the compaction operation in milliseconds
        */
       duration_ms?: number | null;
+      /**
+       * Format: double
+       * @description Price-table estimate for the native compaction call, kept distinct from
+       *     authoritative provider cost and used in effective spend when it is absent.
+       */
+      estimated_cost_usd?: number | null;
       /**
        * Format: int32
        * @description Number of input tokens after compaction
@@ -23027,6 +23272,12 @@ export interface components {
        */
       members?: string[] | null;
       model?: components["schemas"]["PackageModel"] | null;
+      /**
+       * @description Model preset the agent takes its job models from, by id (`automatic`,
+       *     `provider:gemini` or a custom preset id). Hosts without the preset use
+       *     their organization defaults.
+       */
+      model_preset?: string | null;
       /**
        * @description Organization model the agent follows instead of `model`, such as
        *     `research` for the host's research model. Hosts without model roles
@@ -23921,6 +24172,11 @@ export interface components {
        */
       output: number;
     };
+    /**
+     * @description A job a preset assigns a model to.
+     * @enum {string}
+     */
+    ModelJob: "default" | "chat" | "coding" | "research" | "small" | "decision";
     /** @description Token limits for the model */
     ModelLimits: {
       /**
@@ -23966,6 +24222,64 @@ export interface components {
       /** @description Supported output modalities */
       output: components["schemas"]["Modality"][];
     };
+    /** @description A named set of models, one per job. */
+    ModelPreset: components["schemas"]["ModelPresetJobs"] & {
+      /**
+       * Format: int64
+       * @description Live agents whose models come from this preset.
+       */
+      agent_count: number;
+      /**
+       * Format: date-time
+       * @description When the custom preset was created; absent for built-ins.
+       */
+      created_at?: string | null;
+      /** @description What the preset is for. */
+      description?: string | null;
+      /**
+       * @description Jobs of a provider preset whose curated model is not usable in the
+       *     organization and that use the provider's next recommended model.
+       */
+      fallback_jobs?: components["schemas"]["ModelJob"][];
+      /**
+       * @description Stable id: `automatic`, `provider:<driver>` or the custom preset's key.
+       * @example provider:gemini
+       */
+      id: string;
+      /** @description Where the preset comes from: automatic, provider or custom. */
+      kind: components["schemas"]["ModelPresetKind"];
+      /** @description Display name. */
+      name: string;
+      /** @description Driver of a provider preset (`gemini`). */
+      provider_type?: string | null;
+      /** @description Built-in presets cannot be changed; duplicate one to customize it. */
+      read_only: boolean;
+      /**
+       * Format: date-time
+       * @description When the custom preset last changed; absent for built-ins.
+       */
+      updated_at?: string | null;
+    };
+    /** @description The model for each job. A missing job uses the organization default for it. */
+    ModelPresetJobs: {
+      /** @description Model for the built-in Everruns Chat. */
+      chat_model_id?: string | null;
+      /** @description Model for coding-harness agents and coding helpers. */
+      coding_model_id?: string | null;
+      /** @description Model for quick gate checks and the Auto helper pick. */
+      decision_model_id?: string | null;
+      /** @description Model for agents and sessions with no model of their own. */
+      default_model_id?: string | null;
+      /** @description Model for research-role agents and deep helpers. */
+      research_model_id?: string | null;
+      /** @description Model for titles, summaries and fast helpers. */
+      small_model_id?: string | null;
+    };
+    /**
+     * @description Where a preset comes from.
+     * @enum {string}
+     */
+    ModelPresetKind: "automatic" | "provider" | "custom";
     /**
      * @description LLM Model Profile describing model capabilities
      *     Based on models.dev structure (<https://models.dev/api.json>)
@@ -25397,6 +25711,11 @@ export interface components {
       base_harness_id?: string | null;
       /** @description Default for the built-in Everruns Chat. None inherits the agents/sessions default. */
       chat_model_id?: string | null;
+      /**
+       * @description Default for coding work: coding-harness agents and `coding` helpers.
+       *     None falls back to the default model.
+       */
+      coding_model_id?: string | null;
       /**
        * Format: date-time
        * @description When the organization was created
@@ -30946,6 +31265,12 @@ export interface components {
      */
     SessionContextReport: {
       /**
+       * Format: int64
+       * @description Canonical generation event sequence; absent for an assembled preview.
+       */
+      as_of_sequence?: number | null;
+      compaction?: components["schemas"]["CompactionStatus"] | null;
+      /**
        * Format: int32
        * @description Total context window size in tokens for `model`. `None` if the model's profile lacks limits data.
        */
@@ -30958,6 +31283,8 @@ export interface components {
        * @description Estimated number of input tokens consumed by the next generation given the current context.
        */
       estimated_input_tokens: number;
+      /** @description Whether a main model request or assembled context backs the estimates. */
+      measurement_available?: boolean;
       /** @description Model identifier the report's token estimates target (used to scope context-window math). */
       model: string;
       /** @description Logical sections of the assembled context (system prompt, tool defs, message history, etc.) for inspection. */
@@ -34710,6 +35037,12 @@ export interface components {
       max_output_tokens?: number | null;
       mcpServers?: components["schemas"]["BTreeMap"] | null;
       /**
+       * @description Model preset the agent takes its job models from. Null returns to the
+       *     organization defaults; omit to leave unchanged.
+       * @example provider:gemini
+       */
+      model_preset?: string | null;
+      /**
        * @description Follow an organization model instead of pinning one: `research` uses
        *     the organization research model and clears `default_model_id`. Null
        *     stops following it; setting `default_model_id` also clears it.
@@ -35232,6 +35565,28 @@ export interface components {
       name?: string | null;
       source?: components["schemas"]["CreateMemorySourceRequest"] | null;
     };
+    /**
+     * @description Change a custom preset. Omit a field to keep it; null clears a job back to
+     *     the organization default.
+     */
+    UpdateModelPresetRequest: {
+      /** @description Model for the built-in Everruns Chat. */
+      chat_model_id?: string | null;
+      /** @description Model for coding-harness agents and coding helpers. */
+      coding_model_id?: string | null;
+      /** @description Model for quick gate checks and the Auto helper pick. */
+      decision_model_id?: string | null;
+      /** @description Model for agents and sessions with no model of their own. */
+      default_model_id?: string | null;
+      /** @description What the preset is for. */
+      description?: string | null;
+      /** @description Display name. */
+      name?: string | null;
+      /** @description Model for research-role agents and deep helpers. */
+      research_model_id?: string | null;
+      /** @description Model for titles, summaries and fast helpers. */
+      small_model_id?: string | null;
+    };
     /** @description Request to update an LLM model. Only provided fields will be updated. */
     UpdateModelRequest: {
       /**
@@ -35344,6 +35699,11 @@ export interface components {
        *     the agents/sessions default. Must be an available shared chat model with tools.
        */
       chat_model_id?: string | null;
+      /**
+       * @description Default model for coding work (coding-harness agents and `coding` helpers).
+       *     Omit to preserve; null falls back to the default model.
+       */
+      coding_model_id?: string | null;
       /**
        * @description Default harness to preselect in the UI for new sessions.
        *     Mutually exclusive with `default_harness_name`.
@@ -36352,6 +36712,13 @@ export interface components {
       max_output_tokens?: number | null;
       /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
       mcpServers?: components["schemas"]["BTreeMap"];
+      /**
+       * @description Model preset the agent takes its job models from (`automatic`,
+       *     `provider:gemini` or a custom preset id). Unset = organization defaults.
+       *     A pinned `default_model_id` still wins for the agent's own turns.
+       * @example provider:gemini
+       */
+      model_preset?: string | null;
       model_role?: components["schemas"]["AgentModelRole"] | null;
       /**
        * @description Name, unique per org (e.g. "customer-support").
@@ -51657,6 +52024,172 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_model_presets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_ModelPreset"];
+        };
+      };
+    };
+  };
+  create_model_preset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateModelPresetRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelPreset"];
+        };
+      };
+    };
+  };
+  get_model_preset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelPreset"];
+        };
+      };
+      /** @description Model preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_model_preset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Model preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_model_preset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateModelPresetRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelPreset"];
+        };
+      };
+      /** @description Model preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  apply_model_preset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApplyModelPresetResult"];
+        };
+      };
+      /** @description Model preset not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

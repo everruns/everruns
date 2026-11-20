@@ -540,6 +540,7 @@ fn create_session_request() -> CreateSessionRequest {
         budget_root_session_id: None,
         seed: SessionSeedMode::Fresh,
         fork_up_to_sequence: None,
+        helper_model: None,
     }
 }
 

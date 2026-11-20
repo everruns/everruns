@@ -1021,7 +1021,10 @@ impl Session {
         let runtime = runtime.runtime();
         let context = runtime.load_context(self.session_id()).await?;
         let commands = runtime.list_commands(self.session_id()).await?;
-        Ok(SessionContext::from_runtime(context, warnings, commands))
+        let compaction = runtime.context_compaction(&context).await?;
+        Ok(SessionContext::from_runtime(
+            context, warnings, commands, compaction,
+        ))
     }
 
     /// Run a tool-less, out-of-band completion over this session's effective

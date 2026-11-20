@@ -109,6 +109,10 @@ impl HostedMcpDriver {
 
 #[async_trait]
 impl ChatDriver for HostedMcpDriver {
+    fn supports_history_summarization(&self) -> bool {
+        self.inner.supports_history_summarization()
+    }
+
     fn native_async_driver(
         &self,
         model: &str,

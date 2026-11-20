@@ -20,7 +20,7 @@
 use everruns_contracts::session_commands;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::Event;
-use everruns_core::message::{ContentPart, RuntimeMessage};
+use everruns_core::message::RuntimeMessage;
 
 use crate::domains::data_plane::ControlPlane;
 use crate::domains::data_plane::session_plane::SessionPlane;
@@ -65,22 +65,10 @@ pub(crate) fn cut_sequence(events: &[Event], message_id_wanted: &str) -> Option<
 pub(crate) fn conversation(events: &[Event], cut: Option<i32>) -> Vec<RuntimeMessage> {
     events
         .iter()
-        .filter(|e| MESSAGES.contains(&e.event_type.as_str()))
         .filter(|e| cut.is_none_or(|cut| e.sequence.is_some_and(|s| s <= cut)))
         .filter_map(|e| {
             let data = serde_json::to_value(&e.data).ok()?;
-            let mut message: RuntimeMessage =
-                serde_json::from_value(data["message"].clone()).ok()?;
-            message.content.retain(|part| {
-                matches!(
-                    part,
-                    ContentPart::Text(_)
-                        | ContentPart::Image(_)
-                        | ContentPart::ImageFile(_)
-                        | ContentPart::File(_)
-                )
-            });
-            (!message.content.is_empty()).then_some(message)
+            crate::domains::data_plane::session_plane::conversation_message(&e.event_type, &data)
         })
         .collect()
 }
@@ -159,6 +147,7 @@ mod tests {
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageCompletedData, TurnCompletedData,
     };
+    use everruns_core::message::ContentPart;
 
     fn at(mut event: Event, sequence: i32) -> Event {
         event.sequence = Some(sequence);

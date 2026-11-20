@@ -27,6 +27,8 @@ impl EgressService for Recording {
     }
 }
 
+const SESSION: &str = "session_01933b5a000070008000000000000001";
+
 fn transition(index: u64, transition: &str, targets: Vec<PushTarget>) -> FeedRecord {
     FeedRecord {
         index,
@@ -34,7 +36,7 @@ fn transition(index: u64, transition: &str, targets: Vec<PushTarget>) -> FeedRec
         org_id: org_public(ORG),
         at_unix_ms: chrono::Utc::now().timestamp_millis(),
         record: Record::TaskTransition {
-            session_id: "session_01933b5a000070008000000000000001".into(),
+            session_id: SESSION.into(),
             transition: transition.into(),
             task: json!({ "id": "task-1", "state": "succeeded", "kind": "subagent" }),
             targets,
@@ -68,10 +70,45 @@ async fn a_v2_tasks_transitions_reach_its_webhooks_once() {
         })
         .await
         .unwrap();
+    // The config's secret was handed over when it was added; the record
+    // only says it has one.
+    let now = chrono::Utc::now();
+    cp.db
+        .dp_upsert_session_summary(crate::storage::DpSessionSummary {
+            session_id: SESSION,
+            org_id: ORG,
+            data_plane_id: "dp-1",
+            agent_id: "agent",
+            session_version: 0,
+            title: "",
+            status: "started",
+            turns: 0,
+            cost_micros: 0,
+            created_at: now,
+            last_activity_at: now,
+        })
+        .await
+        .unwrap();
+    let keep = |org: i64, session: &str| {
+        let cp = cp.clone();
+        let params = json!({ "session_id": session, "config_id": "tpc_a", "secret": "k" });
+        async move { crate::domains::data_plane::task_webhooks::keep_secret(&cp, org, &params).await }
+    };
+    keep(ORG, SESSION).await.unwrap();
+    // Another org cannot put a secret on the session.
+    assert!(keep(3, SESSION).await.is_err());
     let push = PushTarget {
         label: "tpc_a".into(),
         url: "https://hooks.example.test/push".into(),
-        secret: Some("k".into()),
+        secret: None,
+        secret_held: true,
+    };
+    // A held secret that was never handed over is not sent unsigned.
+    let lost = PushTarget {
+        label: "tpc_lost".into(),
+        url: "https://hooks.example.test/lost".into(),
+        secret: None,
+        secret_held: true,
     };
     let budgets = BudgetService::new(cp.db.clone());
     let source = format!("cell-tasks-{}", uuid::Uuid::new_v4().simple());
@@ -80,7 +117,7 @@ async fn a_v2_tasks_transitions_reach_its_webhooks_once() {
         data_plane: "dp-1".into(),
         incarnation: 1,
         records: vec![
-            transition(1, "terminal", vec![push.clone()]),
+            transition(1, "terminal", vec![push.clone(), lost]),
             // Waiting for input: the org's webhooks never fire on it.
             transition(2, "awaiting_input", vec![push.clone()]),
         ],

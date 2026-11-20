@@ -116,3 +116,71 @@ async fn a_v1_org_gets_no_settings() {
     org_settings::sync(&cp, 3).await.unwrap();
     assert!(cp.db.dp_items_live(3).await.unwrap().is_empty());
 }
+
+/// Review fix: a settings change counts in the same transaction, so a sync
+/// that failed after it is caught up by the dispatcher instead of leaving
+/// the old policy (open egress) on the cells.
+#[tokio::test]
+async fn a_settings_change_is_owed_a_sync_until_one_covers_it() {
+    let (cp, _, _) = control_plane().await;
+    org_settings::sync(&cp, ORG).await.unwrap();
+    assert!(cp.db.dp_orgs_settings_behind(64).await.unwrap().is_empty());
+
+    // Open egress, and its sync "fails": nothing pushed, but it is owed.
+    cp.db
+        .set_org_egress_grants(ORG, None, Some(true))
+        .await
+        .unwrap();
+    let behind = cp.db.dp_orgs_settings_behind(64).await.unwrap();
+    assert_eq!(behind.iter().map(|b| b.0).collect::<Vec<_>>(), vec![ORG]);
+    let (_, egress) = setting(&cp, EGRESS_SETTING).await.unwrap();
+    assert_eq!(egress.settings["open"], json!(false), "not pushed yet");
+
+    // The dispatcher's pass syncs it, then nothing is owed.
+    assert_eq!(org_settings::sync_owed(&cp).await.unwrap(), 1);
+    let (_, egress) = setting(&cp, EGRESS_SETTING).await.unwrap();
+    assert_eq!(egress.settings["open"], json!(true));
+    assert!(cp.db.dp_orgs_settings_behind(64).await.unwrap().is_empty());
+    assert_eq!(org_settings::sync_owed(&cp).await.unwrap(), 0);
+
+    // A change to one of the org's connections is owed a sync too.
+    cp.db
+        .create_organization_connection(crate::storage::CreateOrganizationConnectionRow {
+            org_id: ORG,
+            name: "Search".into(),
+            provider: "brave_search".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(cp.db.dp_orgs_settings_behind(64).await.unwrap().len(), 1);
+}
+
+/// Review fix: a write host call runs once per call id; a duplicate gets
+/// the first run's answer, or "unknown" while that run has not finished,
+/// and another org never sees it.
+#[tokio::test]
+async fn a_write_host_calls_receipt_answers_its_duplicates() {
+    use crate::storage::HostCallReceipt;
+    let (cp, _, _) = control_plane().await;
+    let take = |org| {
+        let db = cp.db.clone();
+        async move {
+            db.dp_take_host_call_receipt("host-call:c1", org, "memory_file")
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(take(ORG).await, HostCallReceipt::New);
+    assert_eq!(take(ORG).await, HostCallReceipt::Unknown);
+    cp.db
+        .dp_answer_host_call_receipt("host-call:c1", &json!({ "sealed": 1 }))
+        .await
+        .unwrap();
+    assert_eq!(
+        take(ORG).await,
+        HostCallReceipt::Answered(json!({ "sealed": 1 }))
+    );
+    assert_eq!(take(3).await, HostCallReceipt::Unknown);
+    assert_eq!(cp.db.dp_expire_host_call_receipts(1).await.unwrap(), 0);
+}

@@ -21,6 +21,14 @@
 //!   plane at call time is listed beside it under `host_calls`, from its
 //!   declaration (`Capability::host_calls`, with the capabilities it
 //!   depends on), and every name there must be a declared host call.
+//!   `sandbox_fleet` is the one that cannot finish a turn with none: its
+//!   sandboxes are the session's resources, which only a control plane
+//!   keeps, so it fails here as on a Framework host, and `lookups.rs`
+//!   covers it against one (parity, step 10).
+//! - A capability a deployment turns on by flag (`FEATURE_<NAME>`: Docker,
+//!   the container sandbox, paid Parallel) is turned on here, as an
+//!   operator would for both planes; one with required settings gets the
+//!   smallest valid config ([`config_for`]).
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -51,10 +59,43 @@ fn catalog() -> Vec<String> {
         .collect()
 }
 
+/// Turn on every capability a deployment can enable by flag, as an
+/// operator would for both planes (`FEATURE_<NAME>`), so the matrix records
+/// what a cell does with each, not what this deployment's grade hides.
+fn deployment_flags() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // SAFETY: set once, before this binary starts any fleet thread or
+        // builds the hosted catalog.
+        unsafe {
+            for flag in ["DOCKER_CAPABILITY", "CONTAINER_SANDBOX", "MACHINE_PAYMENTS"] {
+                std::env::set_var(format!("FEATURE_{flag}"), "internal");
+            }
+        }
+    });
+}
+
+/// The smallest valid config of a capability that has required settings.
+fn config_for(id: &str) -> Option<Value> {
+    Some(match id {
+        "dreaming" => json!({
+            "destinations": [{ "mount": "/memory/user", "path": "/notes.md" }]
+        }),
+        "sandbox_desktop" => json!({
+            "provider": "daytona",
+            "provider_config": { "desktop": true }
+        }),
+        _ => return None,
+    })
+}
+
 fn agent_with(id: &str) -> Value {
     let mut definition = everruns_cell_testkit::definition("echo").unwrap();
     definition["name"] = json!(format!("with-{}", id.replace('_', "-")));
-    definition["capabilities"] = json!([{ "ref": id }]);
+    definition["capabilities"] = json!([match config_for(id) {
+        Some(config) => json!({ "ref": id, "config": config }),
+        None => json!({ "ref": id }),
+    }]);
     definition
 }
 
@@ -93,6 +134,7 @@ async fn one_turn(fleet: &Fleet, definition: &Value) -> Option<String> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_cell_runs_the_capabilities_its_matrix_records() {
+    deployment_flags();
     let host = everruns_cell_testkit::host();
     let mut fleet = Fleet::start().await;
     fleet.executor(1);

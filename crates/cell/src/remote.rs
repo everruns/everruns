@@ -411,6 +411,45 @@ impl Remote {
         }
     }
 
+    /// POST `body` to `path` on `cell` once: a write whose outcome must not
+    /// be guessed (a host call that changes something). Only a member that
+    /// could not be connected to is passed over for the next, since the
+    /// request never left; a timeout, a dropped connection or an error
+    /// status is returned as it is, because the write may have happened.
+    pub async fn post_once<B: Serialize, T: serde::de::DeserializeOwned>(
+        &self,
+        cell: CellId,
+        path: &str,
+        body: &B,
+        timeout: Duration,
+    ) -> anyhow::Result<T> {
+        let mut last = anyhow::anyhow!("cell {cell} has no members");
+        for addr in self.targets(cell) {
+            let sent = self
+                .http
+                .post(format!("http://{addr}{path}"))
+                .json(body)
+                .timeout(timeout)
+                .send()
+                .await;
+            match sent {
+                Ok(reply) if reply.status().is_success() => {
+                    self.calls.inc(&[("call", path_kind(path))]);
+                    return Ok(reply.json().await?);
+                }
+                Ok(reply) => anyhow::bail!("{addr}{path}: {}", reply.status()),
+                Err(error) if error.is_connect() => {
+                    last = error.into();
+                    if self.leaders.lock().get(&cell) == Some(&addr) {
+                        self.leaders.lock().remove(&cell);
+                    }
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Err(last)
+    }
+
     fn cell_of(&self, session: SessionId) -> anyhow::Result<CellId> {
         self.home(session)
             .ok_or_else(|| anyhow::anyhow!("session {session} is not bound to a cell here"))

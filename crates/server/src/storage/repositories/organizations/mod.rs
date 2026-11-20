@@ -120,8 +120,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
             sql!(r#"
-            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions, small_model_id, chat_model_id, research_model_id)
-            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'), $11, $13, $15)
+            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions, small_model_id, chat_model_id, research_model_id, coding_model_id)
+            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'), $11, $13, $15, $17)
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = CASE
                     WHEN $3 THEN $2
@@ -143,6 +143,7 @@ impl Database {
                 small_model_id = CASE WHEN $12 THEN $11 ELSE organization_settings.small_model_id END,
                 chat_model_id = CASE WHEN $14 THEN $13 ELSE organization_settings.chat_model_id END,
                 research_model_id = CASE WHEN $16 THEN $15 ELSE organization_settings.research_model_id END,
+                coding_model_id = CASE WHEN $18 THEN $17 ELSE organization_settings.coding_model_id END,
                 updated_at = NOW()
             RETURNING {OrganizationSettingsRow}
             "#),
@@ -163,6 +164,8 @@ impl Database {
         .bind(input.chat_model_id.is_changed())
         .bind(input.research_model_id.clone().into_value().map(|id| id.uuid()))
         .bind(input.research_model_id.is_changed())
+        .bind(input.coding_model_id.clone().into_value().map(|id| id.uuid()))
+        .bind(input.coding_model_id.is_changed())
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

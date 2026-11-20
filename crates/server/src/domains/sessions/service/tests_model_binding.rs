@@ -14,6 +14,7 @@ async fn agent_with_model(
 ) -> <crate::domains::agents::CreateAgent as Command>::Output {
     crate::domains::agents::CreateAgent(CreateAgentRequest {
         model_role: None,
+        model_preset: None,
         owner_agent_id: None,
         completion_check: Default::default(),
         localizations: Default::default(),
@@ -368,6 +369,7 @@ async fn research_agent_follows_the_org_research_model_until_it_pins_one() {
     // A role and a pinned model together are refused.
     let both = crate::domains::agents::CreateAgent(CreateAgentRequest {
         model_role: Some(crate::domains::organizations::research_model::AgentModelRole::Research),
+        model_preset: None,
         default_model_id: Some(general),
         ..serde_json::from_value(serde_json::json!({"name": "both", "system_prompt": "x"})).unwrap()
     })
@@ -378,6 +380,7 @@ async fn research_agent_follows_the_org_research_model_until_it_pins_one() {
 
     let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
         model_role: Some(crate::domains::organizations::research_model::AgentModelRole::Research),
+        model_preset: None,
         ..serde_json::from_value(serde_json::json!({"name": "researcher", "system_prompt": "x"}))
             .unwrap()
     })
@@ -420,4 +423,228 @@ async fn research_agent_follows_the_org_research_model_until_it_pins_one() {
     .unwrap();
     assert_eq!(pinned.model_role, None);
     assert_eq!(pinned.default_model_id, Some(general));
+}
+
+#[tokio::test]
+async fn agent_on_a_model_preset_runs_on_its_jobs_and_keeps_the_preset_alive() {
+    use crate::domains::model_presets::{
+        CreateModelPreset, CreateModelPresetRequest, DeleteModelPreset, ModelPresetJobs,
+        UpdateModelPreset,
+    };
+    let db = Arc::new(StorageBackend::test_database());
+    let caller = Caller::internal(DEFAULT_ORG_ID);
+    let ctx = test_ctx(caller.clone(), db.clone()).await;
+    let service = SessionService::new(db.clone());
+    let general = create_model(&db, caller.org_id, "general").await;
+    let cheap = create_model(&db, caller.org_id, "cheap").await;
+    let deep = create_model(&db, caller.org_id, "deep").await;
+    let coder = create_model(&db, caller.org_id, "coder").await;
+    db.patch_organization_settings(
+        caller.org_id,
+        crate::storage::UpdateOrganizationSettings {
+            default_model_id: UpdateField::Set(general),
+            coding_model_id: UpdateField::Set(coder),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let preset = CreateModelPreset(CreateModelPresetRequest {
+        name: "Cheap council".into(),
+        jobs: ModelPresetJobs {
+            default_model_id: Some(cheap),
+            research_model_id: Some(deep),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(preset.id, "cheap-council");
+    assert!(!preset.read_only);
+
+    // Unknown presets are refused on agents.
+    let unknown = crate::domains::agents::CreateAgent(
+        serde_json::from_value(serde_json::json!({
+            "name": "lost", "system_prompt": "x", "model_preset": "nope"
+        }))
+        .unwrap(),
+    )
+    .execute(&ctx)
+    .await
+    .unwrap_err();
+    assert!(unknown.to_string().contains("not found"), "{unknown}");
+
+    let agent = crate::domains::agents::CreateAgent(
+        serde_json::from_value(serde_json::json!({
+            "name": "council", "system_prompt": "x", "model_preset": "cheap-council"
+        }))
+        .unwrap(),
+    )
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(agent.model_preset.as_deref(), Some("cheap-council"));
+
+    // Default job on an ordinary harness.
+    let turn = |agent: &crate::domains::agents::record::Agent, harness: Option<&'static str>| {
+        let db = db.clone();
+        let agent = agent.clone();
+        async move {
+            crate::domains::organizations::research_model::turn_model_id(
+                &db,
+                DEFAULT_ORG_ID,
+                None,
+                Some(&agent),
+                harness,
+                None,
+            )
+            .await
+            .unwrap()
+        }
+    };
+    assert_eq!(turn(&agent, Some("generic")).await, Some(cheap));
+    // The preset leaves Coding empty: the coding harness uses the org Coding default.
+    assert_eq!(turn(&agent, Some("coding")).await, Some(coder));
+    // A research agent takes the preset's Research job.
+    let mut researcher = agent.clone();
+    researcher.model_role =
+        Some(crate::domains::organizations::research_model::AgentModelRole::Research);
+    assert_eq!(turn(&researcher, None).await, Some(deep));
+    // A pinned model still wins.
+    let mut pinned = agent.clone();
+    pinned.default_model_id = Some(general);
+    assert_eq!(turn(&pinned, None).await, Some(general));
+
+    // The session shows the model it runs on.
+    let harness = org_init::base_harness_id(&db, caller.org_id).await.unwrap();
+    let session = service
+        .create(
+            &caller,
+            harness.uuid(),
+            Some(agent.internal_id),
+            Some(agent.public_id),
+            SessionSource::Api,
+            build_create_request(harness, Some(agent.public_id), None),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .resolved_model_id(caller.org_id, &session)
+            .await
+            .unwrap(),
+        Some(cheap)
+    );
+
+    // Clearing a job falls back to the organization default.
+    UpdateModelPreset {
+        id: "cheap-council".into(),
+        req: serde_json::from_value(serde_json::json!({"default_model_id": null})).unwrap(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(turn(&agent, Some("generic")).await, None);
+
+    // A preset in use cannot be deleted; built-ins never.
+    let refused = DeleteModelPreset {
+        id: "cheap-council".into(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap_err();
+    assert!(refused.to_string().contains("agent"), "{refused}");
+    let builtin = DeleteModelPreset {
+        id: "automatic".into(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap_err();
+    assert!(builtin.to_string().contains("read only"), "{builtin}");
+
+    // Moving the agent back to the organization defaults frees the preset.
+    crate::domains::agents::UpdateAgentCmd {
+        id: agent.public_id.to_string(),
+        req: serde_json::from_value(serde_json::json!({"model_preset": null})).unwrap(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert!(
+        DeleteModelPreset {
+            id: "cheap-council".into(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap()
+    );
+}
+
+fn helper(
+    target: everruns_core::helper_models::HelperModelTarget,
+) -> everruns_core::helper_models::SpawnHelperModel {
+    everruns_core::helper_models::SpawnHelperModel {
+        key: "k".to_string(),
+        target,
+        picked_by: everruns_core::helper_models::HelperModelPickedBy::Agent,
+        reason: None,
+    }
+}
+
+#[tokio::test]
+async fn spawned_child_copies_the_parent_explicit_model() {
+    use everruns_core::helper_models::HelperModelTarget;
+    let db = Arc::new(StorageBackend::test_database());
+    let caller = Caller::internal(DEFAULT_ORG_ID);
+    let ctx = test_ctx(caller.clone(), db.clone())
+        .await
+        .with_session_service(Arc::new(SessionService::new(db.clone())));
+    let service = SessionService::new(db.clone());
+    let harness_id = org_init::base_harness_id(&db, caller.org_id).await.unwrap();
+    let agent_default = create_model(&db, caller.org_id, "agent-default").await;
+    let picked = create_model(&db, caller.org_id, "picked-for-chat").await;
+    let agent = agent_with_model(&ctx, Some(agent_default)).await;
+    let parent = service
+        .create(
+            &caller,
+            harness_id.uuid(),
+            Some(agent.internal_id),
+            Some(agent.public_id),
+            SessionSource::Api,
+            build_create_request(harness_id, Some(agent.public_id), Some(picked)),
+        )
+        .await
+        .unwrap();
+
+    let spawn = |target: Option<HelperModelTarget>| {
+        let mut req = build_create_request(harness_id, Some(agent.public_id), None);
+        req.parent_session_id = Some(parent.id);
+        req.helper_model = target.map(helper);
+        crate::domains::sessions::CreateSession(req)
+    };
+
+    // `same`: the child runs on the model the person picked for the parent,
+    // not on the agent default.
+    let child = spawn(Some(HelperModelTarget::Same))
+        .execute(&ctx)
+        .await
+        .unwrap();
+    assert_eq!(child.model_id, Some(picked));
+
+    // A concrete target outside the usable catalog leaves the child on the
+    // ordinary resolution instead of failing the spawn.
+    let child = spawn(Some(HelperModelTarget::Model {
+        model_id: ModelId::new().to_string(),
+    }))
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert_eq!(child.model_id, None);
+
+    // Hand-offs send no helper model and keep the member agent's own model.
+    let child = spawn(None).execute(&ctx).await.unwrap();
+    assert_eq!(child.model_id, None);
 }

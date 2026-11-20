@@ -1151,6 +1151,11 @@ impl Database {
             param_idx += 1;
         }
 
+        if query.before_sequence.is_some() {
+            sql.push_str(&format!(" AND sequence < ${param_idx}"));
+            param_idx += 1;
+        }
+
         // Process filters
         for filter in &query.filters {
             match filter {
@@ -1207,6 +1212,14 @@ impl Database {
         let mut needs_reverse = false;
         let effective_limit: i64;
         match (query.offset, query.limit) {
+            (_, Some(limit)) if query.oldest_first => {
+                effective_limit = limit.max(0);
+                sql.push_str(&format!(
+                    " ORDER BY sequence ASC LIMIT {} OFFSET {}",
+                    limit.max(0),
+                    query.offset.unwrap_or(0).max(0)
+                ));
+            }
             (Some(offset), Some(limit)) => {
                 effective_limit = limit.max(0);
                 sql = format!(
@@ -1283,6 +1296,10 @@ impl Database {
 
         if let Some(after_sequence) = query.after_sequence {
             db_query = db_query.bind(after_sequence);
+        }
+
+        if let Some(before_sequence) = query.before_sequence {
+            db_query = db_query.bind(before_sequence);
         }
 
         // Bind parameters in order they were added to SQL

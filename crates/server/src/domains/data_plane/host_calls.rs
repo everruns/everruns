@@ -37,6 +37,9 @@
 //! - The turn's person's own MCP servers ([`USER_MCP_STORE`],
 //!   [`USER_MCP_SERVERS`], `user_mcp.rs`) stay in the control plane, as
 //!   does a session's Memory ([`MEMORY_FILE`], `memory.rs`).
+//! - Dreaming's maintenance state of a session the data plane runs
+//!   ([`DREAMING_STATE`]) stays here, as for a v1 session, so its daily
+//!   budgets hold across sessions; a cell finds its org's due dreams only.
 //! - A v2 session's SQL databases are no call: they live in the session's
 //!   cell (data plane v2 parity, step 9).
 //! - Every answer, a refusal included, is sealed with the org's data key
@@ -45,15 +48,21 @@
 //!   another call's.
 //! - Each call is counted by name and outcome
 //!   (`everruns_dp_host_calls_total`).
-//! - Nothing else is stored here. The calls are reads, except a Poppy
-//!   call, which keeps the session owner's company accounts and
-//!   conversations in the control plane, as on v1.
+//! - Nothing else is stored here. The calls are reads, except the ones
+//!   that keep what v1 keeps here: a Poppy call's company accounts and
+//!   conversations, a session's resources and leases, its Memory and
+//!   dreaming's state; a task push config's signing secret
+//!   ([`TASK_PUSH_SECRET`], encrypted, under the config's id); and the
+//!   session record of a subagent a cell starts ([`SUBAGENT_RECORD`],
+//!   `subagents.rs`).
+//! - A write runs once per call id: the route keeps a receipt
+//!   (`dp_host_call_receipts`) and answers a duplicate from it.
 
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
-    ActsAs, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
-    USER_MCP_SERVERS, USER_MCP_STORE,
+    ActsAs, DREAMING_STATE, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
+    SUBAGENT_RECORD, TASK_PUSH_SECRET, USER_MCP_SERVERS, USER_MCP_STORE,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
 
@@ -75,7 +84,7 @@ pub async fn answer(
         // The lookup then finds no invocation and answers nothing.
         tracing::warn!(call = call.name, %error, "could not record the turn's invocation");
     }
-    let answer = run(ctx, call, params).await;
+    let answer = run(cp, ctx, call, params).await;
     let outcome = match &answer {
         Ok(HostCallAnswer::Value(_)) => "ok",
         Ok(HostCallAnswer::Error { .. }) => "refused",
@@ -91,6 +100,7 @@ pub async fn answer(
 }
 
 async fn run(
+    cp: &ControlPlane,
     ctx: &Ctx,
     call: &HostCall,
     params: serde_json::Value,
@@ -113,11 +123,26 @@ async fn run(
             super::memory::answer(ctx, &params).await,
         )),
         SLACK_ACTION => Ok(HostCallAnswer::Value(slack_action(ctx, &params).await)),
+        // A worker's dream discovery spans every org; a cell asks for its
+        // org's own (`due_org`).
+        DREAMING_STATE if params["operation"] == "due" => Ok(HostCallAnswer::Error {
+            kind: everruns_internal_protocol::proto::command_error::Kind::Forbidden as i32,
+            message: "a data plane asks for its org's due dreams only".into(),
+        }),
         USER_MCP_STORE => Ok(HostCallAnswer::Value(
             super::user_mcp::store(ctx, &params).await,
         )),
         USER_MCP_SERVERS => Ok(HostCallAnswer::Value(
             super::user_mcp::servers(ctx, &params).await,
+        )),
+        // Failures are errors, not refusals: the node that hands a secret
+        // over cannot open the sealed answer, only see that it failed.
+        TASK_PUSH_SECRET => {
+            super::task_webhooks::keep_secret(cp, ctx.org_id(), &params).await?;
+            Ok(HostCallAnswer::Value(serde_json::Value::Bool(true)))
+        }
+        SUBAGENT_RECORD => Ok(HostCallAnswer::Value(
+            super::subagents::record(cp, ctx, &params).await?,
         )),
         _ => Ok(
             match crate::domains::common::dispatch(call.command, params, ctx).await {

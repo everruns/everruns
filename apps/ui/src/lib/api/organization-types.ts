@@ -7,6 +7,8 @@ export interface Organization {
   effective_research_model_id?: string | null;
   /** Independent model for the built-in Everruns Chat; null inherits the org default. */
   chat_model_id?: string | null;
+  /** Default for coding-harness agents; null falls back to the default model. */
+  coding_model_id?: string | null;
   id: string;
   name: string;
   default_model_id: string | null;
@@ -32,6 +34,8 @@ export interface UpdateOrganizationRequest {
   research_model_id?: string | null;
   /** Independent model for the built-in Everruns Chat; null inherits the org default. */
   chat_model_id?: string | null;
+  /** Default for coding-harness agents; null falls back to the default model. */
+  coding_model_id?: string | null;
   name?: string;
   default_model_id?: string | null;
   default_harness_id?: string | null;

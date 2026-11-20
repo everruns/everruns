@@ -303,7 +303,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, localizations, description, intro_markdown, short_description, starters, system_prompt, default_model_id, model_role, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, owner_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, completion_check, environments, avatar_id,
+            r#"SELECT id, public_id, org_id, name, display_name, localizations, description, intro_markdown, short_description, starters, system_prompt, default_model_id, model_role, model_preset, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, owner_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, max_output_tokens, communication, completion_check, environments, avatar_id,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -389,6 +389,24 @@ impl Database {
         .bind(org_id)
         .bind(id.uuid())
         .bind(role.map(|role| role.as_str()))
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Set or clear the model preset an agent takes its job models from.
+    pub async fn set_agent_model_preset(
+        &self,
+        org_id: i64,
+        id: AgentId,
+        preset: Option<&str>,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE agents SET model_preset = $3, updated_at = NOW() WHERE org_id = $1 AND id = $2",
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .bind(preset)
         .execute(&self.pool)
         .await?;
         Ok(())

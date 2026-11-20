@@ -9,6 +9,20 @@ use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_server_macros::sql;
 
 impl Database {
+    /// Last main model request, excluding separately billed continuity work.
+    /// The session/type/sequence index bounds the backwards lookup; no history
+    /// window or summary payload is used as a model-context measurement.
+    pub async fn latest_context_generation(
+        &self,
+        session_id: SessionId,
+    ) -> sqlx::Result<Option<EventRow>> {
+        sqlx::query_as::<_, EventRow>(sql!(
+            "SELECT {EventRow} FROM events WHERE session_id = $1 AND event_type = 'llm.generation' \
+             AND COALESCE(data->'metadata'->'request_options'->'metadata'->>'purpose', \
+                          data->'data'->'metadata'->'request_options'->'metadata'->>'purpose', '') NOT IN ('continuity_summary', 'context_compaction') \
+             ORDER BY sequence DESC LIMIT 1"
+        )).bind(session_id.uuid()).fetch_optional(&self.pool).await
+    }
     /// In-process workers address projected tool results by their event UUID.
     /// The primary-key index handles this lookup; no JSON message id is stored.
     pub async fn tool_message_event_by_id(

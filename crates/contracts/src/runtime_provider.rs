@@ -756,6 +756,13 @@ impl crate::driver_registry::EmbeddingsDriver for ProviderBoundEmbeddingsDriver 
 
 #[async_trait]
 impl ChatDriver for ProviderBoundDriver {
+    fn supports_history_summarization(&self) -> bool {
+        self.0
+            .driver
+            .as_ref()
+            .is_some_and(|driver| driver.supports_history_summarization())
+    }
+
     // No batch hook: this legacy adapter hides its bound endpoint from the
     // caller. Exposing it would fingerprint the caller's unrelated endpoint in
     // persisted tickets. Batch clients must retain the RuntimeProvider instead.

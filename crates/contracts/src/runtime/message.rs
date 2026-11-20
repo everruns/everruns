@@ -832,6 +832,9 @@ pub fn task_wake_message_metadata() -> std::collections::HashMap<String, serde_j
 /// Runtime-owned snapshot for replaying changed capability reference data.
 pub const CONVERSATION_CONTEXT_UPDATE_METADATA_KEY: &str = "capability_context_update";
 
+/// Runtime-generated, reference-only continuity inserted outside the raw journal.
+pub const PORTABLE_CONTINUITY_METADATA_KEY: &str = "everruns_continuity";
+
 /// Remove reserved platform keys from caller-supplied message metadata, so a
 /// client cannot make its own text look like a platform notice or start a
 /// script run that skips the model.
@@ -841,6 +844,7 @@ pub fn strip_reserved_message_metadata(
     super::causal::sanitize_input_metadata(metadata);
     if let Some(map) = metadata.as_mut() {
         map.remove(CONVERSATION_CONTEXT_UPDATE_METADATA_KEY);
+        map.remove(PORTABLE_CONTINUITY_METADATA_KEY);
         map.remove(MESSAGE_ORIGIN_METADATA_KEY);
         map.remove("everruns_mcp_client");
         map.remove(crate::message_reactions::MESSAGE_REACTIONS_METADATA_KEY);

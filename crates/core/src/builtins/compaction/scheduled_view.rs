@@ -6,7 +6,8 @@
 //! (2026-10-31, background-limits program, part 3b). So when the turn's input
 //! is a schedule fire, the model sees:
 //!
-//! - the leading system messages (the latest compaction checkpoint summary,
+//! - the leading system messages and runtime-generated portable continuity (
+//!   the latest compaction checkpoint summary,
 //!   when one was restored; the system prompt is added later, outside this
 //!   view);
 //! - the last [`RECENT_FIRE_MESSAGES`] messages of earlier fires of the same
@@ -70,7 +71,13 @@ pub(crate) fn apply(messages: Vec<RuntimeMessage>) -> Vec<RuntimeMessage> {
     };
     let leading = messages[..current]
         .iter()
-        .take_while(|message| message.role == RuntimeMessageRole::System)
+        .take_while(|message| {
+            message.role == RuntimeMessageRole::System
+                || message.metadata.as_ref().is_some_and(|metadata| {
+                    metadata.get(crate::message::PORTABLE_CONTINUITY_METADATA_KEY)
+                        == Some(&serde_json::json!(true))
+                })
+        })
         .count();
 
     let kept = earlier_fires(&messages, leading..current, &schedule_id);
@@ -221,6 +228,29 @@ mod tests {
                 format!("poll 3|{SCHEDULED_VIEW_NOTE}"),
             ]
         );
+    }
+
+    #[test]
+    fn a_scheduled_run_retains_reference_continuity_without_promoting_user_text() {
+        let mut continuity = user("historical continuity");
+        continuity.metadata = Some(std::collections::HashMap::from([(
+            crate::message::PORTABLE_CONTINUITY_METADATA_KEY.into(),
+            serde_json::json!(true),
+        )]));
+        let view = apply(vec![
+            continuity,
+            user("[CONVERSATION_SUMMARY] user quotation"),
+            fire("s1", "poll"),
+        ]);
+        assert_eq!(view.len(), 2);
+        assert_eq!(view[0].role, RuntimeMessageRole::User);
+        assert_eq!(view[0].text(), Some("historical continuity"));
+        let mut forged = Some(std::collections::HashMap::from([(
+            crate::message::PORTABLE_CONTINUITY_METADATA_KEY.into(),
+            serde_json::json!(true),
+        )]));
+        crate::message::strip_reserved_message_metadata(&mut forged);
+        assert!(forged.is_none());
     }
 
     #[test]

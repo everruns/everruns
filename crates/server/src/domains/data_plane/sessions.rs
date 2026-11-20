@@ -113,6 +113,51 @@ pub async fn created(
     if !on_data_plane(cp, org_id).await? {
         return Ok(());
     }
+    let (key, data_plane) = create_on_plane(
+        cp,
+        org_id,
+        session,
+        harness_id,
+        agent_id,
+        initial_files,
+        layer,
+    )
+    .await?;
+    // Marks the session as the data plane's: its messages go there, never
+    // to the platform's workers. The feed's summaries (version 1 and up)
+    // update it.
+    let now = chrono::Utc::now();
+    cp.db
+        .dp_upsert_session_summary(DpSessionSummary {
+            session_id: &session.to_string(),
+            org_id,
+            data_plane_id: &data_plane,
+            agent_id: &key,
+            session_version: 0,
+            title: "",
+            status: "started",
+            turns: 0,
+            cost_micros: 0,
+            created_at: now,
+            last_activity_at: now,
+        })
+        .await?;
+    Ok(())
+}
+
+/// Create `session` on `org_id`'s data plane, its agent delivered first
+/// (retry-safe: the same id is the same session); its agent's key and the
+/// data plane's id. Whether its messages go there is the caller's
+/// ([`created`], `moves.rs`).
+pub(crate) async fn create_on_plane(
+    cp: &ControlPlane,
+    org_id: i64,
+    session: SessionId,
+    harness_id: HarnessId,
+    agent_id: Option<AgentId>,
+    initial_files: &[InitialFile],
+    layer: Option<AgentConfigOverlay>,
+) -> anyhow::Result<(String, String)> {
     let (key, revision) = key_for(&cp.db, org_id, harness_id, agent_id).await?;
     agent_published(cp, &key, org_id, &revision).await?;
     let definition = match layer {
@@ -160,27 +205,8 @@ pub async fn created(
             .await
         {
             Ok(()) => {
-                // Marks the session as the data plane's: its messages go
-                // there, never to the platform's workers. The feed's
-                // summaries (version 1 and up) update it.
-                let now = chrono::Utc::now();
                 let data_plane = plane.id().unwrap_or_default().to_owned();
-                cp.db
-                    .dp_upsert_session_summary(DpSessionSummary {
-                        session_id: &session.to_string(),
-                        org_id,
-                        data_plane_id: &data_plane,
-                        agent_id: &key,
-                        session_version: 0,
-                        title: "",
-                        status: "started",
-                        turns: 0,
-                        cost_micros: 0,
-                        created_at: now,
-                        last_activity_at: now,
-                    })
-                    .await?;
-                return Ok(());
+                return Ok((key, data_plane));
             }
             Err(error) => last = Some(error),
         }

@@ -64,6 +64,7 @@ pub mod mcp_url_consent;
 pub mod memory;
 pub mod memory_files;
 pub mod messages;
+pub mod model_presets;
 pub mod models;
 pub mod monitoring;
 pub mod notifications;

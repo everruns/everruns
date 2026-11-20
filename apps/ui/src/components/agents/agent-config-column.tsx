@@ -17,6 +17,15 @@ import { Button } from "@/components/ui/button";
 import { TagInput } from "@/components/ui/tag-input";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { ModelPicker } from "@/components/models/model-picker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useModelPresets } from "@/hooks/use-model-presets";
+import { HelperModelsSection } from "@/components/agents/helper-models-section";
 import { useOrganization } from "@/hooks/use-organizations";
 import { RESEARCH_MODEL_OPTION, agentModelId } from "@/lib/agent-model-role";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
@@ -30,6 +39,9 @@ import { normalizeTags } from "@/lib/tags";
 import { MoreSettingsNav, type MoreSettingsRow } from "@/components/workspace/more-settings-nav";
 import { cn } from "@/lib/utils";
 import { ChatChangeMark, useChatChanges } from "@/components/chat-mode/chat-change-mark";
+
+/** Picker value for "Organization defaults" (no model preset). */
+const ORG_DEFAULTS = "__org_defaults__";
 
 export type AgentMoreRow = MoreSettingsRow;
 
@@ -67,6 +79,7 @@ export function AgentConfigColumn({
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
   const { data: organization } = useOrganization();
+  const { data: modelPresets = [] } = useModelPresets();
   const chatChanges = useChatChanges();
   // Any control change starts (or continues) the page-level edit.
   const edit = <T,>(apply: (value: T) => void) => {
@@ -181,6 +194,55 @@ export function AgentConfigColumn({
                 />
               )}
             </ChatChangeMark>
+
+            <ChatChangeMark field="model_preset" className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground" htmlFor="model-preset">
+                {ui("Models from")}
+              </Label>
+              {readOnly ? (
+                <span className="text-[13px] text-muted-foreground">
+                  {modelPresets.find((preset) => preset.id === agent.model_preset)?.name ??
+                    agent.model_preset ??
+                    ui("Organization defaults")}
+                </span>
+              ) : (
+                <Select
+                  value={draft.fields.model_preset || ORG_DEFAULTS}
+                  onValueChange={edit((value: string | null) =>
+                    draft.setField("model_preset", !value || value === ORG_DEFAULTS ? "" : value),
+                  )}
+                >
+                  <SelectTrigger id="model-preset" className="w-full bg-background">
+                    <SelectValue>
+                      {draft.fields.model_preset
+                        ? (modelPresets.find((preset) => preset.id === draft.fields.model_preset)
+                            ?.name ?? draft.fields.model_preset)
+                        : ui("Organization defaults")}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ORG_DEFAULTS}>{ui("Organization defaults")}</SelectItem>
+                    {modelPresets.map((preset) => (
+                      <SelectItem key={preset.id} value={preset.id}>
+                        {preset.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {ui(
+                  "Coding, research and small work use this set. A default model above still wins.",
+                )}
+              </span>
+            </ChatChangeMark>
+
+            <HelperModelsSection
+              capabilities={draft.capabilities}
+              agentPreset={draft.fields.model_preset || undefined}
+              readOnly={readOnly}
+              onChange={edit(draft.setCapabilities)}
+            />
 
             <ChatChangeMark field="communication" className="flex flex-col gap-1.5">
               <Label className="text-xs font-medium text-muted-foreground" htmlFor="communication">

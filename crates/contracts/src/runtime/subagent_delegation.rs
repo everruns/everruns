@@ -47,6 +47,10 @@ pub struct PlatformCreateSessionRequest {
     /// history. Built-in tools state it themselves so an org that requires
     /// agents to give reasons does not refuse them.
     pub reason: String,
+    /// The helper model the spawn asked for. The host resolves its target to
+    /// one of the organization's models; `same` copies the parent's explicit
+    /// model so the child keeps the model the person picked.
+    pub helper_model: Option<crate::runtime::helper_models::SpawnHelperModel>,
 }
 
 /// The narrow set of child-session operations a delegation provider needs.

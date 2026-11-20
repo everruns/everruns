@@ -26,12 +26,20 @@ USAGE:
     everruns-dataplane diff <org_public_id>
     everruns-dataplane bump-epoch
     everruns-dataplane reconcile <org_public_id> [--keep | --drop]
+    everruns-dataplane move <org_public_id> [<session_id> | --archived]
 
 `enable` switches an org to a data plane: its new sessions run there. After a
 database restore, run `diff` for every v2 org, resolve what it lists, then
 `bump-epoch`: every data plane then takes a full snapshot. What a snapshot
 lacked the data plane sets aside: `reconcile` lists it, `--keep` sends it
 again as config, `--drop` forgets it. Running turns finish either way.
+
+`move` moves a running v1 session onto the org's data plane (the org must be
+enabled), keeping its id: its conversation, values, secrets and files go to a
+cell and it runs there from then on. Without a session it moves every v1
+session of the org (`--archived` includes archived ones), one at a time. A
+session running a turn is skipped; run `move` again later. What a move left
+behind is in its report.
 
 `warehouse on` exports every event of the org's sessions as hourly gzipped
 NDJSON files under `warehouse/<org>/date=.../hour=.../` in the control
@@ -175,6 +183,42 @@ async fn main() -> Result<()> {
         "bump-epoch" => {
             let epoch = db.dp_bump_epoch().await?;
             println!("control plane epoch {epoch}: every v2 org gets a full snapshot");
+        }
+        "move" => {
+            let org_id = org(&db, args.get(1)).await?;
+            let drain = std::time::Duration::from_secs(120);
+            let outcomes = match args.get(2).map(String::as_str) {
+                Some(session) if session != "--archived" => {
+                    let session = session
+                        .parse()
+                        .map_err(|_| anyhow::anyhow!("{session} is not a session id"))?;
+                    let outcome =
+                        data_plane::moves::move_session(&cp, org_id, session, drain).await;
+                    vec![(session, outcome)]
+                }
+                flag => {
+                    let archived = flag == Some("--archived");
+                    data_plane::moves::move_org(&cp, org_id, archived, drain).await?
+                }
+            };
+            let mut failed = 0;
+            for (session, outcome) in outcomes {
+                match outcome {
+                    Ok(data_plane::moves::Moved::Done(report)) => {
+                        println!("{session} moved: {}", serde_json::to_string(&report)?);
+                    }
+                    Ok(data_plane::moves::Moved::Skipped(reason)) => {
+                        println!("{session} skipped: {reason}");
+                    }
+                    Err(error) => {
+                        failed += 1;
+                        eprintln!("{session} failed: {error:#}");
+                    }
+                }
+            }
+            if failed > 0 {
+                anyhow::bail!("{failed} sessions did not move; run move again");
+            }
         }
         other => {
             eprintln!("unknown command {other}\n{HELP}");

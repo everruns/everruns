@@ -21,6 +21,7 @@ import { ChevronDown, ChevronRight, ListTodo, MessageSquare } from "lucide-react
 import { useSessionTask } from "@/hooks/use-session-tasks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { HelperModelChip, helperModelSpec } from "@/components/session/helper-model-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EntityIdentity } from "@/components/ui/entity-identity";
@@ -213,6 +214,7 @@ export function TaskCard({
   const terminal = isTerminalTaskState(task.state);
   const artifacts = task.artifacts ?? [];
   const childSessionId = task.links?.child_session_id;
+  const helperModel = helperModelSpec(task.spec);
 
   return (
     <Card>
@@ -225,7 +227,10 @@ export function TaskCard({
                 <EntityIdentity value={task.id}>{task.display_name || task.id}</EntityIdentity>
               </CardTitle>
               <CardDescription>
-                <Badge variant="outline">{task.kind}</Badge>
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{task.kind}</Badge>
+                  {helperModel && <HelperModelChip spec={helperModel} />}
+                </span>
               </CardDescription>
             </div>
           </div>

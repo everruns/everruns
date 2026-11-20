@@ -44,8 +44,10 @@ use everruns_contracts::durable_retry;
 use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
 
 mod background_call;
+mod builder;
 mod causal;
 mod compaction;
+mod context_plan;
 mod context_updates;
 mod error_policy;
 mod facts;
@@ -74,6 +76,7 @@ use compaction::{
     ProactiveCompactionContext, ReactiveCompactionContext, apply_proactive_compaction,
     apply_reactive_compaction,
 };
+use context_plan::keep_input;
 use error_policy::{filter_response_text, is_error_placeholder_message};
 #[cfg(test)]
 use observability::capability_usage_snapshot_records;
@@ -152,160 +155,7 @@ pub struct ReasonAtom {
 }
 
 impl ReasonAtom {
-    /// Create a new ReasonAtom
-    pub fn new(
-        context_resolver: impl TurnContextResolver + 'static,
-        message_retriever: impl MessageRetriever + 'static,
-        capability_registry: CapabilityRegistry,
-        event_emitter: impl PhaseEffectSink + 'static,
-    ) -> Self {
-        Self {
-            causal_context: Default::default(),
-            native_async: None,
-            context_resolver: Arc::new(context_resolver),
-            message_retriever: Arc::new(message_retriever),
-            capability_registry,
-            event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
-            image_resolver: None,
-            file_resolver: None,
-            provider_stall_timeout: None,
-            provider_retry_config: LlmRetryConfig::default(),
-            durable_tool_result_store: None,
-            partial_stream_store: None,
-            reasoning_effort_handle: None,
-            utility_llm_service: None,
-            decisions: None,
-            mcp_invoker: None,
-            schedule_store: None,
-            compaction_checkpoint_store: None,
-            background_call: Default::default(),
-        }
-    }
-
-    /// Set the session schedule store used by `usage_limit_auto_continue` to
-    /// schedule a continuation after a provider usage limit resets.
-    pub fn with_schedule_store(
-        mut self,
-        store: Arc<dyn crate::engine::session_services::SessionScheduleStore>,
-    ) -> Self {
-        self.schedule_store = Some(store);
-        self
-    }
-
-    pub fn with_compaction_checkpoint_store(
-        mut self,
-        store: Arc<dyn crate::engine::CompactionCheckpointStore>,
-    ) -> Self {
-        self.compaction_checkpoint_store = Some(store);
-        self
-    }
-
-    /// Set the image resolver: image_file references are resolved to image
-    /// data before the LLM call (required for multimodal attachments).
-    pub fn with_image_resolver(mut self, resolver: Arc<dyn ImageResolver>) -> Self {
-        self.image_resolver = Some(resolver);
-        self
-    }
-
-    pub fn with_file_resolver(mut self, resolver: Arc<dyn FileResolver>) -> Self {
-        self.file_resolver = Some(resolver);
-        self
-    }
-
-    /// Set the provider stall timeout. If no token arrives within this window,
-    /// the stream is aborted and the activity fails with a retryable error.
-    pub fn with_provider_stall_timeout(mut self, timeout: std::time::Duration) -> Self {
-        self.provider_stall_timeout = Some(timeout);
-        self
-    }
-
-    /// Set the bounded provider recovery policy.
-    pub fn with_provider_retry_config(mut self, config: LlmRetryConfig) -> Self {
-        self.provider_retry_config = config;
-        self
-    }
-
-    /// Set the durable tool result store for transcript repair (EVE-533): repair
-    /// replays settled results or synthesizes interrupted placeholders from it
-    /// rather than always emitting a generic "cancelled" message.
-    pub fn with_durable_tool_result_store(
-        mut self,
-        store: Arc<dyn DurableToolResultStore>,
-    ) -> Self {
-        self.durable_tool_result_store = Some(store);
-        self
-    }
-
-    /// Set the partial-stream store for ContinuePartial recovery (EVE-532).
-    pub fn with_partial_stream_store(mut self, store: Arc<dyn PartialStreamStore>) -> Self {
-        self.partial_stream_store = Some(store);
-        self
-    }
-
-    /// Set the live reasoning-effort handle (EVE-595).
-    ///
-    /// When set and holding a value, the effort it carries overrides the
-    /// message-derived effort for every LLM step. Because the handle is shared
-    /// and re-read on each step, a tool that mutates it mid-turn causes
-    /// subsequent steps in the same turn to use the new effort.
-    pub fn with_reasoning_effort_handle(
-        mut self,
-        handle: crate::engine::tool_context::ReasoningEffortHandle,
-    ) -> Self {
-        self.reasoning_effort_handle = Some(handle);
-        self
-    }
-
-    /// Set the utility LLM service used by model-backed end-of-message output
-    /// guardrails (EVE-573). When unset, those guardrails fail open.
-    pub fn with_utility_llm_service(
-        mut self,
-        service: Arc<dyn crate::engine::UtilityLlmService>,
-    ) -> Self {
-        self.utility_llm_service = Some(service);
-        self
-    }
-
-    /// Set the decisions used by guardrail checks that ask for typed
-    /// answers. When unset, those checks fail open.
-    pub fn with_decisions(mut self, service: Arc<dyn crate::engine::DecisionsService>) -> Self {
-        self.decisions = Some(service);
-        self
-    }
-
-    /// Set the scoped MCP invoker used by output-stage `mcp` guardrail checks.
-    pub fn with_mcp_invoker(mut self, invoker: Arc<dyn crate::engine::McpToolInvoker>) -> Self {
-        self.mcp_invoker = Some(invoker);
-        self
-    }
-}
-
-impl ReasonAtom {
-    /// Stable phase name used by logs and durable activity adapters.
-    pub fn name(&self) -> &'static str {
-        "reason"
-    }
-
-    /// Execute a reason phase using host-injected portable contracts.
-    pub async fn execute(&self, input: ReasonInput) -> Result<ReasonResult> {
-        self.execute_inner(input, None).await
-    }
-}
-
-impl ReasonAtom {
-    /// Execute using a pre-assembled turn context.
-    ///
-    /// Hosts that already assembled turn context for the current reason phase can
-    /// pass it through here to avoid reloading messages and rebuilding the agent.
-    pub async fn execute_with_assembled_context(
-        &self,
-        input: ReasonInput,
-        assembled: AssembledTurnContext,
-    ) -> Result<ReasonResult> {
-        self.execute_inner(input, Some(assembled)).await
-    }
-
-    /// Execute the actual LLM call
+    /// Execute the actual model call.
     #[allow(clippy::too_many_arguments)]
     async fn execute_llm_call(
         &self,
@@ -372,7 +222,7 @@ impl ReasonAtom {
 
         // 7. Create LLM driver using factory
         let chat_driver = Arc::clone(&model_with_provider.driver);
-        let stateful_response_continuation =
+        let mut stateful_response_continuation =
             previous_response_id.is_some() && chat_driver.supports_stateful_responses();
         let mut restored_checkpoint: Option<crate::engine::CompactionCheckpoint> = None;
         let mut checkpoint_suffix_message_count = 0usize;
@@ -384,8 +234,110 @@ impl ReasonAtom {
             ) && chat_driver.supports_compact()
         });
 
+        // Native epochs own reduction. Portable continuity is lazy: use it for
+        // local strategies or when a different provider/model owns the floor.
+        let raw_history_allowed = chat_driver.supports_history_summarization()
+            && !resolved_capability_configs.iter().any(|config| {
+                self.capability_registry
+                    .get(config.capability_id())
+                    .is_some_and(|cap| {
+                        cap.user_hooks_with_config(config.config_value())
+                            .iter()
+                            .any(|hook| {
+                                hook.event == crate::user_hook_types::HookEvent::UserPromptSubmit
+                            })
+                    })
+            });
+        let mut prefer_portable = false;
+        if raw_history_allowed
+            && !provider_managed
+            && let (Some(policy), Some(store), Some(source_sequence)) = (
+                compaction_policy.as_deref(),
+                self.compaction_checkpoint_store.as_ref(),
+                message_source_sequence,
+            )
+            && let Some(working_budget) = policy.working_context_tokens()
+            && matches!(
+                policy.settings().strategy,
+                crate::compaction_policy::CompactionStrategy::Auto
+                    | crate::compaction_policy::CompactionStrategy::Summarization
+            )
+            && policy.proactive_enabled()
+        {
+            let native = store
+                .get_latest(
+                    session_id,
+                    model_with_provider.provider_type.as_str(),
+                    &model_with_provider.model,
+                )
+                .await?;
+            let native_epoch = native.as_ref().is_some_and(|c| {
+                matches!(
+                    c.payload,
+                    crate::CompactionCheckpointPayload::ProviderOpaque { .. }
+                ) && super::provider_checkpoint::is_restorable(
+                    c,
+                    chat_driver.as_ref(),
+                    model_with_provider.provider_type.as_str(),
+                    &model_with_provider.model,
+                    false,
+                    native_reasoning_compaction,
+                )
+            });
+            let switched_epoch = native.is_none() && assembled_message_floor.is_some();
+            let omitted_bootstrap = messages.iter().any(|message| {
+                message.role == RuntimeMessageRole::System
+                    && message
+                        .content_to_llm_string()
+                        .contains("earlier messages are not in this context")
+            });
+            // Some native formats retain large user text or wire state. Starting
+            // a portable epoch is a planner decision; never prune opaque output.
+            prefer_portable = policy.settings().strategy
+                == crate::compaction_policy::CompactionStrategy::Auto
+                && native_epoch
+                && native.as_ref().is_some_and(|checkpoint| {
+                    serde_json::to_vec(&checkpoint.payload)
+                        .is_ok_and(|bytes| bytes.len().div_ceil(4) > working_budget)
+                });
+            if (!native_epoch || prefer_portable)
+                && (!chat_driver.supports_compact()
+                    || prefer_portable
+                    || switched_epoch
+                    || omitted_bootstrap
+                    || policy.settings().strategy
+                        == crate::compaction_policy::CompactionStrategy::Summarization)
+            {
+                let window = chat_driver
+                    .effective_context_window(&model_with_provider.model)
+                    .unwrap_or(128_000);
+                let budget = working_budget
+                    .min(window.saturating_sub(turn_agent.max_tokens.unwrap_or(4096) as usize) / 2)
+                    .max(1024);
+                context_plan::Planner {
+                    store,
+                    retriever: self.message_retriever.as_ref(),
+                    driver: chat_driver.as_ref(),
+                    policy,
+                    emitter: self.event_emitter.as_ref(),
+                    event_context: &EventContext::from_execution_context(context),
+                    session_id,
+                    provider: model_with_provider.provider_type.as_str(),
+                    provider_id: model_with_provider.provider.as_str(),
+                    model: &model_with_provider.model,
+                    reason: crate::events::CompactionReason::ProactiveBudget,
+                    source_sequence,
+                    budget,
+                    fallback_summary_window: window,
+                }
+                .run()
+                .await?;
+            }
+        }
+
         if let Some(restored) = restore_history::restore(restore_history::Request {
             session_id,
+            input_message_id: Some(context.input_message_id),
             store: self.compaction_checkpoint_store.as_ref(),
             retriever: self.message_retriever.as_ref(),
             registry: &self.capability_registry,
@@ -396,6 +348,8 @@ impl ReasonAtom {
             compaction: compaction_policy.is_some() || provider_managed,
             provider_managed,
             native_reasoning_compaction,
+            allow_portable: raw_history_allowed,
+            prefer_portable,
             message_floor: assembled_message_floor,
         })
         .await?
@@ -405,6 +359,16 @@ impl ReasonAtom {
             checkpoint_suffix_message_count = restored.suffix_message_count;
             restored_checkpoint = restored.checkpoint;
             assembled.message_sequences = restored.sequences;
+        }
+
+        if restored_checkpoint.as_ref().is_some_and(|c| {
+            c.is_portable()
+                || matches!(
+                    c.payload,
+                    crate::CompactionCheckpointPayload::ProviderOpaque { .. }
+                )
+        }) {
+            stateful_response_continuation = false;
         }
 
         let controls = resolve_request_controls(
@@ -486,14 +450,26 @@ impl ReasonAtom {
         let model_view_context = crate::engine::capabilities::ModelViewContext {
             session_id,
             prior_usage: prior_usage.as_ref(),
-            provider_managed_reduction: provider_managed,
+            provider_managed_reduction: provider_managed
+                || restored_checkpoint.as_ref().is_some_and(|c| {
+                    matches!(
+                        c.payload,
+                        crate::CompactionCheckpointPayload::ProviderOpaque { .. }
+                    )
+                }),
         };
         let mut context_messages =
             model_view_providers.apply_model_view(patched_messages, &model_view_context);
         context_messages =
             crate::engine::tool_call_integrity::retain_complete_message_tool_exchanges(
                 &context_messages,
-                stateful_response_continuation || restored_checkpoint.is_some(),
+                stateful_response_continuation
+                    || restored_checkpoint.as_ref().is_some_and(|c| {
+                        matches!(
+                            c.payload,
+                            crate::CompactionCheckpointPayload::ProviderOpaque { .. }
+                        )
+                    }),
             );
         context_messages = truncation_gate::insert_notes(context_messages);
 
@@ -515,8 +491,8 @@ impl ReasonAtom {
         let mut context_messages = context_messages;
 
         // 9d. Replay reference-data changes at their recorded positions.
-        let context_updates = context_updates::apply(&mut context_messages, &turn_agent);
-        let volatile_suffix_len = context_updates.volatile_suffix_len(volatile_suffix_len);
+        let context_updates =
+            context_updates::apply(&mut context_messages, &turn_agent, volatile_suffix_len);
 
         // 10. Resolve images from image_file references (if any)
         //
@@ -526,7 +502,7 @@ impl ReasonAtom {
         let resolved_files = self.resolve_files(&context_messages).await;
 
         // 11. Build LLM messages
-        let mut llm_messages = Vec::new();
+        let (mut llm_messages, mut input_wire) = (Vec::new(), None);
 
         let has_system_prompt = !turn_agent.system_prompt.is_empty();
         if has_system_prompt {
@@ -566,8 +542,11 @@ impl ReasonAtom {
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
             llm_msg.tool_changes = tool_changes.transitions.get(&msg.id).cloned();
-            transcript::label_speaker(&mut llm_msg, msg);
+            transcript::prepare_replay(&mut llm_msg, msg, &model_with_provider);
             facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
+            if msg.id == context.input_message_id {
+                input_wire = Some(llm_msg.clone());
+            }
             llm_messages.push(llm_msg);
         }
         if stripped_error_count > 0 {
@@ -585,7 +564,13 @@ impl ReasonAtom {
         llm_messages =
             crate::engine::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(
                 llm_messages,
-                stateful_response_continuation || restored_checkpoint.is_some(),
+                stateful_response_continuation
+                    || restored_checkpoint.as_ref().is_some_and(|c| {
+                        matches!(
+                            c.payload,
+                            crate::CompactionCheckpointPayload::ProviderOpaque { .. }
+                        )
+                    }),
             );
 
         // 12. Build LLM call config with reasoning effort and metadata
@@ -646,6 +631,12 @@ impl ReasonAtom {
         {
             // Leaving Astra's configuration-update mode starts a fresh provider
             // chain. Never inherit its updates in another model or protocol.
+            llm_config.previous_response_id = None;
+        }
+        if restored_checkpoint
+            .as_ref()
+            .is_some_and(|c| c.is_portable())
+        {
             llm_config.previous_response_id = None;
         }
         if let Some(checkpoint) = restored_checkpoint.as_ref()
@@ -818,6 +809,7 @@ impl ReasonAtom {
                     session_id,
                     message_source_sequence,
                     provider_type: model_with_provider.provider_type.as_str(),
+                    provider_id: model_with_provider.provider.as_str(),
                     model: &model_with_provider.model,
                     system_prompt: has_system_prompt.then_some(turn_agent.system_prompt.as_str()),
                     stateful_response_continuation,
@@ -835,6 +827,7 @@ impl ReasonAtom {
             .map_err(durable_retry::retryable_start)?;
         }
 
+        keep_input(&mut llm_messages_for_call, input_wire.as_ref(), &llm_config);
         // 14. Process stream, batching output.message.delta every 100ms.
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let has_provider_executed_tools =
@@ -922,6 +915,9 @@ impl ReasonAtom {
                     };
                     let outcome = apply_reactive_compaction(
                         ReactiveCompactionContext {
+                            retriever: self.message_retriever.as_ref(),
+                            history: &context_messages,
+                            allow_portable: raw_history_allowed,
                             chat_driver: chat_driver.as_ref(),
                             policy,
                             checkpoint_store: self.compaction_checkpoint_store.as_ref(),
@@ -930,6 +926,7 @@ impl ReasonAtom {
                             session_id,
                             message_source_sequence,
                             provider_type: model_with_provider.provider_type.as_str(),
+                            provider_id: model_with_provider.provider.as_str(),
                             model: &model_with_provider.model,
                             summarization_model_fallback: &turn_agent.model,
                             system_prompt: has_system_prompt
@@ -947,10 +944,19 @@ impl ReasonAtom {
                     let Some(outcome) = outcome else {
                         return Err(failed_generation.error(e, &stream_retry_metadata).await);
                     };
+                    if let Some(runtime_messages) = outcome.runtime_messages {
+                        llm_messages_for_call = self
+                            .resolve_compacted_messages(
+                                &runtime_messages,
+                                has_system_prompt.then_some(turn_agent.system_prompt.as_str()),
+                                &model_with_provider,
+                            )
+                            .await;
+                    }
                     if outcome.generation_info.is_some() {
                         compaction_info = outcome.generation_info;
                     }
-
+                    keep_input(&mut llm_messages_for_call, input_wire.as_ref(), &llm_config);
                     let stream = chat_driver
                         .chat_completion_stream(
                             &crate::engine::ProviderEndpoint::default(),
@@ -1885,7 +1891,7 @@ impl ReasonAtom {
             .with_truncation_gate(truncation.label())
             .with_tool_changes(tool_changes.record.clone());
         if let Some(info) = compaction_info {
-            generation_data = generation_outcome::with_compaction(generation_data, info);
+            generation_data = generation_data.with_compaction(info);
         }
 
         generation_data = observability::with_completed_request_options(
@@ -1921,17 +1927,11 @@ impl ReasonAtom {
             return Err(truncation.failure());
         }
 
-        // 17. Assistant-message metadata; a retried generation is stamped.
-        let mut metadata = generation_outcome::assistant_metadata(
+        let mut metadata = generation_outcome::assistant_metadata_for(
             &turn_agent.model,
-            llm_config.reasoning_state.as_ref(),
-            llm_config
-                .reasoning_state
-                .as_ref()
-                .and_then(|state| state.effective)
-                .or(reasoning_effort)
-                .map(|effort| effort.as_str()),
-            &model_with_provider.provider_type.to_string(),
+            &model_with_provider,
+            &llm_config,
+            reasoning_effort,
             response_id.as_deref(),
         );
         truncation.stamp(&mut metadata);
@@ -2127,10 +2127,6 @@ impl ReasonAtom {
         Ok(result)
     }
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
 
 #[cfg(test)]
 mod tests;

@@ -33,6 +33,7 @@ pub mod knowledge_indexes;
 pub mod mcp_servers;
 pub mod memory;
 pub mod messages;
+pub mod model_presets;
 pub mod models;
 pub mod notifications;
 pub mod observers;

@@ -194,11 +194,10 @@ pub async fn assemble_resolved_turn_context(
         session_storage,
         tool_surface_plan: Default::default(),
     };
-    let compaction_policy = effective_overlay.capabilities.iter().find_map(|config| {
-        capability_registry
-            .get(config.capability_id())?
-            .compaction_policy(config.config_value())
-    });
+    let compaction_policy = crate::compaction_status::resolve_policy(
+        &effective_overlay.capabilities,
+        capability_registry,
+    );
     let mut turn_agent = build_runtime_agent(
         &snapshot,
         effective_overlay,

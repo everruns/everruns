@@ -1126,6 +1126,7 @@ impl ServerAppBuilder {
             .merge(api::models::routes(models_state))
             .merge(api::providers::routes(providers_state))
             .merge(api::mcp_servers::routes(api_state.clone()))
+            .merge(api::model_presets::routes(api_state.clone()))
             .merge(api::plugins::routes(plugins_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::session_files::routes(session_files_state))

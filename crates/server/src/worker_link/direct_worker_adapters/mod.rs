@@ -1093,9 +1093,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             &binding_metadata,
         );
 
-        // Same capability-aware windowing as reason atoms: long sessions fetch
-        // a bounded prompt candidate set (for example infinity_context's
-        // head+tail window), not the whole event history.
+        // Capability-aware windowing as for reason atoms: long sessions fetch a bounded
+        // prompt set (e.g. infinity_context's head+tail window), not the whole history.
         let messages = self
             .load_turn_messages(&session, agent.as_ref(), harness.as_ref())
             .await?;
@@ -1106,6 +1105,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             org_id,
             session.model_id,
             agent.as_ref(),
+            harness.as_ref().map(|h| h.name.as_str()),
             harness.as_ref().and_then(|h| h.default_model_id),
         )
         .await

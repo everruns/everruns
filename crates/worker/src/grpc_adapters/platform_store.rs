@@ -149,6 +149,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
                 "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
                 "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
+                "helper_model": request.helper_model,
                 "seed": request.seed,
             }),
             &request.reason,

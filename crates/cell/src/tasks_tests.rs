@@ -306,7 +306,7 @@ fn push_config(id: &str, filter: &[&str], secret: Option<&str>) -> PushConfig {
     PushConfig {
         id: id.into(),
         url: format!("https://example.test/{id}"),
-        secret: secret.map(str::to_owned),
+        has_secret: secret.is_some(),
         event_filter: filter.iter().map(|f| (*f).to_owned()).collect(),
         created_at: at(T0),
         updated_at: at(T0),
@@ -338,7 +338,7 @@ fn transitions(state: &CellState) -> Vec<(String, Vec<String>, Value)> {
 }
 
 #[test]
-fn push_configs_are_kept_with_their_secrets_and_listed_without_them() {
+fn push_configs_are_kept_without_their_secrets_and_listed_without_them() {
     let (mut state, session) = session();
     let new = task(session, TaskWakePolicy::Silent);
     apply_op(
@@ -368,7 +368,7 @@ fn push_configs_are_kept_with_their_secrets_and_listed_without_them() {
     ));
     let kept = &state.sessions[&session].platform.task_push_configs["task-1"];
     assert_eq!(kept.len(), 1);
-    assert_eq!(kept[0].secret.as_deref(), Some("k1"));
+    assert!(kept[0].has_secret);
     // A task the session does not have answers nothing.
     let missing = TaskOp::AddPushConfig {
         task_id: "nope".into(),
@@ -397,8 +397,6 @@ fn push_configs_are_kept_with_their_secrets_and_listed_without_them() {
             .task_push_configs
             .contains_key("task-1")
     );
-    // A secret stays out of the debug form too.
-    assert!(!format!("{:?}", push_config("tpc_c", &[], Some("hidden"))).contains("hidden"));
 }
 
 #[test]
@@ -479,8 +477,12 @@ fn transitions_go_on_the_feed_with_the_targets_that_ask_for_them() {
     let Record::TaskTransition { targets, .. } = &state.feed.records.back().unwrap().record else {
         panic!("a task transition");
     };
-    assert_eq!(targets[0].secret.as_deref(), Some("k"));
+    // An API config's secret stays in the control plane; a spawn-time one
+    // travels as the agent gave it.
+    assert_eq!(targets[0].secret, None);
+    assert!(targets[0].secret_held);
     assert_eq!(targets[1].secret.as_deref(), Some("s3"));
+    assert!(!targets[1].secret_held);
 }
 
 #[test]

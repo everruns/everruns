@@ -7,12 +7,10 @@
 //! `everruns_contracts::llm_telemetry`); nothing here changes behaviour.
 //!
 //! Split out of `reason.rs` (file-size ratchet), together with the retry and
-//! compaction-cost folding that build the same event.
+//! metadata helpers that build the same event.
 
 use crate::engine::driver_registry::LlmCompletionMetadata;
-use crate::engine::events::{
-    LlmCompactionInfo, LlmCostComponent, LlmGenerationData, LlmRetryInfo, TokenUsage,
-};
+use crate::engine::events::{LlmCostComponent, LlmGenerationData, LlmRetryInfo};
 use everruns_contracts::openai_hosted_tools::hosted_call_price_usd;
 
 /// The ending of one generation, as the driver reported it.
@@ -151,6 +149,30 @@ pub(super) fn assistant_metadata(
     metadata
 }
 
+/// Stamp both user-facing model metadata and the exact provider replay scope.
+pub(super) fn assistant_metadata_for(
+    display_model: &str,
+    model: &crate::engine::runtime_context::ResolvedModelExecution,
+    config: &crate::engine::driver_registry::LlmCallConfig,
+    requested_effort: Option<everruns_contracts::ReasoningEffort>,
+    response_id: Option<&str>,
+) -> std::collections::HashMap<String, serde_json::Value> {
+    let effort = config
+        .reasoning_state
+        .as_ref()
+        .and_then(|state| state.effective)
+        .or(requested_effort);
+    let mut metadata = assistant_metadata(
+        display_model,
+        config.reasoning_state.as_ref(),
+        effort.map(|effort| effort.as_str()),
+        model.provider_type.as_str(),
+        response_id,
+    );
+    super::transcript::stamp_replay(&mut metadata, model);
+    metadata
+}
+
 /// Log a provider error that is, or reads like, a context overflow, with the
 /// provider and model the driver layer does not know. One place for every
 /// driver; `llm_telemetry` decides whether the error qualifies.
@@ -211,46 +233,6 @@ pub(super) fn retry_info(meta: Option<&LlmCompletionMetadata>) -> Option<LlmRetr
             attempts: rm.attempts,
             total_wait_ms: rm.total_retry_wait.as_millis() as u64,
         })
-}
-
-pub(super) fn add_compaction_cost(usage: &mut TokenUsage, compaction_cost: f64) {
-    let generation_cost = usage.effective_cost_usd();
-    usage.effective_cost_usd = Some(generation_cost.unwrap_or(0.0) + compaction_cost);
-    if let Some(actual_cost) = usage.actual_cost_usd.as_mut() {
-        *actual_cost += compaction_cost;
-    }
-}
-
-/// Add compaction info if compaction was performed. Compaction is a separate
-/// billable model call on the same turn. Preserve whether the generation cost
-/// was actual or estimated while recording their combined best-effort cost
-/// for budgets and usage totals. `compaction.cost_usd` keeps the split
-/// visible (EVE-895).
-pub(super) fn with_compaction(
-    mut data: LlmGenerationData,
-    info: LlmCompactionInfo,
-) -> LlmGenerationData {
-    if let Some(compaction_cost) = info.cost_usd {
-        match data.metadata.usage.as_mut() {
-            Some(usage) => add_compaction_cost(usage, compaction_cost),
-            // The generation itself reported no usage — a provider may price
-            // compaction without returning usage on the retry. Carry the cost
-            // on a usage record of its own rather than dropping it, which is
-            // the failure this fixes.
-            None => {
-                data.metadata.usage = Some(TokenUsage {
-                    input_tokens: 0,
-                    output_tokens: 0,
-                    cache_read_tokens: None,
-                    cache_creation_tokens: None,
-                    actual_cost_usd: Some(compaction_cost),
-                    estimated_cost_usd: None,
-                    effective_cost_usd: None,
-                });
-            }
-        }
-    }
-    data.with_compaction(info)
 }
 
 #[cfg(test)]

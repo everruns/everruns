@@ -8,6 +8,11 @@ tags:
 ---
 # Infinity Context
 
+> Compatibility entry: new managed long-session configurations use
+> [`compaction`](compaction.md). Its dependency supplies the retrieval tool and
+> bootstrap loader, while the shared runtime planner owns reduction. The
+> requirements below describe the legacy entry when enabled on its own.
+
 ## Abstract
 
 Current LLM context windows (128k-200k tokens) impose hard limits on agent conversations. When exceeded, systems either fail with errors or naively truncate older messages, losing critical context. This spec defines an "infinity context" capability that enables agents to work with conversations of unlimited length by:

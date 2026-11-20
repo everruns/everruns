@@ -133,6 +133,13 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(ignore)]
     pub parent_session_id: Option<SessionId>,
+    /// Internal: the helper model a spawning agent asked for. When no
+    /// `model_id` is given, the server resolves it against the parent session
+    /// and the organization's models (`same` copies the parent's explicit
+    /// model).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(ignore)]
+    pub helper_model: Option<everruns_core::helper_models::SpawnHelperModel>,
     /// Internal: lineage source when creating a detached peer session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(ignore)]

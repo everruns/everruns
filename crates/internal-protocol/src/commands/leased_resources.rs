@@ -5,11 +5,11 @@
 //! they work across every org by resource id, so there is no org to run as.
 
 use super::{InternalCommandTransport, call};
-use crate::core::leased_resource::{LeasedResource, UpsertLeasedResource};
-use crate::core::session_services::LeasedResourceStore;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::leased_resource::{LeasedResource, UpsertLeasedResource};
+use everruns_core::session_services::LeasedResourceStore;
 use serde_json::json;
 
 /// The leased resource store tools use, on either transport.
@@ -80,9 +80,9 @@ impl<T: InternalCommandTransport> LeasedResourceStore for CommandLeasedResourceS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::leased_resource::LeasedResourceStatus;
+    use crate::proto;
     use everruns_contracts::typed_id::LeasedResourceId;
-    use everruns_internal_protocol::proto;
+    use everruns_core::leased_resource::LeasedResourceStatus;
     use serde_json::Value;
     use std::sync::Mutex;
 

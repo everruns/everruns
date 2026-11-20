@@ -48,6 +48,7 @@ export const agentDraftPatchSchema = z
     tags: z.string().optional(),
     harness_id: z.string().optional(),
     default_model_id: z.string().optional(),
+    model_preset: z.string().optional(),
     communication: z.enum(["direct", "explicit"]).optional(),
     max_output_tokens: z.string().optional(),
     localizations: entityLocalizationsDraftSchema.optional(),

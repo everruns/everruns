@@ -790,3 +790,147 @@ async fn a_client_side_tool_parks_until_the_client_answers() {
         .any(|e| e.to_string().contains("Billing settings"));
     assert!(replied, "the answer never reached the model: {events:#?}");
 }
+
+/// A session's resources and leases stay in the control plane (parity,
+/// step 10): a fleet tool lists them there, as the session's org, and the
+/// turn finishes with the answer.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sessions_resources_are_kept_by_the_control_plane() {
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(
+        "worker_list_session_resources",
+        HostCallAnswer::Value(json!([{
+            "session_id": SessionId::new().to_string(),
+            "resource_id": "sandbox_build",
+            "kind": "sandbox",
+            "display_name": "Build box",
+            "status": "active",
+            "metadata": { "role": "resource", "provider": "daytona" },
+            "created_at": "2026-11-19T00:00:00Z",
+            "updated_at": "2026-11-19T00:00:00Z",
+        }])),
+    );
+    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    definition["capabilities"] = json!([{ "ref": "sandbox_fleet" }]);
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": session, "agent_ref": "fleet", "definition": definition }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    fleet.say(&session, "call sandbox_list").await;
+    fleet.turns(&session, 1).await;
+
+    let asked = cp.lookups();
+    let listed = asked
+        .iter()
+        .find(|(_, name, _)| name == "worker_list_session_resources")
+        .unwrap_or_else(|| panic!("no list asked: {asked:?}"));
+    assert_eq!(listed.0, ORG);
+    assert_eq!(listed.2["session_id"], json!(session));
+    let events = fleet.events(&session).await;
+    let answered = events
+        .iter()
+        .filter(|e| e["type"] == "tool.completed")
+        .any(|e| e.to_string().contains("Build box"));
+    assert!(answered, "the list never reached the turn: {events:#?}");
+}
+
+/// Dreaming's state stays in the control plane, as for a v1 session: a
+/// turn records itself and leaves its dream owed there, and the executor's
+/// sweep runs a dream the control plane reports due (parity, step 10).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
+    const MEMORY_FILE: &str = everruns_contracts::host_calls::MEMORY_FILE;
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(MEMORY_FILE, HostCallAnswer::Value(json!({ "ok": true })));
+    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    // The turn's own timer waits an hour: only the sweep can run it here.
+    definition["capabilities"] = json!([{ "ref": "dreaming", "config": {
+        "destinations": [{ "mount": "/memory/user", "path": "/notes.md" }],
+        "trigger": { "mode": "idle", "idle_after_seconds": 3600, "min_new_turns": 1 },
+    }}]);
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({
+                "id": session,
+                "agent_ref": "dreamer",
+                "definition": definition,
+                "memory": ["/memory/user"],
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    fleet.say(&session, "I drink green tea every morning").await;
+    fleet.turns(&session, 1).await;
+
+    let job = format!("session:{session}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let owed = loop {
+        if let Some(row) = cp.dream_state(ORG, &job)
+            && !row["due_at"].is_null()
+        {
+            break row;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the turn left no dream owed in the control plane: {:?}",
+            cp.dream_calls()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
+    assert_eq!(owed["session_id"], json!(session));
+    assert!(
+        cp.dream_state(ORG, &format!("turns:{session}")).is_some(),
+        "the turn was not counted in the control plane"
+    );
+
+    // Due now: the sweep finds it in the org's due dreams, claims it and
+    // runs it against the session's Memory (whose answer here fails it, so
+    // it is put off for a retry).
+    cp.make_dream_due(ORG, &job);
+    let attempts = |row: &serde_json::Value| {
+        row["value"]
+            .as_str()
+            .and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
+            .and_then(|v| v["job"]["attempts"].as_i64())
+            .unwrap_or(0)
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let row = cp.dream_state(ORG, &job).unwrap();
+        if attempts(&row) >= 1 && row["due_at"].as_i64() > Some(0) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the due dream never ran: {row}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(
+        cp.dream_calls()
+            .iter()
+            .any(|(org, params)| org == ORG && params["operation"] == "due_org"),
+        "the sweep never asked for the org's due dreams"
+    );
+    let asked = cp.lookups();
+    assert!(
+        asked
+            .iter()
+            .any(|(_, name, params)| name == MEMORY_FILE && params["session_id"] == json!(session)),
+        "the dream never reached the session's Memory: {asked:?}"
+    );
+}

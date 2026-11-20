@@ -95,6 +95,8 @@ pub struct OrganizationSettingsRow {
     pub chat_model_id: Option<ModelId>,
     /// Explicit research model; `None` means Automatic.
     pub research_model_id: Option<ModelId>,
+    /// Coding default; `None` falls back to the default model.
+    pub coding_model_id: Option<ModelId>,
     pub default_harness_id: Option<HarnessId>,
     pub base_harness_id: Option<HarnessId>,
     /// Org-level default provider per service (EVE-569); empty means none.
@@ -110,6 +112,7 @@ pub struct UpdateOrganizationSettings {
     pub small_model_id: UpdateField<ModelId>,
     pub chat_model_id: UpdateField<ModelId>,
     pub research_model_id: UpdateField<ModelId>,
+    pub coding_model_id: UpdateField<ModelId>,
     pub default_harness_id: UpdateField<HarnessId>,
     pub base_harness_id: UpdateField<HarnessId>,
     /// Replaces the whole per-service map: `Set` overwrites, `Clear` empties.

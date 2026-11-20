@@ -56,6 +56,7 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`knowledge`](/reference/cli/knowledge/) | File collections with optional indexed retrieval. |
 | [`mcp-servers`](/reference/cli/mcp-servers/) | Registered MCP servers available to agents and sessions. |
 | [`memories`](/reference/cli/memories/) | Workspace memories in the organization. |
+| [`model-presets`](/reference/cli/model-presets/) | Named sets of models, one per job, that agents can use instead of the organization defaults. |
 | [`models`](/reference/cli/models/) | LLM models available to agents, and organization defaults. |
 | [`notifications`](/reference/cli/notifications/) | Your in-app notifications. |
 | [`observers`](/reference/cli/observers/) | Online scoring of live traces. |

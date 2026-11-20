@@ -41,6 +41,16 @@ impl DbCompactionCheckpointStore {
 
 #[async_trait]
 impl CompactionCheckpointStore for DbCompactionCheckpointStore {
+    async fn latest_source_sequence(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_contracts::error::Result<Option<i64>> {
+        self.db
+            .latest_compaction_source_sequence(session_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))
+    }
+
     async fn get_latest(
         &self,
         session_id: SessionId,
@@ -239,6 +249,79 @@ mod tests {
             .unwrap();
         assert_eq!(forked.source_sequence, 7);
         assert_eq!(forked.payload, checkpoint(source, 7).payload);
+    }
+
+    #[tokio::test]
+    async fn portable_candidates_are_encrypted_and_do_not_advance_the_history_floor() {
+        use everruns_core::compaction_checkpoint::{
+            PORTABLE_COMPACTION_FORMAT_VERSION as FORMAT, PORTABLE_COMPACTION_MODEL as MODEL,
+            PORTABLE_COMPACTION_PROVIDER as PROVIDER, PortableContinuity,
+        };
+        let db = Arc::new(StorageBackend::test_database());
+        let store = DbCompactionCheckpointStore::new(db.clone(), encryption());
+        let session = db.create_test_session().await;
+        let child = db.create_test_session().await;
+        let mut canonical = checkpoint(session, 7);
+        canonical.provider_type = PROVIDER.into();
+        canonical.model = MODEL.into();
+        canonical.format_version = FORMAT;
+        canonical.payload = CompactionCheckpointPayload::Portable {
+            continuity: PortableContinuity {
+                text: "private continuity state".into(),
+                pinned: vec!["verbatim skill".into()],
+                producer_provider: "openrouter".into(),
+                producer_model: "model-a".into(),
+                source_fingerprint: [7; 32],
+                prompt_version: 1,
+                usage: serde_json::json!({}),
+            },
+        };
+        let mut candidate = canonical.clone();
+        candidate.id = Uuid::now_v7();
+        candidate.model = "continuity-candidate-v1".into();
+        assert!(store.install(candidate.clone()).await.unwrap());
+        assert_eq!(store.latest_source_sequence(session).await.unwrap(), None);
+        assert!(store.install(canonical.clone()).await.unwrap());
+        assert_eq!(
+            store.latest_source_sequence(session).await.unwrap(),
+            Some(7)
+        );
+        let restored = store
+            .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(restored.is_portable());
+        assert_eq!(restored.payload, canonical.payload);
+        assert_ne!(restored.id, candidate.id);
+        let raw = db
+            .get_compaction_checkpoint(session, PROVIDER, MODEL, FORMAT as i32)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&raw.payload_encrypted).contains("private continuity state")
+        );
+        assert_eq!(
+            db.copy_compaction_checkpoints(session, child, 6)
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            db.copy_compaction_checkpoints(session, child, 7)
+                .await
+                .unwrap(),
+            2
+        );
+        assert!(
+            store
+                .get_latest_format(child, PROVIDER, MODEL, FORMAT)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_portable()
+        );
     }
 
     #[tokio::test]

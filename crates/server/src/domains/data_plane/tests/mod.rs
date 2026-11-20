@@ -35,6 +35,8 @@ struct Seen {
     sessions: Vec<(String, Value, u64)>,
     /// Messages the control plane admitted: (org, session, body).
     messages: Vec<(String, String, Value)>,
+    /// Other session commands: (session, command, body).
+    commands: Vec<(String, String, Value)>,
 }
 
 type Stub = Arc<Mutex<Seen>>;
@@ -92,10 +94,33 @@ async fn stub() -> (String, Stub) {
         seen.lock().messages.push((org, session, body.clone()));
         Json(json!({ "id": body["id"], "status": "accepted" }))
     }
+    /// A session command, answered as a cell answers it.
+    async fn command(
+        State(seen): State<Stub>,
+        Path((_org, session, command)): Path<(String, String, String)>,
+        Json(body): Json<Value>,
+    ) -> Json<Value> {
+        let mut seen = seen.lock();
+        let first_seed = command == "seed"
+            && !seen
+                .commands
+                .iter()
+                .any(|(s, c, _)| s == &session && c == "seed");
+        seen.commands.push((session, command.clone(), body));
+        Json(match command.as_str() {
+            "seed" => json!({ "seeded": first_seed }),
+            "fs" => json!({ "result": "ok" }),
+            _ => json!(true),
+        })
+    }
     let app = Router::new()
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/messages",
             axum::routing::post(message),
+        )
+        .route(
+            "/dp/v1/orgs/{org}/sessions/{session}/{command}",
+            axum::routing::post(command),
         )
         .route("/dp/v1/orgs/{org}", put(enable))
         .route("/dp/v1/orgs/{org}/config/{epoch}/{version}", put(config))
@@ -955,7 +980,9 @@ mod event_tap;
 mod host_calls;
 mod mcp;
 mod memory;
+mod moves;
 mod org_settings;
 mod sandboxes;
+mod subagents;
 mod task_webhooks;
 mod user_mcp;

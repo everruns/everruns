@@ -969,6 +969,13 @@
         "required": false
       },
       {
+        "field": "model_preset",
+        "long": "model-preset",
+        "kind": "string",
+        "required": false,
+        "help": "Model preset the agent takes its job models from (`automatic`, `provider:gemini` or a custom ..."
+      },
+      {
         "field": "model_role",
         "long": "model-role",
         "kind": "string",
@@ -3109,6 +3116,13 @@
         "required": false
       },
       {
+        "field": "model_preset",
+        "long": "model-preset",
+        "kind": "string",
+        "required": false,
+        "help": "Model preset the agent takes its job models from."
+      },
+      {
         "field": "model_role",
         "long": "model-role",
         "kind": "string",
@@ -3324,6 +3338,13 @@
         "long": "mcpServers",
         "kind": "json",
         "required": false
+      },
+      {
+        "field": "model_preset",
+        "long": "model-preset",
+        "kind": "string",
+        "required": false,
+        "help": "Model preset the agent takes its job models from (`automatic`, `provider:gemini` or a custom ..."
       },
       {
         "field": "model_role",
@@ -9188,6 +9209,262 @@
     ]
   },
   {
+    "wire_name": "apply_model_preset",
+    "path": [
+      "model-presets"
+    ],
+    "verb": "apply",
+    "description": "Copy a preset's models into the organization defaults. Jobs the preset leaves empty keep their current default.",
+    "method": "POST",
+    "http_path": "/v1/model-presets/{id}/apply",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Preset id to copy into the organization defaults."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Make Gemini's picks the organization defaults",
+        "command": "everruns model-presets apply provider:gemini --reason 'Move the org to Gemini'"
+      }
+    ]
+  },
+  {
+    "wire_name": "create_model_preset",
+    "path": [
+      "model-presets"
+    ],
+    "verb": "create",
+    "description": "Create a custom model preset, blank or copied from another preset with `from`.",
+    "method": "POST",
+    "http_path": "/v1/model-presets",
+    "args": [
+      {
+        "field": "chat_model_id",
+        "long": "chat-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for the built-in Everruns Chat."
+      },
+      {
+        "field": "coding_model_id",
+        "long": "coding-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for coding-harness agents and coding helpers."
+      },
+      {
+        "field": "decision_model_id",
+        "long": "decision-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for quick gate checks and the Auto helper pick."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for agents and sessions with no model of their own."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "What the preset is for."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Preset to copy jobs from (`automatic`, `provider:gemini` or a custom id)."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": true,
+        "help": "Display name, 1 to 100 characters."
+      },
+      {
+        "field": "research_model_id",
+        "long": "research-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for research-role agents and deep helpers."
+      },
+      {
+        "field": "small_model_id",
+        "long": "small-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for titles, summaries and fast helpers."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Start a custom preset from the Gemini picks",
+        "command": "everruns model-presets create --name 'Cheap council' --from provider:gemini --reason 'Cheaper helpers for review agents'"
+      }
+    ]
+  },
+  {
+    "wire_name": "delete_model_preset",
+    "path": [
+      "model-presets"
+    ],
+    "verb": "delete",
+    "description": "Delete a custom model preset. Refused while agents take their models from it.",
+    "method": "DELETE",
+    "http_path": "/v1/model-presets/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Custom preset id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove a preset no agent uses any more",
+        "command": "everruns model-presets delete --id cheap-council --reason 'Council experiment finished'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_model_preset",
+    "path": [
+      "model-presets"
+    ],
+    "verb": "get",
+    "description": "Get one model preset with its model per job and the jobs that use a fallback model.",
+    "method": "GET",
+    "http_path": "/v1/model-presets/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Preset id: `automatic`, `provider:<driver>` or a custom preset id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check which Gemini models the Gemini preset picks",
+        "command": "everruns model-presets get provider:gemini"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_model_presets",
+    "path": [
+      "model-presets"
+    ],
+    "verb": "list",
+    "description": "List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job.",
+    "method": "GET",
+    "http_path": "/v1/model-presets",
+    "args": [],
+    "examples": [
+      {
+        "intent": "See which model each preset uses for coding, research and small work",
+        "command": "everruns model-presets list"
+      }
+    ]
+  },
+  {
+    "wire_name": "update_model_preset",
+    "path": [
+      "model-presets"
+    ],
+    "verb": "update",
+    "description": "Rename a custom model preset or change its model per job; null returns a job to the organization default.",
+    "method": "PATCH",
+    "http_path": "/v1/model-presets/{id}",
+    "args": [
+      {
+        "field": "chat_model_id",
+        "long": "chat-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for the built-in Everruns Chat."
+      },
+      {
+        "field": "coding_model_id",
+        "long": "coding-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for coding-harness agents and coding helpers."
+      },
+      {
+        "field": "decision_model_id",
+        "long": "decision-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for quick gate checks and the Auto helper pick."
+      },
+      {
+        "field": "default_model_id",
+        "long": "default-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for agents and sessions with no model of their own."
+      },
+      {
+        "field": "description",
+        "long": "description",
+        "kind": "string",
+        "required": false,
+        "help": "What the preset is for."
+      },
+      {
+        "field": "id",
+        "long": "id",
+        "kind": "string",
+        "required": true,
+        "help": "Custom preset id."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "kind": "string",
+        "required": false,
+        "help": "Display name."
+      },
+      {
+        "field": "research_model_id",
+        "long": "research-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for research-role agents and deep helpers."
+      },
+      {
+        "field": "small_model_id",
+        "long": "small-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Model for titles, summaries and fast helpers."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Use a stronger research model in a custom preset",
+        "command": "everruns model-presets update --id cheap-council --research-model-id model_01h9 --reason 'Research answers were too shallow'"
+      }
+    ]
+  },
+  {
     "wire_name": "get_default_decision_model",
     "path": [
       "models",
@@ -10333,6 +10610,13 @@
         "kind": "string",
         "required": false,
         "help": "Independent model for the built-in Everruns Chat."
+      },
+      {
+        "field": "coding_model_id",
+        "long": "coding-model-id",
+        "kind": "string",
+        "required": false,
+        "help": "Default model for coding work (coding-harness agents and `coding` helpers). Omit to preserve;..."
       },
       {
         "field": "default_harness_id",
@@ -14063,7 +14347,7 @@
       "sessions"
     ],
     "verb": "context",
-    "description": "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
+    "description": "Inspect the last main model request, effective compaction policy, and safe checkpoint metadata. Inspection never compacts history or calls a model.",
     "method": "GET",
     "http_path": "/v1/sessions/{session_id}/context-report",
     "args": [

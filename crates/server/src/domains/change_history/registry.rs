@@ -56,6 +56,7 @@ pub enum EntityKind {
     Workspace,
     VirtualUser,
     Observer,
+    ModelPreset,
     Budget,
     PaymentAccount,
     PaymentPolicy,
@@ -97,6 +98,7 @@ impl EntityKind {
         Self::Workspace,
         Self::VirtualUser,
         Self::Observer,
+        Self::ModelPreset,
         Self::Budget,
         Self::PaymentAccount,
         Self::PaymentPolicy,
@@ -138,6 +140,7 @@ impl EntityKind {
             Self::Workspace => "workspace",
             Self::VirtualUser => "virtual_user",
             Self::Observer => "observer",
+            Self::ModelPreset => "model_preset",
             Self::Budget => "budget",
             Self::PaymentAccount => "payment_account",
             Self::PaymentPolicy => "payment_policy",
@@ -187,6 +190,7 @@ impl EntityKind {
             Self::Workspace => "wsp",
             Self::VirtualUser => "identity",
             Self::Observer => "observer",
+            Self::ModelPreset => return None,
             Self::Budget => "bdgt",
             Self::PaymentAccount => "payacct",
             Self::PaymentPolicy => "paypol",
@@ -244,6 +248,7 @@ impl EntityKind {
             Self::Workspace => &workspaces::WORKSPACE_VIEW,
             Self::VirtualUser => &virtual_users::VIRTUAL_USER_VIEW,
             Self::Observer => &observers::service::OBSERVER_VIEW,
+            Self::ModelPreset => &models::LLM_MODEL_VIEW,
             Self::Budget => &budgets::BUDGET_VIEW,
             Self::PaymentAccount | Self::PaymentPolicy => &payments::PAYMENT_VIEW,
             Self::Eval | Self::EvalCase => &evals::service::EVAL_VIEW,
@@ -291,6 +296,7 @@ impl EntityKind {
             Self::Workspace => &workspaces::WORKSPACE_MANAGE,
             Self::VirtualUser => &virtual_users::VIRTUAL_USER_MANAGE,
             Self::Observer => &observers::service::OBSERVER_MANAGE,
+            Self::ModelPreset => &models::LLM_MODEL_MANAGE,
             Self::Budget => &budgets::BUDGET_MANAGE,
             Self::PaymentAccount | Self::PaymentPolicy => &payments::PAYMENT_MANAGE,
             Self::Eval | Self::EvalCase => &evals::service::EVAL_MANAGE,
@@ -344,6 +350,7 @@ impl EntityKind {
             Self::Workspace => ("get_workspace", "workspace_id"),
             Self::VirtualUser => ("get_virtual_user", "id"),
             Self::Observer => ("get_observer", "observer_id"),
+            Self::ModelPreset => ("get_model_preset", "id"),
             Self::Budget => ("get_budget", "budget_id"),
             Self::PaymentAccount => ("get_payment_account", "payment_account_id"),
             Self::PaymentPolicy => ("get_payment_policy", "payment_policy_id"),
@@ -670,6 +677,12 @@ pub fn declared(name: &str) -> Change {
         "create_observer" => on(K::Observer, Created, ID),
         "update_observer" => on(K::Observer, Updated, ID),
         "delete_observer" => on(K::Observer, Deleted, Param("observer_id")),
+        "create_model_preset" => on(K::ModelPreset, Created, ID),
+        "update_model_preset" => on(K::ModelPreset, Updated, ID),
+        "delete_model_preset" => on(K::ModelPreset, Deleted, Param("id")),
+        "apply_model_preset" => Change::Exempt(
+            "copies models into the organization defaults; update_org records that change",
+        ),
         "review_observer_score" => {
             Change::Exempt("a review annotates one derived score, not the observer")
         }
@@ -790,6 +803,9 @@ pub fn declared(name: &str) -> Change {
         // carry credential material (TM-AUTHZ-023).
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
+        }
+        "worker_resolve_helper_model" => {
+            Change::Exempt("reads which model a subagent's helper key resolves to; changes nothing")
         }
         "worker_dreaming_state" => Change::Exempt(
             "private runtime maintenance and reservations; payload-free activity is recorded separately",

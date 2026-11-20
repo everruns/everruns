@@ -8,6 +8,16 @@ use everruns_server_macros::sql;
 use super::Database;
 
 impl Database {
+    pub async fn latest_compaction_source_sequence(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<i64>> {
+        let value: Option<i32> = sqlx::query_scalar(
+            "SELECT MAX(source_sequence) FROM session_compaction_checkpoints WHERE session_id = $1 AND NOT (provider_type = 'everruns-portable' AND model = 'continuity-candidate-v1')"
+        ).bind(session_id).fetch_one(self.pool()).await?;
+        Ok(value.map(i64::from))
+    }
+
     pub async fn get_compaction_checkpoint(
         &self,
         session_id: SessionId,

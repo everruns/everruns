@@ -203,3 +203,20 @@ other session-record writes are not retained.
 
 - [Host services](/framework/host-services/) for capabilities and providers every session of an Agent starts with.
 - [Session hosting](/framework/hosting/) for durable session authority under Engine.
+
+## Inspect compaction
+
+`session.inspect().await?.compaction` exposes the effective strategy, soft
+working-history token budget, proactive setting, history-retrieval availability
+and saved-checkpoint metadata. It reads existing state without generating a
+summary, starting a turn or exposing checkpoint contents. The public
+`CompactionStatus`, `ContextCheckpoint` and `CompactionEventSummary` types are
+available from `everruns`.
+
+The built-in harness presets include compaction. With the default `builtins`
+feature, sessions without an explicit harness also get managed continuity;
+agent capability configuration can override its defaults. Custom harnesses
+choose their own capabilities and must include `compaction` when desired.
+Restart recovery requires persistent hosting: `MemoryHosting` checkpoints last
+only as long as its memory store. See [compaction](/advanced/compaction/) for
+native-provider compatibility, portable continuity, costs and configuration.

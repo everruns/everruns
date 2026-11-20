@@ -46,6 +46,7 @@ const defaultsSchema = z.strictObject({
   default_model_id: z.string(),
   small_model_id: z.string(),
   research_model_id: z.string(),
+  coding_model_id: z.string(),
   system_decisions: z.enum(["deployment", "organization"]),
   realtime_provider_id: z.string(),
   embeddings_provider_id: z.string(),
@@ -131,6 +132,7 @@ export function DefaultsTab({
       default_model_id: org?.default_model_id ?? "",
       small_model_id: org?.small_model_id ?? "",
       research_model_id: org?.research_model_id ?? "",
+      coding_model_id: org?.coding_model_id ?? "",
       system_decisions: org?.system_decisions ?? "deployment",
       realtime_provider_id: org?.default_provider_per_service?.realtime ?? "",
       embeddings_provider_id: org?.default_provider_per_service?.embeddings ?? "",
@@ -148,6 +150,7 @@ export function DefaultsTab({
         default_model_id: values.default_model_id || null,
         small_model_id: values.small_model_id || null,
         research_model_id: values.research_model_id || null,
+        coding_model_id: values.coding_model_id || null,
         system_decisions: values.system_decisions,
         default_provider_per_service: services,
       });
@@ -222,6 +225,24 @@ export function DefaultsTab({
         .sort(compareByRecency)
         .map((model) => ({ value: model.id, label: modelLabel(model) })),
     [models, currentSmallModelId],
+  );
+  const currentCodingModelId = settings.adopted
+    ? settings.values.coding_model_id
+    : org?.coding_model_id;
+  const codingModelOptions = useMemo(
+    () =>
+      models
+        .filter(
+          (model) =>
+            model.id === currentCodingModelId ||
+            (model.enabled &&
+              !model.stale &&
+              isChatModel(model) &&
+              model.provider_type !== "chatgpt"),
+        )
+        .sort(compareByRecency)
+        .map((model) => ({ value: model.id, label: modelLabel(model) })),
+    [models, currentCodingModelId],
   );
   const currentResearchModelId = settings.adopted
     ? settings.values.research_model_id
@@ -363,6 +384,24 @@ export function DefaultsTab({
                 : void run(() => updateOrg.mutateAsync({ small_model_id: value || null }))
             }
             placeholder={ui("Not set · titles use session model")}
+            searchPlaceholder="Search chat models…"
+            disabled={busy}
+          />
+        </DefaultRow>
+        <DefaultRow
+          label={ui("Coding model")}
+          description={ui("Used by agents on the Coding harness that set no model of their own.")}
+          problem={modelDefaultProblem(currentCodingModelId, models)}
+        >
+          <Combobox
+            options={codingModelOptions}
+            value={currentCodingModelId ?? ""}
+            onValueChange={(value) =>
+              settings.adopted
+                ? settings.setValues({ ...settings.values, coding_model_id: value })
+                : void run(() => updateOrg.mutateAsync({ coding_model_id: value || null }))
+            }
+            placeholder={ui("Not set · uses the default model")}
             searchPlaceholder="Search chat models…"
             disabled={busy}
           />
