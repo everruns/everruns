@@ -235,6 +235,8 @@ async fn seed(
     session: SessionId,
     report: &mut MoveReport,
 ) -> anyhow::Result<Option<i32>> {
+    // The v1 table itself, not the events port: the session is already
+    // switched, so the port would answer from its (still empty) cell.
     let rows = cp
         .db
         .list_events(session, None, None, &[], &[], None, None)
