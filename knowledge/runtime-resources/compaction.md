@@ -99,677 +99,96 @@ can differ from provider tokenization and hosted-tool scaffolding. See the
 [request budget implementation](../../crates/core/src/engine/execution/reason/request_budget.rs)
 and [public behavior](../../docs/advanced/compaction.md).
 
-## Abstract
-
-Context compaction manages conversations that exceed LLM context windows. Users building agents and harnesses must be able to choose between **native provider compaction** (e.g., OpenAI `/responses/compact`) and **our own strategies** (observation masking, LLM summarization). This spec defines the compaction capability, its configuration surface, the strategy cascade, user-visible feedback, and implementation plan.
-
-## Design Principles
-
-1. **User chooses.** Agent/harness builders select their compaction strategy. We don't force one approach.
-2. **Native and ours coexist.** Native provider compaction (opaque, high-fidelity) and our strategies (transparent, provider-agnostic) are both first-class options.
-3. **Compaction ≠ summarization.** Compaction strips reproducible information (tool outputs, file contents). Summarization is lossy compression of irreducible information. Prefer compaction; use summarization as fallback.
-4. **Proactive, not reactive.** Compact before hitting limits, not after `RequestTooLarge`.
-5. **Users must know.** Every compaction emits events and renders in the UI.
-
-## Model View Versus Storage
-
-Attachments (images, PDFs, other files) are not yet carried through
-compaction: summarization and masking keep text only. The proposed fix is in
-[Session Attachments](session-attachments.md).
-
-Session storage remains lossless: tool results, file reads, and exec outputs are stored as events/messages exactly as produced. When the `compaction` capability is configured, it contributes a model-view provider that builds a separate **model view** from those stored messages before provider serialization.
-
-The model view applies generic cost-control masking according to the configured `compaction` capability. This masking replaces stale bulky tool results with compact summaries while preserving message/tool-call structure and the most recent tool results verbatim. Builders can tune or disable this via `cost_control`. The masked region moves forward in batches (`mask_batch_results`, default 8, or at once when the results waiting past it pass `mask_batch_bytes`, default 64 KiB). Each move rewrites the history, and a provider caches a prompt only up to its first change, so moving one result per call lost the prompt cache on nearly every request of a busy session. The boundary is replayed from the history alone, so it never moves back and survives a worker restart (`crates/core/src/builtins/compaction/cost_control.rs`).
-
-A turn started by a recurring schedule fire gets a shorter view first: the leading system messages, the last 10 messages of the same schedule's earlier fires and the current fire, nothing else. See [Background Work Limits](../operations/background-limits.md#short-model-view-for-scheduled-runs).
-
-Provider cache telemetry feeds this same model-view step. If the previous call reports high uncached input or a low cache-read ratio, the model view may mask older tool results earlier so repeated full-history prompts do not keep paying for cache misses.
-
-For native-capable drivers, proactive policy also treats cumulative uncached
-input and the raw bytes of tool results accumulated since the latest durable
-checkpoint as cost pressure. Either signal can request a checkpoint before the
-model view reaches the context-window threshold, but only when the current
-prompt is itself non-trivial. This marginal floor avoids spending a compact
-call on short follow-ups after a long session. The same checkpoint re-arming,
-lineage-aware retry watermark, and failure fallback used by window pressure
-apply; cost pressure does not create a second compaction lifecycle.
-
-### Astra reasoning transitions
-
-Astra standard single-agent Responses conversations keep their initial request
-effort stable and replay ordered configuration changes. The prepared state is
-persisted before generation in the stream-start event and on completion in the
-assistant metadata; checkpoints preserve it when replacing history. This lets a
-restarted worker distinguish the baseline from the effective effort. Generation
-observability reports the effective effort and records the baseline separately,
-because the provider response continues to report the baseline.
-
-Configuration changes require explicit Responses compaction. They cannot be
-combined with automatic provider compaction, automatic truncation, or standalone
-compact requests. Proactive pressure and reactive context errors use the same
-explicit native operation, install its replacement atomically, and reassert the
-effective effort after the replacement boundary. All returned items after that
-boundary, including encrypted reasoning, remain in order. Incomplete, missing,
-ineffective, or failed replacements never become canonical. If explicit native
-compaction fails, the runtime surfaces the context error rather than trimming
-away the opaque history.
-
-This mode is scoped to Astra's supported efforts and native Responses driver.
-Changing model/provider starts a new effort epoch and clears the response handle;
-incompatible configuration updates are not sent to the new model. Builders who
-explicitly choose local summarization or observation masking keep request-level
-effort controls and their selected compaction strategy. No default model changes.
-
-Implementation and regression contracts live in
-[`reasoning_updates.rs`](../../crates/core/src/engine/execution/reason/reasoning_updates.rs),
-[`compaction.rs`](../../crates/core/src/engine/execution/reason/compaction.rs), and the
-[`Responses wire tests`](../../crates/contracts/tests/openresponses_protocol_wire.rs).
-Provider contracts: [changing reasoning](https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation)
-and [compaction output handling](https://developers.openai.com/api/docs/guides/compaction).
-
-### Durable replacement checkpoints
-
-Compaction that replaces a history prefix MUST survive later turns and durable
-worker restart. The replacement is stored as a session checkpoint, separate
-from the immutable event log. Raw session events remain the lossless source for
-conversation APIs, export, audit, and `query_history`.
-
-A checkpoint records an opaque replacement context, a compatibility identity
-(provider, model, and format version), and the event-sequence boundary of the
-raw history used to create it. Model input is assembled as the latest
-compatible checkpoint followed by message events strictly after that boundary.
-An incompatible checkpoint is ignored and the model view is rebuilt from raw
-history; provider-native content is never translated through a magic text
-message or sent to a different provider/model.
-
-Checkpoint installation is atomic and monotonic. A completed compaction may
-replace the current checkpoint only when its source boundary is not older than
-the installed boundary. Messages committed while compaction is in flight have
-higher event sequences and therefore remain in the raw suffix. A failed compact
-call or failed checkpoint write leaves the previous checkpoint canonical and
-does not emit a successful compaction event.
-
-Proactive `auto` and `native` policy uses the driver's native compact operation
-when it is supported and installs the result through this same checkpoint path;
-reactive and proactive compaction do not have separate durability semantics. A
-fresh checkpoint is disarmed for proactive replacement until a meaningful raw
-suffix has accumulated. Native output is accepted only when provider token
-usage, or serialized byte size when token usage is unavailable, proves a
-material reduction of at least 5%, with a 32-unit absolute floor for small
-measurements. A smaller effect does not replace the checkpoint or emit
-`context.compacted`. Every proactive native attempt also records its session,
-provider/model, and raw source boundary in a process-lifetime retry watermark.
-An ineffective or failed attempt is not repeated for an unchanged or tiny
-suffix; estimated input growth of at least 4,096 tokens and 5% of the attempted
-input re-arms it. Source sequence supplies monotonic identity while a transcript
-prefix fingerprint prevents an abandoned branch's watermark from suppressing
-the selected branch. The process-local map is capped at 4,096
-session/provider/model entries with oldest-entry eviction. This retry-control
-marker is not a semantic checkpoint and is never exposed as one.
-Watermark lookup and recording fail open with a warning: a transient retry-map
-or adapter failure must never block the normal model turn.
-
-When a checkpoint is compacted again, its ordered opaque output is converted to
-compact input without interpretation and prepended to the raw suffix. This
-composition applies to proactive re-arming and reactive `RequestTooLarge`
-recovery; checkpoint N+1 must semantically contain checkpoint N plus every
-suffix item through its new source boundary.
-
-Provider-native checkpoint payloads are sensitive opaque data and MUST be
-encrypted at rest. They are available only to the internal runtime storage
-boundary. Public events and APIs expose, at most, the checkpoint identifier,
-strategy, timing, and size/token metrics; they never expose encrypted provider
-content or its plaintext.
-
-Provider-neutral summarization can use the same replacement-checkpoint
-contract with a distinct format and compatibility policy. It does not require
-changing raw event storage or provider-native serialization.
-
-### Tool-call structural integrity
-
-Prompt-facing reduction preserves tool calls and results as atomic protocol
-structure. If a reducer removes a result from a parallel batch, it also removes
-that call from the visible assistant call set while leaving complete protected
-pairs intact. A stateless model view likewise removes results whose calls are no
-longer visible. Stateful Responses continuations are the sole exception: a
-result-only delta may refer to a call held by `previous_response_id`.
-
-This invariant applies to proactive and reactive trimming, summary boundaries,
-hierarchical tiers, provider-compacted output, and infinity-context composition.
-Reducers only change prompt-facing copies: stored session history remains
-lossless, and reducers never invent successful tool results.
-
-### Native compact context handoff
-
-Native compact output is a standalone, provider-owned context checkpoint. The
-runtime preserves the returned item array as an ordered typed value and does
-not translate encrypted items into messages, reorder them, or run generic
-message/tool pruning over them. The next matching provider request uses that
-array directly as `input`; `previous_response_id` is cleared because the
-standalone checkpoint replaces the earlier server-side continuation chain.
-
-The compact request itself uses reconstructed standalone `input` without
-`previous_response_id`, including for a stateful Responses continuation. This
-preserves the fresh request delta when the retry replaces the server-side
-continuation chain with the compact output. System instructions remain a
-separate request field.
-
-Opaque compact content is provider transport state, not a public event payload.
-Compaction events expose counts, strategy, duration, and usage metadata only.
-
-Stateful `previous_response_id` requests are deltas over provider-held context.
-The reconstructed lossless transcript is therefore not a valid local pressure
-measurement for proactive policy. In the absence of authoritative provider
-usage for that server-side context, the runtime skips local proactive
-compaction and retains reactive `RequestTooLarge` recovery using reconstructed
-standalone input.
-
-Observation masking remains a model-view cost optimization. It may reduce an
-outbound request without replacing semantic history, and by itself does not
-emit a successful durable `context.compacted` event.
-
-## Current State
-
-### What Exists
-
-**Compaction capability** (`crates/core/src/builtins/compaction.rs`):
-- Configured explicitly through the `compaction` capability.
-- Contributes the prompt-facing model-view provider that masks stale bulky tool results before provider serialization.
-- Supports proactive budget checks, reactive `RequestTooLarge` recovery, observation masking, native provider compaction when available, summarization, and last-resort trimming.
-- Emits `context.compacting` / `context.compacted` events and records `LlmCompactionInfo` on `llm.generation` when native provider compaction runs.
-
-**Infinity Context** (`crates/core/src/builtins/infinity_context.rs`):
-- Separate, optional capability, not part of compaction. Keeps a recent window + provides the `query_history` tool.
-- **Not freely composable with compaction.** Infinity context evicts during message loading, before compaction runs, so enabling both naively means compaction only sees the recent window. Compaction is the stronger primary strategy (always-present summary); infinity context is a pull-based backstop. When both are enabled, infinity context defers token-budget eviction to compaction. See `knowledge/runtime-resources/infinity-context.md`.
-
-### Current Caveats
-
-| Gap | Impact |
-|-----|--------|
-| Provider capability visibility | Users cannot yet see every provider's native compaction support in all product surfaces. |
-| UI polish | The backend emits compaction events, but timeline rendering may still need product-specific display work. |
-| Token telemetry precision | Some compaction events report message counts rather than exact token deltas when the strategy does not make a provider call. |
-
-## Compaction Strategies
-
-### Strategy Enum
-
-```rust
-pub enum CompactionStrategy {
-    /// Use provider's native compact endpoint (e.g., OpenAI /responses/compact).
-    /// Highest fidelity, opaque output. Only works if ChatDriver::supports_compact().
-    Native,
-
-    /// Strip tool outputs from older turns, replace with one-line summaries.
-    /// Cheapest. Preserves reasoning chain. Provider-agnostic.
-    ObservationMasking,
-
-    /// Use LLM to summarize older turns into structured summary.
-    /// Provider-agnostic. Lossy but works everywhere.
-    Summarization,
-
-    /// Observation masking first, then native compact if still over budget.
-    /// Falls back to summarization if native not available.
-    Auto,
-}
-```
-
-### Strategy Comparison
-
-| Strategy | Cost | Fidelity | Provider Requirement | Best For |
-|----------|------|----------|---------------------|----------|
-| `native` | Low (API call) | Highest (encrypted blobs) | `supports_compact()` = true | OpenAI Responses API users |
-| `observation_masking` | Zero (no LLM call) | High (reasoning preserved) | None | All providers, cost-sensitive |
-| `summarization` | Medium (extra LLM call) | Medium (lossy) | None | Long conversations, any provider |
-| `auto` | Varies | Best available | None | Default, adapts to provider |
-
-### `auto` Cascade
-
-```
-1. Observation masking (always, free)
-   ↓ still over budget?
-2. Native compact (if driver supports it)
-   ↓ not supported or still over budget?
-3. Summarization (LLM call, lossy)
-   ↓ still over budget?
-4. Aggressive trim (drop oldest, last resort)
-```
-
-## Configuration
-
-### Capability Config
-
-Compaction is configured as a capability on agents and harnesses, following the existing `AgentCapabilityConfig` pattern:
-
-```json
-{
-  "capabilities": [
-    {
-      "ref": "compaction",
-      "config": {
-        "strategy": "auto",
-        "proactive": true,
-        "budget_percent": 0.85,
-        "observation_masking": {
-          "keep_recent_tool_outputs": 2,
-          "summary_format": "one_line"
-        },
-        "summarization": {
-          "model": null,
-          "preserve": ["decisions", "files_modified", "errors", "current_plan"],
-          "instructions": null
-        }
-      }
-    }
-  ]
-}
-```
-
-### CompactionConfig
-
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompactionConfig {
-    /// Which strategy to use. Default: Auto.
-    #[serde(default = "default_strategy")]
-    pub strategy: CompactionStrategy,
-
-    /// Compact proactively at budget_percent, not just on RequestTooLarge.
-    #[serde(default = "default_proactive")]
-    pub proactive: bool,  // default: true
-
-    /// Trigger proactive compaction at this fraction of context budget.
-    /// Only used when proactive = true.
-    #[serde(default = "default_budget_percent")]
-    pub budget_percent: f32,  // default: 0.85
-
-    /// Observation masking settings.
-    #[serde(default)]
-    pub observation_masking: ObservationMaskingConfig,
-
-    /// Summarization settings. Only used when strategy includes summarization.
-    #[serde(default)]
-    pub summarization: SummarizationConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObservationMaskingConfig {
-    /// Number of recent tool outputs to keep verbatim.
-    #[serde(default = "default_keep_recent_tool_outputs")]
-    pub keep_recent_tool_outputs: usize,  // default: 2
-
-    /// Format for masked tool output summaries.
-    #[serde(default)]
-    pub summary_format: MaskingSummaryFormat,  // default: OneLine
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MaskingSummaryFormat {
-    /// `[tool: read_file("src/main.rs") → 245 lines, OK]`
-    OneLine,
-    /// Keep first and last 3 lines of output
-    HeadTail,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SummarizationConfig {
-    /// Model to use for summarization. None = same model as agent.
-    #[serde(default)]
-    pub model: Option<String>,
-
-    /// What to preserve in summaries.
-    #[serde(default = "default_preserve")]
-    pub preserve: Vec<String>,
-
-    /// Custom instructions appended to summarization prompt.
-    /// Similar to Claude Code's `/compact <instructions>`.
-    #[serde(default)]
-    pub instructions: Option<String>,
-}
-```
-
-Cost-control masking is also part of compaction. It runs before provider
-serialization and replaces older bulky tool results with small structured
-summaries when repeated full-history prompts would otherwise keep paying for
-stale `read_file`, exec, listing, or search output. It is enabled by default
-when compaction is enabled, keeps the most recent tool results verbatim, and can
-also trigger from prior usage signals when cache reuse is poor. See
-[`crates/core/src/builtins/compaction.rs`](../../crates/core/src/builtins/compaction.rs)
-for the exact configuration fields and defaults.
-
-### Config Examples
-
-**"I want native OpenAI compaction only":**
-```json
-{ "ref": "compaction", "config": { "strategy": "native" } }
-```
-
-**"I want our own strategies, no native":**
-```json
-{ "ref": "compaction", "config": { "strategy": "observation_masking" } }
-```
-
-**"Full auto, be proactive":**
-```json
-{ "ref": "compaction", "config": { "strategy": "auto", "proactive": true } }
-```
-
-**"Summarize with specific instructions, use a fast model":**
-```json
-{
-  "ref": "compaction",
-  "config": {
-    "strategy": "summarization",
-    "summarization": {
-      "model": "claude-haiku-4-5-20251001",
-      "instructions": "Preserve all API endpoint decisions and error patterns"
-    }
-  }
-}
-```
-
-**No compaction capability configured → no Everruns compaction or masking runs.**
-Provider `RequestTooLarge` errors propagate unless the agent/harness enables the
-`compaction` capability.
-
-### Default Behavior
-
-When the `compaction` capability is present with no config (or `{}`):
-
-| Setting | Default | Rationale |
-|---------|---------|-----------|
-| `strategy` | `auto` | Adapts to provider |
-| `proactive` | `true` | Don't wait for errors |
-| `budget_percent` | `0.85` | 15% headroom |
-| `keep_recent_tool_outputs` | `2` | Recent context stays verbatim |
-| Cost-control masking | Enabled | Prevent stale bulky tool results from being resent verbatim in every request |
-| Cost-control durable checkpoint | 100,000 cumulative uncached input tokens or 256 KiB raw tool results, with an 8,192-token current-prompt floor | Bound repeated prompt cost before 85% occupancy without compacting trivial turns |
-| `summarization.model` | `null` (same model) | Simplest default |
-| `summarization.preserve` | `["decisions", "files_modified", "errors", "current_plan"]` | Key agent context |
-
-## Events
-
-### Cost
-
-Native compaction is a real billable model call. Providers that report per-call
-cost inline (OpenAI-compatible gateways returning `usage.cost`) have it carried
-through the compaction response onto the generation event two ways:
-
-- `metadata.compaction.cost_usd` keeps it separately attributable, so an
-  operator can see how much of a turn's spend was compaction rather than
-  generation.
-- It is also folded into `metadata.usage.actual_cost_usd`, because the usage
-  listener reads only `metadata.usage`, that is the sole path to budget debits
-  and `llm_generations`.
-
-When the generation itself reports no usage, the compaction cost creates a usage
-record rather than being dropped. Providers that do not report a cost leave both
-fields absent, matching the ordinary generation paths.
-
-### SSE Event Types
-
-Two new event types for real-time compaction feedback:
-
-```
-event: context.compacting
-data: {
-  "id": "evt_...",
-  "type": "context.compacting",
-  "ts": "2026-03-15T...",
-  "session_id": "session_...",
-  "data": {
-    "reason": "proactive_budget",
-    "strategy": "auto",
-    "tokens_before": 180000
-  }
-}
-
-event: context.compacted
-data: {
-  "id": "evt_...",
-  "type": "context.compacted",
-  "ts": "2026-03-15T...",
-  "session_id": "session_...",
-  "data": {
-    "checkpoint_id": "cmp_...",
-    "strategy_used": "observation_masking+native",
-    "tokens_before": 180000,
-    "tokens_after": 95000,
-    "duration_ms": 2300,
-    "steps": [
-      { "strategy": "observation_masking", "tokens_after": 140000, "duration_ms": 12 },
-      { "strategy": "native", "tokens_after": 95000, "duration_ms": 2288 }
-    ]
-  }
-}
-```
-
-`checkpoint_id` is present when a durable replacement checkpoint was
-installed. Fallback installs that only mask or trim the in-memory suffix carry
-no checkpoint id. Event data MUST NOT contain the checkpoint payload,
-provider-native encrypted content, or the at-rest ciphertext.
-
-Every pressured evaluation closes with exactly one terminal event: an install
-(`context.compacted`, including fallback installs), a skip
-(`context.compaction.skipped` with the reason the attempt never ran), or a
-failure (`context.compaction.failed` with the stage that failed). See
-`CompactionSkipReason` and `CompactionFailStage` in `crates/core/src/events.rs`
-and the emission points in the compaction engine.
-
-**Reason enum:** `proactive_budget` | `request_too_large` | `manual`
-
-The `steps` array shows the cascade, which strategies ran and their individual contribution. This is critical for debugging and tuning.
-
-### Existing Event Enhancement
-
-`LlmCompactionInfo` on `llm.generation` events remains for backward compatibility but becomes redundant once `context.compacted` events are adopted.
-
-## UI
-
-### Compaction Divider
-
-When `context.compacted` fires, render in the chat timeline:
-
-```
-─────── Context compacted · 180K → 95K tokens ───────
-```
-
-For native compaction the divider shows tokens, never message counts: the
-provider replaces the transcript with its own output items, and
-`messages_after` counts those items, so it can exceed `messages_before` after a
-successful compaction.
-
-Expandable on click to show:
-- Strategy used (with cascade steps if `auto`)
-- Duration
-- Tokens saved
-- Reason (proactive vs error recovery)
-
-### TypeScript Types
-
-```typescript
-export interface LlmCompactionInfo {
-  compacted: boolean;
-  input_tokens_before?: number;
-  input_tokens_after?: number;
-  duration_ms?: number;
-}
-
-export interface ContextCompactingEvent {
-  reason: "proactive_budget" | "request_too_large" | "manual";
-  strategy: "native" | "observation_masking" | "summarization" | "auto";
-  tokens_before: number;
-}
-
-export interface ContextCompactedEvent {
-  strategy_used: string;
-  tokens_before: number;
-  tokens_after: number;
-  duration_ms: number;
-  steps: CompactionStep[];
-}
-
-export interface CompactionStep {
-  strategy: string;
-  tokens_after: number;
-  duration_ms: number;
-}
-```
-
-### LLM History Viewer
-
-The existing `llm-history-viewer.tsx` component should display compaction info when present in `LlmGenerationMetadata.compaction`.
-
-## Observation Masking
-
-Replaces old tool outputs with one-line summaries, keeping the N most recent verbatim. See `crates/core/src/builtins/compaction.rs` for the masking algorithm.
-
-### Tool-Aware Masking (Tier 3)
-
-When tool type is known, apply type-specific compression:
-
-| Tool | Mask Strategy |
-|------|--------------|
-| `activate_skill` | **Never mask**: protected, always kept verbatim |
-| `read_file` | Keep path + line count: `[read_file("src/main.rs") → 245 lines]` |
-| `bash` | Keep exit code + last 20 lines |
-| `search` / `grep` | Keep matched file paths only |
-| `write_file` | Keep path + operation: `[write_file("src/main.rs") → 245 lines written]` |
-| `web_fetch` | Keep URL + status: `[web_fetch("https://...") → 200 OK, 12KB]` |
-
-### Protected Tool Results
-
-Tool results from `PROTECTED_TOOL_NAMES` (currently `activate_skill`) are exempt from all compaction strategies:
-
-1. **Observation masking**: excluded from the maskable tool index, never replaced with summaries
-2. **Aggressive trim**: budget reserved first; always kept even when other messages are dropped
-3. **Hierarchical memory**: rescued from cold tier into output verbatim
-4. **Summarization**: `skill_instructions` in default preserve list; prompt instructs LLM to include skill content verbatim
-
-### Anchored Task Message
-
-Aggressive trim also anchors the **first conversation message** (the original
-task/goal), reserving its budget alongside protected tool results so it is never
-dropped. Like infinity context's head anchor, losing the opening task leaves the
-model unable to tell what it is doing once the window slides; the system prompt
-is assembled separately and is already exempt.
-
-See `crates/core/src/builtins/compaction.rs` for implementation (`PROTECTED_TOOL_NAMES`, `is_protected_tool_result`).
-
-## Summarization
-
-### Provenance and uncertainty
-
-Local summaries (including the `auto` fallback) preserve the distinction between
-user requirements and instructions quoted in files, fetched material, tool results,
-or assistant proposals. Explicit user adoption is retained with its scope; adopting
-a working assumption does not independently verify it. Consequential unresolved
-claims retain their source and evidence as `UNVERIFIED` entries. Later confirmation,
-correction, and disproof update the claim's status rather than preserving stale
-uncertainty or silently promoting guesses to facts. Confirmed work and explicit
-requirements should not acquire blanket uncertainty labels.
-
-The [shared prompt and transcript formatter](../../crates/core/src/builtins/compaction/summarization.rs)
-apply these rules to fresh and repeated summaries. JSON-line envelopes carry the
-recorded role and tool name; embedded text cannot create another envelope. A previous
-summary is explicitly identified as a compressed record, not fresh evidence or a
-new instruction. It is passed intact on subsequent rounds so late qualifiers and
-Active Skills are not cut off by the ordinary per-message excerpt limit. Ordinary
-message truncation still limits the evidence the summarizer can see.
-
-Active Skills retain their existing verbatim preservation contract. This is model
-guidance, not an authorization boundary or a guarantee of semantic accuracy. Output
-budgets, missing evidence, model behavior, and later aggressive trimming can still
-lose information. Provider-native opaque compaction is unaffected.
-
-The opt-in [live semantic probe](../../crates/core/benches/compaction_semantics.rs)
-uses real summary and judge calls across three rounds, including planted role labels,
-user adoption, evidence updates, corrections, and skill/work-context regressions.
-Its saved transcripts and criterion-level judgments support manual review; a passing
-model judge does not establish reliability across all models or histories.
-
-### Summary Message
-
-The summary replaces compacted messages as a single system message:
-
-```rust
-Message {
-    role: MessageRole::System,
-    content: MessageContent::Text(format!(
-        "[CONVERSATION_SUMMARY]\n{}\n[/CONVERSATION_SUMMARY]",
-        summary_text
-    )),
-    // ...
-}
-```
-
-Marked with `[CONVERSATION_SUMMARY]` tags so future compaction rounds can identify and re-summarize if needed, but never recursively, a summary is only re-summarized if new context has accumulated around it.
-
-## Hierarchical Memory (Tier 3)
-
-Three tiers of conversation context:
-
-| Tier | Messages | Content | Retention |
-|------|----------|---------|-----------|
-| **Hot** | Last ~20 | Full verbatim text | Always in context |
-| **Warm** | Next ~100 | Observation-masked (tool outputs replaced) | In context if budget allows |
-| **Cold** | All older | Summarized to key facts | Queryable via `query_history` if Infinity Context enabled |
-
-Tier boundaries are configurable per agent. The `auto` strategy manages tier transitions automatically based on token budget.
-
-## Session-Level Metrics
-
-Track per session (stored as session metadata, queryable via API):
-
-```rust
-pub struct SessionCompactionMetrics {
-    /// Total number of compaction events in this session
-    pub compaction_count: u32,
-    /// Total input tokens saved across all compactions
-    pub total_tokens_saved: u64,
-    /// Breakdown by strategy
-    pub strategy_counts: HashMap<String, u32>,
-    /// Total time spent compacting (ms)
-    pub total_duration_ms: u64,
-}
-```
-
-Displayed in session detail view and session list (as a subtle indicator when compaction has occurred).
-
-## Implementation Status
-
-Implemented pieces live in the capability and runtime assembly paths:
-
-- `crates/core/src/builtins/compaction.rs` owns config parsing,
-  cost-control model-view masking, observation masking, summarization helpers,
-  and compaction metrics types.
-- `crates/contracts/src/runtime/capabilities/mod.rs` exposes the generic
-  `ModelViewProvider` hook so compaction remains capability-owned.
-- `crates/core/src/engine/execution/reason.rs` invokes compaction only when the resolved
-  capability config includes `compaction`; without it, context-limit errors are
-  returned to the caller.
-- `crates/core/src/events.rs` defines compaction events and generation metadata.
-
-Remaining product work should focus on UI presentation and provider capability
-visibility rather than changing the capability ownership model.
-
-### Future Work
-
-- Product UI for compaction timeline events and session-level metrics.
-- Provider capability visibility for native compaction support.
-- Deeper integration between hierarchical memory tiers and Infinity Context.
-
-## References
-
-- [Anthropic: Compaction API](https://platform.claude.com/docs/en/build-with-claude/compaction)
-- [Anthropic: Effective Context Engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
-- [JetBrains: The Complexity Trap (NeurIPS 2025)](https://arxiv.org/abs/2508.21433)
-- [Microsoft: LLMLingua](https://llmlingua.com/llmlingua.html)
-- [NAACL 2025: Prompt Compression Survey](https://aclanthology.org/2025.naacl-long.368.pdf)
-- [OpenAI: GPT-5.2 Codex Context Compaction](https://openai.com/index/introducing-gpt-5-2/)
-- [Google ADK: Context Compaction](https://google.github.io/adk-docs/context/compaction/)
-- `knowledge/runtime-resources/infinity-context.md`, pull-based backstop capability; defers to compaction when both are enabled
-- `knowledge/execution/events.md`, event schema
-- `knowledge/execution/capabilities.md`, capability system
-- `crates/contracts/src/driver_registry.rs`, `ChatDriver` trait with `supports_compact()` / `compact()`
-- `crates/contracts/src/openresponses_protocol.rs`, `CompactRequest` / `CompactResponse` types
+## Native epochs and replay scope
+
+Native output remains an ordered provider-owned replacement. A subsequent native
+request composes that replacement with the complete raw suffix and clears the
+old response handle when switching to a standalone checkpoint. Current system
+instructions are assembled separately. Provider/model/format compatibility is
+checked before replay; portable continuity is reconstructed from journal data
+when a compatible native checkpoint is unavailable.
+
+Supported reasoning-update models also retain their effort epoch across
+compaction and reassert the effective effort after the replacement boundary.
+Configuration updates never move across semantic items. Local strategies retain
+request-level effort controls without translating opaque native state. The
+contracts live in [reasoning replay](../../crates/core/src/engine/execution/reason/reasoning_updates.rs),
+[native reduction](../../crates/core/src/engine/execution/reason/compaction.rs), and
+[wire regressions](../../crates/contracts/tests/openresponses_protocol_wire.rs).
+
+A reasoning artifact's upstream format tag does not identify the configured
+route that can replay it. The [transcript projection](../../crates/core/src/engine/execution/reason/transcript.rs)
+checks recorded driver, model and configured provider identity. Opaque artifacts
+with missing or incompatible provenance are omitted from requests, while source
+events stay intact. This does not make a native checkpoint portable or establish
+compatibility after credentials change beneath the same configured identity.
+
+## Current input and exchange boundaries
+
+The current triggering input remains verbatim on local portable paths, even when
+a long tool loop moves its journal record inside the summarized prefix. Identity
+comes from the execution's recorded input ID, not a generated paraphrase or the
+last user-channel message: synthetic facts can also use that channel. The runtime
+restores the original input and preserves its assembled actor label and media
+through request-local trimming.
+
+Recent-history retention is a preference rather than a reason to split a completed
+parallel exchange. Prefix selection accounts for the existing continuity record
+and may cross the preferred recent-message floor to obtain a useful reduction.
+An incomplete exchange or a complete batch that cannot fit the summary source
+window still fails visibly. A request-limit stop can leave an unfinished raw
+exchange; this remains a recovery limitation rather than permission to fabricate
+successful results. See the [planner](../../crates/core/src/engine/execution/reason/context_plan.rs)
+and [public Framework regressions](../../crates/everruns/tests/host/integration/compaction_test.rs).
+
+## Request-local masking and cache behavior
+
+Deterministic masking and hierarchical transformations are prompt projections;
+they do not establish durable coverage of omitted journal records. Protected
+skill sources come from actual recorded activation results. Quoted markers do
+not create provenance or durable authority. Last-resort trimming can still fail
+to fit irreducible instructions or exact skill sources.
+
+Masking boundaries advance in batches to reduce prefix churn. An unchanged
+boundary can reuse a provider cache; a masking event does not establish a cache
+miss or a separate paid call. Likewise, a structural prefix regression test is
+not a measured provider cache-hit improvement. Exact policy and transformations
+belong in the [capability](../../crates/core/src/builtins/compaction.rs) and
+[cost-control projection](../../crates/core/src/builtins/compaction/cost_control.rs).
+
+## Measurement and cost
+
+Distinguish retained-window measurements, request estimates, provider-reported
+generation usage, and monetary attribution. Explicit native compaction's generated
+tokens are billed work rather than the size of its resulting window. The driver
+preserves those counters; reduction validation uses serialized bytes when window
+token counts are unavailable. Byte reduction of opaque state is a heuristic, not
+proof of semantic fidelity or the next request's token count.
+
+Portable summary calls have separate generation events, including rejected paid
+responses. Native provider-reported cost remains attributable through compaction
+metadata and the generation's effective usage. When a native provider omits its
+inline cost, preserving driver token counters alone does not establish complete
+session spend or invoice reconciliation. Inspection must not manufacture missing
+measurements or present a message-count change as a token-saving measurement.
+
+Initial backfill may need multiple calls. Subsequent portable work is incremental
+in new source history. Summary requests share the actual summary model's context
+window with their output allowance; bounded source selection reserves that space
+before sending a request. Configuration, event shapes and defaults are owned by
+[source](../../crates/core/src/builtins/compaction.rs) and the
+[public guide](../../docs/advanced/compaction.md), not duplicated here.
+
+## Qualification boundaries
+
+Synthetic long-session tests establish cursor, restart, retrieval and resource
+behavior. Live snapshot replays additionally test selected task-state, correction
+and approval facts across provider changes. Neither is a universal fidelity,
+multimodal, cache, latency or cost guarantee. Missing attachment bytes and
+unverified live infrastructure state must remain explicit unknowns.
+
+The [semantic probe](../../crates/core/benches/compaction_semantics.rs) and
+[continuity lifecycle regressions](../../crates/core/src/engine/execution/reason/context_plan_tests.rs)
+provide repeatable evidence. Model judgments supplement source review rather than
+replacing it. Public APIs expose safe policy/checkpoint metadata, never checkpoint
+payloads or provider-encrypted reasoning material.
