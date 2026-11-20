@@ -11,7 +11,7 @@ Enable the `knowledge` Cargo feature and bind application-owned services with `.
 
 Knowledge brings notes, uploaded files, repository trees and Everruns documentation into one collection model. Indexing is optional. Files remain available to browse, read and grep when indexing is off.
 
-Knowledge is an Adoption feature, available on development and hosted deployments and disabled by default. An organization owner/admin or platform operator can enable the organization's **Knowledge** feature. Then open **Knowledge** and create a collection. A collection opens on a file browser: upload files or a folder with its relative paths, or create Markdown files with optional OKF frontmatter, on its **Files** tab, and connect a source on **Sources**. Search accounts for indexed collections live on the **Accounts** tab of the Knowledge page. GitHub sources reuse existing organization or virtual-user GitHub connections. Public HTTPS Git repositories work without a GitHub connection. Source roots must not overlap, and a connected source cannot overwrite a managed file.
+Open **Knowledge** and create a collection. A collection opens on a file browser: upload files or a folder with its relative paths, or create Markdown files with optional OKF frontmatter, on its **Files** tab, and connect a source on **Sources**. Search accounts for indexed collections live on the **Accounts** tab of the Knowledge page. GitHub sources reuse existing organization or virtual-user GitHub connections. Public HTTPS Git repositories work without a GitHub connection. Source roots must not overlap, and a connected source cannot overwrite a managed file.
 
 ## Attach to an agent
 
@@ -105,5 +105,4 @@ workspace files and image bytes inline in PostgreSQL. It does not backfill or
 move existing files. The default `inherit` uses the existing shared blob backend
 or the local development fallback. Do not use the local fallback on ephemeral
 hosted containers. An invalid explicit S3 configuration fails startup; storage
-errors never silently switch to local disk. Organization adoption and collection
-permissions remain separate.
+errors never silently switch to local disk.

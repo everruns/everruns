@@ -32,7 +32,7 @@ const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   mcp_server: "MCP Servers",
   eval: "Evals",
   memory: "Memory",
-  knowledge_index: "Knowledge Indexes",
+  knowledge: "Knowledge",
   plugin: "Plugins",
   observer: "Observers",
   organization: "Organizations",
@@ -52,7 +52,7 @@ const CATEGORY_ORDER: SearchResultCategory[] = [
   "mcp_server",
   "eval",
   "memory",
-  "knowledge_index",
+  "knowledge",
   "plugin",
   "observer",
 ];

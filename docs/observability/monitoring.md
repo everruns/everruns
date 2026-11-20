@@ -12,11 +12,8 @@ agent names, prompts, and tool arguments out of the display.
 
 ## Organization and platform views
 
-An organization administrator enables **Monitoring** in **Settings → Features**.
-The feature uses the `monitoring` adoption flag and starts disabled. The
-**Activity → Monitoring** destination then shows only the selected
-organization's execution and actor ownership. Reading it requires session-read
-permission; opting in does not grant additional permissions.
+Open **Activity → Monitoring** to see the selected organization’s execution and
+actor ownership. Reading this view requires session-read permission.
 
 Platform operators open **System → Monitoring** for the cross-org
 view. This view also exposes worker capacity, reported load, and heartbeat
@@ -126,11 +123,11 @@ marked stale rather than appearing healthy.
 
 ## API
 
-Use `GET /api/v1/monitoring` for an enrolled organization's summary and
+Use `GET /api/v1/monitoring` for the selected organization's summary and
 `GET /api/v1/durable/monitoring` for platform-wide monitoring. Both are read-only.
 Use browser credentials or a full-access personal token; scoped personal tokens
-remain denied. Organization adoption and read permissions still apply, and fleet
-access still requires platform authority. The adjacent `/actors` endpoints provide
+remain denied. Organization monitoring requires session-read permission, and
+fleet access requires platform authority. The adjacent `/actors` endpoints provide
 bounded, filtered pages and actor detail, and `/timeline` returns recorded
 history in buckets (`range` or `from`/`to`, optional `bucket` seconds) with
 `/timeline/window` for a selection's busiest agents, failure causes, and failed

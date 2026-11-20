@@ -6,7 +6,7 @@ use crate::{
     },
     auth::ResolvedOrg,
     domains::{
-        common::{Command, CommandError, Ctx},
+        common::{Command, CommandError},
         knowledge::{KnowledgeService, commands::*, types::*},
     },
 };
@@ -20,12 +20,6 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-fn ctx(state: &ApiState, org: &ResolvedOrg) -> Result<Ctx, CommandError> {
-    if !org.feature_flags.knowledge {
-        return Err(CommandError::feature_not_enabled("knowledge"));
-    }
-    Ok(state.ctx(org))
-}
 pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/knowledge", get(list_knowledge).post(create_knowledge))
@@ -77,7 +71,7 @@ pub async fn list_knowledge(
             after: q.after,
             limit: q.limit,
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }
@@ -87,7 +81,7 @@ pub async fn create_knowledge(
     State(s): State<ApiState>,
     Json(input): Json<CollectionInput>,
 ) -> ApiResult<Value> {
-    Ok(Json(CreateKnowledge { input }.run(&ctx(&s, &org)?).await?))
+    Ok(Json(CreateKnowledge { input }.run(&s.ctx(&org)).await?))
 }
 #[utoipa::path(operation_id="get_knowledge",get,path="/v1/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),responses((status=200,description="Collection and processing status",body=Value)),tag="knowledge")]
 pub async fn get_knowledge(
@@ -96,7 +90,7 @@ pub async fn get_knowledge(
     Path(collection_id): Path<String>,
 ) -> ApiResult<Value> {
     Ok(Json(
-        GetKnowledge { collection_id }.run(&ctx(&s, &org)?).await?,
+        GetKnowledge { collection_id }.run(&s.ctx(&org)).await?,
     ))
 }
 #[utoipa::path(operation_id="update_knowledge",patch,path="/v1/knowledge/{collection_id}",params(("collection_id"=String,Path,description="Knowledge collection")),request_body=CollectionInput,responses((status=200,description="Updated collection",body=Value)),tag="knowledge")]
@@ -111,7 +105,7 @@ pub async fn update_knowledge(
             collection_id,
             input,
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }
@@ -122,9 +116,7 @@ pub async fn archive_knowledge(
     Path(collection_id): Path<String>,
 ) -> ApiResult<Value> {
     Ok(Json(
-        ArchiveKnowledge { collection_id }
-            .run(&ctx(&s, &org)?)
-            .await?,
+        ArchiveKnowledge { collection_id }.run(&s.ctx(&org)).await?,
     ))
 }
 #[utoipa::path(operation_id="list_knowledge_files",get,path="/v1/knowledge/{collection_id}/files",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="File catalog page",body=Value)),tag="knowledge")]
@@ -139,7 +131,7 @@ pub async fn list_knowledge_files(
             collection_id,
             query,
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }
@@ -155,7 +147,7 @@ pub async fn write_knowledge_file(
             collection_id,
             input,
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }
@@ -171,7 +163,7 @@ pub async fn delete_knowledge_file(
             collection_id,
             path: q.path.unwrap_or_default(),
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }
@@ -187,7 +179,7 @@ pub async fn add_knowledge_source(
             collection_id,
             input,
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }
@@ -198,7 +190,7 @@ pub async fn sync_knowledge(
     Path(collection_id): Path<String>,
 ) -> ApiResult<Value> {
     Ok(Json(
-        SyncKnowledge { collection_id }.run(&ctx(&s, &org)?).await?,
+        SyncKnowledge { collection_id }.run(&s.ctx(&org)).await?,
     ))
 }
 #[utoipa::path(operation_id="search_knowledge_collections",post,path="/v1/knowledge/search",request_body=everruns_contracts::knowledge::KnowledgeQuery,responses((status=200,description="Versioned search results",body=Value)),tag="knowledge")]
@@ -209,7 +201,7 @@ pub async fn search_knowledge_collections(
 ) -> ApiResult<Value> {
     Ok(Json(
         SearchKnowledgeCollections { query }
-            .run(&ctx(&s, &org)?)
+            .run(&s.ctx(&org))
             .await?,
     ))
 }
@@ -218,7 +210,7 @@ pub async fn list_knowledge_indexers(
     org: ResolvedOrg,
     State(s): State<ApiState>,
 ) -> ApiResult<Value> {
-    Ok(Json(ListKnowledgeIndexers {}.run(&ctx(&s, &org)?).await?))
+    Ok(Json(ListKnowledgeIndexers {}.run(&s.ctx(&org)).await?))
 }
 #[utoipa::path(operation_id="create_knowledge_indexer",post,path="/v1/knowledge-indexers",request_body=IndexerInput,responses((status=200,description="Configured search account",body=Value)),tag="knowledge")]
 pub async fn create_knowledge_indexer(
@@ -227,9 +219,7 @@ pub async fn create_knowledge_indexer(
     Json(input): Json<IndexerInput>,
 ) -> ApiResult<Value> {
     Ok(Json(
-        CreateKnowledgeIndexer { input }
-            .run(&ctx(&s, &org)?)
-            .await?,
+        CreateKnowledgeIndexer { input }.run(&s.ctx(&org)).await?,
     ))
 }
 #[utoipa::path(operation_id="get_knowledge_file_content",get,path="/v1/knowledge/{collection_id}/files/content",params(("collection_id"=String,Path,description="Knowledge collection"),PageQuery),responses((status=200,description="Bounded original or extracted bytes",body=String)),tag="knowledge")]
@@ -239,7 +229,7 @@ pub async fn get_knowledge_file_content(
     Path(key): Path<String>,
     Query(q): Query<PageQuery>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
-    let c = ctx(&s, &org)?;
+    let c = s.ctx(&org);
     crate::domains::knowledge::VIEW
         .evaluate_with(c.permission_resolver.as_ref(), &c.caller)
         .map_err(|_| CommandError::forbidden("Knowledge permission required"))?;
@@ -344,7 +334,7 @@ pub async fn upload_knowledge_file(
     Query(q): Query<UploadQuery>,
     body: Body,
 ) -> ApiResult<Value> {
-    let c = ctx(&s, &org)?;
+    let c = s.ctx(&org);
     crate::domains::knowledge::MANAGE
         .evaluate_with(c.permission_resolver.as_ref(), &c.caller)
         .map_err(|_| CommandError::forbidden("Knowledge management permission required"))?;
@@ -388,7 +378,7 @@ pub async fn update_knowledge_file_metadata(
             collection_id,
             input,
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }
@@ -405,7 +395,7 @@ pub async fn validate_knowledge_okf(
             collection_id,
             query,
         }
-        .run(&ctx(&s, &org)?)
+        .run(&s.ctx(&org))
         .await?,
     ))
 }

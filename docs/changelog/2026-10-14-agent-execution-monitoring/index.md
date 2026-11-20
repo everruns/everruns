@@ -24,6 +24,6 @@ conventional counters alongside these views.
 
 ![Worker execution mosaic with organization ownership mapping](./worker-ownership@2x.png)
 
-Organization admins opt in through **Settings → Features → Monitoring**. Their
-view stays within that org; cross-org monitoring requires platform access.
+Open **Activity → Monitoring** to see your organization’s execution. This view
+requires session-read permission. The fleet view requires platform access.
 See the [Monitoring guide](/observability/monitoring/).

@@ -569,14 +569,7 @@ fn authorize_org(
     org: &ResolvedOrg,
     state: &AppState,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    // THREAT[TM-TENANT-001]: deployment availability and platform access never
-    // substitute for organization adoption or session-read authority.
-    if !org.feature_flags.monitoring {
-        return Err(
-            ErrorResponse::new("Monitoring is not enabled for this organization")
-                .into_response(StatusCode::NOT_FOUND),
-        );
-    }
+    // THREAT[TM-TENANT-001]: require session-read authority in the resolved organization.
     SESSION_VIEW
         .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(org))
         .map_err(|e| ErrorResponse::new(e.message).into_response(StatusCode::FORBIDDEN))

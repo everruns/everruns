@@ -18,14 +18,14 @@ export function useCanManageKnowledge() {
   return currentOrg?.role === "owner" || currentOrg?.role === "admin";
 }
 
-export function useKnowledgeCollections() {
+export function useKnowledgeCollections({ enabled = true }: { enabled?: boolean } = {}) {
   const { currentOrg } = useOrg();
   return useInfiniteQuery({
     queryKey: ["knowledge", currentOrg?.public_id],
     queryFn: ({ pageParam }) => listKnowledge(pageParam),
     initialPageParam: "",
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    enabled: !!currentOrg,
+    enabled: !!currentOrg && enabled,
   });
 }
 

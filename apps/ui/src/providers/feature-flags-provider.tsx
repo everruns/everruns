@@ -13,13 +13,10 @@ import type { FeatureFlags } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 const DEFAULT_FLAGS: FeatureFlags = {
-  monitoring: false,
-  dreaming: false,
   evals: false,
   extractions: false,
   skills: false,
   memory: false,
-  knowledge: false,
   plugins: false,
   voice: false,
   observers: false,
@@ -59,8 +56,6 @@ function FeatureFlagsLoader({ children }: { children: ReactNode }) {
     flags: {
       ...(activeQuery.data ?? DEFAULT_FLAGS),
       // Deployment availability is not adoption: only the org-effective flag enables this UI.
-      monitoring: !!orgId && (activeQuery.data?.monitoring ?? false),
-      dreaming: !!orgId && (activeQuery.data?.dreaming ?? false),
       extractions: !!orgId && (activeQuery.data?.extractions ?? false),
     },
     isLoading: activeQuery.isLoading,

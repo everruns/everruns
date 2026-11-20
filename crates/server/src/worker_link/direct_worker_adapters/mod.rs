@@ -422,11 +422,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<everruns_core::AgentDefinition>> {
-        let mut agent = self.get_agent_record(org_id, id).await?;
-        if let Some(agent) = agent.as_mut() {
-            self.filter_dreaming(org_id, &mut agent.capabilities)
-                .await?;
-        }
+        let agent = self.get_agent_record(org_id, id).await?;
         agent.map(|a| a.execution_definition()).transpose()
     }
     async fn get_agent_blocker(
@@ -1023,7 +1019,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .hydrate_capability_rows(org_id, capability_rows)
                     .await?;
                 let mut agent = Self::row_to_agent(row, hydrated_capabilities);
-                self.configure_agent_for_org(org_id, &mut agent).await?;
+                crate::platform_chat_agent::configure_page_tools(&mut agent);
 
                 (Some(agent), mcp_tools)
             } else {

@@ -682,23 +682,15 @@ impl TestServer {
         feature_flags.voice = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
-        feature_flags.knowledge = true;
         feature_flags.plugins = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default test org
         // into the experimental flags integration tests exercise.
-        let org_flag_overrides: std::collections::HashMap<String, bool> = [
-            "evals",
-            "skills",
-            "memory",
-            "knowledge",
-            "plugins",
-            "observers",
-            "voice",
-        ]
-        .into_iter()
-        .map(|name| (name.to_string(), true))
-        .collect();
+        let org_flag_overrides: std::collections::HashMap<String, bool> =
+            ["evals", "skills", "memory", "plugins", "observers", "voice"]
+                .into_iter()
+                .map(|name| (name.to_string(), true))
+                .collect();
         db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
             .await
             .expect("seed org feature flags for test org");

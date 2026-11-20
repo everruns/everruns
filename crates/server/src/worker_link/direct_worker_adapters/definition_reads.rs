@@ -2,37 +2,6 @@
 use super::*;
 
 impl DirectWorkerAdapters {
-    pub(super) async fn configure_agent_for_org(
-        &self,
-        org_id: i64,
-        agent: &mut Agent,
-    ) -> Result<()> {
-        self.filter_dreaming(org_id, &mut agent.capabilities)
-            .await?;
-        crate::platform_chat_agent::configure_page_tools(agent);
-        Ok(())
-    }
-
-    /// Resolve adoption on every load; no replica-local cache may delay revocation.
-    pub(super) async fn filter_dreaming(
-        &self,
-        org_id: i64,
-        capabilities: &mut Vec<AgentCapabilityConfig>,
-    ) -> Result<()> {
-        if !capabilities.iter().any(|c| c.capability_id() == "dreaming") {
-            return Ok(());
-        }
-        let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
-            &self.db,
-            org_id,
-            &crate::records::FeatureFlagPolicy::current(),
-        )
-        .await
-        .map_err(|error| store_error(error.to_string()))?;
-        capabilities.retain(|c| c.capability_id() != "dreaming" || flags.dreaming);
-        Ok(())
-    }
-
     /// Load the stored platform Session record (server-internal; EVE-882).
     ///
     /// `WorkerAdapters::get_session` projects this into the portable
@@ -98,15 +67,13 @@ impl DirectWorkerAdapters {
             }
         }
         let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
-        let mut capabilities =
+        let capabilities =
             crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
                 &self.db,
                 org_id,
                 capabilities,
             )
             .await?;
-
-        self.filter_dreaming(org_id, &mut capabilities).await?;
 
         Ok(Some({
             // Parse capabilities from JSON
@@ -242,7 +209,7 @@ impl DirectWorkerAdapters {
                     .unwrap_or_default();
                 let capabilities = self.hydrate_capability_rows(org_id, capabilities).await?;
                 let mut agent = Self::row_to_agent(r, capabilities);
-                self.configure_agent_for_org(org_id, &mut agent).await?;
+                crate::platform_chat_agent::configure_page_tools(&mut agent);
                 Ok(Some(agent))
             }
             None => Ok(None),
@@ -254,13 +221,7 @@ impl DirectWorkerAdapters {
         org_id: i64,
         harness_id: Uuid,
     ) -> Result<Option<Harness>> {
-        let mut harness =
-            crate::harness_chain::resolve_effective_harness(&self.db, org_id, harness_id).await?;
-        if let Some(harness) = harness.as_mut() {
-            self.filter_dreaming(org_id, &mut harness.capabilities)
-                .await?;
-        }
-        Ok(harness)
+        crate::harness_chain::resolve_effective_harness(&self.db, org_id, harness_id).await
     }
 
     /// Convert an AgentRow plus pre-loaded capability rows into an Agent.

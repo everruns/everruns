@@ -15,7 +15,7 @@ Verify that one Knowledge collection supports notes, binary originals, extracted
 ## Preconditions
 
 - Local API, worker and UI are running with `AUTH_MODE=none`, or a signed-in organization admin.
-- Development or hosted deployment; Knowledge is Adoption-grade and disabled until an organization owner/admin or platform operator opts in.
+- Development or hosted deployment with an organization owner or admin account.
 - Use an isolated test collection. No external indexer or model key is needed for keyword mode.
 
 ## Test Data
@@ -30,7 +30,7 @@ Verify that one Knowledge collection supports notes, binary originals, extracted
 
 ## Steps
 
-1. Before opt-in, verify Knowledge is unavailable. Enable Knowledge in organization feature settings, then open `/knowledge`. Verify predefined `everruns-docs` appears without connecting credentials.
+1. Open `/knowledge` from **Blocks → Knowledge**. Verify predefined `everruns-docs` appears without connecting credentials.
 2. Create the collection with indexing off. Open it and save the note.
 3. Upload the DOCX. Select both files and inspect their text views and metadata.
 4. Download the DOCX original and compare its bytes with the input.

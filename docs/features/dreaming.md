@@ -27,7 +27,7 @@ Automatic mode creates a new source-linked Markdown artifact for each operation.
 
 ## Configure the capability
 
-The built-in **Worker** harness includes Dreaming; Bashkit Worker and Sandbox Worker inherit it. On the platform, the **Dreaming** organization feature flag uses the **Adoption** grade: it starts off on every deployment until an organization owner/admin or platform operator opts in. Disabled organizations do not receive the capability in their runtime snapshots, including explicit agent configuration. Enable it in organization feature settings before using it.
+The built-in **Worker** harness includes Dreaming. Bashkit Worker and Sandbox Worker inherit it. Organizations can also add Dreaming to agents or harnesses.
 
 Worker defaults target the existing private `/memory/user` mount under `/learned`, with the idle trigger and budgets below. A host must still provide authorized writable Memory. Override the capability configuration on an agent or harness to change destinations, trigger, model, budgets, or commit mode. Framework presets carry the same capability data; embedded applications explicitly choose the preset and provide Memory, without platform organization flag management.
 

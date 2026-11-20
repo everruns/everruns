@@ -57,9 +57,6 @@ pub(crate) async fn handle(
             .get(arg)
             .and_then(Value::as_str)
             .ok_or_else(|| format!("Missing {arg}"))?;
-        if kind == "knowledge" && !org.feature_flags.knowledge {
-            return Err("Knowledge is not enabled for this organization".into());
-        }
         let entity = dispatch_command(operation, json!({field: value}), &org, state).await?;
         if serde_json::to_vec(&entity)
             .map_err(|e| e.to_string())?

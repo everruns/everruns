@@ -1040,7 +1040,7 @@ All `/v1/durable/*` HTTP endpoints require explicit platform-user auth. The auth
 
 Monitoring preserves this boundary: fleet summaries and actor diagnostics under
 `/v1/durable/monitoring` require `PlatformUser`. Organization monitoring under
-`/v1/monitoring` additionally requires effective adoption and session-read
+`/v1/monitoring` requires session-read
 authority on every request, before using a cached snapshot. Repository queries
 scope population, event counts, detail, and ownership history to the resolved
 org and verify owning-session scope even when actor metadata is stale; global worker capacity and heartbeat telemetry are omitted. Responses read

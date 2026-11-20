@@ -65,13 +65,10 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const ui = useUiTranslations();
   usePageTitle(ui("Monitoring"));
   const { currentOrg } = useOrg();
-  const flags = useFeatureFlagsState();
+  const { isLoading: flagsLoading } = useFeatureFlagsState();
   const policy = usePolicies(scope === "fleet" ? "durable" : "monitoring");
-  const loading = policy.isLoading || (scope === "organization" && flags.isLoading);
-  const allowed =
-    scope === "fleet"
-      ? policy.can("durable.view")
-      : !!flags.flags.monitoring && policy.can("monitoring.view");
+  const loading = policy.isLoading || (scope === "organization" && flagsLoading);
+  const allowed = policy.can(scope === "fleet" ? "durable.view" : "monitoring.view");
   if (loading)
     return (
       <PageContainer>
@@ -86,13 +83,11 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
         <PageMasthead title={ui("Monitoring")} icon={<Activity />} />
         <EmptyState
           icon={<Activity />}
-          title={
-            scope === "fleet" ? ui("Platform access required") : ui("Monitoring is not enabled")
-          }
+          title={scope === "fleet" ? ui("Platform access required") : ui("Session access required")}
           description={
             scope === "fleet"
               ? ui("Cross-organization monitoring is available to platform operators.")
-              : ui("An organization administrator can enable Monitoring in Settings → Features.")
+              : ui("You need permission to view sessions in this organization.")
           }
         />
       </PageContainer>

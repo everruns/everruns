@@ -39,7 +39,7 @@
 * [MCP servers](mcp_servers/) - Manual UI cases.
 * [Memory](memory/) - Manual UI cases.
 * [Models](models/) - Manual UI cases.
-* [Monitoring](monitoring/) - Live fleet, adoption, isolation, and replay.
+* [Monitoring](monitoring/) - Live fleet, access, isolation, and replay.
 * [Navigation icons](navigation_icons/) - Manual UI cases.
 * [Navigation prefetch](navigation_prefetch/) - Manual UI cases.
 * [Observers](observers/) - Manual UI cases.

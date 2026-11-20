@@ -120,7 +120,7 @@ async fn test_mcp_is_available_when_obsolete_org_flag_is_disabled() {
 #[tokio::test]
 async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
     let server = TestServer::in_memory().await;
-    let enabled_flags = std::collections::HashMap::from([
+    let disabled_flags = std::collections::HashMap::from([
         ("evals".to_string(), false),
         ("skills".to_string(), false),
         ("memory".to_string(), false),
@@ -129,7 +129,7 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
     ]);
     server
         .db
-        .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &enabled_flags)
+        .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &disabled_flags)
         .await
         .expect("disable gated surfaces while leaving MCP available");
 
@@ -146,8 +146,6 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         ("/v1/skills/config", "skills"),
         ("/v1/memories", "memory"),
         ("/v1/memories/memory_missing/fs", "memory"),
-        ("/v1/knowledge", "knowledge"),
-        ("/v1/knowledge-indexers", "knowledge"),
         ("/v1/plugins", "plugins"),
     ] {
         let response = server.get(path).await;
@@ -161,6 +159,14 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         let body: Value = response.json();
         assert_eq!(body["detail"], format!("Feature '{flag}' is not enabled"));
         assert_eq!(body["code"], "feature_not_enabled");
+    }
+
+    for path in [
+        "/v1/knowledge",
+        "/v1/knowledge-indexers",
+        "/v1/capabilities/knowledge",
+    ] {
+        server.get(path).await.assert_status(StatusCode::OK);
     }
 
     // Delegation has no feature flag: adding the capability is the opt-in.
@@ -183,8 +189,16 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
             .iter()
             .all(|category| !matches!(
                 category["category"].as_str(),
-                Some("evals" | "skills" | "memories" | "knowledge" | "plugins")
+                Some("evals" | "skills" | "memories" | "plugins")
             ))
+    );
+
+    assert!(
+        discovery["categories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|category| category["category"] == "knowledge")
     );
 
     let invoked = mcp_tool_call(&server, "query", json!({ "commands": "list_evals" })).await;

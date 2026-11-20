@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-20
+
+- Retire the Dreaming, Monitoring, and Knowledge rollout flags. Existing overrides are ignored, and resource permissions continue to govern access. [Feature Flags](security/feature-flags.md).
+
 ## 2026-11-19
 
 - [Runtime MCP](integrations/runtime-mcp.md): the MCP client mirrors `x-mcp-header` tool parameters as `Mcp-Param-*` headers, drops tools with invalid annotations, and retries once after a HeaderMismatch rejection. [Threat Model](security/threat-model.md) TM-TOOL-068.

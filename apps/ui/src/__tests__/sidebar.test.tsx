@@ -135,7 +135,6 @@ const mockFeatureFlags = {
   extractions: true,
   skills: true,
   memory: true,
-  knowledge: true,
   plugins: true,
   voice: true,
   observers: true,
@@ -176,7 +175,6 @@ describe("Sidebar", () => {
       extractions: true,
       skills: true,
       memory: true,
-      knowledge: true,
       plugins: true,
       voice: true,
       observers: true,
@@ -400,7 +398,6 @@ describe("Sidebar", () => {
       evals: false,
       skills: false,
       memory: false,
-      knowledge: false,
       plugins: false,
       observers: false,
     });
@@ -410,7 +407,7 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Evals")).not.toBeInTheDocument();
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
-    expect(screen.queryByText("Knowledge")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Knowledge" })).toHaveAttribute("href", "/knowledge");
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
@@ -595,7 +592,8 @@ describe("Sidebar", () => {
   it("hides System navigation items by default (collapsed)", () => {
     render(<Sidebar />);
 
-    expect(screen.queryByRole("link", { name: "Monitoring" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/monitoring");
+    expect(document.querySelector('a[href="/durable"]')).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Health" })).not.toBeInTheDocument();
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
@@ -609,7 +607,9 @@ describe("Sidebar", () => {
     fireEvent.click(toggle);
 
     expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute("href", "/system/health");
-    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute("href", "/durable");
+    expect(
+      screen.getAllByRole("link", { name: "Monitoring" }).map((link) => link.getAttribute("href")),
+    ).toEqual(["/monitoring", "/durable"]);
     expect(screen.getByText("Workers")).toBeInTheDocument();
     expect(screen.getByText("Workflows")).toBeInTheDocument();
     expect(screen.getByText("Schedules")).toBeInTheDocument();

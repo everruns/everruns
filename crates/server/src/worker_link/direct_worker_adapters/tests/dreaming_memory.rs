@@ -109,40 +109,7 @@ async fn accepted_dreaming_artifact_and_edits_share_live_memory() {
 }
 
 #[tokio::test]
-async fn dreaming_adoption_is_live_on_the_direct_loading_seam() {
-    let adapters = test_adapters();
-    let org = everruns_core::DEFAULT_ORG_ID;
-    for enabled in [false, true, false] {
-        adapters
-            .db
-            .replace_org_feature_flags(
-                org,
-                &std::collections::HashMap::from([("dreaming".to_string(), enabled)]),
-            )
-            .await
-            .unwrap();
-        let mut capabilities = vec![
-            AgentCapabilityConfig::new("dreaming"),
-            AgentCapabilityConfig::new("session_file_system"),
-        ];
-        adapters
-            .filter_dreaming(org, &mut capabilities)
-            .await
-            .unwrap();
-        assert_eq!(
-            capabilities.iter().any(|c| c.capability_id() == "dreaming"),
-            enabled
-        );
-        assert!(
-            capabilities
-                .iter()
-                .any(|c| c.capability_id() == "session_file_system")
-        );
-    }
-}
-
-#[tokio::test]
-async fn due_dreaming_discovery_ignores_revoked_organizations() {
+async fn due_dreaming_discovery_ignores_the_retired_org_flag() {
     use everruns_worker::internal_commands::InternalCommandTransport;
     let adapters = test_adapters();
     let org = everruns_core::DEFAULT_ORG_ID;
@@ -150,7 +117,7 @@ async fn due_dreaming_discovery_ignores_revoked_organizations() {
     let session = seed_platform_session(&adapters.db, org, harness, None).await;
     sqlx::query("INSERT INTO dreaming_state(org_id,key,revision,value_encrypted,session_id,due_at) VALUES($1,'job:due',1,$2,$3,0)")
         .bind(org).bind(vec![0u8]).bind(session.uuid()).execute(adapters.db.pool()).await.unwrap();
-    for enabled in [false, true, false] {
+    for enabled in [false, true] {
         adapters
             .db
             .replace_org_feature_flags(
@@ -168,6 +135,6 @@ async fn due_dreaming_discovery_ignores_revoked_organizations() {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(due.as_array().unwrap().len(), usize::from(enabled));
+        assert_eq!(due, serde_json::json!([[org, session]]));
     }
 }

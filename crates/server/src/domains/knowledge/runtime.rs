@@ -174,16 +174,6 @@ impl KnowledgeService {
         else {
             return Ok((0, vec![]));
         };
-        let overrides = self.db.list_org_feature_flags(row.org_id).await?;
-        #[cfg(not(test))]
-        let policy = crate::records::FeatureFlagPolicy::current();
-        // Domain fixtures enable experimental APIs like Ctx::minimal_for_test.
-        #[cfg(test)]
-        let policy =
-            crate::records::FeatureFlagPolicy::from_env(everruns_core::DeploymentGrade::Dev);
-        if !policy.for_org(&overrides).knowledge {
-            return Ok((row.org_id, vec![]));
-        }
         let config = self
             .session_config(row.org_id, SessionId::from_uuid(session))
             .await?;

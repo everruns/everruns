@@ -65,14 +65,6 @@ fn main() {
 
 async fn run(files: u32) -> Vec<String> {
     let service = KnowledgeService::files(Arc::new(StorageBackend::test_database()));
-    service
-        .db
-        .replace_org_feature_flags(
-            1,
-            &std::collections::HashMap::from([("knowledge".into(), true)]),
-        )
-        .await
-        .expect("enable knowledge");
     let created = service
         .create(
             1,

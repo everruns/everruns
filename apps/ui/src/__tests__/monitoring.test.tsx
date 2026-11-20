@@ -9,7 +9,7 @@ import { getMonitoring } from "@/lib/api/monitoring";
 import { ApiError } from "@/lib/api/client";
 import type { MonitoringSnapshot, MonitoringActorDetail } from "@/lib/api/types";
 
-let mockEnabled = true;
+let mockSessionRead = true;
 let mockPlatform = true;
 let mockOrg = "org_a";
 let mockDataPlane = false;
@@ -19,13 +19,13 @@ jest.mock("@/providers/org-provider", () => ({
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlagsState: () => ({
     isLoading: false,
-    flags: { monitoring: mockEnabled, data_plane: mockDataPlane },
+    flags: { data_plane: mockDataPlane },
   }),
 }));
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({
     isLoading: false,
-    can: (id: string) => id !== "durable.view" || mockPlatform,
+    can: (id: string) => (id === "durable.view" ? mockPlatform : mockSessionRead),
   }),
 }));
 jest.mock("@/lib/api/monitoring", () => ({
@@ -85,7 +85,7 @@ function app(scope: "organization" | "fleet" = "fleet") {
   };
 }
 beforeEach(() => {
-  mockEnabled = true;
+  mockSessionRead = true;
   mockPlatform = true;
   mockOrg = "org_a";
   mockDataPlane = false;
@@ -142,11 +142,11 @@ test("history is compact, bounded, and does not attach current workers to old ob
   expect(replay.phases[0].oldest_ms).toBe(history[0].phaseOldest[replay.phases[0].phase]);
 });
 
-test("organization adoption and platform authorization prevent fetching gated monitoring", () => {
-  mockEnabled = false;
+test("organization session-read and platform permissions prevent unauthorized requests", () => {
+  mockSessionRead = false;
   const org = app("organization");
   const rendered = render(org.element);
-  expect(screen.getByText("Monitoring is not enabled")).toBeInTheDocument();
+  expect(screen.getByText("Session access required")).toBeInTheDocument();
   expect(getMonitoring).not.toHaveBeenCalled();
   rendered.unmount();
   mockPlatform = false;

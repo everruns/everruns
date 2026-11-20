@@ -92,8 +92,8 @@ export const messages: Readonly<Record<string, string>> = {
   "All organizations you are a member of.": "All organisations you are a member of.",
   "All organizations · platform-only monitoring": "All organisations · platform-only monitoring",
   "All service agents in this organization": "All service agents in this organisation",
-  "An organization administrator can enable Monitoring in Settings → Features.":
-    "An organisation administrator can enable Monitoring in Settings → Features.",
+  "You need permission to view sessions in this organization.":
+    "You need permission to view sessions in this organisation.",
   "An organization search account. Searches bill its key.":
     "An organisation search account. Searches bill its key.",
   Analyze: "Analyse",

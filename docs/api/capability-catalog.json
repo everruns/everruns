@@ -655,7 +655,7 @@
         "session_file_system"
       ],
       "docs_slug": null,
-      "feature_flag": "dreaming",
+      "feature_flag": null,
       "features": [],
       "grades": [
         "prod",
@@ -866,7 +866,7 @@
         "session_file_system"
       ],
       "docs_slug": "knowledge",
-      "feature_flag": "knowledge",
+      "feature_flag": null,
       "features": [
         "knowledge"
       ],

@@ -80,7 +80,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Monitor agent behavior and quality over time.": "监控智能体的行为和质量。",
   Monitoring: "监控",
   "Monitoring could not load": "监控无法加载",
-  "Monitoring is not enabled": "未启用监控",
+  "Session access required": "需要会话访问权限",
   "Monitoring is unavailable": "无法监控",
   "Monitoring sections": "监控路段",
   Moonshot: "登月",

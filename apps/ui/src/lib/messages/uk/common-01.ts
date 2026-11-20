@@ -290,8 +290,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Адміністратор організації може продовжувати спілкуватися на Playground як інший віртуальний користувач.",
   "An organisation is your team’s shared workspace. Agents, harnesses, sessions, and settings all live here.":
     "Організація – це спільний робочий простір вашої команди. Тут знаходяться агенти, обв’язки, сеанси та налаштування.",
-  "An organization administrator can enable Monitoring in Settings → Features.":
-    "Адміністратор організації може ввімкнути Моніторинг у Параметрах → Функції.",
+  "You need permission to view sessions in this organization.":
+    "Потрібен дозвіл на перегляд сеансів у цій організації.",
   "An organization search account. Searches bill its key.":
     "Обліковий запис пошуку організації. Пошуки виставляють свій ключ.",
   "An unexpected error occurred. Please try again.":
