@@ -2215,7 +2215,14 @@ that ask for it, and the control plane delivers it as it does a v1 task's,
 the org's task webhooks included (`data_plane/task_webhooks.rs`).
 Decision: delivery goes through the feed, the channel the control plane
 drains once per position, rather than from a cell, which has no outbound
-webhook path; it stays best-effort, as on v1.
+webhook path; it stays best-effort, as on v1. The session's own MCP records (a server
+added to this chat only, an ARD MCP target) then joined cell turns
+(2026-11-20): a turn of a session with a record asks the control plane, in
+the same `user_mcp_servers` call that brings the person's servers, and the
+control plane reads the records from the cell, never from the call, and
+resolves them as it does the person's. As on v1 they join any agent's
+turns and win a name clash with the person's server, so the call and the
+per-use token join the calls any turn may make (`TURN_CALLS`).
 
 **Parity, Phase B: the capabilities left (step 10, 2026-11-19).** A
 capability a deployment turns on by flag (Docker, the container sandbox,
