@@ -37,6 +37,9 @@
 //! - The turn's person's own MCP servers ([`USER_MCP_STORE`],
 //!   [`USER_MCP_SERVERS`], `user_mcp.rs`) stay in the control plane, as
 //!   does a session's Memory ([`MEMORY_FILE`], `memory.rs`).
+//! - Dreaming's maintenance state of a session the data plane runs
+//!   ([`DREAMING_STATE`]) stays here, as for a v1 session, so its daily
+//!   budgets hold across sessions; a cell finds its org's due dreams only.
 //! - A v2 session's SQL databases are no call: they live in the session's
 //!   cell (data plane v2 parity, step 9).
 //! - Every answer, a refusal included, is sealed with the org's data key
@@ -45,14 +48,15 @@
 //!   another call's.
 //! - Each call is counted by name and outcome
 //!   (`everruns_dp_host_calls_total`).
-//! - Nothing else is stored here. The calls are reads, except a Poppy
-//!   call, which keeps the session owner's company accounts and
-//!   conversations in the control plane, as on v1.
+//! - Nothing else is stored here. The calls are reads, except the ones
+//!   that keep what v1 keeps here: a Poppy call's company accounts and
+//!   conversations, a session's resources and leases, its Memory and
+//!   dreaming's state.
 
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
-    ActsAs, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
+    ActsAs, DREAMING_STATE, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
     USER_MCP_SERVERS, USER_MCP_STORE,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
@@ -113,6 +117,12 @@ async fn run(
             super::memory::answer(ctx, &params).await,
         )),
         SLACK_ACTION => Ok(HostCallAnswer::Value(slack_action(ctx, &params).await)),
+        // A worker's dream discovery spans every org; a cell asks for its
+        // org's own (`due_org`).
+        DREAMING_STATE if params["operation"] == "due" => Ok(HostCallAnswer::Error {
+            kind: everruns_internal_protocol::proto::command_error::Kind::Forbidden as i32,
+            message: "a data plane asks for its org's due dreams only".into(),
+        }),
         USER_MCP_STORE => Ok(HostCallAnswer::Value(
             super::user_mcp::store(ctx, &params).await,
         )),

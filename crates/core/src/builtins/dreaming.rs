@@ -19,6 +19,10 @@ impl Capability for DreamingCapability {
     fn id(&self) -> &str {
         DREAMING_CAPABILITY_ID
     }
+    /// A data plane session keeps its maintenance state in the control plane.
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[everruns_contracts::host_calls::DREAMING_STATE]
+    }
     fn name(&self) -> &str {
         "Dreaming"
     }

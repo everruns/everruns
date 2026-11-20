@@ -532,7 +532,14 @@ impl Capability for SandboxFleetCapability {
     }
 
     fn host_calls(&self) -> &'static [&'static str] {
-        &[everruns_contracts::host_calls::CONNECTION_TOKEN]
+        // Its sandboxes are the session's resources, kept in the control
+        // plane (the console lists them).
+        &[
+            everruns_contracts::host_calls::CONNECTION_TOKEN,
+            everruns_contracts::host_calls::SESSION_RESOURCE_REGISTER,
+            everruns_contracts::host_calls::SESSION_RESOURCE_STATUS,
+            everruns_contracts::host_calls::SESSION_RESOURCES_LIST,
+        ]
     }
     fn name(&self) -> &str {
         "Sandbox Fleet"

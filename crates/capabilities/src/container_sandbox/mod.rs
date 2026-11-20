@@ -97,6 +97,15 @@ impl Capability for ContainerSandboxCapability {
         "container_sandbox"
     }
 
+    /// A sandbox it starts is leased in the control plane, whose sweeper
+    /// stops it when the session leaves it running.
+    fn host_calls(&self) -> &'static [&'static str] {
+        &[
+            everruns_contracts::host_calls::LEASED_RESOURCE_UPSERT,
+            everruns_contracts::host_calls::LEASED_RESOURCE_RELEASE,
+        ]
+    }
+
     fn name(&self) -> &str {
         "Container Sandbox"
     }

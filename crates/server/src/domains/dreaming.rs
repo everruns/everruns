@@ -7,6 +7,14 @@ use everruns_core::dreaming::DreamStateRow;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use utoipa::ToSchema;
+/// Whether the row's session runs on the data plane: its summary is there,
+/// under the session's wire id (`session_{32-hex}`, `typed_id.rs`).
+macro_rules! on_data_plane {
+    () => {
+        "EXISTS (SELECT 1 FROM dp_session_summaries s WHERE s.session_id = 'session_' || replace(d.session_id::text, '-', ''))"
+    };
+}
+
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct WorkerDreamingState {
     pub operation: String,
@@ -145,10 +153,21 @@ impl Command for WorkerDreamingState {
                 }
                 let default_enabled = policy.for_org(&std::collections::HashMap::new()).dreaming;
                 // Filter before LIMIT so revoked tenants cannot starve adopted work.
-                let rows=sqlx::query("SELECT d.org_id,d.session_id FROM dreaming_state d LEFT JOIN org_feature_flags f ON f.org_id=d.org_id AND f.flag_name='dreaming' WHERE d.due_at<=$1 AND d.session_id IS NOT NULL AND COALESCE(f.enabled,$3) ORDER BY d.due_at LIMIT $2").bind(self.now.unwrap_or_else(||chrono::Utc::now().timestamp())).bind(i64::from(self.limit.unwrap_or(32).min(100))).bind(default_enabled).fetch_all(pool).await.map_err(|error| CommandError::internal(error.into()))?;
+                // A session the data plane runs dreams there (`due_org`), never on a worker.
+                let rows=sqlx::query(concat!("SELECT d.org_id,d.session_id FROM dreaming_state d LEFT JOIN org_feature_flags f ON f.org_id=d.org_id AND f.flag_name='dreaming' WHERE d.due_at<=$1 AND d.session_id IS NOT NULL AND COALESCE(f.enabled,$3) AND NOT ", on_data_plane!(), " ORDER BY d.due_at LIMIT $2")).bind(self.now.unwrap_or_else(||chrono::Utc::now().timestamp())).bind(i64::from(self.limit.unwrap_or(32).min(100))).bind(default_enabled).fetch_all(pool).await.map_err(|error| CommandError::internal(error.into()))?;
                 let ids: Vec<(i64, SessionId)> = rows
                     .iter()
                     .map(|r| (r.get("org_id"), SessionId::from_uuid(r.get("session_id"))))
+                    .collect();
+                Ok(serde_json::json!(ids))
+            }
+            "due_org" => {
+                // The org's due dreams on the data plane: its cells run them
+                // (the host call `dreaming_state`), asking for their own org only.
+                let rows=sqlx::query(concat!("SELECT d.session_id FROM dreaming_state d WHERE d.org_id=$1 AND d.due_at<=$2 AND d.session_id IS NOT NULL AND ", on_data_plane!(), " ORDER BY d.due_at LIMIT $3")).bind(org).bind(self.now.unwrap_or_else(||chrono::Utc::now().timestamp())).bind(i64::from(self.limit.unwrap_or(32).min(100))).fetch_all(pool).await.map_err(|error| CommandError::internal(error.into()))?;
+                let ids: Vec<(i64, SessionId)> = rows
+                    .iter()
+                    .map(|r| (org, SessionId::from_uuid(r.get("session_id"))))
                     .collect();
                 Ok(serde_json::json!(ids))
             }
@@ -323,5 +342,52 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn a_data_plane_sessions_dreams_are_due_on_the_data_plane_only() {
+        let db = Arc::new(StorageBackend::test_database());
+        let c = ctx(db.clone(), DEFAULT_ORG_ID);
+        let mut sessions = Vec::new();
+        for _ in 0..2 {
+            sessions.push(
+                db.create_session(crate::storage::test_database::test_session_row(
+                    DEFAULT_ORG_ID,
+                ))
+                .await
+                .unwrap()
+                .id,
+            );
+        }
+        let (v1, v2) = (sessions[0], sessions[1]);
+        sqlx::query(
+            "INSERT INTO dp_session_summaries(session_id,org_id,data_plane_id,agent_id,session_version,status,created_at,last_activity_at) VALUES($1,$2,'dp','agent',1,'idle',now(),now())",
+        )
+        .bind(v2.to_string())
+        .bind(DEFAULT_ORG_ID)
+        .execute(db.pool())
+        .await
+        .unwrap();
+        for id in [v1, v2] {
+            let key = format!("session:{id}");
+            let set = json!({"operation":"cas","key":key,"value":"{}","session_id":id.to_string(),"due_at":1});
+            assert_eq!(run(&c, set).await, json!(true));
+        }
+        let ids = |value: serde_json::Value| -> Vec<SessionId> {
+            serde_json::from_value::<Vec<(i64, SessionId)>>(value)
+                .unwrap()
+                .into_iter()
+                .map(|(_, id)| id)
+                .collect()
+        };
+        // The org's cells see its data plane session, and only that.
+        let on_cells = ids(run(&c, json!({"operation":"due_org","now":10})).await);
+        assert_eq!(on_cells, vec![v2]);
+        // A worker never sees it, whatever else it finds.
+        let on_workers = ids(run(&c, json!({"operation":"due","now":10})).await);
+        assert!(!on_workers.contains(&v2), "{on_workers:?}");
+        // Another org sees none of them.
+        let other = ctx(db, 999999);
+        assert!(ids(run(&other, json!({"operation":"due_org","now":10})).await).is_empty());
     }
 }
