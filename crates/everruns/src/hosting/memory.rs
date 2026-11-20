@@ -1203,20 +1203,18 @@ mod tail_tests {
 mod trim_floor_tests {
     use super::*;
 
-    /// A session on a provider without native compaction keeps trimming its
-    /// prompt. Once the history passes a few budgets a durable floor appears,
-    /// and later turns load (and record) only what follows it, so the prompt
-    /// stops growing with the session.
+    /// Portable continuity advances the read floor on providers without native
+    /// compaction; later turns read a bounded suffix while the journal stays whole.
     #[tokio::test]
-    async fn trimming_sessions_load_a_bounded_suffix() {
+    async fn portable_sessions_load_a_bounded_suffix() {
         let profile = MemoryHosting::default();
         let build = AgentBuild::new("trim-floor", "v1");
         let agent = crate::Agent::builder()
             .instructions("You are concise.")
             .model(crate::Model::simulated_with_config(
-                crate::LlmSimConfig::lorem(150).with_context_window(2_000),
+                crate::LlmSimConfig::lorem(150).with_context_window(16_000),
             ))
-            .capability(crate::CompactionConfig::new())
+            .capability(crate::CompactionConfig::new().context_budget_tokens(4096))
             .build()
             .unwrap();
         let engine = crate::Engine::builder()
@@ -1229,17 +1227,25 @@ mod trim_floor_tests {
             .unwrap();
         let id = session.session_id();
         for _ in 0..60 {
-            session.send_and_wait("hi").await.unwrap();
+            tokio::time::timeout(Duration::from_secs(5), session.send_and_wait("hi"))
+                .await
+                .expect("a local continuity turn must finish")
+                .unwrap();
         }
         let floor = profile
             .ports(id)
-            .get_latest(id, "llmsim", "llmsim-model")
+            .get_latest_format(
+                id,
+                everruns_core::compaction_checkpoint::PORTABLE_COMPACTION_PROVIDER,
+                everruns_core::compaction_checkpoint::PORTABLE_COMPACTION_MODEL,
+                everruns_core::compaction_checkpoint::PORTABLE_COMPACTION_FORMAT_VERSION,
+            )
             .await
             .unwrap()
-            .expect("a trim floor");
+            .expect("portable continuity advances the floor");
         assert!(matches!(
             floor.payload,
-            everruns_core::CompactionCheckpointPayload::Trimmed
+            everruns_core::CompactionCheckpointPayload::Portable { .. }
         ));
         let mut prompts = Vec::new();
         let log = profile.reader(id).event_log;
@@ -1258,10 +1264,10 @@ mod trim_floor_tests {
                 None => break,
             }
         }
-        let largest = *prompts.iter().max().unwrap();
+        assert!(floor.source_sequence > 0);
         assert!(
-            *prompts.last().unwrap() < largest,
-            "the floor shortened later prompts: {prompts:?}"
+            *prompts.iter().max().unwrap() < 60,
+            "prompts stay bounded below the growing 120-message journal: {prompts:?}"
         );
     }
 }

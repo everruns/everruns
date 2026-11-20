@@ -18,3 +18,5 @@ export type { UserMcpConnectionResponse as UserMcpConnection } from "./schema-ty
 export * from "./runtime-account-types";
 
 export * from "./model-types";
+
+export type { CompactionStatus } from "./compaction-types";

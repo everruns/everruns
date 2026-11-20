@@ -277,6 +277,11 @@ pub struct MessageQuery {
     /// Internal event cursor used to load the raw suffix after a checkpoint.
     pub after_sequence: Option<i64>,
 
+    /// Exclusive upper event boundary for bounded checkpoint reads.
+    pub before_sequence: Option<i64>,
+    /// Read the oldest matching page rather than the latest window.
+    pub oldest_first: bool,
+
     /// Optional transform to prepend a message based on filter results.
     /// Applied after filtering, receives context about excluded messages.
     pub prepend_transform: Option<Arc<dyn PrependTransform>>,
@@ -292,6 +297,8 @@ impl Default for MessageQuery {
             offset: None,
             keep_head: None,
             after_sequence: None,
+            before_sequence: None,
+            oldest_first: false,
             prepend_transform: None,
         }
     }
@@ -307,6 +314,8 @@ impl std::fmt::Debug for MessageQuery {
             .field("offset", &self.offset)
             .field("keep_head", &self.keep_head)
             .field("after_sequence", &self.after_sequence)
+            .field("before_sequence", &self.before_sequence)
+            .field("oldest_first", &self.oldest_first)
             .field("prepend_transform", &self.prepend_transform.is_some())
             .finish()
     }
@@ -323,6 +332,8 @@ impl MessageQuery {
             offset: None,
             keep_head: None,
             after_sequence: None,
+            before_sequence: None,
+            oldest_first: false,
             prepend_transform: None,
         }
     }
@@ -474,6 +485,10 @@ impl MessageQuery {
 
         if let Some(limit) = self.limit {
             let limit = limit.max(0) as usize;
+            if self.oldest_first {
+                messages.truncate(limit);
+                return;
+            }
             let keep_head = self.keep_head.unwrap_or(0).min(messages.len());
             // Drop the middle `[keep_head, len - limit)`, keeping the head anchor
             // and the latest `limit`. When the windows overlap (keep_head + limit

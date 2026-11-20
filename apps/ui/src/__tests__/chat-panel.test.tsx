@@ -369,9 +369,50 @@ describe("ChatPanel compaction divider", () => {
     render(<ChatPanel />);
 
     expect(screen.getByText(/Context compacted/)).toBeInTheDocument();
-    expect(screen.getByText(/20 → 20 messages/)).toBeInTheDocument();
+    expect(screen.queryByText(/20 → 20 messages/)).not.toBeInTheDocument();
     // Should NOT show "none" as a strategy
     expect(screen.queryByText(/· none/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ChatPanel compaction lifecycle", () => {
+  it("closes progress on skipped reduction and reports failures safely", () => {
+    const started = {
+      id: "context-start",
+      type: "context.compacting",
+      session_id: "session-1",
+      ts: new Date().toISOString(),
+      context: { turn_id: "turn-1" },
+      data: { strategy: "auto", messages_before: 120 },
+    };
+    mockSessionContext.chatEvents = [started];
+    const { rerender } = render(<ChatPanel />);
+    expect(screen.getByText("Compacting context…")).toBeInTheDocument();
+    mockSessionContext.chatEvents = [
+      started,
+      {
+        ...started,
+        id: "context-skip",
+        type: "context.compaction.skipped",
+        data: { strategy: "auto", messages_before: 120 },
+      },
+    ];
+    rerender(<ChatPanel />);
+    expect(screen.queryByText("Compacting context…")).not.toBeInTheDocument();
+    mockSessionContext.chatEvents = [
+      started,
+      {
+        ...started,
+        id: "context-failed",
+        type: "context.compaction.failed",
+        data: { strategy: "auto", messages_before: 120, error: "provider-private-error" },
+      },
+    ];
+    rerender(<ChatPanel />);
+    expect(
+      screen.getByText("Compaction failed. Previous history was retained."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("provider-private-error")).not.toBeInTheDocument();
   });
 });
 

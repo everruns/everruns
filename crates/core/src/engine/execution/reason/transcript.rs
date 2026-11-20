@@ -6,6 +6,115 @@ use crate::engine::events::{
 use crate::engine::message::{RuntimeMessage, RuntimeMessageRole};
 use crate::engine::typed_id::SessionId;
 
+const REPLAY_ACCOUNT: &str = "reasoning_provider_account";
+
+pub(super) fn stamp_replay(
+    metadata: &mut std::collections::HashMap<String, serde_json::Value>,
+    model: &crate::runtime_context::ResolvedModelExecution,
+) {
+    metadata.insert(REPLAY_ACCOUNT.into(), serde_json::json!(model.provider));
+}
+
+pub(super) fn prepare_replay(
+    wire: &mut crate::driver_registry::Message,
+    source: &RuntimeMessage,
+    model: &crate::runtime_context::ResolvedModelExecution,
+) {
+    label_speaker(wire, source);
+    scope_reasoning(
+        wire,
+        source,
+        model.provider_type.as_str(),
+        &model.model,
+        model.provider.as_str(),
+    );
+}
+
+fn scope_reasoning(
+    wire: &mut crate::driver_registry::Message,
+    source: &RuntimeMessage,
+    provider: &str,
+    model: &str,
+    account: &str,
+) {
+    let metadata = source.metadata.as_ref();
+    let matches = |key, value| {
+        metadata
+            .and_then(|m| m.get(key))
+            .and_then(serde_json::Value::as_str)
+            == Some(value)
+    };
+    if matches("provider", provider) && matches("model", model) && matches(REPLAY_ACCOUNT, account)
+    {
+        return;
+    }
+    // Upstream format tags (e.g. `openai` from a router) do not identify
+    // the route, model or credential domain that can decrypt a replay token.
+    // Unknown legacy provenance is not proof of compatibility. Keep readable
+    // transcript data and the journal; omit only request-local opaque state.
+    wire.reasoning.retain(|part| {
+        part.encrypted.is_none()
+            && part.signature.is_none()
+            && part.item_id.is_none()
+            && part.bound_tool_call_id.is_none()
+    });
+}
+
+#[cfg(test)]
+mod replay_scope_tests {
+    use super::*;
+    use everruns_contracts::reasoning::{ReasoningContentPart, ReasoningText};
+
+    #[test]
+    fn opaque_reasoning_requires_the_same_route_model_and_account() {
+        let mut source = RuntimeMessage::assistant("Visible answer remains available.");
+        source.content.push(crate::ContentPart::reasoning(
+            ReasoningContentPart::opaque("openai")
+                .with_item_id("rs_upstream")
+                .with_encrypted("credential-bound"),
+        ));
+        source.content.push(crate::ContentPart::reasoning(
+            ReasoningContentPart::opaque("other").with_text(ReasoningText::Summary {
+                parts: vec!["Readable summary".into()],
+            }),
+        ));
+        source.metadata = Some(std::collections::HashMap::from([
+            ("provider".into(), serde_json::json!("openrouter")),
+            ("model".into(), serde_json::json!("openai/model-a")),
+            (REPLAY_ACCOUNT.into(), serde_json::json!("account-a")),
+        ]));
+        let raw = serde_json::to_value(&source).unwrap();
+        for (provider, model, account, compatible) in [
+            ("openrouter", "openai/model-a", "account-a", true),
+            ("openai", "openai/model-a", "account-a", false),
+            ("openrouter", "openai/model-b", "account-a", false),
+            ("openrouter", "openai/model-a", "account-b", false),
+        ] {
+            let mut wire = crate::llm_conversions::llm_message_from_message(&source);
+            scope_reasoning(&mut wire, &source, provider, model, account);
+            assert_eq!(
+                wire.reasoning.iter().any(|p| p.encrypted.is_some()),
+                compatible
+            );
+            assert!(wire.reasoning.iter().any(|p| p.text.is_some()));
+        }
+        assert_eq!(serde_json::to_value(&source).unwrap(), raw);
+        source.metadata.as_mut().unwrap().remove(REPLAY_ACCOUNT);
+        let mut wire = crate::llm_conversions::llm_message_from_message(&source);
+        scope_reasoning(
+            &mut wire,
+            &source,
+            "openrouter",
+            "openai/model-a",
+            "account-a",
+        );
+        assert!(
+            !wire.reasoning.iter().any(|p| p.encrypted.is_some()),
+            "legacy artifacts with unknown account provenance cannot be assumed portable"
+        );
+    }
+}
+
 /// Native tool results can commit while the assistant is still streaming.
 /// Replay places those results after their owning call without changing events.
 /// Tell the model who is speaking in a user-role message: an external actor's

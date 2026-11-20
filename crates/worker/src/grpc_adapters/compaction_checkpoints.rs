@@ -16,12 +16,30 @@ impl crate::core::CompactionCheckpointStore for GrpcAdapter {
         provider_type: &str,
         model: &str,
     ) -> Result<Option<crate::core::CompactionCheckpoint>> {
+        self.get_latest_format(
+            session_id,
+            provider_type,
+            model,
+            crate::core::COMPACTION_CHECKPOINT_FORMAT_VERSION,
+        )
+        .await
+    }
+
+    async fn get_latest_format(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        format_version: u32,
+    ) -> Result<Option<crate::core::CompactionCheckpoint>> {
         let mut client = self.client.inner.client();
         let response = client
             .get_compaction_checkpoint(proto::GetCompactionCheckpointRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 provider_type: provider_type.to_string(),
                 model: model.to_string(),
+                format_version: Some(format_version),
+                source_sequence_only: false,
             })
             .await;
         let response = match response {
@@ -50,6 +68,27 @@ impl crate::core::CompactionCheckpointStore for GrpcAdapter {
                 })
             })
             .transpose()
+    }
+
+    async fn latest_source_sequence(&self, session_id: SessionId) -> Result<Option<i64>> {
+        let response = self
+            .client
+            .inner
+            .client()
+            .get_compaction_checkpoint(proto::GetCompactionCheckpointRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                source_sequence_only: true,
+                ..Default::default()
+            })
+            .await;
+        match response {
+            Ok(response) => Ok(response.into_inner().latest_source_sequence),
+            Err(status) if is_encryption_not_configured(&status) => {
+                self.client.checkpoints.mark_unavailable();
+                Ok(None)
+            }
+            Err(status) => Err(grpc_status_to_error(status)),
+        }
     }
 
     async fn install(&self, checkpoint: crate::core::CompactionCheckpoint) -> Result<bool> {

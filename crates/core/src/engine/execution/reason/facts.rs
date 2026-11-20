@@ -66,11 +66,18 @@ pub(super) fn interleave_facts(
     );
     let mut placed = Vec::with_capacity(messages.len() + 1);
     for (index, message) in messages.into_iter().enumerate() {
-        let input_at = matches!(
-            message.role,
-            RuntimeMessageRole::User | RuntimeMessageRole::ToolResult
-        )
-        .then_some(message.created_at);
+        // A restored summary uses the user channel for reference data, but its
+        // freshly generated timestamp is not a new conversation input. Rendering
+        // facts there would rewrite the historical prefix on every restore.
+        let continuity = message
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(crate::message::PORTABLE_CONTINUITY_METADATA_KEY))
+            .and_then(serde_json::Value::as_bool)
+            == Some(true);
+        let input_at = (message.role == RuntimeMessageRole::ToolResult
+            || (message.role == RuntimeMessageRole::User && !continuity))
+            .then_some(message.created_at);
         placed.push(message);
         let next = roles[index + 1..]
             .iter()
@@ -190,6 +197,59 @@ mod tests {
         let (placed, volatile) = interleave_facts(history, |_| None, false);
         assert_eq!(texts(&placed), ["task", "answer"]);
         assert_eq!(volatile, 0);
+    }
+
+    #[test]
+    fn restored_continuity_is_not_a_new_input_that_regenerates_historical_facts() {
+        use RuntimeMessageRole::*;
+        for turn_scoped in [false, true] {
+            let mut first_summary = super::super::context_plan::summary_message("model continuity");
+            first_summary.created_at = at(0);
+            let summary_text = first_summary.text().unwrap().to_string();
+            let mut restored_summary = first_summary.clone();
+            restored_summary.created_at = at(1); // another worker restores it later
+            let old_answer = message(Agent, "old suffix starts with an answer", 2);
+            let input = message(User, "current task", 3);
+            let (first, volatile) = interleave_facts(
+                vec![first_summary, old_answer.clone(), input.clone()],
+                render,
+                turn_scoped,
+            );
+            assert_eq!(volatile, 0);
+            assert_eq!(
+                texts(&first),
+                vec![
+                    summary_text,
+                    "old suffix starts with an answer".into(),
+                    "current task".into(),
+                    "<facts>10:03</facts>".into()
+                ]
+            );
+            // Quoting the summary text cannot suppress facts for a real input.
+            let quoted = message(User, first[0].text().unwrap(), 0);
+            let (quoted_view, _) = interleave_facts(
+                vec![quoted, old_answer.clone(), input.clone()],
+                render,
+                turn_scoped,
+            );
+            assert!(
+                texts(&quoted_view)
+                    .iter()
+                    .any(|text| text == "<facts>10:00</facts>")
+            );
+            let (next, _) = interleave_facts(
+                vec![
+                    restored_summary,
+                    old_answer,
+                    input,
+                    message(Agent, "answer", 4),
+                    message(User, "next task", 5),
+                ],
+                render,
+                turn_scoped,
+            );
+            assert_eq!(texts(&next[..first.len()]), texts(&first));
+        }
     }
 
     #[test]

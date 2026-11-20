@@ -176,7 +176,7 @@ Performance and cost optimization for LLM interactions.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Infinity Context](/capabilities/infinity-context/) | `infinity_context` | 1 |
+| [Infinity Context](/capabilities/infinity-context/) | `infinity_context` (deprecated) | 1 |
 | [Context Compaction](/advanced/compaction/) | `compaction` | 0 |
 | [Dreaming](/features/dreaming/) | `dreaming` | 0; `FEATURE_DREAMING` grade; organization Adoption opt-in |
 | [Auto Tool Search](/capabilities/tool-search/#auto-tool-search) | `auto_tool_search` | 0 (adds `tool_search` on models without native tool search) |
@@ -304,6 +304,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 
 | Capability | Depends On |
 |---|---|
+| [Context Compaction](/advanced/compaction/) | [Infinity Context](/capabilities/infinity-context/) (history retrieval included automatically) |
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
 | [Shell Code Mode](/capabilities/shell-code-mode/) | [Bashkit Shell](/capabilities/bashkit-shell/) |
 | [Host Shell](/capabilities/host-shell/) | [File System](/capabilities/file-system/) |

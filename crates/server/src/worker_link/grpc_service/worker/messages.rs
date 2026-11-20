@@ -356,6 +356,14 @@ impl WorkerServiceImpl {
         let mut query = everruns_core::MessageQuery::new(session_id.into());
         query.limit = message_limit.map(i64::from);
         query.after_sequence = req.after_sequence;
+        query.before_sequence = req.before_sequence;
+        query.oldest_first = req.oldest_first;
+        query.offset = req.offset;
+        if let Some(search) = req.search {
+            query
+                .filters
+                .push(everruns_core::message_filter::MessageFilter::Search(search));
+        }
         let events = self
             .db
             .list_message_events_filtered(&query)
@@ -380,7 +388,9 @@ impl WorkerServiceImpl {
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
+        let mut message_sequences = std::collections::HashMap::new();
         for event in events {
+            let sequence = i64::from(event.sequence);
             let event = crate::EventService::row_to_event(event);
             // Extract message from typed event data
             let message = match event_to_message(&event) {
@@ -395,6 +405,7 @@ impl WorkerServiceImpl {
                 }
             };
 
+            message_sequences.insert(message.id.to_string(), sequence);
             proto_messages.push(message_to_proto(&message));
         }
 
@@ -402,6 +413,7 @@ impl WorkerServiceImpl {
             messages: proto_messages,
             total_count,
             source_sequence,
+            message_sequences,
         }))
     }
 
@@ -484,8 +496,23 @@ impl WorkerServiceImpl {
             )
         })?;
         let store = crate::storage::DbCompactionCheckpointStore::new(self.db.clone(), encryption);
+        if req.source_sequence_only {
+            return Ok(Response::new(proto::GetCompactionCheckpointResponse {
+                checkpoint: None,
+                latest_source_sequence: store
+                    .latest_source_sequence(session_id)
+                    .await
+                    .map_err(|e| internal_status("Failed to read compaction boundary", e))?,
+            }));
+        }
         let checkpoint = store
-            .get_latest(session_id, &req.provider_type, &req.model)
+            .get_latest_format(
+                session_id,
+                &req.provider_type,
+                &req.model,
+                req.format_version
+                    .unwrap_or(everruns_core::COMPACTION_CHECKPOINT_FORMAT_VERSION),
+            )
             .await
             .map_err(|error| internal_status("Failed to load compaction checkpoint", error))?
             .map(|checkpoint| {
@@ -509,6 +536,7 @@ impl WorkerServiceImpl {
             .transpose()?;
         Ok(Response::new(proto::GetCompactionCheckpointResponse {
             checkpoint,
+            latest_source_sequence: None,
         }))
     }
 

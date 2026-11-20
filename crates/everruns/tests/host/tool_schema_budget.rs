@@ -69,18 +69,35 @@ async fn embedded_turn_reserves_tools_before_sending_history_to_provider() {
             SessionBuilder::new(harness_id)
                 .id(session_id)
                 .agent(agent_id)
-                .capability("compaction")
+                // Exercise request-budget trimming independently of paid
+                // summary generation, which cannot fit this tiny window.
+                .capability(everruns_contracts::CapabilityRef::with_config(
+                    "compaction",
+                    serde_json::json!({"strategy":"observation_masking"}),
+                ))
                 .build(),
         )
         .build()
         .await
         .expect("runtime builds");
     for turn in 0..10 {
-        runtime
+        let result = runtime
             .run_text_turn(session_id, format!("turn {turn}: {}", "x".repeat(800)))
             .await
             .expect("turn succeeds");
+        assert!(result.success, "turn {turn} failed: {:?}", result.error);
     }
+    assert_eq!(
+        runtime
+            .messages(session_id)
+            .await
+            .unwrap()
+            .iter()
+            .filter(|message| message.role == everruns_core::RuntimeMessageRole::User)
+            .count(),
+        10,
+        "all original user turns remain in the journal"
+    );
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 10);
     let last = requests.last().unwrap();

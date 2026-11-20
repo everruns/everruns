@@ -321,10 +321,13 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
   const ui = useUiTranslations();
   const total = usage.input_tokens + usage.output_tokens;
   // Best-effort cost: prefer the provider's actual cost, fall back to the
-  // price-table estimate. Mark estimate-only values as "est.".
+  // price-table estimate. An effective total can blend estimated components
+  // with an authoritative provider charge.
   const effectiveCostUsd =
     usage.effective_cost_usd ?? usage.actual_cost_usd ?? usage.estimated_cost_usd;
-  const isEstimated = usage.actual_cost_usd === undefined;
+  const isEstimated =
+    usage.actual_cost_usd == null ||
+    (usage.effective_cost_usd != null && usage.effective_cost_usd !== usage.actual_cost_usd);
 
   return (
     <div className="mt-3 p-3 bg-muted/50">

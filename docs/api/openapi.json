@@ -43402,6 +43402,66 @@
           "explicit"
         ]
       },
+      "CompactionEventSummary": {
+        "type": "object",
+        "description": "Content-free lifecycle information suitable for chat and API inspection.",
+        "required": [
+          "state",
+          "strategy"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Whether this observation installed a checkpoint rather than only masking a request."
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Recorded elapsed reduction time.",
+            "minimum": 0
+          },
+          "source_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Replaced journal boundary when available."
+          },
+          "state": {
+            "type": "string",
+            "description": "compacting, completed, skipped, or failed."
+          },
+          "strategy": {
+            "type": "string",
+            "description": "Strategy recorded by the runtime, not a forecast of the next provider call."
+          },
+          "tokens_after": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Output token estimate or native provider measurement, when available.",
+            "minimum": 0
+          },
+          "tokens_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Input token estimate or native provider measurement, when available.",
+            "minimum": 0
+          }
+        }
+      },
       "CompactionFailStage": {
         "type": "string",
         "description": "Which stage of a compaction attempt failed.",
@@ -43432,6 +43492,81 @@
           "no_material_reduction",
           "guard_rejected"
         ]
+      },
+      "CompactionStatus": {
+        "type": "object",
+        "description": "Effective configured policy and the last compatible saved checkpoint.",
+        "required": [
+          "enabled",
+          "proactive",
+          "history_retrieval_available"
+        ],
+        "properties": {
+          "budget_percent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Native request pressure threshold as a fraction of the model window."
+          },
+          "checkpoint": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ContextCheckpoint",
+                "description": "Saved checkpoint metadata only; never summary text or provider wire state."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checkpoint_store_available": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Store availability, not a promise about the backend's crash durability.\nNone when a remote host has not reported its store."
+          },
+          "context_budget_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Soft working-history target, distinct from the provider hard window.",
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether a compaction policy is configured after inheritance and dependencies."
+          },
+          "history_retrieval_available": {
+            "type": "boolean",
+            "description": "Whether raw history retrieval is allowed by the configured prompt hooks."
+          },
+          "last_event": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompactionEventSummary",
+                "description": "Latest reported lifecycle outcome, when a host provides event observations."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proactive": {
+            "type": "boolean",
+            "description": "Whether proactive reduction is enabled."
+          },
+          "strategy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Configured strategy; runtime/provider eligibility still controls execution."
+          }
+        }
       },
       "CompactionStepData": {
         "type": "object",
@@ -43944,6 +44079,44 @@
           }
         ],
         "description": "A part of message content - can be text, image, image_file, tool_call, or tool_result\n\nThis is the canonical content part type used across the system.\nAPI layer enables the \"openapi\" feature to add ToSchema derive."
+      },
+      "ContextCheckpoint": {
+        "type": "object",
+        "description": "Credential-free metadata for an installed checkpoint.",
+        "required": [
+          "id",
+          "kind",
+          "source_sequence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Public-safe identifier for correlating the checkpoint with trace events."
+          },
+          "kind": {
+            "type": "string",
+            "description": "portable_summary, provider_native, legacy_summary, or legacy_trim."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model scope for native checkpoints; portable notes have no model scope."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider scope for native checkpoints; portable notes have no provider scope."
+          },
+          "source_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Exact journal boundary replaced by this checkpoint."
+          }
+        }
       },
       "ContextCompactedData": {
         "type": "object",
@@ -60863,7 +61036,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Provider-reported cost of the compaction call itself, in USD.\n\nCompaction is a separate billable model call, so its cost is also folded\ninto the generation's `usage.actual_cost_usd` — that is what budgets and\n`llm_generations` read. This field keeps the split visible, so an\noperator can see how much of a turn's spend was compaction (EVE-895)."
+            "description": "Provider-reported cost of the compaction call itself, in USD.\n\nAttribution only: the native call has its own `llm.generation` usage\nrecord. Consumers must not add this amount to the main call again."
           },
           "duration_ms": {
             "type": [
@@ -60873,6 +61046,14 @@
             "format": "int64",
             "description": "Duration of the compaction operation in milliseconds",
             "minimum": 0
+          },
+          "estimated_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Price-table estimate for the native compaction call, kept distinct from\nauthoritative provider cost and used in effective spend when it is absent."
           },
           "input_tokens_after": {
             "type": [
@@ -76292,6 +76473,25 @@
           "contributions"
         ],
         "properties": {
+          "as_of_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Canonical generation event sequence; absent for an assembled preview."
+          },
+          "compaction": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompactionStatus",
+                "description": "Effective compaction policy and safe checkpoint metadata when the host reports it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "context_window_tokens": {
             "type": [
               "integer",
@@ -76324,6 +76524,10 @@
             "format": "int32",
             "description": "Estimated number of input tokens consumed by the next generation given the current context.",
             "minimum": 0
+          },
+          "measurement_available": {
+            "type": "boolean",
+            "description": "Whether a main model request or assembled context backs the estimates."
           },
           "model": {
             "type": "string",

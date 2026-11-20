@@ -778,3 +778,112 @@ async fn participant_commands_list_add_and_leave_history() {
     .expect_err("host cannot leave through member endpoint");
     assert_eq!(err.status().as_u16(), 409);
 }
+
+#[tokio::test]
+async fn context_report_excludes_summary_calls_and_preserves_session_scope() {
+    use crate::storage::CreateEventRow;
+    use everruns_core::{RuntimeMessage, events::LlmGenerationData};
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = test_ctx(db.clone(), 100);
+    let harness = seed_harness(&ctx).await;
+    let mut request = create_request(harness);
+    request.capabilities = vec![everruns_contracts::CapabilityRef::new("compaction")];
+    let session = CreateSession(request).execute(&ctx).await.unwrap();
+    let other = CreateSession(create_request(harness))
+        .execute(&ctx)
+        .await
+        .unwrap();
+    let empty = GetSessionContextReport {
+        session_id: session.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert!(!empty.measurement_available);
+    assert!(empty.as_of_sequence.is_none());
+    let policy = empty.compaction.unwrap();
+    assert!(policy.enabled && policy.proactive && policy.history_retrieval_available);
+    assert_eq!(policy.context_budget_tokens, Some(64_000));
+    let main = LlmGenerationData::success(
+        vec![RuntimeMessage::user("measured main request".repeat(100))],
+        vec![],
+        Some("ok".into()),
+        vec![],
+        "main-model".into(),
+        Some("openai".into()),
+        None,
+        None,
+        None,
+    );
+    let mut summary = serde_json::to_value(&main).unwrap();
+    summary["messages"] = serde_json::json!([]);
+    summary["metadata"]["model"] = serde_json::json!("summary-model");
+    summary["metadata"]["request_options"] =
+        serde_json::json!({"metadata":{"purpose":"continuity_summary"}});
+    let row = |id, data| CreateEventRow {
+        session_id: id,
+        event_type: "llm.generation".into(),
+        ts: chrono::Utc::now(),
+        context: serde_json::json!({}),
+        data,
+        metadata: None,
+        tags: None,
+    };
+    let measured = db
+        .create_event(row(session.id, serde_json::to_value(main).unwrap()))
+        .await
+        .unwrap();
+    // Both stored event shapes exist in old journals. Neither summary may
+    // replace a main generation's context measurement.
+    db.create_event(row(session.id, summary.clone()))
+        .await
+        .unwrap();
+    db.create_event(row(
+        session.id,
+        serde_json::json!({"type":"llm.generation","data":summary}),
+    ))
+    .await
+    .unwrap();
+    let native = serde_json::json!({"messages":[],"output":{},"metadata":{"model":"native-model","success":true,"usage":{"input_tokens":999999,"output_tokens":20000},"request_options":{"metadata":{"purpose":"context_compaction"}}}});
+    db.create_event(row(session.id, native.clone()))
+        .await
+        .unwrap();
+    db.create_event(row(
+        session.id,
+        serde_json::json!({"type":"llm.generation","data":native}),
+    ))
+    .await
+    .unwrap();
+    db.create_event(row(other.id, serde_json::json!({"messages":[],"output":{},"metadata":{"model":"other-session","success":true}}))).await.unwrap();
+    let before = db.count_events(session.id, &[]).await.unwrap();
+    let report = GetSessionContextReport {
+        session_id: session.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .unwrap();
+    assert!(report.measurement_available);
+    assert_eq!(report.model, "main-model");
+    assert_eq!(report.as_of_sequence, Some(i64::from(measured.sequence)));
+    assert!(report.estimated_input_tokens > 0);
+    assert_eq!(
+        report.compaction.unwrap().checkpoint_store_available,
+        Some(false)
+    );
+    assert_eq!(
+        db.count_events(session.id, &[]).await.unwrap(),
+        before,
+        "inspection cannot append events"
+    );
+    let mut foreign = test_ctx(db, 100);
+    foreign.caller.org_id = DEFAULT_ORG_ID + 1;
+    let denied = GetSessionContextReport {
+        session_id: session.id.to_string(),
+    }
+    .execute(&foreign)
+    .await;
+    assert!(
+        denied.is_err(),
+        "another organization cannot inspect the session"
+    );
+}

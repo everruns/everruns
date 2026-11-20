@@ -46,6 +46,15 @@ pub struct ContextReportContribution {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SessionContextReport {
+    /// Whether a main model request or assembled context backs the estimates.
+    #[serde(default)]
+    pub measurement_available: bool,
+    /// Canonical generation event sequence; absent for an assembled preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub as_of_sequence: Option<i64>,
+    /// Effective compaction policy and safe checkpoint metadata when the host reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction: Option<crate::compaction_status::CompactionStatus>,
     /// Prefixed session identifier this report describes.
     pub session_id: String,
     /// Model identifier the report's token estimates target (used to scope context-window math).
@@ -93,6 +102,9 @@ pub fn build_session_context_report_from_generation(
     let contributions = builder.contributions;
 
     SessionContextReport {
+        measurement_available: true,
+        as_of_sequence: None,
+        compaction: None,
         session_id: session_id.into(),
         model: generation.metadata.model.clone(),
         context_window_tokens,
@@ -132,6 +144,9 @@ pub async fn build_session_context_report(
             .and_then(|limits| u32::try_from(limits.context).ok());
 
     SessionContextReport {
+        measurement_available: true,
+        as_of_sequence: None,
+        compaction: None,
         session_id: assembled.snapshot.session_id.to_string(),
         model: assembled.turn_agent.model.clone(),
         context_window_tokens,

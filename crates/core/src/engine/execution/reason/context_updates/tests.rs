@@ -30,8 +30,6 @@ fn installation_edits_and_removal_only_append_to_each_previous_request() {
         let actual = texts(&sent);
         assert!(actual.starts_with(&previous));
         assert_eq!(updates.added(), 1);
-        assert_eq!(updates.volatile_suffix_len(0), 0);
-        assert_eq!(updates.volatile_suffix_len(1), 2);
         assert_eq!(sent.last().unwrap().role, RuntimeMessageRole::User);
         previous = actual;
         history.push(answer(&updates));
@@ -50,7 +48,6 @@ fn unchanged_inventory_replays_once_after_a_worker_restart() {
     history.push(RuntimeMessage::user("continue"));
     let replay = prepare(&mut history, Some("A"));
     assert_eq!(replay.added(), 0);
-    assert_eq!(replay.volatile_suffix_len(1), 1);
     assert!(texts(&history).starts_with(&texts(&first)));
     assert_eq!(
         history
@@ -134,5 +131,86 @@ fn an_empty_inventory_is_disclosed_after_a_history_cut() {
             .unwrap()
             .contains("No skills are currently available.")
     );
-    assert_eq!(updates.volatile_suffix_len(0), 0);
+}
+
+// Scenario from https://github.com/vercel/eve/pull/6498: a replayable
+// announcement must precede an unreplayable live-context tail.
+#[test]
+fn continuation_catalog_update_survives_live_facts_and_the_next_turn_as_the_same_wire_prefix() {
+    use super::super::{context_plan, facts};
+    use everruns_contracts::runtime::turn_agent::TurnAgent;
+
+    for turn_scoped in [false, true] {
+        let wire = |messages: &[RuntimeMessage]| {
+            messages
+                .iter()
+                .map(|source| {
+                    let mut message = crate::llm_conversions::llm_message_from_message(source);
+                    facts::mark_turn_scoped(&mut message, source, turn_scoped);
+                    format!("{message:?}")
+                })
+                .collect::<Vec<_>>()
+        };
+        let render = |at: chrono::DateTime<chrono::Utc>| Some(format!("<facts>{at}</facts>"));
+        let agent = TurnAgent {
+            conversation_context: Some("Project instructions remain reference data".into()),
+            conversation_context_update: Some("Current skill/tool catalog B".into()),
+            ..Default::default()
+        };
+        let summary =
+            context_plan::summary_message("Historical model notes; verify original evidence.");
+        let mut raw = vec![
+            summary.clone(),
+            RuntimeMessage::user("task"),
+            RuntimeMessage::assistant("partial"),
+        ];
+        let (mut first, volatile) = facts::interleave_facts(raw.clone(), render, turn_scoped);
+        assert_eq!(volatile, 1);
+        let update = apply(&mut first, &agent, volatile);
+        let announcement = first
+            .iter()
+            .position(|m| {
+                m.text()
+                    .is_some_and(|t| t.contains("<capability-context-update>"))
+            })
+            .unwrap();
+        assert!(
+            announcement < first.len() - volatile,
+            "a persistent update must precede the live-only facts"
+        );
+        assert_eq!(
+            first[1].text(),
+            summary.text(),
+            "do not move ephemeral data across the compaction checkpoint"
+        );
+        let cached = wire(&first[..first.len() - volatile]);
+
+        // The answer is persisted and reloaded; no worker-local update state.
+        let mut tool_call = answer(&update);
+        tool_call
+            .content
+            .push(crate::message::ContentPart::tool_call(
+                "read",
+                "read_file",
+                json!({"path":"notes.md"}),
+            ));
+        raw.push(serde_json::from_value(serde_json::to_value(tool_call).unwrap()).unwrap());
+        raw.push(RuntimeMessage::tool_result(
+            "read",
+            Some(json!("recorded result")),
+            None,
+        ));
+        let (mut step, step_volatile) = facts::interleave_facts(raw.clone(), render, turn_scoped);
+        assert_eq!(apply(&mut step, &agent, step_volatile).added(), 0);
+        assert_eq!(step_volatile, 0);
+        assert_eq!(wire(&step[..cached.len()]), cached);
+
+        raw.push(RuntimeMessage::assistant("finished tool step"));
+        raw.push(RuntimeMessage::user("next turn"));
+        let (mut next, next_volatile) = facts::interleave_facts(raw, render, turn_scoped);
+        let replay = apply(&mut next, &agent, next_volatile);
+        assert_eq!(next_volatile, 0);
+        assert_eq!(replay.added(), 0);
+        assert_eq!(wire(&next[..cached.len()]), cached);
+    }
 }

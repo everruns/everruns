@@ -14,6 +14,7 @@ import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } fro
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EntityIdentity } from "@/components/ui/entity-identity";
+import { SessionContextButton } from "@/components/session/session-context-button";
 import { SessionForkButton } from "@/components/session/session-fork-button";
 import {
   SessionApprovalModeSwitch,
@@ -365,6 +366,7 @@ function SessionRecordingActions({
 
   return (
     <>
+      <SessionContextButton sessionId={sessionId} />
       <SessionForkButton
         sessionId={sessionId}
         sessionTitle={sessionTitle}

@@ -247,10 +247,13 @@ impl Engine {
     pub(crate) async fn inspect_hosted(&self, session: SessionId) -> Result<crate::SessionContext> {
         let query = self.query_runtime_hosted(session).await?;
         let commands = query.runtime.list_commands(session).await?;
+        let context = query.runtime.load_context(session).await?;
+        let compaction = query.runtime.context_compaction(&context).await?;
         Ok(crate::SessionContext::from_runtime(
-            query.runtime.load_context(session).await?,
+            context,
             query.agent.plugin_warnings(),
             commands,
+            compaction,
         ))
     }
 

@@ -126,6 +126,10 @@ fn ran_clean(result: &str) -> bool {
 
 #[async_trait]
 impl ChatDriver for ScriptRunDriver {
+    fn supports_history_summarization(&self) -> bool {
+        false
+    }
+
     async fn chat_completion_stream(
         &self,
         endpoint: &ProviderEndpoint,

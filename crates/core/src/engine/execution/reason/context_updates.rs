@@ -21,14 +21,9 @@ pub(super) struct ContextUpdates {
 }
 
 impl ContextUpdates {
+    #[cfg(test)]
     pub(super) fn added(&self) -> usize {
         usize::from(self.record.is_some())
-    }
-
-    /// Snapshots replay unchanged and are cacheable immediately. Only extend
-    /// an existing volatile tail when an unreplayable fact precedes the update.
-    pub(super) fn volatile_suffix_len(&self, prior: usize) -> usize {
-        if prior == 0 { 0 } else { prior + self.added() }
     }
 
     pub(super) fn stamp(&self, metadata: &mut HashMap<String, Value>) {
@@ -68,6 +63,7 @@ fn notice(content: Option<&str>) -> RuntimeMessage {
 pub(super) fn apply(
     messages: &mut Vec<RuntimeMessage>,
     agent: &everruns_contracts::runtime::turn_agent::TurnAgent,
+    volatile_suffix_len: usize,
 ) -> ContextUpdates {
     if let Some(context) = agent
         .conversation_context
@@ -76,7 +72,12 @@ pub(super) fn apply(
     {
         messages.insert(0, RuntimeMessage::user(context.clone()));
     }
-    prepare(messages, agent.conversation_context_update.as_deref())
+    // A live-only facts tail is not replayed next turn. Keep recorded updates
+    // before it so the replayable prefix includes the update immediately.
+    let volatile = messages.split_off(messages.len().saturating_sub(volatile_suffix_len));
+    let updates = prepare(messages, agent.conversation_context_update.as_deref());
+    messages.extend(volatile);
+    updates
 }
 
 pub(super) fn has_history(messages: &[RuntimeMessage]) -> bool {

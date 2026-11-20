@@ -15,6 +15,22 @@ use crate::typed_id::SessionId;
 pub const COMPACTION_CHECKPOINT_FORMAT_VERSION: u32 = 1;
 /// Checkpoint format for Anthropic wire-level message-prefix replay.
 pub const ANTHROPIC_COMPACTION_CHECKPOINT_FORMAT_VERSION: u32 = 2;
+/// Provider-neutral continuity. A separate key keeps native checkpoints intact.
+pub const PORTABLE_COMPACTION_FORMAT_VERSION: u32 = 3;
+pub const PORTABLE_COMPACTION_PROVIDER: &str = "everruns-portable";
+pub const PORTABLE_COMPACTION_MODEL: &str = "continuity-v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PortableContinuity {
+    pub text: String,
+    pub pinned: Vec<String>,
+    pub producer_provider: String,
+    pub producer_model: String,
+    pub source_fingerprint: [u8; 32],
+    pub prompt_version: u32,
+    /// Provider usage is retained even when no inline dollar cost is available.
+    pub usage: serde_json::Value,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -24,6 +40,9 @@ pub enum CompactionCheckpointPayload {
     },
     Summary {
         text: String,
+    },
+    Portable {
+        continuity: PortableContinuity,
     },
     /// History up to `source_sequence` was trimmed out of the prompt and is
     /// not loaded again. Nothing replaces it: the model sees only what
@@ -53,6 +72,15 @@ pub struct ProactiveCompactionAttempt {
 }
 
 impl CompactionCheckpoint {
+    pub fn is_portable(&self) -> bool {
+        self.is_compatible_format(
+            PORTABLE_COMPACTION_PROVIDER,
+            PORTABLE_COMPACTION_MODEL,
+            PORTABLE_COMPACTION_FORMAT_VERSION,
+        ) && matches!(&self.payload, CompactionCheckpointPayload::Portable { continuity }
+            if continuity.prompt_version == 1 && !continuity.text.trim().is_empty())
+    }
+
     pub fn is_compatible(&self, provider_type: &str, model: &str) -> bool {
         self.is_compatible_format(provider_type, model, COMPACTION_CHECKPOINT_FORMAT_VERSION)
     }

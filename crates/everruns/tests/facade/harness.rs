@@ -205,15 +205,15 @@ async fn conversation_preset_runs_a_minimal_framework_session() {
         .start()
         .await
         .unwrap();
-    // Conversation carries dialogue and approval tools only: no workspace, no
-    // shell, no web search.
+    // Conversation carries dialogue, approval and retained-history retrieval:
+    // no workspace, shell or web search.
     let tools = session.inspect().await.unwrap().tools;
     assert!(
-        tools
-            .iter()
-            .all(|tool| tool.name.contains("approval") || tool.name == "ask_user"),
+        tools.iter().all(|tool| tool.name.contains("approval")
+            || matches!(tool.name.as_str(), "ask_user" | "query_history")),
         "unexpected tools: {tools:?}"
     );
+    assert!(tools.iter().any(|tool| tool.name == "query_history"));
     let result = session.send_and_wait("Tell me a joke").await.unwrap();
     assert_eq!(result.response, "A fake noodle is an impasta.");
     assert_eq!(result.tool_calls, 0);

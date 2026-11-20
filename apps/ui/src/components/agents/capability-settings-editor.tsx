@@ -27,6 +27,7 @@ import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capabil
 import { REPOSITORIES_CAPABILITY_ID } from "@/lib/repositories-config";
 import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
 
+import { CompactionConfigEditor } from "./compaction-config-editor";
 import { GuardrailsConfigEditor } from "./guardrails-config-editor";
 import { KnowledgeConfigEditor } from "./knowledge-config-editor";
 import { KnowledgeIndexConfigEditor } from "./knowledge-index-config-editor";
@@ -62,6 +63,9 @@ export function CapabilitySettingsEditor({
   onChange,
   disabled,
 }: CapabilitySettingsEditorProps) {
+  if (capability.id === "compaction") {
+    return <CompactionConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+  }
   if (capability.id === MEMORY_CAPABILITY_ID) {
     return <MemoryConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }

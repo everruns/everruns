@@ -153,11 +153,15 @@ impl MessageRetriever for DbMessageRetriever {
             .max()
             .or(query.after_sequence);
 
+        let mut sequences = std::collections::HashMap::new();
         // Convert events to messages
         let mut messages = Vec::with_capacity(events.len());
         for event_row in events {
             match row_to_message(&event_row) {
-                Ok(message) => messages.push(message),
+                Ok(message) => {
+                    sequences.insert(message.id, i64::from(event_row.sequence));
+                    messages.push(message);
+                }
                 Err(e) => {
                     tracing::warn!("Failed to parse message from event {}: {}", event_row.id, e);
                 }
@@ -196,7 +200,7 @@ impl MessageRetriever for DbMessageRetriever {
         }
 
         Ok(MessageHistory {
-            sequences: Default::default(),
+            sequences,
             messages,
             source_sequence,
         })
@@ -232,7 +236,15 @@ pub(crate) async fn retrieve_message(
             }
         }
     }
-    Ok(None)
+    // Tool projections use the event UUID, not a JSON message id.
+    db.tool_message_event_by_id(session_id, message_id)
+        .await
+        .store_err()?
+        .map(|row| {
+            row_to_message(&row)
+                .map_err(crate::kernel_imports::contracts::error::AgentLoopError::store)
+        })
+        .transpose()
 }
 
 /// Convert a stored message event row to a RuntimeMessage.
@@ -244,6 +256,7 @@ pub(crate) async fn retrieve_message(
 fn row_to_message(row: &crate::storage::EventRow) -> std::result::Result<RuntimeMessage, String> {
     let mut message = event_to_message(&row.data, &row.event_type)?;
     if message.role == RuntimeMessageRole::ToolResult {
+        message.id = MessageId::from_uuid(row.id.uuid());
         message.created_at = row.ts;
     }
     Ok(message)
@@ -463,6 +476,12 @@ mod lookup_tests {
             .load_filtered(MessageQuery::new(session))
             .await
             .unwrap();
+        assert_eq!(loaded[0].id, filtered[0].id);
+        assert_eq!(
+            serde_json::to_value(retriever.get(session, loaded[0].id).await.unwrap().unwrap())
+                .unwrap(),
+            serde_json::to_value(&loaded[0]).unwrap(),
+        );
         for message in [&loaded[0], &filtered[0]] {
             assert_eq!(message.role, RuntimeMessageRole::ToolResult);
             // Postgres keeps microseconds.
@@ -471,6 +490,43 @@ mod lookup_tests {
                 stored_at.timestamp_micros()
             );
         }
+    }
+
+    #[tokio::test]
+    async fn continuity_pages_read_oldest_first_with_exclusive_source_bounds() {
+        let db = Arc::new(StorageBackend::test_database());
+        let session = db.create_test_session().await;
+        history(&db, session, 600).await;
+        let retriever = DbMessageRetriever::new(db);
+        let mut query = MessageQuery::new(session).with_limit(7);
+        query.oldest_first = true;
+        query.after_sequence = Some(0);
+        query.before_sequence = Some(12);
+        let first = retriever
+            .load_filtered_history(query.clone())
+            .await
+            .unwrap();
+        let seqs: Vec<_> = first
+            .messages
+            .iter()
+            .map(|m| first.sequences[&m.id])
+            .collect();
+        assert_eq!(seqs, (1..=7).collect::<Vec<_>>());
+        query.after_sequence = Some(7);
+        let second = retriever.load_filtered_history(query).await.unwrap();
+        let seqs: Vec<_> = second
+            .messages
+            .iter()
+            .map(|m| second.sequences[&m.id])
+            .collect();
+        assert_eq!(seqs, (8..12).collect::<Vec<_>>());
+        assert_eq!(second.source_sequence, Some(11));
+        assert!(
+            first
+                .messages
+                .iter()
+                .all(|m| !second.sequences.contains_key(&m.id))
+        );
     }
 
     #[tokio::test]

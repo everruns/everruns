@@ -58,6 +58,7 @@ use std::sync::{Arc, Mutex};
 
 mod adapter;
 mod builder;
+mod compaction;
 use builder::hydrate_plugin_refs;
 mod input_message;
 use input_message::{message_from_input, message_from_input_with_id};

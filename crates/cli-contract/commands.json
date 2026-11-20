@@ -14347,7 +14347,7 @@
       "sessions"
     ],
     "verb": "context",
-    "description": "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
+    "description": "Inspect the last main model request, effective compaction policy, and safe checkpoint metadata. Inspection never compacts history or calls a model.",
     "method": "GET",
     "http_path": "/v1/sessions/{session_id}/context-report",
     "args": [

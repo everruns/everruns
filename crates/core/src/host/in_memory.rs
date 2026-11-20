@@ -107,7 +107,11 @@ impl CompactionCheckpointStore for InMemoryCompactionCheckpointStore {
             .read()
             .await
             .values()
-            .filter(|checkpoint| checkpoint.session_id == session_id)
+            .filter(|checkpoint| {
+                checkpoint.session_id == session_id
+                    && !(checkpoint.provider_type == "everruns-portable"
+                        && checkpoint.model == "continuity-candidate-v1")
+            })
             .map(|checkpoint| checkpoint.source_sequence)
             .max())
     }

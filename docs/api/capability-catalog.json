@@ -450,7 +450,9 @@
     },
     {
       "category": "Optimization",
-      "dependencies": [],
+      "dependencies": [
+        "infinity_context"
+      ],
       "docs_slug": null,
       "feature_flag": null,
       "features": [],
@@ -836,7 +838,7 @@
       ],
       "id": "infinity_context",
       "name": "Infinity Context",
-      "status": "available",
+      "status": "deprecated",
       "tools": [
         "query_history"
       ]

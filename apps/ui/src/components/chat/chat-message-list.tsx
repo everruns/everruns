@@ -111,7 +111,11 @@ import {
 } from "@/components/chat/desktop-recordings";
 import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
-import { CompactionDivider } from "@/components/chat/compaction-divider";
+import {
+  renderCompactionEvent,
+  isCompactionEvent,
+  latestCompactionEventId,
+} from "@/components/chat/compaction-event";
 import { ModelChangeDivider } from "@/components/chat/model-change-divider";
 import { getFullText, type ToolCallContent } from "@/components/chat/tool-call-utils";
 import type { ApprovalToolContext } from "@/components/chat/approval-tool-activity";
@@ -1117,14 +1121,10 @@ export const ChatMessageList = memo(function ChatMessageList({
             }
             previousUserMs = ts;
           };
+          const latestCompactionId = latestCompactionEventId(chatEvents);
           for (const event of chatEvents) {
             const eventNode = ((): ReactNode => {
-              if (event.type === "context.compacted") {
-                const compactedData = getEventData(event, "context.compacted");
-                return compactedData ? (
-                  <CompactionDivider key={event.id} data={compactedData} />
-                ) : null;
-              }
+              if (isCompactionEvent(event)) return renderCompactionEvent(event, latestCompactionId);
 
               if (event.type === "session.model.changed") {
                 const modelChangedData = getEventData(event, "session.model.changed");

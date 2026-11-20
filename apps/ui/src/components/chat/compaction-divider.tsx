@@ -7,27 +7,28 @@
  * - Native compaction replaces the transcript with the provider's output items, and
  *   `messages_after` counts those items, not messages, so it can exceed `messages_before`.
  *   Show its token counts instead, and no message counts when tokens are missing.
+ * - Prefer token measurements for every strategy; label local estimates explicitly.
  */
 "use client";
 
 import { useUiTranslations } from "@/providers/locale-provider";
 import { useState } from "react";
 import type { ContextCompactedData } from "@/lib/api/types";
+import { compactionStrategyLabels } from "@/lib/compaction";
 import { formatCompactNumber } from "@/lib/formatting";
 
 /** The event as the wire sends it: token counts ride along when measured. */
-export type CompactionMarkerData = ContextCompactedData & {
-  tokens_before?: number;
-  tokens_after?: number;
-};
+export type CompactionMarkerData = ContextCompactedData;
 
 export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
   const ui = useUiTranslations();
   const [expanded, setExpanded] = useState(false);
-  const native = data.strategy_used.split("+").includes("native");
+  const native = data.strategy_used
+    .split("+")
+    .some((part) => ["native", "provider_managed"].includes(part));
   const tokensKnown = data.tokens_before != null && data.tokens_after != null;
   const saved = data.messages_before - data.messages_after;
-  const countsKnown = !native && (data.messages_before > 0 || data.messages_after > 0);
+  const countsKnown = !native && saved > 0;
   // `steps` is omitted on the wire when empty (provider-managed compaction has none).
   const steps = data.steps ?? [];
 
@@ -35,17 +36,22 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
     <div className="space-y-1">
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
         className="flex w-full cursor-pointer items-center gap-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-sm"
       >
         <div className="h-px flex-1 bg-border" />
-        <span className="whitespace-nowrap">
+        <span className="text-center">
           {ui("Context compacted")}
-          {countsKnown && ` · ${data.messages_before} → ${data.messages_after} messages`}
-          {native &&
-            tokensKnown &&
-            ` · ${formatCompactNumber(data.tokens_before!)} → ${formatCompactNumber(data.tokens_after!)} tokens`}
-          {data.strategy_used !== "none" && ` · ${data.strategy_used}`}
+          {countsKnown &&
+            !tokensKnown &&
+            ` · ${data.messages_before} → ${data.messages_after} messages`}
+          {tokensKnown &&
+            ` · ${formatCompactNumber(data.tokens_before!)} → ${formatCompactNumber(data.tokens_after!)} ${ui(native ? "tokens" : "estimated tokens")}`}
+          {data.strategy_used !== "none" &&
+            ` · ${compactionStrategyLabels(data.strategy_used)
+              .map((label) => ui(label))
+              .join(" + ")}`}
         </span>
         <span className="text-[10px]">{expanded ? "▲" : "▼"}</span>
         <div className="h-px flex-1 bg-border" />
@@ -53,6 +59,11 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
       {expanded && (
         <div className="mx-auto max-w-md border bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
           <div className="space-y-1">
+            <div>{ui(data.checkpoint_id ? "Checkpoint saved" : "Request reduction")}</div>
+            <div>
+              {data.duration_ms}
+              {ui("ms")}
+            </div>
             {countsKnown ? (
               <div>
                 <span className="font-medium">{ui("Saved:")}</span> {saved} {ui("messages in")}{" "}
@@ -61,7 +72,10 @@ export function CompactionDivider({ data }: { data: CompactionMarkerData }) {
               </div>
             ) : (
               <div>
-                <span className="font-medium">{ui("Strategy:")}</span> {data.strategy_used}
+                <span className="font-medium">{ui("Strategy:")}</span>{" "}
+                {compactionStrategyLabels(data.strategy_used)
+                  .map((label) => ui(label))
+                  .join(" + ")}
               </div>
             )}
             {steps.length > 0 && (
