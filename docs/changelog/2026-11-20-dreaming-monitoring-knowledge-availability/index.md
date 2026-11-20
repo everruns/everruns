@@ -12,6 +12,8 @@ links:
 
 Open **Activity → Monitoring** to see your organization’s execution, or open **Blocks → Knowledge** to create and manage collections. Workers have access to Dreaming when the session has an authorized writable Memory destination. Existing feature overrides for these three features are ignored.
 
+![Knowledge collections available directly from the Blocks menu](./knowledge@2x.png)
+
 For setup and access details, see [Dreaming](/features/dreaming/), [Monitoring](/observability/monitoring/), and [Knowledge](/capabilities/knowledge/).
 
 ```bash
