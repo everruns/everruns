@@ -10,27 +10,25 @@ links:
   docs: [/advanced/compaction/]
 ---
 
-[`compaction`](/advanced/compaction/) now manages portable continuity, recent
-complete exchanges, verbatim current input, scoped reasoning replay and permitted history retrieval. Built-in harnesses inherit
-it; Framework sessions without an explicit harness enable it with `builtins`.
-New configurations need no separate `infinity_context` entry.
+[`compaction`](/advanced/compaction/) manages durable continuity, recent complete
+exchanges, verbatim current input, scoped reasoning replay and history retrieval.
+Built-in harnesses inherit it; implicit Framework harnesses enable it with
+`builtins`. No separate `infinity_context` entry is needed.
 
-Portable summaries bridge model changes and recover after restarts on persistent
-backends. Native checkpoints retain their provider/model scope. Original history
-stays queryable. Summary calls have separate usage; native cost estimates stay labelled.
-Internal summaries also support models that reject temperature overrides.
-Framework history search includes prior tool observations. Search excerpts show
-the matching text while retaining original message IDs and roles.
+Portable summaries bridge model changes and persistent-backend restarts. Native
+checkpoints retain provider/model scope. History search includes tool observations;
+excerpts show matching text, original IDs and roles. Internal summaries support
+models without temperature overrides. Summary usage is separate; native estimates
+stay labelled.
 
-**In the UI:** Chat and Playground have a **Context** inspector. Capability
-settings expose working budgets, proactive mode and summary options. Transcript
-notices distinguish saved checkpoints from request-local reductions and show
-available token measurements.
+**In the UI:** Chat and Playground have a **Context** inspector, budget and
+summary settings, and notices distinguishing saved checkpoints from request-local
+reductions with available token measurements.
 
-**In code:** `session.inspect().await?.compaction` and the context-report API
-expose safe policy and checkpoint metadata. API measurements describe the last
-main-model request, excluding summary calls. Impossible reductions end visibly;
-storage failures retain candidate reuse and recovery.
+**In code:** `session.inspect().await?.compaction` and the context-report API expose
+policy and checkpoint metadata. Measurements describe the last main-model request,
+excluding summaries. Impossible reductions end visibly; storage failures retain
+candidate reuse and recovery.
 
 ```rust
 let context = session.inspect().await?;

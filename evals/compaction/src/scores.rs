@@ -44,7 +44,13 @@ fn check(t: &Transcript, citations: bool) -> Vec<String> {
             // the underlying fact or its provenance disappeared.
             let actual = &answer.get("facts").unwrap_or(&answer)[key];
             if citations {
-                if !actual["source_ids"].as_array().is_some_and(|ids| {
+                let source_ids = actual["source_ids"].as_array().cloned().or_else(|| {
+                    actual
+                        .get("source_message_id")
+                        .filter(|id| id.is_string())
+                        .map(|id| vec![id.clone()])
+                });
+                if !source_ids.is_some_and(|ids| {
                     ids.contains(&fact["source_id"])
                         || fact["equivalent_source_ids"]
                             .as_array()
@@ -166,15 +172,20 @@ mod tests {
 
     #[tokio::test]
     async fn format_failure_stays_visible_without_becoming_memory_loss() {
-        let mut t = Transcript::default();
-        t.metadata.insert("phases".into(),json!((0..5).map(|_|json!({"phase":"test","expected":{"approval":{"value":"revoked","source_id":"message_actual"}},"response":"{\"approval\":{\"value\":\"revoked\",\"source_ids\":[\"message_actual\"]}}"})).collect::<Vec<_>>()));
-        assert!(check(&t, false).is_empty());
-        assert!(check(&t, true).is_empty());
-        assert!(
-            !output_schema()
-                .score(&Sample::new("test", "test"), &t)
-                .await
-                .pass
-        );
+        for response in [
+            "{\"approval\":{\"value\":\"revoked\",\"source_ids\":[\"message_actual\"]}}",
+            "{\"approval\":{\"value\":\"revoked\",\"source_message_id\":\"message_actual\"}}",
+        ] {
+            let mut t = Transcript::default();
+            t.metadata.insert("phases".into(),json!((0..5).map(|_|json!({"phase":"test","expected":{"approval":{"value":"revoked","source_id":"message_actual"}},"response":response})).collect::<Vec<_>>()));
+            assert!(check(&t, false).is_empty());
+            assert!(check(&t, true).is_empty());
+            assert!(
+                !output_schema()
+                    .score(&Sample::new("test", "test"), &t)
+                    .await
+                    .pass
+            );
+        }
     }
 }
