@@ -20,7 +20,9 @@ use everruns_contracts::images::{
     ImagesDriverError, ImagesHttpBody, ImagesHttpRequest, ImagesHttpResponse, ImagesTransport,
 };
 use everruns_contracts::model_profile_data::{ImageModelProfile, get_model_profile};
-use everruns_contracts::runtime::connection_services::ProviderCredentialStore;
+use everruns_contracts::runtime::connection_services::{
+    ImageModelBinding, ProviderCredentialStore,
+};
 use everruns_contracts::runtime::network_access::NetworkAccessList;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::ToolExecutionResult;
@@ -87,6 +89,30 @@ fn image_profile(provider_type: &str, model: &str) -> Option<ImageModelProfile> 
     get_model_profile(provider_type, model).and_then(|profile| profile.images)
 }
 
+/// Why no model could be chosen: a message for the caller, or a store failure.
+pub(crate) enum ResolveError {
+    Message(String),
+    Store(everruns_contracts::AgentLoopError),
+}
+
+impl From<ResolveError> for ToolExecutionResult {
+    fn from(error: ResolveError) -> Self {
+        match error {
+            ResolveError::Message(message) => ToolExecutionResult::tool_error(message),
+            ResolveError::Store(error) => ToolExecutionResult::internal_error(error),
+        }
+    }
+}
+
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::Message(message) => f.write_str(message),
+            ResolveError::Store(error) => write!(f, "{error}"),
+        }
+    }
+}
+
 /// Resolve with the host's credential store, or `fallback` (credentials an
 /// embedding application gave the capability) when the host has none.
 pub(crate) async fn resolve_image_model(
@@ -103,27 +129,10 @@ pub(crate) async fn resolve_image_model(
         .model
         .as_deref()
         .filter(|model| model.starts_with("model_"));
+    let mut binding = None;
     if config.model.is_none() || catalog_id.is_some() {
         match store.get_image_model(catalog_id, context.session_id).await {
-            Ok(Some(binding)) => {
-                let profile = image_profile(&binding.provider_type, &binding.model);
-                if let Some(profile) = &profile
-                    && !profile.supports_format(format)
-                {
-                    return Err(ToolExecutionResult::tool_error(format!(
-                        "The image model {} cannot make {format} images on {}. Pick another format or choose a GPT Image 2.6 model on an OpenAI or Azure OpenAI provider.",
-                        binding.model, binding.provider_type
-                    )));
-                }
-                return Ok(ResolvedImageModel {
-                    provider_type: binding.provider_type,
-                    api_key: binding.api_key,
-                    base_url: binding.base_url,
-                    headers: binding.headers.into_iter().collect(),
-                    api_model: binding.model,
-                    profile,
-                });
-            }
+            Ok(Some(found)) => binding = Some(found),
             Ok(None) if catalog_id.is_some() => {
                 return Err(ToolExecutionResult::tool_error(format!(
                     "The image model {} is not available in this organization.",
@@ -134,10 +143,45 @@ pub(crate) async fn resolve_image_model(
             Err(error) => return Err(ToolExecutionResult::internal_error(error)),
         }
     }
+    resolve_from(binding, store, config, format)
+        .await
+        .map_err(Into::into)
+}
+
+/// Steps 1 to 4 once the host has looked up the bound catalog model, if
+/// any: `binding` wins, otherwise the model name in `config` (or the
+/// platform default) on the org's default provider of each type that serves
+/// it, then the Muse fallback.
+pub(crate) async fn resolve_from(
+    binding: Option<ImageModelBinding>,
+    store: &Arc<dyn ProviderCredentialStore>,
+    config: &ImageGenerationConfig,
+    format: &str,
+) -> Result<ResolvedImageModel, ResolveError> {
+    if let Some(binding) = binding {
+        let profile = image_profile(&binding.provider_type, &binding.model);
+        if let Some(profile) = &profile
+            && !profile.supports_format(format)
+        {
+            return Err(ResolveError::Message(format!(
+                "The image model {} cannot make {format} images on {}. Pick another format or choose a GPT Image 2.6 model on an OpenAI or Azure OpenAI provider.",
+                binding.model, binding.provider_type
+            )));
+        }
+        return Ok(ResolvedImageModel {
+            provider_type: binding.provider_type,
+            api_key: binding.api_key,
+            base_url: binding.base_url,
+            headers: binding.headers.into_iter().collect(),
+            api_model: binding.model,
+            profile,
+        });
+    }
 
     let model = config
         .model
         .as_deref()
+        .filter(|model| !model.starts_with("model_"))
         .unwrap_or(PLATFORM_DEFAULT_IMAGE_MODEL);
     let mut skipped_for_format = false;
     if let Some(resolved) = by_provider_type(store, model, format, &mut skipped_for_format).await? {
@@ -151,11 +195,11 @@ pub(crate) async fn resolve_image_model(
         return Ok(resolved);
     }
     if skipped_for_format {
-        return Err(ToolExecutionResult::tool_error(format!(
+        return Err(ResolveError::Message(format!(
             "{format} output needs GPT Image 2.6 on an OpenAI or Azure OpenAI provider, and none is configured."
         )));
     }
-    Err(ToolExecutionResult::tool_error(NOT_CONFIGURED))
+    Err(ResolveError::Message(NOT_CONFIGURED.to_string()))
 }
 
 async fn by_provider_type(
@@ -163,7 +207,7 @@ async fn by_provider_type(
     model: &str,
     format: &str,
     skipped_for_format: &mut bool,
-) -> Result<Option<ResolvedImageModel>, ToolExecutionResult> {
+) -> Result<Option<ResolvedImageModel>, ResolveError> {
     for provider_type in provider_candidates(model) {
         let profile = image_profile(provider_type, model);
         if let Some(profile) = &profile
@@ -184,7 +228,7 @@ async fn by_provider_type(
                 }));
             }
             Ok(None) => {}
-            Err(error) => return Err(ToolExecutionResult::internal_error(error)),
+            Err(error) => return Err(ResolveError::Store(error)),
         }
     }
     Ok(None)
@@ -204,17 +248,30 @@ pub(crate) fn build_driver(
             "Image generation requires the host egress service, which is not available in this environment.",
         ));
     };
+    Ok(driver_over(
+        egress,
+        context.network_access.clone(),
+        resolved,
+    ))
+}
+
+/// The driver for a resolved model over an explicit egress service.
+pub(crate) fn driver_over(
+    egress: Arc<dyn EgressService>,
+    network_access: Option<NetworkAccessList>,
+    resolved: &ResolvedImageModel,
+) -> OpenAIImagesDriver {
     let transport = Arc::new(EgressImagesTransport {
         egress,
-        network_access: context.network_access.clone(),
+        network_access,
     });
-    Ok(OpenAIImagesDriver::new(
+    OpenAIImagesDriver::new(
         transport,
         resolved.provider_type.clone(),
         resolved.api_key.clone(),
         resolved.base_url.clone(),
     )
-    .with_headers(resolved.headers.clone()))
+    .with_headers(resolved.headers.clone())
 }
 
 /// [`ImagesTransport`] over the host [`EgressService`]: the merged network

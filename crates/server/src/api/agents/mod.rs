@@ -63,6 +63,8 @@ pub struct AppState {
     pub slack_provisioner: Option<
         Arc<dyn crate::domains::agent_channels::record::slack_provisioning::SlackAppProvisioner>,
     >,
+    /// The org's provider accounts, for `generate_agent_avatar`.
+    pub provider_services: Option<crate::domains::providers::ProviderServices>,
 }
 
 impl AppState {
@@ -86,7 +88,16 @@ impl AppState {
             health_check_service: None,
             org_rate_limiter: OrgRateLimiter::default(),
             slack_provisioner: None,
+            provider_services: None,
         }
+    }
+
+    pub fn with_provider_services(
+        mut self,
+        services: crate::domains::providers::ProviderServices,
+    ) -> Self {
+        self.provider_services = Some(services);
+        self
     }
 
     pub fn with_health_check_service(
@@ -135,6 +146,9 @@ impl AppState {
         .with_utility_llm_service(self.host_composition.utility_llm_service());
         if let Some(service) = &self.health_check_service {
             ctx = ctx.with_health_check_service(service.clone());
+        }
+        if let Some(services) = &self.provider_services {
+            ctx = ctx.with_provider_services(services);
         }
         ctx
     }

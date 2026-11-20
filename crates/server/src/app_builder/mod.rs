@@ -774,7 +774,8 @@ impl ServerAppBuilder {
             built_in_harnesses.clone(),
         )
         .with_org_rate_limiter(org_rate_limiter.clone())
-        .with_slack_provisioner(slack_provisioner.clone());
+        .with_slack_provisioner(slack_provisioner.clone())
+        .with_provider_services(providers_state.provider_services());
         let virtual_user_connections_state = api::virtual_user_connections::AppState::new(
             db.clone(),
             encryption.clone(),

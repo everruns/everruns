@@ -182,6 +182,9 @@ gets a new `avatar_id`. `GET /v1/avatar-presets` lists the curated catalog;
 `PUT /v1/agents/{agent_id}/avatar/preset` selects one with `{"preset_id": "familiars-patch"}`.
 `GET` on that selection endpoint reports the current preset ID, or `null` for a custom image
 or no avatar. Preset selection uses the same agent-management permission as upload.
+`POST /v1/agents/{agent_id}/avatar/generate` (`everruns agents avatar generate --prompt ...`,
+MCP `generate_agent_avatar`) draws an avatar with the organization's default image model and
+sets it in one step; without a prompt it draws from the agent's name and description.
 
 Header actions:
 - **Edit**: switch the page into edit mode. The prompt becomes an editor and the settings take

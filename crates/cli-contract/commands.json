@@ -61,6 +61,51 @@
     ]
   },
   {
+    "wire_name": "generate_agent_avatar",
+    "path": [
+      "agents",
+      "avatar"
+    ],
+    "verb": "generate",
+    "description": "Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.",
+    "method": "POST",
+    "http_path": "/v1/agents/{agent_id}/avatar/generate",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent's prefixed public identifier."
+      },
+      {
+        "field": "prompt",
+        "long": "prompt",
+        "kind": "string",
+        "required": false,
+        "help": "What the avatar shows, at most 2000 characters."
+      },
+      {
+        "field": "quality",
+        "long": "quality",
+        "kind": "string",
+        "required": false,
+        "help": "Image quality when the model offers levels (`low`, `medium`, `high`, ...)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Draw an avatar from a description",
+        "command": "everruns agents avatar generate agent_01h9 --prompt 'A calm owl librarian, flat vector, navy and gold' --reason 'Give the research agent a face'"
+      },
+      {
+        "intent": "Let the agent's name and description pick the picture",
+        "command": "everruns agents avatar generate agent_01h9 --reason 'Brand the triage agent'"
+      }
+    ]
+  },
+  {
     "wire_name": "list_avatar_presets",
     "path": [
       "agents",

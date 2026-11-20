@@ -2,6 +2,7 @@ agent-skill files
 agent-skill install	--dir --global
 agent-skill show	<file>
 agents analyze	--agent-id --capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents avatar generate	--agent --context-revision --prompt --quality --reason <agent_id>
 agents avatar presets	--context-revision --reason
 agents avatar set	--agent --content-type --context-revision --image-base64 --preset --reason <agent_id>
 agents channels create	--agent-id! --channel-config --channel-type! --context-revision --enabled --reason

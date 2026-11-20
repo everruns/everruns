@@ -1574,4 +1574,4 @@ mod platform_store;
 #[cfg(test)]
 mod tests;
 
-mod decision_models;
+pub(crate) mod decision_models;

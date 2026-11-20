@@ -57,12 +57,20 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
   set`) takes a catalog preset id or the image inline as base64, capped at 1 MB decoded so the
   request stays under the 2 MB default body limit the command transports share;
   `list_avatar_presets` (`everruns agents avatar presets`) lists the catalog. Larger images keep
-  the multipart route. All three sources share one write path and agent rule (not deleted, not
+  the multipart route. All sources share one write path and agent rule (not deleted, not
   built-in) in [`avatar_commands`](../../crates/server/src/domains/agents/avatar_commands/mod.rs).
+- **Generated avatars are one step.** `generate_agent_avatar` (`everruns agents avatar generate
+  --prompt ...`) draws with the org's default image model, falling back like the
+  `image_generation` capability (platform default on the org's own accounts, then Muse Image), and
+  stores the result through the same write path with source `generated`. Without a prompt it draws
+  from the agent's name and description. Fixed style rules (square, centered, no text) are always
+  appended so the result reads as a small circle. Every check runs before the paid provider call,
+  which leaves through the host egress service and is not transactional. Before this, an agent had
+  to run a session to draw the image and pass the bytes back through `set_agent_avatar`.
 - **Search is presentation only.** Each whitespace-separated term can match any metadata field,
   case-insensitively. Tiles and selected previews show artwork only; metadata remains available to
   search and assistive technology. Roles never change the agent's behavior or configuration. Current
   selection survives reload; custom images remain uploadable, replaceable and removable.
 
 ## Open
-- Avatars generated from the display name were considered and left out for now.
+- Branding has no "Generate" button yet; generation is CLI, MCP and API only.

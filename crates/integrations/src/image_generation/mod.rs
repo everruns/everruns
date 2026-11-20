@@ -22,10 +22,14 @@
 mod capability;
 mod outputs;
 mod resolve;
+mod standalone;
 mod tools;
 
 pub use capability::{CAPABILITY_PLUGINS, ImageGenerationCapability};
 pub use resolve::PLATFORM_DEFAULT_IMAGE_MODEL;
+pub use standalone::{
+    StandaloneImage, StandaloneImageError, StandaloneImageRequest, generate_standalone_image,
+};
 pub use tools::{EditImageTool, GenerateImageTool};
 
 #[cfg(test)]
@@ -34,5 +38,7 @@ mod capability_tests;
 mod egress_tests;
 #[cfg(test)]
 mod narration_tests;
+#[cfg(test)]
+mod standalone_tests;
 #[cfg(test)]
 mod test_egress;

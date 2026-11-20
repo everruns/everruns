@@ -3,6 +3,7 @@
 //   PUT    /v1/agents/{agent_id}/avatar         upload (multipart `file`), replaces
 //   DELETE /v1/agents/{agent_id}/avatar         remove
 //   POST   /v1/agents/{agent_id}/avatar/set     `set_agent_avatar` command (JSON)
+//   POST   /v1/agents/{agent_id}/avatar/generate `generate_agent_avatar` command (JSON)
 //   GET    /v1/avatars/{avatar_id}/{variant}    public, immutable PNG
 //
 // Design decisions:
@@ -97,6 +98,7 @@ pub fn routes() -> Router<AppState> {
                     MAX_INLINE_AVATAR_BYTES.div_ceil(3) * 4 + 64 * 1024,
                 )),
         )
+        .command::<crate::domains::agents::GenerateAgentAvatar>()
 }
 
 fn bad_request(message: impl Into<String>) -> ApiError {

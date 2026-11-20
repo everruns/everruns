@@ -33,7 +33,7 @@ pub(crate) mod sandbox_policy;
 pub mod source;
 pub mod types;
 
-pub use avatar_commands::{ListAvatarPresets, SetAgentAvatar};
+pub use avatar_commands::{GenerateAgentAvatar, ListAvatarPresets, SetAgentAvatar};
 pub use commands::*;
 pub use draft::DraftAgent;
 pub use examples::{AdoptAgentExample, ListAgentExamples};

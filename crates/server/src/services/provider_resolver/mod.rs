@@ -305,6 +305,25 @@ impl ProviderResolverService {
             .get_session(org_id, session_id.into())
             .await?
             .ok_or_else(|| anyhow::anyhow!("Session unavailable"))?;
+        self.bind_image_model(org_id, model_id, Some(session_id))
+            .await
+    }
+
+    /// The org's default image model where no session runs (generating an
+    /// agent avatar from the CLI or MCP). `Ok(None)` when none is chosen.
+    pub async fn resolve_default_image_model(
+        &self,
+        org_id: i64,
+    ) -> Result<Option<everruns_core::connection_services::ImageModelBinding>> {
+        self.bind_image_model(org_id, None, None).await
+    }
+
+    async fn bind_image_model(
+        &self,
+        org_id: i64,
+        model_id: Option<&str>,
+        session_id: Option<Uuid>,
+    ) -> Result<Option<everruns_core::connection_services::ImageModelBinding>> {
         let id = match model_id {
             Some(id) => id.parse::<everruns_contracts::typed_id::ModelId>()?.uuid(),
             None => match self.db.get_image_default(org_id).await? {
@@ -323,7 +342,7 @@ impl ProviderResolverService {
         {
             anyhow::bail!("Enabled image model required");
         }
-        self.bind_catalog_model(org_id, row, Some(session_id), ServiceKind::Images)
+        self.bind_catalog_model(org_id, row, session_id, ServiceKind::Images)
             .await
             .map(Some)
     }

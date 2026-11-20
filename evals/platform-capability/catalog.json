@@ -12637,6 +12637,61 @@
     "read_only": true
   },
   {
+    "category": "agents",
+    "cli": "agents avatar generate",
+    "description": "Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.",
+    "input_schema": {
+      "$defs": {
+        "GenerateAgentAvatarRequest": {
+          "description": "What to draw.",
+          "properties": {
+            "prompt": {
+              "description": "What the avatar shows, at most 2000 characters. Omit to draw one from the agent's name\nand description. Avatar style rules (square, centered, no text) are added either way.",
+              "example": "A friendly fox mechanic holding a wrench, flat vector style, teal and orange",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "quality": {
+              "description": "Image quality when the model offers levels (`low`, `medium`, `high`, ...). Defaults to\nthe model's usual quality.",
+              "example": "high",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/GenerateAgentAvatarRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "description": "Agent's prefixed public identifier.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "Generate an agent's avatar with the org's image model and set it."
+    },
+    "method": "POST",
+    "name": "generate_agent_avatar",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/avatar/generate",
+    "positional_arg": "agent_id",
+    "read_only": false
+  },
+  {
     "category": "users",
     "cli": "users profile get",
     "description": "Read your own editable profile, without email, tokens or credentials.",

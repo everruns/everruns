@@ -339,3 +339,266 @@ async fn set_agent_avatar_records_history_through_run() {
     assert_eq!(entry.action, "updated");
     assert_eq!(entry.changed_fields, vec!["preset_id".to_string()]);
 }
+
+// ============================================================================
+// generate_agent_avatar
+// ============================================================================
+
+mod generate {
+    use super::*;
+    use crate::domains::providers::ProviderService;
+    use crate::services::ProviderResolverService;
+    use crate::storage::{CreateProviderRow, EncryptionService};
+    use everruns_core::{
+        EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
+    };
+    use std::sync::Mutex;
+
+    /// Stands in for the image provider behind the host egress: records each
+    /// request and answers with one PNG, or panics when no call is allowed.
+    struct FakeImageApi {
+        image: Option<Vec<u8>>,
+        seen: Mutex<Vec<EgressRequest>>,
+    }
+
+    #[async_trait::async_trait]
+    impl EgressService for FakeImageApi {
+        async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+            let image = self
+                .image
+                .clone()
+                .expect("no image call may happen in this test");
+            self.seen.lock().unwrap().push(request);
+            Ok(EgressResponse {
+                status: 200,
+                headers: Default::default(),
+                body: serde_json::to_vec(&serde_json::json!({
+                    "data": [{ "b64_json": STANDARD.encode(image), "revised_prompt": "a calm owl" }]
+                }))
+                .unwrap(),
+            })
+        }
+
+        async fn send_stream(&self, _: EgressRequest) -> EgressResult<EgressStreamResponse> {
+            unreachable!("avatar generation never streams")
+        }
+    }
+
+    fn encryption() -> Arc<EncryptionService> {
+        Arc::new(
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+                .unwrap(),
+        )
+    }
+
+    /// An owner context with provider services and the fake image API, and
+    /// optionally an OpenAI account to draw with.
+    async fn image_ctx(openai_account: bool, image: Option<Vec<u8>>) -> (Ctx, Arc<FakeImageApi>) {
+        let mut ctx = owner_ctx().await;
+        let encryption = encryption();
+        if openai_account {
+            ctx.db
+                .create_provider(
+                    DEFAULT_ORG_ID,
+                    CreateProviderRow {
+                        name: "openai".to_string(),
+                        provider_type: "openai".to_string(),
+                        base_url: Some("https://images.example/v1".to_string()),
+                        api_key_encrypted: Some(encryption.encrypt_string("sk-test").unwrap()),
+                        settings: None,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+        let resolver = Arc::new(ProviderResolverService::new(
+            ctx.db.clone(),
+            Some(encryption.clone()),
+        ));
+        ctx.provider_service = Some(Arc::new(ProviderService::with_resolver(
+            ctx.db.clone(),
+            Some(encryption),
+            resolver,
+        )));
+        let api = Arc::new(FakeImageApi {
+            image,
+            seen: Mutex::new(Vec::new()),
+        });
+        ctx.egress_service = Some(api.clone());
+        (ctx, api)
+    }
+
+    fn generate(agent_id: &str, prompt: Option<&str>) -> GenerateAgentAvatar {
+        GenerateAgentAvatar {
+            agent_id: agent_id.to_string(),
+            req: GenerateAgentAvatarRequest {
+                prompt: prompt.map(str::to_string),
+                quality: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn draws_with_the_org_account_and_sets_the_avatar() {
+        let (ctx, api) = image_ctx(true, Some(png(512))).await;
+        let agent_id = create_agent(&ctx, "owl-agent").await;
+
+        let generated = generate(&agent_id, Some("A calm owl librarian"))
+            .execute(&ctx)
+            .await
+            .expect("generate");
+
+        assert_eq!(generated.model, "gpt-image-2.6-flare");
+        assert_eq!(generated.provider_type, "openai");
+        assert_eq!(generated.revised_prompt.as_deref(), Some("a calm owl"));
+        assert!(
+            generated.avatar.url.contains("square-256.png"),
+            "{}",
+            generated.avatar.url
+        );
+        assert_eq!(
+            stored_source(&ctx, &agent_id).await.as_deref(),
+            Some("generated")
+        );
+
+        let seen = api.seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].url, "https://images.example/v1/images/generations");
+        let body: serde_json::Value = serde_json::from_slice(&seen[0].body).unwrap();
+        let prompt = body["prompt"].as_str().unwrap();
+        assert!(prompt.starts_with("A calm owl librarian"), "{prompt}");
+        assert!(prompt.contains("square avatar icon"), "{prompt}");
+        assert_eq!(body["size"], "1024x1024");
+        assert_eq!(body["output_format"], "png");
+    }
+
+    #[tokio::test]
+    async fn without_a_prompt_draws_from_the_agent_name() {
+        let (ctx, api) = image_ctx(true, Some(png(256))).await;
+        let agent_id = create_agent(&ctx, "triage-bot").await;
+
+        generate(&agent_id, None)
+            .execute(&ctx)
+            .await
+            .expect("generate");
+
+        let seen = api.seen.lock().unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&seen[0].body).unwrap();
+        let prompt = body["prompt"].as_str().unwrap();
+        assert!(prompt.contains("AI agent named \"triage-bot\""), "{prompt}");
+    }
+
+    #[tokio::test]
+    async fn without_an_image_account_fails_before_any_call() {
+        let (ctx, _api) = image_ctx(false, None).await;
+        let agent_id = create_agent(&ctx, "no-images").await;
+
+        let err = generate(&agent_id, Some("anything"))
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+        assert_bad_request(&err, "Image credentials are not configured");
+        assert_eq!(stored_source(&ctx, &agent_id).await, None);
+    }
+
+    #[tokio::test]
+    async fn rejects_bad_prompts_and_quality_before_any_call() {
+        let (ctx, _api) = image_ctx(true, None).await;
+        let agent_id = create_agent(&ctx, "picky").await;
+
+        let err = generate(&agent_id, Some("   "))
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+        assert_bad_request(&err, "prompt is empty");
+
+        let long = "x".repeat(MAX_AVATAR_PROMPT_CHARS + 1);
+        let err = generate(&agent_id, Some(&long))
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+        assert_bad_request(&err, "at most 2000 characters");
+
+        let err = GenerateAgentAvatar {
+            agent_id: agent_id.clone(),
+            req: GenerateAgentAvatarRequest {
+                prompt: Some("an owl".to_string()),
+                quality: Some("ultra".to_string()),
+            },
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert_bad_request(&err, "quality");
+        assert_eq!(stored_source(&ctx, &agent_id).await, None);
+    }
+
+    #[tokio::test]
+    async fn a_provider_failure_is_unavailable_and_keeps_the_old_avatar() {
+        // A PNG too small to be an avatar stands in for a broken response:
+        // rendering refuses it, so nothing is stored.
+        let (ctx, _api) = image_ctx(true, Some(png(8))).await;
+        let agent_id = create_agent(&ctx, "tiny").await;
+
+        let err = generate(&agent_id, Some("an owl"))
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+        assert_eq!(err.status().as_u16(), 400, "{}", err.message());
+        assert_eq!(stored_source(&ctx, &agent_id).await, None);
+    }
+
+    #[tokio::test]
+    async fn without_provider_services_is_unavailable() {
+        let ctx = owner_ctx().await;
+        let agent_id = create_agent(&ctx, "bare").await;
+        let err = generate(&agent_id, Some("an owl"))
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+        assert_eq!(err.status().as_u16(), 503, "{}", err.message());
+    }
+
+    #[tokio::test]
+    async fn built_in_agent_rejects_generate_agent_avatar() {
+        let (ctx, _api) = image_ctx(true, None).await;
+        let agent_id = create_agent(&ctx, "chat").await;
+        ctx.db
+            .mark_agent_built_in(DEFAULT_ORG_ID, agent_id.parse().unwrap())
+            .await
+            .unwrap();
+
+        let err = generate(&agent_id, Some("an owl"))
+            .execute(&ctx)
+            .await
+            .unwrap_err();
+        assert_bad_request(&err, "built-in agent");
+    }
+
+    #[tokio::test]
+    async fn generate_agent_avatar_records_history_through_run() {
+        let (ctx, _api) = image_ctx(true, Some(png(256))).await;
+        let agent_id = create_agent(&ctx, "history-gen").await;
+
+        generate(&agent_id, Some("an owl"))
+            .run(&ctx)
+            .await
+            .expect("run");
+
+        let changes = ctx
+            .db
+            .list_entity_changes(&crate::storage::entity_changes::EntityChangeQuery {
+                org_id: ctx.org_id(),
+                entity_ref: Some(agent_id.clone()),
+                limit: 10,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let entry = changes
+            .iter()
+            .find(|c| c.command == "generate_agent_avatar")
+            .expect("history entry");
+        assert_eq!(entry.action, "updated");
+    }
+}

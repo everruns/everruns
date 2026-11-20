@@ -86,6 +86,13 @@ write failure, inspect current state before repeating it.
   current host's command surface for its examples. In Platform Chat, its MCP
   transport instructions apply only to external clients: keep using the bound
   shell, without MCP tools or organization arguments.
+- **Give an agent an avatar:** `everruns agents avatar generate <agent_id>
+  --prompt '...' --reason '...'` draws one with the organization's default
+  image model and sets it in one step (omit `--prompt` to draw from the agent's
+  name and description). `everruns agents avatar presets` lists curated ones
+  for `avatar set --preset`. Over MCP the commands are `generate_agent_avatar`,
+  `list_avatar_presets` and `set_agent_avatar`. Do not run a session just to
+  draw an avatar.
 - **Run an agent:** resolve it, inspect `everruns sessions --help`, create a
   session using its selected harness, and send the task using the advertised
   message command. Observe completion and retrieve output; session creation
