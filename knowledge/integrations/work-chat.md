@@ -11,6 +11,10 @@ Work Chat is an Agent-owned channel. It publishes one configured experience,
 with its own lifecycle and consumer access, and does not revive the retired App
 aggregate. Several channels may expose the same Agent independently.
 
+The publisher can share an [Agent view](../ui/published-agent-views.md) in the
+conversation panel or use it as the channel's landing page. The channel's
+audience controls access to the view.
+
 The publisher chooses a single main conversation with work threads, or multiple
 independent conversations. Single-with-threads requires the effective Agent to
 provide coordinator thread tools. The shared feature resolver checks inherited

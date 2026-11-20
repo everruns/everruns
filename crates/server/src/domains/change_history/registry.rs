@@ -501,6 +501,10 @@ pub fn declared(name: &str) -> Change {
             Change::Exempt("queues reconciliation; the import records the actual change")
         }
         "update_agent" | "upsert_agent" => on(K::Agent, Updated, ID),
+        "replace_agent_view" => {
+            Change::Exempt("view settings have their own revision-checked lifecycle")
+        }
+        "set_session_agent_view_preference" => Change::Exempt("private viewer preference"),
         "delete_agent" | "destroy_agent" => on(K::Agent, Deleted, Param("id")),
         "pause_agent" => on(K::Agent, Suspended, ID),
         "resume_agent" => on(K::Agent, Resumed, ID),

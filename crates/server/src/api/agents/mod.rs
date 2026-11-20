@@ -260,6 +260,8 @@ pub fn routes(state: AppState) -> Router {
         .merge(super::agent_activity::routes())
         .command::<crate::domains::agents::failures::ListAgentFailures>()
         .merge(super::agent_mcp_attachments::routes())
+        .command::<crate::domains::agents::views::GetAgentViewSettings>()
+        .command::<crate::domains::agents::views::ReplaceAgentView>()
         .merge(super::agent_avatars::routes())
         .route(
             "/v1/agents/{agent_id}",

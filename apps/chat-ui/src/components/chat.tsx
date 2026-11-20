@@ -13,6 +13,7 @@ import {
   type ReactionsByMessage,
 } from "./reactions";
 import { SharedChat } from "./shared-chat";
+import { PublishedLanding, PublishedView, useWorkChatView } from "./published-view";
 import { consumeSse, streamFailure } from "../client/sse";
 import { presentViewer, type Viewer } from "../profile";
 import {
@@ -40,6 +41,7 @@ type Config = {
   logo?: string;
   interface_mode: "single_with_threads" | "multi_chat";
   features: { threads: boolean; files: boolean };
+  view_placement?: "none" | "panel" | "page";
 };
 type Question = {
   id: string;
@@ -121,12 +123,19 @@ async function api<T>(
   return response.json();
 }
 export function Chat({ config }: { config: Config }) {
-  const [share, setShare] = useState<string | null | undefined>(undefined);
+  const [entry, setEntry] = useState<{ share: string | null; chat: boolean }>();
   useEffect(() => {
-    setShare(new URLSearchParams(window.location.search).get("share"));
+    const params = new URLSearchParams(window.location.search);
+    setEntry({
+      share: params.get("share"),
+      chat: params.get("surface") === "chat" || params.has("session"),
+    });
   }, []);
-  if (share === undefined) return <p role="status">Loading chat…</p>;
-  return share ? <SharedChat token={share} name={config.name} /> : <WorkChat config={config} />;
+  if (!entry) return <p role="status">Loading chat…</p>;
+  if (entry.share) return <SharedChat token={entry.share} name={config.name} />;
+  if (config.view_placement === "page" && !entry.chat)
+    return <PublishedLanding name={config.name} />;
+  return <WorkChat config={config} />;
 }
 function WorkChat({ config }: { config: Config }) {
   const [sessions, setSessions] = useState<Session[]>([]),
@@ -217,6 +226,13 @@ function WorkChat({ config }: { config: Config }) {
   const [notice, setNotice] = useState(""),
     [effort, setEffort] = useState("");
   const [preview, setPreview] = useState(true);
+  const [contextTab, setContextTab] = useState<"view" | "work">("view");
+  const [workSearch, setWorkSearch] = useState("");
+  const { view: agentView, save: saveView } = useWorkChatView(
+    signedIn && (config.view_placement === "panel" || config.view_placement === "page"),
+    selected,
+  );
+  const contextTabs = !!agentView && work.length > 4;
   const [reactions, setReactions] = useState<ReactionsByMessage>(new Map());
   const end = useRef<HTMLDivElement>(null),
     generation = useRef(0),
@@ -260,6 +276,7 @@ function WorkChat({ config }: { config: Config }) {
           next.name !== config.name ||
           next.description !== config.description ||
           next.logo !== config.logo ||
+          next.view_placement !== config.view_placement ||
           next.features.files !== config.features.files ||
           next.features.threads !== config.features.threads
         )
@@ -640,11 +657,10 @@ function WorkChat({ config }: { config: Config }) {
     if (!selected) return;
     const sessionId = selected;
     setReactions((old) => applyReaction(old, messageId, emoji, add));
-    saveReaction(sessionId, messageId, emoji, add)
-      .catch((error) => {
-        setReactions((old) => applyReaction(old, messageId, emoji, !add));
-        fail(error);
-      });
+    saveReaction(sessionId, messageId, emoji, add).catch((error) => {
+      setReactions((old) => applyReaction(old, messageId, emoji, !add));
+      fail(error);
+    });
   };
   const choose = (id: string) => {
     const url = new URL(window.location.href);
@@ -869,8 +885,34 @@ function WorkChat({ config }: { config: Config }) {
               </details>
             )}
 
-            <button onClick={() => setPanel(panel === "work" ? null : "work")}>
-              {config.features.threads ? "Threads" : "Work"} <span>{work.length || ""}</span>
+            {config.view_placement === "page" && agentView && (
+              <a className="published-page-link" href="/" aria-label={agentView.title}>
+                View page
+              </a>
+            )}
+            <button
+              aria-expanded={panel === "work"}
+              aria-label={agentView ? "Conversation panel" : undefined}
+              onClick={() => setPanel(panel === "work" ? null : "work")}
+            >
+              {agentView ? (
+                <svg
+                  aria-hidden="true"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M14 3v18" />
+                </svg>
+              ) : (
+                <>
+                  {config.features.threads ? "Threads" : "Work"} <span>{work.length || ""}</span>
+                </>
+              )}
             </button>
             {config.features.files && (
               <button
@@ -1197,18 +1239,62 @@ function WorkChat({ config }: { config: Config }) {
             </button>
           </div>
           {panel === "work" ? (
-            work.map((task) => (
-              <section className="task" key={task.id}>
-                <small>{task.state}</small>
-                <h3>{task.title || "Background work"}</h3>
-                <p>{task.summary}</p>
-                {task.links?.child_session_id && (
-                  <button onClick={() => choose(task.links!.child_session_id!)}>
-                    Open thread →
+            <>
+              {contextTabs && (
+                <nav className="view-context-tabs" aria-label="Panel sections">
+                  <button
+                    type="button"
+                    aria-pressed={contextTab === "view"}
+                    onClick={() => setContextTab("view")}
+                  >
+                    {agentView.title}
                   </button>
-                )}
-              </section>
-            ))
+                  <button
+                    type="button"
+                    aria-pressed={contextTab === "work"}
+                    onClick={() => setContextTab("work")}
+                  >
+                    {config.features.threads ? "Threads" : "Work"}
+                  </button>
+                </nav>
+              )}
+              {agentView && (!contextTabs || contextTab === "view") && (
+                <PublishedView
+                  key={(selected ?? "agent") + ":" + agentView.revision}
+                  view={agentView}
+                  saveLayout={saveView}
+                />
+              )}
+              {contextTabs && contextTab === "work" && (
+                <input
+                  className="context-search"
+                  aria-label="Search work threads"
+                  placeholder="Search threads…"
+                  value={workSearch}
+                  onChange={(event) => setWorkSearch(event.target.value)}
+                />
+              )}
+              {(!contextTabs || contextTab === "work") &&
+                work
+                  .filter(
+                    (task) =>
+                      !contextTabs ||
+                      !workSearch.trim() ||
+                      (task.title ?? "").toLowerCase().includes(workSearch.trim().toLowerCase()),
+                  )
+                  .map((task) => (
+                    <section className="task" key={task.id}>
+                      <small>{task.state}</small>
+                      <h3>{task.title || "Background work"}</h3>
+                      <p>{task.summary}</p>
+                      {task.links?.child_session_id && (
+                        <button onClick={() => choose(task.links!.child_session_id!)}>
+                          Open thread →
+                        </button>
+                      )}
+                    </section>
+                  ))}
+            </>
           ) : (
             <>
               <div className="file-nav">

@@ -26,6 +26,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
             "capabilities",
             "skills",
             "agent-scripts",
+            "agent_views",
             "agent-triggers",
             "agent-examples",
             "harness-examples",
@@ -268,6 +269,7 @@ fn apply(spec: &mut Value) {
                 "support": if experimental { "experimental" } else { "preview" },
                 "audience": if internal { "internal" } else { "public" },
                 "availability": if experimental { "Requires machine_payments; disabled by default" }
+                    else if tag == "agent_views" || path.ends_with("/chat/view") { "Requires organization adoption of the agent_views feature flag" }
                     else if tag == "evals" { "Requires the evals feature flag" }
                     else if tag == "extractions" { "Requires an organization-owned provider and an enabled extraction model" }
                     else { "Everruns Cloud and self-hosted Platform" },

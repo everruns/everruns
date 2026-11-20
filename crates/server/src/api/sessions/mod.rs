@@ -1,10 +1,12 @@
 // Session CRUD HTTP routes
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 // Policy enforcement happens at the service layer via #[policy] macro.
+use super::command_http::CommandRouterExt;
 use super::common::{
     ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
     impl_auth_state,
 };
+use super::dispatch::impl_dispatchable;
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::harnesses::record::BuiltInHarnessRole;
@@ -141,10 +143,13 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Create session routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .command::<crate::domains::agents::view_publication::GetSessionAgentView>()
+        .command::<crate::domains::agents::view_publication::SetSessionAgentViewPreference>()
         // Config endpoint (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/config", get(session_config))
         .route("/v1/sessions/platform-chat", post(ensure_platform_chat))

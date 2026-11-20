@@ -43,6 +43,10 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   contributes one (including through a dependency or the harness) or starter files already set.
   Without a filesystem, the empty Files section stays hidden. Adding a filesystem capability
   reveals the row. Source: `apps/ui/src/components/agents/agent-files-visibility.ts`.
+- **Views** lives in More, directly after Sandbox. The organization opts into Agent views
+  through the Adoption flag. An author can save and preview a default A2UI surface or static
+  HTML and set the personalization policy. The sheet saves a revision-checked resource
+  independently of the Agent page draft. See [Published Agent Views](published-agent-views.md).
 - **Page-level edit mode.** Edit, change several things, then one **Save changes** or
   **Discard**. A prompt edit and the capability change that goes with it land in one update.
   Changing any config control in view mode enters edit mode with that change pending, so nothing

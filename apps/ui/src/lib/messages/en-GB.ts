@@ -297,4 +297,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Organization users": "Organisation users",
   "Members of this organization can sign in.": "Members of this organisation can sign in.",
   "Organization default image model": "Organisation default image model",
+  Customize: "Customise",
+  Personalization: "Personalisation",
+  "Configure the default layout and personalization for this agent’s view.":
+    "Configure the default layout and personalisation for this agent’s view.",
+  "Use A2UI 1.0 operations for a single surface with the standard catalog.":
+    "Use A2UI 1.0 operations for a single surface with the standard catalogue.",
 };

@@ -49,6 +49,7 @@ import type {
   WebhookChannelConfig,
 } from "@/lib/api/types";
 import { agentIdChannelAuth, agentIdClientId, isAgentIdChannelAuth } from "@/lib/agentid";
+import { useOptionalFeatureFlags } from "@/providers/feature-flags-provider";
 import { AgentIdSignInFields, PublicChatSignInFields } from "./sign-in-fields";
 import {
   buildVoiceChannelConfig,
@@ -106,6 +107,7 @@ export type ChannelFormState = {
   kind: ChannelType;
   chatInterface: "single_with_threads" | "multi_chat";
   chatMembership: WorkChatMembership;
+  chatViewPlacement: "none" | "panel" | "page";
   chatMemberEmail: string;
   chatInvites: string;
   enabled: boolean;
@@ -237,6 +239,7 @@ export function getDefaultChannelFormState(
     api: apiFormStateFromConfig(),
     chatInterface: "multi_chat",
     chatMembership: "open",
+    chatViewPlacement: "none",
     chatMemberEmail: "",
     chatInvites: "",
   };
@@ -350,6 +353,7 @@ export function getDefaultChannelFormState(
     const config = channel.channel_config as {
       interface_mode?: "single_with_threads" | "multi_chat";
       membership?: WorkChatMembership;
+      view_placement?: ChannelFormState["chatViewPlacement"];
       member_email?: string;
       invites?: string[];
       execution?: ApiChannelConfig;
@@ -359,6 +363,7 @@ export function getDefaultChannelFormState(
       kind: "work_chat",
       chatInterface: config.interface_mode ?? "multi_chat",
       chatMembership: config.membership ?? "open",
+      chatViewPlacement: config.view_placement ?? "none",
       chatMemberEmail: config.member_email ?? "",
       chatInvites: (config.invites ?? []).join("\n"),
       api: apiFormStateFromConfig(config.execution),
@@ -514,6 +519,7 @@ export function buildChannelConfig(state: ChannelFormState) {
       return {
         interface_mode: state.chatInterface,
         membership: state.chatMembership,
+        ...(state.chatViewPlacement !== "none" ? { view_placement: state.chatViewPlacement } : {}),
         ...(state.chatMembership === "invites"
           ? {
               member_email: state.chatMemberEmail.trim(),
@@ -624,6 +630,8 @@ export function ChannelForm({
   const ui = useUiTranslations();
   const update = <K extends keyof ChannelFormState>(key: K, value: ChannelFormState[K]) =>
     onChange({ ...state, [key]: value });
+  const viewsEnabled = useOptionalFeatureFlags()?.flags.agent_views;
+  const placementId = useId();
   // Without public HTTPS, Socket Mode's Add to Slack creates the app; the install ends in Slack.
   const slackInstallAvailable = slackInstallCapability?.connected === true;
   const slackFinishInSlack = SocketMode.finishesInSlack(state.slackConnection);
@@ -1260,6 +1268,30 @@ export function ChannelForm({
             value={state.api}
             onChange={(api) => update("api", api)}
           />
+          {viewsEnabled && (
+            <div className="space-y-2">
+              <Label htmlFor={placementId}>{ui("Published view")}</Label>
+              <select
+                id={placementId}
+                className="h-9 w-full border bg-background px-2 text-sm"
+                value={state.chatViewPlacement}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  update(
+                    "chatViewPlacement",
+                    value === "page" || value === "panel" ? value : "none",
+                  );
+                }}
+              >
+                <option value="none">{ui("None")}</option>
+                <option value="panel">{ui("Show alongside chat")}</option>
+                <option value="page">{ui("Open on the published page")}</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {ui("This shares the Agent’s view with people who can sign into this channel.")}
+              </p>
+            </div>
+          )}
         </FormSection>
       )}
       {state.kind === "api" && (

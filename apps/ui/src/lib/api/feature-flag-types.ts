@@ -1,4 +1,6 @@
 export interface FeatureFlags {
+  /** Agent-owned views. Organization adoption opt-in. */
+  agent_views?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;
