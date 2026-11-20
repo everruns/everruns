@@ -1941,8 +1941,8 @@ run view (turns from the cell's trace rows). A standalone cell (no control
 plane, so no data plane key) keeps session secrets as written: nothing
 seals them there. Known differences on v2: a cell keeps no timestamps for
 values and secrets; a fork carries messages with their text and media but
-not tool calls, files or databases (a workspace fork comes with the tree
-in the object store, [fs.md](fs.md) step 8); bound secrets are refused.
+not tool calls, and its parent's files (copied since 2026-11-20) but not
+its databases, as on v1; bound secrets are refused.
 
 **11.6 continued: attachments and the Work tab.** Uploads stay org records
 on the control plane. A message that refers to one (`image_file`, `file`)
@@ -2773,3 +2773,25 @@ does it the same way:
 - **Smokes follow the images.** The Compose, `docker up`, Helm and `k8s up`
   smokes run a turn and check where it ran: v2 when the tag has a cell
   image, v1 for older tags (`scripts/lib/smoke-turn.sh`).
+
+**Parity, remaining gaps (2026-11-20).** `POST messages?wait=true` is
+answered on the cell (`gateway_wait.rs`): the message is admitted as
+without `wait`, then the call follows the session's events until the turn
+that carries the message ends, and answers with the control plane's
+shape (`200` completed or failed, `202` on timeout). The turn is found by
+the message's own `input.message`, since a cell steers a running turn
+with it; a cancelled turn ends the wait as failed. A fork of a v2 session
+gets its parent's files, from one `snapshot` of them or file by file past
+a snapshot's limit (`moves::copy_files`). A trigger that runs a saved
+script runs it on the cell: the trigger's message carries the script run,
+and the shell's `tools scripts` reads and saves the agent's scripts through
+the `agent_scripts` and `agent_script_save` host calls (a save acts as the
+turn's management user, under `manage_scripts`, as on v1). A voice call
+stays on the control plane, which holds the provider connection: its
+traces are recorded on the cell (`voice.*` are `RECORDABLE`), its
+utterances are admitted there, its barge-in cancels the cell's turn, and
+it speaks the turns it follows on the cell's event stream. An
+`input_audio` part is not a gap: v1 refuses it too. Still open: a cell
+keeps no created or updated time for a storage key or secret, so the
+Storage tab shows none (`session_storage/plane.rs`); keeping one needs the
+time carried in the write, so every replica applies the same one.

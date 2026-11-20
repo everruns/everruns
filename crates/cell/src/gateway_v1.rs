@@ -200,9 +200,7 @@ async fn send(
         Ok(session) => session,
         Err(error) => return error.into_response(),
     };
-    if raw.as_deref().is_some_and(|q| q.contains("wait=true")) {
-        return not_yet(Method::POST, Path((String::new(), "messages?wait".into()))).await;
-    }
+    let wait = crate::gateway_wait::requested(raw.as_deref());
     let id = match body.id.map(|id| MessageId::parse(&id)).transpose() {
         Ok(id) => id.unwrap_or_default(),
         Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
@@ -235,22 +233,22 @@ async fn send(
                 .await
         }
     };
-    match admitted {
-        Ok(_) => (
-            StatusCode::CREATED,
-            Json(json!({
-                "id": id,
-                "session_id": session,
-                "sequence": 0,
-                "role": "user",
-                "content": parts,
-                "metadata": body.metadata,
-                "created_at": chrono::Utc::now(),
-                "status": "accepted",
-            })),
-        )
-            .into_response(),
-        Err(error) => error.into_response(),
+    if let Err(error) = admitted {
+        return error.into_response();
+    }
+    let accepted = json!({
+        "id": id,
+        "session_id": session,
+        "sequence": 0,
+        "role": "user",
+        "content": parts,
+        "metadata": body.metadata,
+        "created_at": chrono::Utc::now(),
+        "status": "accepted",
+    });
+    match wait {
+        Some(budget) => crate::gateway_wait::answer(&gateway, session, id, accepted, budget).await,
+        None => (StatusCode::CREATED, Json(accepted)).into_response(),
     }
 }
 
@@ -279,7 +277,7 @@ pub(crate) async fn read_events(
 /// A message as the control plane lists it, from the event that carries
 /// it (`input.message` is the user's, `output.message.completed` the
 /// agent's).
-fn message_of(event: &Event) -> Option<Value> {
+pub(crate) fn message_of(event: &Event) -> Option<Value> {
     let role = match event.event_type.as_str() {
         "input.message" => "user",
         "output.message.completed" => "agent",

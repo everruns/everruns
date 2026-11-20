@@ -276,3 +276,83 @@ async fn a_moving_session_refuses_messages_until_its_import_is_done() {
     ));
     assert!(!cp.db.dp_session_moving(&public).await.unwrap());
 }
+
+/// A fork of a v2 session gets its parent's files, as a v1 fork copies its
+/// workspace: from one snapshot, or file by file past a snapshot's limit.
+#[tokio::test]
+async fn a_v2_forks_files_come_from_a_snapshot_or_file_by_file() {
+    let (cp, seen, _) = control_plane().await;
+    let now = chrono::Utc::now();
+    let ids: Vec<String> = (0..3)
+        .map(|_| everruns_contracts::typed_id::SessionId::new().to_string())
+        .collect();
+    for id in &ids {
+        cp.db
+            .dp_upsert_session_summary(crate::storage::DpSessionSummary {
+                session_id: id,
+                org_id: ORG,
+                data_plane_id: "dp-1",
+                agent_id: "agent",
+                session_version: 0,
+                title: "",
+                status: "started",
+                turns: 0,
+                cost_micros: 0,
+                created_at: now,
+                last_activity_at: now,
+            })
+            .await
+            .unwrap();
+    }
+    let plane = |id: &str| {
+        let cp = cp.clone();
+        let id = everruns_contracts::typed_id::SessionId::parse(id).unwrap();
+        async move {
+            crate::domains::data_plane::session_plane::SessionPlane::with(&cp, ORG, id)
+                .await
+                .unwrap()
+                .unwrap()
+        }
+    };
+    seen.lock().files.insert(
+        ids[0].clone(),
+        vec![
+            json!({ "path": "/notes.md", "encoding": "text", "content": "# Notes", "readonly": false }),
+            json!({ "path": "/data.bin", "encoding": "base64", "content": "/wD+", "readonly": true }),
+        ],
+    );
+    let written = |session: &str| -> Vec<Value> {
+        commands(&seen, session, "fs")
+            .iter()
+            .filter(|b| b["op"] == "seed")
+            .flat_map(|b| b["files"].as_array().unwrap().clone())
+            .collect()
+    };
+
+    let copied = moves::copy_files(&plane(&ids[0]).await, &plane(&ids[1]).await)
+        .await
+        .unwrap();
+    assert_eq!(copied, 2);
+    let child = written(&ids[1]);
+    assert_eq!(child.len(), 2, "{child:?}");
+    assert!(child.iter().any(|f| f["path"] == "/data.bin"
+        && f["encoding"] == "base64"
+        && f["is_readonly"] == true));
+
+    seen.lock().snapshot_refused = true;
+    let copied = moves::copy_files(&plane(&ids[0]).await, &plane(&ids[2]).await)
+        .await
+        .unwrap();
+    assert_eq!(copied, 2, "file by file, the directory skipped");
+    let child = written(&ids[2]);
+    assert!(
+        child
+            .iter()
+            .any(|f| f["path"] == "/notes.md" && f["content"] == "# Notes")
+    );
+    assert!(
+        child
+            .iter()
+            .any(|f| f["path"] == "/data.bin" && f["is_readonly"] == true)
+    );
+}

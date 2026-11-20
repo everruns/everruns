@@ -196,8 +196,9 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     ("git", Plane::Record),
     // The MCP servers added to one chat: records in the session's storage.
     ("mcp-servers", Plane::Record),
-    // Known gaps (data plane v2 parity, Phase B).
-    ("voice", Plane::Gap),
+    // A voice call: the control plane runs it, follows the session's
+    // events from its cell and records the call's events there.
+    ("voice", Plane::Record),
 ];
 
 /// Paths under a [`Plane::Cell`] route the cell does not serve yet (it
@@ -269,6 +270,6 @@ mod tests {
         assert_eq!(plane("archive"), Plane::Record);
         assert_eq!(plane("messages"), Plane::Cell);
         assert_eq!(plane("git"), Plane::Record);
-        assert_eq!(plane("voice"), Plane::Gap);
+        assert_eq!(plane("voice"), Plane::Record);
     }
 }

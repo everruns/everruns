@@ -356,8 +356,7 @@ async fn files(
     report: &mut MoveReport,
 ) -> anyhow::Result<()> {
     let listed = cp.db.list_all_session_files(row.workspace_id).await?;
-    let mut batch: Vec<InitialFile> = Vec::new();
-    let mut batch_bytes = 0;
+    let mut seeder = FileSeeder::new(plane);
     for info in listed.into_iter().filter(|info| !info.is_directory) {
         if info.size_bytes > FILE_MAX {
             report.left_behind.push(format!(
@@ -377,39 +376,137 @@ async fn files(
                 "base64",
             ),
         };
-        if !batch.is_empty() && batch_bytes + content.len() > FILES_BATCH_BYTES {
-            send_files(plane, std::mem::take(&mut batch)).await?;
-            batch_bytes = 0;
-        }
-        batch_bytes += content.len();
-        batch.push(InitialFile {
-            path: file.path,
-            content,
-            encoding: encoding.into(),
-            is_readonly: file.is_readonly,
-        });
+        seeder
+            .push(InitialFile {
+                path: file.path,
+                content,
+                encoding: encoding.into(),
+                is_readonly: file.is_readonly,
+            })
+            .await?;
         report.files += 1;
     }
-    if !batch.is_empty() {
-        send_files(plane, batch).await?;
-    }
-    Ok(())
+    seeder.finish().await
 }
 
-async fn send_files(plane: &SessionPlane, files: Vec<InitialFile>) -> anyhow::Result<()> {
-    let reply: Value = plane
-        .command(
-            &session_commands::FS,
-            &json!({ "op": "seed", "files": files }),
-        )
-        .await?;
-    if reply["result"] == "failed" {
-        anyhow::bail!(
-            "the files were not copied: {}",
-            reply["message"].as_str().unwrap_or("unknown reason")
-        );
+/// Files written into a session on its cell, in `seed` calls of about a
+/// megabyte each (a larger file goes alone). A move and a fork share it.
+pub(crate) struct FileSeeder<'a> {
+    plane: &'a SessionPlane,
+    batch: Vec<InitialFile>,
+    bytes: usize,
+}
+
+impl<'a> FileSeeder<'a> {
+    pub(crate) fn new(plane: &'a SessionPlane) -> Self {
+        Self {
+            plane,
+            batch: Vec::new(),
+            bytes: 0,
+        }
     }
-    Ok(())
+
+    pub(crate) async fn push(&mut self, file: InitialFile) -> anyhow::Result<()> {
+        if !self.batch.is_empty() && self.bytes + file.content.len() > FILES_BATCH_BYTES {
+            self.send().await?;
+        }
+        self.bytes += file.content.len();
+        self.batch.push(file);
+        Ok(())
+    }
+
+    pub(crate) async fn finish(mut self) -> anyhow::Result<()> {
+        if !self.batch.is_empty() {
+            self.send().await?;
+        }
+        Ok(())
+    }
+
+    async fn send(&mut self) -> anyhow::Result<()> {
+        let files = std::mem::take(&mut self.batch);
+        self.bytes = 0;
+        let reply: Value = self
+            .plane
+            .command(
+                &session_commands::FS,
+                &json!({ "op": "seed", "files": files }),
+            )
+            .await?;
+        if reply["result"] == "failed" {
+            anyhow::bail!(
+                "the files were not copied: {}",
+                reply["message"].as_str().unwrap_or("unknown reason")
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Copy every file of `parent` into `child` (a fork's files); how many.
+/// One `snapshot` of the parent's files, or file by file when the
+/// workspace is larger than a snapshot carries.
+pub(crate) async fn copy_files(
+    parent: &SessionPlane,
+    child: &SessionPlane,
+) -> anyhow::Result<usize> {
+    let mut seeder = FileSeeder::new(child);
+    let mut copied = 0;
+    let snapshot = fs(parent, json!({ "op": "snapshot" })).await?;
+    match snapshot {
+        Ok(value) => {
+            for file in value["files"].as_array().into_iter().flatten() {
+                seeder.push(initial(file, file["path"].as_str())?).await?;
+                copied += 1;
+            }
+        }
+        // Larger than one snapshot carries: file by file.
+        Err(413) => {
+            let listed = fs(
+                parent,
+                json!({ "op": "get", "path": "/", "recursive": true }),
+            )
+            .await?
+            .map_err(|status| anyhow::anyhow!("the parent's files were not listed: {status}"))?;
+            for info in listed["data"].as_array().into_iter().flatten() {
+                if info["is_directory"] == true {
+                    continue;
+                }
+                let path = info["path"].as_str().unwrap_or_default();
+                let Ok(mut file) = fs(parent, json!({ "op": "raw", "path": path })).await? else {
+                    continue;
+                };
+                file["readonly"] = info["is_readonly"].clone();
+                seeder.push(initial(&file, Some(path))?).await?;
+                copied += 1;
+            }
+        }
+        Err(status) => anyhow::bail!("the parent's files were not read: {status}"),
+    }
+    seeder.finish().await?;
+    Ok(copied)
+}
+
+/// A workspace call on `plane`: its value, or the status it failed with.
+async fn fs(
+    plane: &SessionPlane,
+    op: serde_json::Value,
+) -> anyhow::Result<Result<serde_json::Value, u64>> {
+    let reply = plane.command(&session_commands::FS, &op).await?;
+    Ok(match reply["result"].as_str() {
+        Some("done") => Ok(reply["value"].clone()),
+        _ => Err(reply["status"].as_u64().unwrap_or(500)),
+    })
+}
+
+fn initial(file: &serde_json::Value, path: Option<&str>) -> anyhow::Result<InitialFile> {
+    Ok(InitialFile {
+        path: path
+            .ok_or_else(|| anyhow::anyhow!("a file without a path"))?
+            .to_owned(),
+        content: file["content"].as_str().unwrap_or_default().to_owned(),
+        encoding: file["encoding"].as_str().unwrap_or("text").to_owned(),
+        is_readonly: file["readonly"].as_bool().unwrap_or(false),
+    })
 }
 
 /// Move `org_id`'s v1 sessions (not deleted; archived ones too with

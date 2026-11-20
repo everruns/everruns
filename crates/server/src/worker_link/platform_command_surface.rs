@@ -48,6 +48,23 @@ pub async fn session_has_platform_capability(
     org_id: i64,
     session: &crate::domains::sessions::record::Session,
 ) -> anyhow::Result<bool> {
+    Ok(session_capabilities(db, registry, org_id, session)
+        .await?
+        .iter()
+        .any(|capability| {
+            capability.capability_id()
+                == everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID
+        }))
+}
+
+/// The capabilities `session` runs with, configs included, resolved as the
+/// worker resolves them.
+pub async fn session_capabilities(
+    db: &std::sync::Arc<crate::storage::StorageBackend>,
+    registry: &everruns_core::capabilities::CapabilityRegistry,
+    org_id: i64,
+    session: &crate::domains::sessions::record::Session,
+) -> anyhow::Result<Vec<everruns_contracts::CapabilityRef>> {
     // The same inheritance fold the worker's harness store runs, so an
     // inherited `platform` resolves identically on both sides.
     let harness =
@@ -68,13 +85,7 @@ pub async fn session_has_platform_capability(
         &session.execution_session(),
         registry,
     );
-    Ok(resolved
-        .resolved_capability_configs
-        .iter()
-        .any(|capability| {
-            capability.capability_id()
-                == everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID
-        }))
+    Ok(resolved.resolved_capability_configs)
 }
 
 pub async fn invoke(

@@ -482,3 +482,42 @@ async fn a_cell_short_of_memory_starts_no_queued_turns_past_its_floor() {
     fleet.leader(1).await;
     fleet.turns(&session, 1).await;
 }
+
+/// `?wait=true` answers once the message's turn ends, with the turn's reply,
+/// as the control plane's wait does; a budget shorter than the turn answers
+/// 202 with the turn still running.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_send_that_waits_answers_with_its_turns_reply() {
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let session = fleet.create("echo").await;
+    let (status, _, waited) = fleet
+        .post_once(
+            &format!("/v1/sessions/{session}/messages?wait=true"),
+            json!({ "text": "ping" }),
+        )
+        .await;
+    assert_eq!(status, 200, "{waited}");
+    assert_eq!(waited["status"], "completed", "{waited}");
+    assert_eq!(waited["message"]["role"], "user", "{waited}");
+    assert!(
+        waited["message"]["sequence"].as_i64().unwrap() > 0,
+        "the sent message as it was recorded: {waited}"
+    );
+    let replies = waited["messages"].as_array().unwrap();
+    assert!(
+        !replies.is_empty() && replies.iter().all(|m| m["role"] == "agent"),
+        "{waited}"
+    );
+
+    let slow = fleet.create("slow").await;
+    let (status, _, waited) = fleet
+        .post_once(
+            &format!("/v1/sessions/{slow}/messages?wait=true&timeout_ms=200"),
+            json!({ "text": "go" }),
+        )
+        .await;
+    assert_eq!(status, 202, "{waited}");
+    assert_eq!(waited["status"], "timeout", "{waited}");
+    assert!(waited.get("error").is_none(), "{waited}");
+}

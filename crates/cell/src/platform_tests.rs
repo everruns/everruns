@@ -382,6 +382,49 @@ fn the_control_plane_records_only_reactions_of_the_session() {
 }
 
 #[test]
+fn the_control_plane_records_a_voice_calls_traces() {
+    use everruns_core::events::{
+        EventContext, EventData, EventRequest, VOICE_INPUT_TRANSCRIPT_DELTA, VoiceSessionEndedData,
+        VoiceTranscriptData,
+    };
+    let session = SessionId::new();
+    let ended = EventRequest::new(
+        session,
+        EventContext::empty(),
+        EventData::from(VoiceSessionEndedData {
+            voice_connection_id: "vc_1".into(),
+            reason: None,
+            duration_ms: Some(5),
+        }),
+    );
+    let transcript = EventRequest::new(
+        session,
+        EventContext::empty(),
+        EventData::voice_transcript_event(
+            VoiceTranscriptData {
+                voice_connection_id: "vc_1".into(),
+                phase: None,
+                item_id: Some("item_1".into()),
+                response_id: None,
+                delta: "hi".into(),
+                accumulated: "hi".into(),
+            },
+            VOICE_INPUT_TRANSCRIPT_DELTA,
+        ),
+    );
+    for request in [ended, transcript] {
+        // As the control plane sends it: over the wire.
+        let request: EventRequest =
+            serde_json::from_value(serde_json::to_value(&request).unwrap()).unwrap();
+        assert!(
+            recordable(session, &request).is_ok(),
+            "{}",
+            request.event_type
+        );
+    }
+}
+
+#[test]
 fn a_schedule_stops_when_its_runs_spend_its_cap() {
     let (mut state, session) = session();
     let schedule = create(&mut state, session, Some("*/5 * * * *"), None);

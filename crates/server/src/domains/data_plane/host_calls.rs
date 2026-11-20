@@ -52,7 +52,9 @@
 //!   that keep what v1 keeps here: a Poppy call's company accounts and
 //!   conversations, a session's resources and leases, its Memory and
 //!   dreaming's state; a task push config's signing secret
-//!   ([`TASK_PUSH_SECRET`], encrypted, under the config's id); and the
+//!   ([`TASK_PUSH_SECRET`], encrypted, under the config's id); the agent's
+//!   saved scripts ([`AGENT_SCRIPTS`], [`AGENT_SCRIPT_SAVE`],
+//!   `agent_scripts.rs`); and the
 //!   session record of a subagent a cell starts ([`SUBAGENT_RECORD`],
 //!   `subagents.rs`).
 //! - A write runs once per call id: the route keeps a receipt
@@ -61,8 +63,9 @@
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
-    ActsAs, DREAMING_STATE, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
-    SUBAGENT_RECORD, TASK_PUSH_SECRET, USER_MCP_SERVERS, USER_MCP_STORE,
+    AGENT_SCRIPT_SAVE, AGENT_SCRIPTS, ActsAs, DREAMING_STATE, HostCall, HostCallAnswer,
+    MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION, SUBAGENT_RECORD, TASK_PUSH_SECRET,
+    USER_MCP_SERVERS, USER_MCP_STORE,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
 
@@ -144,6 +147,8 @@ async fn run(
         SUBAGENT_RECORD => Ok(HostCallAnswer::Value(
             super::subagents::record(cp, ctx, &params).await?,
         )),
+        AGENT_SCRIPTS => super::agent_scripts::list(cp, ctx, &params).await,
+        AGENT_SCRIPT_SAVE => super::agent_scripts::save(cp, ctx, &params).await,
         _ => Ok(
             match crate::domains::common::dispatch(call.command, params, ctx).await {
                 Ok(json) => HostCallAnswer::Value(serde_json::from_str(&json)?),

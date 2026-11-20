@@ -25,3 +25,5 @@ helper_model v1 Org Read 10 Fail HostCall worker_resolve_helper_model
 dreaming_state v1 Org Write 10 Fail HostCall worker_dreaming_state
 task_push_secret v1 Org Write 10 Fail HostCall task_push_secret
 subagent_record v1 Org Write 10 Fail HostCall subagent_record
+agent_scripts v1 Org Read 10 Fail HostCall list_agent_scripts
+agent_script_save v1 Person Write 10 Fail HostCall agent_script_save

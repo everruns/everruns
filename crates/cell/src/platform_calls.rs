@@ -30,6 +30,7 @@ use everruns_internal_protocol::commands::InternalCommandTransport;
 use serde_json::{Value, json};
 
 use crate::lookups::OrgLookups;
+use everruns_contracts::runtime::saved_scripts::SavedScripts;
 
 /// One session's platform calls, bound to a turn's input message once the
 /// turn runs.
@@ -102,23 +103,35 @@ impl PlatformCalls {
     }
 }
 
-/// Binds the session's platform store to each turn's input message, as the
-/// v1 worker's `PlatformExecutionScope` does.
-pub(crate) struct BindPlatformStore(pub(crate) Arc<dyn everruns_capabilities::PlatformStore>);
+/// Binds the session's platform store, and its saved scripts, to each
+/// turn's input message, as the v1 worker's `PlatformExecutionScope` does.
+pub(crate) struct BindPlatformStore {
+    pub(crate) store: Arc<dyn everruns_capabilities::PlatformStore>,
+    pub(crate) scripts: Option<SavedScripts>,
+}
 
 impl ExecutionServices for BindPlatformStore {
     fn bind(&self, context: &mut ToolContext, id: uuid::Uuid) {
-        if let Some(store) = self.0.for_execution(id) {
+        if let Some(store) = self.store.for_execution(id) {
             context
                 .extensions
                 .insert(Arc::new(everruns_capabilities::PlatformStoreExt(store)));
         }
+        if let Some(saved) = &self.scripts
+            && let Some(store) = saved.store.for_execution(id)
+        {
+            context.extensions.insert(Arc::new(SavedScripts {
+                store,
+                can_save: saved.can_save,
+            }));
+        }
     }
 }
 
-/// `ExecutionServicesExt` binding `store`.
+/// `ExecutionServicesExt` binding `store` and `scripts`.
 pub(crate) fn binding(
     store: Arc<dyn everruns_capabilities::PlatformStore>,
+    scripts: Option<SavedScripts>,
 ) -> ExecutionServicesExt {
-    ExecutionServicesExt(Arc::new(BindPlatformStore(store)))
+    ExecutionServicesExt(Arc::new(BindPlatformStore { store, scripts }))
 }

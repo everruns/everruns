@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::api::messages::{InputMessage, MessageRole};
+use crate::domains::data_plane::session_plane::SessionPlane;
 use crate::domains::messages::CreateMessage;
 use crate::domains::sessions::CancelSession;
 use crate::kernel_imports::InputContentPart;
@@ -50,6 +51,7 @@ pub(super) async fn start(
                 .into_response(StatusCode::BAD_REQUEST),
         );
     }
+    let plane = lifecycle::plane(state, org.org_id, session_id).await?;
     let binding = settings.provider_id.as_deref();
     let provider = state
         .provider_resolver
@@ -69,6 +71,7 @@ pub(super) async fn start(
             tracing::error!(error = %error, "realtime provider rejected the voice call");
             lifecycle::emit(
                 state,
+                plane.as_deref(),
                 session_id,
                 lifecycle::failed(&voice_connection_id, "provider_error"),
             )
@@ -90,6 +93,7 @@ pub(super) async fn start(
     .await?;
     lifecycle::emit(
         state,
+        plane.as_deref(),
         session_id,
         lifecycle::started(&voice_connection_id, &settings.config),
     )
@@ -104,7 +108,7 @@ pub(super) async fn start(
         tokio::spawn(run(
             state.clone(),
             org.clone(),
-            session_id,
+            (plane, session_id),
             voice_connection_id.clone(),
             settings.config.clone(),
             (provider.driver.clone(), provider.endpoint.clone(), call_id),
@@ -129,6 +133,7 @@ pub(super) async fn start(
 /// A call running on another replica stops on the recorded end event.
 pub(super) async fn end(
     state: &AppState,
+    org_id: i64,
     session_id: SessionId,
     voice_connection_id: &str,
     reason: Option<String>,
@@ -142,8 +147,10 @@ pub(super) async fn end(
         shutdown.cancel();
     }
     lifecycle::release_lease(state, session_id, voice_connection_id).await?;
+    let plane = lifecycle::plane(state, org_id, session_id).await?;
     lifecycle::emit(
         state,
+        plane.as_deref(),
         session_id,
         lifecycle::ended(voice_connection_id, reason, None),
     )
@@ -154,7 +161,7 @@ pub(super) async fn end(
 async fn run(
     state: AppState,
     org: ResolvedOrg,
-    session_id: SessionId,
+    (plane, session_id): (Option<Arc<SessionPlane>>, SessionId),
     voice_connection_id: String,
     config: VoiceChannelConfig,
     (driver, endpoint, call_id): (SharedRealtimeDriver, ProviderEndpoint, String),
@@ -164,7 +171,7 @@ async fn run(
     let outcome = drive(
         &state,
         &org,
-        session_id,
+        (plane.clone(), session_id),
         &voice_connection_id,
         config,
         (driver, endpoint, call_id),
@@ -182,6 +189,7 @@ async fn run(
             tracing::warn!(session_id = %session_id, voice_connection_id = %voice_connection_id, "voice call failed: {error}");
             lifecycle::emit(
                 &state,
+                plane.as_deref(),
                 session_id,
                 lifecycle::failed(&voice_connection_id, "call_failed"),
             )
@@ -200,6 +208,7 @@ async fn run(
             let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
             lifecycle::emit(
                 &state,
+                plane.as_deref(),
                 session_id,
                 lifecycle::ended(
                     &voice_connection_id,
@@ -215,7 +224,7 @@ async fn run(
 async fn drive(
     state: &AppState,
     org: &ResolvedOrg,
-    session_id: SessionId,
+    (plane, session_id): (Option<Arc<SessionPlane>>, SessionId),
     voice_connection_id: &str,
     config: VoiceChannelConfig,
     (driver, endpoint, call_id): (SharedRealtimeDriver, ProviderEndpoint, String),
@@ -223,9 +232,7 @@ async fn drive(
 ) -> Result<everruns_core::voice::VoiceLoopSummary, VoiceLoopError> {
     // Subscribe before the loop can send the first message, so no answer
     // event is missed.
-    let mut events = state
-        .event_delivery
-        .subscribe(session_id.uuid())
+    let mut events = session_events(state, plane.clone(), session_id)
         .await
         .map_err(|error| VoiceLoopError::Session(error.to_string()))?;
     let connection = driver.attach(&endpoint, &call_id).await?;
@@ -233,27 +240,28 @@ async fn drive(
     let pump_shutdown = shutdown.clone();
     let this_call = voice_connection_id.to_string();
     let pump = tokio::spawn(async move {
+        use futures::StreamExt;
         let mut mapper = AgentOutputMapper::default();
         loop {
             let event = tokio::select! {
                 () = pump_shutdown.cancelled() => break,
-                event = events.recv() => event,
+                event = events.next() => event,
             };
-            let Some(event) = event else { break };
-            if ends_call(&event.data, &this_call) {
+            let Some((event_type, data)) = event else {
+                break;
+            };
+            if ends_call(&event_type, &data, &this_call) {
                 pump_shutdown.cancel();
                 break;
             }
-            // Only output, sent-message and turn events speak; skip
-            // serializing the rest (tool results can be large).
-            if !(event.event_type.starts_with("output.message.")
-                || event.event_type.starts_with("turn.")
-                || event.event_type == everruns_core::events::CONVERSATION_MESSAGE)
+            // Only output, sent-message and turn events speak.
+            if !(event_type.starts_with("output.message.")
+                || event_type.starts_with("turn.")
+                || event_type == everruns_core::events::CONVERSATION_MESSAGE)
             {
                 continue;
             }
-            let data = serde_json::to_value(&event.data).unwrap_or_default();
-            for output in mapper.map(&event.event_type, &data) {
+            for output in mapper.map(&event_type, &data) {
                 if agent_tx.send(output).await.is_err() {
                     return;
                 }
@@ -269,6 +277,7 @@ async fn drive(
     let port = ServerPort {
         state: state.clone(),
         org: org.clone(),
+        plane,
         session_id,
         voice_connection_id: voice_connection_id.to_string(),
         transcripts: Mutex::default(),
@@ -282,21 +291,84 @@ async fn drive(
     result
 }
 
-/// Whether `data` records the end of call `voice_connection_id`. A hang-up
+/// A session's events as `(type, data)`, from now: its live delivery, or
+/// for a session on a data plane its cell's stream, followed across the data
+/// plane cycling the connection.
+async fn session_events(
+    state: &AppState,
+    plane: Option<Arc<SessionPlane>>,
+    session_id: SessionId,
+) -> anyhow::Result<futures::stream::BoxStream<'static, (String, serde_json::Value)>> {
+    use futures::StreamExt;
+    let Some(plane) = plane else {
+        let events = state.event_delivery.subscribe(session_id.uuid()).await?;
+        return Ok(futures::stream::unfold(events, |mut events| async move {
+            events.recv().await.map(|event| (event, events))
+        })
+        .map(|event| {
+            // Only the speaking events' data is read; skip serializing
+            // the rest (tool results can be large).
+            let data = if event.event_type.starts_with("output.message.")
+                || event.event_type.starts_with("turn.")
+                || event.event_type == everruns_core::events::CONVERSATION_MESSAGE
+                || event.event_type == everruns_core::events::VOICE_SESSION_ENDED
+            {
+                serde_json::to_value(&event.data).unwrap_or_default()
+            } else {
+                serde_json::Value::Null
+            };
+            (event.event_type, data)
+        })
+        .boxed());
+    };
+    let first = plane.plane.events(&plane.org, plane.session, None).await?;
+    let envelopes = futures::stream::unfold(
+        (Some(first), plane, None::<i64>),
+        |(mut current, plane, mut last)| async move {
+            loop {
+                let stream = match current.as_mut() {
+                    Some(stream) => stream,
+                    None => {
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                        match plane.plane.events(&plane.org, plane.session, last).await {
+                            Ok(stream) => current.insert(stream),
+                            Err(error) => {
+                                tracing::debug!(%error, "voice: data plane stream not reached, retrying");
+                                continue;
+                            }
+                        }
+                    }
+                };
+                match stream.next().await {
+                    Some(envelope) => {
+                        if let Some(sequence) = envelope["sequence"].as_i64() {
+                            last = Some(last.map_or(sequence, |l| l.max(sequence)));
+                        }
+                        let event_type = envelope["type"].as_str().unwrap_or_default().to_owned();
+                        let data = envelope["data"].clone();
+                        return Some(((event_type, data), (current, plane, last)));
+                    }
+                    None => current = None,
+                }
+            }
+        },
+    );
+    Ok(envelopes.boxed())
+}
+
+/// Whether an event records the end of call `voice_connection_id`. A hang-up
 /// handled by another server replica reaches the replica running the call as
 /// this event (session events cross replicas), not through `AppState::calls`.
-fn ends_call(data: &everruns_core::EventData, voice_connection_id: &str) -> bool {
-    matches!(
-        data,
-        everruns_core::EventData::VoiceSessionEnded(ended)
-            if ended.voice_connection_id == voice_connection_id
-    )
+fn ends_call(event_type: &str, data: &serde_json::Value, voice_connection_id: &str) -> bool {
+    event_type == everruns_core::events::VOICE_SESSION_ENDED
+        && data["voice_connection_id"].as_str() == Some(voice_connection_id)
 }
 
 /// The session side of a call on the platform.
 struct ServerPort {
     state: AppState,
     org: ResolvedOrg,
+    plane: Option<Arc<SessionPlane>>,
     session_id: SessionId,
     voice_connection_id: String,
     /// Accumulated transcript text by item or response id.
@@ -434,7 +506,7 @@ impl VoiceSessionPort for ServerPort {
                 return;
             }
         };
-        lifecycle::emit(&self.state, self.session_id, data).await;
+        lifecycle::emit(&self.state, self.plane.as_deref(), self.session_id, data).await;
     }
 }
 
@@ -487,11 +559,16 @@ mod tests {
 
     #[test]
     fn only_this_calls_end_event_stops_it() {
-        assert!(ends_call(&lifecycle::ended("vc_1", None, None), "vc_1"));
-        assert!(!ends_call(&lifecycle::ended("vc_2", None, None), "vc_1"));
-        assert!(!ends_call(
-            &lifecycle::failed("vc_1", "call_failed"),
-            "vc_1"
-        ));
+        let ends = |data: everruns_core::EventData, id: &str| {
+            let event_type = if matches!(data, everruns_core::EventData::VoiceSessionEnded(_)) {
+                everruns_core::events::VOICE_SESSION_ENDED
+            } else {
+                everruns_core::events::VOICE_SESSION_FAILED
+            };
+            ends_call(event_type, &serde_json::to_value(&data).unwrap(), id)
+        };
+        assert!(ends(lifecycle::ended("vc_1", None, None), "vc_1"));
+        assert!(!ends(lifecycle::ended("vc_2", None, None), "vc_1"));
+        assert!(!ends(lifecycle::failed("vc_1", "call_failed"), "vc_1"));
     }
 }

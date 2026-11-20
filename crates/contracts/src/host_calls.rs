@@ -184,6 +184,13 @@ pub const TASK_PUSH_SECRET: &str = "task_push_secret";
 /// plane (its parent's owner, agent and org), so the calls that read a
 /// session's record serve it, and answer its Memory mounts.
 pub const SUBAGENT_RECORD: &str = "subagent_record";
+/// The saved scripts of a session's agent (`tools scripts`, a trigger's
+/// script run). The control plane finds the agent from the session.
+pub const AGENT_SCRIPTS: &str = "agent_scripts";
+/// Save a script on a session's agent from its shell (`tools scripts
+/// save`), as the turn's management user under `AGENT_MANAGE`, as on v1
+/// (THREAT[TM-TOOL-067]).
+pub const AGENT_SCRIPT_SAVE: &str = "agent_script_save";
 
 const fn call(
     name: &'static str,
@@ -461,6 +468,22 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Write,
         Fate::HostCall,
         "record a subagent session the data plane started",
+    ),
+    call(
+        AGENT_SCRIPTS,
+        "list_agent_scripts",
+        ActsAs::Org,
+        Effect::Read,
+        Fate::HostCall,
+        "the saved scripts of the session's agent, for the shell and script-run triggers",
+    ),
+    call(
+        AGENT_SCRIPT_SAVE,
+        "agent_script_save",
+        ActsAs::Person,
+        Effect::Write,
+        Fate::HostCall,
+        "save a script on the session's agent as the turn's management user",
     ),
 ];
 

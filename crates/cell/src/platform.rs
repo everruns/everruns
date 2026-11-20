@@ -209,10 +209,20 @@ pub enum Op {
     },
 }
 
-/// The event types the control plane may record on a session.
+/// The event types the control plane may record on a session: reactions,
+/// and a voice call's traces (the call runs on the control plane, which
+/// holds the provider connection; its turns run here).
 pub const RECORDABLE: &[&str] = &[
     everruns_core::MESSAGE_REACTION_ADDED,
     everruns_core::MESSAGE_REACTION_REMOVED,
+    everruns_core::events::VOICE_SESSION_STARTED,
+    everruns_core::events::VOICE_INPUT_TRANSCRIPT_DELTA,
+    everruns_core::events::VOICE_INPUT_TRANSCRIPT_COMPLETED,
+    everruns_core::events::VOICE_OUTPUT_TRANSCRIPT_DELTA,
+    everruns_core::events::VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
+    everruns_core::events::VOICE_SESSION_ENDED,
+    everruns_core::events::VOICE_SESSION_FAILED,
+    everruns_core::events::VOICE_OUTPUT_INTERRUPTED,
 ];
 
 /// What a person or the agent changes on a schedule (the control plane's
