@@ -744,3 +744,96 @@ async fn a_sessions_resources_are_kept_by_the_control_plane() {
         .any(|e| e.to_string().contains("Build box"));
     assert!(answered, "the list never reached the turn: {events:#?}");
 }
+
+/// Dreaming's state stays in the control plane, as for a v1 session: a
+/// turn records itself and leaves its dream owed there, and the executor's
+/// sweep runs a dream the control plane reports due (parity, step 10).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
+    const MEMORY_FILE: &str = everruns_contracts::host_calls::MEMORY_FILE;
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(MEMORY_FILE, HostCallAnswer::Value(json!({ "ok": true })));
+    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    // The turn's own timer waits an hour: only the sweep can run it here.
+    definition["capabilities"] = json!([{ "ref": "dreaming", "config": {
+        "destinations": [{ "mount": "/memory/user", "path": "/notes.md" }],
+        "trigger": { "mode": "idle", "idle_after_seconds": 3600, "min_new_turns": 1 },
+    }}]);
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({
+                "id": session,
+                "agent_ref": "dreamer",
+                "definition": definition,
+                "memory": ["/memory/user"],
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    fleet.say(&session, "I drink green tea every morning").await;
+    fleet.turns(&session, 1).await;
+
+    let job = format!("session:{session}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let owed = loop {
+        if let Some(row) = cp.dream_state(ORG, &job)
+            && !row["due_at"].is_null()
+        {
+            break row;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the turn left no dream owed in the control plane: {:?}",
+            cp.lookups()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
+    assert_eq!(owed["session_id"], json!(session));
+    assert!(
+        cp.dream_state(ORG, &format!("turns:{session}")).is_some(),
+        "the turn was not counted in the control plane"
+    );
+
+    // Due now: the sweep finds it in the org's due dreams, claims it and
+    // runs it against the session's Memory (whose answer here fails it, so
+    // it is put off for a retry).
+    cp.make_dream_due(ORG, &job);
+    let attempts = |row: &serde_json::Value| {
+        row["value"]
+            .as_str()
+            .and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
+            .and_then(|v| v["job"]["attempts"].as_i64())
+            .unwrap_or(0)
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        let row = cp.dream_state(ORG, &job).unwrap();
+        if attempts(&row) >= 1 && row["due_at"].as_i64() > Some(0) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the due dream never ran: {row}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let asked = cp.lookups();
+    assert!(
+        asked.iter().any(|(org, name, params)| org == ORG
+            && name == "worker_dreaming_state"
+            && params["operation"] == "due_org"),
+        "the sweep never asked for the org's due dreams"
+    );
+    assert!(
+        asked
+            .iter()
+            .any(|(_, name, params)| name == MEMORY_FILE && params["session_id"] == json!(session)),
+        "the dream never reached the session's Memory: {asked:?}"
+    );
+}

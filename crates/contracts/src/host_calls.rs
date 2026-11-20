@@ -164,6 +164,9 @@ pub const LEASED_RESOURCE_UPSERT: &str = "leased_resource_upsert";
 pub const LEASED_RESOURCE_RELEASE: &str = "leased_resource_release";
 /// A session's leases.
 pub const LEASED_RESOURCES_LIST: &str = "leased_resources_list";
+/// Dreaming's maintenance state for a session the data plane runs (turn
+/// counters, the dream job, daily budgets), and the org's due dreams.
+pub const DREAMING_STATE: &str = "dreaming_state";
 
 const fn call(
     name: &'static str,
@@ -400,6 +403,14 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Read,
         Fate::HostCall,
         "the session's leases",
+    ),
+    call(
+        DREAMING_STATE,
+        "worker_dreaming_state",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "dreaming's maintenance state",
     ),
 ];
 

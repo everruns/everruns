@@ -308,6 +308,18 @@ impl Inner {
         }
     }
 
+    /// `f` of `session` as the replica (or mirror) holds it now, without
+    /// waiting for this hosting's writes; `None` when it holds no such
+    /// session.
+    fn peek<T>(&self, session: SessionId, f: impl FnOnce(&SessionState) -> T) -> Option<T> {
+        let shared = match &self.source {
+            Source::Node(_) => self.node().ok()?.shared.clone(),
+            Source::Remote(remote) => remote.shared.clone(),
+        };
+        let state = shared.state.read();
+        state.sessions.get(&session).map(f)
+    }
+
     async fn read<T>(&self, session: SessionId, f: impl FnOnce(&SessionState) -> T) -> Result<T> {
         let shared = self.caught_up(session).await?;
         let state = shared.state.read();
@@ -1369,6 +1381,31 @@ impl SessionEpoch for Ports {
         backends.session_store = Arc::new(self.clone());
         backends.storage_store = Arc::new(self.clone());
         backends.compaction_checkpoint_store = Arc::new(self.clone());
+        // Decision (parity, step 10): dreaming's state (turn counters, the
+        // dream job, the daily budgets a Memory scope shares across
+        // sessions) stays in the control plane, as for a v1 session, so it
+        // outlives this process and a budget holds across sessions. Both
+        // the turn that records it and a later sweep that runs the dream
+        // (`Executor::dreams_loop`, through reader ports) use it.
+        let lookups = crate::lookups::org_lookups(self.inner.material.get(), self.session);
+        if let Some(lookups) = &lookups {
+            use everruns_internal_protocol::commands::dreaming::SessionCommandDreamingStore;
+            backends.dreaming_store = Arc::new(SessionCommandDreamingStore::new(
+                Arc::new(lookups.clone()),
+                self.session,
+            ));
+        }
+        // An activation attaches the session's Memory from its caught-up
+        // record (`prepare_activation`); reader ports, which a dream sweep
+        // runs on, attach it from what this replica holds now.
+        if self.epoch.is_none()
+            && let Some(memory) = self
+                .inner
+                .peek(self.session, |s| s.platform.memory.clone())
+                .filter(|memory| !memory.is_empty())
+        {
+            backends = crate::memory::attach(backends, lookups, self.session, &memory);
+        }
         backends
     }
     fn actor_store(&self) -> Arc<dyn SessionActorStore> {

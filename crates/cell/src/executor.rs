@@ -47,6 +47,8 @@ pub struct ExecutorConfig {
     pub mirror_sessions: usize,
     /// How long a cell may hold this executor's credits.
     pub pull_wait: Duration,
+    /// How often due dreams are looked for (`Executor::dreams_loop`).
+    pub dream_sweep: Duration,
 }
 
 pub struct Executor {
@@ -147,6 +149,7 @@ impl Executor {
     /// the tenants.
     pub fn spawn(self: &Arc<Self>) {
         tokio::spawn(self.clone().tenants_loop());
+        tokio::spawn(self.clone().dreams_loop());
         let executor = self.clone();
         tokio::spawn(async move {
             let mut pulling: HashSet<CellId> = HashSet::new();
@@ -394,6 +397,66 @@ impl Executor {
                     self.tenants.heard(tenants.stopped);
                 }
                 Err(error) => tracing::debug!(%error, "tenants not read"),
+            }
+        }
+    }
+
+    /// Run the due dreams of the orgs whose sessions this executor mirrors.
+    ///
+    /// Decision (parity, step 10): a turn that leaves a dream owed runs it
+    /// from its own timer (`after_turn` in core's dreaming host); this
+    /// sweep is what a v1 worker's `run_due` is, for a dream that timer did
+    /// not finish (a retry, a restart, a budget that reopened). The control
+    /// plane keeps the due index and answers for one org at a time
+    /// (`due_org`), and only its sessions on the data plane; a v1 worker
+    /// never sees them. Every executor may sweep the same org: the dream's
+    /// claim is a compare-exchange, so one runs it. An org none of whose
+    /// sessions an executor mirrors is swept once one of them runs again.
+    async fn dreams_loop(self: Arc<Self>) {
+        let mut tick = tokio::time::interval(self.cfg.dream_sweep);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let material: Arc<dyn crate::providers::OrgMaterial> = self.clone();
+        let material = Arc::downgrade(&material);
+        loop {
+            tick.tick().await;
+            if self.draining.load(Ordering::SeqCst) {
+                return;
+            }
+            let orgs: std::collections::BTreeSet<String> = self
+                .remote
+                .shared
+                .state
+                .read()
+                .sessions
+                .values()
+                .filter_map(|s| s.tenant.clone())
+                .collect();
+            for org in orgs {
+                let Some(lookups) = crate::lookups::for_org(material.clone(), org.clone()) else {
+                    return;
+                };
+                let now = everruns_contracts::rt::utc_now().timestamp();
+                let due = match everruns_internal_protocol::commands::dreaming::due_in_org(
+                    &lookups, now, 32,
+                )
+                .await
+                {
+                    Ok(due) => due,
+                    Err(error) => {
+                        tracing::debug!(%org, %error, "due dreams not read");
+                        continue;
+                    }
+                };
+                for session in due {
+                    match self.engine.maintain_dreaming(session).await {
+                        Ok(ran) => self
+                            .stats
+                            .inc(&[("event", if ran { "dreamed" } else { "dream_waited" })]),
+                        Err(error) => {
+                            tracing::warn!(%org, %session, %error, "a due dream did not run");
+                        }
+                    }
+                }
             }
         }
     }

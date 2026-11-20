@@ -21,3 +21,4 @@ session_resource_deregister v1 Org Write 10 Fail HostCall worker_deregister_sess
 leased_resource_upsert v1 Org Write 10 Fail HostCall worker_upsert_leased_resource
 leased_resource_release v1 Org Write 10 Fail HostCall worker_release_leased_resource
 leased_resources_list v1 Org Read 10 Fail HostCall worker_list_session_leased_resources
+dreaming_state v1 Org Write 10 Fail HostCall worker_dreaming_state

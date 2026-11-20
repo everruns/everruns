@@ -19,7 +19,7 @@ pub use everruns_internal_protocol::commands::{
 use everruns_internal_protocol::commands::{call, call_secret, decode, failure, is_bad_request};
 
 mod credentials;
-pub mod dreaming;
+pub use everruns_internal_protocol::commands::dreaming;
 pub use everruns_internal_protocol::commands::knowledge;
 mod poppy;
 mod session_schedules;

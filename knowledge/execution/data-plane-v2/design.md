@@ -2233,6 +2233,22 @@ reaped. A cell with no control plane has neither, as on a Framework host.
 Phase C must move the lease sweeper off the v1 worker before workers
 retire.
 
+**Parity, Phase B: dreaming (step 10, 2026-11-19).** Before this a cell
+kept dreaming's state (turn counters, the dream job, the daily budget a
+Memory scope shares) in process memory: a dream lived only as long as
+its turn's timer and its executor, and budgets reset per session. The
+state now stays in the control plane's `dreaming_state`, through the v1
+worker's command as the host call `dreaming_state`, scoped to the
+session as an Engine session's store is (`crates/cell/src/hosting.rs`,
+`crates/internal-protocol/src/commands/dreaming.rs`). A turn still runs
+its dream from its own timer; for one that timer did not finish, each
+executor sweeps the orgs whose sessions it mirrors and asks the control
+plane for that org's due dreams (`due_org`, `crates/cell/src/executor.rs`).
+The control plane answers a cell for its own org only, and a v1 worker's
+discovery skips every session the data plane runs, so no dream runs on
+both planes. Reader ports carry the session's Memory so a swept dream can
+write it.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account

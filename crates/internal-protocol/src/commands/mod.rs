@@ -23,6 +23,7 @@ use serde_json::Value;
 use crate::proto;
 
 mod connections;
+pub mod dreaming;
 pub mod knowledge;
 mod leased_resources;
 mod org_egress_allowlist;
