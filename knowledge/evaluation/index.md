@@ -14,3 +14,4 @@
 * [fail-rs Testing Specification](fail-rs-testing.md) - Failure injection testing with fail-rs.
 
 * [Unit-test quality review](unit-test-quality.md) - Individual test review evidence and completion criteria.
+* [Compaction continuity study](../../evals/compaction/README.md) - Mira-driven engine qualification with offline long histories, original-source scoring, repeated checkpoints and a shared spend guard.

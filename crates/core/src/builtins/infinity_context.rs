@@ -532,7 +532,7 @@ impl Tool for QueryHistoryTool {
                 "message_id": {"type": "string", "description": "Retrieve a matching message by the ID returned by search"},
                 "query": {
                     "type": "string",
-                    "description": "Keyword search over earlier messages"
+                    "description": "Search earlier messages with a distinctive word or exact phrase. Results show matching excerpts; use message_id to retrieve the original message."
                 },
                 "message_range": {
                     "type": "object",
@@ -647,6 +647,7 @@ struct SearchResult<'a> {
     index: usize,
     message: &'a RuntimeMessage,
     score: f64,
+    match_start_chars: usize,
 }
 
 fn search_messages<'a>(
@@ -658,10 +659,21 @@ fn search_messages<'a>(
     let mut results = Vec::new();
 
     for (index, message) in messages.iter().enumerate() {
-        let content = extract_text_content(message).to_lowercase();
-        if !content.contains(&query_lower) {
+        let original = extract_text_content(message);
+        let content = original.to_lowercase();
+        let Some(match_byte) = content.find(&query_lower) else {
             continue;
-        }
+        };
+        // Lowercasing can expand a character (e.g. İ). Map the folded byte
+        // position back to original characters before cutting a UTF-8 excerpt.
+        let mut folded_bytes = 0;
+        let match_start_chars = original
+            .chars()
+            .position(|c| {
+                folded_bytes += c.to_lowercase().map(char::len_utf8).sum::<usize>();
+                folded_bytes > match_byte
+            })
+            .unwrap_or(0);
 
         let mut score = 1.0;
 
@@ -683,6 +695,7 @@ fn search_messages<'a>(
             index,
             message,
             score,
+            match_start_chars,
         });
     }
 
@@ -703,6 +716,10 @@ fn extract_text_content(message: &RuntimeMessage) -> String {
         .filter_map(|part| match part {
             ContentPart::Text(text) => Some(text.text.clone()),
             ContentPart::ToolResult(result) => result.result.as_ref().map(ToString::to_string),
+            ContentPart::ToolCall(call) => Some(format!(
+                "Tool call: {} with arguments: {}",
+                call.name, call.arguments
+            )),
             other => crate::attachment_labels::runtime_attachment_label(other),
         })
         .collect::<Vec<_>>()
@@ -772,6 +789,22 @@ fn format_search_result(results: &[SearchResult<'_>], total: usize) -> ToolExecu
         .iter()
         .map(|result| {
             let mut message = format_message(result.message, result.index, total);
+            let content = extract_text_content(result.message);
+            let characters = content.chars().count();
+            let start = result
+                .match_start_chars
+                .saturating_sub(100)
+                .min(characters.saturating_sub(500));
+            let mut excerpt = content.chars().skip(start).take(500).collect::<String>();
+            if start > 0 {
+                excerpt.insert_str(0, "...");
+            }
+            if start.saturating_add(500) < characters {
+                excerpt.push_str("...");
+            }
+            message["content"] = json!(excerpt);
+            message["truncated"] = json!(characters > 500);
+            message["content_offset_chars"] = json!(start);
             if total == 0
                 && let Some(object) = message.as_object_mut()
             {

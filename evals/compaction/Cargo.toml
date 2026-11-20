@@ -1,0 +1,31 @@
+[workspace]
+
+[package]
+name = "everruns-compaction-evals"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96.0"
+publish = false
+
+[[bin]]
+name = "compaction_evals"
+path = "src/main.rs"
+
+[dependencies]
+mira-eval = "0.4"
+everruns = { path = "../../crates/everruns", default-features = false, features = ["builtins", "openai", "openrouter"] }
+everruns-core = { path = "../../crates/core", features = ["host", "builtins", "engine"] }
+everruns-contracts = { path = "../../crates/contracts", features = ["runtime"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+futures = "0.3"
+fs2 = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }
+
+[profile.dev]
+debug = 0

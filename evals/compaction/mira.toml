@@ -1,0 +1,14 @@
+default_launcher = "compaction_evals"
+
+[results]
+dir = "./results"
+
+[environment]
+enabled = true
+
+[launchers.compaction_evals]
+bin = "compaction_evals"
+
+[presets.smoke]
+samples = "corrections"
+axes = { strategy = ["summarization"] }

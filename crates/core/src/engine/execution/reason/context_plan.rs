@@ -598,7 +598,8 @@ impl Planner<'_> {
                     config.metadata.insert("turn_id".into(), turn.to_string());
                 }
                 config.max_tokens = Some(summary_output_tokens as u32);
-                config.temperature = Some(0.0);
+                // Utility calls also run on reasoning models that reject
+                // sampling overrides. Leave sampling to the provider default.
                 config
                     .metadata
                     .insert("purpose".into(), "continuity_summary".into());

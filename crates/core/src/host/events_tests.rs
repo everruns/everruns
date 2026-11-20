@@ -3,6 +3,75 @@ use crate::event_emitter::EventEmitter as _;
 use crate::events::{EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData};
 use everruns_contracts::typed_id::{HarnessId, TurnId};
 
+#[cfg(feature = "builtins")]
+#[tokio::test]
+async fn history_search_recovers_a_buried_tool_observation_with_its_original_source() {
+    use crate::{
+        tool_context::ToolContext,
+        tools::{Tool, ToolExecutionResult},
+    };
+    let log = Arc::new(InMemoryEventLog::new());
+    let session = SessionId::new();
+    let text = format!(
+        "{}\nARCHIVE RECEIPT seal=marigold-618\n{}",
+        "audit record ".repeat(600),
+        "audit record ".repeat(600)
+    );
+    let event = log
+        .append(EventRequest::new(
+            session,
+            EventContext::empty(),
+            crate::events::ToolCompletedData::success(
+                "read_receipt".into(),
+                "read_file".into(),
+                vec![ContentPart::text(text)],
+                Some(1),
+            ),
+        ))
+        .await
+        .unwrap();
+    log.append(EventRequest::new(
+        SessionId::new(),
+        EventContext::empty(),
+        InputMessageData::new(RuntimeMessage::user("seal=other-session-private")),
+    ))
+    .await
+    .unwrap();
+    let history = Arc::new(EventHistory::new(log));
+    let context = ToolContext::new(session).with_message_retriever(history.clone());
+    let ToolExecutionResult::Success(result) = crate::builtins::QueryHistoryTool
+        .execute_with_context(serde_json::json!({"query":"SEAL","limit":5}), &context)
+        .await
+    else {
+        panic!("history lookup failed")
+    };
+    assert_eq!(
+        result["count"], 1,
+        "search must include persisted tool observations in this session"
+    );
+    let found = &result["messages"][0];
+    assert_eq!(
+        found["message_id"],
+        MessageId::from_uuid(event.id.uuid()).to_string()
+    );
+    assert!(
+        found["content"].as_str().unwrap().contains("marigold-618"),
+        "search preview must show the match, not only the first 500 characters"
+    );
+    assert_eq!(found["truncated"], true);
+    assert!(found["content"].as_str().unwrap().chars().count() <= 506);
+    assert_eq!(found["role"], "tool_result");
+    let original = history
+        .get(session, MessageId::from_uuid(event.id.uuid()))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        original.content_to_llm_string().len() > 10_000,
+        "preview must not change the stored observation"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn jsonl_open_rejects_symlinks_without_touching_the_target() {

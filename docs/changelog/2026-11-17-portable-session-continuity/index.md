@@ -18,6 +18,9 @@ New configurations need no separate `infinity_context` entry.
 Portable summaries bridge model changes and recover after restarts on persistent
 backends. Native checkpoints retain their provider/model scope. Original history
 stays queryable. Summary calls have separate usage; native cost estimates stay labelled.
+Internal summaries also support models that reject temperature overrides.
+Framework history search includes prior tool observations. Search excerpts show
+the matching text while retaining original message IDs and roles.
 
 **In the UI:** Chat and Playground have a **Context** inspector. Capability
 settings expose working budgets, proactive mode and summary options. Transcript

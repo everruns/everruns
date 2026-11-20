@@ -94,6 +94,27 @@ mod lifecycle_tests {
         calls: AtomicUsize,
         finish: &'static str,
     }
+    /// Sampling-free reasoning models reject a temperature even when an
+    /// internal utility call supplies it rather than an application setting.
+    struct DefaultSamplingOnly(Summarizer);
+    #[async_trait::async_trait]
+    impl ChatDriver for DefaultSamplingOnly {
+        async fn chat_completion_stream(
+            &self,
+            endpoint: &crate::engine::ProviderEndpoint,
+            messages: Vec<Message>,
+            config: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            if config.temperature.is_some() {
+                return Err(AgentLoopError::config(
+                    "temperature is unsupported by this model",
+                ));
+            }
+            self.0
+                .chat_completion_stream(endpoint, messages, config)
+                .await
+        }
+    }
     struct WindowedSummarizer {
         inner: Summarizer,
         window: usize,
@@ -152,7 +173,7 @@ mod lifecycle_tests {
     async fn run(
         store: &Arc<dyn CompactionCheckpointStore>,
         journal: &Journal,
-        driver: &Summarizer,
+        driver: &dyn ChatDriver,
         emitter: &TestEventEmitter,
         session_id: SessionId,
         source_sequence: i64,
@@ -193,6 +214,79 @@ mod lifecycle_tests {
                 "summary usage must retain the configured account, independently of its driver"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn portable_compaction_supports_models_without_temperature() {
+        let store: Arc<dyn CompactionCheckpointStore> =
+            Arc::new(InMemoryCompactionCheckpointStore::default());
+        let driver = DefaultSamplingOnly(Summarizer {
+            calls: AtomicUsize::new(0),
+            finish: "stop",
+        });
+        let session = SessionId::new();
+        run(
+            &store,
+            &history(80),
+            &driver,
+            &TestEventEmitter::new(),
+            session,
+            80,
+        )
+        .await
+        .expect("internal summaries must use provider-default sampling");
+        assert!(
+            store
+                .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(driver.0.calls.load(Ordering::SeqCst) > 0);
+    }
+
+    #[tokio::test]
+    async fn request_local_overflow_summary_supports_models_without_temperature() {
+        let journal = history(80);
+        let driver = DefaultSamplingOnly(Summarizer {
+            calls: AtomicUsize::new(0),
+            finish: "stop",
+        });
+        let mut wire: Vec<_> = journal
+            .0
+            .iter()
+            .map(crate::llm_conversions::llm_message_from_message)
+            .collect();
+        let result = super::super::compaction::apply_reactive_compaction(
+            super::super::compaction::ReactiveCompactionContext {
+                retriever: &journal,
+                history: &journal.0,
+                allow_portable: false,
+                chat_driver: &driver,
+                policy: policy().as_ref(),
+                checkpoint_store: None,
+                event_emitter: &TestEventEmitter::new(),
+                event_context: &EventContext::default(),
+                session_id: SessionId::new(),
+                message_source_sequence: None,
+                provider_type: "openrouter",
+                provider_id: "configured-provider",
+                model: "model-a",
+                summarization_model_fallback: "model-a",
+                system_prompt: None,
+                stateful_response_continuation: false,
+            },
+            &mut wire,
+            &mut LlmCallConfig::new("model-a"),
+        )
+        .await
+        .unwrap();
+        assert!(result.is_some());
+        assert_eq!(
+            driver.0.calls.load(Ordering::SeqCst),
+            1,
+            "must summarize, not silently fall back to trimming"
+        );
     }
 
     // Pi: multiple compactions, retained-window growth and stale pre-compaction usage.
