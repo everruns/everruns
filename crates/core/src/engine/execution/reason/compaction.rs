@@ -816,6 +816,7 @@ pub(super) async fn apply_reactive_compaction(
             event_context: context.event_context,
             session_id: context.session_id,
             provider: context.provider_type,
+            provider_id: context.provider_id,
             model: context.model,
             reason: CompactionReason::RequestTooLarge,
             source_sequence,

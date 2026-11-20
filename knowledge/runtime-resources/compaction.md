@@ -167,7 +167,9 @@ proof of semantic fidelity or the next request's token count.
 
 Portable summaries and native calls have separate generation events, including
 completed responses rejected before checkpoint installation. Main-generation usage
-never includes that spend again. Native provider-reported cost and price-table
+never includes that spend again. Both paid paths retain configured provider
+identity independently of the driver name for hosted account attribution.
+Native provider-reported cost and price-table
 estimates also remain attributable through compaction metadata. Effective spend
 prefers reported cost and otherwise uses an available estimate without marking it
 actual. See [native accounting](../../crates/core/src/engine/execution/reason/native_compaction.rs). Missing counters or model pricing remain unknown; neither estimates nor

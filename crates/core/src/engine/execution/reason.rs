@@ -323,6 +323,7 @@ impl ReasonAtom {
                     event_context: &EventContext::from_execution_context(context),
                     session_id,
                     provider: model_with_provider.provider_type.as_str(),
+                    provider_id: model_with_provider.provider.as_str(),
                     model: &model_with_provider.model,
                     reason: crate::events::CompactionReason::ProactiveBudget,
                     source_sequence,
@@ -1929,13 +1930,8 @@ impl ReasonAtom {
         let mut metadata = generation_outcome::assistant_metadata_for(
             &turn_agent.model,
             &model_with_provider,
-            llm_config.reasoning_state.as_ref(),
-            llm_config
-                .reasoning_state
-                .as_ref()
-                .and_then(|state| state.effective)
-                .or(reasoning_effort)
-                .map(|effort| effort.as_str()),
+            &llm_config,
+            reasoning_effort,
             response_id.as_deref(),
         );
         truncation.stamp(&mut metadata);

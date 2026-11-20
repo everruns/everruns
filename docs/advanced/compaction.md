@@ -85,6 +85,8 @@ responses rejected for insufficient reduction. When the provider omits its price
 available token usage and model pricing supply a labelled estimate. Compaction
 metadata retains attribution; the next main call does not include that spend again.
 Native estimates assume uncached input when compact usage has no cache breakdown.
+Usage records retain configured provider identity so hosted accounting can
+distinguish managed providers from customer-owned keys.
 
 ## Triggers and provider modes
 

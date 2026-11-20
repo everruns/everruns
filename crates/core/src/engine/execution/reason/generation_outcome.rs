@@ -153,14 +153,19 @@ pub(super) fn assistant_metadata(
 pub(super) fn assistant_metadata_for(
     display_model: &str,
     model: &crate::engine::runtime_context::ResolvedModelExecution,
-    reasoning_state: Option<&everruns_contracts::reasoning_updates::ReasoningState>,
-    reasoning_effort: Option<&str>,
+    config: &crate::engine::driver_registry::LlmCallConfig,
+    requested_effort: Option<everruns_contracts::ReasoningEffort>,
     response_id: Option<&str>,
 ) -> std::collections::HashMap<String, serde_json::Value> {
+    let effort = config
+        .reasoning_state
+        .as_ref()
+        .and_then(|state| state.effective)
+        .or(requested_effort);
     let mut metadata = assistant_metadata(
         display_model,
-        reasoning_state,
-        reasoning_effort,
+        config.reasoning_state.as_ref(),
+        effort.map(|effort| effort.as_str()),
         model.provider_type.as_str(),
         response_id,
     );

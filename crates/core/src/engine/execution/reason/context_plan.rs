@@ -139,6 +139,7 @@ pub(super) struct Planner<'a> {
     pub event_context: &'a EventContext,
     pub session_id: SessionId,
     pub provider: &'a str,
+    pub provider_id: &'a str,
     pub model: &'a str,
     pub reason: crate::events::CompactionReason,
     /// Fixed for the whole operation; arrivals after this remain in the suffix.
@@ -636,6 +637,7 @@ impl Planner<'_> {
                             Some(duration_ms),
                             None,
                         )
+                        .with_provider_id(Some(self.provider_id.to_string()))
                         .with_request_options(
                             crate::events::LlmRequestOptions {
                                 metadata: std::collections::HashMap::from([(

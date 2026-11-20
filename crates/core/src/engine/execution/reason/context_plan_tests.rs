@@ -166,6 +166,7 @@ mod lifecycle_tests {
             event_context: &EventContext::default(),
             session_id,
             provider: "openrouter",
+            provider_id: "configured-provider",
             model: "model-a",
             reason: crate::events::CompactionReason::ProactiveBudget,
             source_sequence,
@@ -174,6 +175,24 @@ mod lifecycle_tests {
         }
         .run()
         .await
+    }
+
+    fn assert_summary_account(events: &[crate::events::Event]) {
+        let generations: Vec<_> = events
+            .iter()
+            .filter_map(|event| match &event.data {
+                crate::events::EventData::LlmGeneration(data) => Some(data),
+                _ => None,
+            })
+            .collect();
+        assert!(!generations.is_empty());
+        for generation in generations {
+            assert_eq!(
+                generation.metadata.provider_id.as_deref(),
+                Some("configured-provider"),
+                "summary usage must retain the configured account, independently of its driver"
+            );
+        }
     }
 
     // Pi: multiple compactions, retained-window growth and stale pre-compaction usage.
@@ -207,6 +226,7 @@ mod lifecycle_tests {
             .unwrap();
         assert_eq!(driver.calls.load(Ordering::SeqCst), paid);
         assert_eq!(journal.0.len(), 600);
+        assert_summary_account(&emitter.events().await);
     }
 
     #[tokio::test]
@@ -236,6 +256,7 @@ mod lifecycle_tests {
                 event_context: &EventContext::empty(),
                 session_id: session,
                 provider: "test",
+                provider_id: "configured-provider",
                 model: "small-window",
                 reason: crate::events::CompactionReason::ProactiveBudget,
                 source_sequence: 100,
@@ -273,6 +294,7 @@ mod lifecycle_tests {
             event_context: &EventContext::empty(),
             session_id: session,
             provider: "test",
+            provider_id: "configured-provider",
             model: "test",
             reason: crate::events::CompactionReason::ProactiveBudget,
             source_sequence: 100,
@@ -339,6 +361,7 @@ mod lifecycle_tests {
                 .is_none()
         );
         let events = emitter.events().await;
+        assert_summary_account(&events);
         assert_eq!(
             events
                 .iter()
@@ -632,6 +655,7 @@ mod lifecycle_tests {
             event_context: &context,
             session_id: session,
             provider: "test",
+            provider_id: "configured-provider",
             model: "test",
             reason: crate::events::CompactionReason::ProactiveBudget,
             source_sequence: journal.0.len() as i64,
@@ -965,7 +989,7 @@ mod lifecycle_tests {
                 session_id: session,
                 message_source_sequence: Some(100),
                 provider_type: "openrouter",
-                provider_id: "test-account",
+                provider_id: "configured-provider",
                 model: "model-a",
                 summarization_model_fallback: "model-a",
                 system_prompt: None,
@@ -977,6 +1001,7 @@ mod lifecycle_tests {
         .await
         .unwrap()
         .expect("overflow recovery");
+        assert_summary_account(&emitter.events().await);
         let rebuilt = recovered
             .runtime_messages
             .expect("resolve attachments from canonical runtime messages");
