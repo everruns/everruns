@@ -287,14 +287,8 @@ impl Capability for ScopedSkillsCapability {
         SKILLS_CAPABILITY_ID
     }
 
-    /// An activated skill is a session resource, so a second activation in
-    /// the session answers from it; on a data plane it is kept in the
-    /// control plane.
     fn host_calls(&self) -> &'static [&'static str] {
-        &[
-            everruns_contracts::host_calls::SESSION_RESOURCES_LIST,
-            everruns_contracts::host_calls::SESSION_RESOURCE_REGISTER,
-        ]
+        everruns_contracts::host_calls::SKILL_ACTIVATIONS
     }
 
     fn name(&self) -> &str {

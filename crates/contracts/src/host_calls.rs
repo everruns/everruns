@@ -156,6 +156,9 @@ pub const SESSION_RESOURCE_STATUS: &str = "session_resource_status";
 pub const SESSION_RESOURCES_LIST: &str = "session_resources_list";
 /// Remove one of a session's resources.
 pub const SESSION_RESOURCE_DEREGISTER: &str = "session_resource_deregister";
+/// What the skills capabilities ask: an activated skill is a session
+/// resource, so a second activation in the session answers from it.
+pub const SKILL_ACTIVATIONS: &[&str] = &[SESSION_RESOURCES_LIST, SESSION_RESOURCE_REGISTER];
 /// Take or renew the lease of something a tool started at a provider (a
 /// sandbox, a browser). Leases stay in the control plane, whose sweeper
 /// stops what a session left running when its lease ends.
