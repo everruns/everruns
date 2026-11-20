@@ -17,9 +17,12 @@
 //!   a data plane. An unchanged setting writes nothing; a key is sealed
 //!   again only when it changed, and an account the org no longer has
 //!   loses its key.
-//! - A sync never fails the change that triggered it ([`sync_logged`]):
-//!   the next change syncs again, and until a setting arrives the cell
-//!   asks the control plane as before.
+//! - A sync never fails the change that triggered it ([`sync_logged`]),
+//!   and is never lost either: a trigger on the settings' tables counts
+//!   every change in the same transaction (`dp_orgs.settings_rev`), and
+//!   the dispatcher syncs every org whose count is ahead of its last sync
+//!   ([`sync_owed`]). Revoking open egress therefore reaches the cells
+//!   even when the sync right after the change failed.
 //! - The session owner's own approval settings are a person's, not the
 //!   org's: they stay a host call (`tool_approval_policy`), and without an
 //!   answer the turn runs with none, which only asks more.
@@ -42,9 +45,36 @@ use crate::storage::StorageBackend;
 /// The prefix of the search account key secrets.
 const KEY_PREFIX: &str = "web-search-key:";
 
-/// Bring `org_id`'s pushed settings in line with its tables. A v1 org is
-/// left alone.
+/// Orgs synced per dispatcher pass.
+const OWED_BATCH: i64 = 64;
+
+/// Sync every org whose settings changed since their last sync.
+pub async fn sync_owed(cp: &ControlPlane) -> anyhow::Result<usize> {
+    let behind = cp.db.dp_orgs_settings_behind(OWED_BATCH).await?;
+    let n = behind.len();
+    for (org_id, rev) in behind {
+        // Read before the tables: a change made while this sync runs bumps
+        // the count past `rev`, so it is synced again.
+        if let Err(error) = sync_tables(cp, org_id).await {
+            tracing::warn!(org_id, %error, "the data plane's org settings were not synced");
+            continue;
+        }
+        cp.db.dp_settings_synced(org_id, rev).await?;
+    }
+    Ok(n)
+}
+
+/// Bring `org_id`'s pushed settings in line with its tables and record the
+/// change count it covered. A v1 org is left alone.
 pub async fn sync(cp: &ControlPlane, org_id: i64) -> anyhow::Result<()> {
+    let Some(rev) = cp.db.dp_org_settings_rev(org_id).await? else {
+        return Ok(());
+    };
+    sync_tables(cp, org_id).await?;
+    cp.db.dp_settings_synced(org_id, rev).await
+}
+
+async fn sync_tables(cp: &ControlPlane, org_id: i64) -> anyhow::Result<()> {
     if cp.db.dp_org(org_id).await?.is_none() {
         return Ok(());
     }

@@ -983,7 +983,7 @@ async fn create_push_config(
     let config = crate::tasks::PushConfig {
         id: format!("tpc_{}", uuid::Uuid::new_v4().simple()),
         url: body.url,
-        secret: body.secret.filter(|s| !s.is_empty()),
+        has_secret: false,
         event_filter,
         created_at: now,
         updated_at: now,
@@ -992,7 +992,7 @@ async fn create_push_config(
         .session_command(
             session,
             "push-configs",
-            &json!({ "op": "add", "task": task, "config": config }),
+            &json!({ "op": "add", "task": task, "config": config, "secret": body.secret }),
         )
         .await?;
     if added.is_null() {

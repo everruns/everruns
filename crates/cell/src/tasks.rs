@@ -13,9 +13,13 @@
 //! - Tasks are kept as JSON with their raw spec: `SessionTask`'s own
 //!   serializer redacts webhook secrets, which would lose them in the log.
 //! - Push configs (parity, Phase B) live here too, beside the task they
-//!   watch, with their signing secrets, which the API never shows. The
-//!   control plane cannot keep them for a v2 task: its table refers to its
-//!   own task rows.
+//!   watch, without their signing secrets: the node that adds one hands
+//!   its secret to the control plane (the `task_push_secret` host call,
+//!   keyed by the config's id) before the config is written, and the
+//!   control plane, which delivers the webhooks, signs with it. Replicated
+//!   state and the feed never hold an API-made secret. A secret given at
+//!   spawn (`spec.push_configs`) is the agent's own tool input, already in
+//!   the session's log, and travels as given.
 //! - A transition a webhook may want goes on the feed
 //!   (`Record::TaskTransition`) from the state machine, with the targets
 //!   that ask for it, and the control plane delivers it: every terminal
@@ -86,14 +90,16 @@ pub const MAX_PUSH_CONFIGS: usize = 20;
 /// The `event_filter` members a push config may name.
 pub const EVENT_FILTERS: &[&str] = &["terminal", "awaiting_input", "message"];
 
-/// A push config made through the API, kept with its secret.
+/// A push config made through the API. Its signing secret, when it has
+/// one, is kept in the control plane, which delivers the webhooks
+/// (`task_push_secret`): replicated state holds no secret.
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct PushConfig {
     /// `tpc_` and 32 hex digits.
     pub id: String,
     pub url: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub secret: Option<String>,
+    #[serde(default)]
+    pub has_secret: bool,
     pub event_filter: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -104,7 +110,7 @@ impl std::fmt::Debug for PushConfig {
         f.debug_struct("PushConfig")
             .field("id", &self.id)
             .field("url", &self.url)
-            .field("has_secret", &self.secret.is_some())
+            .field("has_secret", &self.has_secret)
             .field("event_filter", &self.event_filter)
             .finish()
     }
@@ -116,7 +122,7 @@ impl PushConfig {
         json!({
             "id": self.id,
             "url": self.url,
-            "has_secret": self.secret.is_some(),
+            "has_secret": self.has_secret,
             "event_filter": self.event_filter,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -160,7 +166,8 @@ fn targets(
         .map(|c| PushTarget {
             label: c.id.clone(),
             url: c.url.clone(),
-            secret: c.secret.clone(),
+            secret: None,
+            secret_held: c.has_secret,
         })
         .collect();
     for entry in task
@@ -185,6 +192,7 @@ fn targets(
                     .get("secret")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
+                secret_held: false,
             });
         }
     }

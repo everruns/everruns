@@ -422,9 +422,24 @@ impl PlatformStore for CellPlatformStore {
             }
             _ => self.parent_agent(&parent).await?,
         };
-        let id = SessionId::new();
-        // Decision: a child has no Memory mounts. The control plane holds no
-        // record for it, and its Memory is resolved from the record.
+        // Decision: a child gets a session record on the control plane
+        // first (`subagent_record`), as a v1 subagent has, and runs under the
+        // id that record has, with the Memory mounts resolved from it. A cell
+        // with no control plane (standalone) starts it without one.
+        let (id, memory) = match (&self.calls, &parent.org) {
+            (Some(calls), Some(_)) => {
+                calls
+                    .record_subagent(serde_json::json!({
+                        "parent_session_id": self.parent.to_string(),
+                        "harness_id": request.harness_id.to_string(),
+                        "agent_id": request.agent_id.map(|id| id.to_string()),
+                        "title": request.title.clone(),
+                        "locale": request.locale.clone(),
+                    }))
+                    .await?
+            }
+            _ => (SessionId::new(), Vec::new()),
+        };
         self.gateway
             .create_running(
                 definition,
@@ -432,7 +447,7 @@ impl PlatformStore for CellPlatformStore {
                 Some(id),
                 parent.org.clone(),
                 agent_ref,
-                Vec::new(),
+                memory,
             )
             .await
             .map_err(api)?;

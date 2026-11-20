@@ -109,6 +109,26 @@ pub(crate) async fn cell_host_call(
     outcome.map(Json)
 }
 
+/// A host call a node makes itself (a push config's signing secret, which
+/// it hands to the control plane instead of keeping it), passed on as an
+/// executor's is. The answer stays sealed for the executors, so only that
+/// the control plane took it comes back. `call_id` names the call: the
+/// control plane runs a write once per id, so a retry is safe.
+pub(crate) async fn from_node(
+    node: &Node,
+    org: &str,
+    name: &str,
+    call_id: &str,
+    params: serde_json::Value,
+) -> Result<(), ApiError> {
+    let call = by_name(name).ok_or((StatusCode::NOT_FOUND, format!("no host call {name}")))?;
+    let mut request = HostCallRequest {
+        call: call_id.to_owned(),
+        params,
+    };
+    pass_on(node, org, call, &mut request).await.map(|_| ())
+}
+
 async fn pass_on(
     node: &Node,
     org: &str,

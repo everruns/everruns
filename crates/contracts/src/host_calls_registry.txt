@@ -22,3 +22,5 @@ leased_resource_upsert v1 Org Write 10 Fail HostCall worker_upsert_leased_resour
 leased_resource_release v1 Org Write 10 Fail HostCall worker_release_leased_resource
 leased_resources_list v1 Org Read 10 Fail HostCall worker_list_session_leased_resources
 dreaming_state v1 Org Write 10 Fail HostCall worker_dreaming_state
+task_push_secret v1 Org Write 10 Fail HostCall task_push_secret
+subagent_record v1 Org Write 10 Fail HostCall subagent_record

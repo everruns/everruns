@@ -253,12 +253,13 @@ async fn store(
             super::event_tap::deliver(cp, listeners, org_id, session_id, event).await?;
         }
         Record::TaskTransition {
+            session_id,
             transition,
             task,
             targets,
-            ..
         } => {
-            super::task_webhooks::deliver(cp, org_id, transition, task, targets).await?;
+            super::task_webhooks::deliver(cp, org_id, session_id, transition, task, targets)
+                .await?;
         }
         Record::Health { .. } | Record::Unknown => {}
     }

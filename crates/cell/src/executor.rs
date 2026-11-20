@@ -277,7 +277,11 @@ impl Executor {
     /// named by the v1 worker command the shared resolvers issue, through
     /// the directory cell; the answer comes sealed with the org's data key
     /// and is opened here (`lookups.rs`). A read is retried once when the
-    /// directory cell cannot be reached; a write never is.
+    /// directory cell cannot be reached. A write is sent once
+    /// ([`crate::remote::Remote::post_once`]): an answer that is lost is an
+    /// error, never a second send, and the control plane keeps a receipt
+    /// per call id so a duplicate that still arrives runs once
+    /// (`dp_host_call_receipts`).
     pub async fn lookup(
         &self,
         org: &str,
@@ -297,10 +301,22 @@ impl Executor {
         let path = format!("/cell/orgs/{org}/host-calls/{}", call.name);
         // The cell's own wait on the control plane, and a little more.
         let wait = call.timeout() + Duration::from_secs(5);
-        let mut sent = self.remote.post(directory, &path, &request, wait).await;
-        if sent.is_err() && call.retries() {
-            sent = self.remote.post(directory, &path, &request, wait).await;
-        }
+        let sent = if call.retries() {
+            match self.remote.post(directory, &path, &request, wait).await {
+                Ok(sent) => Ok(sent),
+                Err(_) => self.remote.post(directory, &path, &request, wait).await,
+            }
+        } else {
+            self.remote
+                .post_once(directory, &path, &request, wait)
+                .await
+                .map_err(|error| {
+                    error.context(format!(
+                        "{} may or may not have happened: its answer did not arrive",
+                        call.name
+                    ))
+                })
+        };
         let sealed: SealedSecret = sent?;
         // The seal binds the secret id; the id must be this call's, or an
         // answer to another call could stand in for this one.

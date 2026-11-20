@@ -957,5 +957,6 @@ mod mcp;
 mod memory;
 mod org_settings;
 mod sandboxes;
+mod subagents;
 mod task_webhooks;
 mod user_mcp;

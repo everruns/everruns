@@ -638,9 +638,14 @@ pub struct PushTarget {
     /// The config's id, or `spec` for one given at spawn; for logs only.
     pub label: String,
     pub url: String,
-    /// The HMAC-SHA256 signing key, when the config has one.
+    /// The HMAC-SHA256 signing key, when one given at spawn has one (the
+    /// agent's own tool input, already in the session's log).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret: Option<String>,
+    /// The config's signing key is kept in the control plane under its id
+    /// (`task_push_secret`), never in the cell.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub secret_held: bool,
 }
 
 impl std::fmt::Debug for PushTarget {
@@ -649,6 +654,7 @@ impl std::fmt::Debug for PushTarget {
             .field("label", &self.label)
             .field("url", &self.url)
             .field("secret", &self.secret.as_ref().map(|_| "[redacted]"))
+            .field("secret_held", &self.secret_held)
             .finish()
     }
 }

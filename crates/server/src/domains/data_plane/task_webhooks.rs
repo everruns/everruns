@@ -15,7 +15,12 @@
 //!   stops before sending loses that delivery, as a v1 worker that stops
 //!   after a transition does.
 //! - The record names the targets; the control plane adds only the org's
-//!   own webhooks, which it keeps.
+//!   own webhooks, which it keeps, and the signing secrets of push configs
+//!   made through the API: the node that adds one hands its secret over
+//!   ([`keep_secret`], the `task_push_secret` host call) and the cell keeps
+//!   only that it has one, so no such secret is in replicated state or on
+//!   the feed. A target whose secret cannot be found here is sent unsigned
+//!   no more than v1 would: it is skipped, and logged.
 
 use std::sync::Arc;
 
@@ -35,11 +40,36 @@ fn event_name(transition: &str) -> Option<&'static str> {
     }
 }
 
+/// Keep push config `config_id`'s signing secret for `session_id` of
+/// `org_id` (the `task_push_secret` host call), encrypted with the
+/// server's secrets key. Only a session of the org on its data plane.
+pub async fn keep_secret(cp: &ControlPlane, org_id: i64, params: &Value) -> anyhow::Result<()> {
+    let text = |name: &str| {
+        params[name]
+            .as_str()
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("{name} is required"))
+    };
+    let (session, config, secret) = (text("session_id")?, text("config_id")?, text("secret")?);
+    let session_id: everruns_contracts::typed_id::SessionId = session.parse()?;
+    anyhow::ensure!(
+        super::sessions::runs_on_data_plane(cp, org_id, session_id).await?
+            && cp.db.dp_session_org(session).await? == Some(org_id),
+        "session {session} is not the org's"
+    );
+    anyhow::ensure!(config.starts_with("tpc_"), "not a push config id");
+    let encrypted = cp.encryption()?.encrypt_string(secret)?;
+    cp.db
+        .dp_put_task_push_secret(config, org_id, session, &encrypted)
+        .await
+}
+
 /// The deliveries one transition makes: the org's webhooks on a terminal
-/// state, then `targets`.
+/// state, then `targets`, with the secrets held here filled in.
 pub async fn targets(
     cp: &ControlPlane,
     org_id: i64,
+    session_id: &str,
     transition: &str,
     targets: &[PushTarget],
 ) -> anyhow::Result<Vec<PushTarget>> {
@@ -55,10 +85,26 @@ pub async fn targets(
                     label: w.public_id,
                     url: w.url,
                     secret: w.secret,
+                    secret_held: false,
                 }),
         );
     }
-    out.extend(targets.iter().cloned());
+    for target in targets {
+        let mut target = target.clone();
+        if target.secret_held {
+            let held = cp
+                .db
+                .dp_task_push_secret(org_id, session_id, &target.label)
+                .await?;
+            let Some(encrypted) = held else {
+                tracing::warn!(org_id, config = %target.label, "push config secret not found; not delivered");
+                continue;
+            };
+            target.secret = Some(cp.encryption()?.decrypt_to_string(&encrypted)?);
+            target.secret_held = false;
+        }
+        out.push(target);
+    }
     Ok(out)
 }
 
@@ -66,6 +112,7 @@ pub async fn targets(
 pub async fn deliver(
     cp: &ControlPlane,
     org_id: i64,
+    session_id: &str,
     transition: &str,
     task: &Value,
     pushed: &[PushTarget],
@@ -79,7 +126,7 @@ pub async fn deliver(
         }
         return Ok(());
     };
-    let targets = targets(cp, org_id, transition, pushed).await?;
+    let targets = targets(cp, org_id, session_id, transition, pushed).await?;
     if targets.is_empty() {
         return Ok(());
     }

@@ -51,6 +51,7 @@ pub mod providers;
 pub mod sandboxes;
 pub mod session_plane;
 pub mod sessions;
+pub mod subagents;
 pub mod task_webhooks;
 pub mod tokens;
 pub mod user_mcp;

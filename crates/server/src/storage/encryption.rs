@@ -584,6 +584,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "private_key_encrypted",
         id_column: "id",
     },
+    // Signing secrets of v2 task push configs (`data_plane/task_webhooks.rs`)
+    EncryptedColumn {
+        table: "dp_task_push_secrets",
+        column: "secret_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]
