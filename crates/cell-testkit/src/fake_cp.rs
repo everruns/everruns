@@ -67,6 +67,13 @@ struct Ledger {
     lookup_answers: HashMap<String, everruns_contracts::host_calls::HostCallAnswer>,
     /// Lookups asked: `(org, command, params)`.
     lookups: Vec<(String, String, serde_json::Value)>,
+    /// Dreaming's calls (`worker_dreaming_state`), kept apart from
+    /// `lookups`: the executors' sweep asks on a timer, so mixing them in
+    /// would shift what other tests find at a given index.
+    dream_calls: Vec<(String, serde_json::Value)>,
+    /// Dreaming's state, kept as the control plane keeps it
+    /// (`worker_dreaming_state`): `(org, key)` → the row.
+    dreams: std::collections::BTreeMap<(String, String), serde_json::Value>,
     requests: usize,
     /// Feed records that arrived again under an id already stored.
     duplicates: usize,
@@ -236,9 +243,44 @@ impl FakeCp {
             .insert(command.to_owned(), answer);
     }
 
+    /// Dreaming's state row `key` of `org`, as the cells left it.
+    pub fn dream_state(&self, org: &str, key: &str) -> Option<serde_json::Value> {
+        self.ledger
+            .lock()
+            .dreams
+            .get(&(org.to_owned(), key.to_owned()))
+            .cloned()
+    }
+
+    /// Make dreaming's row `key` of `org` due now, as a dream its turn's
+    /// timer did not finish leaves it.
+    pub fn make_dream_due(&self, org: &str, key: &str) {
+        if let Some(row) = self
+            .ledger
+            .lock()
+            .dreams
+            .get_mut(&(org.to_owned(), key.to_owned()))
+        {
+            row["due_at"] = serde_json::json!(0);
+            // The job inside carries its own due time, which the runner reads.
+            if let Some(mut value) = row["value"]
+                .as_str()
+                .and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
+            {
+                value["job"]["due_at"] = serde_json::json!(0);
+                row["value"] = serde_json::json!(value.to_string());
+            }
+        }
+    }
+
     /// Lookups asked so far: `(org, command, params)`.
     pub fn lookups(&self) -> Vec<(String, String, serde_json::Value)> {
         self.ledger.lock().lookups.clone()
+    }
+
+    /// Dreaming's calls so far (`worker_dreaming_state`): `(org, params)`.
+    pub fn dream_calls(&self) -> Vec<(String, serde_json::Value)> {
+        self.ledger.lock().dream_calls.clone()
     }
 
     pub fn set_balance(&self, org: &str, micros: i64) {
@@ -470,18 +512,25 @@ async fn host_call(
         StatusCode::NOT_FOUND,
         format!("org {org} is not on a data plane"),
     ))?;
-    ledger
-        .lookups
-        .push((org.clone(), call.command.to_owned(), request.params.clone()));
-    let answer =
+    if call.command == "worker_dreaming_state" {
         ledger
-            .lookup_answers
-            .get(call.command)
-            .cloned()
-            .unwrap_or(HostCallAnswer::Error {
-                kind: 3,
-                message: "Session not found".into(),
-            });
+            .dream_calls
+            .push((org.clone(), request.params.clone()));
+    } else {
+        ledger
+            .lookups
+            .push((org.clone(), call.command.to_owned(), request.params.clone()));
+    }
+    let answer = match ledger.lookup_answers.get(call.command).cloned() {
+        Some(answer) => answer,
+        None if call.command == "worker_dreaming_state" => {
+            HostCallAnswer::Value(dreaming_state(&mut ledger.dreams, &org, &request.params))
+        }
+        None => HostCallAnswer::Error {
+            kind: 3,
+            message: "Session not found".into(),
+        },
+    };
     let plain = serde_json::to_vec(&answer)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     seal::seal(
@@ -495,6 +544,54 @@ async fn host_call(
     )
     .map(Json)
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+/// `worker_dreaming_state` as the control plane answers it: a row per org
+/// and key, changed by compare-exchange, and the org's due sessions.
+fn dreaming_state(
+    dreams: &mut std::collections::BTreeMap<(String, String), serde_json::Value>,
+    org: &str,
+    params: &serde_json::Value,
+) -> serde_json::Value {
+    let key = (
+        org.to_owned(),
+        params["key"].as_str().unwrap_or("").to_owned(),
+    );
+    match params["operation"].as_str() {
+        Some("get") => dreams.get(&key).cloned().unwrap_or(serde_json::Value::Null),
+        Some("cas") => {
+            let revision = dreams.get(&key).map(|row| row["revision"].clone());
+            let expected = params.get("expected").filter(|e| !e.is_null()).cloned();
+            if revision != expected {
+                return serde_json::json!(false);
+            }
+            let next = expected.and_then(|e| e.as_i64()).unwrap_or(0) + 1;
+            dreams.insert(
+                key,
+                serde_json::json!({
+                    "revision": next,
+                    "value": params["value"],
+                    "session_id": params["session_id"],
+                    "due_at": params["due_at"],
+                }),
+            );
+            serde_json::json!(true)
+        }
+        Some("due_org") => {
+            let now = params["now"].as_i64().unwrap_or(i64::MAX);
+            let due: Vec<_> = dreams
+                .iter()
+                .filter(|((o, _), row)| {
+                    o == org
+                        && !row["session_id"].is_null()
+                        && row["due_at"].as_i64().is_some_and(|at| at <= now)
+                })
+                .map(|(_, row)| serde_json::json!([0, row["session_id"]]))
+                .collect();
+            serde_json::json!(due)
+        }
+        _ => serde_json::Value::Null,
+    }
 }
 
 async fn allowance(

@@ -331,6 +331,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 slots,
                 mirror_sessions,
                 pull_wait: Duration::from_secs(1),
+                dream_sweep: Duration::from_secs(60),
             };
             serve_executor(cfg, host, listen).await
         }

@@ -330,6 +330,7 @@ impl Fleet {
             slots,
             mirror_sessions: 64,
             pull_wait: Duration::from_secs(2),
+            dream_sweep: Duration::from_millis(500),
         };
         let executor = {
             let _guard = rt.enter();
