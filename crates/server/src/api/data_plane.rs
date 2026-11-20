@@ -92,7 +92,10 @@ async fn feed(
     headers: HeaderMap,
     Json(batch): Json<FeedBatch>,
 ) -> Reply<FeedAck> {
-    let cp = control_plane(&state)?;
+    let mut cp = control_plane(&state)?;
+    if let Some(egress) = state.egress_service() {
+        cp = cp.with_egress(egress);
+    }
     require_link(&cp, &headers)?;
     let budgets = crate::domains::budgets::BudgetService::new(state.db.clone());
     dp_domain::feed::ingest(&cp, &budgets, state.event_listeners(), batch)

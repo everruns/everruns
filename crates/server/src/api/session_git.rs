@@ -7,6 +7,9 @@
 //   GET  /v1/sessions/{session_id}/git/refs      - List refs/branches
 //   POST /v1/sessions/{session_id}/git/branches  - Create branch
 //   DELETE /v1/sessions/{session_id}/git/branches/{name} - Delete branch
+//
+// A v2 session (data plane v2) is served here too: its commit reads the
+// session's files from its cell (`session_git::plane_files`).
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_git::{
@@ -184,20 +187,63 @@ async fn commit(
         .as_deref()
         .unwrap_or("agent@everruns.local");
 
-    let result = state
-        .git_service
-        .commit(
-            session_id.uuid(),
-            &body.message,
-            author_name,
-            author_email,
-            body.branch.as_deref(),
+    // A v2 session's files are on its cell (data plane v2 parity, Phase B).
+    let plane = crate::domains::data_plane::session_plane::SessionPlane::of(
+        &state.db, org.org_id, session_id,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "data plane lookup failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal server error".to_string(),
         )
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "git commit failed");
-            classify_git_error(&e)
-        })?;
+    })?;
+    let result = match plane {
+        Some(plane) => {
+            let files = crate::domains::session_git::plane_files(&plane)
+                .await
+                .map_err(|e| {
+                    let message = e.to_string();
+                    tracing::warn!(error = %message, "session files not read from the data plane");
+                    if message.contains("a commit takes at most") {
+                        (StatusCode::PAYLOAD_TOO_LARGE, message)
+                    } else {
+                        (
+                            StatusCode::BAD_GATEWAY,
+                            "The session's files could not be read".to_string(),
+                        )
+                    }
+                })?;
+            state
+                .git_service
+                .commit_files(
+                    session_id.uuid(),
+                    files,
+                    &body.message,
+                    author_name,
+                    author_email,
+                    body.branch.as_deref(),
+                )
+                .await
+        }
+        None => {
+            state
+                .git_service
+                .commit(
+                    session_id.uuid(),
+                    &body.message,
+                    author_name,
+                    author_email,
+                    body.branch.as_deref(),
+                )
+                .await
+        }
+    }
+    .map_err(|e| {
+        tracing::error!(error = %e, "git commit failed");
+        classify_git_error(&e)
+    })?;
 
     Ok((StatusCode::CREATED, Json(result)))
 }

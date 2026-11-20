@@ -301,3 +301,219 @@ fn a_person_cancels_a_task_or_messages_one_the_api_may_message() {
     }
     assert!(api_op(write(json!({ "task": "t", "text": "  " })), "background").is_err());
 }
+
+fn push_config(id: &str, filter: &[&str], secret: Option<&str>) -> PushConfig {
+    PushConfig {
+        id: id.into(),
+        url: format!("https://example.test/{id}"),
+        secret: secret.map(str::to_owned),
+        event_filter: filter.iter().map(|f| (*f).to_owned()).collect(),
+        created_at: at(T0),
+        updated_at: at(T0),
+    }
+}
+
+fn transitions(state: &CellState) -> Vec<(String, Vec<String>, Value)> {
+    state
+        .feed
+        .records
+        .iter()
+        .filter_map(|r| match &r.record {
+            Record::TaskTransition {
+                transition,
+                targets,
+                task,
+                ..
+            } => {
+                assert_eq!(r.org_id, "org");
+                Some((
+                    transition.clone(),
+                    targets.iter().map(|t| t.label.clone()).collect(),
+                    task.clone(),
+                ))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn push_configs_are_kept_with_their_secrets_and_listed_without_them() {
+    let (mut state, session) = session();
+    let new = task(session, TaskWakePolicy::Silent);
+    apply_op(
+        &mut state,
+        session,
+        TaskOp::Create { task: stored(&new) },
+        T0,
+    );
+    let add = |config: PushConfig| TaskOp::AddPushConfig {
+        task_id: "task-1".into(),
+        config,
+    };
+    let shown = value(apply_op(
+        &mut state,
+        session,
+        add(push_config("tpc_a", &["terminal"], Some("k1"))),
+        T0,
+    ));
+    assert_eq!(shown["has_secret"], true);
+    assert!(shown.get("secret").is_none(), "a secret is never shown");
+    // A retried add keeps one.
+    value(apply_op(
+        &mut state,
+        session,
+        add(push_config("tpc_a", &["terminal"], Some("k1"))),
+        T0,
+    ));
+    let kept = &state.sessions[&session].platform.task_push_configs["task-1"];
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].secret.as_deref(), Some("k1"));
+    // A task the session does not have answers nothing.
+    let missing = TaskOp::AddPushConfig {
+        task_id: "nope".into(),
+        config: push_config("tpc_b", &["terminal"], None),
+    };
+    assert_eq!(
+        value(apply_op(&mut state, session, missing, T0)),
+        Value::Null
+    );
+    // Deleting: once, then not found.
+    let delete = || TaskOp::DeletePushConfig {
+        task_id: "task-1".into(),
+        config_id: "tpc_a".into(),
+    };
+    assert_eq!(
+        value(apply_op(&mut state, session, delete(), T0))["deleted"],
+        true
+    );
+    assert_eq!(
+        value(apply_op(&mut state, session, delete(), T0))["deleted"],
+        false
+    );
+    assert!(
+        !state.sessions[&session]
+            .platform
+            .task_push_configs
+            .contains_key("task-1")
+    );
+    // A secret stays out of the debug form too.
+    assert!(!format!("{:?}", push_config("tpc_c", &[], Some("hidden"))).contains("hidden"));
+}
+
+#[test]
+fn transitions_go_on_the_feed_with_the_targets_that_ask_for_them() {
+    let (mut state, session) = session();
+    let new = task(session, TaskWakePolicy::Silent);
+    apply_op(
+        &mut state,
+        session,
+        TaskOp::Create { task: stored(&new) },
+        T0,
+    );
+    for config in [
+        push_config("tpc_input", &["awaiting_input"], None),
+        push_config("tpc_done", &["terminal"], Some("k")),
+    ] {
+        apply_op(
+            &mut state,
+            session,
+            TaskOp::AddPushConfig {
+                task_id: "task-1".into(),
+                config,
+            },
+            T0,
+        );
+    }
+    // Waiting for input: only the config that names it.
+    let ask = TaskOp::Update {
+        task_id: "task-1".into(),
+        update: Box::new(SessionTaskUpdate {
+            input_request: Some(TaskInputRequest {
+                id: "q1".into(),
+                prompt: "which branch?".into(),
+                expected: None,
+            }),
+            ..Default::default()
+        }),
+    };
+    apply_op(&mut state, session, ask, T0 + 1);
+    // An outbound message no config names: nothing goes on the feed.
+    let message = TaskMessage {
+        id: "m1".into(),
+        task_id: "task-1".into(),
+        direction: TaskMessageDirection::Outbound,
+        content: Vec::new(),
+        in_reply_to: None,
+        created_at: at(T0),
+    };
+    apply_op(
+        &mut state,
+        session,
+        TaskOp::Message {
+            message: Box::new(message),
+            expected_attempt: None,
+        },
+        T0 + 2,
+    );
+    // Terminal: the stored config and the one given at spawn.
+    let finish = || TaskOp::Update {
+        task_id: "task-1".into(),
+        update: Box::new(SessionTaskUpdate {
+            state: Some(SessionTaskState::Succeeded),
+            summary: Some("done".into()),
+            ..Default::default()
+        }),
+    };
+    apply_op(&mut state, session, finish(), T0 + 3);
+    // A repeated update is no transition.
+    apply_op(&mut state, session, finish(), T0 + 4);
+    let seen = transitions(&state);
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert_eq!(seen[0].0, "awaiting_input");
+    assert_eq!(seen[0].1, vec!["tpc_input".to_owned()]);
+    assert_eq!(seen[1].0, "terminal");
+    assert_eq!(seen[1].1, vec!["tpc_done".to_owned(), "spec".to_owned()]);
+    assert_eq!(seen[1].2["state"], "succeeded");
+    assert_eq!(seen[1].2["summary"], "done");
+    let Record::TaskTransition { targets, .. } = &state.feed.records.back().unwrap().record else {
+        panic!("a task transition");
+    };
+    assert_eq!(targets[0].secret.as_deref(), Some("k"));
+    assert_eq!(targets[1].secret.as_deref(), Some("s3"));
+}
+
+#[test]
+fn a_terminal_state_goes_on_the_feed_for_the_orgs_webhooks_even_without_push_configs() {
+    let (mut state, session) = session();
+    let mut new = task(session, TaskWakePolicy::Silent);
+    new.spec = json!({});
+    apply_op(
+        &mut state,
+        session,
+        TaskOp::Create { task: stored(&new) },
+        T0,
+    );
+    let fail = TaskOp::Update {
+        task_id: "task-1".into(),
+        update: Box::new(SessionTaskUpdate {
+            state: Some(SessionTaskState::Failed),
+            ..Default::default()
+        }),
+    };
+    apply_op(&mut state, session, fail, T0 + 1);
+    let seen = transitions(&state);
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].0, "terminal");
+    assert!(seen[0].1.is_empty());
+}
+
+#[test]
+fn event_filters_follow_the_control_planes_rules() {
+    assert_eq!(event_filter(None).unwrap(), vec!["terminal"]);
+    assert_eq!(
+        event_filter(Some(vec!["message".into(), "message".into()])).unwrap(),
+        vec!["message"]
+    );
+    assert!(event_filter(Some(vec!["everything".into()])).is_err());
+}

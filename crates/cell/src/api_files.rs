@@ -143,7 +143,14 @@ pub enum FsOp {
         #[serde(default)]
         max_bytes: Option<usize>,
     },
+    /// Every file with its content, for a git commit of the workspace
+    /// (the control plane's `/git/commit`, parity Phase B); refused when
+    /// the files add up to more than [`SNAPSHOT_MAX`].
+    Snapshot,
 }
+
+/// The most a snapshot carries, decoded.
+pub const SNAPSHOT_MAX: u64 = 64 * 1024 * 1024;
 
 impl FsOp {
     fn reads(&self) -> bool {
@@ -154,6 +161,7 @@ impl FsOp {
                 | FsOp::Raw { .. }
                 | FsOp::Grep { .. }
                 | FsOp::Search { .. }
+                | FsOp::Snapshot
         )
     }
 }
@@ -339,6 +347,27 @@ async fn run(
             Some(stat) => done(stat),
             None => failed(StatusCode::NOT_FOUND, "Not found"),
         },
+        FsOp::Snapshot => {
+            let entries = files.entries(session).await?;
+            let total: u64 = entries.values().filter(|e| !e.dir).map(|e| e.size).sum();
+            if total > SNAPSHOT_MAX {
+                return Ok(failed(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    format!(
+                        "the workspace holds {total} bytes; a commit takes at most {SNAPSHOT_MAX}"
+                    ),
+                ));
+            }
+            let mut out = Vec::new();
+            for (path, entry) in entries.iter().filter(|(_, e)| !e.dir) {
+                out.push(json!({
+                    "path": path,
+                    "encoding": entry.encoding,
+                    "content": files.content(entry).await?.unwrap_or_default(),
+                }));
+            }
+            done(json!({ "files": out }))
+        }
         FsOp::Raw { path } => {
             let path = path_of(&path);
             match files.entry(session, &path).await? {
