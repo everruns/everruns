@@ -56,8 +56,8 @@
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
-    ActsAs, DREAMING_STATE, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND,
-    SLACK_ACTION, USER_MCP_SERVERS, USER_MCP_STORE,
+    ActsAs, DREAMING_STATE, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
+    USER_MCP_SERVERS, USER_MCP_STORE,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
 
