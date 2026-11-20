@@ -78,17 +78,35 @@ async fn test_agent_preview_inherits_harness_tools_prompt_and_features() {
 #[tokio::test]
 async fn test_agent_preview_keeps_base_minimal_and_rejects_missing_harness() {
     let server = TestServer::in_memory().await;
-    for harness_id in [json!(server.seed_base_harness_id), Value::Null] {
+    // An omitted preview harness renders only the agent layer, not runtime defaults.
+    for (harness_id, history_tools) in [(json!(server.seed_base_harness_id), 1), (Value::Null, 0)] {
         let preview: Value = server.post("/v1/agents/preview", json!({
             "harness_id": harness_id, "system_prompt": "Agent instructions.", "capabilities": []
         })).await.assert_status(StatusCode::OK).json();
-        // Base carries only system essentials: approval tools, no workspace.
-        let tools = preview["tools"].as_array().unwrap();
-        assert!(
-            tools
+        // Base includes continuity retrieval and approvals, without a workspace.
+        let names: Vec<_> = preview["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names
                 .iter()
-                .all(|t| t["name"].as_str().unwrap().contains("approval"))
+                .filter(|name| **name == "query_history")
+                .count(),
+            history_tools,
+            "preview tools: {names:?}"
         );
+        assert!(
+            names
+                .iter()
+                .all(|name| *name == "query_history" || name.contains("approval")),
+            "unexpected Base tools: {names:?}"
+        );
+        if history_tools == 0 {
+            assert!(names.is_empty(), "agent-only preview: {names:?}");
+        }
         assert!(
             !preview["features"]
                 .as_array()
@@ -105,6 +123,40 @@ async fn test_agent_preview_keeps_base_minimal_and_rejects_missing_harness() {
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_agent_preview_respects_custom_compaction_opt_in() {
+    let server = TestServer::in_memory().await;
+    let harness: Value = server
+        .post(
+            "/v1/harnesses",
+            json!({"name": "preview-without-compaction", "capabilities": []}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    for (capabilities, expected) in [(json!([]), false), (json!([{"ref": "compaction"}]), true)] {
+        let preview: Value = server
+            .post(
+                "/v1/agents/preview",
+                json!({
+                    "harness_id": harness["id"],
+                    "system_prompt": "Agent instructions.",
+                    "capabilities": capabilities
+                }),
+            )
+            .await
+            .assert_status(StatusCode::OK)
+            .json();
+        let count = preview["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|tool| tool["name"] == "query_history")
+            .count();
+        assert_eq!(count, usize::from(expected));
+    }
 }
 
 #[tokio::test]
