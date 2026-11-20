@@ -48,6 +48,12 @@ replaces an exact prefix. Later turns and restarted workers restore that summary
 plus messages after its boundary. Compaction never treats an omitted loading
 window as summarized history.
 
+The current user input stays verbatim even when a long tool loop moves its
+journal record inside the summarized prefix. The preferred recent-message tail
+can shrink to keep a completed parallel tool batch together. An incomplete
+exchange or a source batch too large for the summary model still fails visibly;
+compaction does not discard unmatched calls or results to make it fit.
+
 Portable summaries retain provenance, unresolved questions and later corrections.
 Activated skill instructions are carried verbatim outside generated prose.
 Generated continuity is reference material, not permission to change current

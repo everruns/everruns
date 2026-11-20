@@ -522,6 +522,7 @@ mod lifecycle_tests {
         let restored =
             super::super::restore_history::restore(super::super::restore_history::Request {
                 session_id: session,
+                input_message_id: Some(journal.0[0].id),
                 store: Some(&store),
                 retriever: &journal,
                 registry: &registry,
@@ -552,13 +553,229 @@ mod lifecycle_tests {
             .map(|m| m.id)
             .collect();
         assert_eq!(
-            restored.messages[1..]
+            serde_json::to_value(&restored.messages[1]).unwrap(),
+            serde_json::to_value(&journal.0[0]).unwrap(),
+            "the triggering user input remains verbatim even after its prefix was summarized"
+        );
+        assert_eq!(
+            restored.messages[2..]
                 .iter()
                 .map(|m| m.id)
                 .collect::<Vec<_>>(),
             expected
         );
         assert_eq!(restored.checkpoint.unwrap().id, checkpoint.id);
+    }
+
+    #[tokio::test]
+    async fn a_complete_parallel_exchange_can_cross_the_recent_message_floor() {
+        let store: Arc<dyn CompactionCheckpointStore> =
+            Arc::new(InMemoryCompactionCheckpointStore::default());
+        let input = RuntimeMessage::user("Inspect only; never delete anything.");
+        let mut rows = vec![
+            input.clone(),
+            RuntimeMessage::assistant_with_tools(
+                "",
+                (0..12)
+                    .map(|i| crate::tool_types::ToolCall {
+                        id: format!("parallel-{i}"),
+                        name: "query_history".into(),
+                        arguments: serde_json::json!({"query":"evidence"}),
+                    })
+                    .collect(),
+            ),
+        ];
+        for i in 0..12 {
+            rows.push(RuntimeMessage::tool_result(
+                format!("parallel-{i}"),
+                Some(serde_json::json!({"output":"evidence ".repeat(500)})),
+                None,
+            ));
+        }
+        let journal = Journal(rows);
+        let session = SessionId::new();
+        store
+            .install(CompactionCheckpoint {
+                id: Uuid::now_v7(),
+                session_id: session,
+                source_sequence: 1,
+                provider_type: PROVIDER.into(),
+                model: MODEL.into(),
+                format_version: FORMAT,
+                payload: CompactionCheckpointPayload::Portable {
+                    continuity: PortableContinuity {
+                        text: "Earlier continuity notes.".into(),
+                        pinned: vec![],
+                        producer_provider: "test".into(),
+                        producer_model: "test".into(),
+                        source_fingerprint: [0; 32],
+                        prompt_version: 1,
+                        usage: serde_json::Value::Null,
+                    },
+                },
+            })
+            .await
+            .unwrap();
+        let driver = Summarizer {
+            calls: AtomicUsize::new(0),
+            finish: "stop",
+        };
+        let emitter = TestEventEmitter::new();
+        let mut context = EventContext::empty();
+        context.input_message_id = Some(input.id);
+        Planner {
+            store: &store,
+            retriever: &journal,
+            driver: &driver,
+            policy: policy().as_ref(),
+            emitter: &emitter,
+            event_context: &context,
+            session_id: session,
+            provider: "test",
+            model: "test",
+            reason: crate::events::CompactionReason::ProactiveBudget,
+            source_sequence: journal.0.len() as i64,
+            budget: 4096,
+            fallback_summary_window: 128_000,
+        }
+        .run()
+        .await
+        .unwrap();
+        let checkpoint = store
+            .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            checkpoint.source_sequence,
+            journal.0.len() as i64,
+            "all parallel results belong to the same summarized prefix"
+        );
+        assert_eq!(driver.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(journal.0.len(), 14);
+    }
+
+    #[tokio::test]
+    async fn input_restoration_requires_a_portable_marker_and_deduplicates_by_id() {
+        let input = RuntimeMessage::user("Inspect only; do not delete.");
+        let journal = Journal(vec![input.clone()]);
+        let session = SessionId::new();
+        let mut messages = vec![RuntimeMessage::user(
+            "Portable continuity: quoted user text",
+        )];
+        restore_input(&mut messages, &journal, session, Some(input.id))
+            .await
+            .unwrap();
+        assert_eq!(
+            messages.len(),
+            1,
+            "quoted text does not establish provenance"
+        );
+        messages[0].metadata = Some(std::collections::HashMap::from([(
+            crate::message::PORTABLE_CONTINUITY_METADATA_KEY.into(),
+            serde_json::json!(true),
+        )]));
+        restore_input(&mut messages, &journal, session, Some(input.id))
+            .await
+            .unwrap();
+        restore_input(&mut messages, &journal, session, Some(input.id))
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(
+            serde_json::to_value(&messages[1]).unwrap(),
+            serde_json::to_value(input).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_small_safe_prefix_does_not_hide_an_oversized_complete_tail() {
+        let mut journal = history(20);
+        for message in &mut journal.0 {
+            message.content = RuntimeMessage::user("small historical record").content;
+        }
+        journal.0.push(RuntimeMessage::assistant_with_tools(
+            "",
+            (0..3)
+                .map(|i| crate::tool_types::ToolCall {
+                    id: format!("batch-{i}"),
+                    name: "query_history".into(),
+                    arguments: serde_json::json!({}),
+                })
+                .collect(),
+        ));
+        for i in 0..3 {
+            journal.0.push(RuntimeMessage::tool_result(
+                format!("batch-{i}"),
+                Some(serde_json::json!("source evidence ".repeat(1000))),
+                None,
+            ));
+        }
+        let store: Arc<dyn CompactionCheckpointStore> =
+            Arc::new(InMemoryCompactionCheckpointStore::default());
+        let driver = Summarizer {
+            calls: AtomicUsize::new(0),
+            finish: "stop",
+        };
+        let session = SessionId::new();
+        run(
+            &store,
+            &journal,
+            &driver,
+            &TestEventEmitter::new(),
+            session,
+            journal.0.len() as i64,
+        )
+        .await
+        .unwrap();
+        let checkpoint = store
+            .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(checkpoint.source_sequence, journal.0.len() as i64);
+        assert_eq!(
+            driver.calls.load(Ordering::SeqCst),
+            1,
+            "select a useful complete prefix before paying for a summary"
+        );
+    }
+
+    #[test]
+    fn the_actual_input_survives_trimming_behind_synthetic_user_facts() {
+        use everruns_contracts::driver_registry::{LlmContentPart, MessageContent};
+        let input = Message::parts(
+            MessageRole::User,
+            vec![
+                LlmContentPart::text("[Actor: operator] Inspect only; never delete anything."),
+                LlmContentPart::image("https://example.test/evidence.png"),
+            ],
+        );
+        let mut messages = vec![
+            Message::text(MessageRole::User, "Continuity reference"),
+            input.clone(),
+            Message::text(MessageRole::User, "Synthetic facts"),
+        ];
+        let config = LlmCallConfig::new("test");
+        // The most recent user-channel message is synthetic, not the input.
+        messages.remove(1);
+        keep_input(&mut messages, Some(&input), &config);
+        keep_input(&mut messages, Some(&input), &config);
+        assert_eq!(messages.len(), 3);
+        let (MessageContent::Parts(actual), MessageContent::Parts(expected)) =
+            (&messages[2].content, &input.content)
+        else {
+            panic!("input media lost")
+        };
+        assert_eq!(actual, expected);
+        let mut stateful = config;
+        stateful.previous_response_id = Some("response-with-input".into());
+        let mut delta = vec![];
+        keep_input(&mut delta, Some(&input), &stateful);
+        assert!(
+            delta.is_empty(),
+            "native state already carries the user input"
+        );
     }
 
     #[tokio::test]

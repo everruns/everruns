@@ -17,6 +17,83 @@ const PAGE_MESSAGES: usize = 256;
 const MIN_RECENT_MESSAGES: usize = 10;
 const CANDIDATE_MODEL: &str = "continuity-candidate-v1";
 
+fn portable_message(message: &RuntimeMessage) -> bool {
+    message
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get(crate::message::PORTABLE_CONTINUITY_METADATA_KEY))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+}
+
+async fn input_message(
+    retriever: &dyn MessageRetriever,
+    session: SessionId,
+    id: Option<MessageId>,
+) -> Result<Option<RuntimeMessage>> {
+    let Some(id) = id else { return Ok(None) };
+    Ok(retriever
+        .get(session, id)
+        .await?
+        .filter(|message| message.role == RuntimeMessageRole::User))
+}
+
+/// A checkpoint may cover the triggering input during a long tool loop. Its
+/// generated paraphrase cannot replace the actual current user instruction.
+pub(super) async fn restore_input(
+    messages: &mut Vec<RuntimeMessage>,
+    retriever: &dyn MessageRetriever,
+    session: SessionId,
+    id: Option<MessageId>,
+) -> Result<()> {
+    let Some(id) = id else { return Ok(()) };
+    if messages.iter().any(|message| message.id == id) {
+        return Ok(());
+    }
+    if let Some(at) = messages.iter().position(portable_message)
+        && let Some(input) = input_message(retriever, session, Some(id)).await?
+    {
+        messages.insert(at + 1, input);
+    }
+    Ok(())
+}
+
+/// Last-resort request trimming can also remove the input behind synthetic
+/// user-channel facts. Preserve the actual assembled input, including media
+/// and actor labels, rather than guessing its identity from prompt text.
+pub(super) fn keep_input(
+    messages: &mut Vec<Message>,
+    input: Option<&Message>,
+    config: &LlmCallConfig,
+) {
+    if config.provider_opaque_context.is_some()
+        || config.previous_response_id.is_some()
+        || config.reasoning_state.is_some()
+    {
+        return;
+    }
+    let Some(input) = input.filter(|message| message.role == MessageRole::User) else {
+        return;
+    };
+    let same = |message: &Message| {
+        message.role == input.role
+            && match (&message.content, &input.content) {
+                (
+                    everruns_contracts::driver_registry::MessageContent::Text(a),
+                    everruns_contracts::driver_registry::MessageContent::Text(b),
+                ) => a == b,
+                (
+                    everruns_contracts::driver_registry::MessageContent::Parts(a),
+                    everruns_contracts::driver_registry::MessageContent::Parts(b),
+                ) => a == b,
+                _ => false,
+            }
+    };
+    if !messages.iter().any(same) {
+        messages.push(input.clone());
+    }
+}
+
 /// Read every unsummarized record, avoiding each store's full-history safety cap.
 /// The replacement boundary is meaningful only if its entire suffix is replayed.
 pub(super) async fn load_suffix(
@@ -105,6 +182,27 @@ fn safe_cut(messages: &[RuntimeMessage], mut cut: usize) -> usize {
     }
 }
 
+fn complete_cut_after(messages: &[RuntimeMessage], minimum: usize) -> Option<usize> {
+    let mut pending = std::collections::HashSet::new();
+    for (index, message) in messages.iter().enumerate() {
+        for part in &message.content {
+            match part {
+                ContentPart::ToolCall(call) => {
+                    pending.insert(call.id.as_str());
+                }
+                ContentPart::ToolResult(result) => {
+                    pending.remove(result.tool_call_id.as_str());
+                }
+                _ => {}
+            }
+        }
+        if index + 1 >= minimum.max(1) && pending.is_empty() {
+            return Some(index + 1);
+        }
+    }
+    None
+}
+
 fn tokens(messages: &[RuntimeMessage]) -> usize {
     messages
         .iter()
@@ -185,6 +283,24 @@ impl Planner<'_> {
     }
 
     async fn run_inner(&self) -> Result<()> {
+        let input = input_message(
+            self.retriever,
+            self.session_id,
+            self.event_context.input_message_id,
+        )
+        .await?;
+        let input_tokens = input
+            .as_ref()
+            .map_or(0, |input| tokens(std::slice::from_ref(input)));
+        let without_input = |messages: &[RuntimeMessage]| {
+            tokens(messages)
+                - messages
+                    .iter()
+                    .filter(|message| input.as_ref().is_some_and(|input| input.id == message.id))
+                    .map(|message| tokens(std::slice::from_ref(message)))
+                    .sum::<usize>()
+        };
+        let working_tokens = |messages: &[RuntimeMessage]| without_input(messages) + input_tokens;
         let summary_model = self
             .policy
             .settings()
@@ -217,7 +333,7 @@ impl Planner<'_> {
             // one database page filled. Memory stays bounded by the working
             // budget plus one page, with a record-count cap for tiny messages.
             while has_more
-                && tokens(&history.messages) < self.budget
+                && working_tokens(&history.messages) < self.budget
                 && history.messages.len() < 4096
             {
                 let Some(last) = history
@@ -263,13 +379,18 @@ impl Planner<'_> {
             };
             let previous_pinned_tokens = pinned.iter().map(|p| p.len().div_ceil(4)).sum::<usize>();
             if !has_more
-                && tokens(&history.messages) + previous.len().div_ceil(4) + previous_pinned_tokens
+                && working_tokens(&history.messages)
+                    + previous.len().div_ceil(4)
+                    + previous_pinned_tokens
                     <= self.budget
             {
                 return Ok(());
             }
-            // Hysteresis: retain roughly half the working budget and at least
-            // ten messages. The hard request-budget pass reserves tools/output.
+            if previous.is_empty() && without_input(&history.messages) == 0 && !has_more {
+                return Ok(());
+            }
+            // Prefer half the working budget and ten recent messages. Complete
+            // exchanges can cross that floor; the hard pass reserves tools/output.
             let mut cut = history.messages.len().saturating_sub(MIN_RECENT_MESSAGES);
             let mut keep_tokens = tokens(&history.messages[cut..]);
             while cut > 0 && keep_tokens < self.budget / 2 {
@@ -311,6 +432,57 @@ impl Planner<'_> {
             }
             cut = bounded_cut;
             cut = safe_cut(&history.messages, cut);
+            // The recent-message count is a preference. A complete parallel
+            // exchange may be larger than that tail; advance across it when
+            // keeping it verbatim cannot meet the working target.
+            let tail_tokens = |cut| {
+                working_tokens(&history.messages[cut..])
+                    + previous.len().div_ceil(4)
+                    + previous_pinned_tokens
+            };
+            if cut == 0 || tail_tokens(cut) >= self.budget {
+                let lower = if cut == 0 {
+                    bounded_cut.max(1)
+                } else {
+                    cut + 1
+                };
+                let mut minimum = history.messages.len();
+                let mut retained =
+                    input_tokens + previous.len().div_ceil(4) + previous_pinned_tokens;
+                for (index, message) in history.messages.iter().enumerate().rev() {
+                    let cost = without_input(std::slice::from_ref(message));
+                    if retained + cost > self.budget / 2 {
+                        break;
+                    }
+                    retained += cost;
+                    minimum = index;
+                }
+                minimum = minimum.max(lower);
+                while let Some(complete) = complete_cut_after(&history.messages, minimum) {
+                    let wire: Vec<_> = history.messages[..complete]
+                        .iter()
+                        .map(crate::llm_conversions::llm_message_from_message)
+                        .collect();
+                    if fixed_tokens
+                        + self
+                            .policy
+                            .format_messages_for_summarization(&wire)
+                            .len()
+                            .div_ceil(4)
+                        > summary_input_budget
+                    {
+                        // Source formatting stays logarithmic even when a
+                        // page contains thousands of small complete exchanges.
+                        if minimum == lower {
+                            break;
+                        }
+                        minimum = lower + (minimum - lower) / 2;
+                    } else {
+                        cut = complete;
+                        break;
+                    }
+                }
+            }
             if cut == 0 {
                 if !source_wire.is_empty() {
                     return Err(AgentLoopError::request_too_large(
@@ -507,7 +679,8 @@ impl Planner<'_> {
             };
             let after_tokens = match &checkpoint.payload {
                 CompactionCheckpointPayload::Portable { continuity } => {
-                    continuity.text.len().div_ceil(4)
+                    input_tokens
+                        + continuity.text.len().div_ceil(4)
                         + continuity
                             .pinned
                             .iter()
@@ -517,7 +690,8 @@ impl Planner<'_> {
                 _ => unreachable!("portable candidate"),
             };
             if !super::compaction::materially_reduced(
-                (tokens(prefix) + previous.len().div_ceil(4) + previous_pinned_tokens) as u64,
+                (working_tokens(prefix) + previous.len().div_ceil(4) + previous_pinned_tokens)
+                    as u64,
                 after_tokens as u64,
             ) {
                 return Err(AgentLoopError::config(
@@ -559,14 +733,19 @@ impl Planner<'_> {
                         replay_source: None,
                         strategy_used: "portable_summary".into(),
                         messages_before: history.messages.len(),
-                        messages_after: history.messages.len() - cut + 1,
+                        messages_after: history.messages.len() - cut
+                            + 1
+                            + usize::from(input.as_ref().is_some_and(|input| {
+                                !history.messages[cut..].iter().any(|m| m.id == input.id)
+                            })),
                         tokens_before: Some(
-                            (tokens(&history.messages)
+                            (working_tokens(&history.messages)
                                 + previous.len().div_ceil(4)
                                 + previous_pinned_tokens) as u64,
                         ),
                         tokens_after: Some(
-                            (tokens(&history.messages[cut..])
+                            (without_input(&history.messages[cut..])
+                                + input_tokens
                                 + match &checkpoint.payload {
                                     CompactionCheckpointPayload::Portable { continuity } => {
                                         continuity.text.len().div_ceil(4)

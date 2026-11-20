@@ -1154,7 +1154,8 @@ fn test_aggressive_trim_protected_exceed_budget() {
         make_tool_result("skill1", &"x".repeat(800)), // protected ~200 tokens
         make_assistant_with_tool_call("skill2", "activate_skill"), // protected
         make_tool_result("skill2", &"y".repeat(800)), // protected ~200 tokens
-        make_user_msg(&"z".repeat(400)), // non-protected
+        make_assistant_msg(&"z".repeat(400)), // non-protected
+        make_user_msg("Current question"), // protected current input
     ];
 
     // Budget only fits system + ~1 protected pair
@@ -1163,10 +1164,15 @@ fn test_aggressive_trim_protected_exceed_budget() {
     // Must not exceed budget — non-protected messages dropped
     let has_non_protected = result
         .iter()
-        .any(|m| m.role == MessageRole::User && extract_text(&m.content).contains('z'));
+        .any(|m| extract_text(&m.content).contains('z'));
     assert!(
         !has_non_protected,
         "Non-protected messages must be dropped when protected exceed budget"
+    );
+    assert!(
+        result
+            .iter()
+            .any(|m| extract_text(&m.content) == "Current question")
     );
 }
 
@@ -1255,4 +1261,28 @@ fn user_constraints_after_a_long_brief_reach_the_summarizer_verbatim() {
     assert_eq!(record["role"], "user");
     assert_eq!(record["content"], request);
     assert!(record.get("previous_summary").is_none());
+}
+#[test]
+fn aggressive_trim_keeps_the_latest_user_input_alongside_continuity() {
+    let input = "Read only. Scope selection is not permission to delete.";
+    let messages = vec![
+        Message::text(MessageRole::System, "system"),
+        Message::text(
+            MessageRole::User,
+            format!("[CONVERSATION_SUMMARY]{}", "x".repeat(2000)),
+        ),
+        Message::text(MessageRole::User, input),
+        Message::text(MessageRole::Assistant, "a".repeat(800)),
+    ];
+    let trimmed = aggressive_trim(&messages, 600, true);
+    assert!(
+        trimmed
+            .iter()
+            .any(|message| message.content_as_text() == input)
+    );
+    assert!(
+        trimmed
+            .iter()
+            .any(|message| message.content_as_text().contains("CONVERSATION_SUMMARY"))
+    );
 }

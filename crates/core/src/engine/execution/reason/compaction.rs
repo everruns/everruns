@@ -1067,6 +1067,13 @@ pub(super) async fn apply_reactive_compaction(
                     .cloned()
                     .unwrap_or(raw)
             }));
+            super::context_plan::restore_input(
+                &mut runtime_messages,
+                context.retriever,
+                context.session_id,
+                context.event_context.input_message_id,
+            )
+            .await?;
             config.previous_response_id = None;
             config.provider_opaque_context = None;
             config.reasoning_state = None;

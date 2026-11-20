@@ -76,6 +76,7 @@ use compaction::{
     ProactiveCompactionContext, ReactiveCompactionContext, apply_proactive_compaction,
     apply_reactive_compaction,
 };
+use context_plan::keep_input;
 use error_policy::{filter_response_text, is_error_placeholder_message};
 #[cfg(test)]
 use observability::capability_usage_snapshot_records;
@@ -335,6 +336,7 @@ impl ReasonAtom {
 
         if let Some(restored) = restore_history::restore(restore_history::Request {
             session_id,
+            input_message_id: Some(context.input_message_id),
             store: self.compaction_checkpoint_store.as_ref(),
             retriever: self.message_retriever.as_ref(),
             registry: &self.capability_registry,
@@ -499,7 +501,7 @@ impl ReasonAtom {
         let resolved_files = self.resolve_files(&context_messages).await;
 
         // 11. Build LLM messages
-        let mut llm_messages = Vec::new();
+        let (mut llm_messages, mut input_wire) = (Vec::new(), None);
 
         let has_system_prompt = !turn_agent.system_prompt.is_empty();
         if has_system_prompt {
@@ -541,6 +543,9 @@ impl ReasonAtom {
             llm_msg.tool_changes = tool_changes.transitions.get(&msg.id).cloned();
             transcript::label_speaker(&mut llm_msg, msg);
             facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
+            if msg.id == context.input_message_id {
+                input_wire = Some(llm_msg.clone());
+            }
             llm_messages.push(llm_msg);
         }
         if stripped_error_count > 0 {
@@ -820,6 +825,7 @@ impl ReasonAtom {
             .map_err(durable_retry::retryable_start)?;
         }
 
+        keep_input(&mut llm_messages_for_call, input_wire.as_ref(), &llm_config);
         // 14. Process stream, batching output.message.delta every 100ms.
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let has_provider_executed_tools =
@@ -946,7 +952,7 @@ impl ReasonAtom {
                     if outcome.generation_info.is_some() {
                         compaction_info = outcome.generation_info;
                     }
-
+                    keep_input(&mut llm_messages_for_call, input_wire.as_ref(), &llm_config);
                     let stream = chat_driver
                         .chat_completion_stream(
                             &crate::engine::ProviderEndpoint::default(),

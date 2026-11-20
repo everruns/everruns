@@ -653,6 +653,12 @@ pub fn aggressive_trim(
     if !conversation.is_empty() {
         protected_indices.insert(0);
     }
+    if let Some(latest) = conversation
+        .iter()
+        .rposition(|message| message.role == MessageRole::User)
+    {
+        protected_indices.insert(latest);
+    }
 
     let mut protected_budget: usize = 0;
     for &idx in &protected_indices {

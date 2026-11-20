@@ -10,13 +10,14 @@ use crate::engine::driver_registry::ChatDriver;
 use crate::engine::error::Result;
 use crate::engine::message::RuntimeMessage;
 use crate::engine::message_retriever::MessageRetriever;
-use crate::engine::typed_id::SessionId;
+use crate::engine::typed_id::{MessageId, SessionId};
 use crate::engine::{
     CompactionCheckpoint, CompactionCheckpointPayload, CompactionCheckpointStore, MessageQuery,
 };
 
 pub(super) struct Request<'a> {
     pub(super) session_id: SessionId,
+    pub(super) input_message_id: Option<MessageId>,
     pub(super) store: Option<&'a Arc<dyn CompactionCheckpointStore>>,
     pub(super) retriever: &'a dyn MessageRetriever,
     pub(super) registry: &'a CapabilityRegistry,
@@ -115,6 +116,13 @@ pub(super) async fn restore(request: Request<'_>) -> Result<Option<Restored>> {
         filters.apply_post_load_filters(&mut messages);
         if let CompactionCheckpointPayload::Portable { continuity } = &checkpoint.payload {
             messages.insert(0, super::context_plan::continuity_message(continuity));
+            super::context_plan::restore_input(
+                &mut messages,
+                request.retriever,
+                request.session_id,
+                request.input_message_id,
+            )
+            .await?;
         }
         if let CompactionCheckpointPayload::Summary { text } = &checkpoint.payload {
             messages.insert(
