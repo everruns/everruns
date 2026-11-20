@@ -1,5 +1,17 @@
 use super::*;
 
+/// The org's provider accounts as a tool-side credential store, for host
+/// code that calls a provider outside a turn (agent avatar generation).
+pub(crate) fn org_provider_credential_store(
+    provider_resolver: Arc<ProviderResolverService>,
+    org_id: i64,
+) -> Arc<dyn ProviderCredentialStore> {
+    Arc::new(DirectProviderCredentialStore {
+        provider_resolver,
+        org_id,
+    })
+}
+
 #[async_trait]
 impl ProviderCredentialStore for DirectProviderCredentialStore {
     async fn get_decision_model(

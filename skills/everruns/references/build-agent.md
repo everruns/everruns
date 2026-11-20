@@ -77,6 +77,10 @@ For an existing agent: read `everruns context get <agent_id>`, then
 Change only the fields the request is about. `--capabilities` replaces the
 whole list, so start from the agent's current list (`everruns agents get <id>`).
 
+To give the agent a face, `everruns agents avatar generate <agent_id> --prompt
+"…" --reason "…"` draws an avatar with the org's image model and sets it; skip
+it unless the user wants one.
+
 ## 5. Test it
 
 Send a realistic first message and read the reply, as in [run-agent.md](run-agent.md):

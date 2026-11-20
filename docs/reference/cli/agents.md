@@ -31,6 +31,7 @@ Agent definitions and their configuration.
 | [`agents preview`](#agents-preview) | Preview the final agent shape with capabilities applied. |
 | [`agents resume`](#agents-resume) | Resume a paused agent: its published channels, triggers and schedules work again. |
 | [`agents upsert`](#agents-upsert) | Upsert agent — create (201) or update (200) by ID. |
+| [`agents avatar generate`](#agents-avatar-generate) | Generate an agent's avatar with the organization's default image model and set it, in one step. |
 | [`agents avatar presets`](#agents-avatar-presets) | List the curated agent avatars: stable id, name, family, suggested role, description and search keywords. |
 | [`agents avatar set`](#agents-avatar-set) | Set an agent's avatar from a curated preset (preset_id, see list_avatar_presets) or an image (image_base64: PNG, JPEG, GIF or WebP, at least 64x64, at most 1 MB). |
 | [`agents channels create`](#agents-channels-create) | Create an ingress channel for an agent. |
@@ -482,6 +483,30 @@ Example:
 ```bash
 # Create or replace an agent at a known id, for a scripted deploy
 everruns agents upsert agent_01h9 --name triage --system-prompt 'Triage incoming issues' --reason 'Deploy release 42'
+```
+
+## agents avatar generate
+
+Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.
+
+```bash
+everruns agents avatar generate [OPTIONS] [AGENT]
+```
+
+| Flag | Description |
+|---|---|
+| `--agent <AGENT_ID>` | Agent's prefixed public identifier. |
+| `--prompt <PROMPT>` | What the avatar shows, at most 2000 characters. |
+| `--quality <QUALITY>` | Image quality when the model offers levels (`low`, `medium`, `high`, ...). |
+
+Example:
+
+```bash
+# Draw an avatar from a description
+everruns agents avatar generate agent_01h9 --prompt 'A calm owl librarian, flat vector, navy and gold' --reason 'Give the research agent a face'
+
+# Let the agent's name and description pick the picture
+everruns agents avatar generate agent_01h9 --reason 'Brand the triage agent'
 ```
 
 ## agents avatar presets

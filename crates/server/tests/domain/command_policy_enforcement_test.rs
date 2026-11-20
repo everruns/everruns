@@ -786,8 +786,10 @@ const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
     "update_agent",
     "upsert_agent",
     // Guarded by `avatar_commands::manageable_agent`, the same rule as the
-    // avatar REST routes; tested in `built_in_agent_rejects_set_agent_avatar`.
+    // avatar REST routes; tested in `built_in_agent_rejects_set_agent_avatar`
+    // and `built_in_agent_rejects_generate_agent_avatar`.
     "set_agent_avatar",
+    "generate_agent_avatar",
 ];
 
 /// Agent commands that are deliberately NOT guarded. Justify every entry.

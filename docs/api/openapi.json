@@ -1136,6 +1136,64 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/avatar/generate": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Generate an agent's avatar with the org's image model",
+        "description": "Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.",
+        "operationId": "generate_agent_avatar",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateAgentAvatarRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedAgentAvatar"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid prompt or quality, or no image model available"
+          },
+          "404": {
+            "description": "Agent not found"
+          },
+          "503": {
+            "description": "The image provider failed"
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{agent_id}/avatar/preset": {
       "get": {
         "tags": [
@@ -53441,6 +53499,62 @@
             "example": "Create an API key in provider settings."
           }
         }
+      },
+      "GenerateAgentAvatarRequest": {
+        "type": "object",
+        "description": "What to draw.",
+        "properties": {
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the avatar shows, at most 2000 characters. Omit to draw one from the agent's name\nand description. Avatar style rules (square, centered, no text) are added either way.",
+            "example": "A friendly fox mechanic holding a wrench, flat vector style, teal and orange"
+          },
+          "quality": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Image quality when the model offers levels (`low`, `medium`, `high`, ...). Defaults to\nthe model's usual quality.",
+            "example": "high"
+          }
+        }
+      },
+      "GeneratedAgentAvatar": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AgentAvatar"
+          },
+          {
+            "type": "object",
+            "required": [
+              "model",
+              "provider_type"
+            ],
+            "properties": {
+              "model": {
+                "type": "string",
+                "description": "Model id the image came from, as sent to the provider.",
+                "example": "gpt-image-2.6-flare"
+              },
+              "provider_type": {
+                "type": "string",
+                "description": "Provider type that served it.",
+                "example": "openai"
+              },
+              "revised_prompt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The prompt the model rewrote, when it reports one."
+              }
+            }
+          }
+        ],
+        "description": "The new avatar and the model that drew it."
       },
       "GetQuery": {
         "type": "object",

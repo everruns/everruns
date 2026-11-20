@@ -13,9 +13,17 @@
 //   1 MiB) keeps the base64 request (~1.4 MB) under the 2 MB default body
 //   limit that `/v1/commands`, the MCP endpoint and the command's own route
 //   share. Larger images take the multipart route, which accepts 10 MB.
-// - The command is not transactional (`change_history::registry::transactional`):
-//   decoding and resizing an image is CPU work that must not hold a database
-//   connection and row locks open.
+// - The commands are not transactional (`change_history::registry::transactional`):
+//   decoding and resizing an image is CPU work, and generating one is a
+//   provider call of up to a minute; neither may hold a database connection
+//   and row locks open.
+// - `generate_agent_avatar` draws with the org's default image model (then
+//   the platform default on the org's own provider accounts, the same chain
+//   as the `image_generation` capability) and stores the result through the
+//   same write path, so a CLI or MCP caller gets an avatar in one step
+//   instead of running an agent session to draw it and passing the bytes
+//   back through `set_agent_avatar`. The provider call leaves through the
+//   host egress service (THREAT[TM-LLM-047]).
 
 use std::sync::Arc;
 
@@ -300,6 +308,190 @@ impl Command for SetAgentAvatar {
             variants,
         )
         .await
+    }
+}
+
+// ============================================================================
+// GenerateAgentAvatar
+// ============================================================================
+
+/// Longest prompt `generate_agent_avatar` accepts, in characters.
+pub const MAX_AVATAR_PROMPT_CHARS: usize = 2000;
+
+/// Style rules appended to every avatar prompt, so the picture still reads as
+/// a 32 px circle in a sidebar or a Slack message.
+const AVATAR_STYLE: &str = "Make it a square avatar icon: one clear subject centered on a simple background, bold shapes that stay recognizable when shown as a small circle, no text, letters, borders or watermarks.";
+
+/// The prompt sent to the image model: the caller's, or one drawn from the
+/// agent's name and description, then the avatar style rules.
+fn avatar_prompt(agent: &AgentRow, prompt: Option<&str>) -> Result<String, CommandError> {
+    let subject = match prompt.map(str::trim) {
+        Some("") => return Err(CommandError::bad_request("prompt is empty")),
+        Some(prompt) if prompt.chars().count() > MAX_AVATAR_PROMPT_CHARS => {
+            return Err(CommandError::bad_request(format!(
+                "prompt must be at most {MAX_AVATAR_PROMPT_CHARS} characters"
+            )));
+        }
+        Some(prompt) => prompt.to_string(),
+        None => {
+            let name = agent
+                .display_name
+                .as_deref()
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or(&agent.name);
+            let about = agent
+                .short_description
+                .as_deref()
+                .or(agent.description.as_deref())
+                .map(str::trim)
+                .filter(|about| !about.is_empty())
+                .map(|about| {
+                    about
+                        .chars()
+                        .take(MAX_AVATAR_PROMPT_CHARS)
+                        .collect::<String>()
+                });
+            match about {
+                Some(about) => {
+                    format!("An avatar for an AI agent named \"{name}\". What it does: {about}")
+                }
+                None => format!("An avatar for an AI agent named \"{name}\"."),
+            }
+        }
+    };
+    Ok(format!("{subject}\n\n{AVATAR_STYLE}"))
+}
+
+/// Generate an agent's avatar with the org's image model and set it.
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct GenerateAgentAvatar {
+    /// Agent's prefixed public identifier.
+    pub agent_id: String,
+    #[serde(flatten)]
+    pub req: GenerateAgentAvatarRequest,
+}
+
+/// What to draw.
+#[derive(Debug, Default, Deserialize, Serialize, ToSchema)]
+pub struct GenerateAgentAvatarRequest {
+    /// What the avatar shows, at most 2000 characters. Omit to draw one from the agent's name
+    /// and description. Avatar style rules (square, centered, no text) are added either way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(
+        example = "A friendly fox mechanic holding a wrench, flat vector style, teal and orange"
+    )]
+    pub prompt: Option<String>,
+    /// Image quality when the model offers levels (`low`, `medium`, `high`, ...). Defaults to
+    /// the model's usual quality.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "high")]
+    pub quality: Option<String>,
+}
+
+/// The new avatar and the model that drew it.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GeneratedAgentAvatar {
+    #[serde(flatten)]
+    pub avatar: AgentAvatar,
+    /// Model id the image came from, as sent to the provider.
+    #[schema(example = "gpt-image-2.6-flare")]
+    pub model: String,
+    /// Provider type that served it.
+    #[schema(example = "openai")]
+    pub provider_type: String,
+    /// The prompt the model rewrote, when it reports one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revised_prompt: Option<String>,
+}
+
+#[command(
+    name = "generate_agent_avatar",
+    category = "agents",
+    description = "Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.",
+    summary = "Generate an agent's avatar with the org's image model",
+    method = "POST",
+    path = "/v1/agents/{agent_id}/avatar/generate",
+    policy = AGENT_MANAGE,
+    positional = "agent_id",
+    http = plain,
+    request_body(GenerateAgentAvatarRequest),
+    responses((status = 400, description = "Invalid prompt or quality, or no image model available"), (status = 404, description = "Agent not found"), (status = 503, description = "The image provider failed")),
+    cli = CliRoute::new(&["agents", "avatar"], "generate").with_args(&[CliArg::new("agent_id").at(1).long("agent")]).with_examples(&[CliExample::new("Draw an avatar from a description", "everruns agents avatar generate agent_01h9 --prompt 'A calm owl librarian, flat vector, navy and gold' --reason 'Give the research agent a face'"), CliExample::new("Let the agent's name and description pick the picture", "everruns agents avatar generate agent_01h9 --reason 'Brand the triage agent'")]),
+)]
+impl Command for GenerateAgentAvatar {
+    type Output = GeneratedAgentAvatar;
+
+    fn output_schema() -> serde_json::Value {
+        output_schema_for::<GeneratedAgentAvatar>()
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<GeneratedAgentAvatar, CommandError> {
+        use everruns_integrations::image_generation::{
+            StandaloneImageError, StandaloneImageRequest, generate_standalone_image,
+        };
+
+        // Every check that can fail runs before the paid provider call.
+        let agent = manageable_agent(&ctx.db, ctx.org_id(), &self.agent_id).await?;
+        let prompt = avatar_prompt(&agent, self.req.prompt.as_deref())?;
+        let resolver = ctx
+            .provider_service
+            .as_ref()
+            .and_then(|service| service.resolver())
+            .ok_or_else(|| {
+                CommandError::unavailable("Image generation is not available on this surface")
+            })?;
+        let org_default = resolver
+            .resolve_default_image_model(ctx.org_id())
+            .await
+            .map_err(|error| {
+                CommandError::bad_request(format!(
+                    "The organization's default image model cannot be used: {error}. Choose another with `everruns models images-default set`."
+                ))
+            })?;
+        let credentials = crate::worker_link::direct_worker_adapters::decision_models::org_provider_credential_store(
+            resolver,
+            ctx.org_id(),
+        );
+        let egress = ctx
+            .egress_service
+            .clone()
+            .unwrap_or_else(|| ctx.capability_service.egress_service());
+
+        let image = generate_standalone_image(
+            org_default,
+            &credentials,
+            egress,
+            StandaloneImageRequest {
+                prompt,
+                quality: self.req.quality,
+                // Not every image model takes a background setting.
+                background: None,
+                square: true,
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            StandaloneImageError::Setup(message) => CommandError::bad_request(message),
+            StandaloneImageError::Provider(message) => CommandError::unavailable(message),
+        })?;
+
+        let variants = render_upload(image.data, image.media_type.to_string()).await?;
+        let avatar = store_avatar(
+            &ctx.db,
+            ctx.slack_provisioner.clone(),
+            ctx.encryption.clone(),
+            ctx.org_id(),
+            &agent,
+            "generated".to_string(),
+            variants,
+        )
+        .await?;
+        Ok(GeneratedAgentAvatar {
+            avatar,
+            model: image.model,
+            provider_type: image.provider_type,
+            revised_prompt: image.revised_prompt,
+        })
     }
 }
 

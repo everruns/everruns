@@ -302,6 +302,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/avatar/generate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Generate an agent's avatar with the org's image model
+     * @description Generate an agent's avatar with the organization's default image model and set it, in one step. Describe it in prompt, or omit prompt to draw one from the agent's name and description. Replaces the previous avatar and updates the icon of the agent's one-click Slack apps. Calls the image provider (billed like any image generation) and can take up to a minute.
+     */
+    post: operations["generate_agent_avatar"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/avatar/preset": {
     parameters: {
       query?: never;
@@ -18570,6 +18590,36 @@ export interface components {
        * @example Create an API key in provider settings.
        */
       instructions_markdown: string;
+    };
+    /** @description What to draw. */
+    GenerateAgentAvatarRequest: {
+      /**
+       * @description What the avatar shows, at most 2000 characters. Omit to draw one from the agent's name
+       *     and description. Avatar style rules (square, centered, no text) are added either way.
+       * @example A friendly fox mechanic holding a wrench, flat vector style, teal and orange
+       */
+      prompt?: string | null;
+      /**
+       * @description Image quality when the model offers levels (`low`, `medium`, `high`, ...). Defaults to
+       *     the model's usual quality.
+       * @example high
+       */
+      quality?: string | null;
+    };
+    /** @description The new avatar and the model that drew it. */
+    GeneratedAgentAvatar: components["schemas"]["AgentAvatar"] & {
+      /**
+       * @description Model id the image came from, as sent to the provider.
+       * @example gpt-image-2.6-flare
+       */
+      model: string;
+      /**
+       * @description Provider type that served it.
+       * @example openai
+       */
+      provider_type: string;
+      /** @description The prompt the model rewrote, when it reports one. */
+      revised_prompt?: string | null;
     };
     /** @description Query parameters for GET requests */
     GetQuery: {
@@ -39507,6 +39557,54 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  generate_agent_avatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GenerateAgentAvatarRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GeneratedAgentAvatar"];
+        };
+      };
+      /** @description Invalid prompt or quality, or no image model available */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The image provider failed */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
