@@ -67,8 +67,7 @@ pub struct ColumnSchema {
 /// Tool-visible errors (validation, not found, limits) vs internal errors
 /// are distinguished by the caller when converting to ToolExecutionResult.
 ///
-/// Serializable so a data plane's lookup carries it back intact
-/// (`everruns_contracts::host_calls::SESSION_SQL_DB`).
+/// Serializable so it crosses a process boundary intact.
 #[derive(Debug, thiserror::Error, Serialize, Deserialize)]
 #[serde(tag = "error", content = "detail", rename_all = "snake_case")]
 pub enum SessionSqlDbError {

@@ -528,6 +528,7 @@ pub async fn serve_node_on(
         .merge(crate::stream::router(node.clone()))
         .merge(crate::api_session::router(node.clone()))
         .merge(crate::api_files::router(node.clone()))
+        .merge(crate::sqldb::router(node.clone()))
         .merge(crate::gateway_dp::cell_router(node.clone()))
         .merge(crate::gateway::router(gateway))
         .layer(axum::middleware::from_fn_with_state(

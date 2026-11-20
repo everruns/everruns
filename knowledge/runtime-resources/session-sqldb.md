@@ -57,6 +57,15 @@ session databases in a trusted directory, with process-wide file locking around
 quota checks and operations. Neither backend lets SQL choose filesystem paths.
 The rusqlite dependency remains optional and outside the default core/facade graph.
 
+A session on data plane v2 keeps its databases in its cell, not the control
+plane (data plane v2 parity, step 9): each database is one SQLite file stored in
+the object store by its hash, the session's replicated state indexes them, and a
+write commits its new file over the hash it started from, the same
+compare-and-set as Decision 5. The executor runs SQLite on a local working copy
+of the local store above, and the cell serves the API endpoints below for those
+sessions ([`crates/cell/src/sqldb.rs`](../../crates/cell/src/sqldb.rs),
+[`crates/cell/src/hosting_sqldb.rs`](../../crates/cell/src/hosting_sqldb.rs)).
+
 ### Decision 7: Auto-Create on Execute
 **Chosen:** `sql_execute` tool auto-creates database if it doesn't exist
 **Alternatives considered:**

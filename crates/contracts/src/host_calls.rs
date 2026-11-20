@@ -20,8 +20,9 @@
 //!   egress grants, the approval policy): the org's are pushed with its
 //!   config (`dataplane::ORG_SETTING`), and the call stays only as the
 //!   fallback until they arrive and for the session owner's own approval
-//!   settings. The session's SQL databases move into the runtime. Until
-//!   then they travel here, under the same rules. A connection token or a service key stays a call: which one
+//!   settings. The session's SQL databases were the one call of session
+//!   state; they moved into the runtime (parity step 9) and are no call
+//!   now. A connection token or a service key stays a call: which one
 //!   applies depends on the turn's person and responder, and the control
 //!   plane refreshes OAuth grants.
 //! - The path is fixed: executor, the session's directory cell, then
@@ -122,11 +123,6 @@ pub const PLATFORM_COMMAND: &str = "platform_command";
 /// params name the session and the action (`slack_action::SlackAction`);
 /// the answer is `{"outcome": ...}` or `{"error": ...}`.
 pub const SLACK_ACTION: &str = "slack_action";
-/// The host call that runs one operation on a session's SQL databases
-/// (`op`: `create`, `list`, `get`, `delete`, `execute`, `query`, `schema`
-/// with its `name`, `sql` or `table`); the answer is `{"ok": ...}` or
-/// `{"error": ...}` (`session_sqldb::SessionSqlDbError`).
-pub const SESSION_SQL_DB: &str = "session_sql_db";
 /// The host call that runs one file operation in a session's Memory
 /// (`/memory/agent`, `/memory/user`, `/memory/shared`, `/team`, `/room`),
 /// which stays in the control plane (`op`: `read`, `write`,
@@ -291,14 +287,6 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Write,
         Fate::HostCall,
         "a Slack action as the bot of the session's Slack endpoint",
-    ),
-    call(
-        SESSION_SQL_DB,
-        "session_sql_db",
-        ActsAs::Org,
-        Effect::Write,
-        Fate::Runtime,
-        "one operation on the session's SQL databases",
     ),
     call(
         MEMORY_FILE,
