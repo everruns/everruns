@@ -50,7 +50,7 @@
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
-    ActsAs, HostCall, HostCallAnswer, PLATFORM_COMMAND, SESSION_SQL_DB, SLACK_ACTION,
+    ActsAs, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SESSION_SQL_DB, SLACK_ACTION,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
 
@@ -107,6 +107,9 @@ async fn run(
             },
         ),
         SESSION_SQL_DB => Ok(HostCallAnswer::Value(session_sql_db(ctx, &params).await)),
+        MEMORY_FILE => Ok(HostCallAnswer::Value(
+            super::memory::answer(ctx, &params).await,
+        )),
         SLACK_ACTION => Ok(HostCallAnswer::Value(slack_action(ctx, &params).await)),
         _ => Ok(
             match crate::domains::common::dispatch(call.command, params, ctx).await {

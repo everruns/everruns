@@ -545,7 +545,7 @@ pub fn declared(name: &str) -> Change {
         "trigger_schedule" => Change::Exempt("a manual fire, not a change"),
 
         // Agent definition building blocks.
-        "create_harness" | "copy_harness" => on(K::Harness, Created, ID),
+        "create_harness" | "copy_harness" | "adopt_harness_example" => on(K::Harness, Created, ID),
         "update_harness" => on(K::Harness, Updated, ID),
         "delete_harness" | "destroy_harness" => on(K::Harness, Deleted, Param("id")),
         "preview_harness" => {

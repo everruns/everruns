@@ -15898,7 +15898,7 @@
             "description": "Invalid or unsupported extraction request"
           },
           "403": {
-            "description": "Model management permission required"
+            "description": "Organization adoption and model management permission required"
           },
           "404": {
             "description": "Model not found"
@@ -16339,7 +16339,7 @@
           "harnesses"
         ],
         "summary": "Adopt a harness example as a regular org-owned harness",
-        "description": "Creates a normal harness (`is_built_in = false`) from a code-defined\nexample. The new harness inherits from the org's `generic` harness by\nname — no UUIDs are hardcoded. Capabilities and other config flow through\nthe same validation paths as `POST /v1/harnesses`.\n\nReturns 201 on creation. If the example name collides with an existing\nharness in the org, a random alphanumeric suffix is appended (parity with\nagent example import).",
+        "description": "Creates a normal harness (`is_built_in = false`) from a code-defined\nexample. The new harness inherits from the example's parent harness\n(for example `sandbox-worker` for Coding), resolved by name in the org;\nno UUIDs are hardcoded. Capabilities and other config flow through\nthe same validation paths as `POST /v1/harnesses`.\n\nReturns 201 on creation. If the example name collides with an existing\nharness in the org, a random alphanumeric suffix is appended (parity with\nagent example import). Delegates to the `adopt_harness_example` command.",
         "operationId": "import_harness",
         "parameters": [
           {
@@ -28403,7 +28403,7 @@
           {
             "name": "search",
             "in": "query",
-            "description": "Search by title (case-insensitive substring match).",
+            "description": "Search by title (case-insensitive substring match) or exact public session ID.",
             "required": false,
             "schema": {
               "type": [
@@ -28685,6 +28685,7 @@
           {
             "name": "search",
             "in": "query",
+            "description": "Search by title (case-insensitive substring match) or exact public session ID.",
             "required": false,
             "schema": {
               "type": "string"
@@ -54037,7 +54038,7 @@
       },
       "HarnessExample": {
         "type": "object",
-        "description": "A read-only harness example defined in code.",
+        "description": "A read-only harness example defined in code, adoptable as an org harness.",
         "required": [
           "localizations",
           "name",
@@ -54065,7 +54066,8 @@
           },
           "display_name": {
             "type": "string",
-            "description": "Human-readable display name (e.g. `Data Analyst`)."
+            "description": "Human-readable display name (e.g. `Coding`).",
+            "example": "Coding"
           },
           "icon": {
             "type": [
@@ -54080,14 +54082,15 @@
           },
           "name": {
             "type": "string",
-            "description": "Unique slug (e.g. `data-analyst`)."
+            "description": "Unique slug (e.g. `coding`).",
+            "example": "coding"
           },
           "parent_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Name of the parent harness this example inherits from when adopted\n(e.g. `generic`). Resolved per-org at import time — no UUIDs are\nhardcoded."
+            "description": "Name of the parent harness this example inherits from when adopted\n(e.g. `sandbox-worker`). Resolved per org at adoption; no UUIDs are\nhardcoded."
           },
           "tags": {
             "type": "array",

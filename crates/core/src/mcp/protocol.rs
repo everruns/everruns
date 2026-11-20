@@ -133,7 +133,12 @@ pub fn routable_headers(version: &str, method: &str, name: Option<&str>) -> Vec<
         (HEADER_METHOD.to_string(), method.to_string()),
     ];
     if let Some(name) = name {
-        headers.push((HEADER_NAME.to_string(), name.to_string()));
+        // A name outside the header-safe set travels Base64-wrapped (spec:
+        // Streamable HTTP "Value Encoding").
+        headers.push((
+            HEADER_NAME.to_string(),
+            crate::mcp::param_headers::encode_value(name),
+        ));
     }
     headers
 }

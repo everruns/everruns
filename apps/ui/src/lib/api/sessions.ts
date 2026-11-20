@@ -53,7 +53,7 @@ export interface SessionListFilters {
   archivedOnly?: boolean;
   /** Filter by agent public id. */
   agentId?: string;
-  /** Case-insensitive title substring match. */
+  /** Case-insensitive title substring match or exact public session ID. */
   search?: string;
   /** Comma-separated sources (`chat`, `slack`, `schedule`, …). */
   source?: string;

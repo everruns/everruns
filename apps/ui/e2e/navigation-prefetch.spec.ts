@@ -171,24 +171,35 @@ for (const layout of ["chat_first", "classic"] as const)
       expect(unrelatedApiRequests.map((request) => new URL(request.url()).pathname)).toEqual([]);
     });
 
-    for (const allowed of [true, false]) {
-      test(`Extractions navigation respects model permissions (${allowed})`, async ({ page }) => {
+    for (const { adopted, canManageModels } of [
+      { adopted: true, canManageModels: true },
+      { adopted: true, canManageModels: false },
+      { adopted: false, canManageModels: true },
+    ]) {
+      test(`Extractions navigation with adoption=${adopted} and model management=${canManageModels}`, async ({
+        page,
+      }) => {
+        await page.route("**/feature-flags", (route) =>
+          route.fulfill({ json: { extractions: adopted } }),
+        );
         await page.route("**/api/v1/models/config", (route) =>
-          route.fulfill({ json: { policies: { "model.manage": allowed } } }),
+          route.fulfill({ json: { policies: { "model.manage": canManageModels } } }),
         );
         await page.goto("/chats");
         await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
         await page.waitForLoadState("networkidle");
         const extractionLink = page.getByRole("link", { name: "Extractions", exact: true });
-        if (allowed) {
+        if (adopted && canManageModels) {
           await expect(extractionLink).toBeVisible();
           await extractionLink.click();
           await expect(page).toHaveURL(/\/extractions$/, { timeout: NAVIGATION_TIMEOUT });
-          await expect(
-            page.getByRole("heading", { name: "Extractions", exact: true }),
-          ).toBeVisible();
+          await expect(page.getByLabel("Source text")).toBeVisible();
         } else {
           await expect(extractionLink).toHaveCount(0);
+        }
+        if (!adopted) {
+          await page.goto("/extractions");
+          await expect(page.getByText("Extractions is not enabled")).toBeVisible();
         }
       });
     }

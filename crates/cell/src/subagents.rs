@@ -423,8 +423,17 @@ impl PlatformStore for CellPlatformStore {
             _ => self.parent_agent(&parent).await?,
         };
         let id = SessionId::new();
+        // Decision: a child has no Memory mounts. The control plane holds no
+        // record for it, and its Memory is resolved from the record.
         self.gateway
-            .create_running(definition, None, Some(id), parent.org.clone(), agent_ref)
+            .create_running(
+                definition,
+                None,
+                Some(id),
+                parent.org.clone(),
+                agent_ref,
+                Vec::new(),
+            )
             .await
             .map_err(api)?;
         let mut child = SessionBuilder::new(request.harness_id)

@@ -39,6 +39,7 @@ pub mod executor;
 pub mod form_elicitation;
 pub mod http;
 pub mod oauth;
+pub mod param_headers;
 pub mod protocol;
 pub mod result;
 pub mod tasks;

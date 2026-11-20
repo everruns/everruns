@@ -85,6 +85,48 @@ async fn a_subagent_on_another_cell_answers_its_parent() {
         .get(&format!("/v1/sessions/{parent}/tasks?state=running"))
         .await;
     assert_eq!(running, serde_json::json!([]));
+
+    // Its push configs (parity, Phase B): added through the API, listed
+    // without their secret, refused for a private address, deleted once.
+    let configs = format!("/v1/sessions/{parent}/tasks/{id}/push-configs");
+    let added = fleet
+        .post(
+            &configs,
+            serde_json::json!({
+                "url": "https://hooks.example.com/tasks",
+                "secret": "k",
+                "event_filter": ["terminal", "message"],
+            }),
+        )
+        .await;
+    assert_eq!(added["has_secret"], true, "{added}");
+    assert!(added.get("secret").is_none(), "{added}");
+    let listed = fleet.get(&configs).await;
+    assert_eq!(listed[0]["id"], added["id"], "{listed}");
+    assert_eq!(
+        listed[0]["event_filter"],
+        serde_json::json!(["terminal", "message"])
+    );
+    let (status, _, _) = fleet
+        .post_once(
+            &configs,
+            serde_json::json!({ "url": "http://169.254.169.254/latest" }),
+        )
+        .await;
+    assert_eq!(status, 400, "a private address is refused");
+    let http = reqwest::Client::builder().no_proxy().build().unwrap();
+    let one = format!(
+        "{}{configs}/{}",
+        fleet.base(),
+        added["id"].as_str().unwrap()
+    );
+    assert_eq!(http.delete(&one).send().await.unwrap().status(), 204);
+    assert_eq!(http.delete(&one).send().await.unwrap().status(), 404);
+    let missing = format!(
+        "{}/v1/sessions/{parent}/tasks/nope/push-configs",
+        fleet.base()
+    );
+    assert_eq!(http.get(&missing).send().await.unwrap().status(), 404);
 }
 
 #[tokio::test(flavor = "multi_thread")]

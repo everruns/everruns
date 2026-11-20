@@ -26,10 +26,15 @@
 //! - A secret is sealed again only when its value changed, and a grant
 //!   only when its tokens did (the data plane's own refreshes come back as
 //!   the same tokens). An agent's bindings it no longer has are removed.
-//! - A server whose credential cannot go over yet (a person's grant, a
-//!   connection-backed preset, a service grant not authorized) runs with
-//!   no credential: its calls fail as unauthorized, as an unauthorized
-//!   server's do on the platform. Those move over in step 11.6.
+//! - A server whose grant depends on the turn keeps its OAuth provider and
+//!   identity, and the data plane asks for its token per use with a host
+//!   call (`host_calls::MCP_CONNECTION_TOKEN`, data plane v2 parity gap 8):
+//!   one that acts as the turn's person (`user`, and `user_or_service`,
+//!   whose person comes first), and a service one with no grant of the
+//!   agent's to push (a connection-backed preset, whose token is the org's
+//!   connection). The control plane answers as a v1 worker's lookup does,
+//!   and refreshes the grant. With no grant the call is unauthorized, as on
+//!   the platform.
 //! - A preset that does not resolve (removed from the catalog) leaves its
 //!   server out of the copy rather than failing the agent.
 //! - Only agents with MCP servers pay for this: the rest of a session
@@ -195,16 +200,32 @@ pub async fn prepare_layers(
         server.auth_mode = McpServerAuthMode::None;
         server.oauth_provider_id = None;
         if resolved.auth_mode == McpServerAuthMode::OAuth
-            && resolved.acts_as.uses_service_grant()
-            && let (Some(agent_id), Some(provider)) =
-                (agent_id, resolved.oauth_provider_id.as_deref())
-            && let Some(grant) = grants
-                .agent_service_mcp_grant(org_id, agent_id, provider)
-                .await
-                .map_err(|e| anyhow::anyhow!("MCP server {name}: {e}"))?
+            && !resolved.acts_as.is_none()
+            && let Some(provider) = resolved.oauth_provider_id.as_deref()
+            && !server
+                .headers
+                .keys()
+                .any(|k| k.eq_ignore_ascii_case("authorization"))
         {
+            // The agent's own grant goes over, refreshed on the data plane;
+            // anything else is the turn's to ask for.
+            let pushed = match (resolved.acts_as, agent_id) {
+                (McpServerActsAs::Service, Some(agent_id)) => grants
+                    .agent_service_mcp_grant(org_id, agent_id, provider)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("MCP server {name}: {e}"))?,
+                _ => None,
+            };
             server.auth_mode = McpServerAuthMode::OAuth;
-            server.oauth_provider_id = Some(put_grant(cp, org_id, &grant).await?);
+            match pushed {
+                Some(grant) => {
+                    server.oauth_provider_id = Some(put_grant(cp, org_id, &grant).await?);
+                }
+                None => {
+                    server.oauth_provider_id = Some(provider.to_owned());
+                    server.acts_as = resolved.acts_as;
+                }
+            }
         }
         normalize(server);
     }

@@ -147,7 +147,7 @@ impl SessionTaskWaker for InjectedMessageWaker {
 // observer (EVE-729).
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 
-mod webhook;
+pub(crate) mod webhook;
 pub(crate) use webhook::TaskWebhookNotifier;
 
 // ============================================================================

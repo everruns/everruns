@@ -5,11 +5,13 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub mod examples;
 pub mod queries;
 pub mod record;
 pub mod types;
 
 pub use commands::*;
+pub use examples::{AdoptHarnessExample, HarnessExample, ListHarnessExamples};
 
 /// Policy: View harnesses (read-only).
 pub const HARNESS_VIEW: Policy = Policy {

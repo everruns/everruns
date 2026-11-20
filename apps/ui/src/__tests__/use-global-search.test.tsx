@@ -90,6 +90,7 @@ jest.mock("@/hooks/use-observers", () => ({
 
 const mockFeatureFlags = {
   evals: false,
+  extractions: true,
   skills: true,
   memory: true,
   knowledge: true,
@@ -144,6 +145,7 @@ describe("useGlobalSearch", () => {
     mockUseInstalledPlugins.mockClear();
     Object.assign(mockFeatureFlags, {
       evals: false,
+      extractions: true,
       skills: true,
       memory: true,
       knowledge: true,
@@ -330,15 +332,17 @@ describe("useGlobalSearch", () => {
     ).toBe(false);
   });
 
-  it("offers Extractions only to people who can manage models", () => {
-    const allowed = renderHook(() => useGlobalSearch("extractions"));
-    expect(allowed.result.current).toContainEqual(
-      expect.objectContaining({ category: "navigation", href: "/extractions" }),
-    );
-
-    mockDurableAllowed.value = false;
-    const denied = renderHook(() => useGlobalSearch("extractions"));
-    expect(denied.result.current.some((item) => item.href === "/extractions")).toBe(false);
+  it.each([
+    { adopted: true, canManageModels: true, visible: true },
+    { adopted: true, canManageModels: false, visible: false },
+    { adopted: false, canManageModels: true, visible: false },
+  ])("filters Extractions with adoption=$adopted and model management=$canManageModels", (test) => {
+    mockFeatureFlags.extractions = test.adopted;
+    mockDurableAllowed.value = test.canManageModels;
+    const { result } = renderHook(() => useGlobalSearch("extractions"));
+    expect(
+      result.current.some((item) => item.category === "navigation" && item.href === "/extractions"),
+    ).toBe(test.visible);
   });
 
   it("does not return the retired Apps route", () => {

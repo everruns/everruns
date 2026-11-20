@@ -264,7 +264,7 @@ impl Host for StandardHost {
 /// The hosted catalog the v1 worker registers (portable builtins, the
 /// integrations, the hosted product capabilities), for this deployment's
 /// grade. Built once per process.
-fn hosted_registry() -> &'static everruns_core::capabilities::CapabilityRegistry {
+pub(crate) fn hosted_registry() -> &'static everruns_core::capabilities::CapabilityRegistry {
     static REGISTRY: std::sync::OnceLock<everruns_core::capabilities::CapabilityRegistry> =
         std::sync::OnceLock::new();
     REGISTRY.get_or_init(|| {
@@ -313,9 +313,14 @@ fn hosted_capabilities(
 /// definition that does not parse (it does not build either).
 pub fn declared_host_calls(definition: &Value) -> std::collections::BTreeSet<&'static str> {
     let mut declared = std::collections::BTreeSet::new();
-    let Ok(package) = package(definition) else {
+    let Ok((package, bindings)) = package_with_bindings(definition) else {
         return declared;
     };
+    // An MCP server acting as the turn's person (or a preset backed by a
+    // connection) asks for its token per call (`mcp.rs`, parity gap 8).
+    if !bindings.per_turn.is_empty() {
+        declared.insert(everruns_contracts::host_calls::MCP_CONNECTION_TOKEN);
+    }
     let registry = hosted_registry();
     let mut seen = std::collections::BTreeSet::new();
     let mut queue: Vec<String> = package

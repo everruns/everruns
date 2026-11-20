@@ -203,6 +203,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Check whether a harness name is free.",
     ),
     (
+        "harnesses examples",
+        "Ready-made harnesses (such as coding) to adopt into the org.",
+    ),
+    (
         "health-issues",
         "Operational problems detected in this installation.",
     ),

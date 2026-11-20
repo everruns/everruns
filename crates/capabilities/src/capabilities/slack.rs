@@ -15,6 +15,7 @@
 //! second credential for the common cases; it does not replace MCP.
 
 use async_trait::async_trait;
+use everruns_contracts::runtime::session_file::SessionFile;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
@@ -30,7 +31,7 @@ pub const SLACK_CAPABILITY_ID: &str = "slack";
 
 /// Largest file an agent may share, before base64 or multipart overhead.
 ///
-/// THREAT[TM-DOS-031]: `upload_file` is the only tool here whose argument size
+/// `upload_file` is the only tool here whose argument size
 /// is model-chosen and unbounded by Slack's own limits at the point we accept
 /// it. The cap is applied before the bytes cross the invoker seam so an
 /// oversized argument costs a rejected tool call rather than a transfer.
@@ -88,7 +89,7 @@ impl Capability for SlackCapability {
             "These tools act as this workspace's Slack bot and only work in a session a Slack \
              message created. `channel` and `timestamp` come from the Slack message you are \
              replying to: copy them exactly from its `[slack channel=... timestamp=...]` annotation, \
-             including every fractional digit. Never infer the timestamp from a date. Prefer a reaction over a \
+             including every fractional digit. Use the separate thread_ts for uploads. Never infer the timestamp from a date. Prefer a reaction over a \
              message when you only need to acknowledge something. Slack renders your Markdown, with these \
              differences: mention a person as `<@USERID>` with their Slack user ID (a plain `@name` notifies \
              no one); images show only as links, so share an image or diagram as a file; HTML, footnotes and \
@@ -576,8 +577,8 @@ impl Tool for SlackUploadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Share a file into the Slack conversation as this workspace's bot. Pass the file's text \
-         content; use it for reports, diffs, and logs that are too long to read in a message."
+        "Share a file into the Slack conversation as this workspace's bot. Pass either \
+         inline text or a path to a file in the session workspace, including binary exports."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -599,14 +600,18 @@ impl Tool for SlackUploadFileTool {
                 },
                 "content": {
                     "type": "string",
-                    "description": "The file's text content."
+                    "description": "Inline text. Omit when using session_path."
+                },
+                "session_path": {
+                    "type": "string",
+                    "description": "Path of an existing text or binary file in this session. Omit when using content."
                 },
                 "initial_comment": {
                     "type": "string",
                     "description": "Optional message posted alongside the file."
                 }
             },
-            "required": ["channel", "thread_ts", "filename", "content"],
+            "required": ["channel", "thread_ts", "filename"],
             "additionalProperties": false
         })
     }
@@ -631,11 +636,43 @@ impl Tool for SlackUploadFileTool {
             Ok(value) => value.to_string(),
             Err(result) => return result,
         };
-        // A zero-byte upload is rejected by `files.getUploadURLExternal`, so an
-        // empty `content` is caught here rather than after two round trips.
-        let content = match required_str(&arguments, "content") {
-            Ok(value) => value.as_bytes().to_vec(),
-            Err(result) => return result,
+        let content = match (arguments.get("content"), arguments.get("session_path")) {
+            (Some(_), None) => match required_str(&arguments, "content") {
+                Ok(value) => value.as_bytes().to_vec(),
+                Err(result) => return result,
+            },
+            (None, Some(_)) => {
+                let path = match required_str(&arguments, "session_path") {
+                    Ok(value) => value,
+                    Err(result) => return result,
+                };
+                let Some(store) = &context.file_store else {
+                    return ToolExecutionResult::tool_error("Session filesystem is unavailable");
+                };
+                let file = match store.read_file(context.session_id, path).await {
+                    Ok(Some(file)) if !file.is_directory => file,
+                    Ok(_) => return ToolExecutionResult::tool_error("Session file not found"),
+                    Err(error) => return ToolExecutionResult::internal_error(error),
+                };
+                if file.size_bytes > MAX_UPLOAD_BYTES as i64 {
+                    return ToolExecutionResult::tool_error(
+                        "Session file exceeds the 8 MiB upload limit",
+                    );
+                }
+                let Some(content) = file.content else {
+                    return ToolExecutionResult::tool_error("Session file has no content");
+                };
+                match SessionFile::decode_content(&content, &file.encoding) {
+                    Ok(bytes) if !bytes.is_empty() => bytes,
+                    Ok(_) => return ToolExecutionResult::tool_error("Session file is empty"),
+                    Err(error) => return ToolExecutionResult::internal_error(error),
+                }
+            }
+            _ => {
+                return ToolExecutionResult::tool_error(
+                    "Provide exactly one of content or session_path",
+                );
+            }
         };
         if content.len() > MAX_UPLOAD_BYTES {
             return ToolExecutionResult::tool_error(format!(
@@ -820,6 +857,42 @@ mod tests {
                 user_id: "U1".to_string()
             }]
         );
+    }
+
+    #[tokio::test]
+    async fn upload_file_reads_the_exact_session_bytes() {
+        use everruns_core::host::InMemorySessionFileStore;
+        use everruns_core::session_files::SessionFileSystem;
+
+        let invoker = Arc::new(RecordingInvoker::new(SlackActionOutcome::FileUploaded {
+            file_id: "F1".to_string(),
+            permalink: None,
+        }));
+        let mut context = context_with(invoker.clone());
+        let store = Arc::new(InMemorySessionFileStore::new());
+        store
+            .write_file(context.session_id, "/out/image.png", "iVBORw==", "base64")
+            .await
+            .expect("seed binary file");
+        context.file_store = Some(store);
+
+        let result = SlackUploadFileTool
+            .execute_with_context(
+                json!({
+                    "channel": "C1",
+                    "thread_ts": "1.2",
+                    "filename": "image.png",
+                    "session_path": "/out/image.png",
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(result.is_success(), "{result:?}");
+        assert!(matches!(
+            &invoker.seen.lock().expect("poisoned")[0],
+            SlackAction::UploadFile { content, .. } if content == b"\x89PNG"
+        ));
     }
 
     #[tokio::test]

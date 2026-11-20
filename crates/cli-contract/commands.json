@@ -6977,6 +6977,51 @@
     ]
   },
   {
+    "wire_name": "adopt_harness_example",
+    "path": [
+      "harnesses",
+      "examples"
+    ],
+    "verb": "adopt",
+    "description": "Create an org harness from a harness example by name (see list_harness_examples), e.g. coding for the Yolop-based coding harness. The harness is named after the example, with a short suffix when that name is taken, and inherits from the example's parent harness. Agents then select it by that name.",
+    "method": "POST",
+    "http_path": "/v1/harnesses/import",
+    "args": [
+      {
+        "field": "name",
+        "long": "name",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Example name from list_harness_examples, such as `coding`."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Add the Coding harness to the org so agents can use it",
+        "command": "everruns harnesses examples adopt coding --reason 'Coding agents need the Coding harness'"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_harness_examples",
+    "path": [
+      "harnesses",
+      "examples"
+    ],
+    "verb": "list",
+    "description": "List adoptable harness examples (ready-made harnesses such as coding, the Yolop-based coding harness, and data-analyst): name, description, parent harness, capabilities. They are not in list_harnesses until adopted; adopt one by name with adopt_harness_example before building a harness from scratch.",
+    "method": "GET",
+    "http_path": "/v1/harness-examples",
+    "args": [],
+    "examples": [
+      {
+        "intent": "Find a ready-made harness (such as coding) before writing one by hand",
+        "command": "everruns harnesses examples list"
+      }
+    ]
+  },
+  {
     "wire_name": "get_harness",
     "path": [
       "harnesses"
@@ -7008,7 +7053,7 @@
       "harnesses"
     ],
     "verb": "list",
-    "description": "List all active harnesses. Use search for name search, include_archived=true to include archived.",
+    "description": "List all active harnesses in the org. Use search for name search, include_archived=true to include archived. Ready-made harnesses such as coding are examples and appear here only after adoption: see list_harness_examples.",
     "method": "GET",
     "http_path": "/v1/harnesses",
     "args": [
@@ -14704,7 +14749,7 @@
         "long": "search",
         "kind": "string",
         "required": false,
-        "help": "Case-insensitive title substring match."
+        "help": "Case-insensitive title substring match or exact public session ID."
       },
       {
         "field": "side_chats_only",
@@ -15353,7 +15398,7 @@
         "long": "search",
         "kind": "string",
         "required": false,
-        "help": "Case-insensitive title substring match."
+        "help": "Case-insensitive title substring match or exact public session ID."
       },
       {
         "field": "side_chats_only",

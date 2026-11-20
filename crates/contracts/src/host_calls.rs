@@ -127,6 +127,14 @@ pub const SLACK_ACTION: &str = "slack_action";
 /// with its `name`, `sql` or `table`); the answer is `{"ok": ...}` or
 /// `{"error": ...}` (`session_sqldb::SessionSqlDbError`).
 pub const SESSION_SQL_DB: &str = "session_sql_db";
+/// The host call that runs one file operation in a session's Memory
+/// (`/memory/agent`, `/memory/user`, `/memory/shared`, `/team`, `/room`),
+/// which stays in the control plane (`op`: `read`, `write`,
+/// `write_if_matches`, `create_if_absent`, `delete`, `list`, `stat`,
+/// `mkdir`, with its `path`); the answer is `{"ok": ...}` or
+/// `{"error": message}`. Declared by a session the control plane gave
+/// Memory mounts.
+pub const MEMORY_FILE: &str = "memory_file";
 
 const fn call(
     name: &'static str,
@@ -151,6 +159,18 @@ const fn call(
 
 /// A provider connection token, as the turn's person or the agent.
 pub const CONNECTION_TOKEN: &str = "connection_token";
+/// The token of an MCP server that acts as the turn's person (`user`, or
+/// `user_or_service` falling back to the agent's grant), or of a
+/// connection-backed preset; refreshed in the control plane. Declared by
+/// the agent's own MCP servers rather than a capability: the cell asks only
+/// for a server its definition names this way. Its params name the session
+/// and `input_message_id: "open"`, which the session's cell replaces with
+/// the input message of the turn it has open ([`OPEN_TURN`]).
+pub const MCP_CONNECTION_TOKEN: &str = "mcp_connection_token";
+/// An `input_message_id` that asks the session's cell for the turn it has
+/// open: an MCP server's credential is asked for by session, and the cell,
+/// not the executor, knows whose turn is running.
+pub const OPEN_TURN: &str = "open";
 /// A GitHub token minted for one use.
 pub const GITHUB_TOKEN: &str = "github_token";
 /// The org's egress grants.
@@ -183,6 +203,14 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Read,
         Fate::HostCall,
         "a provider connection token of the turn's person, or of the agent; refreshed in the control plane",
+    ),
+    call(
+        MCP_CONNECTION_TOKEN,
+        "worker_get_mcp_connection_token",
+        ActsAs::Person,
+        Effect::Read,
+        Fate::HostCall,
+        "the token of an MCP server acting as the turn's person, or a connection-backed preset's",
     ),
     call(
         GITHUB_TOKEN,
@@ -271,6 +299,14 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Write,
         Fate::Runtime,
         "one operation on the session's SQL databases",
+    ),
+    call(
+        MEMORY_FILE,
+        "memory_file",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "one file operation in the session's Memory, shared across sessions in the control plane",
     ),
 ];
 

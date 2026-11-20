@@ -689,15 +689,21 @@ impl crate::providers::OrgMaterial for Executor {
         &self,
         session: SessionId,
     ) -> Option<std::collections::BTreeSet<&'static str>> {
-        let definition = self
+        let (definition, memory) = self
             .remote
             .shared
             .state
             .read()
             .sessions
             .get(&session)
-            .map(|s| s.definition.clone())?;
-        Some(crate::host::declared_host_calls(&definition))
+            .map(|s| (s.definition.clone(), !s.platform.memory.is_empty()))?;
+        let mut declared = crate::host::declared_host_calls(&definition);
+        // A session the control plane gave Memory reaches it per call
+        // (`memory.rs`).
+        if memory {
+            declared.insert(everruns_contracts::host_calls::MEMORY_FILE);
+        }
+        Some(declared)
     }
 
     fn undeclared_host_call(&self, call: &str) {

@@ -280,7 +280,7 @@ everruns sessions facets [OPTIONS]
 | `--mine` | Restrict to sessions owned by the calling user. |
 | `--order <ORDER>` | `created_at` (default) or `last_activity`. |
 | `--playground-user-id <PLAYGROUND_USER_ID>` |  |
-| `--search <SEARCH>` | Case-insensitive title substring match. |
+| `--search <SEARCH>` | Case-insensitive title substring match or exact public session ID. |
 | `--side-chats-only` | Exclude the permanent Chat from side-conversation pagination. |
 | `--source <SOURCE>` | Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`, `schedule`, `webhook`, `a2a`... |
 | `--status <STATUS>` | Comma-separated derived activities (`running`, `paused`, `failed`, `completed`, `idle`). |
@@ -327,7 +327,7 @@ everruns sessions list [OPTIONS]
 | `--offset <OFFSET>` | Zero-based offset into the result set. |
 | `--order <ORDER>` | `created_at` (default) or `last_activity`. |
 | `--playground-user-id <PLAYGROUND_USER_ID>` |  |
-| `--search <SEARCH>` | Case-insensitive title substring match. |
+| `--search <SEARCH>` | Case-insensitive title substring match or exact public session ID. |
 | `--side-chats-only` | Exclude the permanent Chat from side-conversation pagination. |
 | `--source <SOURCE>` | Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`, `schedule`, `webhook`, `a2a`... |
 | `--status <STATUS>` | Comma-separated derived activities (`running`, `paused`, `failed`, `completed`, `idle`). |

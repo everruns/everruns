@@ -140,12 +140,17 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
 /// path does (the gateway from a verified org token, or the control plane),
 /// on whichever node holds the session.
 async fn send_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &str) {
+    say_as(fleet, session, id, sender, "list my agents").await;
+}
+
+/// [`send_as`], saying `text`.
+async fn say_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &str, text: &str) {
     let mut replies = Vec::new();
     for base in fleet.bases() {
         let reply = fleet
             .http
             .post(format!("{base}/cell/sessions/{session}/messages"))
-            .json(&json!({ "text": "list my agents", "id": id, "sender": sender }))
+            .json(&json!({ "text": text, "id": id, "sender": sender }))
             .send()
             .await
             .unwrap();
@@ -226,4 +231,253 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
     assert_eq!(asked[2].1, "worker_get_connection_token");
     assert_eq!(asked[2].2["input_message_id"], json!(theirs.uuid()));
     assert_eq!(asked[2].2["acting_user"], json!(person));
+}
+
+/// An MCP server acting as the turn's person asks for its token by session
+/// (data plane v2 parity gap 8): the session's cell names the turn it has
+/// open and the person who sent it, whatever the executor says; with no
+/// turn open the call names no one.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_mcp_token_for_the_open_turn_acts_as_its_sender() {
+    const MCP_TOKEN: &str = everruns_cell::mcp::MCP_CONNECTION_COMMAND;
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(MCP_TOKEN, HostCallAnswer::Value(json!("their-mcp-token")));
+
+    // A session whose turn parks on a person's approval, so it stays open.
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({
+                "id": session,
+                "agent_ref": "helper",
+                "definition": everruns_cell_testkit::definition("approve").unwrap(),
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let person = uuid::Uuid::new_v4().to_string();
+    let theirs = MessageId::new();
+    send_as(&fleet, &session, theirs, &person).await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !fleet
+        .events(&session)
+        .await
+        .iter()
+        .any(|e| e["type"] == "tool.call_requested")
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the turn never parked"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
+    let ask = |session: &str| {
+        json!({
+            "session_id": session,
+            "server_prefix": "notes",
+            "provider": "mcp_oauth_notes",
+            "acts_as": "user",
+            "input_message_id": everruns_contracts::host_calls::OPEN_TURN,
+            "acting_user": "someone-else",
+        })
+    };
+    let answer = material
+        .lookup(ORG, MCP_TOKEN, ask(&session))
+        .await
+        .unwrap();
+    assert_eq!(answer, HostCallAnswer::Value(json!("their-mcp-token")));
+    let asked = cp.lookups();
+    let (_, command, params) = asked.last().unwrap();
+    assert_eq!(command, MCP_TOKEN);
+    assert_eq!(params["input_message_id"], json!(theirs.uuid()));
+    assert_eq!(params["acting_user"], json!(person));
+
+    // A session with no turn open: no message, no one.
+    let idle = support::org::session(&fleet, &cp).await;
+    material.lookup(ORG, MCP_TOKEN, ask(&idle)).await.unwrap();
+    let asked = cp.lookups();
+    let (_, _, params) = asked.last().unwrap();
+    assert_eq!(params["input_message_id"], serde_json::Value::Null);
+    assert_eq!(params["acting_user"], serde_json::Value::Null);
+}
+
+/// The shell's `everruns` command (data plane v2 parity gap 7): an agent
+/// with a shell and the `platform` capability runs `everruns ...` in its
+/// shell, and the line goes to the control plane's catalog as the
+/// `execute` tool's would, acting as the person who sent the turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_shells_everruns_command_runs_the_catalog_as_the_turns_person() {
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(
+        PLATFORM_COMMAND_SURFACE,
+        HostCallAnswer::Value(json!("3 agents")),
+    );
+
+    let session = SessionId::new().to_string();
+    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    definition["capabilities"] = json!([{ "ref": "bashkit_shell" }, { "ref": "platform" }]);
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &json!({ "id": session, "agent_ref": "shell", "definition": definition }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+
+    let person = uuid::Uuid::new_v4().to_string();
+    let theirs = MessageId::new();
+    say_as(&fleet, &session, theirs, &person, "sh everruns agents list").await;
+    fleet.turns(&session, 1).await;
+
+    let asked = cp.lookups();
+    let events = fleet.events(&session).await;
+    let (_, _, params) = asked
+        .iter()
+        .find(|(_, command, _)| command == PLATFORM_COMMAND_SURFACE)
+        .unwrap_or_else(|| panic!("the shell never asked the catalog: {asked:?}\n{events:#?}"));
+    assert_eq!(params["operation"], json!("execute"));
+    assert_eq!(
+        params["arguments"]["commands"],
+        json!("everruns agents list")
+    );
+    assert_eq!(params["input_message_id"], json!(theirs.to_string()));
+    assert_eq!(params["acting_user"], json!(person));
+
+    // The catalog's answer is the shell's output.
+    let completed = events
+        .iter()
+        .find(|e| e["type"] == "tool.completed")
+        .unwrap_or_else(|| panic!("no tool call completed: {events:?}"));
+    assert!(completed.to_string().contains("3 agents"), "{completed}");
+}
+
+/// A session's Memory (data plane v2 parity, Phase B): the control plane
+/// names the session's Memory mounts with the create, and the agent's file
+/// tools reach them in the control plane, one host call per operation. A
+/// session without Memory never calls.
+#[tokio::test(flavor = "multi_thread")]
+async fn memory_files_are_read_from_the_control_plane() {
+    const MEMORY_FILE: &str = everruns_contracts::host_calls::MEMORY_FILE;
+    let (fleet, cp) = org_fleet(&[]).await;
+    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
+    cp.set_lookup(
+        MEMORY_FILE,
+        HostCallAnswer::Value(json!({ "ok": {
+            "id": uuid::Uuid::new_v4(),
+            "session_id": uuid::Uuid::new_v4(),
+            "path": "/memory/user/notes.md",
+            "name": "notes.md",
+            "content": "likes green tea",
+            "encoding": "text",
+            "is_directory": false,
+            "is_readonly": false,
+            "size_bytes": 15,
+            "created_at": "2026-11-19T00:00:00Z",
+            "updated_at": "2026-11-19T00:00:00Z",
+        }})),
+    );
+
+    let create = |session: &str, memory: serde_json::Value| {
+        json!({
+            "id": session,
+            "agent_ref": "files",
+            "definition": everruns_cell_testkit::definition("files").unwrap(),
+            "memory": memory,
+        })
+    };
+    let session = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &create(&session, json!(["/memory/user"])),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    let person = uuid::Uuid::new_v4().to_string();
+    say_as(
+        &fleet,
+        &session,
+        MessageId::new(),
+        &person,
+        "read /memory/user/notes.md",
+    )
+    .await;
+    fleet.turns(&session, 1).await;
+
+    let asked = cp.lookups();
+    let events = fleet.events(&session).await;
+    let (_, _, params) = asked
+        .iter()
+        .find(|(_, command, _)| command == MEMORY_FILE)
+        .unwrap_or_else(|| panic!("Memory was never asked: {asked:?}\n{events:#?}"));
+    assert_eq!(params["op"], json!("read"));
+    assert_eq!(params["path"], json!("/memory/user/notes.md"));
+    assert_eq!(params["session_id"], json!(session));
+    let completed = events
+        .iter()
+        .find(|e| e["type"] == "tool.completed")
+        .unwrap_or_else(|| panic!("no tool call completed: {events:?}"));
+    assert!(
+        completed.to_string().contains("likes green tea"),
+        "{completed}"
+    );
+
+    // A mount the control plane may not give is refused at the create.
+    let (status, _) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &create(&SessionId::new().to_string(), json!(["/workspace"])),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST);
+
+    // No Memory named: the same read stays in the session's own files.
+    let before = cp
+        .lookups()
+        .iter()
+        .filter(|(_, command, _)| command == MEMORY_FILE)
+        .count();
+    let plain = SessionId::new().to_string();
+    let (status, created) = cp
+        .call(
+            &fleet.base(),
+            reqwest::Method::POST,
+            &format!("/dp/v1/orgs/{ORG}/sessions"),
+            &create(&plain, json!([])),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+    say_as(
+        &fleet,
+        &plain,
+        MessageId::new(),
+        &person,
+        "read /memory/user/notes.md",
+    )
+    .await;
+    fleet.turns(&plain, 1).await;
+    let after = cp
+        .lookups()
+        .iter()
+        .filter(|(_, command, _)| command == MEMORY_FILE)
+        .count();
+    assert_eq!(before, after);
 }

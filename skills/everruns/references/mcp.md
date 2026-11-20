@@ -65,6 +65,15 @@ Keep output targeted. Read-only resource catalogs at `everruns://agents`,
 summaries; use the discovered get/list commands when you need details or more
 than the catalog's bounded listing. Do not guess IDs, fields, or flags.
 
+Examples are ready-made agents and harnesses that are not in the organization
+until adopted, so the catalogs above and `agents list`/`harnesses list` do not
+show them. Before building an agent or concluding a harness (such as Coding)
+does not exist, run `everruns agents examples list` and `everruns harnesses
+examples list` through `query` (operations `list_agent_examples` and
+`list_harness_examples`), then adopt the closest through `execute` with
+`everruns harnesses examples adopt <name> --reason '...'` or the `agents`
+equivalent. See [agent-authoring.md](agent-authoring.md).
+
 When offered, `agent_get_card`, `harness_get_card`, `capability_get_card` and
 `knowledge_get_card` show the shared entity cards. `everruns_home` opens the full
 Home UI; `session_open` opens the full Session UI, including Trace. Ordinary tools

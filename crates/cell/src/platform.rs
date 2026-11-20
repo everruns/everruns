@@ -62,6 +62,10 @@ pub struct Platform {
     /// Each task's message channel, oldest first.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub task_messages: BTreeMap<String, Vec<everruns_core::session_task::TaskMessage>>,
+    /// Each task's push configs made through the API, with their secrets
+    /// (`tasks.rs`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub task_push_configs: BTreeMap<String, Vec<crate::tasks::PushConfig>>,
     /// The latest run of each schedule with a spend cap: its message id
     /// and the schedule's id, so what the run costs is charged to it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -75,6 +79,10 @@ pub struct Platform {
     /// may carry the session's own settings (parity gaps 4 and 9).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_ref: Option<String>,
+    /// The control plane's Memory mounts it has (`/memory/user`, ...),
+    /// whose files stay in the control plane (`memory.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory: Vec<String>,
 }
 
 impl Platform {
@@ -84,6 +92,7 @@ impl Platform {
             && self.task_messages.is_empty()
             && self.senders.is_empty()
             && self.agent_ref.is_none()
+            && self.memory.is_empty()
     }
 
     /// Charge `micros` a committed model call cost to the schedule whose
@@ -191,8 +200,13 @@ pub enum Op {
     /// trusted admission path before the message is admitted.
     Sender { message: MessageId, user: String },
     /// The session runs the control plane's agent `agent_ref`
-    /// ([`Platform::agent_ref`]). Proposed once, with the create.
-    Agent { agent_ref: String },
+    /// ([`Platform::agent_ref`]), with the control plane's Memory mounts
+    /// `memory` ([`Platform::memory`]). Proposed once, with the create.
+    Agent {
+        agent_ref: String,
+        #[serde(default)]
+        memory: Vec<String>,
+    },
 }
 
 /// The event types the control plane may record on a session.
@@ -314,7 +328,19 @@ impl CellState {
             return crate::detach::apply(state, session, op, now_ms, changes);
         }
         if let Op::Task(op) = op {
-            return crate::tasks::apply(state, session, op, now_ms, seed, changes);
+            let org = state.tenant.clone();
+            let mut notices = Vec::new();
+            let response =
+                crate::tasks::apply(state, session, op, now_ms, seed, changes, &mut notices);
+            // A transition a webhook may want goes on the feed, in the state
+            // machine, so every replica decides the same (`tasks.rs`).
+            if let Some(org) = org {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                for record in notices {
+                    self.feed.push(index, &org, now_ms, record);
+                }
+            }
+            return response;
         }
         if let Op::Record { event_id, request } = op {
             return record(state, session, event_id, *request, changes);
@@ -322,10 +348,11 @@ impl CellState {
         if let Op::Storage(op) = op {
             return crate::session_storage::apply(state, session, op, changes);
         }
-        if let Op::Agent { agent_ref } = op {
+        if let Op::Agent { agent_ref, memory } = op {
             // Set once: a retried create names the same agent.
             if state.platform.agent_ref.is_none() {
                 state.platform.agent_ref = Some(agent_ref);
+                state.platform.memory = memory;
                 changes.push(Change::Session(session));
             }
             return Response::Value {

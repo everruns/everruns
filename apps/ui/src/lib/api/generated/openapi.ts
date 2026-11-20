@@ -4233,13 +4233,14 @@ export interface paths {
     /**
      * Adopt a harness example as a regular org-owned harness
      * @description Creates a normal harness (`is_built_in = false`) from a code-defined
-     *     example. The new harness inherits from the org's `generic` harness by
-     *     name — no UUIDs are hardcoded. Capabilities and other config flow through
+     *     example. The new harness inherits from the example's parent harness
+     *     (for example `sandbox-worker` for Coding), resolved by name in the org;
+     *     no UUIDs are hardcoded. Capabilities and other config flow through
      *     the same validation paths as `POST /v1/harnesses`.
      *
      *     Returns 201 on creation. If the example name collides with an existing
      *     harness in the org, a random alphanumeric suffix is appended (parity with
-     *     agent example import).
+     *     agent example import). Delegates to the `adopt_harness_example` command.
      */
     post: operations["import_harness"];
     delete?: never;
@@ -18959,7 +18960,7 @@ export interface components {
        */
       updated_at: string;
     };
-    /** @description A read-only harness example defined in code. */
+    /** @description A read-only harness example defined in code, adoptable as an org harness. */
     HarnessExample: {
       /** @description Capabilities the example will assign with their per-harness config. */
       capabilities: components["schemas"]["AgentCapabilityConfig"][];
@@ -18967,17 +18968,23 @@ export interface components {
       description: string;
       /** @description Whether this example is only available when experimental features are on. */
       dev_only: boolean;
-      /** @description Human-readable display name (e.g. `Data Analyst`). */
+      /**
+       * @description Human-readable display name (e.g. `Coding`).
+       * @example Coding
+       */
       display_name: string;
       /** @description Display glyph name rendered by the UI (e.g. `bar-chart`). */
       icon?: string | null;
       /** @description Locale-keyed display names and descriptions. */
       localizations: components["schemas"]["EntityLocalizations"];
-      /** @description Unique slug (e.g. `data-analyst`). */
+      /**
+       * @description Unique slug (e.g. `coding`).
+       * @example coding
+       */
       name: string;
       /**
        * @description Name of the parent harness this example inherits from when adopted
-       *     (e.g. `generic`). Resolved per-org at import time — no UUIDs are
+       *     (e.g. `sandbox-worker`). Resolved per org at adoption; no UUIDs are
        *     hardcoded.
        */
       parent_name?: string | null;
@@ -48714,7 +48721,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Model management permission required */
+      /** @description Organization adoption and model management permission required */
       403: {
         headers: {
           [name: string]: unknown;
@@ -56605,7 +56612,7 @@ export interface operations {
          * @example agent_01933b5a00007000800000000000001
          */
         agent_id?: string | null;
-        /** @description Search by title (case-insensitive substring match). */
+        /** @description Search by title (case-insensitive substring match) or exact public session ID. */
         search?: string | null;
         /**
          * @description Comma-separated session sources: `chat`, `api`, `slack`, `ag_ui`,
@@ -56762,6 +56769,7 @@ export interface operations {
         archived_only?: boolean;
         /** @example agent_01933b5a00007000800000000000001 */
         agent_id?: string;
+        /** @description Search by title (case-insensitive substring match) or exact public session ID. */
         search?: string;
         source?: string;
         status?: string;

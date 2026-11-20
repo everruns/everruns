@@ -236,8 +236,8 @@ export function buildSessionNavigation({
   inRun?: boolean;
   /**
    * The org's sessions run on a data plane, which serves chat, the
-   * session's files, its schedules and subagents for now: no repositories
-   * or leased resources to show.
+   * session's files, its schedules, subagents and repository changes: no
+   * leased resources to show.
    * Every session there has its own durable workspace, so Files always shows.
    */
   dataPlane?: boolean;
@@ -304,8 +304,9 @@ export function buildSessionNavigation({
       icon: Activity,
       badge: tabBadge(eventCount),
     },
-    // What a coding session changed in each repository it works on.
-    ...(!dataPlane && hasFeature("repositories")
+    // What a coding session changed in each repository it works on (on a
+    // data plane too: the control plane reads the session's pinned sandbox).
+    ...(hasFeature("repositories")
       ? [
           {
             key: "changes" as const,

@@ -2126,6 +2126,63 @@ leave the config; running sessions keep their revision. Blueprint
 children and forked or workspace-seeded children stay refused until
 step 9.
 
+**Parity, Phase B: MCP servers that act as a person, and the shell's
+`everruns` command (2026-11-19).** An MCP server whose OAuth grant acts as
+the person who sent the turn (`actsAs: user`, or `user_or_service` with
+the person first, as on v1), or a preset backed by an org connection,
+reached a cell with no credential, so its calls went out unauthenticated.
+Its token now comes from the control plane on each call, through the
+`mcp_connection_token` host call. The call names the session and "the
+open turn"; the session's cell fills in the turn's input message and the
+person who sent it (THREAT[TM-AGENT-017]), and the control plane checks
+the server is attached and refreshes the grant, as for a v1 worker's
+call. The token is never kept on the data plane. A service grant still
+goes over as a sealed connection the data plane refreshes. The shell's
+`everruns` builtin is installed on a cell as on a worker: it forwards the
+line to the `platform` capability's `execute` tool, which runs the
+command catalog as the turn's person.
+
+**Parity, Phase B: Memory and capability files (2026-11-19).** A v2
+session had no Memory (`/memory/agent`, `/memory/user`, `/memory/shared`,
+`/team`, `/room`) and none of the files its capabilities bring, so an
+agent told to read `/workspace/docs` or keep notes in `/memory/user`
+found nothing. Memory stays in the control plane: it is shared across
+sessions, people and agents of the org, so no one session's cell can own
+it. The control plane resolves a session's mounts from its record, as for
+a v1 session, and sends them with the create; the cell mounts only those,
+and each file operation is one `memory_file` host call, served only
+inside the session's own mounts (THREAT[TM-TENANT]). Nothing is cached, so
+a read sees what another session wrote a moment ago; a subagent's child
+has no Memory, and there is no content search over it yet (a shell's
+`grep` reads the files). A capability's virtual tree (the product docs)
+is mounted read-only from the cell's memory, built once and shared by
+every session; its inline files are written with the create, only where
+absent, as v1 copies them (`crates/cell/src/memory.rs`,
+`crates/cell/src/capability_files.rs`,
+`crates/server/src/domains/data_plane/memory.rs`). Console Chat still
+runs on the control plane: its person's own MCP servers, page context and
+threads come next.
+
+**Parity, Phase B: Changes, git, chat MCP servers and task push configs
+(2026-11-19).** Four session routes answered "not available yet" on v2.
+Three are now served by the control plane against the session's cell, as
+the sandbox's lifecycle and storage are: the Changes tab
+(`/repositories`) reads the repositories in the sandbox the control plane
+pinned, after its state on the cell says it runs (a page view never starts
+one); `/git` keeps a session's commits in the control plane's history
+tables for both planes, and a commit takes the workspace from the cell in
+one snapshot (the `fs` command's `snapshot`, at most 64 MiB); and
+`/mcp-servers` lists and removes the chat-only MCP records in the session's
+storage on its cell. Task push configs are the cell's: they live beside the
+task, with their signing secrets, since the control plane's table refers
+to its own task rows. A transition a webhook may want goes on the feed
+(`Record::TaskTransition`) from the state machine, with the push configs
+that ask for it, and the control plane delivers it as it does a v1 task's,
+the org's task webhooks included (`data_plane/task_webhooks.rs`).
+Decision: delivery goes through the feed, the channel the control plane
+drains once per position, rather than from a cell, which has no outbound
+webhook path; it stays best-effort, as on v1.
+
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
@@ -2166,8 +2223,8 @@ admission path (the gateway, from a verified org token's subject; the
 control plane, for a message a person sent through it); a schedule's run
 or a task wake acts as the last person who wrote, as v1 copies the
 previous turn's record; a channel, trigger or webhook message acts as no
-one, so its platform calls are refused. The shell's `everruns` builtin is
-not installed on a cell yet. The `slack` tools' actions (react, update,
+one, so its platform calls are refused. The shell's `everruns` builtin
+forwards to the same tool (Phase B). The `slack` tools' actions (react, update,
 upload, look up a user) go over too, run by the control plane as the bot
 of the endpoint the session came through, so the bot token stays there.
 The conversation sender a v1 worker installs with them is left out: a

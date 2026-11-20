@@ -162,6 +162,7 @@ pub(crate) fn slack_bot_scopes(agent_surface_enabled: bool) -> Vec<&'static str>
         "app_mentions:read",
         "users:read",
         "files:read",
+        "files:write",
     ];
     if agent_surface_enabled {
         scopes.push("assistant:write");

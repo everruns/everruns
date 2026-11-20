@@ -7,6 +7,12 @@
 //
 // git2::Repository is Send but not Sync, so all libgit2 work happens inside
 // spawn_blocking to avoid holding non-Sync references across .await points.
+//
+// Decision (data plane v2 parity, Phase B): a v2 session's files live in its
+// cell, so a commit reads them from there in one snapshot
+// (`plane_files`); its objects and refs are kept here, in the control
+// plane's history tables, as for a v1 session. Log, diff and refs read only
+// those tables, so they need nothing from the cell.
 
 use crate::storage::{
     CreateSessionGitObject, CreateSessionGitRef, SessionGitObjectRow, StorageBackend,
@@ -166,14 +172,7 @@ impl SessionGitService {
         author_email: &str,
         branch: Option<&str>,
     ) -> Result<CommitResult> {
-        // Normalize branch name (fix: accept short names like "main")
-        let branch_name = normalize_branch(branch.unwrap_or("refs/heads/main"));
-
-        // 1. Load existing objects in one query (fix: N+1)
-        let existing_objects = self.db.load_all_git_objects(session_id).await?;
-        let parent_oid_bytes = self.load_ref_oid(session_id, &branch_name).await?;
-
-        // 2. Load all session files with content in one query (fix: N+1)
+        // Load all session files with content in one query (fix: N+1)
         let all_files = self
             .db
             .load_all_session_files_with_content(session_id)
@@ -181,9 +180,44 @@ impl SessionGitService {
         let file_contents: Vec<(String, Vec<u8>)> = all_files
             .into_iter()
             .map(|f| {
-                let git_path = f.path.strip_prefix('/').unwrap_or(&f.path).to_string();
                 // Fix: treat None content as empty blob so empty files are committed
-                let content = f.content.unwrap_or_default();
+                (f.path, f.content.unwrap_or_default())
+            })
+            .collect();
+        self.commit_files(
+            session_id,
+            file_contents,
+            message,
+            author_name,
+            author_email,
+            branch,
+        )
+        .await
+    }
+
+    /// Commit `files` (absolute workspace paths and their bytes) as the
+    /// session's tree. A v2 session's files come from its cell
+    /// (`plane_files`); the objects and refs are kept here for both planes.
+    pub async fn commit_files(
+        &self,
+        session_id: Uuid,
+        files: Vec<(String, Vec<u8>)>,
+        message: &str,
+        author_name: &str,
+        author_email: &str,
+        branch: Option<&str>,
+    ) -> Result<CommitResult> {
+        // Normalize branch name (fix: accept short names like "main")
+        let branch_name = normalize_branch(branch.unwrap_or("refs/heads/main"));
+
+        // Load existing objects in one query (fix: N+1)
+        let existing_objects = self.db.load_all_git_objects(session_id).await?;
+        let parent_oid_bytes = self.load_ref_oid(session_id, &branch_name).await?;
+
+        let file_contents: Vec<(String, Vec<u8>)> = files
+            .into_iter()
+            .map(|(path, content)| {
+                let git_path = path.strip_prefix('/').unwrap_or(&path).to_string();
                 (git_path, content)
             })
             .collect();
@@ -653,6 +687,53 @@ fn build_tree_from_paths(repo: &Repository, entries: &[(String, Oid)]) -> Result
 
     let tree_oid = builder.write()?;
     Ok(tree_oid)
+}
+
+/// A v2 session's files with their bytes, read from its cell in one
+/// snapshot (`FsOp::Snapshot`): what a commit records.
+pub async fn plane_files(
+    plane: &crate::domains::data_plane::session_plane::SessionPlane,
+) -> Result<Vec<(String, Vec<u8>)>> {
+    use base64::Engine as _;
+    let reply = plane
+        .command(
+            &everruns_contracts::session_commands::FS,
+            &serde_json::json!({ "op": "snapshot" }),
+        )
+        .await?;
+    if reply["result"] == "failed" {
+        bail!(
+            "the session's files could not be read: {}",
+            reply["message"].as_str().unwrap_or("unknown reason")
+        );
+    }
+    #[derive(Deserialize)]
+    struct File {
+        path: String,
+        #[serde(default)]
+        encoding: String,
+        #[serde(default)]
+        content: String,
+    }
+    #[derive(Deserialize)]
+    struct Snapshot {
+        files: Vec<File>,
+    }
+    let snapshot: Snapshot = serde_json::from_value(reply["value"].clone())?;
+    snapshot
+        .files
+        .into_iter()
+        .map(|file| {
+            let bytes = if file.encoding == "base64" {
+                base64::engine::general_purpose::STANDARD
+                    .decode(file.content.as_bytes())
+                    .map_err(|e| anyhow!("{}: not base64: {e}", file.path))?
+            } else {
+                file.content.into_bytes()
+            };
+            Ok((file.path, bytes))
+        })
+        .collect()
 }
 
 #[cfg(test)]

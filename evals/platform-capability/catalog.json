@@ -391,6 +391,30 @@
     "read_only": false
   },
   {
+    "category": "harnesses",
+    "cli": "harnesses examples adopt",
+    "description": "Create an org harness from a harness example by name (see list_harness_examples), e.g. coding for the Yolop-based coding harness. The harness is named after the example, with a short suffix when that name is taken, and inherits from the example's parent harness. Agents then select it by that name.",
+    "input_schema": {
+      "description": "Create an org harness from a harness example.",
+      "properties": {
+        "name": {
+          "description": "Example name from list_harness_examples, such as `coding`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "adopt_harness_example",
+    "output_shape": "unknown",
+    "path": "/v1/harnesses/import",
+    "positional_arg": "name",
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": "agents analyze",
     "description": "Run advisory checks (built-in rules plus LLM analysis) against an agent configuration.",
@@ -14266,7 +14290,7 @@
               ]
             },
             "search": {
-              "description": "Case-insensitive title substring match.",
+              "description": "Case-insensitive title substring match or exact public session ID.",
               "type": [
                 "string",
                 "null"
@@ -16502,8 +16526,23 @@
   },
   {
     "category": "harnesses",
+    "cli": "harnesses examples list",
+    "description": "List adoptable harness examples (ready-made harnesses such as coding, the Yolop-based coding harness, and data-analyst): name, description, parent harness, capabilities. They are not in list_harnesses until adopted; adopt one by name with adopt_harness_example before building a harness from scratch.",
+    "input_schema": {
+      "description": "List the harness examples this deployment offers.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_harness_examples",
+    "output_shape": "array",
+    "path": "/v1/harness-examples",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "harnesses",
     "cli": "harnesses list",
-    "description": "List all active harnesses. Use search for name search, include_archived=true to include archived.",
+    "description": "List all active harnesses in the org. Use search for name search, include_archived=true to include archived. Ready-made harnesses such as coding are examples and appear here only after adoption: see list_harness_examples.",
     "input_schema": {
       "description": "List harnesses. Supports search and include_archived.",
       "properties": {
@@ -18669,7 +18708,7 @@
               ]
             },
             "search": {
-              "description": "Case-insensitive title substring match.",
+              "description": "Case-insensitive title substring match or exact public session ID.",
               "type": [
                 "string",
                 "null"

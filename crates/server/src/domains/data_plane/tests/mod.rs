@@ -921,5 +921,7 @@ async fn an_orgs_agents_are_in_its_data_planes_catalog() {
 mod event_tap;
 mod host_calls;
 mod mcp;
+mod memory;
 mod org_settings;
 mod sandboxes;
+mod task_webhooks;

@@ -32,6 +32,30 @@ fn request() -> ExtractRequest {
 }
 
 #[tokio::test]
+async fn organization_adoption_is_required_before_provider_resolution() {
+    let org = ResolvedOrg {
+        org_id: 1,
+        public_id: "org_test".into(),
+        name: "Test".into(),
+        user_id: None,
+        role: everruns_core::OrgRole::Owner,
+        is_platform_user: false,
+        feature_flags: crate::records::FeatureFlags::default(),
+        read_only: false,
+    };
+
+    let (status, Json(error)) = extract_typed_fields(org, State(state()), Json(request()))
+        .await
+        .unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
+    assert!(
+        serde_json::to_string(&error)
+            .unwrap()
+            .contains("not enabled")
+    );
+}
+
+#[tokio::test]
 async fn member_and_read_only_owner_cannot_spend_provider_credentials() {
     for (role, read_only) in [
         (everruns_core::OrgRole::Member, false),

@@ -8,6 +8,8 @@ export interface FeatureFlags {
   lua?: boolean;
   /** Behavioral evals. Organization adoption opt-in. */
   evals: boolean;
+  /** Native typed extractions. Organization adoption opt-in. */
+  extractions: boolean;
   /** Skills registry management UI. Experimental. */
   skills: boolean;
   /** Workspace memory management UI. Experimental. */

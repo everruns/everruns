@@ -161,7 +161,11 @@ impl TaskTransitionObserver for TaskWebhookNotifier {
 /// request-time SSRF check, otherwise a DNS rebind between create and delivery
 /// can point the previously-validated host at a private IP / cloud metadata
 /// endpoint. `require_dns_pinning()` closes that rebinding window.
-fn build_task_webhook_request(url: &str, body: &[u8], secret: Option<&str>) -> EgressRequest {
+pub(crate) fn build_task_webhook_request(
+    url: &str,
+    body: &[u8],
+    secret: Option<&str>,
+) -> EgressRequest {
     let mut req = EgressRequest::new("POST", url, EgressRequestKind::Integration)
         .header("Content-Type", "application/json")
         .body(body.to_vec())

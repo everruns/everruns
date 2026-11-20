@@ -17,10 +17,12 @@ Reusable base setups (prompt plus capabilities) agents build on.
 | [`harnesses delete`](#harnesses-delete) | Archive a harness (soft delete). |
 | [`harnesses destroy`](#harnesses-destroy) | Permanently delete an archived harness. |
 | [`harnesses get`](#harnesses-get) | Get a single harness by ID or name. |
-| [`harnesses list`](#harnesses-list) | List all active harnesses. |
+| [`harnesses list`](#harnesses-list) | List all active harnesses in the org. |
 | [`harnesses preview`](#harnesses-preview) | Preview the final harness shape with capabilities applied. |
 | [`harnesses update`](#harnesses-update) | Update a harness. |
 | [`harnesses check-name check`](#harnesses-check-name-check) | Check whether a harness name is available. |
+| [`harnesses examples adopt`](#harnesses-examples-adopt) | Create an org harness from a harness example by name (see list_harness_examples), e.g. |
+| [`harnesses examples list`](#harnesses-examples-list) | List adoptable harness examples (ready-made harnesses such as coding, the Yolop-based coding harness, and data-analyst): name, description, parent harness, capabilities. |
 
 ## harnesses copy
 
@@ -134,7 +136,7 @@ everruns harnesses get harness_01h9
 
 ## harnesses list
 
-List all active harnesses. Use search for name search, include_archived=true to include archived.
+List all active harnesses in the org. Use search for name search, include_archived=true to include archived. Ready-made harnesses such as coding are examples and appear here only after adoption: see list_harness_examples.
 
 ```bash
 everruns harnesses list [OPTIONS]
@@ -228,4 +230,38 @@ Example:
 ```bash
 # Check a name is free before creating a harness
 everruns harnesses check-name check --name support-bot
+```
+
+## harnesses examples adopt
+
+Create an org harness from a harness example by name (see list_harness_examples), e.g. coding for the Yolop-based coding harness. The harness is named after the example, with a short suffix when that name is taken, and inherits from the example's parent harness. Agents then select it by that name.
+
+```bash
+everruns harnesses examples adopt [OPTIONS] [NAME]
+```
+
+| Flag | Description |
+|---|---|
+| `--name <NAME>` | Example name from list_harness_examples, such as `coding`. |
+
+Example:
+
+```bash
+# Add the Coding harness to the org so agents can use it
+everruns harnesses examples adopt coding --reason 'Coding agents need the Coding harness'
+```
+
+## harnesses examples list
+
+List adoptable harness examples (ready-made harnesses such as coding, the Yolop-based coding harness, and data-analyst): name, description, parent harness, capabilities. They are not in list_harnesses until adopted; adopt one by name with adopt_harness_example before building a harness from scratch.
+
+```bash
+everruns harnesses examples list [OPTIONS]
+```
+
+Example:
+
+```bash
+# Find a ready-made harness (such as coding) before writing one by hand
+everruns harnesses examples list
 ```
