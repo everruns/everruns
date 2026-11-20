@@ -184,6 +184,12 @@ pub struct Agent {
     /// `research` uses the organization research model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_role: Option<crate::domains::organizations::research_model::AgentModelRole>,
+    /// Model preset the agent takes its job models from (`automatic`,
+    /// `provider:gemini` or a custom preset id). Unset = organization defaults.
+    /// A pinned `default_model_id` still wins for the agent's own turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "provider:gemini")]
+    pub model_preset: Option<String>,
     /// Harness that supplies the base execution environment for this agent.
     #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: HarnessId,
@@ -430,6 +436,7 @@ mod tests {
             system_prompt: "test".to_string(),
             default_model_id: None,
             model_role: None,
+            model_preset: None,
             harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),
             forked_from_agent_id: None,
             root_agent_id: None,

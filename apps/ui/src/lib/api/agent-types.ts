@@ -80,6 +80,8 @@ export interface Agent {
   default_model_id: string | null;
   /** Organization model the agent follows instead of `default_model_id`. */
   model_role?: "research" | null;
+  /** Model preset the agent takes its job models from; unset = organization defaults. */
+  model_preset?: string | null;
   forked_from_agent_id?: string | null;
   root_agent_id?: string | null;
   /** Agent this one was created as part of ("Created here" on its Agents tab). */

@@ -239,6 +239,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     ),
     ("memories", "Workspace memories in the organization."),
     (
+        "model-presets",
+        "Named sets of models, one per job, that agents can use instead of the organization defaults.",
+    ),
+    (
         "models",
         "LLM models available to agents, and organization defaults.",
     ),

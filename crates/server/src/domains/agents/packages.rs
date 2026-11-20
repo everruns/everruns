@@ -311,6 +311,7 @@ async fn export_inner(
         "starters",
         "sandbox_policy",
         "model_role",
+        "model_preset",
     ];
     object.retain(|key, _| allowed.contains(&key.as_str()));
     // `direct` is the default; a package states only a deliberate choice.
@@ -593,6 +594,14 @@ pub async fn request(
         .transpose()?;
     // A role replaces the pinned model, as in the agent API.
     let model_id = if model_role.is_some() { None } else { model_id };
+    // A preset the destination does not have falls back to its organization
+    // defaults instead of refusing the import.
+    let model_preset = match m.model_preset.as_deref() {
+        Some(id) => crate::domains::model_presets::service::get(&ctx.db, ctx.org_id(), id)
+            .await?
+            .map(|preset| preset.id),
+        None => None,
+    };
     let req = CreateAgentRequest {
         owner_agent_id: None,
         localizations: m.localizations.clone(),
@@ -608,6 +617,7 @@ pub async fn request(
         system_prompt: m.instructions.clone(),
         default_model_id: model_id,
         model_role,
+        model_preset,
         harness_id: package.legacy_harness_id,
         harness_name: m.harness.clone(),
         tags: m.tags.clone(),
