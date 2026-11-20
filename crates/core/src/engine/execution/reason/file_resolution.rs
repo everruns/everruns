@@ -132,6 +132,7 @@ impl super::ReasonAtom {
         &self,
         messages: &[RuntimeMessage],
         system_prompt: Option<&str>,
+        model: &crate::runtime_context::ResolvedModelExecution,
     ) -> Vec<crate::engine::driver_registry::Message> {
         use crate::engine::driver_registry::{Message, MessageRole};
         let images = self.resolve_images(messages).await;
@@ -141,9 +142,11 @@ impl super::ReasonAtom {
             wire.push(Message::text(MessageRole::System, system_prompt));
         }
         wire.extend(messages.iter().map(|message| {
-            crate::llm_conversions::llm_message_from_message_with_attachments(
+            let mut wire = crate::llm_conversions::llm_message_from_message_with_attachments(
                 message, &images, &files,
-            )
+            );
+            super::transcript::prepare_replay(&mut wire, message, model);
+            wire
         }));
         crate::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(wire, false)
     }

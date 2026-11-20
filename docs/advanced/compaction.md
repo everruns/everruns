@@ -48,6 +48,11 @@ replaces an exact prefix. Later turns and restarted workers restore that summary
 plus messages after its boundary. Compaction never treats an omitted loading
 window as summarized history.
 
+Opaque reasoning in the recent tail is replayed only when its recorded model,
+driver and configured provider account match the current request. Legacy
+artifacts without that provenance are omitted from requests; the original
+events remain intact. This does not make native checkpoints portable.
+
 The current user input stays verbatim even when a long tool loop moves its
 journal record inside the summarized prefix. The preferred recent-message tail
 can shrink to keep a completed parallel tool batch together. An incomplete

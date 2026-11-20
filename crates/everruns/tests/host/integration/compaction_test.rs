@@ -14,6 +14,142 @@ use serde_json::json;
 
 const CURRENT_INPUT: &str = "Inspect the original evidence; never delete anything.";
 
+struct ScopedReasoningDriver;
+
+#[async_trait::async_trait]
+impl everruns_contracts::driver_registry::ChatDriver for ScopedReasoningDriver {
+    async fn chat_completion_stream(
+        &self,
+        _: &everruns_contracts::runtime_provider::ProviderEndpoint,
+        messages: Vec<everruns_contracts::driver_registry::Message>,
+        config: &everruns_contracts::driver_registry::LlmCallConfig,
+    ) -> everruns_contracts::error::Result<everruns_contracts::driver_registry::LlmResponseStream>
+    {
+        use everruns_contracts::driver_registry::{LlmCompletionMetadata, LlmResponse};
+        let summary = config
+            .metadata
+            .get("purpose")
+            .is_some_and(|p| p == "continuity_summary");
+        if config.model == "model-b" && !summary {
+            assert!(
+                messages.iter().all(|m| m.reasoning.is_empty()),
+                "OpenAI cannot decrypt another provider/model's reasoning in the raw suffix"
+            );
+        }
+        let reasoning = if config.model == "model-a" && !summary {
+            vec![
+                everruns_contracts::reasoning::ReasoningContentPart::opaque("openai")
+                    .with_item_id("rs_router")
+                    .with_encrypted("router-credential-only"),
+            ]
+        } else {
+            vec![]
+        };
+        let mut metadata = LlmCompletionMetadata::default();
+        metadata.finish_reason = Some("stop".into());
+        Ok(LlmResponse {
+            text: "Inspect only; no deletion approved. Original evidence remains queryable.".into(),
+            reasoning,
+            tool_calls: None,
+            metadata,
+        }
+        .into_stream())
+    }
+}
+
+#[tokio::test]
+async fn portable_resume_does_not_replay_another_route_or_models_encrypted_reasoning() {
+    use everruns_contracts::runtime_provider::Provider;
+    let backends = HostBackends::in_memory();
+    let runtime = everruns::batteries::runtime_builder()
+        .backends(backends.clone())
+        .provider_with_default_model(Provider::new("router", ScopedReasoningDriver), "model-a")
+        .single_session(|s| {
+            s.harness("continuity", "Inspect only.")
+                .harness_capability(CapabilityRef::with_config(
+                    "compaction",
+                    json!({"context_budget_tokens":4096}),
+                ))
+                .agent("worker", "Answer the current question.")
+        })
+        .build()
+        .await
+        .unwrap();
+    let session = runtime.default_session_id().unwrap();
+    for i in 0..20 {
+        backends
+            .event_log
+            .append(EventRequest::new(
+                session,
+                EventContext::empty(),
+                InputMessageData::new(RuntimeMessage::user(format!(
+                    "evidence {i}: {}",
+                    "historical evidence ".repeat(100)
+                ))),
+            ))
+            .await
+            .unwrap();
+    }
+    assert!(
+        runtime
+            .run_text_turn(session, "Inspect the evidence.")
+            .await
+            .unwrap()
+            .success
+    );
+    let before = runtime.messages(session).await.unwrap();
+    assert!(
+        before
+            .iter()
+            .any(|m| m.reasoning_parts().any(|part| part.encrypted.is_some()))
+    );
+    let checkpoint = backends
+        .compaction_checkpoint_store
+        .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+        .await
+        .unwrap()
+        .unwrap();
+    let restarted = everruns::batteries::runtime_builder()
+        .backends(backends.clone())
+        .provider_with_default_model(Provider::new("openai", ScopedReasoningDriver), "model-b")
+        .single_session(|s| {
+            s.session_id(session)
+                .harness("continuity", "Inspect only.")
+                .harness_capability(CapabilityRef::with_config(
+                    "compaction",
+                    json!({"context_budget_tokens":4096}),
+                ))
+                .agent("worker", "Answer the current question.")
+        })
+        .build()
+        .await
+        .unwrap();
+    assert!(
+        restarted
+            .run_text_turn(session, "Continue without changing anything.")
+            .await
+            .unwrap()
+            .success
+    );
+    let after = restarted.messages(session).await.unwrap();
+    assert!(
+        after.iter().any(|m| m
+            .reasoning_parts()
+            .any(|part| part.encrypted.as_deref() == Some("router-credential-only"))),
+        "the journal stays lossless"
+    );
+    assert_eq!(
+        backends
+            .compaction_checkpoint_store
+            .get_latest_format(session, PROVIDER, MODEL, FORMAT)
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        checkpoint.id
+    );
+}
+
 struct ParallelHistoryDriver(std::sync::Arc<std::sync::atomic::AtomicUsize>);
 
 #[async_trait::async_trait]

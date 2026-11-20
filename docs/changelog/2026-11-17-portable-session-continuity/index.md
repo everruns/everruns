@@ -11,7 +11,7 @@ links:
 ---
 
 [`compaction`](/advanced/compaction/) now manages portable continuity, recent
-complete exchanges, verbatim current input and permitted history retrieval. Built-in harnesses inherit
+complete exchanges, verbatim current input, scoped reasoning replay and permitted history retrieval. Built-in harnesses inherit
 it; Framework sessions without an explicit harness enable it with `builtins`.
 New configurations need no separate `infinity_context` entry.
 

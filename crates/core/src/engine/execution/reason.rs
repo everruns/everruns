@@ -541,7 +541,7 @@ impl ReasonAtom {
                 .as_ref()
                 .and_then(|replay| replay.transitions.get(&msg.id).copied());
             llm_msg.tool_changes = tool_changes.transitions.get(&msg.id).cloned();
-            transcript::label_speaker(&mut llm_msg, msg);
+            transcript::prepare_replay(&mut llm_msg, msg, &model_with_provider);
             facts::mark_turn_scoped(&mut llm_msg, msg, supports_clear_at);
             if msg.id == context.input_message_id {
                 input_wire = Some(llm_msg.clone());
@@ -946,6 +946,7 @@ impl ReasonAtom {
                             .resolve_compacted_messages(
                                 &runtime_messages,
                                 has_system_prompt.then_some(turn_agent.system_prompt.as_str()),
+                                &model_with_provider,
                             )
                             .await;
                     }
@@ -1936,6 +1937,7 @@ impl ReasonAtom {
             &model_with_provider.provider_type.to_string(),
             response_id.as_deref(),
         );
+        transcript::stamp_replay(&mut metadata, &model_with_provider);
         truncation.stamp(&mut metadata);
         tool_changes.stamp(&mut metadata);
         context_updates.stamp(&mut metadata);
