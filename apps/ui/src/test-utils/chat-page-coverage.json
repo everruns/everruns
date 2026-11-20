@@ -22,6 +22,7 @@
     "memory/page.tsx",
     "models/(tabs)/defaults/page.tsx",
     "models/(tabs)/page.tsx",
+    "models/(tabs)/presets/page.tsx",
     "models/(tabs)/providers/page.tsx",
     "models/providers/[providerId]/page.tsx",
     "observers/[observerId]/edit/page.tsx",
