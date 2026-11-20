@@ -745,6 +745,7 @@ fn stub(s: &SessionState) -> SessionState {
         checkpoints: s.checkpoints.clone(),
         files: s.files.clone(),
         platform: s.platform.clone(),
+        sqldb: s.sqldb.clone(),
         branch: s.branch,
     }
 }

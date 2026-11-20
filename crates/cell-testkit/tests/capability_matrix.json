@@ -161,9 +161,6 @@
     "sandbox_fleet": [
       "connection_token"
     ],
-    "session_sql_database": [
-      "session_sql_db"
-    ],
     "slack": [
       "slack_action"
     ],

@@ -37,9 +37,8 @@
 //! - The turn's person's own MCP servers ([`USER_MCP_STORE`],
 //!   [`USER_MCP_SERVERS`], `user_mcp.rs`) stay in the control plane, as
 //!   does a session's Memory ([`MEMORY_FILE`], `memory.rs`).
-//! - A session's SQL databases ([`SESSION_SQL_DB`]) stay in the control
-//!   plane's store, as for a v1 session, so the console reads the same
-//!   ones; the session must be the org's.
+//! - A v2 session's SQL databases are no call: they live in the session's
+//!   cell (data plane v2 parity, step 9).
 //! - Every answer, a refusal included, is sealed with the org's data key
 //!   as the call's own secret (`host-call:{call}`, revision 0): the cells
 //!   that pass it on hold ciphertext only, and an answer cannot pass for
@@ -53,7 +52,7 @@
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
-    ActsAs, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SESSION_SQL_DB, SLACK_ACTION,
+    ActsAs, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
     USER_MCP_SERVERS, USER_MCP_STORE,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
@@ -110,7 +109,6 @@ async fn run(
                 },
             },
         ),
-        SESSION_SQL_DB => Ok(HostCallAnswer::Value(session_sql_db(ctx, &params).await)),
         MEMORY_FILE => Ok(HostCallAnswer::Value(
             super::memory::answer(ctx, &params).await,
         )),
@@ -231,51 +229,6 @@ async fn slack_action(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Valu
     };
     match outcome {
         Ok(outcome) => serde_json::json!({ "outcome": outcome }),
-        Err(error) => serde_json::json!({ "error": error }),
-    }
-}
-
-/// One operation on a session's SQL databases (`SESSION_SQL_DB`), in the
-/// control plane's store as for a v1 worker. The store is keyed by session
-/// alone, so the session must be the org's first.
-async fn session_sql_db(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Value {
-    use everruns_contracts::session_sqldb::SessionSqlDbError as Error;
-    let result: Result<serde_json::Value, Error> = async {
-        let internal = |error: &dyn std::fmt::Display| Error::Internal(error.to_string());
-        let session = params["session_id"]
-            .as_str()
-            .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok())
-            .ok_or_else(|| Error::Internal("invalid session_id".into()))?;
-        ctx.db
-            .get_session(ctx.org_id(), session)
-            .await
-            .map_err(|error| internal(&error))?
-            .ok_or_else(|| Error::Internal("session not found".into()))?;
-        let store = ctx
-            .sqldb_store
-            .as_ref()
-            .ok_or_else(|| Error::Internal("session SQL databases are not configured".into()))?;
-        let name = params["name"].as_str().unwrap_or_default();
-        let sql = params["sql"].as_str().unwrap_or_default();
-        let value = match params["op"].as_str() {
-            Some("create") => serde_json::to_value(store.create_database(session, name).await?),
-            Some("list") => serde_json::to_value(store.list_databases(session).await?),
-            Some("get") => serde_json::to_value(store.get_database(session, name).await?),
-            Some("delete") => serde_json::to_value(store.delete_database(session, name).await?),
-            Some("execute") => serde_json::to_value(store.sql_execute(session, name, sql).await?),
-            Some("query") => serde_json::to_value(store.sql_query(session, name, sql).await?),
-            Some("schema") => serde_json::to_value(
-                store
-                    .sql_schema(session, name, params["table"].as_str())
-                    .await?,
-            ),
-            _ => return Err(Error::Internal("unknown SQL database operation".into())),
-        };
-        value.map_err(|error| internal(&error))
-    }
-    .await;
-    match result {
-        Ok(value) => serde_json::json!({ "ok": value }),
         Err(error) => serde_json::json!({ "error": error }),
     }
 }

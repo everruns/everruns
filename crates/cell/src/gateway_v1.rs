@@ -86,6 +86,8 @@ pub fn routes() -> Router<Arc<Gateway>> {
             "/v1/sessions/{session}/tasks/{task}/push-configs/{config}",
             axum::routing::delete(delete_push_config),
         )
+        // The session's SQL databases (`sqldb.rs`).
+        .merge(crate::sqldb::gateway_routes())
         .route("/v1/sessions/{session}/{*feature}", any(not_yet))
 }
 
