@@ -12,22 +12,17 @@ links:
 
 A builder on GPT-6.2 Sol can now hand its diff to a verifier on another
 provider, and its lookups to a small model. `spawn_agent` takes a `model`: one
-of the agent's **helper models**, keys such as `fast`, `coding`, `deep` and
+of the agent's **helper models**, keys such as `fast`, `deep` and
 `second_opinion`, each with a line on when to use it. The agent never names a
 raw model, so the owner decides what subagents cost and which providers see
 the data.
 
-![Agent page with the Helper models list: same, fast, coding, deep and second_opinion, and where each one's model comes from](./helper-models@2x.png)
+![Helper models editor: who picks, and keys with their targets and when-to-use lines](./helper-models@2x.png)
 
-Keys point at jobs, not models: `fast` follows the Small job of the agent's
-preset or the organization defaults, `second_opinion` the Default job of a
-provider other than the parent's. Edit the list under **Helper models** on the
-agent page, add your own (a `gemini` key for a council of models), or switch
-to **Auto** and let the Decision model pick a key from the task. Each
-subagent's key, model and who picked it show in the session's **Subagents**
-tab.
+Keys point at jobs, not models: `second_opinion` follows the Default job of a
+provider other than the parent's. Add your own keys, or switch to **Auto** and
+let the Decision model pick one. The **Subagents** tab shows each subagent's
+key, model and who picked it.
 
-Subagents also stop forgetting the model you chose: a child now runs on the
-model you picked for the parent chat instead of the agent's default. The list
-lives in the Subagents capability config, so the API, MCP, the CLI and agent
-packages carry it, see [Helper models](/capabilities/sub-agents/#helper-models).
+A child also keeps the model you chose for the parent chat instead of falling
+back to the agent's default. See [Helper models](/capabilities/sub-agents/#helper-models).
