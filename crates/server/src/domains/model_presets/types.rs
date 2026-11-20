@@ -59,21 +59,27 @@ pub enum ModelPresetKind {
 /// The model for each job. A missing job uses the organization default for it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ModelPresetJobs {
+    /// Model for agents and sessions with no model of their own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<ModelId>,
+    /// Model for the built-in Everruns Chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub chat_model_id: Option<ModelId>,
+    /// Model for coding-harness agents and coding helpers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub coding_model_id: Option<ModelId>,
+    /// Model for research-role agents and deep helpers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub research_model_id: Option<ModelId>,
+    /// Model for titles, summaries and fast helpers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub small_model_id: Option<ModelId>,
+    /// Model for quick gate checks and the Auto helper pick.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub decision_model_id: Option<ModelId>,
@@ -136,15 +142,19 @@ pub struct ModelPreset {
     /// Stable id: `automatic`, `provider:<driver>` or the custom preset's key.
     #[schema(example = "provider:gemini")]
     pub id: String,
+    /// Display name.
     pub name: String,
+    /// What the preset is for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Where the preset comes from: automatic, provider or custom.
     pub kind: ModelPresetKind,
     /// Driver of a provider preset (`gemini`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_type: Option<String>,
     /// Built-in presets cannot be changed; duplicate one to customize it.
     pub read_only: bool,
+    /// The model for each job.
     #[serde(flatten)]
     pub jobs: ModelPresetJobs,
     /// Jobs of a provider preset whose curated model is not usable in the
@@ -153,8 +163,10 @@ pub struct ModelPreset {
     pub fallback_jobs: Vec<ModelJob>,
     /// Live agents whose models come from this preset.
     pub agent_count: i64,
+    /// When the custom preset was created; absent for built-ins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime<Utc>>,
+    /// When the custom preset last changed; absent for built-ins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -165,6 +177,7 @@ pub struct CreateModelPresetRequest {
     /// Display name, 1 to 100 characters.
     #[schema(example = "Cheap council")]
     pub name: String,
+    /// What the preset is for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Preset to copy jobs from (`automatic`, `provider:gemini` or a custom
@@ -172,6 +185,7 @@ pub struct CreateModelPresetRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "provider:gemini")]
     pub from: Option<String>,
+    /// The model for each job.
     #[serde(flatten)]
     pub jobs: ModelPresetJobs,
 }
@@ -180,8 +194,10 @@ pub struct CreateModelPresetRequest {
 /// the organization default.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct UpdateModelPresetRequest {
+    /// Display name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// What the preset is for.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -189,6 +205,7 @@ pub struct UpdateModelPresetRequest {
     )]
     #[schema(value_type = Option<String>)]
     pub description: Option<Option<String>>,
+    /// Model for agents and sessions with no model of their own.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -196,6 +213,7 @@ pub struct UpdateModelPresetRequest {
     )]
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<Option<ModelId>>,
+    /// Model for the built-in Everruns Chat.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -203,6 +221,7 @@ pub struct UpdateModelPresetRequest {
     )]
     #[schema(value_type = Option<String>)]
     pub chat_model_id: Option<Option<ModelId>>,
+    /// Model for coding-harness agents and coding helpers.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -210,6 +229,7 @@ pub struct UpdateModelPresetRequest {
     )]
     #[schema(value_type = Option<String>)]
     pub coding_model_id: Option<Option<ModelId>>,
+    /// Model for research-role agents and deep helpers.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -217,6 +237,7 @@ pub struct UpdateModelPresetRequest {
     )]
     #[schema(value_type = Option<String>)]
     pub research_model_id: Option<Option<ModelId>>,
+    /// Model for titles, summaries and fast helpers.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -224,6 +245,7 @@ pub struct UpdateModelPresetRequest {
     )]
     #[schema(value_type = Option<String>)]
     pub small_model_id: Option<Option<ModelId>>,
+    /// Model for quick gate checks and the Auto helper pick.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -260,6 +282,7 @@ pub struct ApplyModelPresetResult {
     /// model cannot serve that default (decision defaults need a calibrated
     /// decision model).
     pub skipped_jobs: Vec<ModelJob>,
+    /// The organization after the copy.
     pub organization: crate::domains::organizations::types::OrganizationResponse,
 }
 

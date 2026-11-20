@@ -11611,6 +11611,7 @@ export interface components {
     ApplyModelPresetResult: {
       /** @description Jobs whose organization default now uses the preset's model. */
       applied_jobs: components["schemas"]["ModelJob"][];
+      /** @description The organization after the copy. */
       organization: components["schemas"]["OrganizationResponse"];
       /**
        * @description Jobs left as they were: the preset has no model for them, or the
@@ -14983,6 +14984,7 @@ export interface components {
       | components["schemas"]["TurnWaitResponse"];
     /** @description Create a custom preset, blank or as a copy of another preset. */
     CreateModelPresetRequest: components["schemas"]["ModelPresetJobs"] & {
+      /** @description What the preset is for. */
       description?: string | null;
       /**
        * @description Preset to copy jobs from (`automatic`, `provider:gemini` or a custom
@@ -21454,8 +21456,12 @@ export interface components {
          * @description Live agents whose models come from this preset.
          */
         agent_count: number;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @description When the custom preset was created; absent for built-ins.
+         */
         created_at?: string | null;
+        /** @description What the preset is for. */
         description?: string | null;
         /**
          * @description Jobs of a provider preset whose curated model is not usable in the
@@ -21467,13 +21473,18 @@ export interface components {
          * @example provider:gemini
          */
         id: string;
+        /** @description Where the preset comes from: automatic, provider or custom. */
         kind: components["schemas"]["ModelPresetKind"];
+        /** @description Display name. */
         name: string;
         /** @description Driver of a provider preset (`gemini`). */
         provider_type?: string | null;
         /** @description Built-in presets cannot be changed; duplicate one to customize it. */
         read_only: boolean;
-        /** Format: date-time */
+        /**
+         * Format: date-time
+         * @description When the custom preset last changed; absent for built-ins.
+         */
         updated_at?: string | null;
       })[];
     };
@@ -24144,8 +24155,12 @@ export interface components {
        * @description Live agents whose models come from this preset.
        */
       agent_count: number;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the custom preset was created; absent for built-ins.
+       */
       created_at?: string | null;
+      /** @description What the preset is for. */
       description?: string | null;
       /**
        * @description Jobs of a provider preset whose curated model is not usable in the
@@ -24157,22 +24172,33 @@ export interface components {
        * @example provider:gemini
        */
       id: string;
+      /** @description Where the preset comes from: automatic, provider or custom. */
       kind: components["schemas"]["ModelPresetKind"];
+      /** @description Display name. */
       name: string;
       /** @description Driver of a provider preset (`gemini`). */
       provider_type?: string | null;
       /** @description Built-in presets cannot be changed; duplicate one to customize it. */
       read_only: boolean;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the custom preset last changed; absent for built-ins.
+       */
       updated_at?: string | null;
     };
     /** @description The model for each job. A missing job uses the organization default for it. */
     ModelPresetJobs: {
+      /** @description Model for the built-in Everruns Chat. */
       chat_model_id?: string | null;
+      /** @description Model for coding-harness agents and coding helpers. */
       coding_model_id?: string | null;
+      /** @description Model for quick gate checks and the Auto helper pick. */
       decision_model_id?: string | null;
+      /** @description Model for agents and sessions with no model of their own. */
       default_model_id?: string | null;
+      /** @description Model for research-role agents and deep helpers. */
       research_model_id?: string | null;
+      /** @description Model for titles, summaries and fast helpers. */
       small_model_id?: string | null;
     };
     /**
@@ -35462,13 +35488,21 @@ export interface components {
      *     the organization default.
      */
     UpdateModelPresetRequest: {
+      /** @description Model for the built-in Everruns Chat. */
       chat_model_id?: string | null;
+      /** @description Model for coding-harness agents and coding helpers. */
       coding_model_id?: string | null;
+      /** @description Model for quick gate checks and the Auto helper pick. */
       decision_model_id?: string | null;
+      /** @description Model for agents and sessions with no model of their own. */
       default_model_id?: string | null;
+      /** @description What the preset is for. */
       description?: string | null;
+      /** @description Display name. */
       name?: string | null;
+      /** @description Model for research-role agents and deep helpers. */
       research_model_id?: string | null;
+      /** @description Model for titles, summaries and fast helpers. */
       small_model_id?: string | null;
     };
     /** @description Request to update an LLM model. Only provided fields will be updated. */

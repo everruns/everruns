@@ -40926,7 +40926,8 @@
             "description": "Jobs whose organization default now uses the preset's model."
           },
           "organization": {
-            "$ref": "#/components/schemas/OrganizationResponse"
+            "$ref": "#/components/schemas/OrganizationResponse",
+            "description": "The organization after the copy."
           },
           "skipped_jobs": {
             "type": "array",
@@ -46902,7 +46903,8 @@
       "CreateModelPresetRequest": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/ModelPresetJobs"
+            "$ref": "#/components/schemas/ModelPresetJobs",
+            "description": "The model for each job."
           },
           {
             "type": "object",
@@ -46914,7 +46916,8 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "What the preset is for."
               },
               "from": {
                 "type": [
@@ -58505,7 +58508,8 @@
             "items": {
               "allOf": [
                 {
-                  "$ref": "#/components/schemas/ModelPresetJobs"
+                  "$ref": "#/components/schemas/ModelPresetJobs",
+                  "description": "The model for each job."
                 },
                 {
                   "type": "object",
@@ -58527,13 +58531,15 @@
                         "string",
                         "null"
                       ],
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "When the custom preset was created; absent for built-ins."
                     },
                     "description": {
                       "type": [
                         "string",
                         "null"
-                      ]
+                      ],
+                      "description": "What the preset is for."
                     },
                     "fallback_jobs": {
                       "type": "array",
@@ -58548,10 +58554,12 @@
                       "example": "provider:gemini"
                     },
                     "kind": {
-                      "$ref": "#/components/schemas/ModelPresetKind"
+                      "$ref": "#/components/schemas/ModelPresetKind",
+                      "description": "Where the preset comes from: automatic, provider or custom."
                     },
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Display name."
                     },
                     "provider_type": {
                       "type": [
@@ -58569,7 +58577,8 @@
                         "string",
                         "null"
                       ],
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "When the custom preset last changed; absent for built-ins."
                     }
                   }
                 }
@@ -63583,7 +63592,8 @@
       "ModelPreset": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/ModelPresetJobs"
+            "$ref": "#/components/schemas/ModelPresetJobs",
+            "description": "The model for each job."
           },
           {
             "type": "object",
@@ -63605,13 +63615,15 @@
                   "string",
                   "null"
                 ],
-                "format": "date-time"
+                "format": "date-time",
+                "description": "When the custom preset was created; absent for built-ins."
               },
               "description": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "What the preset is for."
               },
               "fallback_jobs": {
                 "type": "array",
@@ -63626,10 +63638,12 @@
                 "example": "provider:gemini"
               },
               "kind": {
-                "$ref": "#/components/schemas/ModelPresetKind"
+                "$ref": "#/components/schemas/ModelPresetKind",
+                "description": "Where the preset comes from: automatic, provider or custom."
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Display name."
               },
               "provider_type": {
                 "type": [
@@ -63647,7 +63661,8 @@
                   "string",
                   "null"
                 ],
-                "format": "date-time"
+                "format": "date-time",
+                "description": "When the custom preset last changed; absent for built-ins."
               }
             }
           }
@@ -63662,37 +63677,43 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for the built-in Everruns Chat."
           },
           "coding_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for coding-harness agents and coding helpers."
           },
           "decision_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for quick gate checks and the Auto helper pick."
           },
           "default_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for agents and sessions with no model of their own."
           },
           "research_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for research-role agents and deep helpers."
           },
           "small_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for titles, summaries and fast helpers."
           }
         }
       },
@@ -84208,49 +84229,57 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for the built-in Everruns Chat."
           },
           "coding_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for coding-harness agents and coding helpers."
           },
           "decision_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for quick gate checks and the Auto helper pick."
           },
           "default_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for agents and sessions with no model of their own."
           },
           "description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "What the preset is for."
           },
           "name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Display name."
           },
           "research_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for research-role agents and deep helpers."
           },
           "small_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Model for titles, summaries and fast helpers."
           }
         }
       },
