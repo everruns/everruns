@@ -20,7 +20,10 @@ under the message, ready to download.
 ```json
 {
   "text": "Signups doubled after the launch. Chart and raw numbers attached.",
-  "files": ["/out/signups.png", "/out/signups.csv"]
+  "files": [
+    "/out/signups.png",
+    "/out/signups.csv"
+  ]
 }
 ```
 
