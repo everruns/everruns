@@ -1,5 +1,7 @@
 use super::{Capability, CapabilityStatus};
 use async_trait::async_trait;
+use everruns_contracts::tool_types::ToolCall;
+use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde_json::{Value, json};
 
@@ -44,6 +46,25 @@ struct PublishView;
 
 #[async_trait]
 impl Tool for PublishView {
+    fn narrate(
+        &self,
+        _call: &ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let ukrainian = locale.is_some_and(|value| value.to_ascii_lowercase().starts_with("uk"));
+        let text = match (phase, ukrainian) {
+            (ToolNarrationPhase::Completed, false) => "Prepared view update",
+            (ToolNarrationPhase::Failed, false) => "Could not prepare view update",
+            (_, false) => "Preparing view update",
+            (ToolNarrationPhase::Completed, true) => "Оновлення перегляду підготовлено",
+            (ToolNarrationPhase::Failed, true) => "Не вдалося підготувати оновлення перегляду",
+            (_, true) => "Готую оновлення перегляду",
+        };
+        Some(text.to_owned())
+    }
+
     fn name(&self) -> &str {
         PUBLISH_VIEW_TOOL
     }
