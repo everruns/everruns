@@ -53,6 +53,6 @@ Context Compaction includes history retrieval through its compatibility dependen
 
 ## See Also
 
-- [Base Harness](/built-ins/harnesses/base/), empty harness for full control
+- [Base Harness](/built-ins/harnesses/base/), minimal safeguards and context compaction
 - [Platform Chat Harness](/built-ins/harnesses/platform-chat/), focused operator chat built on Base
 - [Harnesses feature guide](/features/harnesses/), harness selection and API management
