@@ -3,6 +3,7 @@ import {
   AgentIcon,
   SessionIcon,
   HarnessDomainIcon,
+  KnowledgeIcon,
   SkillsIcon,
 } from "@/components/icons/facet-icons";
 import { useGlobalSearch } from "@/hooks/use-global-search";
@@ -356,6 +357,11 @@ describe("useGlobalSearch", () => {
     expect(result.current.some((item) => item.href.startsWith("/apps"))).toBe(false);
   });
 
+  it("searches for Knowledge without treating the word as a collection ID", () => {
+    const { result } = renderHook(() => useGlobalSearch("knowledge"));
+    expect(result.current.some((item) => item.category === "id")).toBe(false);
+  });
+
   it("hides Payments navigation when machine payments are disabled", () => {
     mockFeatureFlags.machine_payments = false;
 
@@ -369,6 +375,7 @@ describe("useGlobalSearch", () => {
     ["session_unknown", "/sessions/session_unknown", SessionIcon],
     ["harness_unknown", "/harnesses/harness_unknown", HarnessDomainIcon],
     ["skill_unknown", "/skills/skill_unknown", SkillsIcon],
+    ["kn_unknown", "/knowledge/kn_unknown", KnowledgeIcon],
   ])("uses the entity's own domain glyph for an ID lookup: %s", (query, href, icon) => {
     const { result } = renderHook(() => useGlobalSearch(query));
     expect(result.current).toContainEqual(expect.objectContaining({ category: "id", href, icon }));

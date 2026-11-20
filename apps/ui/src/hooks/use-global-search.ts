@@ -291,9 +291,10 @@ export function useGlobalSearch(query: string) {
     // 1. ID-based lookup — resolve entity name from cached data when possible
     for (const [prefix, meta] of Object.entries(ID_PREFIX_MAP)) {
       if (meta.flag && !featureFlags[meta.flag]) continue;
-      if (q.startsWith(prefix) || q.startsWith(prefix.replace("_", ""))) {
-        // Normalize: allow "session3242" or "session_3242"
-        const idValue = q.startsWith(prefix) ? q : `${prefix}${q.slice(prefix.length - 1)}`;
+      const hasPrefix = q.startsWith(prefix);
+      // Require the separator in kn_ so "knowledge" stays a text search.
+      if (hasPrefix || (prefix !== "kn_" && q.startsWith(prefix.slice(0, -1)))) {
+        const idValue = hasPrefix ? q : `${prefix}${q.slice(prefix.length - 1)}`;
 
         // Try to resolve a friendly name from cached data
         let resolvedName: string | undefined;

@@ -133,15 +133,8 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         .await
         .expect("disable gated surfaces while leaving MCP available");
 
-    let api_body: Value = server
-        .get("/v1/evals")
-        .await
-        .assert_status(StatusCode::NOT_FOUND)
-        .json();
-    assert_eq!(api_body["detail"], "Feature 'evals' is not enabled");
-    assert_eq!(api_body["code"], "feature_not_enabled");
-
     for (path, flag) in [
+        ("/v1/evals", "evals"),
         ("/v1/skills", "skills"),
         ("/v1/skills/config", "skills"),
         ("/v1/memories", "memory"),
@@ -165,15 +158,10 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
         "/v1/knowledge",
         "/v1/knowledge-indexers",
         "/v1/capabilities/knowledge",
+        "/v1/capabilities/agent_handoff",
     ] {
         server.get(path).await.assert_status(StatusCode::OK);
     }
-
-    // Delegation has no feature flag: adding the capability is the opt-in.
-    server
-        .get("/v1/capabilities/agent_handoff")
-        .await
-        .assert_status(StatusCode::OK);
 
     let discovered = mcp_tool_call(
         &server,
@@ -182,24 +170,16 @@ async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
     )
     .await;
     let discovery: Value = serde_json::from_str(&tool_text(&discovered)).expect("discovery JSON");
-    assert!(
-        discovery["categories"]
-            .as_array()
-            .expect("categories")
-            .iter()
-            .all(|category| !matches!(
-                category["category"].as_str(),
-                Some("evals" | "skills" | "memories" | "plugins")
-            ))
-    );
-
-    assert!(
-        discovery["categories"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|category| category["category"] == "knowledge")
-    );
+    let categories: Vec<_> = discovery["categories"]
+        .as_array()
+        .expect("categories")
+        .iter()
+        .filter_map(|category| category["category"].as_str())
+        .collect();
+    assert!(categories.contains(&"knowledge"));
+    for gated in ["evals", "skills", "memories", "plugins"] {
+        assert!(!categories.contains(&gated), "{gated}");
+    }
 
     let invoked = mcp_tool_call(&server, "query", json!({ "commands": "list_evals" })).await;
     assert!(tool_is_error(&invoked));
