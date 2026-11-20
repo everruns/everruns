@@ -67,6 +67,10 @@ struct Ledger {
     lookup_answers: HashMap<String, everruns_contracts::host_calls::HostCallAnswer>,
     /// Lookups asked: `(org, command, params)`.
     lookups: Vec<(String, String, serde_json::Value)>,
+    /// Dreaming's calls (`worker_dreaming_state`), kept apart from
+    /// `lookups`: the executors' sweep asks on a timer, so mixing them in
+    /// would shift what other tests find at a given index.
+    dream_calls: Vec<(String, serde_json::Value)>,
     /// Dreaming's state, kept as the control plane keeps it
     /// (`worker_dreaming_state`): `(org, key)` → the row.
     dreams: std::collections::BTreeMap<(String, String), serde_json::Value>,
@@ -272,6 +276,11 @@ impl FakeCp {
     /// Lookups asked so far: `(org, command, params)`.
     pub fn lookups(&self) -> Vec<(String, String, serde_json::Value)> {
         self.ledger.lock().lookups.clone()
+    }
+
+    /// Dreaming's calls so far (`worker_dreaming_state`): `(org, params)`.
+    pub fn dream_calls(&self) -> Vec<(String, serde_json::Value)> {
+        self.ledger.lock().dream_calls.clone()
     }
 
     pub fn set_balance(&self, org: &str, micros: i64) {
@@ -503,9 +512,15 @@ async fn host_call(
         StatusCode::NOT_FOUND,
         format!("org {org} is not on a data plane"),
     ))?;
-    ledger
-        .lookups
-        .push((org.clone(), call.command.to_owned(), request.params.clone()));
+    if call.command == "worker_dreaming_state" {
+        ledger
+            .dream_calls
+            .push((org.clone(), request.params.clone()));
+    } else {
+        ledger
+            .lookups
+            .push((org.clone(), call.command.to_owned(), request.params.clone()));
+    }
     let answer = match ledger.lookup_answers.get(call.command).cloned() {
         Some(answer) => answer,
         None if call.command == "worker_dreaming_state" => {

@@ -28,14 +28,14 @@
     "claude_tool_search": "runs",
     "compaction": "runs",
     "computer_use": "runs",
-    "container_sandbox": "refused: capabilities: container_sandbox requires a host implementation or a Cargo feature",
+    "container_sandbox": "runs",
     "coordination": "runs",
     "current_time": "runs",
     "cursor": "runs",
     "data_knowledge": "runs",
     "daytona": "runs",
-    "docker_container": "refused: capabilities: docker_container requires a host implementation or a Cargo feature",
-    "dreaming": "refused: invalid capability \"dreaming\": missing field `destinations`",
+    "docker_container": "runs",
+    "dreaming": "runs",
     "dry_run": "runs",
     "duckduckgo": "runs",
     "e2b": "runs",
@@ -61,7 +61,7 @@
     "openrouter_workspace": "runs",
     "openui": "runs",
     "output_truncation": "runs",
-    "parallel": "refused: capabilities: parallel requires a host implementation or a Cargo feature",
+    "parallel": "runs",
     "parallel_search": "runs",
     "parallel_tool_calls": "runs",
     "platform": "runs",
@@ -76,7 +76,7 @@
     "research": "runs",
     "resource_discovery": "runs",
     "run_conversation": "runs",
-    "sandbox_desktop": "refused: invalid capability \"sandbox_desktop\": invalid sandbox_desktop config: missing field `provider`",
+    "sandbox_desktop": "runs",
     "sandbox_fleet": "turn failed: I encountered an error while processing your request. Please try again later.",
     "self_budget": "runs",
     "session": "runs",
@@ -113,13 +113,21 @@
       "service_api_key"
     ],
     "boxd": [
-      "connection_token"
+      "connection_token",
+      "leased_resource_release",
+      "leased_resource_upsert"
     ],
     "brave_search": [
       "connection_token"
     ],
     "browserless": [
-      "connection_token"
+      "connection_token",
+      "leased_resource_release",
+      "leased_resource_upsert"
+    ],
+    "container_sandbox": [
+      "leased_resource_release",
+      "leased_resource_upsert"
     ],
     "cursor": [
       "connection_token"
@@ -132,7 +140,9 @@
       "dreaming_state"
     ],
     "e2b": [
-      "connection_token"
+      "connection_token",
+      "leased_resource_release",
+      "leased_resource_upsert"
     ],
     "github": [
       "connection_token",
@@ -149,10 +159,14 @@
       "knowledge"
     ],
     "modal": [
-      "connection_token"
+      "connection_token",
+      "leased_resource_release",
+      "leased_resource_upsert"
     ],
     "platform": [
-      "platform_command"
+      "platform_command",
+      "session_resource_register",
+      "session_resources_list"
     ],
     "poppy_client": [
       "poppy_call"
@@ -162,7 +176,18 @@
       "github_token"
     ],
     "sandbox_fleet": [
-      "connection_token"
+      "connection_token",
+      "session_resource_register",
+      "session_resource_status",
+      "session_resources_list"
+    ],
+    "session_sandbox": [
+      "leased_resource_release",
+      "leased_resource_upsert"
+    ],
+    "skills": [
+      "session_resource_register",
+      "session_resources_list"
     ],
     "slack": [
       "slack_action"

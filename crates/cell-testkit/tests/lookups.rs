@@ -790,7 +790,7 @@ async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
         assert!(
             std::time::Instant::now() < deadline,
             "the turn left no dream owed in the control plane: {:?}",
-            cp.lookups()
+            cp.dream_calls()
         );
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     };
@@ -823,13 +823,13 @@ async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
         );
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    let asked = cp.lookups();
     assert!(
-        asked.iter().any(|(org, name, params)| org == ORG
-            && name == "worker_dreaming_state"
-            && params["operation"] == "due_org"),
+        cp.dream_calls()
+            .iter()
+            .any(|(org, params)| org == ORG && params["operation"] == "due_org"),
         "the sweep never asked for the org's due dreams"
     );
+    let asked = cp.lookups();
     assert!(
         asked
             .iter()
