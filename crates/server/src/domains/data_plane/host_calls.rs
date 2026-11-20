@@ -51,13 +51,18 @@
 //! - Nothing else is stored here. The calls are reads, except the ones
 //!   that keep what v1 keeps here: a Poppy call's company accounts and
 //!   conversations, a session's resources and leases, its Memory and
-//!   dreaming's state.
+//!   dreaming's state; a task push config's signing secret
+//!   ([`TASK_PUSH_SECRET`], encrypted, under the config's id); and the
+//!   session record of a subagent a cell starts ([`SUBAGENT_RECORD`],
+//!   `subagents.rs`).
+//! - A write runs once per call id: the route keeps a receipt
+//!   (`dp_host_call_receipts`) and answers a duplicate from it.
 
 use everruns_contracts::dataplane::SealedSecret;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::host_calls::{
     ActsAs, DREAMING_STATE, HostCall, HostCallAnswer, MEMORY_FILE, PLATFORM_COMMAND, SLACK_ACTION,
-    USER_MCP_SERVERS, USER_MCP_STORE,
+    SUBAGENT_RECORD, TASK_PUSH_SECRET, USER_MCP_SERVERS, USER_MCP_STORE,
 };
 use everruns_contracts::typed_id::{MessageId, SessionId};
 
@@ -79,7 +84,7 @@ pub async fn answer(
         // The lookup then finds no invocation and answers nothing.
         tracing::warn!(call = call.name, %error, "could not record the turn's invocation");
     }
-    let answer = run(ctx, call, params).await;
+    let answer = run(cp, ctx, call, params).await;
     let outcome = match &answer {
         Ok(HostCallAnswer::Value(_)) => "ok",
         Ok(HostCallAnswer::Error { .. }) => "refused",
@@ -95,6 +100,7 @@ pub async fn answer(
 }
 
 async fn run(
+    cp: &ControlPlane,
     ctx: &Ctx,
     call: &HostCall,
     params: serde_json::Value,
@@ -128,6 +134,15 @@ async fn run(
         )),
         USER_MCP_SERVERS => Ok(HostCallAnswer::Value(
             super::user_mcp::servers(ctx, &params).await,
+        )),
+        // Failures are errors, not refusals: the node that hands a secret
+        // over cannot open the sealed answer, only see that it failed.
+        TASK_PUSH_SECRET => {
+            super::task_webhooks::keep_secret(cp, ctx.org_id(), &params).await?;
+            Ok(HostCallAnswer::Value(serde_json::Value::Bool(true)))
+        }
+        SUBAGENT_RECORD => Ok(HostCallAnswer::Value(
+            super::subagents::record(cp, ctx, &params).await?,
         )),
         _ => Ok(
             match crate::domains::common::dispatch(call.command, params, ctx).await {

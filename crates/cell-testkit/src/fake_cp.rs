@@ -526,6 +526,17 @@ async fn host_call(
         None if call.command == "worker_dreaming_state" => {
             HostCallAnswer::Value(dreaming_state(&mut ledger.dreams, &org, &request.params))
         }
+        // A subagent's record: a fresh session id, no Memory mounts.
+        None if call.command == everruns_contracts::host_calls::SUBAGENT_RECORD => {
+            HostCallAnswer::Value(serde_json::json!({
+                "session_id": everruns_contracts::typed_id::SessionId::new(),
+                "memory": [],
+            }))
+        }
+        // A push config's signing secret, kept (the ledger has it).
+        None if call.command == everruns_contracts::host_calls::TASK_PUSH_SECRET => {
+            HostCallAnswer::Value(serde_json::json!(true))
+        }
         None => HostCallAnswer::Error {
             kind: 3,
             message: "Session not found".into(),

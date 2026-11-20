@@ -59,6 +59,8 @@ mod declarative_capabilities;
 pub use declarative_capabilities::rows::*;
 mod data_plane;
 pub use data_plane::*;
+mod data_plane_review;
+pub use data_plane_review::*;
 mod engine_agents;
 mod engine_sessions;
 pub use engine_agents::{EngineAgentKeyRow, EngineAgentPublishRow};

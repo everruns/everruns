@@ -191,13 +191,47 @@ async fn answer_call(
     )
     .await
     .map_err(internal)?;
+    // A write runs once per call id (its receipt): a duplicate that still
+    // arrives gets the first run's sealed answer, or a refusal while the
+    // first has not finished, never a second run.
+    let write = call.effect == host_calls::Effect::Write;
+    if write {
+        use crate::storage::HostCallReceipt;
+        match cp
+            .db
+            .dp_take_host_call_receipt(secret_id, org_id, call.name)
+            .await
+            .map_err(internal)?
+        {
+            HostCallReceipt::New => {}
+            HostCallReceipt::Answered(sealed) => {
+                return serde_json::from_value(sealed).map(Json).map_err(internal);
+            }
+            HostCallReceipt::Unknown => {
+                return Err((
+                    StatusCode::CONFLICT,
+                    format!(
+                        "{} {secret_id} was already received and has not finished; its outcome is unknown",
+                        call.name
+                    ),
+                ));
+            }
+        }
+    }
     let ctx = state.internal_ctx(org_id, flags);
     let answer = dp_domain::host_calls::answer(&cp, &ctx, call, params)
         .await
         .map_err(internal)?;
-    dp_domain::host_calls::seal_answer(&cp, &row, secret_id, &answer)
-        .map(Json)
-        .map_err(internal)
+    let sealed =
+        dp_domain::host_calls::seal_answer(&cp, &row, secret_id, &answer).map_err(internal)?;
+    if write {
+        let stored = serde_json::to_value(&sealed).map_err(internal)?;
+        cp.db
+            .dp_answer_host_call_receipt(secret_id, &stored)
+            .await
+            .map_err(internal)?;
+    }
+    Ok(Json(sealed))
 }
 
 async fn jwks(State(state): State<ApiState>) -> Reply<Value> {

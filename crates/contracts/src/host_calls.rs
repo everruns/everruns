@@ -170,6 +170,13 @@ pub const LEASED_RESOURCES_LIST: &str = "leased_resources_list";
 /// Dreaming's maintenance state for a session the data plane runs (turn
 /// counters, the dream job, daily budgets), and the org's due dreams.
 pub const DREAMING_STATE: &str = "dreaming_state";
+/// Keep a task push config's signing secret in the control plane, which
+/// delivers the webhooks: the cell keeps only that the config has one.
+pub const TASK_PUSH_SECRET: &str = "task_push_secret";
+/// Record a subagent the data plane started as a session of the control
+/// plane (its parent's owner, agent and org), so the calls that read a
+/// session's record serve it, and answer its Memory mounts.
+pub const SUBAGENT_RECORD: &str = "subagent_record";
 
 const fn call(
     name: &'static str,
@@ -414,6 +421,22 @@ pub const HOST_CALLS: &[HostCall] = &[
         Effect::Write,
         Fate::HostCall,
         "dreaming's maintenance state",
+    ),
+    call(
+        TASK_PUSH_SECRET,
+        "task_push_secret",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "keep a task push config's signing secret",
+    ),
+    call(
+        SUBAGENT_RECORD,
+        "subagent_record",
+        ActsAs::Org,
+        Effect::Write,
+        Fate::HostCall,
+        "record a subagent session the data plane started",
     ),
 ];
 

@@ -83,6 +83,25 @@ impl PlatformCalls {
     }
 }
 
+impl PlatformCalls {
+    /// Ask the control plane for a record for a new child of this session
+    /// (the `subagent_record` host call, `subagents.rs`): the child's id and
+    /// its Memory mounts. Needs no turn: the child acts as no one.
+    pub(crate) async fn record_subagent(&self, params: Value) -> Result<(SessionId, Vec<String>)> {
+        let answer = self
+            .lookups
+            .execute_internal_command(everruns_contracts::host_calls::SUBAGENT_RECORD, params)
+            .await?
+            .map_err(|error| AgentLoopError::store(error.message))?;
+        let id = answer["session_id"]
+            .as_str()
+            .and_then(|id| id.parse().ok())
+            .ok_or_else(|| AgentLoopError::store("the control plane named no child session"))?;
+        let memory = serde_json::from_value(answer["memory"].clone()).unwrap_or_default();
+        Ok((id, memory))
+    }
+}
+
 /// Binds the session's platform store to each turn's input message, as the
 /// v1 worker's `PlatformExecutionScope` does.
 pub(crate) struct BindPlatformStore(pub(crate) Arc<dyn everruns_capabilities::PlatformStore>);

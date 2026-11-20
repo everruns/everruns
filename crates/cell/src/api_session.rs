@@ -456,6 +456,9 @@ enum PushConfigs {
     Add {
         task: String,
         config: crate::tasks::PushConfig,
+        /// Its signing secret, handed to the control plane, never kept.
+        #[serde(default)]
+        secret: Option<String>,
     },
     Delete {
         task: String,
@@ -494,10 +497,22 @@ async fn push_configs(
                 Lookup::Missing => CellReply::NotFound,
             }));
         }
-        PushConfigs::Add { task, config } => TaskOp::AddPushConfig {
-            task_id: task,
-            config,
-        },
+        PushConfigs::Add {
+            task,
+            mut config,
+            secret,
+        } => {
+            if let Some(secret) = secret.filter(|s| !s.is_empty()) {
+                if let Err(reply) = hand_over_secret(&node, id, &config.id, &secret).await {
+                    return Ok(Json(reply));
+                }
+                config.has_secret = true;
+            }
+            TaskOp::AddPushConfig {
+                task_id: task,
+                config,
+            }
+        }
         PushConfigs::Delete { task, config_id } => TaskOp::DeletePushConfig {
             task_id: task,
             config_id,
@@ -506,6 +521,44 @@ async fn push_configs(
     Ok(Json(
         platform(&node, id, crate::platform::Op::Task(op)).await?,
     ))
+}
+
+/// Hand push config `config`'s signing secret to the control plane before
+/// the config is written: a config that says it has one always does. A
+/// refusal is the command's answer (the gateway retries only a node that
+/// did not answer), so the caller sees why.
+async fn hand_over_secret(
+    node: &Node,
+    session: SessionId,
+    config: &str,
+    secret: &str,
+) -> Result<(), CellReply> {
+    if node.cfg.control_plane.is_none() {
+        return Err(CellReply::Refused {
+            reason: "a signing secret needs a control plane to keep it".into(),
+        });
+    }
+    let org = match crate::api::lookup(node, session, |s| s.tenant.clone()) {
+        Lookup::Here(Some(org)) => org,
+        Lookup::Here(None) => {
+            return Err(CellReply::Refused {
+                reason: "a signing secret needs the session's org".into(),
+            });
+        }
+        Lookup::Moved { cell } => return Err(CellReply::Moved { cell }),
+        Lookup::Missing => return Err(CellReply::NotFound),
+    };
+    crate::host_calls::from_node(
+        node,
+        &org,
+        everruns_contracts::host_calls::TASK_PUSH_SECRET,
+        config,
+        json!({ "session_id": session, "config_id": config, "secret": secret }),
+    )
+    .await
+    .map_err(|(_, reason)| CellReply::Refused {
+        reason: format!("the signing secret was not kept: {reason}"),
+    })
 }
 
 #[cfg(test)]

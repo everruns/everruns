@@ -2208,8 +2208,8 @@ tables for both planes, and a commit takes the workspace from the cell in
 one snapshot (the `fs` command's `snapshot`, at most 64 MiB); and
 `/mcp-servers` lists and removes the chat-only MCP records in the session's
 storage on its cell. Task push configs are the cell's: they live beside the
-task, with their signing secrets, since the control plane's table refers
-to its own task rows. A transition a webhook may want goes on the feed
+task, since the control plane's table refers to its own task rows; their
+signing secrets do not (see the review fixes below). A transition a webhook may want goes on the feed
 (`Record::TaskTransition`) from the state machine, with the push configs
 that ask for it, and the control plane delivers it as it does a v1 task's,
 the org's task webhooks included (`data_plane/task_webhooks.rs`).
@@ -2248,6 +2248,35 @@ The control plane answers a cell for its own org only, and a v1 worker's
 discovery skips every session the data plane runs, so no dream runs on
 both planes. Reader ports carry the session's Memory so a swept dream can
 write it.
+
+**Parity, review fixes (2026-11-20).** A review found four gaps, fixed
+together:
+- A write host call runs at most once. The executor sends a write once,
+  trying another member only when none accepted the connection
+  (`Remote::post_once`); an answer that did not arrive is the tool's
+  failure, worded as an outcome that is unknown, never a retry. The
+  control plane keeps a receipt per call id (`dp_host_call_receipts`): a
+  duplicate that still arrives gets the first run's sealed answer, or a
+  refusal while the first has not finished. Receipts expire after a day,
+  since a call is retried within seconds.
+- An org settings change cannot leave the old policy on the cells. A
+  trigger on the settings' tables counts each change in the change's own
+  transaction (`dp_orgs.settings_rev`), and the dispatcher syncs every org
+  whose count is ahead of the last sync, so a sync that failed right after
+  revoking open egress is retried, never lost
+  (`data_plane/org_settings.rs`).
+- A push config's signing secret never enters a cell's replicated state.
+  The cell that takes the config hands the secret to the control plane
+  (the `task_push_secret` host call, run once per config id), which keeps
+  it encrypted with the server's secrets key (`dp_task_push_secrets`); the
+  config says only that it has one, and the control plane fills the secret
+  in when it delivers (`data_plane/task_webhooks.rs`). A session with no
+  control plane refuses a secret.
+- A subagent a cell starts gets a session record under its parent, as on
+  v1: the cell asks first (the `subagent_record` host call), runs the child
+  under the record's id, and creates it with the Memory mounts resolved
+  from that record (`data_plane/subagents.rs`), so the console lists it
+  and its Memory, connections and calls resolve as its parent's do.
 
 **11.6b: lookups at call time (2026-11-18).** The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
