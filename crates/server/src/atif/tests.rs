@@ -965,6 +965,91 @@ fn draft_falls_back_to_indexed_name() {
 }
 
 // ------------------------------------------------------------------
+// Import: ATIF-v2.0 (Harbor RFC 0004)
+// ------------------------------------------------------------------
+
+fn v2_trajectory(id: &str, parent: Option<&str>, user_text: &str) -> Value {
+    let mut t = json!({
+        "schema_version": "ATIF-v2.0",
+        "schema_kind": "trajectory",
+        "session_id": "sess_v2",
+        "trajectory_id": id,
+        "agent": {"name": "codex", "version": "2.1", "model": {"name": "gpt-6.2-sol"}},
+        "steps": [
+            {"step_id": 1, "source": "user", "content": [{"type": "text", "text": user_text}]},
+            {"step_id": 2, "source": "agent", "content": [
+                {"type": "reasoning", "reasoning": {"text": "thinking hard"}},
+                {"text": "the answer is 4"},
+                {"type": "action", "action_id": "call_1"}
+            ], "actions": [{"action_id": "call_1", "name": "bash", "arguments": {"cmd": "ls"}}]},
+        ],
+    });
+    if let Some(p) = parent {
+        t["parent_trajectory_id"] = json!(p);
+        t["parent_reason"] = json!("subagent");
+    }
+    t
+}
+
+#[test]
+fn v2_trajectory_imports_from_content_parts() {
+    let mut t = v2_trajectory("traj_root", None, "What is 2+2?");
+    t["extensions"] = json!({
+        "com.harborframework.v1": {"extra": {"case_name": "v2-case"}},
+        "com.harborframework.evaluation": {"reward": 1.0, "verdict": "pass"},
+    });
+    let draft = trajectory_to_case_draft(&t, 0).unwrap();
+    assert_eq!(draft.name, "v2-case");
+    assert_eq!(draft.conversation.len(), 1);
+    assert_eq!(draft.conversation[0].content, "What is 2+2?");
+    // Text parts only: reasoning and action markers are not reference text.
+    assert!(draft.description.contains("the answer is 4"));
+    assert!(!draft.description.contains("thinking hard"));
+    assert!(draft.description.contains("verdict"));
+}
+
+#[test]
+fn v2_bundle_imports_only_its_root_trajectory() {
+    // Child listed first on purpose: the root is picked by lineage, not order.
+    let bundle = json!({
+        "schema_version": "ATIF-v2.0",
+        "schema_kind": "bundle",
+        "session_id": "sess_v2",
+        "trajectories": [
+            v2_trajectory("traj_child", Some("traj_root"), "subagent task"),
+            v2_trajectory("traj_root", None, "root question"),
+        ],
+    });
+    let single = parse_import_body(&serde_json::to_string(&bundle).unwrap()).unwrap();
+    assert_eq!(single.len(), 1);
+    let draft = trajectory_to_case_draft(&single[0], 0).unwrap();
+    assert_eq!(draft.name, "traj_root");
+    assert_eq!(draft.conversation[0].content, "root question");
+
+    // Bundles inside an array or NDJSON collapse the same way.
+    let line = serde_json::to_string(&bundle).unwrap();
+    assert_eq!(
+        parse_import_body(&format!("{line}\n{line}\n"))
+            .unwrap()
+            .len(),
+        2
+    );
+    let array = serde_json::to_string(&json!([bundle])).unwrap();
+    assert_eq!(parse_import_body(&array).unwrap().len(), 1);
+}
+
+#[test]
+fn v2_event_stream_and_empty_bundle_are_rejected_clearly() {
+    let event = json!({"schema_version": "ATIF-v2.0", "schema_kind": "event", "event_id": "e1"});
+    let ndjson = format!("{}\n", serde_json::to_string(&event).unwrap());
+    let err = parse_import_body(&ndjson).unwrap_err();
+    assert!(err.contains("ATIF-E"), "{err}");
+
+    let empty = json!({"schema_version": "ATIF-v2.0", "schema_kind": "bundle", "trajectories": []});
+    assert!(parse_import_body(&serde_json::to_string(&empty).unwrap()).is_err());
+}
+
+// ------------------------------------------------------------------
 // Segmented export
 // ------------------------------------------------------------------
 
