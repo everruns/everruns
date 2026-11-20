@@ -5249,10 +5249,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job */
+    /**
+     * List model presets
+     * @description List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job.
+     */
     get: operations["list_model_presets"];
     put?: never;
-    /** Create a custom model preset, blank or copied from another preset with `from` */
+    /**
+     * Create a custom model preset
+     * @description Create a custom model preset, blank or copied from another preset with `from`.
+     */
     post: operations["create_model_preset"];
     delete?: never;
     options?: never;
@@ -5267,7 +5273,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get one model preset with its model per job and the jobs that use a fallback model */
+    /**
+     * Get a model preset
+     * @description Get one model preset with its model per job and the jobs that use a fallback model.
+     */
     get: operations["get_model_preset"];
     put?: never;
     post?: never;
@@ -5278,7 +5287,10 @@ export interface paths {
     delete: operations["delete_model_preset"];
     options?: never;
     head?: never;
-    /** Rename a custom model preset or change its model per job; null returns a job to the organization default */
+    /**
+     * Update a custom model preset
+     * @description Rename a custom model preset or change its model per job; null returns a job to the organization default.
+     */
     patch: operations["update_model_preset"];
     trace?: never;
   };

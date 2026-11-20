@@ -20610,7 +20610,8 @@
         "tags": [
           "models"
         ],
-        "summary": "List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job",
+        "summary": "List model presets",
+        "description": "List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job.",
         "operationId": "list_model_presets",
         "responses": {
           "200": {
@@ -20635,7 +20636,8 @@
         "tags": [
           "models"
         ],
-        "summary": "Create a custom model preset, blank or copied from another preset with `from`",
+        "summary": "Create a custom model preset",
+        "description": "Create a custom model preset, blank or copied from another preset with `from`.",
         "operationId": "create_model_preset",
         "requestBody": {
           "content": {
@@ -20672,7 +20674,8 @@
         "tags": [
           "models"
         ],
-        "summary": "Get one model preset with its model per job and the jobs that use a fallback model",
+        "summary": "Get a model preset",
+        "description": "Get one model preset with its model per job and the jobs that use a fallback model.",
         "operationId": "get_model_preset",
         "parameters": [
           {
@@ -20744,7 +20747,8 @@
         "tags": [
           "models"
         ],
-        "summary": "Rename a custom model preset or change its model per job; null returns a job to the organization default",
+        "summary": "Update a custom model preset",
+        "description": "Rename a custom model preset or change its model per job; null returns a job to the organization default.",
         "operationId": "update_model_preset",
         "parameters": [
           {

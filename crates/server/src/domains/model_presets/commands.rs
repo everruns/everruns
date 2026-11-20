@@ -76,6 +76,7 @@ pub struct ListModelPresets {}
 #[command(
     name = "list_model_presets",
     category = "models",
+    summary = "List model presets",
     description = "List model presets: built-in Automatic, one per connected provider, and custom presets, each with its model per job.",
     method = "GET",
     path = "/v1/model-presets",
@@ -104,6 +105,7 @@ pub struct GetModelPreset {
 #[command(
     name = "get_model_preset",
     category = "models",
+    summary = "Get a model preset",
     description = "Get one model preset with its model per job and the jobs that use a fallback model.",
     method = "GET",
     path = "/v1/model-presets/{id}",
@@ -137,6 +139,7 @@ impl CommandSchema for CreateModelPreset {
 #[command(
     name = "create_model_preset",
     category = "models",
+    summary = "Create a custom model preset",
     description = "Create a custom model preset, blank or copied from another preset with `from`.",
     method = "POST",
     path = "/v1/model-presets",
@@ -203,6 +206,7 @@ pub struct UpdateModelPreset {
 #[command(
     name = "update_model_preset",
     category = "models",
+    summary = "Update a custom model preset",
     description = "Rename a custom model preset or change its model per job; null returns a job to the organization default.",
     method = "PATCH",
     path = "/v1/model-presets/{id}",
