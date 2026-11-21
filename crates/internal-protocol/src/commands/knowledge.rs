@@ -1,5 +1,5 @@
 //! One knowledge runtime client shared by direct and gRPC workers and the
-//! data plane's executors (`everruns-cell` `lookups.rs`).
+//! data plane's executors (`everruns-agentd` `lookups.rs`).
 use super::{InternalCommandTransport, call};
 use async_trait::async_trait;
 use everruns_contracts::{

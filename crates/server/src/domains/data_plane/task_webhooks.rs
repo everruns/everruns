@@ -2,7 +2,7 @@
 //!
 //! A v2 task lives in its session's cell, with its push configs. The cell
 //! puts a transition a webhook may want on the feed
-//! (`Record::TaskTransition`, `crates/cell/src/tasks.rs`), with the push
+//! (`Record::TaskTransition`, `crates/agentd/src/tasks.rs`), with the push
 //! configs that ask for it, and this delivers it the way a v1 task's is
 //! (`storage/runtime/session_task/webhook`): the org's task webhooks on a
 //! terminal state, then the push configs, same payload, same signature,

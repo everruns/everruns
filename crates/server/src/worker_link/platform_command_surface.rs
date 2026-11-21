@@ -468,7 +468,7 @@ fn sanitize_script_error(message: &str) -> String {
 /// THREAT[TM-AGENT-017]: the executor that runs the turn names only the
 /// session and its input message; `acting_user` is set by the cell that
 /// forwards the call, from the session's own record of who sent that
-/// message (`everruns-cell` `senders.rs`). Here, as for a v1 worker's
+/// message (`everruns-agentd` `senders.rs`). Here, as for a v1 worker's
 /// call, the session must be the org's and resolve the `platform`
 /// capability, and the person must still be a member of the org; the call
 /// runs with their current role.

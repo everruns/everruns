@@ -43,7 +43,7 @@ that takes the unit back through the directory at a higher generation.
 
 ## What the models missed
 
-The protocol simulation (`crates/cell/tests/protocol_simulation.rs`) runs
+The protocol simulation (`crates/agentd/tests/protocol_simulation.rs`) runs
 the real state machine under the same faults and found three move bugs
 `Moves` could not, because the model has no freeze or thaw commands of its
 own and no epoch inside a move: a late freeze retargeting a committed move,

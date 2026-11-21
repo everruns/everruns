@@ -104,7 +104,7 @@ Either way, after every tool call the sandbox and the workspace hold the same fi
 
 The gateway serves the same `/v1/workspaces/{id}/fs/*` routes (and the older `/v1/sessions/{id}/fs/*` aliases), so the console's Files tab, uploads, downloads and the HTML preview work unchanged for a v2 org. A session's workspace has the session's id, as on the control plane; the edge sends `/v1/workspaces/{id}/fs` to the data plane when the session is there, and the workspace record (get, rename, archive) stays with the control plane.
 
-Each call is one operation on the session's cell (`crates/cell/src/api_files.rs`, routes in `gateway_fs.rs`):
+Each call is one operation on the session's cell (`crates/agentd/src/api_files.rs`, routes in `gateway_fs.rs`):
 
 - Reads are linearizable: the node that answers first takes the leader's read index and waits until its replica applied it, so an upload followed by a listing through another node sees the upload.
 - Writes are unfenced, like every gateway write: a person's upload is not an executor's write.

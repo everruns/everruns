@@ -138,7 +138,7 @@ jobs:
             server) bins=(everruns-server everruns-egress-proxy); pkg=everruns-server ;;
             tools) bins=(reencrypt-secrets everruns-migrate everruns-dataplane); pkg=everruns-server ;;
             worker) bins=(everruns-worker); pkg=everruns-worker ;;
-            cell) bins=(everruns-cell); pkg=everruns-cell ;;
+            cell) bins=(everruns-cell); pkg=everruns-agentd ;;
             *) echo "unknown binary group: $GROUP" >&2; exit 1 ;;
           esac
           args=(-p "$pkg")

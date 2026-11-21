@@ -59,7 +59,7 @@ pub const SEED_BYTES: usize = 1 << 20;
 pub const SEED_MESSAGES: usize = 4_000;
 /// Files sent in one call, base64 encoded, before a call is sent.
 const FILES_BATCH_BYTES: usize = 1 << 20;
-/// The largest file a cell holds (`crates/cell/src/api_files.rs`).
+/// The largest file a cell holds (`crates/agentd/src/api_files.rs`).
 const FILE_MAX: i64 = 32 * 1024 * 1024;
 
 /// What a move carried and what stayed behind.

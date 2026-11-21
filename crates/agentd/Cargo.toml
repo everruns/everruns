@@ -1,5 +1,5 @@
 [package]
-name = "everruns-cell"
+name = "everruns-agentd"
 description = "Cells: Raft-replicated session authorities for Everruns Engine (data plane v2)."
 publish = false
 version.workspace = true
@@ -12,6 +12,13 @@ homepage.workspace = true
 # Decision: unpublished. Cells are the data plane v2 storage engine, ported
 # from funout 0a0c0ec (knowledge/execution/data-plane-v2/design.md, step 5);
 # nothing outside this repository depends on them until they are proven.
+
+# The library keeps its old crate name until identifiers inside the crate are
+# renamed in a follow-up: this change only moves files, so in-flight branches
+# that edit them rebase through git's rename detection.
+[lib]
+name = "everruns_cell"
+path = "src/lib.rs"
 
 [lints]
 workspace = true
