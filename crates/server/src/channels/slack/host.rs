@@ -661,6 +661,13 @@ impl TurnDeliveryPlanner for SlackTurnPlanner {
             approval_cards: approvals_enabled(hints.as_ref()),
             private_approvals: self.config.private_approvals,
             requester: target.extra.get(SLACK_RECIPIENT_USER_ID).cloned(),
+            app_views: self.state.mcp_app_snapshots.clone().map(|snapshots| {
+                crate::channels::slack::delivery::turn_adapter::SlackAppViews {
+                    snapshots,
+                    org_id: self.org_id,
+                    session_link: session.and_then(|session| self.state.session_link(session)),
+                }
+            }),
         });
         let options = slack_turn_options(
             surface,

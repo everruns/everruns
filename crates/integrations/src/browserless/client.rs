@@ -119,6 +119,41 @@ impl BrowserlessClient {
             .map_err(|_| "Failed to read screenshot bytes".to_string())
     }
 
+    /// Render an HTML document (no URL) and screenshot one element. Used for
+    /// pictures of MCP App views in channels without a browser.
+    pub async fn screenshot_html(
+        &self,
+        html: &str,
+        selector: &str,
+        viewport: (u32, u32),
+        wait_for_timeout_ms: u64,
+    ) -> Result<Vec<u8>, String> {
+        let body = json!({
+            "html": html,
+            "options": {"type": "png"},
+            "selector": selector,
+            "viewport": {"width": viewport.0, "height": viewport.1, "deviceScaleFactor": 2},
+            "waitForTimeout": wait_for_timeout_ms,
+        });
+        debug!("Browserless HTML screenshot");
+        let resp = self
+            .http
+            .post(self.endpoint("/screenshot"))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|_| "Failed to connect to Browserless API".to_string())?;
+        let status = resp.status();
+        // THREAT[TM-FW-001]: upstream errors must never echo service credentials.
+        if !status.is_success() {
+            return Err(format!("Browserless API error ({status})"));
+        }
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|_| "Failed to read screenshot bytes".to_string())
+    }
+
     // --- Content API ---
 
     /// Get fully rendered HTML content of a URL.

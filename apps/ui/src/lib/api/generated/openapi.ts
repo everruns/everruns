@@ -15109,6 +15109,7 @@ export interface components {
       headers?: {
         [key: string]: string;
       } | null;
+      interactive_views?: components["schemas"]["McpInteractiveViews"] | null;
       /**
        * @description The name of the MCP server. Must be unique.
        * @example atlassian-mcp-server
@@ -21508,6 +21509,11 @@ export interface components {
          */
         id: string;
         /**
+         * @description Where this server's MCP App views are shown: `on` (console and a
+         *     picture in Slack), `console_only`, or `off`.
+         */
+        interactive_views?: components["schemas"]["McpInteractiveViews"];
+        /**
          * @description Display name of the MCP server.
          * @example atlassian-mcp-server
          */
@@ -22355,6 +22361,11 @@ export interface components {
          * @example mcp_01933b5a00007000800000000000001
          */
         id: string;
+        /**
+         * @description Where this server's MCP App views are shown: `on` (console and a
+         *     picture in Slack), `console_only`, or `off`.
+         */
+        interactive_views?: components["schemas"]["McpInteractiveViews"];
         /**
          * @description Display name of the MCP server.
          * @example atlassian-mcp-server
@@ -23717,6 +23728,14 @@ export interface components {
       retryable: boolean;
     };
     /**
+     * @description Where an organization MCP server's views are shown. A display preference:
+     *     hosted runtimes always tell servers they can render views, so turning views
+     *     off never changes what a tool returns to the model.
+     * @example on
+     * @enum {string}
+     */
+    McpInteractiveViews: "on" | "console_only" | "off";
+    /**
      * @description Per-server policy for which MCP protocol era the client uses.
      *
      *     `Auto` (the default) probes the server and adapts — it tries the stateless
@@ -23777,6 +23796,11 @@ export interface components {
        * @example mcp_01933b5a00007000800000000000001
        */
       id: string;
+      /**
+       * @description Where this server's MCP App views are shown: `on` (console and a
+       *     picture in Slack), `console_only`, or `off`.
+       */
+      interactive_views?: components["schemas"]["McpInteractiveViews"];
       /**
        * @description Display name of the MCP server.
        * @example atlassian-mcp-server
@@ -35773,6 +35797,7 @@ export interface components {
       headers?: {
         [key: string]: string;
       } | null;
+      interactive_views?: components["schemas"]["McpInteractiveViews"] | null;
       /**
        * @description The name of the MCP server.
        * @example updated-mcp-server
@@ -37679,6 +37704,11 @@ export interface components {
        * @example mcp_01933b5a00007000800000000000001
        */
       id: string;
+      /**
+       * @description Where this server's MCP App views are shown: `on` (console and a
+       *     picture in Slack), `console_only`, or `off`.
+       */
+      interactive_views?: components["schemas"]["McpInteractiveViews"];
       /**
        * @description Display name of the MCP server.
        * @example atlassian-mcp-server

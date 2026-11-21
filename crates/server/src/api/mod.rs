@@ -56,6 +56,7 @@ pub mod images;
 pub mod internal_blobs;
 pub mod knowledge;
 pub mod manager_context;
+pub mod mcp_apps;
 pub mod mcp_elicitation;
 pub mod mcp_endpoint;
 pub mod mcp_event_webhooks;

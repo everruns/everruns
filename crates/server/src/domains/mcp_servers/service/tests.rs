@@ -1,5 +1,6 @@
 use super::*;
 use crate::storage::{CreateMcpServerRow, EncryptionService, StorageBackend};
+use everruns_contracts::runtime::mcp_apps::McpInteractiveViews;
 use everruns_core::{McpServerTransportType, OrgRole};
 
 fn test_caller(org_id: i64) -> Caller {
@@ -438,6 +439,7 @@ async fn create_rejects_api_key_when_auth_mode_is_not_api_key() {
                 protocol_mode: None,
                 elicitation_policy: None,
                 tool_timeout_ms: None,
+                interactive_views: None,
                 service_connection_provider: None,
                 api_key: Some("secret".into()),
                 headers: None,
@@ -855,6 +857,7 @@ async fn service_connection_provider_is_pinned_to_hosts_that_accept_its_tokens()
         protocol_mode: None,
         elicitation_policy: None,
         tool_timeout_ms: None,
+        interactive_views: None,
         service_connection_provider: provider.map(str::to_string),
         api_key: None,
         headers: None,
@@ -937,6 +940,7 @@ async fn tool_timeout_is_validated_stored_resolved_and_cleared() {
         protocol_mode: None,
         elicitation_policy: None,
         tool_timeout_ms,
+        interactive_views: None,
         service_connection_provider: None,
         api_key: None,
         headers: None,
@@ -998,6 +1002,42 @@ async fn tool_timeout_is_validated_stored_resolved_and_cleared() {
         .unwrap()
         .expect("server exists");
     assert_eq!(cleared.tool_timeout_ms, None);
+}
+
+#[tokio::test]
+async fn interactive_views_default_on_and_round_trip() {
+    let db = Arc::new(StorageBackend::test_database());
+    let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+    let create: CreateMcpServerRequest = serde_json::from_value(serde_json::json!({
+        "name": "charts",
+        "url": "https://charts.example.com/mcp",
+    }))
+    .unwrap();
+    let server = svc.create(&test_caller(1), create).await.unwrap();
+    assert_eq!(server.interactive_views, McpInteractiveViews::On);
+    let json = serde_json::to_value(&server).unwrap();
+    assert!(
+        json.get("interactive_views").is_none(),
+        "default is omitted"
+    );
+
+    let update: UpdateMcpServerRequest =
+        serde_json::from_value(serde_json::json!({"interactive_views": "console_only"})).unwrap();
+    let updated = svc
+        .update(&test_caller(1), server.id.uuid(), update)
+        .await
+        .unwrap()
+        .expect("server exists");
+    assert_eq!(updated.interactive_views, McpInteractiveViews::ConsoleOnly);
+    // Untouched by an unrelated edit.
+    let update: UpdateMcpServerRequest =
+        serde_json::from_value(serde_json::json!({"description": "Charts"})).unwrap();
+    let renamed = svc
+        .update(&test_caller(1), server.id.uuid(), update)
+        .await
+        .unwrap()
+        .expect("server exists");
+    assert_eq!(renamed.interactive_views, McpInteractiveViews::ConsoleOnly);
 }
 
 /// Backdate when a server's tool list was cached.

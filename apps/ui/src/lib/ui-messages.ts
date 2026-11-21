@@ -1,3 +1,4 @@
+import { messages as mcpApps } from "./messages/uk/mcp-apps";
 import { messages as extractions } from "./messages/uk/extractions";
 import { messages as rooms } from "./messages/uk/rooms";
 import { messages as toolApproval } from "./messages/uk/tool-approval";
@@ -88,6 +89,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
   chatLayout,
   extractions,
   rooms,
+  mcpApps,
 );
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */

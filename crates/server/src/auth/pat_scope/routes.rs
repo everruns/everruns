@@ -947,6 +947,7 @@ pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[
         Read,
     ),
     ("GET", "/v1/sessions/{session_id}/fs/{*path}", Read),
+    ("GET", "/v1/sessions/{session_id}/mcp-apps/view", Read),
     ("GET", "/v1/sessions/{session_id}/schedules", Read),
     (
         "GET",

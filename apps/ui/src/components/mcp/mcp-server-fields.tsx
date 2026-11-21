@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { McpElicitationPolicy } from "@/lib/api/types";
+import type { McpElicitationPolicy, McpInteractiveViews } from "@/lib/api/types";
 import type { McpServiceConnectionChoice } from "@/lib/form-validation";
 
 /**
@@ -43,6 +43,43 @@ export function ElicitationPolicyField({
       <p className="text-xs text-muted-foreground">
         {ui(
           "Whether this server may ask the user to open a link or answer questions mid-call. Questions are shown as coming from the server and never ask for passwords or keys.",
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Where this server's interactive views (MCP Apps) show. Views run in a
+ * sandboxed frame and may only reach the origins the server declares;
+ * knowledge/integrations/mcp-apps-host.md.
+ */
+export function InteractiveViewsField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: McpInteractiveViews;
+  onChange: (value: McpInteractiveViews) => void;
+}) {
+  const ui = useUiTranslations();
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{ui("Interactive views")}</Label>
+      <Select value={value} onValueChange={(next) => onChange(next as McpInteractiveViews)}>
+        <SelectTrigger id={id}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="on">{ui("On, with a picture and link in Slack")}</SelectItem>
+          <SelectItem value="console_only">{ui("On, text only in Slack")}</SelectItem>
+          <SelectItem value="off">{ui("Off")}</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        {ui(
+          "Show the charts and screens this server provides under its tool calls, in a sandboxed frame. A view reaches only the sites the server declares; tools that are not read-only ask before they run.",
         )}
       </p>
     </div>

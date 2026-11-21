@@ -72,18 +72,21 @@ impl McpToolInvoker for DocsServer {
                 mime_type: Some("text/markdown".into()),
                 text: Some("# Hello".into()),
                 blob: None,
+                meta: None,
             }],
             "file:///chart.png" => vec![McpResourceContents {
                 uri: uri.into(),
                 mime_type: Some("image/png".into()),
                 text: None,
                 blob: Some("AAAA".into()),
+                meta: None,
             }],
             _ => vec![McpResourceContents {
                 uri: uri.into(),
                 mime_type: Some("application/pdf".into()),
                 text: None,
                 blob: Some("AAAAAAAA".into()),
+                meta: None,
             }],
         };
         Ok(Some(McpResourceOutcome::Done(McpReadResourceResult {
@@ -255,6 +258,7 @@ async fn registered_resources_preserve_input_binding_and_allowed_results() {
                     text: Some(self.0.map_or("unbound".into(), |id| id.to_string())),
                     mime_type: None,
                     blob: None,
+                    meta: None,
                 }],
             })))
         }

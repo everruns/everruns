@@ -8770,6 +8770,12 @@
         "help": "Additional HTTP headers for authentication."
       },
       {
+        "field": "interactive_views",
+        "long": "interactive-views",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "name",
         "long": "name",
         "kind": "string",
@@ -9072,6 +9078,12 @@
         "kind": "json",
         "required": false,
         "help": "Additional HTTP headers for authentication."
+      },
+      {
+        "field": "interactive_views",
+        "long": "interactive-views",
+        "kind": "string",
+        "required": false
       },
       {
         "field": "name",

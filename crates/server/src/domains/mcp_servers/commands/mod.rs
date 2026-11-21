@@ -132,6 +132,7 @@ impl Command for CreateMcpServer {
             protocol_mode: req.protocol_mode.unwrap_or_default(),
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             tool_timeout_ms: req.tool_timeout_ms,
+            interactive_views: Default::default(),
             oauth: None,
             service_connection_provider,
             connection_check: None,

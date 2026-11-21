@@ -47,6 +47,7 @@ import { useWebMcp } from "@/providers/webmcp-context";
 import { queryKeys } from "@/lib/query-keys";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 import { ToolReviewsContext } from "@/components/chat/tool-review-mark";
+import { McpAppSessionContext } from "@/components/chat/mcp-app-view";
 
 /** Accumulated streamed output for a single tool call */
 export interface ToolOutputStreams {
@@ -732,7 +733,11 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider value={value}>
-      <ToolReviewsContext.Provider value={toolReviewsMap}>{children}</ToolReviewsContext.Provider>
+      <ToolReviewsContext.Provider value={toolReviewsMap}>
+        <McpAppSessionContext.Provider value={sessionId || undefined}>
+          {children}
+        </McpAppSessionContext.Provider>
+      </ToolReviewsContext.Provider>
     </SessionContext.Provider>
   );
 }

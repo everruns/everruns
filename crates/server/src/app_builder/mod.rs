@@ -334,9 +334,8 @@ impl ServerAppBuilder {
                 .clone()
                 .unwrap_or_else(crate::platform::oss_host_composition),
         );
-        // Built-in harness provisioning templates are server composition
-        // (EVE-881): resolved here and threaded to seeding, auth safety nets,
-        // and role-based fallbacks.
+        // Built-in harness templates are server composition (EVE-881), threaded
+        // to seeding, auth safety nets and role-based fallbacks.
         let built_in_harnesses = Arc::new(
             self.built_in_harnesses
                 .clone()
@@ -858,6 +857,7 @@ impl ServerAppBuilder {
         )
         .with_frontend_url(auth_config.frontend_url.clone())
         .with_decisions(&host_composition, &provider_resolver, &budget_service)
+        .with_mcp_app_snapshots(commands_state.command_service.clone())
         .with_channel_host();
         let relevance = Arc::new(slack_state.relevance_checker());
         crate::channels::slack::socket_mode::spawn(&mut supervisor, slack_state.clone());

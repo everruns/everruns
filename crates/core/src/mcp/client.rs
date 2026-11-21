@@ -207,8 +207,29 @@ impl McpClient {
             .call(connection, tool_name, arguments, idempotency_key)
             .await?;
         let (json_result, images) = map_tool_call_result(&result);
-        Ok(tool_result(tool_call_id.into(), json_result, images))
+        let mut mapped = tool_result(tool_call_id.into(), json_result, images);
+        mapped.details = mcp_result_details(&result);
+        Ok(mapped)
     }
+}
+
+/// What an MCP App view needs from a result besides its content blocks:
+/// `structuredContent` and `_meta`. Kept in `details`, which the model never
+/// sees; the proxy tool moves it under the view when the tool has one.
+fn mcp_result_details(result: &McpToolCallResult) -> Option<Value> {
+    if result.structured_content.is_none() && result.meta.is_none() {
+        return None;
+    }
+    let mut fields = serde_json::Map::new();
+    if let Some(structured) = &result.structured_content {
+        fields.insert("structured_content".into(), structured.clone());
+    }
+    if let Some(meta) = &result.meta {
+        fields.insert("meta".into(), meta.clone());
+    }
+    Some(json!({
+        everruns_contracts::runtime::mcp_apps::MCP_RESULT_DETAILS_KEY: Value::Object(fields)
+    }))
 }
 
 fn cursor_params(cursor: Option<&str>) -> Value {

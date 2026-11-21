@@ -18,6 +18,7 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
+use everruns_contracts::runtime::mcp_apps::McpInteractiveViews;
 use everruns_core::host::DirectEgressService;
 use everruns_core::{
     Caller, EgressService, McpElicitationPolicy, McpProtocolMode, McpServerActsAs,
@@ -102,6 +103,10 @@ pub struct McpServerSettings {
     /// default. Kept in `settings`, so no migration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_timeout_ms: Option<u64>,
+    /// Where this server's MCP App views are shown (on by default). Kept in
+    /// `settings`, so no migration.
+    #[serde(default, skip_serializing_if = "McpInteractiveViews::is_default")]
+    pub interactive_views: McpInteractiveViews,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth: Option<McpServerOAuthSettings>,
     /// Connection provider (e.g. `github`) whose connection on an agent's
@@ -184,6 +189,7 @@ impl McpServerService {
                 protocol_mode: McpProtocolMode::Auto,
                 elicitation_policy: McpElicitationPolicy::Url,
                 tool_timeout_ms: None,
+                interactive_views: McpInteractiveViews::On,
                 oauth: None,
                 service_connection_provider: None,
                 connection_check: None,
@@ -272,6 +278,7 @@ impl McpServerService {
             protocol_mode: req.protocol_mode.unwrap_or_default(),
             elicitation_policy: req.elicitation_policy.unwrap_or_default(),
             tool_timeout_ms: req.tool_timeout_ms,
+            interactive_views: req.interactive_views.unwrap_or_default(),
             oauth: None,
             service_connection_provider,
             connection_check: None,
@@ -387,6 +394,9 @@ impl McpServerService {
         }
         if let Some(elicitation_policy) = req.elicitation_policy {
             settings.elicitation_policy = elicitation_policy;
+        }
+        if let Some(interactive_views) = req.interactive_views {
+            settings.interactive_views = interactive_views;
         }
         if let Some(tool_timeout_ms) = req.tool_timeout_ms {
             settings.tool_timeout_ms = updated_tool_timeout_ms(tool_timeout_ms)

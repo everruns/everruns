@@ -152,6 +152,7 @@ mod tests {
             description: None,
             input_schema: json!({"type":"object"}),
             annotations: None,
+            meta: None,
         }
     }
 
@@ -177,6 +178,7 @@ mod tests {
             description: Some("x".repeat(MCP_DISCOVERY_MAX_BYTES)),
             input_schema: json!({"type":"object"}),
             annotations: None,
+            meta: None,
         };
         assert!(discovery.push_page(vec![huge], None).is_err());
     }

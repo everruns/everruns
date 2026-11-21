@@ -55,6 +55,37 @@ use everruns_contracts::runtime::events::{
 use everruns_contracts::runtime::session_task::SessionTaskState;
 use everruns_contracts::typed_id::SessionId;
 
+/// The MCP App view a `tool.completed` carries, with its text result.
+fn app_view(data: &Value) -> Option<everruns_contracts::runtime::channel::ChannelAppView> {
+    if data.get("error").is_some_and(|error| !error.is_null()) {
+        return None;
+    }
+    let app = everruns_contracts::runtime::mcp_apps::McpAppCallDetails::from_details(
+        data.get("details"),
+    )?;
+    let text = data
+        .get("result")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter(|part| part.get("type").and_then(Value::as_str) == Some("text"))
+                .filter_map(|part| part.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
+    Some(everruns_contracts::runtime::channel::ChannelAppView {
+        app,
+        tool_call_id: data
+            .get("tool_call_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        text,
+    })
+}
+
 /// Flush a stream early once this much text is waiting.
 pub const STREAM_FLUSH_CHARS: usize = 2_000;
 
@@ -316,6 +347,7 @@ impl TurnDelivery {
                     self.delivered = true;
                 }
                 self.prompt_approval(&event.data).await;
+                self.show_app_view(&event.data).await;
                 self.set_status(self.current_status()).await;
             }
             TASK_CREATED | TASK_UPDATED => self.on_task(&event.data),
@@ -655,6 +687,21 @@ impl TurnDelivery {
             DeliveryResult::Ok => self.delivered = true,
             DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
                 warn!(session_id = %self.session_id, %error, "channel: could not show an approval prompt");
+            }
+        }
+    }
+
+    async fn show_app_view(&mut self, data: &Value) {
+        let Some(surface) = self.adapter.app_views() else {
+            return;
+        };
+        let Some(view) = app_view(data) else {
+            return;
+        };
+        match surface.show(self.session_id, &view, &self.context).await {
+            DeliveryResult::Ok => {}
+            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
+                warn!(session_id = %self.session_id, %error, "channel: could not show an MCP App view");
             }
         }
     }

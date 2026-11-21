@@ -9,20 +9,26 @@
 //!   answers by replying (EVE-1025).
 //! - Task progress is one message posted with its `ts` returned and then
 //!   rewritten in place (EVE-1026).
+//! - An MCP App view becomes a picture (rendered through the session owner's
+//!   Browserless connection) and an "Open interactive view" button to the
+//!   session. Without a picture the button goes alone; with views turned off
+//!   for Slack nothing is posted and the agent's reply speaks for the view.
 
 use std::sync::Arc;
 
+use crate::domains::session_commands::mcp_apps::{McpAppSnapshot, McpAppSnapshots};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::channel::{
-    ApprovalPrompt, ChannelAgentSurface, ChannelApprovalPrompt, ChannelDeliveryAdapter,
-    ChannelProgressSurface, ChannelReactionSurface, ChannelStreamDelivery, DeliveryContext,
-    DeliveryResult, OutboundChannelMessage,
+    ApprovalPrompt, ChannelAgentSurface, ChannelAppView, ChannelAppViewSurface,
+    ChannelApprovalPrompt, ChannelDeliveryAdapter, ChannelProgressSurface, ChannelReactionSurface,
+    ChannelStreamDelivery, DeliveryContext, DeliveryResult, OutboundChannelMessage,
 };
 use tracing::error;
 
 use crate::channels::slack::approvals::{ApprovalBinding, build_approval_blocks};
-use everruns_integrations::slack_channel::web_api::SlackApiError;
+use everruns_integrations::slack_channel::actions::upload_file;
+use everruns_integrations::slack_channel::web_api::{SLACK_API_BASE, SlackApiError};
 use everruns_integrations::slack_channel::web_api::{
     post_slack_blocks, post_slack_ephemeral_blocks, post_slack_message_returning_ts,
     update_slack_message_text,
@@ -35,6 +41,17 @@ pub(crate) struct SlackTurnAdapter {
     pub private_approvals: bool,
     /// The Slack user the turn answers, who alone may click its cards.
     pub requester: Option<String>,
+    /// Draws MCP App views; `None` leaves views to the agent's reply.
+    pub app_views: Option<SlackAppViews>,
+}
+
+/// What a turn needs to post MCP App views.
+#[derive(Clone)]
+pub(crate) struct SlackAppViews {
+    pub snapshots: Arc<dyn McpAppSnapshots>,
+    pub org_id: i64,
+    /// Link to the session in the console, for the button.
+    pub session_link: Option<String>,
 }
 
 #[async_trait]
@@ -78,6 +95,102 @@ impl ChannelDeliveryAdapter for SlackTurnAdapter {
 
     fn progress(&self) -> Option<&dyn ChannelProgressSurface> {
         Some(self)
+    }
+
+    fn app_views(&self) -> Option<&dyn ChannelAppViewSurface> {
+        self.app_views
+            .as_ref()
+            .map(|_| self as &dyn ChannelAppViewSurface)
+    }
+}
+
+/// Label for a view's source, from its sanitized server prefix.
+fn server_label(server: &str) -> String {
+    let mut chars = server.replace('_', " ").chars().collect::<Vec<_>>();
+    if let Some(first) = chars.first_mut() {
+        *first = first.to_ascii_uppercase();
+    }
+    chars.into_iter().collect()
+}
+
+/// The button message under a view's picture (or in its place).
+pub(crate) fn app_view_blocks(
+    view: &ChannelAppView,
+    session_link: Option<&str>,
+    pictured: bool,
+) -> Option<serde_json::Value> {
+    let link = session_link?;
+    let label = server_label(&view.app.server);
+    let note = if pictured {
+        format!("Picture rendered by Everruns from the {label} view")
+    } else {
+        format!("{label} sent an interactive view ({})", view.app.tool)
+    };
+    Some(serde_json::json!([
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": note}]},
+        {"type": "actions", "elements": [{
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Open interactive view"},
+            "url": link,
+            "action_id": "open_mcp_app_view",
+        }]},
+    ]))
+}
+
+#[async_trait]
+impl ChannelAppViewSurface for SlackTurnAdapter {
+    async fn show(
+        &self,
+        session_id: SessionId,
+        view: &ChannelAppView,
+        context: &DeliveryContext,
+    ) -> DeliveryResult {
+        let Some(views) = &self.app_views else {
+            return DeliveryResult::Ok;
+        };
+        let snapshot = views
+            .snapshots
+            .snapshot(views.org_id, session_id, &view.app, &view.text)
+            .await;
+        let pictured = match snapshot {
+            McpAppSnapshot::Off => return DeliveryResult::Ok,
+            McpAppSnapshot::LinkOnly => false,
+            McpAppSnapshot::Picture(png) => {
+                let thread =
+                    (!context.thread_ref.is_empty()).then_some(context.thread_ref.as_str());
+                let comment = format!("**{}** · {}", server_label(&view.app.server), view.app.tool);
+                match upload_file(
+                    SLACK_API_BASE,
+                    &context.auth_token,
+                    &context.channel_id,
+                    thread,
+                    &format!("{}-view.png", view.app.server),
+                    png,
+                    Some(&comment),
+                )
+                .await
+                {
+                    Ok(_) => true,
+                    Err(error) => {
+                        tracing::warn!(%session_id, %error, "could not upload an MCP App picture to Slack");
+                        false
+                    }
+                }
+            }
+        };
+        let Some(blocks) = app_view_blocks(view, views.session_link.as_deref(), pictured) else {
+            return DeliveryResult::Ok;
+        };
+        result(
+            post_slack_blocks(
+                &context.auth_token,
+                &context.channel_id,
+                &context.thread_ref,
+                "Open interactive view",
+                &blocks,
+            )
+            .await,
+        )
     }
 }
 

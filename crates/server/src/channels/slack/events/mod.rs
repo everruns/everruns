@@ -84,6 +84,9 @@ pub struct SlackState {
     pub relevance_fallback: Option<Arc<dyn crate::services::relevance::FallbackModels>>,
     /// Fallbacks this process reported to org health, shared with rooms.
     pub relevance_reports: Arc<crate::domains::health_issues::relevance_fallback::FallbackReports>,
+    /// Draws pictures of MCP App views for replies; `None` posts none.
+    pub mcp_app_snapshots:
+        Option<Arc<dyn crate::domains::session_commands::mcp_apps::McpAppSnapshots>>,
 }
 
 impl SlackState {
@@ -182,7 +185,17 @@ impl SlackState {
             org_decisions: None,
             relevance_fallback: None,
             relevance_reports: Default::default(),
+            mcp_app_snapshots: None,
         }
+    }
+
+    /// Post pictures of MCP App views a turn's tool calls produce.
+    pub fn with_mcp_app_snapshots(
+        mut self,
+        snapshots: Arc<dyn crate::domains::session_commands::mcp_apps::McpAppSnapshots>,
+    ) -> Self {
+        self.mcp_app_snapshots = Some(snapshots);
+        self
     }
 }
 
