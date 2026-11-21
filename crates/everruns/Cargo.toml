@@ -277,7 +277,7 @@ schemars = { workspace = true, optional = true }
 serde.workspace = true
 # SQLite for the `local` feature. `everruns::sqlite` owns connection opening
 # for the facade and serve hosts.
-rusqlite = { version = "0.41.1", features = ["bundled", "backup", "hooks"], optional = true }
+rusqlite = { version = "0.43.0", features = ["bundled", "backup", "hooks"], optional = true }
 # Envelope encryption of session secrets in the native SQLite authority
 # (EVE-1298), the same AES-256-GCM scheme and key format the platform uses.
 aes-gcm = { workspace = true, optional = true }
@@ -300,7 +300,7 @@ everruns-llmsim.workspace = true
 axum.workspace = true
 chrono.workspace = true
 # Verifies existing embedding callbacks keep their SQLite query type identity.
-rusqlite = { version = "0.41.1", features = ["bundled"] }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
 # Version-less path dev-dependencies: stripped on publish, so these test-only
 # edges do not force the facade to package before same-cycle sibling releases
 # (e.g. everruns-test-support) reach crates.io.
