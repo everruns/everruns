@@ -3,6 +3,8 @@ name: Docker Publish
 # Trigger strategy (see knowledge/project/release-process.md#docker-image-tagging):
 # - Tag push (v*) / workflow_dispatch: publish multi-arch release images.
 # - Pull request: validate Docker build only when Docker-relevant files change.
+# - workflow_dispatch from main without a tag: an on-demand main snapshot,
+#   tagged with the commit SHA only.
 # - No main-branch push: per-commit Docker images are intentionally not
 #   produced. Image builds (especially arm64 via QEMU) are expensive and the
 #   previous `:development` rolling tag hid tag drift behind a moving target.
@@ -11,12 +13,15 @@ on:
   push:
     tags: ['v*']
   # Triggered by Release workflow after creating tag (GITHUB_TOKEN tag pushes
-  # don't fire push events, so Release calls this via workflow_dispatch)
+  # don't fire push events, so Release calls this via workflow_dispatch).
+  # Dispatched from main with no tag: a main snapshot, published under the
+  # commit's SHA tags only (`everruns k8s up --image-tag <sha>`).
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Git tag to build and publish (e.g., v0.8.0)'
-        required: true
+        description: 'Git tag to build and publish (e.g., v0.8.0); empty on main for a SHA-tagged main snapshot'
+        required: false
+        default: ''
         type: string
   # Gate PR builds on Docker-relevant paths. PR validation exists to catch
   # Dockerfile / workflow regressions before they land. Rust/UI source
