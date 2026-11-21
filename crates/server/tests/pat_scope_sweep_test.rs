@@ -56,8 +56,6 @@ fn configure_server_environment(database_url: &str) {
         std::env::set_var("WORKER_GRPC_AUTH_TOKEN", "pat-scope-sweep-test");
         // One request per route, twice: the per-IP API limiter must not trip.
         std::env::set_var("RATE_LIMIT_API_REQUESTS_PER_MINUTE", "0");
-        // Mount the feature-gated payments routes so they are swept too.
-        std::env::set_var("FEATURE_MACHINE_PAYMENTS", "dev");
     }
 }
 

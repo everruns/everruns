@@ -62,7 +62,6 @@ Every command below is also in `everruns --help`, and an agent running on Everru
 | [`observers`](/reference/cli/observers/) | Online scoring of live traces. |
 | [`organization-accounts`](/reference/cli/organization-accounts/) | Organization account names, without retrieving credentials. |
 | [`orgs`](/reference/cli/orgs/) | Organizations you belong to, and which one is active |
-| [`payments`](/reference/cli/payments/) | Machine payments: wallets, spend policies and attempts. |
 | [`plugin-marketplaces`](/reference/cli/plugin-marketplaces/) | Sources of installable plugins. |
 | [`plugins`](/reference/cli/plugins/) | Plugins installed in this organization. |
 | [`providers`](/reference/cli/providers/) | LLM providers and their credentials. |

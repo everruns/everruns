@@ -58,8 +58,6 @@ pub enum EntityKind {
     Observer,
     ModelPreset,
     Budget,
-    PaymentAccount,
-    PaymentPolicy,
     Eval,
     EvalCase,
     Session,
@@ -100,8 +98,6 @@ impl EntityKind {
         Self::Observer,
         Self::ModelPreset,
         Self::Budget,
-        Self::PaymentAccount,
-        Self::PaymentPolicy,
         Self::Eval,
         Self::EvalCase,
         Self::Session,
@@ -142,8 +138,6 @@ impl EntityKind {
             Self::Observer => "observer",
             Self::ModelPreset => "model_preset",
             Self::Budget => "budget",
-            Self::PaymentAccount => "payment_account",
-            Self::PaymentPolicy => "payment_policy",
             Self::Eval => "eval",
             Self::EvalCase => "eval_case",
             Self::Session => "session",
@@ -192,8 +186,6 @@ impl EntityKind {
             Self::Observer => "observer",
             Self::ModelPreset => return None,
             Self::Budget => "bdgt",
-            Self::PaymentAccount => "payacct",
-            Self::PaymentPolicy => "paypol",
             Self::Eval => "eval",
             Self::EvalCase => "evalcase",
             Self::Session => "session",
@@ -250,7 +242,6 @@ impl EntityKind {
             Self::Observer => &observers::service::OBSERVER_VIEW,
             Self::ModelPreset => &models::LLM_MODEL_VIEW,
             Self::Budget => &budgets::BUDGET_VIEW,
-            Self::PaymentAccount | Self::PaymentPolicy => &payments::PAYMENT_VIEW,
             Self::Eval | Self::EvalCase => &evals::service::EVAL_VIEW,
             // Session metadata is private to its participants, which a role
             // policy cannot express; `history list` also checks the session.
@@ -298,7 +289,6 @@ impl EntityKind {
             Self::Observer => &observers::service::OBSERVER_MANAGE,
             Self::ModelPreset => &models::LLM_MODEL_MANAGE,
             Self::Budget => &budgets::BUDGET_MANAGE,
-            Self::PaymentAccount | Self::PaymentPolicy => &payments::PAYMENT_MANAGE,
             Self::Eval | Self::EvalCase => &evals::service::EVAL_MANAGE,
             Self::Session => &sessions::service::SESSION_MANAGE,
         }
@@ -352,8 +342,6 @@ impl EntityKind {
             Self::Observer => ("get_observer", "observer_id"),
             Self::ModelPreset => ("get_model_preset", "id"),
             Self::Budget => ("get_budget", "budget_id"),
-            Self::PaymentAccount => ("get_payment_account", "payment_account_id"),
-            Self::PaymentPolicy => ("get_payment_policy", "payment_policy_id"),
             Self::Eval => ("get_eval", "eval_id"),
             Self::Session => ("get_session", "session_id"),
             Self::CheckRule
@@ -701,13 +689,6 @@ pub fn declared(name: &str) -> Change {
         "update_cost_settings" => {
             Change::Exempt("an organization setting with no entity history of its own")
         }
-
-        "create_payment_account" => on(K::PaymentAccount, Created, ID),
-        "update_payment_account" => on(K::PaymentAccount, Updated, ID),
-        "disable_payment_account" => on(K::PaymentAccount, Disabled, Param("payment_account_id")),
-        "create_payment_policy" => on(K::PaymentPolicy, Created, ID),
-        "update_payment_policy" => on(K::PaymentPolicy, Updated, ID),
-        "disable_payment_policy" => on(K::PaymentPolicy, Disabled, Param("payment_policy_id")),
 
         // Evaluation.
         "create_eval" => on(K::Eval, Created, ID),

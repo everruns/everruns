@@ -62,6 +62,8 @@ export default defineConfig({
   // Astro adds the base to redirect sources but not to their destinations.
   redirects: Object.fromEntries(Object.entries({
     [`${LEGACY_GALLERY_ROOT}/`]: `${GALLERY_ROOT}/`,
+    // The experimental Docker Container capability was removed; Container sandbox replaces it.
+    "/capabilities/docker/": "/capabilities/container-sandbox/",
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // tools_in_shell capability renamed to shell_code_mode
@@ -723,7 +725,6 @@ export default defineConfig({
                     { label: "Brave Search", slug: "integrations/brave-search" },
                     { label: "Browser Use", slug: "capabilities/browser-use" },
                     { label: "Computer Use", slug: "capabilities/computer-use" },
-                    { label: "Docker Container", slug: "capabilities/docker" },
                     { label: "DuckDuckGo", slug: "integrations/duckduckgo" },
                     { label: "Modal", slug: "integrations/modal" },
                     { label: "Parallel", slug: "integrations/parallel" },

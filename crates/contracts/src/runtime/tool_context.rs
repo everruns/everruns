@@ -12,7 +12,7 @@ use crate::runtime::session_files::SessionFileSystem;
 use crate::runtime::session_services::{
     LeasedResourceStore, SessionResourceRegistry, SessionScheduleStore, SessionStorageStore,
 };
-use crate::runtime::tool_execution::{BudgetChecker, PaymentAuthority};
+use crate::runtime::tool_execution::BudgetChecker;
 use crate::runtime::typed_id::{SessionId, WorkspaceId};
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
@@ -104,7 +104,6 @@ pub enum ToolContextService {
     ToolRegistry,
     OrgId,
     BudgetChecker,
-    PaymentAuthority,
     SessionCreationAuthority,
     SubagentSpawnStore,
     ReasoningEffortHandle,
@@ -135,7 +134,6 @@ impl ToolContextService {
             Self::ToolRegistry => "ToolRegistry",
             Self::OrgId => "OrgId",
             Self::BudgetChecker => "BudgetChecker",
-            Self::PaymentAuthority => "PaymentAuthority",
             Self::SessionCreationAuthority => "SessionCreationAuthority",
             Self::SubagentSpawnStore => "SubagentSpawnStore",
             Self::ReasoningEffortHandle => "ReasoningEffortHandle",
@@ -176,7 +174,6 @@ pub struct ToolContextServices {
     pub org_id: Option<crate::runtime::typed_id::OrgId>,
     pub network_access: Option<crate::runtime::network_access::NetworkAccessList>,
     pub budget_checker: Option<Arc<dyn BudgetChecker>>,
-    pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
     pub session_creation_authority: Option<Arc<dyn SessionCreationAuthority>>,
     pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
     pub subagent_nesting_policy: SubagentNestingPolicy,
@@ -208,7 +205,6 @@ impl ToolContextServices {
             ToolContextService::ToolRegistry => self.tool_registry.is_some(),
             ToolContextService::OrgId => self.org_id.is_some(),
             ToolContextService::BudgetChecker => self.budget_checker.is_some(),
-            ToolContextService::PaymentAuthority => self.payment_authority.is_some(),
             ToolContextService::SessionCreationAuthority => {
                 self.session_creation_authority.is_some()
             }
@@ -397,9 +393,6 @@ pub struct ToolContext {
     /// Optional budget checker for the check_budget tool.
     pub budget_checker: Option<Arc<dyn BudgetChecker>>,
 
-    /// Optional internal payment authority for paid capability tools.
-    pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
-
     /// Optional host authority for detached peer-session creation.
     pub session_creation_authority: Option<Arc<dyn SessionCreationAuthority>>,
 
@@ -494,7 +487,6 @@ impl ToolContext {
             network_access: None,
             locale: None,
             budget_checker: None,
-            payment_authority: None,
             session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
@@ -539,7 +531,6 @@ impl ToolContext {
             network_access: services.network_access.clone(),
             locale: None,
             budget_checker: services.budget_checker.clone(),
-            payment_authority: services.payment_authority.clone(),
             session_creation_authority: services.session_creation_authority.clone(),
             subagent_spawn_store: services.subagent_spawn_store.clone(),
             subagent_nesting_policy: services.subagent_nesting_policy,
@@ -786,12 +777,6 @@ impl ToolContext {
         self
     }
 
-    /// Set the internal payment authority for paid capability operations.
-    pub fn with_payment_authority(mut self, authority: Arc<dyn PaymentAuthority>) -> Self {
-        self.payment_authority = Some(authority);
-        self
-    }
-
     /// Set the durable subagent spawn handle store (EVE-535).
     pub fn with_subagent_spawn_store(mut self, store: Arc<dyn SubagentSpawnStore>) -> Self {
         self.subagent_spawn_store = Some(store);
@@ -908,7 +893,6 @@ impl std::fmt::Debug for ToolContext {
             )
             .field("event_emitter", &self.event_emitter.is_some())
             .field("tool_registry", &self.tool_registry.is_some())
-            .field("payment_authority", &self.payment_authority.is_some())
             .field("subagent_spawn_store", &self.subagent_spawn_store.is_some())
             .field("subagent_nesting_policy", &self.subagent_nesting_policy)
             .field("org_id", &self.org_id)

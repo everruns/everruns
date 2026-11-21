@@ -103,7 +103,6 @@ const mockFeatureFlags = {
   memory: true,
   plugins: true,
   observers: true,
-  machine_payments: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => mockFeatureFlags,
@@ -157,7 +156,6 @@ describe("useGlobalSearch", () => {
       memory: true,
       plugins: true,
       observers: true,
-      machine_payments: true,
     });
   });
 
@@ -271,7 +269,6 @@ describe("useGlobalSearch", () => {
     ["knowledge", "/knowledge"],
     ["plugins", "/plugins"],
     ["observers", "/observers"],
-    ["payments", "/settings/payments"],
     ["circuit breakers", "/durable/circuit-breakers"],
   ])("finds the %s navigation page", (query, href) => {
     const { result } = renderHook(() => useGlobalSearch(query));
@@ -360,14 +357,6 @@ describe("useGlobalSearch", () => {
   it("searches for Knowledge without treating the word as a collection ID", () => {
     const { result } = renderHook(() => useGlobalSearch("knowledge"));
     expect(result.current.some((item) => item.category === "id")).toBe(false);
-  });
-
-  it("hides Payments navigation when machine payments are disabled", () => {
-    mockFeatureFlags.machine_payments = false;
-
-    const { result } = renderHook(() => useGlobalSearch("payments"));
-
-    expect(result.current.some((item) => item.href === "/settings/payments")).toBe(false);
   });
 
   it.each([

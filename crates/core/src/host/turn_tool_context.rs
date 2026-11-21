@@ -75,7 +75,6 @@ pub(crate) fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         org_id: Some(public_org_id),
         network_access: None,
         budget_checker: adapter.budget_checker(org_id, agent_id),
-        payment_authority: adapter.payment_authority(org_id, agent_id),
         session_creation_authority: adapter.session_creation_authority(org_id, session_id),
         subagent_spawn_store: adapter.subagent_spawn_store(),
         subagent_nesting_policy: capability_context.subagent_nesting_policy,

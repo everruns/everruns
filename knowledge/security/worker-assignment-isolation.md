@@ -192,7 +192,7 @@ definitions. Exact methods remain in the protocol and delegated handlers above.
 | Credentials, MCP and user-store operations | Use only invocation-authorized resource grants through scoped handles/relays | Raw deployment provider keys and secret/signing authority |
 | Generic commands and platform operations | Decoded, permitted runtime operations; intentionally authorized management runs execute server-side with current management policy | Generic internal/Owner caller construction and unrestricted platform surfaces |
 | Scheduled channels, agent triggers and notifications | Only assignment control/cancel messages and explicitly delegated child work | Global triggers, shared task-notification subscriptions and queue discovery |
-| Budgets, limits, Slack actions and machine payments | Server-derived tenant and initiator, permitted target/action, bounded spend and idempotent side effect | Arbitrary account/installation selection, budget mutation and payment authority |
+| Budgets, limits and Slack actions | Server-derived tenant and initiator, permitted target/action, bounded spend and idempotent side effect | Arbitrary account/installation selection and budget mutation |
 | Circuit breaker state | Decision for an authorized provider route | Global success/failure observations recorded by the trusted provider relay, not forged executor reports |
 
 Management tools need a separate server-validated invocation purpose, current
@@ -242,7 +242,7 @@ need their own transactional/relay boundary and must be qualified separately.
 Durable mutations record idempotency and the journal/effect receipt atomically.
 A repeated identical operation may return its prior receipt but must not execute
 again; the same ordinal with different content, an old generation, a gap or an
-unrecognized replay is rejected. Payments and external actions need their
+unrecognized replay is rejected. External actions need their
 existing server-side idempotency and authority checks as well.
 
 Ephemeral delta bodies remain out of PostgreSQL. Persist only bounded admission

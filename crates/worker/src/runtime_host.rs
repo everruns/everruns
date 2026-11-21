@@ -13,7 +13,6 @@ use crate::core::{
     execution_loading::SessionStore, file_services::FileResolver,
     image_services::ImageArtifactStore, image_services::ImageResolver,
     provider_resolution::ProviderStore, session_files::SessionFileSystem,
-    tool_execution::PaymentAuthority,
 };
 use crate::host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
 use crate::mcp::{
@@ -834,14 +833,6 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn crate::core::tool_execution::BudgetChecker>> {
         self.adapters.budget_checker(org_id, agent_id)
-    }
-
-    fn payment_authority(
-        &self,
-        org_id: i64,
-        agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn PaymentAuthority>> {
-        self.adapters.payment_authority(org_id, agent_id)
     }
 
     fn session_creation_authority(

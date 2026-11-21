@@ -288,13 +288,6 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "orgs provider-accounts",
         "Sandbox provider and web search accounts the organization holds.",
     ),
-    (
-        "payments",
-        "Machine payments: wallets, spend policies and attempts.",
-    ),
-    ("payments accounts", "Wallet accounts agents pay from."),
-    ("payments attempts", "Payments agents tried to make."),
-    ("payments policies", "Rules limiting what agents may spend."),
     ("plugin-marketplaces", "Sources of installable plugins."),
     (
         "plugin-marketplaces plugins",

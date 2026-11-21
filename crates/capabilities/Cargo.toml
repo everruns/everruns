@@ -51,7 +51,6 @@ hosted-integration-catalog = [
     "everruns-integrations/browserless",
     "everruns-integrations/cursor",
     "everruns-integrations/daytona",
-    "everruns-integrations/docker",
     "everruns-integrations/duckduckgo",
     "everruns-integrations/e2b",
     "everruns-integrations/github",

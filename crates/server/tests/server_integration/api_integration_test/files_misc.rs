@@ -501,7 +501,7 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
     let policy =
         everruns_server::records::FeatureFlagPolicy::from_env(everruns_core::DeploymentGrade::Prod)
             .with_grade(
-                "machine_payments",
+                "skills",
                 everruns_server::records::FeatureFlagGrade::Internal,
             );
     let server = TestServer::in_memory_with_feature_policy(policy).await;
@@ -513,7 +513,7 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
         let refused: Value = server
             .patch(
                 &format!("/v1/orgs/{org_id}/feature-flags"),
-                json!({ "flags": { "machine_payments": wanted } }),
+                json!({ "flags": { "skills": wanted } }),
             )
             .await
             .assert_status(StatusCode::BAD_REQUEST)
@@ -533,5 +533,5 @@ async fn test_org_cannot_set_a_platform_managed_feature_flag() {
         .assert_status(StatusCode::OK)
         .json();
     let flags = settings["flags"].as_array().expect("flags array");
-    assert!(flags.iter().all(|flag| flag["name"] != "machine_payments"));
+    assert!(flags.iter().all(|flag| flag["name"] != "skills"));
 }

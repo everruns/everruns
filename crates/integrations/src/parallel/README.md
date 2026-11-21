@@ -33,9 +33,6 @@ assert_eq!(capability.id(), "parallel_search");
   (`mcp_parallel__web_search`, `mcp_parallel__web_fetch`)
 - Optional user-scoped Parallel API-key connection with bearer auth and an
   OAuth-compatible endpoint mode
-- A separate paid `parallel` capability (search/extract/task tools) that routes
-  spend through the core `PaymentAuthority`; gated behind the
-  `machine_payments` feature flag and off by default
 - Inventory-based Everruns integration registration
 
 ## Documentation

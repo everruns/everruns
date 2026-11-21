@@ -67,7 +67,6 @@ pub mod org_egress_allowlist;
 pub mod organization;
 pub mod outline;
 pub mod output_guardrail;
-pub mod payment;
 pub mod principal;
 pub mod resource_names;
 pub mod resource_ownership;
@@ -256,9 +255,6 @@ pub use self::org_egress_allowlist::{
 };
 pub use self::organization::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, org_public_id_from_internal,
-};
-pub use self::payment::{
-    MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,
 };
 pub use self::principal::{PrincipalKind, PrincipalSummary};
 pub use self::resource_ownership::{

@@ -92,4 +92,3 @@ the session's leased resources.
 
 - [Daytona](/capabilities/daytona/) and [E2B](/capabilities/e2b/), hosted sandbox providers
 - [Storage](/capabilities/session-storage/), where uploaded and downloaded files live
-- [Docker Container](/capabilities/docker/), an older experimental Docker capability

@@ -1,5 +1,4 @@
 export interface FeatureFlags {
-  docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;
   /** Behavioral evals. Organization adoption opt-in. */
@@ -17,10 +16,6 @@ export interface FeatureFlags {
   observers: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
   public_chat: boolean;
-  /** First-party Mistral AI provider. Off unless the deployment raises it. */
-  mistral?: boolean;
-  /** Machine-payment custody, policy, audit, and paid capability surfaces. */
-  machine_payments: boolean;
   /** Runs the org's sessions on the Everruns Engine. Platform rollout switch. */
   engine_hosting?: boolean;
   /**

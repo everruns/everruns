@@ -121,12 +121,6 @@ pub const CATALOG: &[CatalogEntry] = &[
         feature_flags: everruns_integrations::daytona::FEATURE_FLAGS,
     },
     CatalogEntry {
-        crate_name: "everruns-integrations::docker",
-        capabilities: everruns_integrations::docker::CAPABILITY_PLUGINS,
-        connectors: &[],
-        feature_flags: &[],
-    },
-    CatalogEntry {
         crate_name: "everruns-integrations::duckduckgo",
         capabilities: everruns_integrations::duckduckgo::CAPABILITY_PLUGINS,
         connectors: &[],
@@ -193,8 +187,7 @@ pub fn connector_plugins() -> impl Iterator<Item = &'static ConnectorPlugin> {
 /// `FEATURE_<NAME>` overrides, and organisation opt-in like every other flag,
 /// and the hosted platform lists these in its settings. Each integration crate
 /// owns its flags' default grades next to the plugins they gate. Plugins may
-/// also name a platform execution flag (`docker_capability`,
-/// `container_sandbox`, `machine_payments`), whose defaults live in
+/// also name a platform execution flag (`container_sandbox`), whose defaults live in
 /// `everruns_core::execution_features`.
 pub fn feature_flag_definitions() -> impl Iterator<Item = &'static FeatureFlagDefinition> {
     CATALOG.iter().flat_map(|entry| entry.feature_flags.iter())
@@ -327,7 +320,7 @@ mod tests {
     }
 
     /// Flags the platform defines in `everruns_core::execution_features`.
-    const PLATFORM_FLAGS: &[&str] = &["docker_capability", "container_sandbox", "machine_payments"];
+    const PLATFORM_FLAGS: &[&str] = &["container_sandbox"];
 
     fn named_flags() -> Vec<&'static str> {
         capability_plugins()

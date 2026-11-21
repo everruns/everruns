@@ -21,7 +21,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   voice: false,
   observers: false,
   public_chat: false,
-  machine_payments: false,
 };
 
 export interface FeatureFlagsContextValue {

@@ -738,7 +738,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 | `medium` | Logged but allowed for org members. | Any org member |
 | `high` | Can access external compute or resources, or perform unrestricted outbound network calls, or run scripted code execution. | Requires Admin role |
 
-High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
+High-risk built-in capabilities: `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
 
 See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/domains/agents/managed.rs` for `check_high_risk_caps()`, which every agent create, update, import, and example adoption runs.
 
@@ -1441,32 +1441,6 @@ Experimental capabilities are available in development environments only (`Deplo
   the canonical example of using the tool-filtering extension point to reshape
   the agent's action surface. See
   [lua-execution.md](lua-execution.md#code-mode-routing-capability-lua_code_mode).
-
-#### DockerContainer
-
-- **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `crates/integrations/src/docker/` (named in the hosted integration composition, see [architecture.md](../foundations/architecture.md#hosted-integration-composition))
-- **Purpose**: Run commands and manage files in a session-scoped Docker container
-- **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
-- **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`
-
-##### Design Decision: Session-Scoped Containers
-
-Each session gets its own isolated Docker container named `everruns-{session_id}`. This provides:
-- Isolation between sessions
-- Clean state on session creation
-- Automatic cleanup capability via `docker_stop`
-
-##### Design Decision: Lazy Container Start
-
-Containers are not started until the first tool use (`docker_exec`, `docker_read_file`, or `docker_write_file`). This avoids resource waste for sessions that don't use container tools.
-
-##### Design Decision: Dev-Only Availability
-
-This capability is experimental and only available in development environments due to:
-- Security implications of host networking
-- Resource management considerations
-- API stability concerns
 
 ### Message Filters
 

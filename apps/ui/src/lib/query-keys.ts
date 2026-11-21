@@ -244,12 +244,6 @@ export const queryKeys = {
     detail: (key: string) => ["user-preferences", key] as const,
   },
 
-  payments: {
-    all: ["payments"] as const,
-    accounts: (params: Record<string, unknown> = {}) => ["payments", "accounts", params] as const,
-    policies: (params: Record<string, unknown> = {}) => ["payments", "policies", params] as const,
-    attempts: (params: Record<string, unknown> = {}) => ["payments", "attempts", params] as const,
-  },
 
   // Session schedule queries
   sessionSchedules: {

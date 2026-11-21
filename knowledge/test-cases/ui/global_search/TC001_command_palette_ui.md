@@ -34,7 +34,7 @@ Verify the Cmd+K / Ctrl+K command palette opens, shows navigation pages by defau
 10. Select that organisation — verify the current organisation switches without going to settings
 11. Search for Playground, Exposures, Environments, Slack workspaces, and Health; open each result and verify its destination.
 12. Search "settings" and verify all available Settings destinations remain discoverable, including personal access tokens.
-13. Disable optional modules and machine payments; verify they disappear from navigation results.
+13. Disable optional modules; verify they disappear from navigation results.
 14. Test as an organization member: Approvals is hidden; denied Durable Execution pages are hidden. In production, Dev Tools is hidden.
 15. Repeat opening, searching, arrow navigation, selection, and dismissal at 390px width and in dark mode.
 

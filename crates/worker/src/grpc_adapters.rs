@@ -650,15 +650,6 @@ pub struct GrpcBudgetChecker {
     agent_id: Option<String>,
 }
 
-/// Payment authority that forwards paid capability requests to the control plane.
-#[derive(Clone)]
-pub struct GrpcPaymentAuthority {
-    client: GrpcClient,
-    org_id: i64,
-    agent_id: Option<String>,
-    input_message_id: Option<Uuid>,
-}
-
 /// Session-creation authority backed by the control-plane permission resolver.
 #[derive(Clone)]
 pub struct GrpcSessionCreationAuthority {
@@ -674,22 +665,6 @@ impl GrpcBudgetChecker {
             client,
             org_id,
             agent_id: None,
-        }
-    }
-
-    pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
-        self.agent_id = agent_id;
-        self
-    }
-}
-
-impl GrpcPaymentAuthority {
-    pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self {
-            client,
-            org_id,
-            agent_id: None,
-            input_message_id: None,
         }
     }
 
@@ -1728,9 +1703,6 @@ impl crate::core::tool_execution::BudgetChecker for GrpcBudgetChecker {
         })
     }
 }
-
-#[path = "grpc_adapters/payment_authority.rs"]
-mod payment_authority;
 
 #[async_trait]
 impl crate::core::delegation_services::SessionCreationAuthority for GrpcSessionCreationAuthority {

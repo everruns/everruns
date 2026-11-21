@@ -379,7 +379,6 @@ impl CommandMeta {
             "memories" => Some("memory"),
             "plugins" => Some("plugins"),
             "observers" => Some("observers"),
-            "payments" => Some("machine_payments"),
             _ => None,
         }
     }

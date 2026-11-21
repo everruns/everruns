@@ -137,35 +137,6 @@ pub trait BudgetChecker: Send + Sync {
     ) -> Result<crate::runtime::budget::BudgetToolResponse>;
 }
 
-// ============================================================================
-// PaymentAuthority - For capability-internal machine payments
-// ============================================================================
-
-/// Internal authority for paid capability operations.
-///
-/// Capabilities call this with fixed, typed requests. The model never receives a
-/// generic paid HTTP tool, wallet credentials, or payment payloads.
-#[async_trait]
-pub trait PaymentAuthority: Send + Sync {
-    /// Scope wallet resolution to the persisted input that caused execution.
-    ///
-    /// A human user's wallet is only usable from an interactive turn, and only
-    /// the host's record of that input can prove one (EVE-1187). Authorities
-    /// that are never bound resolve as unattended.
-    fn for_execution(
-        &self,
-        _input_message_id: uuid::Uuid,
-    ) -> Option<std::sync::Arc<dyn PaymentAuthority>> {
-        None
-    }
-
-    async fn execute_machine_payment(
-        &self,
-        session_id: SessionId,
-        request: crate::runtime::payment::MachinePaymentRequest,
-    ) -> Result<crate::runtime::payment::MachinePaymentResponse>;
-}
-
 /// Per-org gate on outbound tool execution.
 ///
 /// Returns `true` if the call is within the per-org budget, `false` if the

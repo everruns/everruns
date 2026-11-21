@@ -621,10 +621,8 @@ mod tests {
 
     fn all_flags() -> crate::records::FeatureFlags {
         crate::records::FeatureFlags {
-            docker_capability: true,
             container_sandbox: true,
             lua: true,
-            mistral: false,
             evals: true,
             extractions: true,
             skills: true,
@@ -633,7 +631,6 @@ mod tests {
             voice: true,
             observers: true,
             public_chat: true,
-            machine_payments: true,
             engine_hosting: false,
             integrations: Default::default(),
         }
@@ -643,10 +640,8 @@ mod tests {
         discover(
             arguments,
             &crate::records::FeatureFlags {
-                docker_capability: true,
                 container_sandbox: true,
                 lua: true,
-                mistral: false,
                 evals: true,
                 extractions: true,
                 skills: true,
@@ -655,7 +650,6 @@ mod tests {
                 voice: true,
                 observers: true,
                 public_chat: true,
-                machine_payments: true,
                 engine_hosting: false,
                 integrations: Default::default(),
             },

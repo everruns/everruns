@@ -77,7 +77,6 @@ Cloud and container sandbox environments for isolated code execution.
 | [Modal](/integrations/modal/) | `modal` | 8 |
 | [boxd](/integrations/boxd/) | `boxd` | 6 |
 | [Container Sandbox](/capabilities/container-sandbox/) | `container_sandbox` | 8 (needs `FEATURE_CONTAINER_SANDBOX=prod`) |
-| [Docker Container](/capabilities/docker/) | `docker_container` | 5 (off by default, needs `FEATURE_DOCKER_CAPABILITY` rollout grade) |
 
 ### Code navigation
 

@@ -96,7 +96,7 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
     (
         "operations-billing",
         "Operations & billing",
-        "Operate durable execution, schedules, sandbox infrastructure, budgets, payments and audit logs.",
+        "Operate durable execution, schedules, sandbox infrastructure, budgets and audit logs.",
         &[
             "durable",
             "monitoring",
@@ -106,7 +106,6 @@ const GROUPS: &[(&str, &str, &str, &[&str])] = &[
             "sandbox-templates",
             "sandboxes",
             "budgets",
-            "payments",
             "task-webhooks",
             "audit_logs",
             "commands",
@@ -261,14 +260,12 @@ fn apply(spec: &mut Value) {
             let internal = tag == "durable"
                 || path.starts_with("/v1/reports/admin/")
                 || path == "/v1/reports/projector/run";
-            let experimental = tag == "payments";
             operation["x-docs"] = json!({
                 "group": group,
                 // No current API has an announced stable compatibility guarantee.
-                "support": if experimental { "experimental" } else { "preview" },
+                "support": "preview",
                 "audience": if internal { "internal" } else { "public" },
-                "availability": if experimental { "Requires machine_payments; disabled by default" }
-                    else if tag == "evals" { "Requires the evals feature flag" }
+                "availability": if tag == "evals" { "Requires the evals feature flag" }
                     else if tag == "extractions" { "Requires an organization-owned provider and an enabled extraction model" }
                     else { "Everruns Cloud and self-hosted Platform" },
             });

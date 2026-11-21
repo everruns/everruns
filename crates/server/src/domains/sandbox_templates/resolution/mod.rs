@@ -27,7 +27,6 @@ const COMPUTE_CAPABILITY_IDS: &[&str] = &[
     "container_sandbox",
     "daytona",
     "e2b",
-    "docker_container",
     "bashkit_shell",
 ];
 
