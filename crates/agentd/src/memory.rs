@@ -44,12 +44,25 @@ use crate::providers::OrgMaterial;
 
 /// A session's Memory as its control plane gives it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Memory {
+pub struct SessionMemory {
     /// The mounts it has ([`MOUNTS`]).
     pub mounts: Vec<String>,
     /// The control plane's files server they live on
     /// ([`crate::platform::Platform::servers`]).
     pub server: Option<String>,
+}
+
+impl SessionMemory {
+    /// A session's Memory, from its platform record.
+    pub fn of(platform: &crate::platform::Platform) -> Self {
+        Self {
+            mounts: platform.memory.clone(),
+            server: platform
+                .servers
+                .get(everruns_contracts::runtime::capabilities::injected::MEMORY_FILES)
+                .cloned(),
+        }
+    }
 }
 
 /// The Memory mount points a control plane may give a session.
@@ -78,8 +91,11 @@ pub(crate) fn attach(
     material: Option<&std::sync::Weak<dyn OrgMaterial>>,
     lookups: Option<OrgLookups>,
     session: SessionId,
-    memory: &Memory,
+    memory: &SessionMemory,
 ) -> HostBackends {
+    if memory.mounts.is_empty() {
+        return backends;
+    }
     let via = match &memory.server {
         Some(url) => {
             crate::mcp::ControllerServer::for_session(material, session, MEMORY_FILES, url)

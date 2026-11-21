@@ -128,7 +128,7 @@ fn mounted(cp: &Arc<ControlPlane>, session: SessionId) -> MountFs {
         Some(&weak),
         lookups,
         session,
-        &super::Memory {
+        &super::SessionMemory {
             mounts: vec![
                 "/memory/user".into(),
                 "/memory/shared".into(),
@@ -464,7 +464,7 @@ mod files_server {
             Some(&weak),
             None,
             session,
-            &super::super::Memory {
+            &super::super::SessionMemory {
                 mounts: vec!["/memory/user".into(), "/memory/shared".into()],
                 server: Some(URL.into()),
             },

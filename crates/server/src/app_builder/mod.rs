@@ -877,8 +877,6 @@ impl ServerAppBuilder {
             mcp_event_triggers: mcp_event_triggers.clone(),
             egress: host_composition.egress_service(),
         });
-        let injected_host_calls = channel_states.injected.host_calls();
-        let (channel_api_routes, channel_root_routes) = channel_states.into_routes();
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
             event_service.clone(),
@@ -1071,9 +1069,7 @@ impl ServerAppBuilder {
             None => mcp_endpoint_state,
         };
         let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
-        injected_host_calls.bind(Arc::new(api::data_plane::InjectedHostCalls(
-            api_state.clone(),
-        )));
+        let (channel_api_routes, channel_root_routes) = channel_states.into_routes(&api_state);
         let agent_source_ctx = api::mcp_endpoint::domain_context(
             everruns_core::Caller::internal(0),
             &mcp_endpoint_state,

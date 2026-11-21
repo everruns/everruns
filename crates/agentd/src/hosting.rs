@@ -40,8 +40,11 @@ use everruns_core::{
 use serde_json::Value;
 
 use crate::authority::{ProactiveAttempt, WriteOp};
+use crate::mcp::ControllerServer;
+use crate::memory::SessionMemory;
 use crate::node::{Node, now_ms};
 use crate::state::{Checkpoint, Command, Response, SessionState};
+use crate::user_mcp;
 
 /// `backends` with the session's SQL databases for the `sql_database`
 /// tools (`hosting_sqldb.rs`), on every cell, with or without a control
@@ -473,32 +476,20 @@ impl SessionHosting for RaftHosting {
         let backends = crate::subagents::attach(session, backends, Port(self.inner.clone())).await;
         // The session's Memory, in the control plane (`memory.rs`), and the
         // read-only files its capabilities bring (`capability_files.rs`).
-        let (memory, definition, person_mcp) = self
+        let (memory, definition, servers) = self
             .inner
             .read(session, |s| {
                 (
-                    memory_of(&s.platform),
+                    SessionMemory::of(&s.platform),
                     s.definition.clone(),
-                    s.platform
-                        .servers
-                        .get(everruns_contracts::runtime::capabilities::injected::PERSON_MCP)
-                        .cloned(),
+                    s.platform.servers.clone(),
                 )
             })
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
-        let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
-        let backends = if memory.mounts.is_empty() {
-            backends
-        } else {
-            crate::memory::attach(
-                backends,
-                self.inner.material.get(),
-                lookups.clone(),
-                session,
-                &memory,
-            )
-        };
+        let material = self.inner.material.get();
+        let lookups = crate::lookups::org_lookups(material, session);
+        let backends = crate::memory::attach(backends, material, lookups.clone(), session, &memory);
         // Decision (parity, step 10): a session's resources (fleet
         // sandboxes, activated skills) and the leases of what its tools
         // started at a provider stay in the control plane, as for a v1
@@ -518,15 +509,10 @@ impl SessionHosting for RaftHosting {
             ));
         }
         // The person's own MCP servers and the session's MCP records (`user_mcp.rs`).
-        let person_mcp = person_mcp.and_then(|url| {
-            crate::mcp::ControllerServer::for_session(
-                self.inner.material.get(),
-                session,
-                everruns_contracts::runtime::capabilities::injected::PERSON_MCP,
-                &url,
-            )
+        let person_mcp = servers.get(user_mcp::SERVER).and_then(|url| {
+            ControllerServer::for_session(material, session, user_mcp::SERVER, url)
         });
-        let backends = crate::user_mcp::attach(
+        let backends = user_mcp::attach(
             backends,
             lookups,
             person_mcp,
@@ -1423,16 +1409,10 @@ impl SessionEpoch for Ports {
         if self.epoch.is_none()
             && let Some(memory) = self
                 .inner
-                .peek(self.session, |s| memory_of(&s.platform))
-                .filter(|memory| !memory.mounts.is_empty())
+                .peek(self.session, |s| SessionMemory::of(&s.platform))
         {
-            backends = crate::memory::attach(
-                backends,
-                self.inner.material.get(),
-                lookups,
-                self.session,
-                &memory,
-            );
+            let material = self.inner.material.get();
+            backends = crate::memory::attach(backends, material, lookups, self.session, &memory);
         }
         backends
     }
@@ -1506,17 +1486,6 @@ pub mod sqldb;
 #[path = "hosting_actors.rs"]
 mod actors;
 use actors::scopeguard;
-
-/// A session's Memory, from its platform record.
-fn memory_of(platform: &crate::platform::Platform) -> crate::memory::Memory {
-    crate::memory::Memory {
-        mounts: platform.memory.clone(),
-        server: platform
-            .servers
-            .get(everruns_contracts::runtime::capabilities::injected::MEMORY_FILES)
-            .cloned(),
-    }
-}
 
 #[cfg(test)]
 mod org_tests {

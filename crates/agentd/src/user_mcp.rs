@@ -108,6 +108,9 @@ impl Via {
     }
 }
 
+/// The control plane's server for the person's MCP servers.
+pub(crate) use everruns_contracts::runtime::capabilities::injected::PERSON_MCP as SERVER;
+
 /// How many sessions' turns are kept before the record is cleared.
 pub const MAX_SESSIONS: usize = 4096;
 
