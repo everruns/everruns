@@ -90,6 +90,7 @@
     "shell_code_mode": "runs",
     "skills": "runs",
     "slack": "runs",
+    "slack_model_view": "runs",
     "soft_approval": "runs",
     "stateless_todo_list": "runs",
     "subagents": "runs",
