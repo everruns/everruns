@@ -105,6 +105,7 @@ everruns orgs update [OPTIONS] --org <org>
 | `--default-harness-name <DEFAULT_HARNESS_NAME>` | Alternative to `default_harness_id` — looked up by stable name within the org. Mutually exclu... |
 | `--default-model-id <DEFAULT_MODEL_ID>` | Default LLM model for this organization. |
 | `--default-provider-per-service <DEFAULT_PROVIDER_PER_SERVICE>` | Org-level default provider per service (EVE-569). |
+| `--monthly-session-limit <MONTHLY_SESSION_LIMIT>` | Maximum sessions this organization can create per UTC calendar month. |
 | `--name <NAME>` | The display name of the organization. |
 | `--org <ORG>` | Required. |
 | `--research-model-id <RESEARCH_MODEL_ID>` | Research model for agents set to "Organization research model". |

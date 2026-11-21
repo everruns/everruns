@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-21
+
+- Replace the lifetime session count cap with an organization-configurable monthly creation allowance. [Resource Limits](execution/apis.md#resource-limits).
+
 ## 2026-11-20
 
 - [Local setup and Kubernetes](operations/local-setup.md): enabling Helm Ingress routes directly to the app Services by default. The UI retains Markdown discovery at the root. The CLI saves the public URL even when it signs in through a temporary port-forward.

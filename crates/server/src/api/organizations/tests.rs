@@ -166,17 +166,16 @@ async fn organization_settings_require_database_admin_role() {
         .await
         .unwrap();
 
-    for field in [
-        "default_model_id",
-        "small_model_id",
-        "chat_model_id",
-        "research_model_id",
+    for patch in [
+        r#"{"default_model_id":"model_01933b5a00007000800000000000030b"}"#,
+        r#"{"small_model_id":"model_01933b5a00007000800000000000030b"}"#,
+        r#"{"chat_model_id":"model_01933b5a00007000800000000000030b"}"#,
+        r#"{"research_model_id":"model_01933b5a00007000800000000000030b"}"#,
+        r#"{"monthly_session_limit":100000}"#,
     ] {
         let response = app
             .clone()
-            .oneshot(update_default_org_json_request(
-                serde_json::json!({(field): "model_01933b5a00007000800000000000030b"}).to_string(),
-            ))
+            .oneshot(update_default_org_json_request(patch))
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
@@ -186,6 +185,36 @@ async fn organization_settings_require_database_admin_role() {
             json["detail"],
             "Access denied: policy 'organization.manage' requires 'org:settings:manage'"
         );
+    }
+}
+
+#[tokio::test]
+async fn organization_monthly_session_limit_can_be_set_only_within_range() {
+    let (app, db, user_id) = create_org_app(None).await;
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "admin")
+        .await
+        .unwrap();
+
+    for (body, expected_limit) in [
+        (r#"{}"#, Some(10_000)),
+        (r#"{"monthly_session_limit":100000}"#, Some(100_000)),
+        (r#"{"monthly_session_limit":100001}"#, None),
+        (r#"{"monthly_session_limit":0}"#, None),
+        (r#"{}"#, Some(100_000)),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(update_default_org_json_request(body))
+            .await
+            .unwrap();
+        if let Some(limit) = expected_limit {
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(json["monthly_session_limit"], limit);
+        } else {
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
     }
 }
 

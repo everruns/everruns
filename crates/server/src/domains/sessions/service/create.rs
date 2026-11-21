@@ -13,7 +13,6 @@ impl SessionService {
             db,
             session_sandbox_service: None,
             caps: OrgCaps::from_env(),
-            resource_limits: ResourceLimitsConfig::from_env(),
         }
     }
 
@@ -26,17 +25,11 @@ impl SessionService {
             db,
             session_sandbox_service: None,
             caps: OrgCaps::from_env(),
-            resource_limits: ResourceLimitsConfig::from_env(),
         }
     }
 
     pub fn with_caps(mut self, caps: OrgCaps) -> Self {
         self.caps = caps;
-        self
-    }
-
-    pub fn with_resource_limits(mut self, resource_limits: ResourceLimitsConfig) -> Self {
-        self.resource_limits = resource_limits;
         self
     }
 
@@ -213,16 +206,6 @@ impl SessionService {
         let harness_id = HarnessId::from_uuid(harness_id);
         let agent_id = agent_internal_id.map(AgentId::from_uuid);
 
-        // Enforce the absolute per-org live-session cap in the shared service
-        // path so app-channel ingress cannot bypass the public command check.
-        let max_sessions = self.resource_limits.max_sessions_per_org;
-        let sessions = self.db.count_sessions_for_org(org_id).await?;
-        if sessions >= max_sessions {
-            return Err(ResourceLimitError::new(format!(
-                "Session limit reached (max {max_sessions})"
-            ))
-            .into());
-        }
         if req.seed != SessionSeedMode::Fresh && req.forked_from_session_id.is_none() {
             return Err(BadRequestError::new("seed requires forked_from_session_id").into());
         }

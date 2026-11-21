@@ -685,6 +685,10 @@ async fn build_organization_response(
             crate::domains::organizations::research_model::effective_research_model_id(db, org_id)
                 .await
                 .log_internal_error_json("resolve research model")?,
+        monthly_session_limit: settings.as_ref().map_or(
+            crate::domains::organizations::types::DEFAULT_MONTHLY_SESSION_LIMIT,
+            |s| s.monthly_session_limit,
+        ),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings

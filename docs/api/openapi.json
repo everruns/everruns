@@ -59693,6 +59693,7 @@
                 "system_decisions",
                 "web_search_defaults",
                 "background_limits",
+                "monthly_session_limit",
                 "self_healing",
                 "tool_approval_policy",
                 "created_at",
@@ -59771,6 +59772,13 @@
                 "id": {
                   "type": "string",
                   "description": "External identifier (org_<32-hex-chars>)"
+                },
+                "monthly_session_limit": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "Maximum sessions this organization can create per UTC calendar month.",
+                  "maximum": 100000,
+                  "minimum": 1
                 },
                 "name": {
                   "type": "string",
@@ -67090,6 +67098,7 @@
           "system_decisions",
           "web_search_defaults",
           "background_limits",
+          "monthly_session_limit",
           "self_healing",
           "tool_approval_policy",
           "created_at",
@@ -67168,6 +67177,13 @@
           "id": {
             "type": "string",
             "description": "External identifier (org_<32-hex-chars>)"
+          },
+          "monthly_session_limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum sessions this organization can create per UTC calendar month.",
+            "maximum": 100000,
+            "minimum": 1
           },
           "name": {
             "type": "string",
@@ -85653,6 +85669,16 @@
             "propertyNames": {
               "type": "string"
             }
+          },
+          "monthly_session_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum sessions this organization can create per UTC calendar month.",
+            "maximum": 100000,
+            "minimum": 1
           },
           "name": {
             "type": [

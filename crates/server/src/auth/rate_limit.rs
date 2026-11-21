@@ -476,7 +476,7 @@ pub async fn api_rate_limit_middleware(
 // Decision: Keyed by org_id for session creation, by user UUID
 //   for schedule creation and org creation.
 // Decision: Fail-open on Valkey errors — same rationale as ApiRateLimiter.
-//   The DB-level resource caps (max_orgs_per_user, max_sessions_per_org) still
+//   The organization and monthly session creation caps still
 //   bound total resource consumption; the rate limiter adds a per-minute velocity
 //   cap on top.
 // Decision: Configurable via env vars; defaults are generous enough to not
