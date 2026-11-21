@@ -385,6 +385,42 @@ impl DaytonaClient {
             .await
     }
 
+    /// Copy a sandbox (`POST /sandbox/{id}/fork`). Daytona forks VM sandboxes
+    /// only; a container sandbox answers 422.
+    pub async fn fork_sandbox(&self, sandbox_id: &str, name: &str) -> Result<SandboxInfo, String> {
+        let sandbox = self
+            .management
+            .fork_sandbox()
+            .sandbox_id_or_name(sandbox_id)
+            .body(management::types::ForkSandbox {
+                name: Some(name.to_string()),
+            })
+            .send()
+            .await
+            .or_api_error(DAYTONA)
+            .await?;
+        Ok(sandbox_info(sandbox))
+    }
+
+    /// Replace every label on a sandbox.
+    pub async fn replace_labels(
+        &self,
+        sandbox_id: &str,
+        labels: std::collections::HashMap<String, String>,
+    ) -> Result<(), String> {
+        self.management
+            .replace_labels()
+            .sandbox_id_or_name(sandbox_id)
+            .body(management::types::SandboxLabels {
+                labels: Some(labels),
+            })
+            .send()
+            .await
+            .or_api_error_ignoring_body(DAYTONA)
+            .await?;
+        Ok(())
+    }
+
     /// Bake the stopped sandbox's filesystem, never its memory or live sessions.
     pub async fn create_sandbox_snapshot(
         &self,

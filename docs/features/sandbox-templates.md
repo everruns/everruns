@@ -267,6 +267,34 @@ in the desktop settings to turn recording off:
 
 E2B desktops are not recorded yet.
 
+## Copy a Sandbox into a fork or subagent
+
+A forked Session or a subagent normally gets its own new Sandbox, built from its copy of the
+workspace files. To skip reinstalling packages and rebuilding, ask for a copy of the source
+Session's running Sandbox instead:
+
+```bash
+# Fork a Session together with its Sandbox
+curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/fork \
+  -H "Authorization: Bearer $EVERRUNS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"sandbox": "fork"}'
+```
+
+An agent does the same for a subagent with `spawn_agent` and `"sandbox": "fork"`. The copy is made
+when the new Session first uses its Sandbox, and it is its own machine from then on: changes in one
+never reach the other.
+
+| Provider | What is copied |
+|---|---|
+| E2B | Any running Sandbox: files, memory and running processes. The source keeps running, but its open connections drop. |
+| Daytona | VM Sandboxes only (a `daytona-vm-*` or custom `LINUX_VM` snapshot), memory included. A container Sandbox, or one with a recovery volume, starts fresh. |
+| Others | Nothing: the new Session starts fresh. |
+
+A copy that cannot be made never fails the turn: the new Session starts fresh, as it would without
+the option. The copy reflects the Sandbox as it is when the new Session needs it, so a fork from an
+earlier message does not rewind the machine.
+
 ## Recovery after compute loss
 
 A `checkpointed` Sandbox separates durable workspace state from replaceable physical compute.

@@ -533,6 +533,26 @@ pub trait SessionSandboxProvider: Send + Sync {
         config: &SessionSandboxConfig,
     ) -> Result<SessionSandboxInstance, ToolExecutionResult>;
 
+    /// Create this session's sandbox as a copy of `source`, the live sandbox
+    /// of the session it was forked or spawned from, on the same account.
+    ///
+    /// `Ok(None)` means this provider, or this particular sandbox, cannot be
+    /// copied; the caller then creates a fresh sandbox and seeds it from the
+    /// workspace as usual. An `Err` is treated the same way after it is
+    /// logged: a copy is an optimization, never a reason for a turn to fail.
+    ///
+    /// The copy belongs to this session from the start: its own name, labels,
+    /// lease, egress credential and recovery state. Providers keep the default
+    /// when they have no copy primitive.
+    async fn fork(
+        &self,
+        _context: &dyn SessionSandboxContext,
+        _config: &SessionSandboxConfig,
+        _source: &SessionSandboxInstance,
+    ) -> Result<Option<SessionSandboxInstance>, ToolExecutionResult> {
+        Ok(None)
+    }
+
     async fn resume(
         &self,
         context: &dyn SessionSandboxContext,

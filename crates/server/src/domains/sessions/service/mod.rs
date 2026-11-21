@@ -108,6 +108,8 @@ pub struct ForkOverrides {
     pub system_prompt: Option<String>,
     /// Message id to branch from; history after its turn is not copied.
     pub up_to_message_id: Option<String>,
+    /// Start the fork from a copy of the parent's sandbox.
+    pub sandbox: crate::domains::sessions::types::ForkSandbox,
 }
 
 /// Session counts grouped by status.

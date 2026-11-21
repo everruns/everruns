@@ -54057,6 +54057,14 @@
           "year"
         ]
       },
+      "ForkSandbox": {
+        "type": "string",
+        "description": "How a forked session's sandbox starts.",
+        "enum": [
+          "fresh",
+          "fork"
+        ]
+      },
       "ForkSessionRequest": {
         "type": "object",
         "description": "Request to fork a session. Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
@@ -54092,6 +54100,10 @@
             ],
             "description": "Override the LLM model for the fork.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "sandbox": {
+            "$ref": "#/components/schemas/ForkSandbox",
+            "description": "How the fork's sandbox starts. `fresh` (default) creates a new sandbox\nfrom the copied workspace files. `fork` copies the parent's running\nsandbox, with installed packages, build output and (on E2B) running\nprocesses, when its first command runs. Where the provider cannot\ncopy that sandbox, the fork starts fresh."
           },
           "system_prompt": {
             "type": [

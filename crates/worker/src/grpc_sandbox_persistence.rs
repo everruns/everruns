@@ -259,6 +259,45 @@ impl SandboxStateStore for GrpcSandboxPersistenceStore {
             .and_then(Value::as_bool)
             .ok_or_else(|| SandboxStateError::Storage("Missing delete result".into()))
     }
+
+    async fn request_fork(
+        &self,
+        session_id: SessionId,
+        source_session_id: SessionId,
+    ) -> Result<bool, SandboxStateError> {
+        let value = self
+            .call(
+                "request_fork",
+                json!({
+                    "session_id": session_id.uuid(),
+                    "source_session_id": source_session_id.uuid(),
+                }),
+            )
+            .await
+            .map_err(RemoteError::into_state)?;
+        value
+            .get("recorded")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| SandboxStateError::Storage("Missing fork request result".into()))
+    }
+
+    async fn take_fork_source(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<SessionId>, SandboxStateError> {
+        let value = self
+            .call("take_fork_source", json!({"session_id": session_id.uuid()}))
+            .await
+            .map_err(RemoteError::into_state)?;
+        match value.get("source_session_id") {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::String(raw)) => raw
+                .parse::<uuid::Uuid>()
+                .map(|id| Some(SessionId::from_uuid(id)))
+                .map_err(|error| SandboxStateError::Storage(error.to_string())),
+            Some(_) => Err(SandboxStateError::Storage("Invalid fork source".into())),
+        }
+    }
 }
 
 #[async_trait]

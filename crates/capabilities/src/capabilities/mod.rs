@@ -42,6 +42,7 @@ pub mod session_sql_database;
 pub mod session_tasks;
 pub mod slack;
 mod subagent_helper_models;
+mod subagent_spawn_args;
 pub mod subagents;
 pub mod user_hooks;
 pub mod user_mcp;
