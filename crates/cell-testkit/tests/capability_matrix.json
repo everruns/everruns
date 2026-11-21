@@ -182,6 +182,9 @@
       "session_resource_status",
       "session_resources_list"
     ],
+    "session": [
+      "session_spend"
+    ],
     "session_sandbox": [
       "leased_resource_release",
       "leased_resource_upsert"

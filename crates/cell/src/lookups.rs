@@ -50,6 +50,7 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::host_calls::{HostCallAnswer, SLACK_ACTION, TURN_CALLS, by_command};
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
 use everruns_contracts::runtime::organization::org_public_id_from_internal;
+use everruns_contracts::runtime::session_spend::SessionSpendReaderExt;
 use everruns_contracts::runtime::web_search::WebSearchOrgSettings;
 use everruns_contracts::runtime::{OrgEgressAllowlist, OrgEgressGrant};
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
@@ -64,7 +65,8 @@ use everruns_core::connection_services::{
 use everruns_core::host::HostBackends;
 use everruns_internal_protocol::commands::knowledge::CommandKnowledgeRuntime;
 use everruns_internal_protocol::commands::{
-    CommandConnectionResolver, CommandOrgEgressAllowlist, InternalCommandTransport, is_bad_request,
+    CommandConnectionResolver, CommandOrgEgressAllowlist, CommandSessionSpendReader,
+    InternalCommandTransport, is_bad_request,
 };
 use everruns_internal_protocol::proto;
 use serde_json::{Value, json};
@@ -253,6 +255,12 @@ pub fn attach(
         let knowledge =
             KnowledgeRuntimeExt(Arc::new(CommandKnowledgeRuntime::new(lookups.clone())));
         let knowledge = Arc::new(knowledge);
+        // `get_session_info`'s spend: the control plane prices it (price
+        // tables, the org's rates, sandbox spans), reading the model calls
+        // from this cell's log.
+        let spend = Arc::new(SessionSpendReaderExt(Arc::new(
+            CommandSessionSpendReader::new(lookups.clone()),
+        )));
         let embedder = backends.tool_context_extensions_factory.take();
         backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
             let mut extensions = embedder
@@ -260,6 +268,7 @@ pub fn attach(
                 .map(|factory| factory(org, session))
                 .unwrap_or_default();
             extensions.insert(knowledge.clone());
+            extensions.insert(spend.clone());
             extensions.insert(Arc::new(PoppyInvokerExt(Arc::new(CellPoppy {
                 lookups: lookups.clone(),
                 session,

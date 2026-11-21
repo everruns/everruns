@@ -2,7 +2,17 @@
 //!
 //! Provides session metadata tools:
 //! - `write_session_title`: update session title
-//! - `get_session_info`: return session id, title, agent name, and cumulative usage
+//! - `get_session_info`: return session id, title, agent name, cumulative
+//!   usage and, where the host can price it, what the session spent in
+//!   dollars (`spend`)
+//!
+//! Decisions:
+//! - Spend is the session's own: its model calls, background calls, images,
+//!   sandboxes and subagents. The host never returns org totals, budgets,
+//!   credits or the org's price list, so the agent may quote the figure.
+//! - A host without a spend reader (or one that fails) returns
+//!   `spend: null` and the tool still succeeds: spend is extra, not a
+//!   reason to lose the session's metadata.
 
 use crate::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::events::{EventContext, EventRequest, SessionTitleUpdatedData, TokenUsage};
@@ -14,6 +24,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::runtime::session_spend::SessionSpendReaderExt;
 use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
@@ -119,6 +130,10 @@ pub struct SessionCapability;
 impl Capability for SessionCapability {
     fn id(&self) -> &str {
         SESSION_CAPABILITY_ID
+    }
+
+    fn host_calls(&self) -> &'static [&'static str] {
+        everruns_contracts::host_calls::SESSION_INFO
     }
 
     fn name(&self) -> &str {
@@ -320,7 +335,7 @@ impl Tool for GetSessionInfoTool {
     }
 
     fn description(&self) -> &str {
-        "Get current session metadata: id, title, locale, agent name, and cumulative token usage."
+        "Get current session metadata: id, title, locale, agent name, cumulative token usage, and what this session has spent so far in USD (`spend`: model calls, background calls, images, sandboxes, subagents; `current_turn_usd` is this turn's share). Spend covers only this session and its subagents, so it is fine to report, but leave provider and account names out of public posts. `spend` is null when the host cannot price it."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -370,12 +385,27 @@ impl Tool for GetSessionInfoTool {
             None
         };
 
+        let spend = match context.extensions.get::<SessionSpendReaderExt>() {
+            Some(reader) => {
+                let turn = context.event_context.as_ref().and_then(|c| c.turn_id);
+                match reader.0.session_spend(session.id, turn).await {
+                    Ok(spend) => spend.and_then(|spend| serde_json::to_value(spend).ok()),
+                    Err(error) => {
+                        tracing::warn!(session_id = %session.id, %error, "session spend read failed");
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+
         ToolExecutionResult::success(json!({
             "session_id": session.id.to_string(),
             "title": session.title,
             "locale": session.locale,
             "agent_name": agent_name,
             "usage": session.usage.as_ref().map(usage_json),
+            "spend": spend,
         }))
     }
 }
@@ -667,5 +697,94 @@ mod tests {
             }
             _ => panic!("expected success"),
         }
+    }
+
+    type Asked = Arc<Mutex<Option<(SessionId, Option<TurnId>)>>>;
+
+    struct FixedSpend {
+        asked: Asked,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl everruns_contracts::runtime::session_spend::SessionSpendReader for FixedSpend {
+        async fn session_spend(
+            &self,
+            session: SessionId,
+            turn: Option<TurnId>,
+        ) -> Result<Option<everruns_contracts::runtime::session_spend::SessionSpend>> {
+            use everruns_contracts::runtime::session_spend::{
+                SpendCall, SpendInputs, SubagentSpend, summarize,
+            };
+            *self.asked.lock().unwrap() = Some((session, turn));
+            if self.fail {
+                return Err(AgentLoopError::tool("spend unavailable"));
+            }
+            let inputs = SpendInputs {
+                calls: vec![SpendCall {
+                    turn_id: turn.map(|t| t.uuid()),
+                    actual_cost_usd: Some(0.42),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            Ok(Some(summarize(
+                session.to_string(),
+                &inputs,
+                vec![],
+                SubagentSpend::default(),
+                turn.map(|t| t.uuid()),
+            )))
+        }
+    }
+
+    fn spend_context(fail: bool) -> (ToolContext, Asked, TurnId) {
+        let session = build_session(None);
+        let session_id = session.id;
+        let asked = Arc::new(Mutex::new(None));
+        let turn_id = TurnId::new();
+        let mut context =
+            ToolContext::new(session_id).with_session_store(Arc::new(MockSessionStore {
+                session: Arc::new(Mutex::new(Some(session))),
+            }));
+        context
+            .extensions
+            .insert(Arc::new(SessionSpendReaderExt(Arc::new(FixedSpend {
+                asked: asked.clone(),
+                fail,
+            }))));
+        context.event_context = Some(EventContext::turn(turn_id, MessageId::new()));
+        (context, asked, turn_id)
+    }
+
+    #[tokio::test]
+    async fn get_session_info_returns_the_hosts_spend_for_the_turn() {
+        let (context, asked, turn_id) = spend_context(false);
+        let result = GetSessionInfoTool
+            .execute_with_context(json!({}), &context)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        assert_eq!(value["spend"]["total_usd"], 0.42);
+        assert_eq!(value["spend"]["current_turn_usd"], 0.42);
+        assert_eq!(value["spend"]["basis"], "provider_reported");
+        assert_eq!(
+            *asked.lock().unwrap(),
+            Some((context.session_id, Some(turn_id)))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_spend_read_keeps_the_session_info() {
+        let (context, _, _) = spend_context(true);
+        let result = GetSessionInfoTool
+            .execute_with_context(json!({}), &context)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        assert!(value["spend"].is_null());
+        assert_eq!(value["title"], "Old title");
     }
 }

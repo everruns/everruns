@@ -34,7 +34,33 @@ repeated write of the current title is a no-op and emits no event.
 
 Get current session metadata.
 
-Returns: session ID, title, locale, agent name, and token usage (input, output, cache read, cache creation, and total tokens) when available.
+Returns: session ID, title, locale, agent name, token usage (input, output,
+cache read, cache creation, and total tokens) when available, and `spend`: what
+this session has spent so far in USD.
+
+`spend` adds up:
+
+- **Model calls** in turns, with a split by input, cached input, cache writes
+  and output, and per model. A cost the provider reports (OpenRouter) is used
+  as is; other calls are priced from the model's price table.
+- **Background calls** the platform made for the session, such as titles and
+  compaction.
+- **Images** from `generate_image` and `edit_image`, priced from their usage.
+- **Sandboxes**: running and stopped time, priced by your organization's price
+  list when it has a `sandbox.time` rate, otherwise by the provider's published
+  rate for the sandbox's size (Daytona, E2B, Modal).
+- **Subagents** the session started, each with its own whole spend.
+
+It also returns `current_turn_usd` (this turn so far), `wasted_usd` (calls in
+turns that failed), `basis` (`provider_reported`, `price_list` or
+`list_price`; the weakest part wins) and `partial` when something had no price.
+Paid tools on your own keys (search, browser), knowledge indexing and
+evaluations are not included.
+
+The figure covers only this session and its subagents. It never includes
+organization totals, budgets, credits or your price list, so an agent can
+quote it, for example in a pull request comment. `spend` is `null` on hosts
+that cannot price it, such as the embedded framework.
 
 ### `write_session_title`
 

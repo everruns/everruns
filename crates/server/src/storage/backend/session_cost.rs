@@ -89,6 +89,9 @@ pub struct CostSandboxRow {
     pub provider: String,
     pub profile_name: Option<String>,
     pub created_at: DateTime<Utc>,
+    /// The pinned profile's `target.options` (size, resources), for the
+    /// list price.
+    pub options: Option<serde_json::Value>,
 }
 
 impl StorageBackend {
@@ -213,7 +216,8 @@ impl StorageBackend {
         session_id: Uuid,
     ) -> Result<Vec<CostSandboxRow>> {
         Ok(sqlx::query_as(
-            "SELECT id, provider, profile_name, created_at FROM sandboxes \
+            "SELECT id, provider, profile_name, created_at, \
+                    profile_snapshot->'target'->'options' AS options FROM sandboxes \
              WHERE org_id = $1 AND session_id = $2 ORDER BY created_at",
         )
         .bind(org_id)
@@ -249,5 +253,43 @@ impl StorageBackend {
         .bind(session_id)
         .fetch_all(self.database().pool())
         .await?)
+    }
+
+    /// `tool.completed` payloads of the session's image tools
+    /// (`generate_image`, `edit_image`), for their spend. The caller has
+    /// checked the session is the org's.
+    pub async fn session_image_tool_events(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<serde_json::Value>> {
+        let rows: Vec<(serde_json::Value,)> = sqlx::query_as(
+            "SELECT data FROM events \
+             WHERE session_id = $1 AND event_type = 'tool.completed' \
+               AND data->>'tool_name' = ANY($2) \
+             ORDER BY sequence",
+        )
+        .bind(session_id)
+        .bind(
+            everruns_contracts::runtime::session_spend::IMAGE_TOOLS
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .fetch_all(self.database().pool())
+        .await?;
+        Ok(rows.into_iter().map(|(data,)| data).collect())
+    }
+
+    /// Subagent sessions `session_id` started.
+    pub async fn session_child_ids(&self, org_id: i64, session_id: Uuid) -> Result<Vec<Uuid>> {
+        let rows: Vec<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM sessions WHERE org_id = $1 AND parent_session_id = $2 \
+             ORDER BY created_at",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .fetch_all(self.database().pool())
+        .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 }

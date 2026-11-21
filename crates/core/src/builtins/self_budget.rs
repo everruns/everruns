@@ -62,4 +62,4 @@ impl Capability for SelfBudgetCapability {
     }
 }
 
-const SELF_BUDGET_SYSTEM_PROMPT: &str = "User-stated budgets are agent-managed soft targets, not platform-enforced limits. Track spend with `get_session_info` around expensive phases, qualify estimates when pricing is partial, and tighten scope/output as the target nears. Do not create, modify, delete, or report them as platform budgets; if close to exhausted, inform the user and continue with a scoped-down path.";
+const SELF_BUDGET_SYSTEM_PROMPT: &str = "User-stated budgets are agent-managed soft targets, not platform-enforced limits. Track spend with `get_session_info` (its `spend.total_usd`) around expensive phases, qualify figures whose `basis` is an estimate or that are `partial`, and tighten scope/output as the target nears. Do not create, modify, delete, or report them as platform budgets; if close to exhausted, inform the user and continue with a scoped-down path.";

@@ -3,10 +3,12 @@
 
 pub mod commands;
 pub mod run;
+pub mod spend;
 pub mod types;
 
 pub use commands::*;
 pub use run::GetSessionRun;
+pub use spend::WorkerGetSessionSpend;
 pub use types::*;
 
 #[cfg(test)]

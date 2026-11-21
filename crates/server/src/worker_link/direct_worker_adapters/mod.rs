@@ -64,13 +64,10 @@ use everruns_core::session_services;
 use everruns_durable::WorkflowEventStore;
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
+pub(crate) use internal_commands::store_error;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
-// Helper to create store errors
-pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
-    AgentLoopError::store(msg)
-}
 
 struct DirectBudgetChecker {
     budget_service: Arc<BudgetService>,
@@ -1230,6 +1227,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 self.internal_commands(org_id),
             ),
         ))
+    }
+    fn session_spend_reader(&self, org: i64) -> internal_commands::SpendReader {
+        self.session_spend(org)
     }
     fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         Some(Arc::new(

@@ -742,6 +742,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         if let Some(store) = self.adapters.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));
         }
+        if let Some(reader) = self.adapters.session_spend_reader(org_id) {
+            extensions.insert(Arc::new(
+                everruns_contracts::runtime::session_spend::SessionSpendReaderExt(reader),
+            ));
+        }
         if let Some(search) = self.adapters.knowledge_index_search(org_id) {
             extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
         }

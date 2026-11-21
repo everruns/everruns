@@ -48,6 +48,18 @@ pub async fn read(
             let events = crate::gateway_v1::read_events(gateway, session, 0).await?;
             json(serde_json::to_value(trace_rows(&events)))
         }
+        // Spend inputs: model calls, failed turns, image results and the
+        // children the session started; the control plane prices them.
+        "spend" => {
+            let events = crate::gateway_v1::read_events(gateway, session, 0).await?;
+            let mut inputs = everruns_contracts::runtime::session_spend::spend_inputs(&events);
+            inputs.children = trace_rows(&events)
+                .children
+                .into_iter()
+                .map(|(_, child)| child)
+                .collect();
+            json(serde_json::to_value(inputs))
+        }
         "events" => {
             let range = Range::parse(query)?;
             let after = range.from.saturating_sub(1).max(0);

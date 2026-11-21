@@ -73,9 +73,17 @@ The most specific match wins, then the latest start.
 ### Sandbox time
 
 A cluster job ([meter](../../crates/server/src/background/sandbox_time_meter.rs))
-turns each closed `ready` span of a sandbox into a `sandbox_time` usage record,
-priced only by a price-list rate (sandboxes have no list price). Running
-sandboxes are charged when they stop.
+turns each closed `ready` span of a sandbox into a `sandbox_time` usage record.
+No sandbox provider reports a per-sandbox cost, so the span is priced the way
+providers bill: the reserved resources of the sandbox's pinned profile
+(`target.options`, else the provider's default sandbox) times the provider's
+published per-resource rate ([list prices](../../crates/contracts/src/sandbox_prices.rs),
+Daytona, E2B and Modal, effective-dated). An org rate wins: a unit price is per
+hour running, a multiplier scales the list price (0 for a flat plan). boxd and
+self-hosted targets have no list price and stay unpriced without a rate.
+Running sandboxes are charged when they stop; stopped time is not metered here,
+but a session's own spend (`get_session_info`) adds Daytona's stopped-disk
+charge.
 
 ### Host charges
 
@@ -359,7 +367,7 @@ Everruns distinguishes two orthogonal concerns:
 | Concern | Capability | Source of truth | Enforcement |
 |---------|-----------|-----------------|-------------|
 | Platform-enforced limit | `budgeting` | Budgets table / usage ledger | Session paused/stopped automatically at exhaustion |
-| User-requested indicative target ("you have $7") | `self_budget` | Session cumulative usage (`get_session_info`) | None, agent adapts behavior via prompt guidance |
+| User-requested indicative target ("you have $7") | `self_budget` | Session spend in USD (`get_session_info` `spend`, see `knowledge/execution/session-spend.md`) | None, agent adapts behavior via prompt guidance |
 
 The `self_budget` capability contributes prompt-only guidance. It ships no tools (cumulative usage is already exposed by `get_session_info` from the `session` capability, which is present in the Generic harness). The prompt:
 
@@ -367,7 +375,7 @@ The `self_budget` capability contributes prompt-only guidance. It ships no tools
 - directs the agent to `get_session_info` for current spend
 - encourages periodic re-checks around expensive work rather than every turn
 - coaches the agent to adapt (shorter outputs, fewer retries, narrower exploration) as the target tightens
-- warns the agent not to claim exact cost certainty from token-only data
+- tells the agent to qualify figures whose `basis` is an estimate or that are `partial`
 - explicitly separates the two budget types so the agent does not conflate platform enforcement with user-stated targets
 - explicitly forbids creating or mutating platform budgets in response to a user-stated target
 

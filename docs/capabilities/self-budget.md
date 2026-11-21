@@ -22,10 +22,10 @@ For platform-enforced budgets (authoritative limits that pause or stop sessions 
 `self_budget` is prompt-only. When the capability is enabled the agent's system prompt gets a "Self-Managed Budget" section that explains:
 
 - The self-budget is an **agent-managed soft target**, not a hard limit.
-- Session usage metadata (exposed via `get_session_info`) is the source of truth for current spend.
+- The session's spend in USD (`spend` from `get_session_info`) is the source of truth for current spend.
 - The agent decides when to start tracking, when to re-check, and when to stop.
 - As the target tightens, the agent should adapt, shorter outputs, fewer retries, narrower exploration, fewer redundant tool calls.
-- The agent avoids claiming exact cost certainty when only token counts or partial pricing are available.
+- The agent qualifies figures that are estimates (`basis`) or incomplete (`partial`).
 - The agent distinguishes between platform-enforced budgets and user-requested indicative budgets when reporting progress.
 
 There is no `self_budget` tool. Usage data comes from `get_session_info`, which is provided by the [`session`](/capabilities/session/) capability (bundled by default in the Worker harness).
@@ -37,7 +37,7 @@ There is no `self_budget` tool. Usage data comes from `get_session_info`, which 
 | What it is | Agent-managed soft target | Platform-enforced limit |
 | Tools | None | `check_budget` |
 | Enforcement | None (prompt guidance only) | Session is paused/stopped automatically |
-| Data source | `get_session_info` cumulative usage | Budgets table / ledger |
+| Data source | `get_session_info` spend | Budgets table / ledger |
 | Use case | User says "you have $7" in chat | Org/session has a configured budget in the platform |
 
 The two capabilities are non-conflicting and can run together. The Worker harness includes both.
