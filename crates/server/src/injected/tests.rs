@@ -811,3 +811,118 @@ async fn the_persons_mcp_servers_are_asked_for_as_the_tokens_person_and_turn() {
     assert!(asked[3].1.get("input_message_id").is_none());
     assert!(asked[3].1.get("acting_user").is_none());
 }
+
+/// The credential handlers: a connection token, or a refused GitHub token.
+struct CredentialCalls {
+    asked: parking_lot::Mutex<Vec<(&'static str, Value)>>,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for CredentialCalls {
+    async fn answer(
+        &self,
+        _: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        use everruns_contracts::host_calls::HostCallAnswer;
+        self.asked.lock().push((call.name, params));
+        Ok(match call.name {
+            everruns_contracts::host_calls::GITHUB_TOKEN => HostCallAnswer::Error {
+                kind: 3,
+                message: "no GitHub connection".into(),
+            },
+            _ => HostCallAnswer::Value(json!({ "token": "t0k" })),
+        })
+    }
+}
+
+#[tokio::test]
+async fn credentials_are_looked_up_as_the_tokens_person_and_turn_only() {
+    use everruns_contracts::runtime::capabilities::injected::SessionActor;
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    let runner = Arc::new(CredentialCalls {
+        asked: parking_lot::Mutex::default(),
+    });
+    capabilities.host_calls().bind(runner.clone());
+    let service = hosted::credentials::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities.definitions().remove(0);
+    assert_eq!(definition.name(), hosted::credentials::NAME);
+    let router = routes(Arc::new(capabilities), "/v1");
+    let call = |actor: Option<SessionActor>, arguments: Value| {
+        let client = McpClient::new(
+            Arc::new(RouterEgress {
+                router: router.clone(),
+            }),
+            Arc::new(SessionTokenAuthProvider::new(
+                Arc::new(NoAuthProvider),
+                Arc::new(Acting {
+                    signer: signer.clone(),
+                    org,
+                    actor,
+                }),
+            )),
+        )
+        .for_session(session.uuid());
+        let connection = connection(&definition);
+        async move {
+            client
+                .call(&connection, hosted::credentials::TOOL, arguments, None)
+                .await
+                .unwrap()
+        }
+    };
+    let text = |result: &everruns_core::McpToolCallResult| match &result.content[0] {
+        everruns_core::McpContent::Text { text, .. } => text.clone(),
+        other => panic!("{other:?}"),
+    };
+    let turn = uuid::Uuid::new_v4().to_string();
+    let person = SessionActor {
+        sub: "usr_1".into(),
+        turn: Some(turn.clone()),
+    };
+
+    let found = call(
+        Some(person),
+        json!({ "call": "connection_token", "params": {
+            "provider": "github",
+            "session_id": SessionId::new().to_string(),
+            "acting_user": "usr_2",
+            "input_message_id": "forged",
+        } }),
+    )
+    .await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&text(&found)).unwrap(),
+        json!({ "ok": { "token": "t0k" } })
+    );
+    {
+        let asked = runner.asked.lock();
+        let (name, params) = &asked[0];
+        assert_eq!(*name, everruns_contracts::host_calls::CONNECTION_TOKEN);
+        assert_eq!(params["provider"], "github");
+        assert_eq!(params["session_id"], session.to_string());
+        assert_eq!(params["acting_user"], "usr_1");
+        assert_eq!(params["input_message_id"], turn.as_str());
+    }
+
+    // No person: the agent's own; a refusal keeps its kind.
+    let refused = call(None, json!({ "call": "github_token", "params": {} })).await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&text(&refused)).unwrap(),
+        json!({ "error": { "kind": 3, "message": "no GitHub connection" } })
+    );
+    assert!(runner.asked.lock()[1].1["acting_user"].is_null());
+    assert!(runner.asked.lock()[1].1["input_message_id"].is_null());
+
+    // Only the credential lookups.
+    let other = call(None, json!({ "call": "knowledge", "params": {} })).await;
+    assert!(other.is_error);
+    assert_eq!(runner.asked.lock().len(), 2);
+}

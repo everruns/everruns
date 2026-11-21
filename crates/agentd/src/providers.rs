@@ -116,6 +116,23 @@ pub trait OrgMaterial: Send + Sync {
         let _ = session;
         None
     }
+    /// The person who sent `message` in `session`, with that message, from
+    /// the session's own record (`senders.rs`); `None` when no person did.
+    fn message_actor(
+        &self,
+        session: SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let _ = (session, message);
+        None
+    }
+    /// The URL of the control plane's server `name`
+    /// (`injected::CONTROLLER_SERVERS`) that `session`'s create brought;
+    /// `None` without one, or for a session not known here.
+    fn controller_url(&self, session: SessionId, name: &str) -> Option<String> {
+        let _ = (session, name);
+        None
+    }
     /// The data plane's key, which session tokens for injected
     /// capabilities are signed with a key derived from
     /// ([`session_token_pkcs8`](everruns_contracts::dataplane_seal::session_token_pkcs8));

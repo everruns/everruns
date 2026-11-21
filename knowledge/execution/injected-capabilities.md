@@ -162,6 +162,15 @@ Built (side by side with today's paths, nothing switched over):
   neither as an argument, and the control plane records the turn's
   invocation for that person as the host call does (`everruns-agentd`
   `user_mcp.rs`).
+- Connection lookups are one credential lookup: the `credentials` server
+  (`hosted.rs` `credentials`) has one tool for the four credential calls
+  (`CREDENTIAL_CALLS`: provider connections, MCP sign-ins, GitHub, service
+  keys), run by the handlers their host calls run. A cell mints its token
+  acting as the sender of the message the lookup names (`"open"`: the open
+  turn's; none: no one), from the session's record, so a detached tool
+  call of an earlier turn still acts for that turn's person
+  (`everruns-agentd` `lookups.rs`, `mcp.rs` `Acting`). Org connections stay
+  pushed config.
 
 Next, in order:
 

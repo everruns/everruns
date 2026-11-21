@@ -47,7 +47,14 @@ use everruns_contracts::dataplane::{
     EGRESS_SETTING, ORG_SETTING, TOOL_APPROVAL_SETTING, WEB_SEARCH_SETTING, web_search_key_secret,
 };
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::host_calls::{HostCallAnswer, SLACK_ACTION, TURN_CALLS, by_command};
+use everruns_contracts::host_calls::{
+    HostCallAnswer, OPEN_TURN, SLACK_ACTION, TURN_CALLS, by_command,
+};
+use everruns_contracts::runtime::capabilities::injected::{
+    CREDENTIAL_CALLS, CREDENTIAL_TOOL, CREDENTIALS,
+};
+
+use crate::mcp::Acting;
 use everruns_contracts::knowledge::KnowledgeRuntimeExt;
 use everruns_contracts::runtime::organization::org_public_id_from_internal;
 use everruns_contracts::runtime::session_spend::SessionSpendReaderExt;
@@ -111,6 +118,14 @@ impl InternalCommandTransport for OrgLookups {
             tracing::warn!(org = %self.org, call = call.name, "a host call the session's capabilities do not declare");
             material.undeclared_host_call(call.name);
         }
+        if CREDENTIAL_CALLS.contains(&call.name)
+            && let Some(server) = credentials_server(&self.material, &material, &params)
+        {
+            return match server {
+                Ok(server) => credential(&server, call.name, params).await,
+                Err(refused) => Ok(Err(refused)),
+            };
+        }
         match material.lookup(&self.org, name, params).await {
             Ok(HostCallAnswer::Value(value)) => Ok(Ok(value)),
             Ok(HostCallAnswer::Error { kind, message }) => {
@@ -124,6 +139,74 @@ impl InternalCommandTransport for OrgLookups {
             }
         }
     }
+}
+
+/// The control plane's credentials server for the session a credential
+/// lookup names, acting as the person who sent the message it names
+/// (`"open"`: the open turn's, none: no one); `None` when the session's
+/// create brought no such server, and the lookup is a host call.
+fn credentials_server(
+    weak: &Weak<dyn OrgMaterial>,
+    material: &Arc<dyn OrgMaterial>,
+    params: &Value,
+) -> Option<std::result::Result<crate::mcp::ControllerServer, proto::CommandError>> {
+    use everruns_contracts::typed_id::MessageId;
+    let session = params["session_id"]
+        .as_str()
+        .and_then(|id| SessionId::parse(id).ok())?;
+    let url = material.controller_url(session, CREDENTIALS)?;
+    let bad = |message: &str| proto::CommandError {
+        kind: proto::command_error::Kind::BadRequest as i32,
+        message: message.to_owned(),
+    };
+    let acting = match params["input_message_id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+    {
+        None => Acting::NoOne,
+        Some(OPEN_TURN) => Acting::Open,
+        Some(id) => match MessageId::parse(id)
+            .ok()
+            .or_else(|| Uuid::parse_str(id).ok().map(MessageId::from_uuid))
+        {
+            Some(message) => Acting::Message(message),
+            None => return Some(Err(bad("a credential lookup needs a valid input message"))),
+        },
+    };
+    Some(
+        crate::mcp::ControllerServer::acting(Some(weak), session, acting, CREDENTIALS, &url)
+            .ok_or_else(|| bad("this node holds no session tokens for the credential lookup")),
+    )
+}
+
+/// Credential lookup `call` on the control plane's credentials server.
+async fn credential(
+    server: &crate::mcp::ControllerServer,
+    call: &str,
+    mut params: Value,
+) -> Result<std::result::Result<Value, proto::CommandError>> {
+    // The server names the session and the person from the token.
+    if let Some(params) = params.as_object_mut() {
+        for key in ["session_id", "input_message_id", "acting_user"] {
+            params.remove(key);
+        }
+    }
+    let text = server
+        .call_tool(CREDENTIAL_TOOL, json!({ "call": call, "params": params }))
+        .await
+        .map_err(|error| {
+            tracing::warn!(call, %error, "credential lookup failed");
+            AgentLoopError::store("the control plane could not be reached for this lookup")
+        })?;
+    let answer: Value = serde_json::from_str(&text)
+        .map_err(|_| AgentLoopError::store("the credential answer did not parse"))?;
+    if let Some(error) = answer.get("error") {
+        return Ok(Err(proto::CommandError {
+            kind: error["kind"].as_i64().unwrap_or_default() as i32,
+            message: error["message"].as_str().unwrap_or_default().to_owned(),
+        }));
+    }
+    Ok(Ok(answer.get("ok").cloned().unwrap_or(Value::Null)))
 }
 
 impl OrgLookups {

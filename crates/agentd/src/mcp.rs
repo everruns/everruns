@@ -194,6 +194,34 @@ impl ControllerServer {
         })
     }
 
+    /// [`for_session`](Self::for_session), but its tokens' `act` is
+    /// whoever `acting` names, not the open turn's person.
+    pub(crate) fn acting(
+        material: Option<&Weak<dyn OrgMaterial>>,
+        session: SessionId,
+        acting: Acting,
+        name: &str,
+        url: &str,
+    ) -> Option<Self> {
+        let mcp = material?.upgrade()?.mcp()?;
+        let auth: Arc<dyn McpAuthProvider> = Arc::new(SessionTokenAuthProvider::new(
+            Arc::new(everruns_core::mcp::NoAuthProvider),
+            Arc::new(ActingMinter {
+                org: mcp.clone(),
+                acting,
+            }),
+        ));
+        let client =
+            everruns_core::mcp::McpClient::new(mcp.egress(), auth).for_session(session.uuid());
+        let mut connection = everruns_core::mcp::McpConnection::http(name, url);
+        connection.auth_mode =
+            everruns_contracts::runtime::mcp_server::McpServerAuthMode::SessionToken;
+        Some(Self {
+            client: Arc::new(client),
+            connection: Arc::new(connection),
+        })
+    }
+
     /// Call its `tool` with `arguments`: the result's text, or the error's
     /// (a failed call, or a result marked as an error).
     pub(crate) async fn call_tool(
@@ -550,20 +578,61 @@ impl OrgMcp {
     }
 }
 
-#[async_trait::async_trait]
-impl SessionTokenMinter for OrgMcp {
-    /// A token for one call of `request.session_id`, naming its org. A
-    /// session not known here gets none: the call fails closed.
-    async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
+/// Whom a session token acts for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Acting {
+    /// The person who opened the session's open turn.
+    Open,
+    /// The person whose message this is, in the session's record (a lookup
+    /// for a tool call of an earlier turn).
+    Message(everruns_contracts::typed_id::MessageId),
+    /// No one: the agent's own.
+    NoOne,
+}
+
+impl OrgMcp {
+    /// A token for one call of `request.session_id`, naming its org, acting
+    /// for whoever `acting` names. A session not known here gets none: the
+    /// call fails closed.
+    async fn mint_acting(
+        &self,
+        request: &SessionTokenRequest,
+        acting: Acting,
+    ) -> anyhow::Result<String> {
         let material = self.material()?;
         let session = SessionId::from_uuid(request.session_id);
         let org = material
             .tenant(session)
             .ok_or_else(|| anyhow::anyhow!("session token for a session not running here"))?;
-        // The person comes from the session's own record of who opened the
-        // turn, never from the turn's tools (THREAT[TM-AGENT-017]).
-        let actor = material.turn_actor(session);
+        // The person comes from the session's own record of who sent the
+        // turn's message, never from the turn's tools (THREAT[TM-AGENT-017]).
+        let actor = match acting {
+            Acting::Open => material.turn_actor(session),
+            Acting::Message(message) => material.message_actor(session, message),
+            Acting::NoOne => None,
+        };
         self.signer(&material)?.sign_as(request, Some(org), actor)
+    }
+}
+
+#[async_trait::async_trait]
+impl SessionTokenMinter for OrgMcp {
+    /// A token acting for the open turn's person.
+    async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
+        self.mint_acting(request, Acting::Open).await
+    }
+}
+
+/// Mints acting for one named person, for [`ControllerServer::acting`].
+struct ActingMinter {
+    org: Arc<OrgMcp>,
+    acting: Acting,
+}
+
+#[async_trait::async_trait]
+impl SessionTokenMinter for ActingMinter {
+    async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
+        self.org.mint_acting(request, self.acting).await
     }
 }
 

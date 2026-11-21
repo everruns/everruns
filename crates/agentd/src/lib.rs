@@ -33,6 +33,8 @@ pub mod cli;
 pub mod cluster;
 pub mod container;
 pub mod control;
+#[cfg(test)]
+mod controller_fixture;
 pub mod detach;
 pub mod dispatch;
 pub mod dp;

@@ -560,3 +560,107 @@ async fn pushed_egress_grants_are_enforced_without_asking() {
     assert!(grant.extension.is_some());
     assert!(down.asked.lock().is_empty());
 }
+
+mod credentials_server {
+    //! Credential lookups through the control plane's credentials server:
+    //! one tool call each, acting as the person who sent the message the
+    //! lookup names, from the session's record.
+
+    use everruns_contracts::runtime::capabilities::injected::{
+        CREDENTIAL_TOOL, CREDENTIALS, SessionActor,
+    };
+    use everruns_contracts::typed_id::{MessageId, SessionId};
+    use everruns_internal_protocol::commands::InternalCommandTransport;
+    use serde_json::{Value, json};
+
+    use crate::controller_fixture::Fixture;
+
+    const URL: &str = "https://93.184.215.14/api/v1/injected/credentials/mcp";
+
+    #[tokio::test]
+    async fn a_credential_lookup_acts_as_the_sender_of_the_message_it_names() {
+        let fixture = Fixture::new(
+            CREDENTIALS,
+            URL,
+            &[(CREDENTIAL_TOOL, json!({ "ok": { "token": "t0k" } }))],
+        );
+        let session = SessionId::new();
+        let earlier = MessageId::new();
+        let open = SessionActor {
+            sub: "usr_1".into(),
+            turn: Some(MessageId::new().uuid().to_string()),
+        };
+        fixture.executor.open.lock().insert(session, open.clone());
+        fixture
+            .executor
+            .senders
+            .lock()
+            .insert(earlier, "usr_2".into());
+        let lookups = super::super::org_lookups(Some(&fixture.material), session).unwrap();
+        let lookup = |input: Value| {
+            let lookups = lookups.clone();
+            async move {
+                lookups
+                    .execute_internal_command(
+                        "worker_get_connection_token",
+                        json!({
+                            "session_id": session.to_string(),
+                            "provider": "github",
+                            "input_message_id": input,
+                            "acting_user": "usr_forged",
+                        }),
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap()
+            }
+        };
+
+        assert_eq!(
+            lookup(json!(earlier.uuid().to_string())).await,
+            json!({ "token": "t0k" })
+        );
+        lookup(json!("open")).await;
+        lookup(Value::Null).await;
+
+        let asked = fixture.asked.lock();
+        assert_eq!(asked.len(), 3);
+        let (tool, arguments, act) = &asked[0];
+        assert_eq!(tool, CREDENTIAL_TOOL);
+        assert_eq!(arguments["call"], "connection_token");
+        assert_eq!(arguments["params"], json!({ "provider": "github" }));
+        assert_eq!(
+            act.as_ref(),
+            Some(&SessionActor {
+                sub: "usr_2".into(),
+                turn: Some(earlier.uuid().to_string()),
+            })
+        );
+        assert_eq!(asked[1].2.as_ref(), Some(&open));
+        assert_eq!(asked[2].2, None);
+    }
+
+    #[tokio::test]
+    async fn a_refused_credential_keeps_its_kind() {
+        let fixture = Fixture::new(
+            CREDENTIALS,
+            URL,
+            &[(
+                CREDENTIAL_TOOL,
+                json!({ "error": { "kind": 3, "message": "no connection" } }),
+            )],
+        );
+        let session = SessionId::new();
+        let lookups = super::super::org_lookups(Some(&fixture.material), session).unwrap();
+        let refused = lookups
+            .execute_internal_command(
+                "worker_get_github_token",
+                json!({ "session_id": session.to_string(), "input_message_id": null }),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(refused.kind, 3);
+        assert_eq!(refused.message, "no connection");
+    }
+}

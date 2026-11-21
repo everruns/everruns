@@ -787,6 +787,32 @@ impl crate::providers::OrgMaterial for Executor {
         })
     }
 
+    fn message_actor(
+        &self,
+        session: SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let state = self.remote.shared.state.read();
+        let s = state.sessions.get(&session)?;
+        s.platform.senders.of(message).map(|sub| {
+            everruns_contracts::runtime::capabilities::injected::SessionActor {
+                sub: sub.to_owned(),
+                turn: Some(message.uuid().to_string()),
+            }
+        })
+    }
+
+    fn controller_url(&self, session: SessionId, name: &str) -> Option<String> {
+        let state = self.remote.shared.state.read();
+        state
+            .sessions
+            .get(&session)?
+            .platform
+            .servers
+            .get(name)
+            .cloned()
+    }
+
     fn declared_host_calls(
         &self,
         session: SessionId,

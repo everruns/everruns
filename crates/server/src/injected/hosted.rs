@@ -821,6 +821,141 @@ pub mod person_mcp {
     }
 }
 
+/// The credentials a session's native integrations use (provider
+/// connections, MCP sign-ins, GitHub, service keys), as the token's `act`.
+///
+/// Decisions:
+/// - One tool for the four lookups (`CREDENTIAL_CALLS`), each run by the
+///   handler its host call runs, with the same params, except that the
+///   session, the person and the turn's input message come from the token:
+///   the person whose message the cell's record says opened the turn the
+///   caller names (THREAT[TM-AGENT-017]). A token with no `act` looks up as
+///   no one (the agent's own credentials).
+/// - Refusals keep their kind (`{"error": {"kind", "message"}}`): a
+///   resolver tells a missing connection from a failed lookup by it.
+/// - Credentials go straight back to the node that asked, over TLS, the
+///   node a sealed host-call answer is opened on.
+pub mod credentials {
+    use super::*;
+    use everruns_contracts::runtime::capabilities::injected::{CREDENTIAL_CALLS, SessionActor};
+    use everruns_contracts::tools::ToolExecutionResult;
+
+    /// Its one tool.
+    pub use everruns_contracts::runtime::capabilities::injected::CREDENTIAL_TOOL as TOOL;
+    /// The server's name (`/injected/credentials/mcp`).
+    pub use everruns_contracts::runtime::capabilities::injected::CREDENTIALS as NAME;
+
+    struct Lookup {
+        calls: HostCalls,
+        org: OrgId,
+        session: SessionId,
+        actor: Option<SessionActor>,
+    }
+
+    fn text(answer: Value) -> ToolExecutionResult {
+        ToolExecutionResult::success(Value::String(answer.to_string()))
+    }
+
+    #[async_trait]
+    impl Tool for Lookup {
+        fn name(&self) -> &str {
+            TOOL
+        }
+
+        fn description(&self) -> &str {
+            "One credential lookup for the session, as the person who opened the turn."
+        }
+
+        fn parameters_schema(&self) -> Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "call": { "type": "string", "enum": CREDENTIAL_CALLS },
+                    "params": { "type": "object" },
+                },
+                "required": ["call"],
+            })
+        }
+
+        async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+            let call = arguments["call"].as_str().unwrap_or_default();
+            if !CREDENTIAL_CALLS.contains(&call) {
+                return ToolExecutionResult::tool_error(format!("unknown credential {call:?}"));
+            }
+            let mut params = match arguments.get("params") {
+                Some(Value::Object(params)) => Value::Object(params.clone()),
+                _ => serde_json::json!({}),
+            };
+            params["session_id"] = Value::String(self.session.to_string());
+            params["acting_user"] = Value::Null;
+            params["input_message_id"] = Value::Null;
+            if let Some(actor) = &self.actor {
+                params["acting_user"] = Value::String(actor.sub.clone());
+                if let Some(turn) = &actor.turn {
+                    params["input_message_id"] = Value::String(turn.clone());
+                }
+            }
+            match self.calls.answer(self.org, call, params).await {
+                Ok(HostCallAnswer::Value(value)) => text(serde_json::json!({ "ok": value })),
+                Ok(HostCallAnswer::Error { kind, message }) => {
+                    text(serde_json::json!({ "error": { "kind": kind, "message": message } }))
+                }
+                Err(error) => {
+                    tracing::warn!(call, %error, "credential lookup failed");
+                    ToolExecutionResult::tool_error("Credentials are unavailable right now.")
+                }
+            }
+        }
+    }
+
+    pub struct Credentials {
+        definition: InjectedCapabilityDefinition,
+        calls: HostCalls,
+    }
+
+    pub fn service(base_url: &str, calls: HostCalls) -> Credentials {
+        Credentials {
+            definition: InjectedCapabilityDefinition {
+                capability: DeclarativeCapabilityDefinition {
+                    name: NAME.to_string(),
+                    display_name: Some("Credentials".to_string()),
+                    description: "The credentials of a session's native integrations.".to_string(),
+                    ..DeclarativeCapabilityDefinition::default()
+                },
+                server: InjectedServer {
+                    url: InjectedCapabilities::url_for(base_url, NAME),
+                    tool_timeout_ms: None,
+                },
+                attach: InjectedAttach::OnRequest,
+                match_labels: BTreeMap::new(),
+                tools: InjectedToolNames::Native,
+            },
+            calls,
+        }
+    }
+
+    #[async_trait]
+    impl InjectedCapabilityService for Credentials {
+        fn definition(&self) -> &InjectedCapabilityDefinition {
+            &self.definition
+        }
+
+        async fn tools(&self, session: &VerifiedSession) -> Result<Vec<Box<dyn Tool>>> {
+            Ok(vec![Box::new(Lookup {
+                calls: self.calls.clone(),
+                org: HostedService::org(session)?,
+                session: SessionId::from_uuid(session.session_id),
+                actor: session.claims.act.clone(),
+            })])
+        }
+
+        async fn tool_context(&self, session: &VerifiedSession) -> Result<ToolContext> {
+            Ok(ToolContext::new(SessionId::from_uuid(session.session_id))
+                .with_org_id(HostedService::org(session)?))
+        }
+    }
+}
+
 /// The URLs of the servers data planes call for sessions' native
 /// capabilities (`injected::CONTROLLER_SERVERS`), by name, once this
 /// control plane serves them to data planes; empty before.

@@ -54,7 +54,23 @@ pub const PERSON_MCP_SERVERS_TOOL: &str = "person_mcp_servers";
 /// The control plane's servers a data plane calls for a session's native
 /// capabilities rather than lists as capabilities: their URLs come with the
 /// session's create, never from an agent's package.
-pub const CONTROLLER_SERVERS: [&str; 3] = [MEMORY_FILES, PLATFORM_COMMANDS, PERSON_MCP];
+/// The control plane's server for the credentials a session's native
+/// integrations use (provider connections, MCP sign-ins, GitHub, service
+/// keys), as the token's `act`: the one lookup that crosses planes.
+pub const CREDENTIALS: &str = "credentials";
+/// [`CREDENTIALS`]' one tool: `{call, params}`, `call` one of
+/// [`CREDENTIAL_CALLS`]. Answers `{"ok": value}` or
+/// `{"error": {"kind", "message"}}` as text.
+pub const CREDENTIAL_TOOL: &str = "credential";
+/// The credential lookups [`CREDENTIALS`] serves, by host call name.
+pub const CREDENTIAL_CALLS: [&str; 4] = [
+    crate::host_calls::CONNECTION_TOKEN,
+    crate::host_calls::MCP_CONNECTION_TOKEN,
+    crate::host_calls::GITHUB_TOKEN,
+    crate::host_calls::SERVICE_API_KEY,
+];
+pub const CONTROLLER_SERVERS: [&str; 4] =
+    [MEMORY_FILES, PLATFORM_COMMANDS, PERSON_MCP, CREDENTIALS];
 
 pub const SESSION_TOKEN_TYP: &str = "everruns-session+jwt";
 /// How long a minted session token stays valid. Short, like the host-call
