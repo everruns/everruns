@@ -5,18 +5,34 @@ use uuid::Uuid;
 
 use super::{ObserverRow, StorageBackend};
 
+/// Verdict counts for one operational or continuity check in the report window.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, utoipa::ToSchema)]
 pub struct MonitoringCheckTotals {
+    /// Versioned check identity; operational and continuity results stay separate.
+    #[schema(example = "compaction_execution_v1")]
     pub check: String,
+    /// Assessments that found the checked behavior successful.
+    #[schema(example = 12)]
     pub passed: i64,
+    /// Assessments that found a failure in the checked behavior.
+    #[schema(example = 1)]
     pub failed: i64,
+    /// Unassessed or inconclusive outcomes, excluded from the pass rate.
+    #[schema(example = 3)]
     pub insufficient_evidence: i64,
+    /// Assessments awaiting continuation evidence or worker processing.
+    #[schema(example = 0)]
     pub pending: i64,
 }
 
+/// Current UTC-day monitoring admission and provider-reported spending.
 #[derive(Debug, Clone, Default, sqlx::FromRow, serde::Serialize, utoipa::ToSchema)]
 pub struct MonitoringSpend {
+    /// Allowance held for admitted calls, including uncertain and retry costs.
+    #[schema(example = 0.02)]
     pub reserved_usd: f64,
+    /// Cost reported by completed provider responses; not an invoice guarantee.
+    #[schema(example = 0.005)]
     pub reported_usd: f64,
 }
 

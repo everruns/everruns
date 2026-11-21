@@ -25218,15 +25218,36 @@ export interface components {
        */
       to: string;
     };
+    /** @description Verdict counts for one operational or continuity check in the report window. */
     MonitoringCheckTotals: {
+      /**
+       * @description Versioned check identity; operational and continuity results stay separate.
+       * @example compaction_execution_v1
+       */
       check: string;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Assessments that found a failure in the checked behavior.
+       * @example 1
+       */
       failed: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Unassessed or inconclusive outcomes, excluded from the pass rate.
+       * @example 3
+       */
       insufficient_evidence: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Assessments that found the checked behavior successful.
+       * @example 12
+       */
       passed: number;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Assessments awaiting continuation evidence or worker processing.
+       * @example 0
+       */
       pending: number;
     };
     /** @description Bounded execution breakdown for one organization and live lease holder. */
@@ -25424,10 +25445,19 @@ export interface components {
        */
       workers_truncated: boolean;
     };
+    /** @description Current UTC-day monitoring admission and provider-reported spending. */
     MonitoringSpend: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Cost reported by completed provider responses; not an invoice guarantee.
+       * @example 0.005
+       */
       reported_usd: number;
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Allowance held for admitted calls, including uncertain and retry costs.
+       * @example 0.02
+       */
       reserved_usd: number;
     };
     /** @description Payload-free timing projection of one step in the latest turn. */
@@ -28060,13 +28090,21 @@ export interface components {
        * @description UTC-day admission cap, including reserved uncertain/retry costs.
        *     Zero disables model calls while retaining mechanical checks.
        * @default 0
+       * @example 0
        */
       daily_budget_usd: number;
-      /** @default false */
+      /**
+       * @description Explicit organization consent. Disabled by default.
+       * @default false
+       * @example false
+       */
       enabled: boolean;
       /**
        * @description Sessions with any of these tags are excluded before reading content.
        * @default []
+       * @example [
+       *       "sensitive"
+       *     ]
        */
       excluded_tags: string[];
       /** @default null */
@@ -28075,14 +28113,22 @@ export interface components {
        * Format: double
        * @description Fraction of eligible checkpoints receiving a content-based assessment.
        * @default 0.02
+       * @example 0.02
        */
       sampling_rate: number;
     };
+    /** @description Organization consent, monitoring coverage and current daily spending. */
     QualityMonitoringReport: {
       /** @description Separate execution and continuity verdict counts over seven days. */
       checks: components["schemas"]["MonitoringCheckTotals"][];
+      /**
+       * @description Managed observer identity, absent until monitoring has been configured.
+       * @example observer_01933b5a000070008000000000000001
+       */
       observer_id?: string | null;
+      /** @description Current organization opt-in and assessment settings. */
       policy: components["schemas"]["QualityMonitoringPolicy"];
+      /** @description Conservative admission reservations and provider-reported cost for this UTC day. */
       today: components["schemas"]["MonitoringSpend"];
     };
     /**

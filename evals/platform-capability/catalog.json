@@ -13881,6 +13881,8 @@
     "input_schema": {
       "properties": {
         "org": {
+          "description": "Organization whose monitoring policy and coverage to inspect.",
+          "example": "org_00000000000000000000000000000001",
           "type": "string"
         }
       },
@@ -17599,6 +17601,8 @@
     "input_schema": {
       "properties": {
         "org": {
+          "description": "Organization whose newest monitoring findings to inspect.",
+          "example": "org_00000000000000000000000000000001",
           "type": "string"
         }
       },
@@ -22036,9 +22040,13 @@
         {
           "properties": {
             "org": {
+              "description": "Organization that owns the assessment.",
+              "example": "org_00000000000000000000000000000001",
               "type": "string"
             },
             "score": {
+              "description": "Assessment whose human review to record.",
+              "example": "score_01933b5a000070008000000000000001",
               "type": "string"
             }
           },
@@ -29280,16 +29288,22 @@
             "daily_budget_usd": {
               "default": 0.0,
               "description": "UTC-day admission cap, including reserved uncertain/retry costs.\nZero disables model calls while retaining mechanical checks.",
+              "example": 0.0,
               "format": "double",
               "type": "number"
             },
             "enabled": {
               "default": false,
+              "description": "Explicit organization consent. Disabled by default.",
+              "example": false,
               "type": "boolean"
             },
             "excluded_tags": {
               "default": [],
               "description": "Sessions with any of these tags are excluded before reading content.",
+              "example": [
+                "sensitive"
+              ],
               "items": {
                 "type": "string"
               },
@@ -29310,6 +29324,7 @@
             "sampling_rate": {
               "default": 0.02,
               "description": "Fraction of eligible checkpoints receiving a content-based assessment.",
+              "example": 0.02,
               "format": "double",
               "type": "number"
             }

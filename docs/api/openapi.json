@@ -65918,6 +65918,7 @@
       },
       "MonitoringCheckTotals": {
         "type": "object",
+        "description": "Verdict counts for one operational or continuity check in the report window.",
         "required": [
           "check",
           "passed",
@@ -65927,23 +65928,33 @@
         ],
         "properties": {
           "check": {
-            "type": "string"
+            "type": "string",
+            "description": "Versioned check identity; operational and continuity results stay separate.",
+            "example": "compaction_execution_v1"
           },
           "failed": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Assessments that found a failure in the checked behavior.",
+            "example": 1
           },
           "insufficient_evidence": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Unassessed or inconclusive outcomes, excluded from the pass rate.",
+            "example": 3
           },
           "passed": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Assessments that found the checked behavior successful.",
+            "example": 12
           },
           "pending": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Assessments awaiting continuation evidence or worker processing.",
+            "example": 0
           }
         }
       },
@@ -66254,6 +66265,7 @@
       },
       "MonitoringSpend": {
         "type": "object",
+        "description": "Current UTC-day monitoring admission and provider-reported spending.",
         "required": [
           "reserved_usd",
           "reported_usd"
@@ -66261,11 +66273,15 @@
         "properties": {
           "reported_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Cost reported by completed provider responses; not an invoice guarantee.",
+            "example": 0.005
           },
           "reserved_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Allowance held for admitted calls, including uncertain and retry costs.",
+            "example": 0.02
           }
         }
       },
@@ -70796,11 +70812,14 @@
             "type": "number",
             "format": "double",
             "description": "UTC-day admission cap, including reserved uncertain/retry costs.\nZero disables model calls while retaining mechanical checks.",
-            "default": 0
+            "default": 0,
+            "example": 0
           },
           "enabled": {
             "type": "boolean",
-            "default": false
+            "description": "Explicit organization consent. Disabled by default.",
+            "default": false,
+            "example": false
           },
           "excluded_tags": {
             "type": "array",
@@ -70808,6 +70827,9 @@
               "type": "string"
             },
             "description": "Sessions with any of these tags are excluded before reading content.",
+            "example": [
+              "sensitive"
+            ],
             "default": []
           },
           "model_id": {
@@ -70826,13 +70848,15 @@
             "type": "number",
             "format": "double",
             "description": "Fraction of eligible checkpoints receiving a content-based assessment.",
-            "default": 0.02
+            "default": 0.02,
+            "example": 0.02
           }
         },
         "additionalProperties": false
       },
       "QualityMonitoringReport": {
         "type": "object",
+        "description": "Organization consent, monitoring coverage and current daily spending.",
         "required": [
           "policy",
           "today",
@@ -70850,13 +70874,17 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Managed observer identity, absent until monitoring has been configured.",
+            "example": "observer_01933b5a000070008000000000000001"
           },
           "policy": {
-            "$ref": "#/components/schemas/QualityMonitoringPolicy"
+            "$ref": "#/components/schemas/QualityMonitoringPolicy",
+            "description": "Current organization opt-in and assessment settings."
           },
           "today": {
-            "$ref": "#/components/schemas/MonitoringSpend"
+            "$ref": "#/components/schemas/MonitoringSpend",
+            "description": "Conservative admission reservations and provider-reported cost for this UTC day."
           }
         }
       },

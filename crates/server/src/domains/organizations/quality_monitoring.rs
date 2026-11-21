@@ -10,10 +10,15 @@ use crate::storage::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// Organization consent, monitoring coverage and current daily spending.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct QualityMonitoringReport {
+    /// Current organization opt-in and assessment settings.
     pub policy: crate::domains::observers::system::QualityMonitoringPolicy,
+    /// Managed observer identity, absent until monitoring has been configured.
+    #[schema(example = "observer_01933b5a000070008000000000000001")]
     pub observer_id: Option<String>,
+    /// Conservative admission reservations and provider-reported cost for this UTC day.
     pub today: MonitoringSpend,
     /// Separate execution and continuity verdict counts over seven days.
     pub checks: Vec<MonitoringCheckTotals>,
@@ -21,6 +26,8 @@ pub struct QualityMonitoringReport {
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GetOrgQualityMonitoring {
+    /// Organization whose monitoring policy and coverage to inspect.
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub org: String,
 }
 
@@ -46,6 +53,8 @@ impl Command for GetOrgQualityMonitoring {
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ListOrgQualityMonitoringScores {
+    /// Organization whose newest monitoring findings to inspect.
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub org: String,
 }
 
@@ -80,7 +89,11 @@ impl Command for ListOrgQualityMonitoringScores {
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ReviewOrgQualityMonitoringScore {
+    /// Organization that owns the assessment.
+    #[schema(example = "org_00000000000000000000000000000001")]
     pub org: String,
+    /// Assessment whose human review to record.
+    #[schema(example = "score_01933b5a000070008000000000000001")]
     pub score: String,
     #[serde(flatten)]
     pub review: crate::domains::observers::types::ReviewScoreRequest,

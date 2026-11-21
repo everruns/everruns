@@ -7,15 +7,21 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct QualityMonitoringPolicy {
+    /// Explicit organization consent. Disabled by default.
+    #[schema(example = false)]
     pub enabled: bool,
     /// Fraction of eligible checkpoints receiving a content-based assessment.
+    #[schema(example = 0.02)]
     pub sampling_rate: f64,
     /// Explicit org model. None enables mechanical checks only.
+    #[schema(example = "model_01933b5a000070008000000000000001")]
     pub model_id: Option<ModelId>,
     /// UTC-day admission cap, including reserved uncertain/retry costs.
     /// Zero disables model calls while retaining mechanical checks.
+    #[schema(example = 0.0)]
     pub daily_budget_usd: f64,
     /// Sessions with any of these tags are excluded before reading content.
+    #[schema(example = json!(["sensitive"]))]
     pub excluded_tags: Vec<String>,
 }
 

@@ -10686,7 +10686,8 @@
         "field": "org",
         "long": "org",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Organization whose monitoring policy and coverage to inspect."
       }
     ],
     "examples": [
@@ -10712,7 +10713,8 @@
         "field": "org",
         "long": "org",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Organization whose newest monitoring findings to inspect."
       }
     ],
     "examples": [
@@ -10752,13 +10754,15 @@
         "field": "org",
         "long": "org",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Organization that owns the assessment."
       },
       {
         "field": "score",
         "long": "score",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Assessment whose human review to record."
       }
     ],
     "examples": [
