@@ -15,6 +15,10 @@ Harbor's draft ATIF v2.0 format, so harnesses that move to v2 can keep seeding
 datasets. A v2 bundle imports its root trajectory as one case, not one case per
 subagent or rewind branch. See [Evals](/features/evals/#harbor-trajectories).
 
+```bash
+everruns evals atif-import import --eval-id eval_01h9 --body "$(cat trajectory.atif-b.json)"
+```
+
 An event stream (`.atif-e.jsonl`) is refused with a clear error: consolidate it
 into a trajectory first. Exports stay on ATIF v1.7, which Harbor upgrades to v2
 without loss.
