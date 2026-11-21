@@ -123,9 +123,17 @@ The REST endpoints run browsers with direct network access. They are used only w
 
 Open a persistent browser session via CDP WebSocket.
 
-- **Parameters**: `url` (optional, initial URL), `timeout_ms` (optional, default 60000)
-- **Returns**: `{ status, message, title, url, timeout_ms }`
-- **Behavior**: If a session already exists and is alive, returns `already_open`. Otherwise opens a new browser.
+- **Parameters**: `url` (optional, initial URL), `timeout_ms` (optional, default 60000), `login` (optional, saved login name)
+- **Returns**: `{ status, message, title, url, timeout_ms, login? }`
+- **Behavior**: If a session already exists and is alive, returns `already_open`. Otherwise opens a new browser. With `login`, the saved login is seeded before the first navigation (see Saved Logins).
+
+### browserless_save_login / browserless_list_logins
+
+Save the persistent browser's guarded-context cookies plus the open page's localStorage as a Browserless profile (`POST /profile/refresh`, then `/profile/upload` when new), and list profiles (`GET /profiles`: names and counts only).
+
+### Saved Logins
+
+A saved login is a Browserless profile in the connection's account (`saved_logins.rs`). We never pass `?profile=`: Browserless loads a profile into the browser's default context, while our tools run in a guarded context (Network Guard) that stays logged out. We download the profile JSON (`GET /profile/{name}/download`) and seed the guarded context ourselves: cookies via `Storage.setCookies`, localStorage through a once-per-origin `Page.addScriptToEvaluateOnNewDocument` script, which lives only as long as the CDP connection, so it applies to the `url` of the same `browserless_open_browser` call. Profile API errors report the status, never the body.
 
 ### browserless_close_browser
 

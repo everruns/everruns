@@ -4,8 +4,9 @@
 //! `everruns-integrations` is part of the
 //! [Everruns](https://everruns.com) ecosystem. It contributes
 //! [Parallel](https://parallel.ai)'s hosted MCP server so agents get
-//! provider-owned `web_search` and `web_fetch` tools — free by default, with an
-//! optional Parallel API-key connection for authenticated usage.
+//! provider-owned `web_search`, `web_fetch`, `web_decisions` and
+//! `image_search` tools — free by default, with an optional Parallel API-key
+//! connection for authenticated usage.
 //!
 //! # Example
 //!
@@ -21,6 +22,14 @@
 //!
 //! - Uses Parallel's hosted MCP server directly, so Everruns gets the
 //!   provider-owned behavior without proxying or reimplementing it.
+//! - Default endpoint is `mcp.parallel.ai/mcp` (Parallel's current server,
+//!   checked 2026-11-21): it serves search and fetch under the same names as
+//!   the older `search.parallel.ai/mcp`, plus `web_decisions` (typed noul /
+//!   choice / score questions answered from web evidence, with probabilities
+//!   and citations), `image_search` and vertical search. It takes the API key
+//!   as a bearer token like the old one. The new host has no `/mcp-oauth`, so
+//!   the OAuth endpoint option stays on `search.parallel.ai` and offers search
+//!   and fetch only.
 //! - Defaults to the free unauthenticated endpoint. Per-capability config can
 //!   require a user-scoped Parallel API-key connection and switch to the
 //!   OAuth-compatible MCP endpoint.
@@ -64,7 +73,7 @@ pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
 pub const PARALLEL_CAPABILITY_ID: &str = "parallel_search";
 pub const PARALLEL_PROVIDER_ID: &str = "parallel";
 pub const PARALLEL_SERVER_NAME: &str = "Parallel";
-pub const PARALLEL_MCP_URL: &str = "https://search.parallel.ai/mcp";
+pub const PARALLEL_MCP_URL: &str = "https://mcp.parallel.ai/mcp";
 pub const PARALLEL_MCP_OAUTH_URL: &str = "https://search.parallel.ai/mcp-oauth";
 
 const CONFIG_AUTH_CONNECTION: &str = "connection";
@@ -130,7 +139,7 @@ impl Capability for ParallelCapability {
         Some(
             r#"## Parallel
 
-Use Parallel for current web search and focused URL extraction.
+Use Parallel for current web search and focused URL extraction. When asked for a probability, a pick among given options, or a score on a given scale about something on the web, use `web_decisions`: it returns calibrated probabilities with citations.
 
 For Parallel tool calls, generate one stable `session_id` for the conversation and reuse it for both search and fetch calls."#,
         )
