@@ -7,6 +7,7 @@
 * [A2UI, Google Generative UI Integration](a2ui.md) - A2UI generative-UI capability.
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
 * [Agent Page](agent-page.md) - Why the agent page reads and edits in one layout, with the system prompt as the page.
+* [Published Agent Views](published-agent-views.md) - Agent-owned layouts, runtime publications, and viewer personalization.
 * [Agent Cost Estimation](agent-cost-estimation.md) - Scenario-based model cost planning, assumptions and calibration boundaries.
 * [Org Overview](org-home.md) - Why Overview ranks what needs a person before how the agents ran, why its sidebar entry counts them, and why arrival opens Main chat beside it.
 * [Agents Home](agents-home.md) - Why the Agents page shows what each agent is doing, how it is reached and what needs attention, with channels replacing Exposures.

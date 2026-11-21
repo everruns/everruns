@@ -208,6 +208,9 @@ ui:
 # Caddy routes /api, /mcp, OAuth and agent-readable documents to the server and
 # everything else to the UI, the same routes as the Docker Compose setup.
 proxy:
+  # Automatic by default: direct routing with Ingress, Caddy for local access.
+  # Set true to put Caddy behind an Ingress.
+  enabled: null
   replicas: 1
   image: caddy:2-alpine
   service:
@@ -274,6 +277,8 @@ networkPolicy:
   # Namespace KEDA runs in, allowed to read queue depth from the bundled
   # PostgreSQL when worker autoscaling is on.
   kedaNamespace: keda
+  # Ingress controller peers (NetworkPolicyPeer) required for direct Ingress.
+  ingressFrom: []
   # Extra ingress rules for the server, such as an in-cluster client.
   extraServerIngress: []
 

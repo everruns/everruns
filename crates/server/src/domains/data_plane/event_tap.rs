@@ -31,7 +31,11 @@ use super::{ControlPlane, put_policy};
 use crate::storage::StorageBackend;
 
 /// The control plane listeners, by name, that a v2 org's events go to.
-pub const LISTENERS: &[&str] = &["ObserverMatchListener", "CustomerTracing"];
+pub const LISTENERS: &[&str] = &[
+    "ObserverMatchListener",
+    "CustomerTracing",
+    crate::domains::agents::view_publication::LISTENER,
+];
 
 /// The event types `org_id`'s data plane should copy onto the feed, under
 /// its current `policy`: every type while the warehouse export is on.
@@ -50,6 +54,9 @@ pub async fn wanted(
     }
     if !db.tracing_export_destinations(org_id).await?.is_empty() {
         types.extend(crate::domains::trace_exports::router::TRACED_EVENT_TYPES);
+    }
+    if db.has_agent_views(org_id).await? {
+        types.extend(crate::domains::agents::view_publication::EVENT_TYPES);
     }
     Ok(types.into_iter().map(str::to_owned).collect())
 }

@@ -184,15 +184,46 @@ impl Target {
         Ok(String::from_utf8_lossy(&raw).to_string())
     }
 
-    /// `kubectl port-forward` to the proxy Service in the background.
-    pub fn port_forward(&self, local_port: u16) -> Result<PortForward> {
-        let child = self
+    /// Detect the deployed topology, including older charts that always ran Caddy.
+    pub fn has_proxy_service(&self) -> Result<bool> {
+        let out = self
             .kubectl()
             .args([
-                "port-forward",
-                &format!("svc/{}", self.fullname()),
-                &format!("{local_port}:9300"),
+                "get",
+                "service",
+                &self.fullname(),
+                "--ignore-not-found",
+                "-o",
+                "name",
+                "--request-timeout",
+                "5s",
             ])
+            .output()
+            .context("Failed to look up the proxy Service")?;
+        if !out.status.success() {
+            bail!("could not look up the proxy Service: {}", output_text(&out));
+        }
+        Ok(!out.stdout.is_empty())
+    }
+
+    pub fn port_forward_command(&self, local_port: u16, proxy: bool) -> Command {
+        let mut service = self.fullname();
+        if !proxy {
+            service.push_str("-server");
+        }
+        let mut cmd = self.kubectl();
+        cmd.args([
+            "port-forward",
+            &format!("svc/{service}"),
+            &format!("{local_port}:http"),
+        ]);
+        cmd
+    }
+
+    /// Temporary forward for sign-in. Both Services have a named HTTP port.
+    pub fn port_forward(&self, local_port: u16, proxy: bool) -> Result<PortForward> {
+        let child = self
+            .port_forward_command(local_port, proxy)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -476,6 +507,22 @@ mod tests {
             target("smoke").selector(Some("server")),
             "app.kubernetes.io/name=everruns,app.kubernetes.io/instance=smoke,app.kubernetes.io/component=server"
         );
+    }
+
+    #[test]
+    fn port_forward_uses_the_service_for_the_deployed_topology() {
+        let target = target("smoke");
+        for (proxy, service) in [
+            (true, "svc/smoke-everruns"),
+            (false, "svc/smoke-everruns-server"),
+        ] {
+            let cmd = target.port_forward_command(9300, proxy);
+            assert!(cmd.get_args().collect::<Vec<_>>().ends_with(&[
+                std::ffi::OsStr::new("port-forward"),
+                std::ffi::OsStr::new(service),
+                std::ffi::OsStr::new("9300:http"),
+            ]));
+        }
     }
 
     #[test]

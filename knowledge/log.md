@@ -2,6 +2,7 @@
 
 ## 2026-11-20
 
+- [Local setup and Kubernetes](operations/local-setup.md): enabling Helm Ingress routes directly to the app Services by default. The UI retains Markdown discovery at the root. The CLI saves the public URL even when it signs in through a temporary port-forward.
 - Retire the Dreaming, Monitoring, and Knowledge rollout flags. Existing overrides are ignored, and resource permissions continue to govern access. [Feature Flags](security/feature-flags.md).
 
 ## 2026-11-19

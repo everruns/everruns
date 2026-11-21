@@ -1,0 +1,66 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "everruns.fullname" . }}
+  labels: {{- include "everruns.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - {{- with .Values.ingress.host }}
+      host: {{ . | quote }}
+      {{- end }}
+      http:
+        paths:
+          {{- if include "everruns.proxyEnabled" . }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "everruns.fullname" . }}
+                port: { name: http }
+          {{- else }}
+          {{- if include "everruns.dataPlaneRuns" . }}
+          {{- /* Prefix rules cannot match /workspaces/{id}/fs alone. The edge
+                 routes file calls to the cell and passes workspace records on. */}}
+          {{- range list "/api/v1/sessions" "/api/v1/commands" "/api/v1/workspaces" }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "everruns.name" (list $ "edge") }}
+                port: { name: http }
+          {{- end }}
+          {{- end }}
+          {{- range list "/api" "/oauth" "/.well-known" "/api-doc" }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "everruns.name" (list $ "server") }}
+                port: { name: http }
+          {{- end }}
+          {{- range list "/mcp" "/health" "/llms.txt" "/auth.md" "/robots.txt" "/sitemap.xml" }}
+          - path: {{ . }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "everruns.name" (list $ "server") }}
+                port: { name: http }
+          {{- end }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "everruns.name" (list . "ui") }}
+                port: { name: http }
+          {{- end }}
+{{- end }}

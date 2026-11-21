@@ -8,6 +8,28 @@ use futures::StreamExt;
 
 use super::*;
 
+/// `speed: "fast"` when the turn asks for fast (or OpenAI's `priority`, which
+/// the runtime treats as the same tier) and the model profile offers it.
+/// The runtime already strips speeds a profile does not list; checking the
+/// profile here keeps a direct driver caller from sending a field that
+/// Anthropic rejects on models without fast mode.
+pub(super) fn fast_mode(
+    speed: Option<&str>,
+    profile: Option<&everruns_contracts::ModelProfile>,
+) -> Option<&'static str> {
+    let wants_fast = matches!(speed, Some("fast" | "priority"));
+    let offered = profile
+        .and_then(|profile| profile.speed.as_ref())
+        .is_some_and(|config| config.values.iter().any(|v| v.value.matches_tier("fast")));
+    (wants_fast && offered).then_some("fast")
+}
+
+/// The served speed as the tier name cost estimation prices (`fast`); a
+/// standard-speed response reports no tier, like an OpenAI `default`.
+pub(super) fn served_tier(speed: Option<&str>) -> Option<String> {
+    speed.filter(|speed| *speed == "fast").map(str::to_owned)
+}
+
 pub(super) struct PreparedRequest {
     pub(super) request: AnthropicRequest,
     pub(super) needs_interleaved_thinking: bool,
@@ -415,6 +437,7 @@ impl AnthropicChatDriver {
             context_management,
             cache_control: (wants_server_compaction && prompt_cache_enabled)
                 .then(AnthropicCacheControl::ephemeral),
+            speed: fast_mode(config.speed.as_deref(), profile.as_ref()),
         };
         super::cache::apply_ttl(
             &mut request,
@@ -539,6 +562,8 @@ impl ChatDriver for AnthropicChatDriver {
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let cache_creation_1h_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        // `usage.speed`: the speed Anthropic says it served; prices the call.
+        let served_speed = Arc::new(Mutex::new(Option::<String>::None));
         // `usage.server_tool_use.web_search_requests`: billed native searches.
         let web_search_requests = Arc::new(Mutex::new(0u32));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
@@ -569,6 +594,7 @@ impl ChatDriver for AnthropicChatDriver {
             let cache_read_tokens = Arc::clone(&cache_read_tokens);
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
             let cache_creation_1h_tokens = Arc::clone(&cache_creation_1h_tokens);
+            let served_speed = Arc::clone(&served_speed);
             let web_search_requests = Arc::clone(&web_search_requests);
             let current_tool_call = Arc::clone(&current_tool_call);
             let current_is_member = Arc::clone(&current_is_member);
@@ -627,6 +653,9 @@ impl ChatDriver for AnthropicChatDriver {
                                         if let Some(split) = usage.cache_creation {
                                             *cache_creation_1h_tokens.lock().unwrap() =
                                                 split.ephemeral_1h_input_tokens;
+                                        }
+                                        if usage.speed.is_some() {
+                                            *served_speed.lock().unwrap() = usage.speed;
                                         }
                                     }
                                 }
@@ -969,6 +998,9 @@ impl ChatDriver for AnthropicChatDriver {
                                             *cache_creation_1h_tokens.lock().unwrap() =
                                                 split.ephemeral_1h_input_tokens;
                                         }
+                                        if usage.speed.is_some() {
+                                            *served_speed.lock().unwrap() = usage.speed;
+                                        }
                                     }
 
                                     if let Some(stop_reason) = data.delta.stop_reason {
@@ -1051,6 +1083,7 @@ impl ChatDriver for AnthropicChatDriver {
                                     metadata.cache_creation_tokens = cache_creation;
                                     metadata.cache_creation_1h_tokens =
                                         *cache_creation_1h_tokens.lock().unwrap();
+                                    metadata.service_tier = served_tier(served_speed.lock().unwrap().as_deref());
                                     metadata.model = Some(model);
                                     metadata.response_model = response_model.lock().unwrap().clone();
                                     // `None` when no `stop_reason` arrived: kept

@@ -209,6 +209,9 @@ impl BatchDriver for AnthropicChatDriver {
                 .prepare_request(endpoint, item.messages, config)
                 .map_err(|_| BatchError::InvalidRequest("Messages request encoding failed"))?;
             prepared.request.stream = false;
+            // Fast mode is not offered on the Batch API; a batch item runs at
+            // standard speed instead of failing the whole batch.
+            prepared.request.speed = None;
             if prepared.needs_interleaved_thinking {
                 betas.insert("interleaved-thinking-2025-05-14");
             }

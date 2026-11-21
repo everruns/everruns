@@ -1220,6 +1220,23 @@
       "tools": []
     },
     {
+      "category": null,
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": "agent_views",
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "published_views",
+      "name": "Published views",
+      "status": "available",
+      "tools": [
+        "publish_view"
+      ]
+    },
+    {
       "category": "Session",
       "dependencies": [],
       "docs_slug": null,

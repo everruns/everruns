@@ -202,8 +202,17 @@ async fn do_handshake(
     credential: Option<&McpCredential>,
     preferred_version: &str,
     timeout: Duration,
+    ui_apps: bool,
 ) -> Result<Negotiated> {
-    let body = serde_json::to_vec(&protocol::initialize_body(0, preferred_version))?;
+    let capabilities = ClientCapabilities {
+        ui_apps,
+        ..ClientCapabilities::none()
+    };
+    let body = serde_json::to_vec(&protocol::initialize_body_with(
+        0,
+        preferred_version,
+        capabilities,
+    ))?;
     let extra = protocol::routable_headers(preferred_version, "initialize", None);
     let response = send_raw(egress, url, headers, &extra, credential, body, timeout).await?;
     if !(200..300).contains(&response.status) {
@@ -293,6 +302,7 @@ async fn negotiate_and_send(
     build_body: &(dyn Fn(&str) -> Value + Send + Sync),
     cached: Option<Negotiated>,
     timeout: Duration,
+    ui_apps: bool,
 ) -> Result<(String, Negotiated)> {
     let mut negotiated = cached.unwrap_or_else(|| Negotiated::initial_for_mode(mode));
 
@@ -307,6 +317,7 @@ async fn negotiate_and_send(
             credential,
             &negotiated.version,
             timeout,
+            ui_apps,
         )
         .await?;
     }
@@ -345,6 +356,7 @@ async fn negotiate_and_send(
             credential,
             protocol::DEFAULT_STATEFUL_VERSION,
             timeout,
+            ui_apps,
         )
         .await
         .map_err(|fallback_error| {
@@ -515,6 +527,7 @@ async fn http_discover_tools_inner(
                     &build_body,
                     None,
                     DISCOVERY_TIMEOUT,
+                    capabilities.ui_apps,
                 )
                 .await
             }
@@ -585,7 +598,10 @@ pub async fn http_list_tools_with_cache_hints(
     credential: Option<&McpCredential>,
 ) -> Result<HttpToolsList> {
     // Discovery never elicits — a server MUST NOT answer `tools/list` with an
-    // `input_required` result — so it declares no input capabilities.
+    // `input_required` result — so it declares no input capabilities. It does
+    // declare MCP Apps: this is the control plane's discovery, whose tools run
+    // in hosted sessions that render views, and servers such as Sentry list
+    // their view tools only to a client that declares it.
     let (tools, _negotiated, cache_hints, server_info) = http_discover_tools(
         egress,
         url,
@@ -593,7 +609,10 @@ pub async fn http_list_tools_with_cache_hints(
         credential,
         McpProtocolMode::Auto,
         None,
-        ClientCapabilities::none(),
+        ClientCapabilities {
+            ui_apps: true,
+            ..ClientCapabilities::none()
+        },
     )
     .await?;
     Ok(HttpToolsList {
@@ -654,6 +673,7 @@ pub async fn http_request(
         InputHandlers {
             url: None,
             form: None,
+            ui_apps: false,
         },
     )
     .await?;
@@ -705,6 +725,7 @@ pub async fn http_call_tool(
         form_elicitation: false,
         // A connection-less call has no transport to keep polling with.
         tasks: false,
+        ui_apps: false,
     };
     let (text, negotiated) = negotiate_and_send(
         egress,
@@ -717,6 +738,7 @@ pub async fn http_call_tool(
         &|version| protocol::tools_call_body(1, tool_name, &arguments, version, capabilities),
         None,
         CALL_TIMEOUT,
+        false,
     )
     .await?;
     let text = resolve_input_required(
@@ -737,6 +759,7 @@ pub async fn http_call_tool(
         InputHandlers {
             url: elicitation,
             form: None,
+            ui_apps: false,
         },
         CALL_TIMEOUT,
         text,
@@ -752,6 +775,8 @@ pub async fn http_call_tool(
 pub(super) struct InputHandlers<'a> {
     url: Option<&'a dyn UrlElicitationHandler>,
     form: Option<&'a dyn FormElicitationHandler>,
+    /// Declare MCP Apps support (only ever a declaration, never an input).
+    ui_apps: bool,
 }
 
 /// Build the `inputResponses` map for one `input_required` round.
@@ -1063,6 +1088,9 @@ pub struct HttpTransport {
     form_elicitation: Option<Arc<dyn FormElicitationHandler>>,
     /// How long a `tools/call` that became a task may run.
     task_wait_limit: Duration,
+    /// Declare MCP Apps support to every server (see
+    /// [`ClientCapabilities::ui_apps`]).
+    ui_apps: bool,
 }
 
 impl HttpTransport {
@@ -1075,6 +1103,7 @@ impl HttpTransport {
             elicitation: None,
             form_elicitation: None,
             task_wait_limit: tasks::TASK_WAIT_LIMIT,
+            ui_apps: false,
         }
     }
 
@@ -1101,6 +1130,14 @@ impl HttpTransport {
         self
     }
 
+    /// Declare that this host renders MCP Apps views. Only hosts whose people
+    /// see a console or a channel should: a server may answer a client that
+    /// declares it with a view and less text.
+    pub fn with_ui_apps(mut self) -> Self {
+        self.ui_apps = true;
+        self
+    }
+
     /// What may be declared to, and answered for, one server: what this
     /// transport can answer, narrowed by that server's policy.
     ///
@@ -1114,6 +1151,7 @@ impl HttpTransport {
                 .form_elicitation
                 .as_deref()
                 .filter(|_| policy.allows_form()),
+            ui_apps: self.ui_apps,
         }
     }
 
@@ -1124,6 +1162,7 @@ impl HttpTransport {
             url_elicitation: handlers.url.is_some(),
             form_elicitation: handlers.form.is_some(),
             tasks: false,
+            ui_apps: self.ui_apps,
         }
     }
 
@@ -1365,6 +1404,7 @@ impl HttpTransport {
             },
             cached,
             connection.tool_timeout(),
+            capabilities.ui_apps,
         )
         .await?;
         let text = resolve_input_required(

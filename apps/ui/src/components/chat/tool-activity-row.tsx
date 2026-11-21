@@ -14,6 +14,8 @@ import type { ToolCompletedData } from "@/lib/api/types";
 import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { FailureIcon, failureTextClass, toolFailureSeverity } from "./failure-severity";
 import { McpAppResourceList } from "./mcp-app-resource-list";
+import { McpAppView } from "./mcp-app-view";
+import { readMcpAppCall } from "@/lib/mcp-apps";
 import { ToolResultThumbnails } from "./tool-result-thumbnails";
 import { extractGeneratedGifs, GeneratedGifPlayer } from "./generated-gif-player";
 import type { ToolCallContent } from "./tool-call-utils";
@@ -50,6 +52,8 @@ export function ToolActivityRow({
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
   const mcpAppResources = extractMcpAppResources(toolResult?.result, toolCall.name);
+  // A view an external MCP server ships for this call (MCP Apps).
+  const mcpApp = readMcpAppCall(toolResult?.details);
   const allResultImages = extractResultImages(toolResult?.result);
   // A generated GIF plays from its artifact; its first-frame PNG (the image
   // the model saw) becomes the paused still instead of a thumbnail.
@@ -147,6 +151,15 @@ export function ToolActivityRow({
           <ExecutedArgumentsNotice toolResult={toolResult} originalArguments={toolCall.arguments} />
 
           <McpAppResourceList resources={mcpAppResources} />
+
+          {mcpApp && toolResult && (
+            <McpAppView
+              app={mcpApp}
+              toolCallId={toolCall.id}
+              toolInput={toolCall.arguments}
+              toolResult={toolResult}
+            />
+          )}
 
           {generatedGifs.map((gif, index) => (
             <div key={gif.artifactId} className="mt-1.5">

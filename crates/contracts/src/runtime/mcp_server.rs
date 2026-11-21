@@ -696,6 +696,12 @@ pub struct McpToolDefinition {
     /// See: <https://spec.modelcontextprotocol.io>
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotations: Option<McpToolAnnotations>,
+    /// The tool's `_meta`. Carries the MCP Apps (SEP-1865) link to the tool's
+    /// interactive view (`ui.resourceUri`) and its visibility; see
+    /// [`crate::runtime::mcp_apps`].
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub meta: Option<Value>,
 }
 
 /// MCP tool annotations as defined by the MCP specification.
@@ -871,6 +877,17 @@ pub struct McpToolCallResult {
     pub content: Vec<McpContent>,
     #[serde(rename = "isError", default)]
     pub is_error: bool,
+    /// Machine-readable result. An MCP App view reads it; the model gets the
+    /// `content` blocks.
+    #[serde(
+        rename = "structuredContent",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub structured_content: Option<Value>,
+    /// The result's `_meta`, passed to an MCP App view untouched.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
 }
 
 /// MCP content block in a `tools/call` result (spec 2025-11-25).
@@ -965,6 +982,10 @@ pub struct McpResourceContents {
     /// Base64-encoded binary contents.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blob: Option<String>,
+    /// The contents' `_meta`. On an MCP App view it carries the view's CSP,
+    /// permissions and border preference (`ui`).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
 }
 
 /// A resource a server lists in `resources/list` (spec 2025-11-25).

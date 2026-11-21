@@ -63,6 +63,24 @@ class ReleaseSourceTests(unittest.TestCase):
             self.assertEqual((result["ref"], result["is_release"], result["is_latest"]), (RELEASE, "true", "true"))
             self.assertEqual(json.loads(result["arches"]), ["amd64", "arm64"])
 
+    def test_main_snapshot_publishes_sha_tags_only(self):
+        def no_network(*args):
+            self.fail("snapshot reached network/git")
+        env = self.env()
+        env["INPUT_TAG"] = ""
+        result = source.resolve(env, no_network)
+        self.assertEqual((result["ref"], result["sha"], result["sha_short"], result["tag"]),
+                         (MAIN, MAIN, MAIN[:7], ""))
+        self.assertEqual((result["is_release"], result["is_latest"]), ("false", "false"))
+        self.assertEqual(json.loads(result["arches"]), ["amd64", "arm64"])
+
+    def test_snapshot_from_other_branch_rejected(self):
+        for ref in ("refs/heads/feature", "refs/tags/v0.46.0"):
+            env = self.env()
+            env.update(INPUT_TAG="", GIT_REF=ref, REF_NAME=ref.rsplit("/", 1)[-1])
+            with self.subTest(ref=ref), self.assertRaises(ValueError):
+                source.resolve(env)
+
     def test_pr_retains_merge_checkout_and_head_sha_tags(self):
         env = self.env()
         env.update(EVENT_NAME="pull_request", GIT_REF="refs/pull/1/merge")

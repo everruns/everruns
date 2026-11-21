@@ -48,6 +48,7 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         protocol_mode: settings.protocol_mode,
         elicitation_policy: settings.elicitation_policy,
         tool_timeout_ms: settings.tool_timeout_ms,
+        interactive_views: settings.interactive_views,
         oauth_provider_id,
         connection_check,
         service_connection_provider: settings.service_connection_provider,

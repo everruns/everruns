@@ -34,6 +34,7 @@ resolved-model Record
 participants Record
 commands Record
 run-requests Record
+agent-view Record
 trace Record
 question-answers Record
 reactions Record

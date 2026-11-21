@@ -14,6 +14,7 @@ const logo = "/v1/avatars/avatar_01933b5a000070008000000000000001/circle-64.png"
 const host = "k3m9pq2r7x";
 const channel = "appchan_01933b5a000070008000000000000001";
 let mode = "multi_chat";
+let viewPlacement = "none";
 function config() {
   return {
     channel_id: channel,
@@ -21,6 +22,7 @@ function config() {
     description: "A thoughtful partner for research, writing, and getting work done.",
     interface_mode: mode,
     features: { threads: true, files: true },
+    view_placement: viewPlacement,
     logo,
   };
 }
@@ -28,6 +30,11 @@ createServer((request, response) => {
   const path = request.url?.split("?")[0] ?? "";
   if (path.startsWith("/mode/")) {
     mode = path.split("/")[2];
+    response.end("ok");
+    return;
+  }
+  if (path.startsWith("/view/")) {
+    viewPlacement = path.split("/")[2];
     response.end("ok");
     return;
   }
@@ -42,8 +49,7 @@ createServer((request, response) => {
     response.end(
       JSON.stringify({
         ...config(),
-        channel_id:
-          label === host ? channel : "appchan_01933b5a000070008000000000000002",
+        channel_id: label === host ? channel : "appchan_01933b5a000070008000000000000002",
       }),
     );
     return;
@@ -56,6 +62,7 @@ createServer((request, response) => {
         description: "A thoughtful partner for research, writing, and getting work done.",
         interface_mode: mode,
         features: { threads: true, files: true },
+        view_placement: viewPlacement,
         logo,
       }),
     );

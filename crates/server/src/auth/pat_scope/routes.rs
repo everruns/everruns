@@ -62,6 +62,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("POST", "/v1/agents/{agent_id}/external-worker", Never),
     ("DELETE", "/v1/agents/{agent_id}/external-worker", Never),
     ("GET", "/v1/channels/{channel_id}/chat/config", Read),
+    ("GET", "/v1/channels/{channel_id}/chat/view", Read),
+    ("PUT", "/v1/channels/{channel_id}/chat/view", Write),
     ("POST", "/v1/channels/{channel_id}/chat/main", Write),
     (
         "GET",
@@ -84,6 +86,8 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
         Write,
     ),
     ("GET", "/v1/e/{channel_id}/chat/config", Read),
+    ("GET", "/v1/e/{channel_id}/chat/view", Read),
+    ("PUT", "/v1/e/{channel_id}/chat/view", Write),
     ("POST", "/v1/e/{channel_id}/chat/main", Write),
     ("GET", "/v1/e/{channel_id}/sessions/{session_id}/work", Read),
     (
@@ -928,6 +932,7 @@ pub const UNDOCUMENTED_ROUTES: &[(&str, &str, RouteAccess)] = &[
         Read,
     ),
     ("GET", "/v1/sessions/{session_id}/fs/{*path}", Read),
+    ("GET", "/v1/sessions/{session_id}/mcp-apps/view", Read),
     ("GET", "/v1/sessions/{session_id}/schedules", Read),
     (
         "GET",

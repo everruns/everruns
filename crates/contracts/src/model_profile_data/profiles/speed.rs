@@ -32,6 +32,22 @@ pub(super) fn priced_speed(value: Speed, name: &str, multiplier: f64) -> SpeedVa
     }
 }
 
+/// Anthropic fast mode (`speed: "fast"` on the Messages API), offered where
+/// Anthropic serves it without a beta flag or access request: Claude Opus 5.5
+/// ($8/$40 against $4/$20) and Claude Fable 5.2 / Mythos 5.2 ($16/$80 against
+/// $8/$40). Both are a flat 2x of every token bucket. Opus 5 and Opus 4.8 are
+/// left out: research preview behind `fast-mode-2026-02-01`, Opus 5 needs an
+/// access grant, and Opus 4.8 loses it on 2026-11-30.
+pub(super) fn speed_anthropic_fast() -> SpeedConfig {
+    SpeedConfig {
+        values: vec![
+            priced_speed(Speed::Default, "Standard", 1.0),
+            priced_speed(Speed::Fast, "Fast", 2.0),
+        ],
+        default: Speed::Default,
+    }
+}
+
 /// Speed for models with both flex and priority pricing rows
 /// (gpt-5.4, gpt-5.4-mini, gpt-5.5, gpt-5.6 series).
 pub(super) fn speed_flex_priority() -> SpeedConfig {
@@ -121,6 +137,46 @@ mod tests {
         }
         assert!(Speed::Ultrafast.matches_tier("ultrafast"));
         assert!(!Speed::Default.matches_tier("flex"));
+    }
+
+    #[test]
+    fn anthropic_fast_mode_is_first_party_only_and_doubles_the_price() {
+        use crate::model_profile_data::get_model_profile;
+        let offers_fast = |provider: &str, model: &str| {
+            get_model_profile(provider, model)
+                .and_then(|profile| profile.speed)
+                .is_some_and(|config| config.values.iter().any(|v| v.value == Speed::Fast))
+        };
+        for model in ["claude-opus-5-5", "claude-fable-5-2", "claude-mythos-5-2"] {
+            assert!(offers_fast("anthropic", model), "{model}");
+        }
+        // Beta-only or retiring fast mode, and models without it.
+        for model in ["claude-opus-5", "claude-opus-4-8", "claude-sonnet-5-5"] {
+            assert!(!offers_fast("anthropic", model), "{model}");
+        }
+        // Bedrock and gateways do not offer Anthropic fast mode.
+        assert!(get_model_profile("bedrock", "claude-opus-5-5").is_none_or(|p| p.speed.is_none()));
+        assert!(
+            get_model_profile("openrouter", "anthropic/claude-opus-5-5")
+                .is_none_or(|p| p.speed.is_none())
+        );
+
+        // Opus 5.5: $4 in / $20 out standard, $8 / $40 fast.
+        let tokens = (1_000_000, 1_000_000);
+        let at = |tier: Option<&str>| {
+            estimate_cost_usd_for_speed(
+                "anthropic",
+                "claude-opus-5-5",
+                tokens.0,
+                tokens.1,
+                0,
+                0,
+                tier,
+            )
+            .unwrap()
+        };
+        assert!((at(None) - 24.0).abs() < 1e-9);
+        assert!((at(Some("fast")) - 48.0).abs() < 1e-9);
     }
 
     #[test]

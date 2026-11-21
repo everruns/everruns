@@ -318,8 +318,15 @@ jest.mock("@/components/ui/confirmation-provider", () => ({
   useConfirmation: () => async () => true,
 }));
 
+const mockFeatureFlag = jest.fn((_key: string) => false);
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: () => false,
+  useFeatureFlag: (key: string) => mockFeatureFlag(key),
+}));
+
+const mockViewSettings = jest.fn();
+jest.mock("@/hooks/use-agent-view-settings", () => ({
+  useAgentViewSettings: (agentId: string, enabled: boolean) => mockViewSettings(agentId, enabled),
+  useReplaceAgentView: () => ({ isPending: false }),
 }));
 
 async function renderPage() {
@@ -351,6 +358,8 @@ beforeEach(() => {
   mockSourceError = null;
   mockChatMode = null;
   jest.clearAllMocks();
+  mockFeatureFlag.mockReturnValue(false);
+  mockViewSettings.mockReturnValue({ data: { revision: 0, view: null } });
   mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
@@ -369,6 +378,32 @@ beforeEach(() => {
   mockCreateSession.mockResolvedValue({ id: "session-chat-1" });
   mockManagerNotes = { content: "", revision: 0 };
   mockExternal = { available: false, endpoint: null };
+});
+
+describe("Agent views", () => {
+  it("hides view configuration and disables its query before adoption", async () => {
+    await renderPage();
+    const more = within(screen.getByRole("navigation", { name: "More settings" }));
+    expect(more.queryByRole("button", { name: /^Views/ })).not.toBeInTheDocument();
+    expect(mockViewSettings).toHaveBeenCalledWith("agent-1", false);
+  });
+
+  it("opens a settings sheet from the Views row after Sandbox", async () => {
+    mockFeatureFlag.mockImplementation((key) => key === "agent_views");
+    await renderPage();
+    const more = within(screen.getByRole("navigation", { name: "More settings" }));
+    const sandbox = more.getByRole("button", { name: /^Sandbox/ });
+    const views = more.getByRole("button", { name: /^Views/ });
+    const settings = more.getAllByRole("button");
+    expect(settings[settings.indexOf(sandbox) + 1]).toBe(views);
+    expect(screen.queryByRole("tab", { name: "Views" })).not.toBeInTheDocument();
+    expect(mockViewSettings).toHaveBeenCalledWith("agent-1", true);
+
+    fireEvent.click(views);
+    const sheet = within(await screen.findByRole("dialog", { name: "Views" }));
+    expect(sheet.getByRole("option", { name: "Generated UI (A2UI)" })).toBeInTheDocument();
+    expect(sheet.getByRole("option", { name: "Custom HTML" })).toBeInTheDocument();
+  });
 });
 
 describe("External agent", () => {

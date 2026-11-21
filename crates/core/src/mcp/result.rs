@@ -183,6 +183,8 @@ mod tests {
         let result = McpToolCallResult {
             content: vec![McpContent::text("hello")],
             is_error: false,
+            structured_content: None,
+            meta: None,
         };
         let (json, images) = map_tool_call_result(&result);
         assert_eq!(json, json!({ "result": "hello" }));
@@ -194,6 +196,8 @@ mod tests {
         let result = McpToolCallResult {
             content: vec![McpContent::text("boom")],
             is_error: true,
+            structured_content: None,
+            meta: None,
         };
         let (json, _) = map_tool_call_result(&result);
         assert_eq!(json, json!({ "error": "boom" }));
@@ -211,6 +215,8 @@ mod tests {
                 },
             ],
             is_error: false,
+            structured_content: None,
+            meta: None,
         };
         let (json, images) = map_tool_call_result(&result);
         assert_eq!(json, json!({ "result": "chart" }));

@@ -1,3 +1,4 @@
+import { messages as mcpApps } from "./fr/mcp-apps";
 import { messages as extractions } from "./fr/extractions";
 import { messages as rooms } from "./fr/rooms";
 import { messages as toolApproval } from "./fr/tool-approval";
@@ -83,4 +84,5 @@ export const messages: Readonly<Record<string, string>> = Object.assign(
   chatLayout,
   extractions,
   rooms,
+  mcpApps,
 );

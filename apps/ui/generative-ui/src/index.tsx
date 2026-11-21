@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -37,27 +38,44 @@ export { splitUIBlocks } from "./protocol";
 function SafeHtmlView({
   html,
   title,
+  data,
   height = 360,
   width = "100%",
 }: {
   html: string;
   title?: string;
+  data?: Record<string, unknown>;
   height?: number | string;
   width?: number | string;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const staticHtml = useMemo(() => {
-    if (typeof DOMParser === "undefined") return "";
-    const document = new DOMParser().parseFromString(html, "text/html");
+    if (typeof document === "undefined") return "";
+    const template = document.createElement("template");
+    template.innerHTML = html;
     // THREAT[TM-WEB-024]: sandboxing blocks script and top navigation, but an
     // iframe can still navigate itself. Keep generated HTML a static preview.
-    for (const node of document.querySelectorAll("meta, base")) node.remove();
-    for (const node of document.querySelectorAll("a, area")) {
+    for (const node of template.content.querySelectorAll("meta, base")) node.remove();
+    for (const node of template.content.querySelectorAll("a, area")) {
       node.removeAttribute("href");
       node.removeAttribute("xlink:href");
     }
-    return document.documentElement.innerHTML;
-  }, [html]);
+    if (data) {
+      const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.parentElement?.closest("style, script")) continue;
+        node.textContent = (node.textContent ?? "").replace(
+          /\{\{([a-zA-Z0-9_]+)\}\}/g,
+          (token, key: string) => {
+            if (!Object.hasOwn(data, key)) return token;
+            const value = data[key];
+            return typeof value === "string" ? value : (JSON.stringify(value) ?? "");
+          },
+        );
+      }
+    }
+    return template.innerHTML;
+  }, [html, data]);
   const [colors, setColors] = useState({ text: "CanvasText", background: "Canvas" });
   useEffect(() => {
     const sync = () => {
@@ -99,6 +117,220 @@ function SafeHtmlView({
     />
   );
 }
+
+export type AgentViewLayout =
+  | { format: "a2ui"; operations: unknown[] }
+  | { format: "html"; source: string };
+
+export type PublishedAgentView = {
+  revision: number;
+  title: string;
+  layout: AgentViewLayout;
+  data: Record<string, unknown>;
+  personal_layout: AgentViewLayout | null;
+  allow_personalization: boolean;
+  updated_at: string | null;
+};
+
+export function AgentViewSurface({
+  title,
+  layout,
+  data,
+}: {
+  title: string;
+  layout: AgentViewLayout;
+  data?: Record<string, unknown>;
+}) {
+  const id = useId();
+  if (layout.format === "html") {
+    return (
+      <div className="everruns-widget widget">
+        <SafeHtmlView html={layout.source} title={title} data={data} />
+      </div>
+    );
+  }
+  const first = layout.operations[0] as
+    | undefined
+    | {
+        createSurface?: { surfaceId?: string; components?: unknown[] };
+      };
+  const surfaceId = first?.createSurface?.surfaceId;
+  const base = layout.operations.slice();
+  if (first?.createSurface && !first.createSurface.components) {
+    // The pinned renderer expects the initial component list on createSurface.
+    // Accept layouts that send their first component list as a separate update.
+    const updates = base as Array<{ updateComponents?: { components?: unknown[] } } | null>;
+    const components = updates.find((operation) =>
+      Array.isArray(operation?.updateComponents?.components),
+    )?.updateComponents?.components;
+    if (components) base[0] = { ...first, createSurface: { ...first.createSurface, components } };
+  }
+  const operations =
+    surfaceId && data
+      ? [
+          ...base,
+          ...Object.entries(data).map(([key, value]) => ({
+            version: "1.0",
+            updateDataModel: { surfaceId, path: "/" + key, value },
+          })),
+        ]
+      : base;
+  const text = "```a2ui\n" + JSON.stringify(operations) + "\n```";
+  const messages = [{ id, text }];
+  return (
+    <GenerativeUIConversation messages={messages}>
+      <MessageWidgets text={text} messageId={id} renderMarkdown={() => null} />
+    </GenerativeUIConversation>
+  );
+}
+export function PublishedView({
+  view,
+  saveLayout,
+  translate = (key) => key,
+  locale,
+}: {
+  view: PublishedAgentView;
+  saveLayout?: (revision: number, layout: AgentViewLayout | null) => Promise<unknown>;
+  translate?: (key: string) => string;
+  locale?: string;
+}) {
+  const id = useId();
+  const [editing, setEditing] = useState(false);
+  const [source, setSource] = useState("");
+  const [format, setFormat] = useState<AgentViewLayout["format"]>("a2ui");
+  const [preview, setPreview] = useState<AgentViewLayout | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const layout = view.personal_layout ?? view.layout;
+  const canCustomize = view.allow_personalization && !!saveLayout;
+
+  function edit() {
+    setFormat(layout.format);
+    setSource(
+      layout.format === "html" ? layout.source : JSON.stringify(layout.operations, null, 2),
+    );
+    setPreview(null);
+    setError("");
+    setEditing(true);
+  }
+
+  function draft(): AgentViewLayout | undefined {
+    if (format === "html" && source.trim()) return { format, source };
+    if (format === "a2ui") {
+      try {
+        const operations: unknown = JSON.parse(source);
+        if (Array.isArray(operations) && operations.length) return { format, operations };
+      } catch {
+        /* Fall through to the editor error. */
+      }
+    }
+    setError(
+      format === "html"
+        ? translate("Enter HTML markup.")
+        : translate("Enter a JSON array of A2UI operations."),
+    );
+  }
+
+  async function save(next: AgentViewLayout | null) {
+    if (!saveLayout) return;
+    setSaving(true);
+    setError("");
+    try {
+      await saveLayout(view.revision, next);
+      setEditing(false);
+      setPreview(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : translate("Could not save your layout."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="everruns-published-view" aria-labelledby={id}>
+      <header>
+        <div>
+          <h2 id={id}>{view.title}</h2>
+          {view.updated_at && (
+            <time dateTime={view.updated_at}>
+              {new Date(view.updated_at).toLocaleString(locale)}
+            </time>
+          )}
+        </div>
+        {canCustomize && !editing && (
+          <button type="button" onClick={edit}>
+            {translate("Customize")}
+          </button>
+        )}
+      </header>
+      <AgentViewSurface
+        title={view.title}
+        layout={canCustomize && editing ? (preview ?? layout) : layout}
+        data={view.data}
+      />
+      {canCustomize && editing && (
+        <div className="everruns-view-preference">
+          <label htmlFor={id + "-format"}>{translate("Layout format")}</label>
+          <select
+            id={id + "-format"}
+            value={format}
+            disabled={saving}
+            onChange={(event) => setFormat(event.target.value === "html" ? "html" : "a2ui")}
+          >
+            <option value="a2ui">{translate("Generated UI (A2UI)")}</option>
+            <option value="html">{translate("Custom HTML")}</option>
+          </select>
+          <label htmlFor={id + "-source"}>{translate("Personal layout source")}</label>
+          <textarea
+            id={id + "-source"}
+            value={source}
+            disabled={saving}
+            spellCheck={false}
+            onChange={(event) => {
+              setSource(event.target.value);
+              setError("");
+            }}
+          />
+          {error && <p role="alert">{error}</p>}
+          <div>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                const next = draft();
+                if (next) {
+                  setPreview(next);
+                  setError("");
+                }
+              }}
+            >
+              {translate("Preview draft")}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                const next = draft();
+                if (next) void save(next);
+              }}
+            >
+              {translate("Save for me")}
+            </button>
+            {view.personal_layout && (
+              <button type="button" disabled={saving} onClick={() => void save(null)}>
+                {translate("Use published layout")}
+              </button>
+            )}
+            <button type="button" disabled={saving} onClick={() => setEditing(false)}>
+              {translate("Cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 type StandardProps<
   Name extends keyof NonNullable<typeof standardUI.definitions>["components"] & string,
 > = GenerativeUIComponentProps<typeof standardUI, Name>;

@@ -105,6 +105,82 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ json: data });
   });
 });
+
+test("opens a published view without starting chat and includes it alongside threads", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:9141/mode/single_with_threads");
+  await request.get("http://127.0.0.1:9141/view/page");
+  const view = {
+    revision: 1,
+    title: "Repository sweep",
+    layout: {
+      format: "html",
+      source: "<h2>{{status}}</h2><script>document.title='unexpected'</script>",
+    },
+    data: { status: "Ready for review" },
+    allow_personalization: true,
+    personal_layout: null,
+    updated_at: "2026-11-19T15:00:00Z",
+  };
+  let chatStarts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/api/chat/main")) chatStarts += 1;
+  });
+  await page.route("**/api/chat/view**", async (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const layout = query.has("session")
+      ? {
+          format: "a2ui",
+          operations: [
+            {
+              version: "1.0",
+              createSurface: { surfaceId: "sweep", catalogId: "copilotkit/standard@1" },
+            },
+            {
+              version: "1.0",
+              updateComponents: {
+                surfaceId: "sweep",
+                components: [{ id: "root", component: "Text", text: { "@path": "/status" } }],
+              },
+            },
+          ],
+        }
+      : view.layout;
+    await route.fulfill({
+      json:
+        route.request().method() === "PUT"
+          ? { ...view, personal_layout: route.request().postDataJSON().layout }
+          : { ...view, layout },
+    });
+  });
+  try {
+    await page.goto(origin);
+    const published = page.getByRole("region", { name: "Repository sweep" });
+    const frame = () => page.frames().find((frame) => frame.url() === "about:srcdoc");
+    const heading = () => frame()?.evaluate(() => document.querySelector("h2")?.textContent);
+    await expect.poll(heading, { timeout: 30_000 }).toBe("Ready for review");
+    await expect(published.locator("iframe")).toHaveAttribute("sandbox", "");
+    expect(chatStarts).toBe(0);
+    expect(await frame()?.evaluate(() => document.title)).toBe("");
+    await published.getByRole("button", { name: "Customize" }).click();
+    await published.getByLabel("Personal layout source").fill("<h2>My review queue</h2>");
+    await published.getByRole("button", { name: "Preview draft" }).click();
+    await expect.poll(heading).toBe("My review queue");
+    await published.getByRole("button", { name: "Save for me" }).click();
+    await expect(published.getByRole("button", { name: "Customize" })).toBeVisible();
+    await page.getByRole("link", { name: "Chat", exact: true }).click();
+    await page.getByRole("button", { name: "Conversation panel" }).click();
+    await expect(
+      page.getByRole("region", { name: "Repository sweep" }).getByText("Ready for review"),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Competitive research" })).toBeVisible();
+    expect(chatStarts).toBeGreaterThan(0);
+  } finally {
+    await request.get("http://127.0.0.1:9141/view/none");
+  }
+});
 test("multi-chat renders transcript, workspace and a new conversation", async ({
   page,
   request,
@@ -122,9 +198,7 @@ test("multi-chat renders transcript, workspace and a new conversation", async ({
   await expect(logo).toHaveJSProperty("complete", true);
   await expect(logo).not.toHaveJSProperty("naturalWidth", 0);
   expect(
-    (
-      await request.get(`${origin}/api/chat/logo/avatar_00000000000000000000000000000000`)
-    ).status(),
+    (await request.get(`${origin}/api/chat/logo/avatar_00000000000000000000000000000000`)).status(),
   ).toBe(404);
   await page.getByRole("button", { name: "Workspace", exact: true }).first().click();
   await expect(page.getByRole("button", { name: "▤ launch-brief.md" })).toBeVisible();

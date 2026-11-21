@@ -51,6 +51,7 @@ pub mod input_context;
 pub mod leased_resource;
 pub mod llm_error_hook;
 pub mod localization;
+pub mod mcp_apps;
 pub mod mcp_deferred;
 pub mod mcp_proxy;
 pub mod mcp_resources;

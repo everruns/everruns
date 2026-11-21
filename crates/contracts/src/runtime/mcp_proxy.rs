@@ -82,6 +82,17 @@ pub trait McpToolInvoker: Send + Sync {
         Ok(None)
     }
 
+    /// One server's tools exactly as the server lists them (`tools/list`),
+    /// including tools only an MCP Apps view may call, by sanitized prefix,
+    /// with the same connection and account a call would use. `None` means
+    /// this invoker cannot list.
+    async fn list_server_tool_specs(
+        &self,
+        _server_prefix: &str,
+    ) -> Result<Option<Vec<crate::runtime::mcp_server::McpToolDefinition>>> {
+        Ok(None)
+    }
+
     /// List one page of a server's resources, with its resource templates on
     /// the first page, by sanitized prefix, with the same connection and
     /// account a call would use. `None` means this invoker cannot.
@@ -373,10 +384,11 @@ impl McpProxyTool {
             arguments,
         };
         match self.invoker.invoke_keyed(&call, idempotency_key).await {
-            Ok((result, acted_as)) => {
+            Ok((mut result, acted_as)) => {
                 if let Some(identity) = identity {
                     identity.record(acted_as);
                 }
+                attach_view(&self.definition, &mut result);
                 tool_result_to_execution(result)
             }
             // Surface MCP failures to the model as a tool error (matching the
@@ -479,6 +491,57 @@ pub fn build_mcp_proxy_tools(
 }
 
 /// Map a raw MCP `ToolResult` into the registry's `ToolExecutionResult`.
+/// Record the tool's MCP Apps view on a successful call's `details`, with the
+/// result's `structuredContent` and `_meta` the client set aside for it. A
+/// tool without a view drops those: nobody reads them.
+fn attach_view(definition: &BuiltinTool, result: &mut crate::runtime::tool_types::ToolResult) {
+    use crate::runtime::mcp_apps::{MCP_APP_DETAILS_KEY, MCP_RESULT_DETAILS_KEY, is_view_uri};
+    let set_aside = result
+        .details
+        .as_mut()
+        .and_then(Value::as_object_mut)
+        .and_then(|details| details.remove(MCP_RESULT_DETAILS_KEY));
+    if result
+        .details
+        .as_ref()
+        .and_then(Value::as_object)
+        .is_some_and(serde_json::Map::is_empty)
+    {
+        result.details = None;
+    }
+    let Some(uri) = definition
+        .hints
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get(MCP_APP_DETAILS_KEY))
+        .and_then(|view| view.get("resource_uri"))
+        .and_then(Value::as_str)
+        .filter(|uri| is_view_uri(uri))
+    else {
+        return;
+    };
+    if result.error.is_some() || result.connection_required.is_some() {
+        return;
+    }
+    let Some((server, tool)) = parse_mcp_tool_name(&definition.name) else {
+        return;
+    };
+    let mut view = serde_json::json!({
+        "server": server,
+        "tool": tool,
+        "resource_uri": uri,
+    });
+    if let Some(Value::Object(fields)) = set_aside {
+        for (key, value) in fields {
+            view[key] = value;
+        }
+    }
+    let details = result.details.get_or_insert_with(|| serde_json::json!({}));
+    if let Some(details) = details.as_object_mut() {
+        details.insert(MCP_APP_DETAILS_KEY.to_string(), view);
+    }
+}
+
 fn tool_result_to_execution(result: crate::runtime::tool_types::ToolResult) -> ToolExecutionResult {
     if let Some(required) = result.connection_required {
         return ToolExecutionResult::ConnectionRequired {
@@ -491,11 +554,15 @@ fn tool_result_to_execution(result: crate::runtime::tool_types::ToolResult) -> T
         return ToolExecutionResult::ToolError(error);
     }
     let value = result.result.unwrap_or(Value::Null);
-    match result.images {
-        Some(images) if !images.is_empty() => ToolExecutionResult::SuccessWithImages {
+    match (result.images, result.details) {
+        (Some(images), Some(details)) if !images.is_empty() => {
+            ToolExecutionResult::success_with_images_and_details(value, images, details)
+        }
+        (Some(images), None) if !images.is_empty() => ToolExecutionResult::SuccessWithImages {
             result: value,
             images,
         },
+        (_, Some(details)) => ToolExecutionResult::success_with_details(value, details),
         _ => ToolExecutionResult::Success(value),
     }
 }

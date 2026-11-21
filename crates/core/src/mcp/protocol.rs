@@ -70,6 +70,10 @@ pub struct ClientCapabilities {
     /// MCP Tasks extension, [`crate::mcp::tasks`]). Declared on `tools/call`
     /// and `tasks/*` only, by transports that run the polling loop.
     pub tasks: bool,
+    /// The host renders MCP Apps views (SEP-1865). Servers such as Sentry only
+    /// list their view tools to a client that declares this. Declared by
+    /// hosted runtimes, whose console and channels show the views.
+    pub ui_apps: bool,
 }
 
 impl ClientCapabilities {
@@ -89,6 +93,7 @@ impl ClientCapabilities {
 /// answer is data a person types into a question a third party wrote.
 pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
     let tasks = capabilities.tasks;
+    let capabilities_ui_apps = capabilities.ui_apps;
     let mut modes = Map::new();
     if capabilities.url_elicitation {
         modes.insert("url".to_string(), json!({}));
@@ -100,13 +105,28 @@ pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
     if !modes.is_empty() {
         capabilities.insert("elicitation".to_string(), Value::Object(modes));
     }
+    let mut extensions = Map::new();
     if tasks {
-        capabilities.insert(
-            "extensions".to_string(),
-            json!({ crate::mcp::tasks::TASKS_EXTENSION_KEY: {} }),
+        extensions.insert(
+            crate::mcp::tasks::TASKS_EXTENSION_KEY.to_string(),
+            json!({}),
         );
     }
+    if capabilities_ui_apps {
+        extensions.insert(
+            everruns_contracts::runtime::mcp_apps::MCP_UI_EXTENSION_KEY.to_string(),
+            ui_apps_extension(),
+        );
+    }
+    if !extensions.is_empty() {
+        capabilities.insert("extensions".to_string(), Value::Object(extensions));
+    }
     Value::Object(capabilities)
+}
+
+/// The MCP Apps extension entry: the MIME types this host renders.
+fn ui_apps_extension() -> Value {
+    json!({ "mimeTypes": [everruns_contracts::runtime::mcp_apps::MCP_APP_MIME_TYPE] })
 }
 
 /// The `_meta` object carried on every request body in the stateless era.
@@ -268,17 +288,31 @@ pub fn request_retry_body(
 
 /// `initialize` handshake body for the given (preferred) protocol version.
 pub fn initialize_body(id: i64, version: &str) -> Value {
+    initialize_body_with(id, version, ClientCapabilities::none())
+}
+
+/// [`initialize_body`] that also declares MCP Apps support when the host
+/// renders views.
+pub fn initialize_body_with(id: i64, version: &str, capabilities: ClientCapabilities) -> Value {
+    // 2025-era elicitation is a server-initiated request over a server→client
+    // stream this transport does not open, so the handshake declares no
+    // elicitation regardless of host capabilities. URL mode elicitation is
+    // 2026-07-28-only for us, via `_meta`. The MCP Apps extension is a plain
+    // declaration and stateful servers read it only here.
+    let declared = if capabilities.ui_apps {
+        json!({ "extensions": {
+            everruns_contracts::runtime::mcp_apps::MCP_UI_EXTENSION_KEY: ui_apps_extension()
+        }})
+    } else {
+        json!({})
+    };
     json!({
         "jsonrpc": "2.0",
         "id": id,
         "method": "initialize",
         "params": {
             "protocolVersion": version,
-            // 2025-era elicitation is a server-initiated request over a
-            // server→client stream this transport does not open, so the
-            // handshake declares nothing regardless of host capabilities. URL
-            // mode elicitation is 2026-07-28-only for us, via `_meta`.
-            "capabilities": {},
+            "capabilities": declared,
             "clientInfo": client_info(),
         }
     })
@@ -742,6 +776,7 @@ mod tests {
                 url_elicitation: true,
                 form_elicitation: false,
                 tasks: false,
+                ui_apps: false,
             },
         );
         assert_eq!(
@@ -754,6 +789,7 @@ mod tests {
                 url_elicitation: true,
                 form_elicitation: true,
                 tasks: false,
+                ui_apps: false,
             },
         );
         assert_eq!(
@@ -771,6 +807,41 @@ mod tests {
         assert_eq!(
             with_tasks.get(CLIENT_CAPABILITIES_META_KEY),
             Some(&json!({ "extensions": { "io.modelcontextprotocol/tasks": {} } }))
+        );
+        // A host that renders views declares MCP Apps beside any other extension.
+        let with_apps = request_meta(
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities {
+                tasks: true,
+                ui_apps: true,
+                ..ClientCapabilities::none()
+            },
+        );
+        assert_eq!(
+            with_apps.get(CLIENT_CAPABILITIES_META_KEY),
+            Some(&json!({ "extensions": {
+                "io.modelcontextprotocol/tasks": {},
+                "io.modelcontextprotocol/ui": { "mimeTypes": ["text/html;profile=mcp-app"] }
+            } }))
+        );
+        // Stateful servers read the declaration only from `initialize`.
+        let init = initialize_body_with(
+            0,
+            "2025-06-18",
+            ClientCapabilities {
+                ui_apps: true,
+                ..ClientCapabilities::none()
+            },
+        );
+        assert_eq!(
+            init["params"]["capabilities"],
+            json!({ "extensions": {
+                "io.modelcontextprotocol/ui": { "mimeTypes": ["text/html;profile=mcp-app"] }
+            } })
+        );
+        assert_eq!(
+            initialize_body(0, "2025-06-18")["params"]["capabilities"],
+            json!({})
         );
     }
 
@@ -865,6 +936,7 @@ mod tests {
                 url_elicitation: true,
                 form_elicitation: false,
                 tasks: false,
+                ui_apps: false,
             },
             Some("AEAD-blob=="),
             &responses,

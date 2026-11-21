@@ -56,6 +56,9 @@ export interface McpConnectionCheck {
   reason?: string;
 }
 
+/** Where an MCP server's interactive views (MCP Apps) show. */
+export type McpInteractiveViews = "on" | "console_only" | "off";
+
 /** MCP Server configuration */
 export interface McpServer {
   id: string;
@@ -71,6 +74,8 @@ export interface McpServer {
   elicitation_policy?: McpElicitationPolicy;
   /** Tool call timeout in milliseconds. Omitted when the 60000 default applies. */
   tool_timeout_ms?: number;
+  /** Where MCP App views from this server show. Omitted when `on` (the default). */
+  interactive_views?: McpInteractiveViews;
   oauth_provider_id?: string;
   /** Agent connection that supplies the service credential (`github`). */
   service_connection_provider?: string;
@@ -115,6 +120,8 @@ export interface UpdateMcpServerRequest {
   elicitation_policy?: McpElicitationPolicy;
   /** Tool call timeout in milliseconds; `0` clears it back to the default. */
   tool_timeout_ms?: number;
+  /** Where MCP App views from this server show. */
+  interactive_views?: McpInteractiveViews;
   /** Agent connection that supplies the service credential; `""` clears it on update. */
   service_connection_provider?: string;
   api_key?: string;

@@ -4,6 +4,7 @@
 // has a single import path.
 
 use crate::domains::mcp_servers::record::McpServerStatus;
+use everruns_contracts::runtime::mcp_apps::McpInteractiveViews;
 use everruns_core::{
     McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpServerTransportType,
 };
@@ -46,6 +47,10 @@ pub struct CreateMcpServerRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = 300000)]
     pub tool_timeout_ms: Option<u64>,
+    /// Where the server's MCP App views are shown (`on`, `console_only`,
+    /// `off`). Defaults to `on`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interactive_views: Option<McpInteractiveViews>,
     /// Connection provider whose connection on an agent's service virtual user
     /// supplies the service credential (currently `github`: the agent's GitHub
     /// App installation). Only allowed for MCP hosts that accept that
@@ -103,6 +108,10 @@ pub struct UpdateMcpServerRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = 300000)]
     pub tool_timeout_ms: Option<u64>,
+    /// Where the server's MCP App views are shown (`on`, `console_only`,
+    /// `off`). Defaults to `on`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interactive_views: Option<McpInteractiveViews>,
     /// Connection provider whose connection on an agent's service virtual user
     /// supplies the service credential (`github`). An empty string clears it.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -68,6 +68,7 @@
     "progress_guard": "runs",
     "prompt_caching": "runs",
     "prompt_canary_guardrail": "runs",
+    "published_views": "runs",
     "reactions": "runs",
     "repo_map": "runs",
     "repositories": "runs",

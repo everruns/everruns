@@ -2,6 +2,55 @@
 @import "@openuidev/react-ui/components.css";
 @import "maplibre-gl/dist/maplibre-gl.css";
 
+.everruns-published-view {
+  padding: 1rem;
+  min-width: 0;
+}
+.everruns-published-view > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.75rem;
+  height: auto;
+  padding: 0;
+  border: 0;
+}
+.everruns-published-view > header h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+.everruns-published-view time {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+.everruns-view-preference {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.everruns-view-preference textarea {
+  font-family: monospace;
+  min-height: 7rem;
+  resize: vertical;
+}
+.everruns-view-preference textarea,
+.everruns-view-preference select,
+.everruns-published-view button {
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border, #dedfd9);
+  padding: 0.35rem 0.55rem;
+}
+.everruns-view-preference > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.everruns-published-view button {
+  cursor: pointer;
+}
+
 .everruns-widget {
   min-width: 0;
   max-width: 100%;

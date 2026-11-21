@@ -95,6 +95,7 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "agents triggers runs",
         "Outcomes of the runs a trigger started.",
     ),
+    ("agents view", "Configure the view published by an agent."),
     (
         "budgets",
         "Usage policies: limits on what sessions, agents, people and the organization use.",
@@ -355,6 +356,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "sessions",
         "Running and archived sessions, their state and participants.",
+    ),
+    (
+        "sessions agent-view",
+        "Read a conversation's published view and manage your layout.",
     ),
     (
         "sessions approval-mode",

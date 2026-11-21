@@ -78,7 +78,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { cn } from "@/lib/utils";
 
 import {
-  WorkChatFields,
+  WorkChatSection,
   inviteList,
   isWorkChatMembershipValid,
   type WorkChatMembership,
@@ -106,6 +106,7 @@ export type ChannelFormState = {
   kind: ChannelType;
   chatInterface: "single_with_threads" | "multi_chat";
   chatMembership: WorkChatMembership;
+  chatViewPlacement: "none" | "panel" | "page";
   chatMemberEmail: string;
   chatInvites: string;
   enabled: boolean;
@@ -237,6 +238,7 @@ export function getDefaultChannelFormState(
     api: apiFormStateFromConfig(),
     chatInterface: "multi_chat",
     chatMembership: "open",
+    chatViewPlacement: "none",
     chatMemberEmail: "",
     chatInvites: "",
   };
@@ -350,6 +352,7 @@ export function getDefaultChannelFormState(
     const config = channel.channel_config as {
       interface_mode?: "single_with_threads" | "multi_chat";
       membership?: WorkChatMembership;
+      view_placement?: ChannelFormState["chatViewPlacement"];
       member_email?: string;
       invites?: string[];
       execution?: ApiChannelConfig;
@@ -359,6 +362,7 @@ export function getDefaultChannelFormState(
       kind: "work_chat",
       chatInterface: config.interface_mode ?? "multi_chat",
       chatMembership: config.membership ?? "open",
+      chatViewPlacement: config.view_placement ?? "none",
       chatMemberEmail: config.member_email ?? "",
       chatInvites: (config.invites ?? []).join("\n"),
       api: apiFormStateFromConfig(config.execution),
@@ -514,6 +518,7 @@ export function buildChannelConfig(state: ChannelFormState) {
       return {
         interface_mode: state.chatInterface,
         membership: state.chatMembership,
+        ...(state.chatViewPlacement !== "none" ? { view_placement: state.chatViewPlacement } : {}),
         ...(state.chatMembership === "invites"
           ? {
               member_email: state.chatMemberEmail.trim(),
@@ -1241,27 +1246,7 @@ export function ChannelForm({
           </FormSection>
         </>
       )}
-      {state.kind === "work_chat" && (
-        <FormSection title="Chat site" hint="How conversations are organized.">
-          <WorkChatFields
-            mode={state.chatInterface}
-            onModeChange={(mode) => update("chatInterface", mode)}
-            membership={state.chatMembership}
-            memberEmail={state.chatMemberEmail}
-            invites={state.chatInvites}
-            onMembershipChange={(next) =>
-              onChange({
-                ...state,
-                chatMembership: next.membership,
-                chatMemberEmail: next.memberEmail,
-                chatInvites: next.invites,
-              })
-            }
-            value={state.api}
-            onChange={(api) => update("api", api)}
-          />
-        </FormSection>
-      )}
+      {state.kind === "work_chat" && <WorkChatSection state={state} onChange={onChange} />}
       {state.kind === "api" && (
         <FormSection
           title="Calls"

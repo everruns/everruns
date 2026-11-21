@@ -738,6 +738,7 @@ async fn work_chat_org_members_require_full_scope_on_both_url_spellings() {
         .assert_success();
         for (method, path, body) in [
             (Method::POST, format!("{base}/chat/main"), Some(json!({}))),
+            (Method::PUT, format!("{base}/chat/view"), Some(json!({}))),
             (
                 Method::POST,
                 format!("{base}/sessions/{id}/settings"),

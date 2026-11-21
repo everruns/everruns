@@ -1419,6 +1419,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/view": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the view definition and its revision for an Agent */
+    get: operations["get_agent_view_settings"];
+    /** Replace or remove an Agent view using its current revision */
+    put: operations["replace_agent_view"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{id}/delete": {
     parameters: {
       query?: never;
@@ -1964,6 +1982,30 @@ export interface paths {
     /** Read work chat share */
     get: operations["read_work_chat_share"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/channels/{channel_id}/chat/view": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat view
+     * @description Return the view available to the signed-in Work Chat viewer.
+     */
+    get: operations["get_work_chat_view"];
+    /**
+     * Set work chat view preference
+     * @description Save or reset the signed-in Work Chat viewer's personal layout.
+     */
+    put: operations["set_work_chat_view_preference"];
     post?: never;
     delete?: never;
     options?: never;
@@ -3263,6 +3305,32 @@ export interface paths {
      */
     get: operations["read_work_chat_share_legacy"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/e/{channel_id}/chat/view": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get work chat view legacy
+     * @deprecated
+     * @description Return the view available to the signed-in Work Chat viewer.
+     */
+    get: operations["get_work_chat_view_legacy"];
+    /**
+     * Set work chat view preference legacy
+     * @deprecated
+     * @description Save or reset the signed-in Work Chat viewer's personal layout.
+     */
+    put: operations["set_work_chat_view_preference_legacy"];
     post?: never;
     delete?: never;
     options?: never;
@@ -7499,6 +7567,27 @@ export interface paths {
     patch: operations["update_session"];
     trace?: never;
   };
+  "/v1/sessions/{session_id}/agent-view": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a published view from Platform Chat
+     * @description Read the published Agent view for a visible session or an authorized Agent reference.
+     */
+    get: operations["get_session_agent_view"];
+    /** Save a private layout for your view of this Agent */
+    put: operations["set_session_agent_view_preference"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/approval-mode": {
     parameters: {
       query?: never;
@@ -11180,6 +11269,67 @@ export interface components {
      * @enum {string}
      */
     AgentTriggerType: "schedule" | "webhook" | "github" | "mcp_event";
+    /** @description An Agent author's default layout and publication permissions. */
+    AgentViewDefinition: {
+      /**
+       * @description Whether a successful run may also publish a replacement layout.
+       * @example false
+       */
+      allow_agent_layout?: boolean;
+      /**
+       * @description Whether viewers may use a personal layout for this view.
+       * @example true
+       */
+      allow_personalization?: boolean;
+      /**
+       * @description Top-level keys that an agent is allowed to publish for this layout.
+       * @example [
+       *       "status",
+       *       "changes"
+       *     ]
+       */
+      data_fields?: string[];
+      /** @description Default layout used until a run publishes a replacement. */
+      layout: components["schemas"]["AgentViewLayout"];
+      /**
+       * @description Display name used in the chat and full-page placements.
+       * @example Repository activity
+       */
+      title: string;
+    };
+    /** @description A fixed or generated layout used to render an Agent view. */
+    AgentViewLayout:
+      | {
+          /** @enum {string} */
+          format: "a2ui";
+          operations: unknown[];
+        }
+      | {
+          /** @enum {string} */
+          format: "html";
+          /** @example <h2>Repository activity</h2> */
+          source: string;
+        };
+    /** @description Saves or resets the current viewer's personal layout at a given revision. */
+    AgentViewPreference: {
+      layout: components["schemas"]["AgentViewLayout"] | null;
+      /**
+       * Format: int64
+       * @description The revision returned by the most recent read of the published view.
+       * @example 1
+       */
+      revision: number;
+    };
+    /** @description The current revision and optional view definition for an Agent. */
+    AgentViewSettings: {
+      /**
+       * Format: int64
+       * @description Revision zero represents an Agent with no saved view settings.
+       * @example 1
+       */
+      revision: number;
+      view?: components["schemas"]["AgentViewDefinition"] | null;
+    };
     /** @description Agent list/detail payload with relationship counts and resolved harness metadata. */
     AgentWithCounts: components["schemas"]["Agent"] & {
       /** Format: int64 */
@@ -14835,6 +14985,7 @@ export interface components {
       headers?: {
         [key: string]: string;
       } | null;
+      interactive_views?: components["schemas"]["McpInteractiveViews"] | null;
       /**
        * @description The name of the MCP server. Must be unique.
        * @example atlassian-mcp-server
@@ -21113,6 +21264,11 @@ export interface components {
          */
         id: string;
         /**
+         * @description Where this server's MCP App views are shown: `on` (console and a
+         *     picture in Slack), `console_only`, or `off`.
+         */
+        interactive_views?: components["schemas"]["McpInteractiveViews"];
+        /**
          * @description Display name of the MCP server.
          * @example atlassian-mcp-server
          */
@@ -21960,6 +22116,11 @@ export interface components {
          * @example mcp_01933b5a00007000800000000000001
          */
         id: string;
+        /**
+         * @description Where this server's MCP App views are shown: `on` (console and a
+         *     picture in Slack), `console_only`, or `off`.
+         */
+        interactive_views?: components["schemas"]["McpInteractiveViews"];
         /**
          * @description Display name of the MCP server.
          * @example atlassian-mcp-server
@@ -23322,6 +23483,14 @@ export interface components {
       retryable: boolean;
     };
     /**
+     * @description Where an organization MCP server's views are shown. A display preference:
+     *     hosted runtimes always tell servers they can render views, so turning views
+     *     off never changes what a tool returns to the model.
+     * @example on
+     * @enum {string}
+     */
+    McpInteractiveViews: "on" | "console_only" | "off";
+    /**
      * @description Per-server policy for which MCP protocol era the client uses.
      *
      *     `Auto` (the default) probes the server and adapts — it tries the stateless
@@ -23382,6 +23551,11 @@ export interface components {
        * @example mcp_01933b5a00007000800000000000001
        */
       id: string;
+      /**
+       * @description Where this server's MCP App views are shown: `on` (console and a
+       *     picture in Slack), `console_only`, or `off`.
+       */
+      interactive_views?: components["schemas"]["McpInteractiveViews"];
       /**
        * @description Display name of the MCP server.
        * @example atlassian-mcp-server
@@ -27219,6 +27393,44 @@ export interface components {
         [key: string]: boolean;
       };
     };
+    /** @description The view snapshot available to the current chat viewer. */
+    PublishedAgentView: {
+      /**
+       * @description Whether the current viewer may save a personal layout.
+       * @example true
+       */
+      allow_personalization: boolean;
+      /**
+       * @description Most recently published data allowed by this definition.
+       * @example {
+       *       "changes": 3,
+       *       "status": "Up to date"
+       *     }
+       */
+      data: {
+        [key: string]: unknown;
+      };
+      /** @description Published layout or the Agent's default layout. */
+      layout: components["schemas"]["AgentViewLayout"];
+      personal_layout?: components["schemas"]["AgentViewLayout"] | null;
+      /**
+       * Format: int64
+       * @description Revision of the Agent's current view settings.
+       * @example 1
+       */
+      revision: number;
+      /**
+       * @description Display name from the Agent's view definition.
+       * @example Repository activity
+       */
+      title: string;
+      /**
+       * Format: date-time
+       * @description Time of the latest successful publication, if available.
+       * @example 2026-11-20T19:00:00Z
+       */
+      updated_at?: string | null;
+    };
     /** @description Completed scores in one group of a live-quality summary. */
     QualityGroup: {
       /**
@@ -27639,6 +27851,16 @@ export interface components {
     /** @description A display-name change that preserves the connected account credential. */
     RenameOrganizationConnectionRequest: {
       name: string;
+    };
+    /** @description Replaces or removes a view at the supplied revision. */
+    ReplaceAgentViewRequest: {
+      /**
+       * Format: int64
+       * @description The revision returned by the most recent read of the Agent's settings.
+       * @example 1
+       */
+      revision: number;
+      view: components["schemas"]["AgentViewDefinition"] | null;
     };
     /** @description The agent a request came from. */
     RequestingAgent: {
@@ -35107,6 +35329,7 @@ export interface components {
       headers?: {
         [key: string]: string;
       } | null;
+      interactive_views?: components["schemas"]["McpInteractiveViews"] | null;
       /**
        * @description The name of the MCP server.
        * @example updated-mcp-server
@@ -36928,6 +37151,11 @@ export interface components {
        * @example mcp_01933b5a00007000800000000000001
        */
       id: string;
+      /**
+       * @description Where this server's MCP App views are shown: `on` (console and a
+       *     picture in Slack), `console_only`, or `off`.
+       */
+      interactive_views?: components["schemas"]["McpInteractiveViews"];
       /**
        * @description Display name of the MCP server.
        * @example atlassian-mcp-server
@@ -41684,6 +41912,56 @@ export interface operations {
       };
     };
   };
+  get_agent_view_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentViewSettings"];
+        };
+      };
+    };
+  };
+  replace_agent_view: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReplaceAgentViewRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentViewSettings"];
+        };
+      };
+    };
+  };
   destroy_agent: {
     parameters: {
       query?: never;
@@ -42965,6 +43243,72 @@ export interface operations {
         content?: never;
       };
       /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_work_chat_view: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Published view */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_view_preference: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AgentViewPreference"];
+      };
+    };
+    responses: {
+      /** @description Saved personal layout */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
       404: {
         headers: {
           [name: string]: unknown;
@@ -46493,6 +46837,72 @@ export interface operations {
         content?: never;
       };
       /** @description Unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_work_chat_view_legacy: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Published view */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  set_work_chat_view_preference_legacy: {
+    parameters: {
+      query?: {
+        session?: string;
+      };
+      header?: never;
+      path: {
+        channel_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AgentViewPreference"];
+      };
+    };
+    responses: {
+      /** @description Saved personal layout */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"];
+        };
+      };
+      /** @description View unavailable */
       404: {
         headers: {
           [name: string]: unknown;
@@ -56618,6 +57028,62 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  get_session_agent_view: {
+    parameters: {
+      query?: {
+        /** @description An explicit Agent view opened in Platform Chat. */
+        view_agent?: components["schemas"]["agentId"];
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"] | null;
+        };
+      };
+    };
+  };
+  set_session_agent_view_preference: {
+    parameters: {
+      query?: {
+        /** @description An explicit Agent view opened in Platform Chat. */
+        view_agent?: components["schemas"]["agentId"];
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AgentViewPreference"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PublishedAgentView"] | null;
+        };
       };
     };
   };

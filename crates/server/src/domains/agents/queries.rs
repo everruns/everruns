@@ -145,7 +145,14 @@ pub async fn get_for_execution(
     match row {
         Some(row) if row.status != "deleted" => {
             let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
-            Ok(Some(row_to_agent(row, caps)))
+            let mut agent = row_to_agent(row, caps);
+            if agent.capabilities.iter().any(|capability| {
+                capability.capability_id()
+                    == everruns_capabilities::capabilities::published_views::PUBLISHED_VIEWS_ID
+            }) {
+                super::views::describe_for_execution(db, org_id, &mut agent).await?;
+            }
+            Ok(Some(agent))
         }
         _ => Ok(None),
     }

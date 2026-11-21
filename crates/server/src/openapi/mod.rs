@@ -222,6 +222,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::health_issues::dismiss_health_issue,
         api::agent_channels::get_agent_chat_features,
         api::agent_api::work_chat::get_work_chat_config,
+        api::agent_api::work_chat::views::get_work_chat_view,
+        api::agent_api::work_chat::views::set_work_chat_view_preference,
         api::agent_api::work_chat::get_work_chat_by_host,
         api::agent_api::work_chat::experience::update_work_chat_conversation,
         api::agent_api::work_chat::experience::share_work_chat_conversation,
@@ -614,6 +616,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
     components(
         schemas(
             crate::domains::agent_channels::record::work_chat::ChatFeatures,
+            crate::domains::agents::view_publication::PublishedAgentView,
+            crate::domains::agents::view_publication::AgentViewPreference,
+            crate::domains::agents::views::AgentViewLayout,
             api::agent_api::work_chat::FileWrite,
             api::command_dispatch::CommandCatalog,
             api::command_dispatch::CommandEntry,

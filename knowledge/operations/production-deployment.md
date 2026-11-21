@@ -145,6 +145,7 @@ See [`knowledge/operations/correlation-ids.md`](correlation-ids.md) for the `X-R
 - The authenticated MCP endpoint is always mounted at root: `/mcp`; do not configure `FEATURE_MCP_ENDPOINT` or an organization opt-in
 - OAuth discovery metadata stays at root: `/.well-known/oauth-authorization-server`
 - If the UI is deployed separately, it still must target the same public `/api` base and root-level `/oauth/*`, `/mcp`
+- The [Helm chart](local-setup.md#kubernetes-helm-chart-not-an-operator) can route directly from a cluster's Ingress controller. The routes belong to the chart, homepage Markdown negotiation to the UI, and the transport settings to the controller.
 
 ### MCP Endpoint Scaling
 

@@ -20,6 +20,7 @@ export const queryKeys = {
     stats: (org?: string, agentId?: string) => ["agent", org, agentId, "stats"] as const,
     activity: () => ["agents", "activity"] as const,
     mcpAttachments: (agentId?: string) => ["agent", agentId, "mcp-attachments"] as const,
+    viewSettings: (agentId: string) => ["agent", agentId, "view-settings"] as const,
   },
 
   agentChannels: {

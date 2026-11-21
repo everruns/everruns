@@ -28,6 +28,7 @@ import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { useChatDraft } from "@/hooks/use-chat-draft";
+import { COMPOSE_DRAFT_EVENT, type ComposeDraftDetail } from "@/lib/mcp-apps";
 import { useIntelligenceStatus } from "@/hooks/use-intelligence";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
@@ -206,6 +207,16 @@ export function ChatPanel({
   const { data: agents } = useAgents();
   const [draftSending, setDraftSending] = useState(false);
   const [inputValue, setInputValue, draftRecoveryError] = useChatDraft(chatSends.storageKey);
+  // A view's `ui/message` (MCP Apps) lands here as a draft, never sent on its own.
+  useEffect(() => {
+    function onComposeDraft(event: Event) {
+      const detail = (event as CustomEvent<ComposeDraftDetail>).detail;
+      if (!detail || detail.sessionId !== sessionId) return;
+      setInputValue((current) => (current.trim() ? `${current}\n\n${detail.text}` : detail.text));
+    }
+    window.addEventListener(COMPOSE_DRAFT_EVENT, onComposeDraft);
+    return () => window.removeEventListener(COMPOSE_DRAFT_EVENT, onComposeDraft);
+  }, [sessionId, setInputValue]);
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);

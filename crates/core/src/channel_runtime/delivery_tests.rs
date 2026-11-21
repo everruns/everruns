@@ -23,6 +23,7 @@ enum Call {
     ProgressPost(String),
     ProgressUpdate(String),
     React(String, String, bool),
+    View(String, String),
 }
 
 #[derive(Default)]
@@ -34,6 +35,7 @@ struct Recorder {
     progress: bool,
     fail_start: bool,
     reactions: bool,
+    views: bool,
 }
 
 impl Recorder {
@@ -76,6 +78,23 @@ impl ChannelDeliveryAdapter for Recorder {
     fn reactions(&self) -> Option<&dyn ChannelReactionSurface> {
         self.reactions
             .then_some(self as &dyn ChannelReactionSurface)
+    }
+    fn app_views(&self) -> Option<&dyn crate::channel::ChannelAppViewSurface> {
+        self.views
+            .then_some(self as &dyn crate::channel::ChannelAppViewSurface)
+    }
+}
+
+#[async_trait]
+impl crate::channel::ChannelAppViewSurface for Recorder {
+    async fn show(
+        &self,
+        _: SessionId,
+        view: &crate::channel::ChannelAppView,
+        _: &DeliveryContext,
+    ) -> DeliveryResult {
+        self.push(Call::View(view.app.resource_uri.clone(), view.text.clone()));
+        DeliveryResult::Ok
     }
 }
 
@@ -808,4 +827,51 @@ async fn a_platform_without_reactions_keeps_them_inside() {
     delivery.observe(&completed("m1", "reply")).await;
     assert_eq!(recorder.calls(), vec![Call::Post("reply".into())]);
     assert!(delivery.take_links().is_empty());
+}
+
+fn view_completed(error: Option<&str>) -> DeliveryEvent {
+    event(
+        TOOL_COMPLETED,
+        json!({
+            "tool_call_id": "call_1",
+            "tool_name": "mcp_sentry__render_chart",
+            "success": error.is_none(),
+            "error": error,
+            "result": [{"type": "text", "text": "1,284 events"}],
+            "details": {"mcp_app": {
+                "server": "sentry",
+                "tool": "render_chart",
+                "resource_uri": "ui://sentry/chart.html",
+                "structured_content": {"events": 1284}
+            }},
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_tool_view_reaches_the_view_surface_with_its_text() {
+    let recorder = Arc::new(Recorder {
+        views: true,
+        ..Recorder::default()
+    });
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.observe(&view_completed(None)).await;
+    delivery.observe(&view_completed(Some("boom"))).await;
+    assert_eq!(
+        recorder.calls(),
+        vec![Call::View(
+            "ui://sentry/chart.html".into(),
+            "1,284 events".into()
+        )],
+        "a failed call shows no view"
+    );
+    assert!(!delivery.delivered(), "a view is not the agent's reply");
+}
+
+#[tokio::test]
+async fn without_a_view_surface_a_tool_view_draws_nothing() {
+    let recorder = Arc::new(Recorder::default());
+    let mut delivery = delivery(&recorder, DeliveryOptions::default());
+    delivery.observe(&view_completed(None)).await;
+    assert!(recorder.calls().is_empty());
 }

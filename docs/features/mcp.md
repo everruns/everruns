@@ -165,6 +165,18 @@ Many MCP servers publish context as [resources](https://modelcontextprotocol.io/
 
 Text is returned to the agent as is, images arrive as images, and other binary content is saved to the session's files (or only described, where the session has no files) instead of being pasted into the conversation. Content a server marks as meant only for the user stays out of the agent's context. Resources are read with the same sign-in as the server's tools, and only servers attached to the conversation can be reached. A server that publishes no resources says so when asked.
 
+### Interactive views (MCP Apps)
+
+Some MCP servers ship a small interactive view with a tool, following [MCP Apps](https://github.com/modelcontextprotocol/ext-apps): a chart of the events a tool just counted, a table you can sort, a map. When an agent calls such a tool, the console shows the view right under the tool call, in a sandboxed frame labelled with the server's name. **Expand** opens it full screen, and **Show data** shows the data the view was drawn from.
+
+- **What the agent sees does not change.** The model gets the tool's text result as before; the view and its data are for the person reading the chat.
+- **Views stay in a sandbox.** A view runs without access to the console's cookies, storage or page, and can only reach the web addresses it declared. Your deployment's own content security policy applies on top, so a view that loads code or data from elsewhere may need those hosts allowed there.
+- **Views can ask, not act.** When a view calls one of its server's tools, tools marked read-only or meant only for views run right away; any other tool asks you first. A message a view proposes lands in the chat box as a draft for you to send or delete. Only the session's owner lets a view call tools; anyone else sees the view with the data the call already returned.
+- **Slack** gets a picture of the view, taken with the session's [Browserless](/capabilities/browserless/) connection when there is one, and an **Open interactive view** button that links to the session.
+- **Per server setting.** **Interactive views** on a server's settings is **On** (console and Slack), **Console only**, or **Off**, which shows the text result only.
+
+Views cannot change what the model sees, start sampling or download files.
+
 ### Who a server acts as
 
 Each MCP server attached to an agent says whose sign-in its calls use

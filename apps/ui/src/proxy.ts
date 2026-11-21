@@ -22,10 +22,63 @@ function configuredLoginOrigin(): string | undefined {
   return runtimeEnv.AUTH_LOGIN_ORIGIN ?? runtimeEnv.NEXT_PUBLIC_AUTH_LOGIN_ORIGIN;
 }
 
-export function proxy(request: NextRequest) {
+async function homepageMarkdown(url: string, method: string): Promise<Response> {
+  // THREAT[TM-WEB-019]: Fetch the public discovery document from the configured API. The
+  // browser's cookies, authorization, and Host never go to this request.
+  try {
+    const response = await fetch(url, {
+      method,
+      redirect: "error",
+      signal: AbortSignal.timeout(3000),
+    });
+    if (response.ok) {
+      const headers = new Headers({ Vary: "Accept" });
+      for (const name of ["Content-Type", "Cache-Control"]) {
+        const value = response.headers.get(name);
+        if (value) headers.set(name, value);
+      }
+      return new Response(response.body, { headers });
+    }
+    await response.body?.cancel();
+  } catch {
+    // Keep the browser homepage independent of the discovery endpoint.
+  }
+  return new Response(null, { status: 502, headers: { Vary: "Accept" } });
+}
+
+export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/") {
+    const runtimeEnv = process.env;
+    const markdownUrl = runtimeEnv.UI_HOMEPAGE_MARKDOWN_URL;
+    if (
+      markdownUrl &&
+      (request.method === "GET" || request.method === "HEAD") &&
+      request.headers
+        .get("Accept")
+        ?.split(",")
+        .some((value) => {
+          const [mediaType, ...parameters] = value.split(";");
+          return (
+            mediaType.trim().toLowerCase() === "text/markdown" &&
+            !parameters.some((parameter) => /^\s*q\s*=\s*0(?:\.0*)?\s*$/i.test(parameter))
+          );
+        })
+    ) {
+      return homepageMarkdown(markdownUrl, request.method);
+    }
     const response = NextResponse.next();
     response.headers.set("Link", HOMEPAGE_DISCOVERY_LINKS);
+    if (markdownUrl) {
+      response.headers.append(
+        "Link",
+        [
+          '</.well-known/api-catalog>; rel="api-catalog"',
+          '</llms.txt>; rel="describedby"; type="text/markdown"',
+          '</auth.md>; rel="describedby"; type="text/markdown"',
+        ].join(", "),
+      );
+      response.headers.append("Vary", "Accept");
+    }
     return response;
   }
 

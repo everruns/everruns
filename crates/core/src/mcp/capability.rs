@@ -18,6 +18,7 @@ use crate::capability_types::CapabilityStatus;
 use crate::mcp_server::{McpToolDefinition, McpToolLabel, mcp_tool_name};
 use crate::tools::Tool;
 use everruns_contracts::CapabilityId;
+use everruns_contracts::runtime::mcp_apps;
 use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
@@ -120,10 +121,16 @@ impl McpCapability {
         if let Some(label) = self.tool_labels.get(&mcp_tool.name) {
             label.apply(&mut hints);
         }
-        hints.metadata = Some(serde_json::json!({"mcp_server": {
+        let mut metadata = serde_json::json!({"mcp_server": {
             "name": self.server_name,
             "description": visible_mcp_description(self.description.as_deref().unwrap_or_default()),
-        }}));
+        }});
+        // MCP Apps: remember the tool's view so the proxy tool can tell the
+        // console and channels which view shows this call's result.
+        if let Some(uri) = mcp_apps::tool_view_uri(mcp_tool.meta.as_ref()) {
+            metadata[mcp_apps::MCP_APP_DETAILS_KEY] = serde_json::json!({ "resource_uri": uri });
+        }
+        hints.metadata = Some(metadata);
 
         ToolDefinition::Builtin(BuiltinTool {
             name: prefixed_name,
@@ -239,9 +246,12 @@ impl Capability for McpCapability {
         // between fetches, and the tool list is the head of every cached
         // prompt, so a reorder alone would cost a full cache miss.
         // See knowledge/execution/cache-stable-tool-changes.md.
+        // A tool only its view may call (`_meta.ui.visibility: ["app"]`) is
+        // not offered to the model.
         let mut definitions: Vec<ToolDefinition> = self
             .tools
             .iter()
+            .filter(|t| !mcp_apps::tool_is_app_only(t.meta.as_ref()))
             .map(|t| self.mcp_tool_to_definition(t))
             .collect();
         definitions.sort_by(|a, b| a.name().cmp(b.name()));
@@ -299,6 +309,7 @@ mod tests {
             description: Some(text.into()),
             input_schema: schema.clone(),
             annotations: None,
+            meta: None,
         };
         let capability = McpCapability::new(
             Uuid::nil(),
@@ -406,6 +417,7 @@ mod tests {
                     description: Some("Search documentation".into()),
                     input_schema: schema.clone(),
                     annotations,
+                    meta: None,
                 }],
             );
             let defs = capability.tool_definitions();
@@ -442,6 +454,7 @@ mod tests {
                 destructive_hint: Some(!read_only),
                 ..Default::default()
             }),
+            meta: None,
         };
         let capability = McpCapability::new(
             Uuid::nil(),
@@ -499,6 +512,7 @@ mod tests {
                     description: None,
                     input_schema: json!({"type":"object"}),
                     annotations: None,
+                    meta: None,
                 }],
             );
             assert!(
@@ -516,6 +530,7 @@ mod tests {
                 description: None,
                 input_schema: json!({"type":"object"}),
                 annotations: None,
+                meta: None,
             }],
         );
         let definitions = capability.tool_definitions();
@@ -535,6 +550,7 @@ mod tests {
             description: None,
             input_schema: json!({"type":"object"}),
             annotations: None,
+            meta: None,
         };
         let names = |order: &[&str]| {
             McpCapability::new(
@@ -622,5 +638,60 @@ mod narration_tests {
                 owned
             );
         }
+    }
+
+    #[test]
+    fn view_tools_carry_their_view_and_app_only_tools_stay_hidden() {
+        let tool = |value: serde_json::Value| -> McpToolDefinition {
+            serde_json::from_value(value).unwrap()
+        };
+        let capability = McpCapability::new(
+            Uuid::nil(),
+            "sentry".into(),
+            None,
+            vec![
+                tool(json!({
+                    "name": "render_sentry_chart",
+                    "inputSchema": {"type": "object"},
+                    "_meta": {"ui": {"resourceUri": "ui://sentry/chart.html"}}
+                })),
+                tool(json!({
+                    "name": "chart_page",
+                    "inputSchema": {"type": "object"},
+                    "_meta": {"ui": {"visibility": ["app"]}}
+                })),
+                tool(json!({"name": "search_issues", "inputSchema": {"type": "object"}})),
+            ],
+        );
+        let definitions = capability.tool_definitions();
+        let names: Vec<&str> = definitions.iter().map(|d| d.name()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "mcp_sentry__render_sentry_chart",
+                "mcp_sentry__search_issues"
+            ]
+        );
+        let ToolDefinition::Builtin(chart) = &definitions[0] else {
+            panic!("MCP tools are builtin definitions");
+        };
+        let metadata = chart.hints.metadata.as_ref().unwrap();
+        assert_eq!(
+            metadata["mcp_app"]["resource_uri"],
+            json!("ui://sentry/chart.html")
+        );
+        assert_eq!(metadata["mcp_server"]["name"], json!("sentry"));
+        let ToolDefinition::Builtin(search) = &definitions[1] else {
+            panic!("MCP tools are builtin definitions");
+        };
+        assert!(
+            search
+                .hints
+                .metadata
+                .as_ref()
+                .unwrap()
+                .get("mcp_app")
+                .is_none()
+        );
     }
 }
