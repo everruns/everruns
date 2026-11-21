@@ -98,6 +98,12 @@ pub(super) fn build(
         thread_turns.clone(),
         room_posts.clone(),
         automatic_titles.clone(),
+        Arc::new(
+            domains::agents::view_publication::AgentViewPublication::new(
+                db.clone(),
+                auth_state.feature_flag_policy.clone(),
+            ),
+        ),
     ];
     // Run summaries (EVE-867). Registered only when a utility LLM is
     // configured, so the OSS default adds no listener at all rather than one

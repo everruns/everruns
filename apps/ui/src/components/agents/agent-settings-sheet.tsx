@@ -37,6 +37,8 @@ import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
 import { AgentServiceAccount } from "@/components/agents/agent-service-account";
+import { AgentViewSettingsEditor } from "@/components/agents/agent-view-settings-editor";
+import type { useAgentViewSettings } from "@/hooks/use-agent-view-settings";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent } from "@/lib/api/types";
@@ -56,13 +58,19 @@ export type AgentSettingsSection =
   | "files"
   | "network"
   | "sandbox"
+  | "views"
   | "max_output_tokens"
   | "usage"
   | "health";
 
 const SECTIONS: Record<
   AgentSettingsSection,
-  { title: string; description: string; kind: "draft" | "live" | "info"; wide?: boolean }
+  {
+    title: string;
+    description: string;
+    kind: "draft" | "live" | "info" | "independent";
+    wide?: boolean;
+  }
 > = {
   tracing: {
     title: "Tracing",
@@ -115,6 +123,11 @@ const SECTIONS: Record<
     kind: "draft",
     wide: true,
   },
+  views: {
+    title: "Views",
+    description: "Configure the default layout and personalization for this agent’s view.",
+    kind: "independent",
+  },
   max_output_tokens: {
     title: "Max output tokens",
     description:
@@ -144,6 +157,8 @@ interface AgentSettingsSheetProps {
   draft: AgentDraft;
   readOnly: boolean;
   fixedSandbox?: string;
+  viewSettings?: ReturnType<typeof useAgentViewSettings>;
+  viewSettingsReadOnly?: boolean;
   /** Wraps a draft change so the page enters edit mode. */
   onDraftChange: <T>(apply: (value: T) => void) => (value: T) => void;
 }
@@ -165,10 +180,13 @@ export function AgentSettingsSheet({
   readOnly,
   fixedSandbox,
   onDraftChange,
+  viewSettings,
+  viewSettingsReadOnly = readOnly,
 }: AgentSettingsSheetProps) {
   const ui = useUiTranslations();
   const chatMode = usePageChatMode();
-  const active = useRetainedSection(section);
+  const retained = useRetainedSection(section);
+  const active = retained === "views" && !viewSettings ? null : retained;
   const meta = active ? SECTIONS[active] : null;
 
   return (
@@ -283,6 +301,14 @@ export function AgentSettingsSheet({
                   draft={draft}
                   readOnly={readOnly}
                   onDraftChange={onDraftChange}
+                />
+              )}
+              {active === "views" && viewSettings && (
+                <AgentViewSettingsEditor
+                  key={agent.id}
+                  agentId={agent.id}
+                  query={viewSettings}
+                  readOnly={viewSettingsReadOnly}
                 />
               )}
               {active === "usage" && <UsageSection agent={agent} />}

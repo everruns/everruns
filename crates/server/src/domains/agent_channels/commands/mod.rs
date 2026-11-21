@@ -78,6 +78,7 @@ fn prepare_updated_config(
     let current = decrypted_config(ctx, existing.clone())?;
     merge_preserved_secret_fields(channel_type.clone(), &mut config, &current);
     let config = normalize_and_validate_channel_config(channel_type.clone(), config)?;
+    require_view_placement(ctx, &channel_type, &config, &current)?;
     let changed = super::exposure::config_changed(
         &config,
         normalize_and_validate_channel_config(channel_type, current).ok(),
@@ -89,6 +90,25 @@ fn prepare_updated_config(
         enabled == Some(false),
     )?;
     Ok(config)
+}
+
+fn require_view_placement(
+    ctx: &Ctx,
+    channel_type: &ChannelType,
+    config: &Value,
+    current: &Value,
+) -> Result<(), CommandError> {
+    if *channel_type == ChannelType::WorkChat
+        && !ctx.feature_flags.agent_views
+        && matches!(
+            config.get("view_placement").and_then(Value::as_str),
+            Some("panel" | "page")
+        )
+        && config.get("view_placement") != current.get("view_placement")
+    {
+        return Err(CommandError::feature_not_enabled("agent_views"));
+    }
+    Ok(())
 }
 
 pub(crate) async fn preflight_package_channel_config(
@@ -219,6 +239,7 @@ impl Command for CreateAgentChannel {
             );
         }
         let config = normalize_and_validate_channel_config(self.req.channel_type.clone(), config)?;
+        require_view_placement(ctx, &self.req.channel_type, &config, &Value::Null)?;
         let prepared = super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)?;
         let channel_id = AgentChannelId::new();
         let row = ctx

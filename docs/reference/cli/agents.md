@@ -84,6 +84,8 @@ Agent definitions and their configuration.
 | [`agents triggers update`](#agents-triggers-update) | Update an agent trigger. |
 | [`agents triggers deliveries list`](#agents-triggers-deliveries-list) | List recent events delivered to an agent trigger: dispatched, filtered, duplicate or failed. |
 | [`agents triggers runs list`](#agents-triggers-runs-list) | List recent execution outcomes for an agent trigger. |
+| [`agents view get`](#agents-view-get) | Read the view definition and its revision for an Agent. |
+| [`agents view replace`](#agents-view-replace) | Replace or remove an Agent view using its current revision. |
 
 ## agents import
 
@@ -1619,4 +1621,44 @@ Example:
 ```bash
 # See whether recent firings of a trigger succeeded
 everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9
+```
+
+## agents view get
+
+Read the view definition and its revision for an Agent.
+
+```bash
+everruns agents view get [OPTIONS] --agent-id <agent_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Prefixed identifier with 'agent' prefix. |
+
+Example:
+
+```bash
+# Read the view settings and revision before editing the layout
+everruns agents view get --agent-id agent_01933b5a00007000800000000000001
+```
+
+## agents view replace
+
+Replace or remove an Agent view using its current revision.
+
+```bash
+everruns agents view replace [OPTIONS] --agent-id <agent_id> --revision <revision> --view <view>
+```
+
+| Flag | Description |
+|---|---|
+| `--agent-id <AGENT_ID>` | Required. Prefixed identifier with 'agent' prefix. |
+| `--revision <REVISION>` | Required. The revision returned by the most recent read of the Agent's settings. |
+| `--view <VIEW>` | Required. |
+
+Example:
+
+```bash
+# Create a view that shows the status from a scheduled sweep
+everruns agents view replace --agent-id agent_01933b5a00007000800000000000001 --revision 0 --view '{"title":"Repository sweep","layout":{"format":"html","source":"<p>{{status}}</p>"},"data_fields":["status"]}'
 ```

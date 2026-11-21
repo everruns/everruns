@@ -40,8 +40,10 @@ pub(super) fn routes() -> Router<ChannelApiState> {
                     .delete(delete_work_chat_file),
             );
     }
-    router.merge(experience::routes())
+    router.merge(experience::routes()).merge(views::routes())
 }
+
+pub(crate) mod views;
 
 /// This channel's agent avatar, as a public circle preset, or nothing.
 async fn agent_logo(
@@ -100,6 +102,7 @@ async fn work_chat_bootstrap(state: &ChannelApiState, id: &str) -> ApiResponse<R
         "interface_mode": cfg.interface_mode,
         "membership": cfg.membership,
         "features": features,
+        "view_placement": views::placement(state, &context, &cfg).await,
         "org_members": cfg.execution.org_members,
         "logo": agent_logo(state, &context).await,
         "public_url": host.as_deref().and_then(public_url)

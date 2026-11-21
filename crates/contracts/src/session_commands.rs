@@ -172,6 +172,7 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     ("participants", Plane::Record),
     ("commands", Plane::Record),
     ("run-requests", Plane::Record),
+    ("agent-view", Plane::Record),
     // Served by the control plane with one code path, reading the
     // session's events from its cell and sending outcomes back as session
     // commands (step 11.6).

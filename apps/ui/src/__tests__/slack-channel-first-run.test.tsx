@@ -82,6 +82,7 @@ jest.mock("next/link", () => ({
 }));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
+  ...jest.requireActual("@/providers/feature-flags-provider"),
   useFeatureFlag: () => false,
 }));
 

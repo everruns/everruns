@@ -29,6 +29,8 @@ Running and archived sessions, their state and participants.
 | [`sessions unarchive`](#sessions-unarchive) | Restore an archived session to default lists. |
 | [`sessions unpin`](#sessions-unpin) | Unpin a session for the current user. |
 | [`sessions update`](#sessions-update) | Update session title, tags, locale, or model. |
+| [`sessions agent-view get`](#sessions-agent-view-get) | Read the published Agent view for a visible session or an authorized Agent reference. |
+| [`sessions agent-view set`](#sessions-agent-view-set) | Save a private layout for your view of this Agent. |
 | [`sessions approval-mode get`](#sessions-approval-mode-get) | Get a session's tool approval mode. |
 | [`sessions approval-mode set`](#sessions-approval-mode-set) | Set or clear a session's tool approval mode. |
 | [`sessions budget-check check`](#sessions-budget-check-check) | Check all budgets for a session. |
@@ -441,6 +443,48 @@ everruns sessions update session_01h9 --title 'Release triage' --reason 'Clarify
 
 # Switch a running session to another model
 everruns sessions update session_01h9 --model-id model_01933b5a00007000800000000000001 --reason 'Provider limit on the current model'
+```
+
+## sessions agent-view get
+
+Read the published Agent view for a visible session or an authorized Agent reference.
+
+```bash
+everruns sessions agent-view get [OPTIONS] --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Required. Prefixed identifier with 'session' prefix. |
+| `--view-agent <VIEW_AGENT>` |  |
+
+Example:
+
+```bash
+# Read the published view for a conversation
+everruns sessions agent-view get --session-id session_01933b5a00007000800000000000001
+```
+
+## sessions agent-view set
+
+Save a private layout for your view of this Agent.
+
+```bash
+everruns sessions agent-view set [OPTIONS] --layout <layout> --revision <revision> --session-id <session_id>
+```
+
+| Flag | Description |
+|---|---|
+| `--layout <LAYOUT>` | Required. |
+| `--revision <REVISION>` | Required. The revision returned by the most recent read of the published view. |
+| `--session-id <SESSION_ID>` | Required. Prefixed identifier with 'session' prefix. |
+| `--view-agent <VIEW_AGENT>` |  |
+
+Example:
+
+```bash
+# Reset a private layout to the published layout
+everruns sessions agent-view set --session-id session_01933b5a00007000800000000000001 --revision 1 --layout null
 ```
 
 ## sessions approval-mode get

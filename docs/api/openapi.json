@@ -5491,6 +5491,90 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/view": {
+      "get": {
+        "tags": [
+          "agent_views"
+        ],
+        "summary": "Read the view definition and its revision for an Agent",
+        "operationId": "get_agent_view_settings",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentViewSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "agent_views"
+        ],
+        "summary": "Replace or remove an Agent view using its current revision",
+        "operationId": "replace_agent_view",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceAgentViewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentViewSettings"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/agents/{id}/delete": {
       "post": {
         "tags": [
@@ -7344,6 +7428,122 @@
         "x-docs": {
           "audience": "public",
           "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/channels/{channel_id}/chat/view": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Get work chat view",
+        "description": "Return the view available to the signed-in Work Chat viewer.",
+        "operationId": "get_work_chat_view",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedAgentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "View unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
+          "group": "agent-api",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Set work chat view preference",
+        "description": "Save or reset the signed-in Work Chat viewer's personal layout.",
+        "operationId": "set_work_chat_view_preference",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentViewPreference"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved personal layout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedAgentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "View unavailable"
+          }
+        },
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
           "group": "agent-api",
           "support": "preview"
         }
@@ -12707,6 +12907,132 @@
           "support": "preview"
         },
         "x-superseded-by": "read_work_chat_share"
+      }
+    },
+    "/v1/e/{channel_id}/chat/view": {
+      "get": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Get work chat view legacy",
+        "description": "Return the view available to the signed-in Work Chat viewer.",
+        "operationId": "get_work_chat_view_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published view",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedAgentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "View unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "get_work_chat_view"
+      },
+      "put": {
+        "tags": [
+          "agent-execution"
+        ],
+        "summary": "Set work chat view preference legacy",
+        "description": "Save or reset the signed-in Work Chat viewer's personal layout.",
+        "operationId": "set_work_chat_view_preference_legacy",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentViewPreference"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved personal layout",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedAgentView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "View unavailable"
+          }
+        },
+        "deprecated": true,
+        "security": [
+          {
+            "AgentCredential": []
+          }
+        ],
+        "x-deprecation": {
+          "migration": "Use the canonical channel route. The legacy alias remains available; no removal date has been announced."
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
+          "group": "agent-api",
+          "support": "preview"
+        },
+        "x-superseded-by": "set_work_chat_view_preference"
       }
     },
     "/v1/e/{channel_id}/fcp": {
@@ -29262,6 +29588,123 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/agent-view": {
+      "get": {
+        "tags": [
+          "agent_views"
+        ],
+        "summary": "Read a published view from Platform Chat",
+        "description": "Read the published Agent view for a visible session or an authorized Agent reference.",
+        "operationId": "get_session_agent_view",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "view_agent",
+            "in": "query",
+            "description": "An explicit Agent view opened in Platform Chat.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/agentId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PublishedAgentView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      },
+      "put": {
+        "tags": [
+          "agent_views"
+        ],
+        "summary": "Save a private layout for your view of this Agent",
+        "operationId": "set_session_agent_view_preference",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "view_agent",
+            "in": "query",
+            "description": "An explicit Agent view opened in Platform Chat.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/agentId"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentViewPreference"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PublishedAgentView"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Requires organization adoption of the agent_views feature flag",
+          "group": "agents-authoring",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/sessions/{session_id}/approval-mode": {
       "get": {
         "tags": [
@@ -40356,6 +40799,145 @@
           "github",
           "mcp_event"
         ]
+      },
+      "AgentViewDefinition": {
+        "type": "object",
+        "description": "An Agent author's default layout and publication permissions.",
+        "required": [
+          "title",
+          "layout"
+        ],
+        "properties": {
+          "allow_agent_layout": {
+            "type": "boolean",
+            "description": "Whether a successful run may also publish a replacement layout.",
+            "example": false
+          },
+          "allow_personalization": {
+            "type": "boolean",
+            "description": "Whether viewers may use a personal layout for this view.",
+            "example": true
+          },
+          "data_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Top-level keys that an agent is allowed to publish for this layout.",
+            "example": [
+              "status",
+              "changes"
+            ]
+          },
+          "layout": {
+            "$ref": "#/components/schemas/AgentViewLayout",
+            "description": "Default layout used until a run publishes a replacement."
+          },
+          "title": {
+            "type": "string",
+            "description": "Display name used in the chat and full-page placements.",
+            "example": "Repository activity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentViewLayout": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A2UI 1.0 operations for one surface using the standard catalog.",
+            "required": [
+              "operations",
+              "format"
+            ],
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "a2ui"
+                ]
+              },
+              "operations": {
+                "type": "array",
+                "items": {}
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Static markup rendered in a sandbox without scripts or network access.",
+            "required": [
+              "source",
+              "format"
+            ],
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "html"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "example": "<h2>Repository activity</h2>"
+              }
+            }
+          }
+        ],
+        "description": "A fixed or generated layout used to render an Agent view."
+      },
+      "AgentViewPreference": {
+        "type": "object",
+        "description": "Saves or resets the current viewer's personal layout at a given revision.",
+        "required": [
+          "revision",
+          "layout"
+        ],
+        "properties": {
+          "layout": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentViewLayout",
+                "description": "Pass null to restore the published layout."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The revision returned by the most recent read of the published view.",
+            "example": 1
+          }
+        }
+      },
+      "AgentViewSettings": {
+        "type": "object",
+        "description": "The current revision and optional view definition for an Agent.",
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Revision zero represents an Agent with no saved view settings.",
+            "example": 1
+          },
+          "view": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentViewDefinition",
+                "description": "Configured view, if enabled for this Agent."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "AgentWithCounts": {
         "allOf": [
@@ -69790,6 +70372,71 @@
           }
         }
       },
+      "PublishedAgentView": {
+        "type": "object",
+        "description": "The view snapshot available to the current chat viewer.",
+        "required": [
+          "revision",
+          "title",
+          "layout",
+          "data",
+          "allow_personalization"
+        ],
+        "properties": {
+          "allow_personalization": {
+            "type": "boolean",
+            "description": "Whether the current viewer may save a personal layout.",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "description": "Most recently published data allowed by this definition.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "example": {
+              "changes": 3,
+              "status": "Up to date"
+            }
+          },
+          "layout": {
+            "$ref": "#/components/schemas/AgentViewLayout",
+            "description": "Published layout or the Agent's default layout."
+          },
+          "personal_layout": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentViewLayout",
+                "description": "Layout saved privately by the current viewer, if available."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Revision of the Agent's current view settings.",
+            "example": 1
+          },
+          "title": {
+            "type": "string",
+            "description": "Display name from the Agent's view definition.",
+            "example": "Repository activity"
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time of the latest successful publication, if available.",
+            "example": "2026-11-20T19:00:00Z"
+          }
+        }
+      },
       "QualityGroup": {
         "type": "object",
         "description": "Completed scores in one group of a live-quality summary.",
@@ -70620,6 +71267,34 @@
             "type": "string"
           }
         }
+      },
+      "ReplaceAgentViewRequest": {
+        "type": "object",
+        "description": "Replaces or removes a view at the supplied revision.",
+        "required": [
+          "revision",
+          "view"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The revision returned by the most recent read of the Agent's settings.",
+            "example": 1
+          },
+          "view": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentViewDefinition",
+                "description": "Pass null to remove the view."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "RequestingAgent": {
         "type": "object",
@@ -90151,6 +90826,10 @@
       "x-displayName": "Agent scripts"
     },
     {
+      "name": "agent_views",
+      "x-displayName": "Agent views"
+    },
+    {
       "name": "agent-triggers",
       "description": "Agent-owned schedule trigger endpoints",
       "x-displayName": "Agent triggers"
@@ -90392,6 +91071,7 @@
         "capabilities",
         "skills",
         "agent-scripts",
+        "agent_views",
         "agent-triggers",
         "agent-examples",
         "harness-examples",

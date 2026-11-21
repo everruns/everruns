@@ -32,6 +32,8 @@ pub mod record;
 pub(crate) mod sandbox_policy;
 pub mod source;
 pub mod types;
+pub(crate) mod view_publication;
+pub mod views;
 
 pub use avatar_commands::{GenerateAgentAvatar, ListAvatarPresets, SetAgentAvatar};
 pub use commands::*;

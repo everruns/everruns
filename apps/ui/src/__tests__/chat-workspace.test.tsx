@@ -2,7 +2,22 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ChatWorkspace } from "@/components/chat/chat-workspace";
 import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import type { Session, SessionTask } from "@/lib/api/types";
+import type { PublishedAgentView } from "@everruns/generative-ui";
 
+let mockPublishedView: PublishedAgentView | null = null;
+const mockViewQuery = jest.fn();
+jest.mock("@/hooks/use-agent-view-settings", () => ({
+  useSessionAgentView: (session?: string, agent?: string) => {
+    mockViewQuery(session, agent);
+    return { view: session ? mockPublishedView : null, save: jest.fn() };
+  },
+}));
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useOptionalFeatureFlags: () => ({ flags: { agent_views: !!mockPublishedView } }),
+}));
+jest.mock("@everruns/generative-ui", () => ({
+  PublishedView: ({ view }: { view: PublishedAgentView }) => <h2>{view.title}</h2>,
+}));
 jest.mock("@/hooks/use-turn-work-report", () => ({
   useTurnWorkReport: () => null,
   useLiveWorkReport: () => null,
@@ -45,10 +60,13 @@ let mockTasks: SessionTask[] = INITIAL_TASKS;
 let mockSessions: Record<string, Partial<Session>> = {};
 let mockPath = "/chats";
 let mockTaskId: string | null = null;
+let mockAgentReference: string | null = null;
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPath,
-  useSearchParams: () => ({ get: () => mockTaskId }),
+  useSearchParams: () => ({
+    get: (key: string) => (key === "view" ? mockAgentReference : mockTaskId),
+  }),
   useRouter: () => ({ push: mockPush }),
 }));
 jest.mock("next/link", () => ({
@@ -120,11 +138,42 @@ beforeEach(() => {
   mockTaskSubscription.mockClear();
   mockPath = "/chats";
   mockTaskId = null;
+  mockAgentReference = null;
+  mockPublishedView = null;
+  mockViewQuery.mockClear();
   mockPush.mockClear();
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: () => ({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }),
   });
+});
+
+it("opens an Agent view reference and switches to the searchable threads section", async () => {
+  mockAgentReference = "agent_01933b5a000070008000000000000001";
+  mockPublishedView = {
+    revision: 1,
+    title: "Repository sweep",
+    layout: { format: "html", source: "<p>Ready.</p>" },
+    data: {},
+    personal_layout: null,
+    allow_personalization: false,
+    updated_at: null,
+  };
+  mockTasks = [
+    ...INITIAL_TASKS,
+    ...Array.from({ length: 4 }, (_, index) => ({
+      ...INITIAL_TASKS[0],
+      id: "other_" + index,
+      display_name: "Additional work " + index,
+    })),
+  ];
+  render(<ChatWorkspace />);
+  const panel = within(screen.getByRole("region", { name: "Conversation panel" }));
+  expect(mockViewQuery).toHaveBeenCalledWith("permanent", mockAgentReference);
+  expect(await panel.findByRole("heading", { name: "Repository sweep" })).toBeVisible();
+  expect(panel.queryByRole("textbox", { name: "Search threads" })).not.toBeInTheDocument();
+  fireEvent.click(panel.getByRole("button", { name: /^Threads$/ }));
+  expect(panel.getByRole("textbox", { name: "Search threads" })).toBeVisible();
 });
 it("uses a full-width drawer when the sidebar leaves insufficient room for split panes", () => {
   const matchMedia = jest.fn(() => ({

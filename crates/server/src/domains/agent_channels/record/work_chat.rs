@@ -35,10 +35,28 @@ impl WorkChatMembership {
 
 pub const MAX_WORK_CHAT_INVITES: usize = 50;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkChatViewPlacement {
+    #[default]
+    None,
+    Panel,
+    Page,
+}
+
+impl WorkChatViewPlacement {
+    fn is_none(&self) -> bool {
+        *self == Self::None
+    }
+}
+
 /// Hosted interface and its existing Agent execution policies.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkChatConfig {
+    /// Explicitly share the Agent view with this channel's signed-in audience.
+    #[serde(default, skip_serializing_if = "WorkChatViewPlacement::is_none")]
+    pub view_placement: WorkChatViewPlacement,
     /// Older configs stored a consumer model list under this name. Work Chat
     /// uses the Agent's model. The list is accepted so those configs still
     /// load, then dropped on the next save.
@@ -185,6 +203,7 @@ impl Default for WorkChatConfig {
     fn default() -> Self {
         Self {
             allowed_model_ids: Vec::new(),
+            view_placement: WorkChatViewPlacement::None,
             interface_mode: ChatInterface::MultiChat,
             membership: WorkChatMembership::Open,
             member_email: None,

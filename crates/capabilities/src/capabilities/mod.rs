@@ -30,6 +30,7 @@ pub mod platform_management;
 pub mod platform_native;
 mod platform_skills;
 pub mod poppy_client;
+pub mod published_views;
 pub mod reactions;
 pub mod research;
 pub mod run_conversation;
@@ -150,6 +151,7 @@ pub fn register_platform_capabilities(
 ) {
     registry.register(PlatformCapability);
     registry.register(PlatformManagementCapability);
+    registry.register(published_views::PublishedViews);
 }
 
 /// Register environment-backed capabilities compiled into the hosted product.

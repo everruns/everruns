@@ -57,6 +57,7 @@ function FeatureFlagsLoader({ children }: { children: ReactNode }) {
       ...(activeQuery.data ?? DEFAULT_FLAGS),
       // Deployment availability is not adoption: only the org-effective flag enables this UI.
       extractions: !!orgId && (activeQuery.data?.extractions ?? false),
+      agent_views: !!orgId && (activeQuery.data?.agent_views ?? false),
     },
     isLoading: activeQuery.isLoading,
   };

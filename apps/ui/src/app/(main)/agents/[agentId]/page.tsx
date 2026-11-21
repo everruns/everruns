@@ -115,6 +115,7 @@ import { AgentCostEstimate } from "@/components/agents/agent-cost-estimate";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
 import { useAgentChannels } from "@/hooks/use-agent-channels";
 import { useAgentTriggers } from "@/hooks/use-agent-triggers";
+import { useAgentViewSettings } from "@/hooks/use-agent-view-settings";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { AgentPromptPane } from "@/components/agents/agent-prompt-pane";
 import { AgentSessionsPanel } from "@/components/agents/agent-sessions-panel";
@@ -225,6 +226,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
 
   const observersEnabled = useFeatureFlag("observers");
   const evalsEnabled = useFeatureFlag("evals");
+  const agentViewsEnabled = useFeatureFlag("agent_views");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const sourceQuery = useAgentSource(agentId);
   const sourceManaged = !!sourceQuery.data && sourceQuery.data.mode !== "two_way";
@@ -267,6 +269,9 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
   // rejects definition edits, archive and delete, so the page never offers
   // them. Bindings (service account, triggers, credentials) stay editable.
   const builtIn = !!agent?.is_built_in;
+  const showViews =
+    agentViewsEnabled && !!agent && !builtIn && !externalAgent.data?.endpoint && can("agent.view");
+  const viewSettings = useAgentViewSettings(agentId, showViews);
   const statusReadOnly = isReadOnlyStatus(agent?.status);
   const readOnly =
     builtIn || statusReadOnly || sourceManaged || sourceQuery.isLoading || sourceQuery.isError;
@@ -611,6 +616,17 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
           ? `${Object.keys(draft.sandboxPolicy.templates ?? {}).length} · default ${draft.sandboxPolicy.default}`
           : ui("None")),
     },
+    ...(showViews
+      ? [
+          {
+            id: "views",
+            label: ui("Views"),
+            summary:
+              viewSettings.data?.view?.title ??
+              (viewSettings.isError ? ui("Unavailable") : ui("None")),
+          },
+        ]
+      : []),
     {
       id: "max_output_tokens",
       label: ui("Max output tokens"),
@@ -1074,7 +1090,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
           )}
 
           <AgentSettingsSheet
-            section={openSection}
+            section={openSection === "views" && !showViews ? null : openSection}
             onOpenChange={(open) => {
               if (!open) setOpenSection(null);
             }}
@@ -1083,6 +1099,8 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
             readOnly={readOnly}
             fixedSandbox={fixedSandbox}
             onDraftChange={onDraftChange}
+            viewSettings={showViews ? viewSettings : undefined}
+            viewSettingsReadOnly={readOnly || !canManage}
           />
 
           <Dialog

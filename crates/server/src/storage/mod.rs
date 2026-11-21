@@ -13,6 +13,7 @@ pub mod a2a_push_configs;
 pub mod agent_avatars;
 pub mod agent_trigger_deliveries;
 pub mod agent_trigger_mcp_subscriptions;
+mod agent_views;
 pub mod backend;
 pub mod blob_store;
 pub mod command_idempotency;
