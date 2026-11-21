@@ -26385,6 +26385,16 @@
                 "null"
               ]
             },
+            "monthly_session_limit": {
+              "description": "Maximum sessions this organization can create per UTC calendar month.",
+              "format": "int32",
+              "maximum": 100000,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "name": {
               "description": "The display name of the organization.",
               "example": "Acme Corporation",
