@@ -499,8 +499,6 @@ pub const ROUTES: &[(&str, &str, RouteAccess)] = &[
     ("DELETE", "/v1/images/{image_id}", Write),
     ("GET", "/v1/images/{image_id}", Read),
     ("GET", "/v1/images/{image_id}/thumbnail", Read),
-    // Data planes call it with session tokens; no person's token ever may.
-    ("POST", "/v1/injected/{name}/mcp", Never),
     ("GET", "/v1/knowledge", Read),
     ("POST", "/v1/knowledge", Write),
     ("GET", "/v1/knowledge-indexers", Read),
