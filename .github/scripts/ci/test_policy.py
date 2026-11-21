@@ -293,7 +293,8 @@ class Policy(unittest.TestCase):
             self.assertIn('work_chat_test::', focused.risk_filters([path]))
 
     def test_database_backend_changes_run_real_router_fixtures(self):
-        targets=['background_sweep_wiring_test','pat_scope_sweep_test','plugins_integration_test']
+        targets=['background_sweep_wiring_test','pat_scope_sweep_test','plugins_integration_test',
+                 'server_integration']
         for path in ['crates/server/src/storage/test_database.rs',
                      'crates/server/src/storage/embedded_postgres/mod.rs',
                      'crates/server/tests/test_harness/database.rs']:
@@ -318,6 +319,13 @@ class Policy(unittest.TestCase):
                     'crates/server-macros/src/lib.rs']:
             with self.subTest(path=path):
                 self.assertEqual(focused.real_server_targets([path]), ['pat_scope_sweep_test'])
+
+    def test_capability_rollout_changes_run_the_api_contracts(self):
+        for path in ['crates/server/src/records/feature_flags.rs',
+                     'crates/server/src/api/capabilities.rs',
+                     'crates/server/src/domains/capabilities/commands.rs']:
+            with self.subTest(path=path):
+                self.assertIn('server_integration', focused.real_server_targets([path]))
 
     def test_plugin_catalog_changes_run_the_complete_catalog_contract(self):
         for path in ['crates/capabilities/src/integrations_catalog.rs',
@@ -356,9 +364,10 @@ class Policy(unittest.TestCase):
                       manifest_path='/repo/crates/server/Cargo.toml', dependencies=[],
                       targets=[{'kind': ['lib']}])
         selection = focused.select({'packages': [server], 'workspace_members': ['server']},
-                                   ['crates/server/tests/domain/db_pool_isolation_test.rs'],
+                                   ['crates/server/tests/domain/db_pool_isolation_test.rs',
+                                    'crates/server/tests/server_integration/api_integration_test/files_misc.rs'],
                                    Path('/repo'))['include'][0]
-        selection['risk_targets'] = ['router']
+        selection['risk_targets'] = ['router', *selection['risk_targets']]
         commands = list(focused.commands(selection))
         self.assertEqual(len(commands), 1)
         self.assertIn('--no-run', commands[0])
@@ -381,6 +390,14 @@ fn cargo_context() {
             (root/'src/lib.rs').write_text(fixture)
             for target in ['contracts', 'router']:
                 (root/f'tests/{target}.rs').write_text(fixture)
+            (root/'tests/server_integration.rs').write_text(fixture.replace('#[test]\n', '')+'''
+#[test]
+fn selected_api() {
+    cargo_context();
+    assert!(std::env::args().any(|arg| arg == "--test-threads=1"));
+    assert!(std::env::var("FAIL_API").is_err(), "API fixture failure");
+}
+''')
             (root/'tests/domain.rs').write_text('''
 mod db_pool_isolation_test {
     #[test]
@@ -392,15 +409,21 @@ fn unselected() { panic!("filter was lost"); }
             env = dict(os.environ, TEST_SELECTION=json.dumps(selection), CARGO_TARGET_DIR=str(root/'target'), CARGO_BUILD_JOBS='4')
             env.pop('CARGO_MANIFEST_DIR', None); env.pop('CARGO_MANIFEST_PATH', None)
             env.pop('FAIL_SELECTED', None)
+            env.pop('FAIL_API', None)
             subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=root, env=env, check=True, capture_output=True)
             command = ['python3', str(ROOT/'.github/scripts/ci/focused.py'), '--run']
             result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
-            self.assertEqual(result.stdout.count('1 passed; 0 failed'), 4)
+            self.assertEqual(result.stdout.count('1 passed; 0 failed'), 5)
             env['FAIL_SELECTED'] = '1'
             failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('selected failure', failed.stdout)
+            env.pop('FAIL_SELECTED')
+            env['FAIL_API'] = '1'
+            failed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn('API fixture failure', failed.stdout)
 
     def test_main_artifacts_preserve_threads_and_survive_transfer(self):
         with tempfile.TemporaryDirectory() as directory:
