@@ -392,11 +392,13 @@ impl DataPlane for HttpDataPlane {
         }
         if !session.memory.is_empty() {
             body["memory"] = serde_json::to_value(session.memory)?;
-            // Where the data plane reads and writes them, with a session
-            // token, once this control plane serves Memory as files.
-            if let Some(url) = crate::injected::hosted::memory::served_url() {
-                body["memory_server"] = Value::String(url);
-            }
+        }
+        // The servers the data plane calls for the session's Memory and
+        // platform commands, with a session token; none until a data plane
+        // is trusted, and then the host calls answer instead.
+        let servers = crate::injected::hosted::controller_servers();
+        if !servers.is_empty() {
+            body["servers"] = serde_json::to_value(servers)?;
         }
         if session.importing {
             body["importing"] = serde_json::json!(true);

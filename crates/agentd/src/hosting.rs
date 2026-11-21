@@ -1493,7 +1493,10 @@ use actors::scopeguard;
 fn memory_of(platform: &crate::platform::Platform) -> crate::memory::Memory {
     crate::memory::Memory {
         mounts: platform.memory.clone(),
-        server: platform.memory_server.clone(),
+        server: platform
+            .servers
+            .get(everruns_contracts::runtime::capabilities::injected::MEMORY_FILES)
+            .cloned(),
     }
 }
 

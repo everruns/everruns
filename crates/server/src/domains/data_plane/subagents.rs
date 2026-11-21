@@ -92,6 +92,6 @@ pub async fn record(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Res
     Ok(json!({
         "session_id": child.id,
         "memory": memory,
-        "memory_server": crate::injected::hosted::memory::served_url(),
+        "servers": crate::injected::hosted::controller_servers(),
     }))
 }

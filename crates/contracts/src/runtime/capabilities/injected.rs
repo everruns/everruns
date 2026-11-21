@@ -37,6 +37,15 @@ const MAX_LABEL_BYTES: usize = 128;
 /// The control plane's files server for a session's Memory
 /// (`io.everruns/files`): a data plane mounts the session's Memory from it.
 pub const MEMORY_FILES: &str = "memory_files";
+/// The control plane's server for the platform commands of a session's
+/// native Platform tools and shell builtin, run as the token's `act`.
+pub const PLATFORM_COMMANDS: &str = "platform_commands";
+/// [`PLATFORM_COMMANDS`]' one tool: `{operation, arguments}`.
+pub const PLATFORM_COMMAND_TOOL: &str = "platform_command";
+/// The control plane's servers a data plane calls for a session's native
+/// capabilities rather than lists as capabilities: their URLs come with the
+/// session's create, never from an agent's package.
+pub const CONTROLLER_SERVERS: [&str; 2] = [MEMORY_FILES, PLATFORM_COMMANDS];
 
 pub const SESSION_TOKEN_TYP: &str = "everruns-session+jwt";
 /// How long a minted session token stays valid. Short, like the host-call

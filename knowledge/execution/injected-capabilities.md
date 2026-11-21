@@ -126,7 +126,7 @@ Built (side by side with today's paths, nothing switched over):
   `search_knowledge` tool; the session's config comes from its agent's
   `injected:knowledge_base` or `knowledge_base` entry.
 
-- Cells mint session tokens per call (`everruns-cell` `mcp.rs`), with the
+- Cells mint session tokens per call (`everruns-agentd` `mcp.rs`), with the
   key derived from their link key; the control plane trusts its linked data
   plane from that key alone.
 - Hosts collect `injected:` refs whose config is the controller's
@@ -140,14 +140,17 @@ Built (side by side with today's paths, nothing switched over):
 - Served: Knowledge Base, Poppy client and Slack (`hosted.rs`: the
   capability's own tools, with the same host call handlers a cell's calls
   get, run in process). Slack's `slack_upload_file` reads the session's file
-  from its cell through the `fs` session command until `io.everruns/files`
-  lands. Platform commands are written (`hosted.rs` `platform`, acting as
-  `act`) but not served yet: Platform's docs mount, skills and the shell's
-  `everruns` builtin need a native part first.
+  from its cell through the `fs` session command (`io.everruns/files` serves
+  the control plane's trees to data planes, not the reverse). Platform stays native (its tools, `/docs` mount, skills and the shell's
+  `everruns` builtin); only its command catalog is served, as the
+  `platform_commands` server whose one tool runs a command as the token's
+  `act` (`hosted.rs` `platform`), and a cell calls it instead of the
+  `platform_command` host call (`everruns-agentd` `platform_calls.rs`).
 - Memory is a remote mount: the control plane serves it as the
   `memory_files` files server (`hosted.rs` `memory`, the same mount check as
-  the `memory_file` host call) and sends its URL with each create; a cell
-  mounts the session's Memory from it with a session token (`everruns-cell`
+  the `memory_file` host call). The URLs of these control plane servers
+  (`CONTROLLER_SERVERS`) come with each create, never from a package; a cell
+  mounts the session's Memory from it with a session token (`everruns-agentd`
   `memory.rs`), and falls back to the host call only when none is sent.
 
 Next, in order:

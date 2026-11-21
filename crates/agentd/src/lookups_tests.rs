@@ -463,7 +463,7 @@ async fn a_platform_call_names_its_turn_and_never_a_person() {
     let session = SessionId::new();
     let weak: Arc<dyn OrgMaterial> = material.clone();
     let lookups = super::org_lookups(Some(&Arc::downgrade(&weak)), session).unwrap();
-    let calls = crate::platform_calls::PlatformCalls::new(lookups, session);
+    let calls = crate::platform_calls::PlatformCalls::new(lookups, session, None);
 
     // Outside a turn there is no person to act as.
     let error = calls

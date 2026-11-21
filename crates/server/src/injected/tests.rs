@@ -380,7 +380,7 @@ async fn the_linked_data_planes_tokens_are_trusted_from_its_key_alone() {
         capability_id: "injected:knowledge_base".into(),
         audience: url,
     };
-    // What a cell's executor signs with (`mcp.rs` in everruns-cell).
+    // What a cell's executor signs with (`mcp.rs` in everruns-agentd).
     let executor =
         SessionTokenSigner::from_pkcs8(SESSION_TOKEN_ISSUER, &session_token_pkcs8(&dp_key))
             .unwrap();
@@ -563,4 +563,114 @@ async fn memory_is_served_as_files_through_the_memory_file_handler() {
             .is_err()
     );
     assert_eq!(runner.asked.lock().len(), asked);
+}
+
+/// The `platform_command` handler: says who ran what.
+struct PlatformCalls {
+    org: OrgId,
+    session: SessionId,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for PlatformCalls {
+    async fn answer(
+        &self,
+        org: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        assert_eq!(call.name, everruns_contracts::host_calls::PLATFORM_COMMAND);
+        assert_eq!(org, self.org);
+        assert_eq!(params["session_id"], self.session.to_string());
+        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+            Value::String(format!(
+                "{} ran {} {}",
+                params["acting_user"].as_str().unwrap(),
+                params["operation"].as_str().unwrap(),
+                params["arguments"]
+            )),
+        ))
+    }
+}
+
+/// Mints as a data plane does for a turn `actor` opened.
+struct Acting {
+    signer: Arc<SessionTokenSigner>,
+    org: OrgId,
+    actor: Option<String>,
+}
+
+#[async_trait]
+impl everruns_core::mcp::session_token::SessionTokenMinter for Acting {
+    async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
+        self.signer.sign_as(
+            request,
+            Some(self.org.to_string()),
+            self.actor.clone().map(|sub| {
+                everruns_contracts::runtime::capabilities::injected::SessionActor { sub }
+            }),
+        )
+    }
+}
+
+#[tokio::test]
+async fn platform_commands_run_as_the_person_who_opened_the_turn() {
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    capabilities
+        .host_calls()
+        .bind(Arc::new(PlatformCalls { org, session }));
+    let service = hosted::platform::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities.definitions().remove(0);
+    assert_eq!(definition.name(), hosted::platform::NAME);
+    let router = routes(Arc::new(capabilities), "/v1");
+    let call = |actor: Option<&str>| {
+        let client = McpClient::new(
+            Arc::new(RouterEgress {
+                router: router.clone(),
+            }),
+            Arc::new(SessionTokenAuthProvider::new(
+                Arc::new(NoAuthProvider),
+                Arc::new(Acting {
+                    signer: signer.clone(),
+                    org,
+                    actor: actor.map(str::to_string),
+                }),
+            )),
+        )
+        .for_session(session.uuid());
+        let connection = connection(&definition);
+        async move {
+            client
+                .call(
+                    &connection,
+                    hosted::platform::TOOL,
+                    json!({ "operation": "execute", "arguments": { "command": "agents list" } }),
+                    None,
+                )
+                .await
+                .unwrap()
+        }
+    };
+    let text = |result: &everruns_core::McpToolCallResult| match &result.content[0] {
+        everruns_core::McpContent::Text { text, .. } => text.clone(),
+        other => panic!("{other:?}"),
+    };
+
+    let ran = call(Some("usr_1")).await;
+    assert!(!ran.is_error);
+    assert!(
+        text(&ran).starts_with("usr_1 ran execute"),
+        "{}",
+        text(&ran)
+    );
+    // No person opened the turn: nothing runs.
+    let refused = call(None).await;
+    assert!(refused.is_error);
+    assert!(text(&refused).contains("a turn a person started"));
 }

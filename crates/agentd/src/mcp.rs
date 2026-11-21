@@ -164,6 +164,37 @@ pub struct OpenedSecret {
 
 type Kept<T> = Mutex<HashMap<(String, String), (Instant, T)>>;
 
+/// One of the control plane's own servers (`injected::CONTROLLER_SERVERS`),
+/// called for one session with session tokens.
+#[derive(Clone)]
+pub(crate) struct ControllerServer {
+    pub client: Arc<everruns_core::mcp::McpClient>,
+    pub connection: Arc<everruns_core::mcp::McpConnection>,
+}
+
+impl ControllerServer {
+    /// The server `name` at `url`, for `session`, signed with `material`'s
+    /// MCP credentials. `None` where this node holds none.
+    pub(crate) fn for_session(
+        material: Option<&Weak<dyn OrgMaterial>>,
+        session: everruns_contracts::typed_id::SessionId,
+        name: &str,
+        url: &str,
+    ) -> Option<Self> {
+        let mcp = material?.upgrade()?.mcp()?;
+        let auth = mcp.provider_for_agent(Default::default());
+        let client =
+            everruns_core::mcp::McpClient::new(mcp.egress(), auth).for_session(session.uuid());
+        let mut connection = everruns_core::mcp::McpConnection::http(name, url);
+        connection.auth_mode =
+            everruns_contracts::runtime::mcp_server::McpServerAuthMode::SessionToken;
+        Some(Self {
+            client: Arc::new(client),
+            connection: Arc::new(connection),
+        })
+    }
+}
+
 /// MCP credentials of the orgs whose turns run here.
 pub struct OrgMcp {
     material: OnceLock<Weak<dyn OrgMaterial>>,

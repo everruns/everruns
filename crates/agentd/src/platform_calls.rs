@@ -18,6 +18,11 @@
 //! - The shell's `everruns` builtin forwards its line to the `execute`
 //!   tool (bashkit's `ForwardingBuiltin`), so it runs here too, bound to
 //!   the same turn.
+//! - Where the control plane serves its platform commands
+//!   (`injected::PLATFORM_COMMANDS`, sent with the create), a call is one
+//!   MCP tool call there with a session token, whose `act` is the turn's
+//!   person from the same record; the host call stays for a control plane
+//!   that does not serve it yet. The tools, docs and builtin stay native.
 
 use std::sync::Arc;
 
@@ -39,14 +44,21 @@ pub(crate) struct PlatformCalls {
     lookups: OrgLookups,
     session: SessionId,
     input: Option<MessageId>,
+    /// The control plane's commands server, when it serves one.
+    server: Option<crate::mcp::ControllerServer>,
 }
 
 impl PlatformCalls {
-    pub(crate) fn new(lookups: OrgLookups, session: SessionId) -> Self {
+    pub(crate) fn new(
+        lookups: OrgLookups,
+        session: SessionId,
+        server: Option<crate::mcp::ControllerServer>,
+    ) -> Self {
         Self {
             lookups,
             session,
             input: None,
+            server,
         }
     }
 
@@ -66,6 +78,9 @@ impl PlatformCalls {
                 "Platform commands run only within a turn a person started",
             ));
         };
+        if let Some(server) = &self.server {
+            return command(server, operation, arguments).await;
+        }
         let params = json!({
             "session_id": self.session.to_string(),
             "input_message_id": input.to_string(),
@@ -91,7 +106,7 @@ impl PlatformCalls {
     pub(crate) async fn record_subagent(
         &self,
         params: Value,
-    ) -> Result<(SessionId, crate::memory::Memory)> {
+    ) -> Result<(SessionId, Vec<String>, crate::platform::Servers)> {
         let answer = self
             .lookups
             .execute_internal_command(everruns_contracts::host_calls::SUBAGENT_RECORD, params)
@@ -101,12 +116,41 @@ impl PlatformCalls {
             .as_str()
             .and_then(|id| id.parse().ok())
             .ok_or_else(|| AgentLoopError::store("the control plane named no child session"))?;
-        let memory = crate::memory::Memory {
-            mounts: serde_json::from_value(answer["memory"].clone()).unwrap_or_default(),
-            server: answer["memory_server"].as_str().map(str::to_string),
-        };
-        Ok((id, memory))
+        let memory = serde_json::from_value(answer["memory"].clone()).unwrap_or_default();
+        let servers = serde_json::from_value(answer["servers"].clone()).unwrap_or_default();
+        Ok((id, memory, servers))
     }
+}
+
+/// `operation` with `arguments` on the control plane's commands server.
+async fn command(
+    server: &crate::mcp::ControllerServer,
+    operation: &str,
+    arguments: Value,
+) -> Result<String> {
+    use everruns_core::McpContent;
+    let result = server
+        .client
+        .call(
+            &server.connection,
+            everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMAND_TOOL,
+            json!({ "operation": operation, "arguments": arguments }),
+            None,
+        )
+        .await
+        .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|content| match content {
+            McpContent::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    if result.is_error {
+        return Err(AgentLoopError::tool(text));
+    }
+    Ok(text)
 }
 
 /// Binds the session's platform store, and its saved scripts, to each
@@ -141,3 +185,7 @@ pub(crate) fn binding(
 ) -> ExecutionServicesExt {
     ExecutionServicesExt(Arc::new(BindPlatformStore { store, scripts }))
 }
+
+#[cfg(test)]
+#[path = "platform_calls_tests.rs"]
+mod tests;

@@ -83,11 +83,12 @@ pub struct Platform {
     /// whose files stay in the control plane (`memory.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<String>,
-    /// The control plane's files server those mounts are read and written
-    /// through, with a session token (`memory.rs`). `None`: through the
-    /// `memory_file` host call.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_server: Option<String>,
+    /// The control plane's servers the session calls with a session token,
+    /// by name ([`Servers`]): its Memory's files (`memory.rs`), its platform
+    /// commands (`platform_calls.rs`). One it lacks goes through the host
+    /// call instead.
+    #[serde(default, skip_serializing_if = "Servers::is_empty")]
+    pub servers: Servers,
 }
 
 impl Platform {
@@ -211,11 +212,15 @@ pub enum Op {
         agent_ref: String,
         #[serde(default)]
         memory: Vec<String>,
-        /// [`Platform::memory_server`].
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        memory_server: Option<String>,
+        /// [`Platform::servers`].
+        #[serde(default, skip_serializing_if = "Servers::is_empty")]
+        servers: Servers,
     },
 }
+
+/// The control plane's servers a session calls, by name
+/// (`injected::MEMORY_FILES`, `injected::PLATFORM_COMMANDS`) to URL.
+pub type Servers = std::collections::BTreeMap<String, String>;
 
 /// The event types the control plane may record on a session: reactions,
 /// and a voice call's traces (the call runs on the control plane, which
@@ -369,14 +374,14 @@ impl CellState {
         if let Op::Agent {
             agent_ref,
             memory,
-            memory_server,
+            servers,
         } = op
         {
             // Set once: a retried create names the same agent.
             if state.platform.agent_ref.is_none() {
                 state.platform.agent_ref = Some(agent_ref);
                 state.platform.memory = memory;
-                state.platform.memory_server = memory_server;
+                state.platform.servers = servers;
                 changes.push(Change::Session(session));
             }
             return Response::Value {

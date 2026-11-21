@@ -215,7 +215,8 @@ pub fn from_env(db: Arc<crate::storage::StorageBackend>, base_url: &str) -> Inje
             calls.clone(),
             db,
         )))
-        .register(Arc::new(hosted::memory::service(base_url, calls)))
+        .register(Arc::new(hosted::memory::service(base_url, calls.clone())))
+        .register(Arc::new(hosted::platform::service(base_url, calls)))
 }
 
 /// What this control plane hands its data planes: the definitions it

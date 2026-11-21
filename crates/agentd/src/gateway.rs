@@ -576,7 +576,11 @@ impl Gateway {
         agent_ref: Option<String>,
         joining: Joining,
     ) -> Result<Value, ApiError> {
-        let Joining { memory, importing } = joining;
+        let Joining {
+            memory,
+            servers,
+            importing,
+        } = joining;
         // Reject a malformed definition here, not at its first turn. Whether
         // a node has the tools and provider it names shows at the turn.
         let agent = crate::host::package(&definition)
@@ -628,8 +632,8 @@ impl Gateway {
             "definition": definition,
             "tenant": tenant,
             "agent_ref": agent_ref,
-            "memory": memory.mounts,
-            "memory_server": memory.server,
+            "memory": memory,
+            "servers": servers,
             "importing": importing,
         });
         let deadline = Instant::now() + Duration::from_secs(30);
@@ -921,9 +925,11 @@ async fn check_org_token(
 /// How a control plane session joins its cell, beyond its agent.
 #[derive(Debug, Clone, Default)]
 pub struct Joining {
-    /// Its Memory ([`crate::platform::Platform::memory`] and
-    /// [`crate::platform::Platform::memory_server`]).
-    pub memory: crate::memory::Memory,
+    /// Its Memory mounts ([`crate::platform::Platform::memory`]).
+    pub memory: Vec<String>,
+    /// The control plane's servers it calls
+    /// ([`crate::platform::Platform::servers`]).
+    pub servers: crate::platform::Servers,
     /// A moved v1 session being imported: closed to messages until the
     /// control plane activates it (`state::Command::Importing`).
     pub importing: bool,

@@ -31,10 +31,8 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::host_calls::MEMORY_FILE;
 use everruns_contracts::runtime::capabilities::injected::MEMORY_FILES;
 use everruns_contracts::runtime::mcp_extensions::files_method;
-use everruns_contracts::runtime::mcp_server::McpServerAuthMode;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::HostBackends;
-use everruns_core::mcp::{McpClient, McpConnection};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_internal_protocol::commands::InternalCommandTransport;
@@ -50,38 +48,8 @@ pub struct Memory {
     /// The mounts it has ([`MOUNTS`]).
     pub mounts: Vec<String>,
     /// The control plane's files server they live on
-    /// ([`crate::platform::Platform::memory_server`]).
+    /// ([`crate::platform::Platform::servers`]).
     pub server: Option<String>,
-}
-
-/// How a mount reaches the control plane.
-#[derive(Clone)]
-enum Via {
-    /// The `memory_file` host call over the link.
-    HostCall(OrgLookups),
-    /// The control plane's files server, with a session token.
-    Files {
-        client: Arc<McpClient>,
-        connection: Arc<McpConnection>,
-    },
-}
-
-/// The files server at `url`, called for `session` with session tokens
-/// from `material`'s MCP credentials. `None` where this node holds none.
-fn files_server(
-    material: Option<&std::sync::Weak<dyn OrgMaterial>>,
-    session: SessionId,
-    url: &str,
-) -> Option<Via> {
-    let mcp = material?.upgrade()?.mcp()?;
-    let auth = mcp.provider_for_agent(Default::default());
-    let client = McpClient::new(mcp.egress(), auth).for_session(session.uuid());
-    let mut connection = McpConnection::http(MEMORY_FILES, url);
-    connection.auth_mode = McpServerAuthMode::SessionToken;
-    Some(Via::Files {
-        client: Arc::new(client),
-        connection: Arc::new(connection),
-    })
 }
 
 /// The Memory mount points a control plane may give a session.
@@ -92,6 +60,15 @@ pub const MOUNTS: &[&str] = &[
     "/team",
     "/room",
 ];
+
+/// How a mount reaches the control plane.
+#[derive(Clone)]
+enum Via {
+    /// The `memory_file` host call over the link.
+    HostCall(OrgLookups),
+    /// The control plane's files server, with a session token.
+    Files(crate::mcp::ControllerServer),
+}
 
 /// `backends` with the mounts of `session`'s Memory, served by its files
 /// server when it has one, else through `lookups`. Neither (no control
@@ -104,7 +81,10 @@ pub(crate) fn attach(
     memory: &Memory,
 ) -> HostBackends {
     let via = match &memory.server {
-        Some(url) => files_server(material, session, url),
+        Some(url) => {
+            crate::mcp::ControllerServer::for_session(material, session, MEMORY_FILES, url)
+                .map(Via::Files)
+        }
         None => lookups.map(Via::HostCall),
     };
     let Some(via) = via else {
@@ -180,13 +160,14 @@ impl CellMemory {
         }
         let lookups = match &self.via {
             Via::HostCall(lookups) => lookups,
-            Via::Files { client, connection } => {
+            Via::Files(server) => {
                 let mut params = json!({ "path": self.outer(path) });
                 if let (Some(params), Value::Object(args)) = (params.as_object_mut(), args) {
                     params.extend(args);
                 }
-                let answer = client
-                    .files(connection, &files_method(op), params)
+                let answer = server
+                    .client
+                    .files(&server.connection, &files_method(op), params)
                     .await
                     .map_err(|error| AgentLoopError::tool(error.to_string()))?;
                 return serde_json::from_value(answer)

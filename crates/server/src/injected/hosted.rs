@@ -401,151 +401,141 @@ pub mod slack {
     }
 }
 
-/// The platform tools (`platform_discover`, `platform_query`,
-/// `platform_execute`), run on the command catalog as the person who opened
-/// the turn (the token's `act`), with the same checks as a cell's
-/// `platform_command` call: the session must resolve `platform`, and the
-/// person must still be a member, with their current role.
+/// The platform commands of a session's native Platform tools and shell
+/// `everruns` builtin (`discover`, `query`, `execute`, `run`), run on the
+/// command catalog as the person who opened the turn (the token's `act`),
+/// with the same checks as the `platform_command` host call: the session
+/// must resolve `platform`, and the person must still be a member, with
+/// their current role.
 ///
-/// Decision: a turn no person opened (a channel message, a trigger) runs
-/// no platform command, as before: there is no one to act as.
+/// Decisions:
+/// - The Platform capability stays native on the data plane: its docs
+///   mount, skills and shell builtin need the session's own runtime. Only
+///   the command catalog, which is the control plane's, is served here, as
+///   one tool (`platform_command`) a data plane calls for those tools, never
+///   one an agent lists.
+/// - A turn no person opened (a channel message, a trigger) runs no
+///   platform command, as before: there is no one to act as.
 pub mod platform {
     use super::*;
-    use everruns_capabilities::capabilities::PlatformCapability;
-    use everruns_capabilities::{PlatformStore, PlatformStoreExt};
-    use everruns_contracts::error::{AgentLoopError, Result as RuntimeResult};
     use everruns_contracts::host_calls::PLATFORM_COMMAND;
+    use everruns_contracts::tools::ToolExecutionResult;
 
-    struct Commands {
+    /// Its one tool.
+    pub use everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMAND_TOOL as TOOL;
+    /// The server's name (`/injected/platform_commands/mcp`).
+    pub use everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMANDS as NAME;
+    const OPERATIONS: [&str; 4] = ["discover", "query", "execute", "run"];
+
+    struct Command {
         calls: HostCalls,
         org: OrgId,
         session: SessionId,
         actor: Option<String>,
     }
 
-    impl Commands {
-        async fn call(&self, operation: &str, arguments: Value) -> RuntimeResult<String> {
-            let Some(actor) = &self.actor else {
-                return Err(AgentLoopError::tool(
-                    "Platform commands run only within a turn a person started",
+    #[async_trait]
+    impl Tool for Command {
+        fn name(&self) -> &str {
+            TOOL
+        }
+
+        fn description(&self) -> &str {
+            "Run one platform command for the session, as the person who opened its turn."
+        }
+
+        fn parameters_schema(&self) -> Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "operation": { "type": "string", "enum": OPERATIONS },
+                    "arguments": { "type": "object" },
+                },
+                "required": ["operation"],
+            })
+        }
+
+        async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+            let operation = arguments["operation"].as_str().unwrap_or_default();
+            if !OPERATIONS.contains(&operation) {
+                return ToolExecutionResult::tool_error(format!(
+                    "unknown platform operation {operation:?}"
                 ));
+            }
+            let Some(actor) = &self.actor else {
+                return ToolExecutionResult::tool_error(
+                    "Platform commands run only within a turn a person started",
+                );
             };
             let params = serde_json::json!({
                 "session_id": self.session.to_string(),
                 "operation": operation,
-                "arguments": arguments,
+                "arguments": arguments.get("arguments").cloned().unwrap_or_else(|| serde_json::json!({})),
                 "acting_user": actor,
             });
             match self.calls.answer(self.org, PLATFORM_COMMAND, params).await {
-                Ok(HostCallAnswer::Value(Value::String(output))) => Ok(output),
-                Ok(HostCallAnswer::Value(other)) => Ok(other.to_string()),
-                Ok(HostCallAnswer::Error { message, .. }) => Err(AgentLoopError::tool(message)),
-                Err(error) => Err(AgentLoopError::store(error.to_string())),
+                Ok(HostCallAnswer::Value(Value::String(output))) => {
+                    ToolExecutionResult::success(Value::String(output))
+                }
+                Ok(HostCallAnswer::Value(other)) => {
+                    ToolExecutionResult::success(Value::String(other.to_string()))
+                }
+                Ok(HostCallAnswer::Error { message, .. }) => {
+                    ToolExecutionResult::tool_error(message)
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "platform command failed");
+                    ToolExecutionResult::tool_error("Platform commands are unavailable right now.")
+                }
             }
         }
     }
 
-    fn not_here<T>() -> RuntimeResult<T> {
-        Err(AgentLoopError::config(
-            "only the platform command surface is served here",
-        ))
+    pub struct PlatformCommands {
+        definition: InjectedCapabilityDefinition,
+        calls: HostCalls,
+    }
+
+    pub fn service(base_url: &str, calls: HostCalls) -> PlatformCommands {
+        PlatformCommands {
+            definition: InjectedCapabilityDefinition {
+                capability: DeclarativeCapabilityDefinition {
+                    name: NAME.to_string(),
+                    display_name: Some("Platform commands".to_string()),
+                    description: "The platform commands of a session's Platform tools.".to_string(),
+                    ..DeclarativeCapabilityDefinition::default()
+                },
+                server: InjectedServer {
+                    url: InjectedCapabilities::url_for(base_url, NAME),
+                    tool_timeout_ms: None,
+                },
+                attach: InjectedAttach::OnRequest,
+                match_labels: BTreeMap::new(),
+                tools: InjectedToolNames::Native,
+            },
+            calls,
+        }
     }
 
     #[async_trait]
-    impl PlatformStore for Commands {
-        async fn platform_discover(&self, arguments: Value) -> RuntimeResult<String> {
-            self.call("discover", arguments).await
+    impl InjectedCapabilityService for PlatformCommands {
+        fn definition(&self) -> &InjectedCapabilityDefinition {
+            &self.definition
         }
 
-        async fn platform_query(&self, arguments: Value) -> RuntimeResult<String> {
-            self.call("query", arguments).await
+        async fn tools(&self, session: &VerifiedSession) -> Result<Vec<Box<dyn Tool>>> {
+            Ok(vec![Box::new(Command {
+                calls: self.calls.clone(),
+                org: HostedService::org(session)?,
+                session: SessionId::from_uuid(session.session_id),
+                actor: session.claims.act.as_ref().map(|act| act.sub.clone()),
+            })])
         }
 
-        async fn platform_execute(&self, arguments: Value) -> RuntimeResult<String> {
-            self.call("execute", arguments).await
+        async fn tool_context(&self, session: &VerifiedSession) -> Result<ToolContext> {
+            Ok(ToolContext::new(SessionId::from_uuid(session.session_id))
+                .with_org_id(HostedService::org(session)?))
         }
-
-        async fn platform_run(&self, command: &str, params: Value) -> RuntimeResult<String> {
-            self.call(
-                "run",
-                serde_json::json!({ "command": command, "params": params }),
-            )
-            .await
-        }
-
-        async fn get_harness(
-            &self,
-            _: everruns_contracts::typed_id::HarnessId,
-        ) -> RuntimeResult<Option<everruns_core::HarnessDefinition>> {
-            not_here()
-        }
-
-        async fn get_agent_by_id(
-            &self,
-            _: everruns_contracts::typed_id::AgentId,
-        ) -> RuntimeResult<Option<everruns_core::AgentDefinition>> {
-            not_here()
-        }
-
-        async fn create_session_with_options(
-            &self,
-            _: everruns_capabilities::PlatformCreateSessionRequest,
-        ) -> RuntimeResult<everruns_core::ExecutionSession> {
-            not_here()
-        }
-
-        async fn get_session_by_id(
-            &self,
-            _: SessionId,
-        ) -> RuntimeResult<Option<everruns_core::ExecutionSession>> {
-            not_here()
-        }
-
-        async fn add_agent_session_participant(
-            &self,
-            _: SessionId,
-            _: everruns_contracts::typed_id::AgentId,
-            _: &str,
-        ) -> RuntimeResult<everruns_contracts::typed_id::SessionParticipantId> {
-            not_here()
-        }
-
-        async fn send_message(&self, _: SessionId, _: &str) -> RuntimeResult<()> {
-            not_here()
-        }
-
-        async fn get_messages(
-            &self,
-            _: SessionId,
-            _: Option<usize>,
-        ) -> RuntimeResult<Vec<everruns_capabilities::PlatformMessage>> {
-            not_here()
-        }
-
-        async fn wait_for_idle(&self, _: SessionId, _: Option<u64>) -> RuntimeResult<String> {
-            not_here()
-        }
-    }
-
-    pub fn service(
-        base_url: &str,
-        configs: Arc<dyn SessionCapabilityConfig>,
-        calls: HostCalls,
-    ) -> HostedService {
-        HostedService::new(
-            Arc::new(PlatformCapability),
-            base_url,
-            configs,
-            Arc::new(move |context, verified: &VerifiedSession, org, session| {
-                let store: Arc<dyn PlatformStore> = Arc::new(Commands {
-                    calls: calls.clone(),
-                    org,
-                    session,
-                    actor: verified.claims.act.as_ref().map(|act| act.sub.clone()),
-                });
-                context.with_extension(Arc::new(PlatformStoreExt(store)))
-            }),
-        )
     }
 }
 
@@ -632,13 +622,18 @@ pub mod memory {
             }
         }
     }
+}
 
-    /// The files server's URL, when this control plane serves it to data
-    /// planes.
-    pub fn served_url() -> Option<String> {
-        super::super::served()
-            .into_iter()
-            .find(|definition| definition.capability.name == NAME)
-            .map(|definition| definition.server.url)
-    }
+/// The URLs of the servers data planes call for sessions' native
+/// capabilities (`injected::CONTROLLER_SERVERS`), by name, once this
+/// control plane serves them to data planes; empty before.
+pub fn controller_servers() -> BTreeMap<String, String> {
+    super::served()
+        .into_iter()
+        .filter(|definition| {
+            everruns_contracts::runtime::capabilities::injected::CONTROLLER_SERVERS
+                .contains(&definition.capability.name.as_str())
+        })
+        .map(|definition| (definition.capability.name.clone(), definition.server.url))
+        .collect()
 }
