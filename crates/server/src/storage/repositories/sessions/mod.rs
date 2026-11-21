@@ -376,7 +376,17 @@ impl Database {
         .bind(input.playground_user_id)
         .bind(&input.mcp_creator)
         .fetch_one(&mut *tx)
-        .await?;
+        .await
+        .map_err(|error| {
+            if let Some(db_error) = error.as_database_error()
+                && db_error.constraint() == Some("session_monthly_creation_limit")
+            {
+                return crate::errors::ResourceLimitError::new(db_error.message())
+                    .with_code("monthly_session_limit_reached")
+                    .into();
+            }
+            anyhow::Error::from(error)
+        })?;
 
         if let Some(agent_id) = row.agent_id {
             sqlx::query(

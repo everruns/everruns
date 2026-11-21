@@ -7,6 +7,9 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+pub const DEFAULT_MONTHLY_SESSION_LIMIT: i32 = 10_000;
+pub const MAX_MONTHLY_SESSION_LIMIT: i32 = 100_000;
+
 pub type ListOrganizationsResponse = crate::common_dto::ListResponse<OrganizationResponse>;
 
 /// Response for organization operations
@@ -67,6 +70,9 @@ pub struct OrganizationResponse {
     /// largest schedule budget, and the daily unattended spend cap. Code
     /// defaults when the organization never set any.
     pub background_limits: everruns_contracts::runtime::session_schedule::BackgroundLimits,
+    /// Maximum sessions this organization can create per UTC calendar month.
+    #[schema(minimum = 1, maximum = 100000)]
+    pub monthly_session_limit: i32,
     /// What Everruns does on its own when a finding opens (Settings →
     /// Limits): pause a repeating schedule automatically, and whether the
     /// Inspector suggests changes to agents. Code defaults when the
@@ -102,6 +108,10 @@ pub struct UpdateOrganizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Acme Corporation")]
     pub name: Option<String>,
+    /// Maximum sessions this organization can create per UTC calendar month.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(minimum = 1, maximum = 100000)]
+    pub monthly_session_limit: Option<i32>,
     /// Default LLM model for this organization. Must be enabled; pass null to use the platform
     /// default.
     #[serde(default, deserialize_with = "double_option")]

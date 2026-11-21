@@ -21892,6 +21892,11 @@ export interface components {
         effective_research_model_id?: string | null;
         /** @description External identifier (org_<32-hex-chars>) */
         id: string;
+        /**
+         * Format: int32
+         * @description Maximum sessions this organization can create per UTC calendar month.
+         */
+        monthly_session_limit: number;
         /** @description Display name */
         name: string;
         /**
@@ -25966,6 +25971,11 @@ export interface components {
       effective_research_model_id?: string | null;
       /** @description External identifier (org_<32-hex-chars>) */
       id: string;
+      /**
+       * Format: int32
+       * @description Maximum sessions this organization can create per UTC calendar month.
+       */
+      monthly_session_limit: number;
       /** @description Display name */
       name: string;
       /**
@@ -36007,6 +36017,11 @@ export interface components {
       default_provider_per_service?: {
         [key: string]: string;
       } | null;
+      /**
+       * Format: int32
+       * @description Maximum sessions this organization can create per UTC calendar month.
+       */
+      monthly_session_limit?: number | null;
       /**
        * @description The display name of the organization.
        * @example Acme Corporation
