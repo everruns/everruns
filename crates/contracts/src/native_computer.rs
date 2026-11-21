@@ -108,6 +108,15 @@ pub fn openai_has_native_computer(model: &str) -> bool {
         .is_some_and(|minor| minor >= 4)
 }
 
+/// Whether a Gemini model takes the built-in `computer_use` tool on the
+/// Interactions API. Every Gemini 4 model has it (live probe of
+/// `gemini-4-hydrogen`, 2026-11-21); older models only had separate
+/// `*-computer-use-preview` ids, which Everruns does not target.
+pub fn gemini_has_native_computer(model: &str) -> bool {
+    let model = model.rsplit('/').next().unwrap_or(model);
+    model.starts_with("gemini-4")
+}
+
 /// Models that take Anthropic's `computer_toolset_20260801`, from the computer
 /// use tool reference (2026-11). Claude Fable/Mythos 5.2, Opus 5.5, Sonnet 5.5,
 /// and Haiku 5.5 accept only the toolset on the Claude API, so for them the function tool is
@@ -273,6 +282,23 @@ mod tests {
         }
         for model in ["gpt-5.2", "gpt-5", "gpt-4.1", "o3", "computer-use-preview"] {
             assert!(!openai_has_native_computer(model), "{model}");
+        }
+    }
+
+    #[test]
+    fn gemini_native_computer_is_gemini_4() {
+        for model in [
+            "gemini-4-hydrogen",
+            "models/gemini-4-neon",
+            "gemini-4-carbon",
+        ] {
+            assert!(gemini_has_native_computer(model), "{model}");
+        }
+        for model in [
+            "gemini-3.8-flash",
+            "gemini-2.5-computer-use-preview-10-2025",
+        ] {
+            assert!(!gemini_has_native_computer(model), "{model}");
         }
     }
 
