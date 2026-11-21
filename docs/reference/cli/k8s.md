@@ -28,12 +28,6 @@ Run Everruns in a Kubernetes cluster with the Helm chart.
 
 Install Everruns into the current Kubernetes cluster, or repair it. Safe to run again.
 
-`--public-url` enables direct Ingress with current charts. Use `--set
-proxy.enabled=true` to put Caddy behind Ingress. If the public endpoint has
-yet to come up, `up` signs in through a temporary port-forward and points the
-CLI profile at the public URL. See [Ingress routing](/getting-started/kubernetes/#ingress-routing)
-for TLS, streaming, and NetworkPolicy settings.
-
 ```bash
 everruns k8s up [OPTIONS]
 ```
