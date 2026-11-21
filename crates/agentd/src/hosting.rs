@@ -473,9 +473,18 @@ impl SessionHosting for RaftHosting {
         let backends = crate::subagents::attach(session, backends, Port(self.inner.clone())).await;
         // The session's Memory, in the control plane (`memory.rs`), and the
         // read-only files its capabilities bring (`capability_files.rs`).
-        let (memory, definition) = self
+        let (memory, definition, person_mcp) = self
             .inner
-            .read(session, |s| (memory_of(&s.platform), s.definition.clone()))
+            .read(session, |s| {
+                (
+                    memory_of(&s.platform),
+                    s.definition.clone(),
+                    s.platform
+                        .servers
+                        .get(everruns_contracts::runtime::capabilities::injected::PERSON_MCP)
+                        .cloned(),
+                )
+            })
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
         let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
@@ -509,9 +518,18 @@ impl SessionHosting for RaftHosting {
             ));
         }
         // The person's own MCP servers and the session's MCP records (`user_mcp.rs`).
+        let person_mcp = person_mcp.and_then(|url| {
+            crate::mcp::ControllerServer::for_session(
+                self.inner.material.get(),
+                session,
+                everruns_contracts::runtime::capabilities::injected::PERSON_MCP,
+                &url,
+            )
+        });
         let backends = crate::user_mcp::attach(
             backends,
             lookups,
+            person_mcp,
             Port(self.inner.clone()),
             session,
             &definition,

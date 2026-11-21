@@ -624,6 +624,203 @@ pub mod memory {
     }
 }
 
+/// The turn's person's own MCP servers (`user_mcp`) for a session's native
+/// `user_mcp` tools and turn servers, as the token's `act`.
+///
+/// Decisions:
+/// - Two tools, one per answer the cell needs: the manage tools' store
+///   (`person_mcp_store`) and the servers the turn adds
+///   (`person_mcp_servers`, the person's servers only when asked for).
+///   Each runs the `user_mcp` handler a host call
+///   runs (`data_plane::user_mcp`), with the person and the turn's input
+///   message from the token's `act` (THREAT[TM-AGENT-017]): the tool's
+///   arguments name neither, and the handler records the turn's invocation
+///   for that person first, as for the host call.
+/// - The answer is the handler's own `{"ok"}`/`{"error"}` object, as text:
+///   a store refusal is the model's to read, not a failed call. The
+///   servers' answer carries the person's keys as literal headers; it goes
+///   straight back to the node that asked over TLS, the same node a sealed
+///   host-call answer is opened on.
+/// - A turn no person opened has no store (refused here) and only the
+///   session's own MCP records as servers, which need no person.
+pub mod person_mcp {
+    use super::*;
+    use everruns_contracts::host_calls::{USER_MCP_SERVERS, USER_MCP_STORE};
+    use everruns_contracts::runtime::capabilities::injected::SessionActor;
+    use everruns_contracts::tools::ToolExecutionResult;
+
+    /// The server's name (`/injected/person_mcp/mcp`).
+    pub use everruns_contracts::runtime::capabilities::injected::PERSON_MCP as NAME;
+    pub use everruns_contracts::runtime::capabilities::injected::{
+        PERSON_MCP_SERVERS_TOOL as SERVERS_TOOL, PERSON_MCP_STORE_TOOL as STORE_TOOL,
+    };
+
+    #[derive(Clone, Copy)]
+    enum Kind {
+        Store,
+        Servers,
+    }
+
+    struct PersonTool {
+        kind: Kind,
+        calls: HostCalls,
+        org: OrgId,
+        session: SessionId,
+        actor: Option<SessionActor>,
+    }
+
+    impl PersonTool {
+        fn params(&self, arguments: &Value) -> std::result::Result<Value, Value> {
+            let mut params = serde_json::json!({ "session_id": self.session.to_string() });
+            if let Some(actor) = &self.actor {
+                params["acting_user"] = Value::String(actor.sub.clone());
+                if let Some(turn) = &actor.turn {
+                    params["input_message_id"] = Value::String(turn.clone());
+                }
+            }
+            match self.kind {
+                Kind::Store => {
+                    if params.get("input_message_id").is_none() {
+                        let refused = everruns_core::mcp::UserMcpStoreError::Unavailable(
+                            "Your MCP servers can be changed only in a turn a person started"
+                                .into(),
+                        );
+                        return Err(serde_json::json!({ "error": refused }));
+                    }
+                    params["call"] = arguments.get("call").cloned().unwrap_or(Value::Null);
+                }
+                Kind::Servers => {
+                    // The person's servers only when the cell asks for them
+                    // (its agent uses them); the records need no person.
+                    if arguments["person"].as_bool() != Some(true) {
+                        params.as_object_mut().map(|p| p.remove("input_message_id"));
+                    }
+                    params["session_servers"] =
+                        Value::Bool(arguments["session_servers"].as_bool() == Some(true));
+                }
+            }
+            Ok(params)
+        }
+    }
+
+    #[async_trait]
+    impl Tool for PersonTool {
+        fn name(&self) -> &str {
+            match self.kind {
+                Kind::Store => STORE_TOOL,
+                Kind::Servers => SERVERS_TOOL,
+            }
+        }
+
+        fn description(&self) -> &str {
+            match self.kind {
+                Kind::Store => {
+                    "One call of the user_mcp manage tools' store, as the turn's person."
+                }
+                Kind::Servers => {
+                    "The MCP servers the session's turn adds: its person's and the session's own."
+                }
+            }
+        }
+
+        fn parameters_schema(&self) -> Value {
+            match self.kind {
+                Kind::Store => serde_json::json!({
+                    "type": "object",
+                    "properties": { "call": { "type": "object" } },
+                    "required": ["call"],
+                }),
+                Kind::Servers => serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "person": { "type": "boolean" },
+                        "session_servers": { "type": "boolean" },
+                    },
+                }),
+            }
+        }
+
+        async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+            let params = match self.params(&arguments) {
+                Ok(params) => params,
+                Err(answer) => {
+                    return ToolExecutionResult::success(Value::String(answer.to_string()));
+                }
+            };
+            let call = match self.kind {
+                Kind::Store => USER_MCP_STORE,
+                Kind::Servers => USER_MCP_SERVERS,
+            };
+            match self.calls.answer(self.org, call, params).await {
+                Ok(HostCallAnswer::Value(answer)) => {
+                    ToolExecutionResult::success(Value::String(answer.to_string()))
+                }
+                Ok(HostCallAnswer::Error { message, .. }) => {
+                    ToolExecutionResult::tool_error(message)
+                }
+                Err(error) => {
+                    tracing::warn!(call = call, %error, "person's MCP call failed");
+                    ToolExecutionResult::tool_error(
+                        "The person's MCP servers are unavailable right now.",
+                    )
+                }
+            }
+        }
+    }
+
+    pub struct PersonMcp {
+        definition: InjectedCapabilityDefinition,
+        calls: HostCalls,
+    }
+
+    pub fn service(base_url: &str, calls: HostCalls) -> PersonMcp {
+        PersonMcp {
+            definition: InjectedCapabilityDefinition {
+                capability: DeclarativeCapabilityDefinition {
+                    name: NAME.to_string(),
+                    display_name: Some("Person's MCP servers".to_string()),
+                    description: "The turn's person's own MCP servers (user_mcp).".to_string(),
+                    ..DeclarativeCapabilityDefinition::default()
+                },
+                server: InjectedServer {
+                    url: InjectedCapabilities::url_for(base_url, NAME),
+                    tool_timeout_ms: None,
+                },
+                attach: InjectedAttach::OnRequest,
+                match_labels: BTreeMap::new(),
+                tools: InjectedToolNames::Native,
+            },
+            calls,
+        }
+    }
+
+    #[async_trait]
+    impl InjectedCapabilityService for PersonMcp {
+        fn definition(&self) -> &InjectedCapabilityDefinition {
+            &self.definition
+        }
+
+        async fn tools(&self, session: &VerifiedSession) -> Result<Vec<Box<dyn Tool>>> {
+            let org = HostedService::org(session)?;
+            let tool = |kind| -> Box<dyn Tool> {
+                Box::new(PersonTool {
+                    kind,
+                    calls: self.calls.clone(),
+                    org,
+                    session: SessionId::from_uuid(session.session_id),
+                    actor: session.claims.act.clone(),
+                })
+            };
+            Ok(vec![tool(Kind::Store), tool(Kind::Servers)])
+        }
+
+        async fn tool_context(&self, session: &VerifiedSession) -> Result<ToolContext> {
+            Ok(ToolContext::new(SessionId::from_uuid(session.session_id))
+                .with_org_id(HostedService::org(session)?))
+        }
+    }
+}
+
 /// The URLs of the servers data planes call for sessions' native
 /// capabilities (`injected::CONTROLLER_SERVERS`), by name, once this
 /// control plane serves them to data planes; empty before.

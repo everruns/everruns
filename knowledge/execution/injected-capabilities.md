@@ -55,8 +55,9 @@ capabilities.
 The data plane signs one EdDSA (Ed25519) JWT, the key type of its org tokens, per call (`typ: everruns-session+jwt`,
 5-minute TTL): `sub` session, `grp` the group label value (the organization in
 an Everruns deployment), `cap` the capability id, `aud` the exact server URL,
-and `act` (RFC 8693, `{"sub": <public user id>}`) the person whose message
-opened the session's turn, when one did.
+and `act` (RFC 8693, `{"sub": <public user id>, "turn": <input message id>}`)
+the person whose message opened the session's turn, and that message, when
+one did.
 The server verifies signature, `typ`, issuer, audience, `cap` and expiry against
 the JWKS of the data planes it trusts. A token for one server never verifies at
 another. Source: `crates/core/src/mcp/session_token.rs` (feature
@@ -152,6 +153,15 @@ Built (side by side with today's paths, nothing switched over):
   (`CONTROLLER_SERVERS`) come with each create, never from a package; a cell
   mounts the session's Memory from it with a session token (`everruns-agentd`
   `memory.rs`), and falls back to the host call only when none is sent.
+- The turn's person's own MCP servers (`user_mcp`) stay native in the cell
+  (the manage tools, the per-turn servers hook); their list and its
+  resolution are the `person_mcp` server's (`hosted.rs` `person_mcp`): one
+  tool for the manage tools' store and one for the servers a turn adds. The
+  token's `act` names the person and the open turn's input message
+  (`SessionActor.turn`, from the same session record), so the tools take
+  neither as an argument, and the control plane records the turn's
+  invocation for that person as the host call does (`everruns-agentd`
+  `user_mcp.rs`).
 
 Next, in order:
 

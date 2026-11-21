@@ -106,10 +106,13 @@ pub trait OrgMaterial: Send + Sync {
         let _ = (org, op);
         anyhow::bail!("this node does not refresh org secrets")
     }
-    /// The person whose message opened the turn `session` has open, from
-    /// the session's own record (`senders.rs`); `None` when no person did
-    /// or no turn is open.
-    fn turn_sender(&self, session: SessionId) -> Option<String> {
+    /// The person whose message opened the turn `session` has open, with
+    /// that message, from the session's own record (`senders.rs`); `None`
+    /// when no person did or no turn is open.
+    fn turn_actor(
+        &self,
+        session: SessionId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
         let _ = session;
         None
     }

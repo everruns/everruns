@@ -128,29 +128,13 @@ async fn command(
     operation: &str,
     arguments: Value,
 ) -> Result<String> {
-    use everruns_core::McpContent;
-    let result = server
-        .client
-        .call(
-            &server.connection,
+    server
+        .call_tool(
             everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMAND_TOOL,
             json!({ "operation": operation, "arguments": arguments }),
-            None,
         )
         .await
-        .map_err(|error| AgentLoopError::tool(error.to_string()))?;
-    let text: String = result
-        .content
-        .iter()
-        .filter_map(|content| match content {
-            McpContent::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    if result.is_error {
-        return Err(AgentLoopError::tool(text));
-    }
-    Ok(text)
+        .map_err(AgentLoopError::tool)
 }
 
 /// Binds the session's platform store, and its saved scripts, to each

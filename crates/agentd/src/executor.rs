@@ -772,11 +772,19 @@ impl crate::providers::OrgMaterial for Executor {
         Some(self.mcp.clone())
     }
 
-    fn turn_sender(&self, session: SessionId) -> Option<String> {
+    fn turn_actor(
+        &self,
+        session: SessionId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
         let state = self.remote.shared.state.read();
         let s = state.sessions.get(&session)?;
         let message = s.authority.open.and(s.authority.open_input)?;
-        s.platform.senders.of(message).map(str::to_owned)
+        s.platform.senders.of(message).map(|sub| {
+            everruns_contracts::runtime::capabilities::injected::SessionActor {
+                sub: sub.to_owned(),
+                turn: Some(message.uuid().to_string()),
+            }
+        })
     }
 
     fn declared_host_calls(

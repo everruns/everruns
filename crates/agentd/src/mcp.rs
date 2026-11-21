@@ -193,6 +193,33 @@ impl ControllerServer {
             connection: Arc::new(connection),
         })
     }
+
+    /// Call its `tool` with `arguments`: the result's text, or the error's
+    /// (a failed call, or a result marked as an error).
+    pub(crate) async fn call_tool(
+        &self,
+        tool: &str,
+        arguments: serde_json::Value,
+    ) -> Result<String, String> {
+        use everruns_core::McpContent;
+        let result = self
+            .client
+            .call(&self.connection, tool, arguments, None)
+            .await
+            .map_err(|error| error.to_string())?;
+        let text: String = result
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                McpContent::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        if result.is_error {
+            return Err(text);
+        }
+        Ok(text)
+    }
 }
 
 /// MCP credentials of the orgs whose turns run here.
@@ -535,9 +562,7 @@ impl SessionTokenMinter for OrgMcp {
             .ok_or_else(|| anyhow::anyhow!("session token for a session not running here"))?;
         // The person comes from the session's own record of who opened the
         // turn, never from the turn's tools (THREAT[TM-AGENT-017]).
-        let actor = material
-            .turn_sender(session)
-            .map(|sub| everruns_contracts::runtime::capabilities::injected::SessionActor { sub });
+        let actor = material.turn_actor(session);
         self.signer(&material)?.sign_as(request, Some(org), actor)
     }
 }

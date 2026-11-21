@@ -42,10 +42,19 @@ pub const MEMORY_FILES: &str = "memory_files";
 pub const PLATFORM_COMMANDS: &str = "platform_commands";
 /// [`PLATFORM_COMMANDS`]' one tool: `{operation, arguments}`.
 pub const PLATFORM_COMMAND_TOOL: &str = "platform_command";
+/// The control plane's server for the turn's person's own MCP servers
+/// (`user_mcp`), as the token's `act`. Not named `user_mcp`: a controller
+/// server's name never matches a hosted capability.
+pub const PERSON_MCP: &str = "person_mcp";
+/// [`PERSON_MCP`]'s tool for the `user_mcp` manage tools' store: `{call}`.
+pub const PERSON_MCP_STORE_TOOL: &str = "person_mcp_store";
+/// [`PERSON_MCP`]'s tool for the servers the turn adds:
+/// `{session_servers}`.
+pub const PERSON_MCP_SERVERS_TOOL: &str = "person_mcp_servers";
 /// The control plane's servers a data plane calls for a session's native
 /// capabilities rather than lists as capabilities: their URLs come with the
 /// session's create, never from an agent's package.
-pub const CONTROLLER_SERVERS: [&str; 2] = [MEMORY_FILES, PLATFORM_COMMANDS];
+pub const CONTROLLER_SERVERS: [&str; 3] = [MEMORY_FILES, PLATFORM_COMMANDS, PERSON_MCP];
 
 pub const SESSION_TOKEN_TYP: &str = "everruns-session+jwt";
 /// How long a minted session token stays valid. Short, like the host-call
@@ -286,6 +295,12 @@ pub struct SessionTokenClaims {
 pub struct SessionActor {
     /// The person's public user id.
     pub sub: String,
+    /// The input message of the turn the person opened, from the same
+    /// session record as `sub`: a server that acts for the turn (its
+    /// invocation, its `user_mcp` layer) names it from here, never from a
+    /// tool's arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<String>,
 }
 
 #[cfg(test)]
@@ -433,6 +448,7 @@ mod tests {
         let acted = SessionTokenClaims {
             act: Some(SessionActor {
                 sub: "usr_1".into(),
+                turn: None,
             }),
             ..claims
         };

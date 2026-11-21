@@ -152,8 +152,12 @@ impl OrgMaterial for Executor {
     fn data_plane_key(&self) -> Option<Key> {
         Some(KEY)
     }
-    fn turn_sender(&self, _: SessionId) -> Option<String> {
-        self.sender.lock().clone()
+    fn turn_actor(
+        &self,
+        _: SessionId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let sub = self.sender.lock().clone()?;
+        Some(everruns_contracts::runtime::capabilities::injected::SessionActor { sub, turn: None })
     }
     fn mcp(&self) -> Option<Arc<OrgMcp>> {
         self.mcp.get().cloned()

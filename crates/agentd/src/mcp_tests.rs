@@ -68,8 +68,12 @@ impl OrgMaterial for Directory {
         Some(KEY)
     }
 
-    fn turn_sender(&self, session: SessionId) -> Option<String> {
-        self.senders.lock().get(&session).cloned()
+    fn turn_actor(
+        &self,
+        session: SessionId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let sub = self.senders.lock().get(&session).cloned()?;
+        Some(everruns_contracts::runtime::capabilities::injected::SessionActor { sub, turn: None })
     }
 
     async fn connection(&self, org: &str, id: &str) -> anyhow::Result<Option<Connection>> {

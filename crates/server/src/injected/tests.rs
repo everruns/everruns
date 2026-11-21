@@ -597,19 +597,14 @@ impl hosted::HostCallRunner for PlatformCalls {
 struct Acting {
     signer: Arc<SessionTokenSigner>,
     org: OrgId,
-    actor: Option<String>,
+    actor: Option<everruns_contracts::runtime::capabilities::injected::SessionActor>,
 }
 
 #[async_trait]
 impl everruns_core::mcp::session_token::SessionTokenMinter for Acting {
     async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
-        self.signer.sign_as(
-            request,
-            Some(self.org.to_string()),
-            self.actor.clone().map(|sub| {
-                everruns_contracts::runtime::capabilities::injected::SessionActor { sub }
-            }),
-        )
+        self.signer
+            .sign_as(request, Some(self.org.to_string()), self.actor.clone())
     }
 }
 
@@ -639,7 +634,12 @@ async fn platform_commands_run_as_the_person_who_opened_the_turn() {
                 Arc::new(Acting {
                     signer: signer.clone(),
                     org,
-                    actor: actor.map(str::to_string),
+                    actor: actor.map(|sub| {
+                        everruns_contracts::runtime::capabilities::injected::SessionActor {
+                            sub: sub.to_string(),
+                            turn: None,
+                        }
+                    }),
                 }),
             )),
         )
@@ -673,4 +673,141 @@ async fn platform_commands_run_as_the_person_who_opened_the_turn() {
     let refused = call(None).await;
     assert!(refused.is_error);
     assert!(text(&refused).contains("a turn a person started"));
+}
+
+/// The `user_mcp` handlers: record what they were asked, answer `ok`.
+struct PersonCalls {
+    org: OrgId,
+    asked: parking_lot::Mutex<Vec<(&'static str, Value)>>,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for PersonCalls {
+    async fn answer(
+        &self,
+        org: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        assert_eq!(org, self.org);
+        self.asked.lock().push((call.name, params));
+        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+            json!({ "ok": { "reply": "list", "servers": [] } }),
+        ))
+    }
+}
+
+#[tokio::test]
+async fn the_persons_mcp_servers_are_asked_for_as_the_tokens_person_and_turn() {
+    use everruns_contracts::host_calls::{USER_MCP_SERVERS, USER_MCP_STORE};
+    use everruns_contracts::runtime::capabilities::injected::SessionActor;
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    let runner = Arc::new(PersonCalls {
+        org,
+        asked: parking_lot::Mutex::default(),
+    });
+    capabilities.host_calls().bind(runner.clone());
+    let service = hosted::person_mcp::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities.definitions().remove(0);
+    assert_eq!(definition.name(), hosted::person_mcp::NAME);
+    let router = routes(Arc::new(capabilities), "/v1");
+    let call = |actor: Option<SessionActor>, tool: &'static str, arguments: Value| {
+        let client = McpClient::new(
+            Arc::new(RouterEgress {
+                router: router.clone(),
+            }),
+            Arc::new(SessionTokenAuthProvider::new(
+                Arc::new(NoAuthProvider),
+                Arc::new(Acting {
+                    signer: signer.clone(),
+                    org,
+                    actor,
+                }),
+            )),
+        )
+        .for_session(session.uuid());
+        let connection = connection(&definition);
+        async move {
+            let result = client
+                .call(&connection, tool, arguments, None)
+                .await
+                .unwrap();
+            assert!(!result.is_error, "{result:?}");
+            match &result.content[0] {
+                everruns_core::McpContent::Text { text, .. } => {
+                    serde_json::from_str::<Value>(text).unwrap()
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    };
+    let turn = uuid::Uuid::new_v4().to_string();
+    let person = SessionActor {
+        sub: "usr_1".into(),
+        turn: Some(turn.clone()),
+    };
+
+    // The store: the person and turn from the token, whatever the call says.
+    let answer = call(
+        Some(person.clone()),
+        hosted::person_mcp::STORE_TOOL,
+        json!({ "call": { "op": "list" }, "input_message_id": "forged", "acting_user": "usr_2" }),
+    )
+    .await;
+    assert_eq!(answer["ok"]["reply"], "list");
+    {
+        let asked = runner.asked.lock();
+        let (name, params) = &asked[0];
+        assert_eq!(*name, USER_MCP_STORE);
+        assert_eq!(params["session_id"], session.to_string());
+        assert_eq!(params["acting_user"], "usr_1");
+        assert_eq!(params["input_message_id"], turn.as_str());
+        assert_eq!(params["call"]["op"], "list");
+    }
+
+    // The turn's servers: the person's only when asked for.
+    call(
+        Some(person.clone()),
+        hosted::person_mcp::SERVERS_TOOL,
+        json!({ "person": true, "session_servers": true }),
+    )
+    .await;
+    call(
+        Some(person),
+        hosted::person_mcp::SERVERS_TOOL,
+        json!({ "person": false, "session_servers": true }),
+    )
+    .await;
+    {
+        let asked = runner.asked.lock();
+        assert_eq!(asked[1].0, USER_MCP_SERVERS);
+        assert_eq!(asked[1].1["input_message_id"], turn.as_str());
+        assert_eq!(asked[1].1["session_servers"], true);
+        assert!(asked[2].1.get("input_message_id").is_none());
+    }
+
+    // No person opened the turn: no store, the session's records only.
+    let refused = call(
+        None,
+        hosted::person_mcp::STORE_TOOL,
+        json!({ "call": { "op": "list" } }),
+    )
+    .await;
+    assert_eq!(refused["error"]["kind"], "unavailable");
+    assert_eq!(runner.asked.lock().len(), 3);
+    call(
+        None,
+        hosted::person_mcp::SERVERS_TOOL,
+        json!({ "person": true, "session_servers": true }),
+    )
+    .await;
+    let asked = runner.asked.lock();
+    assert!(asked[3].1.get("input_message_id").is_none());
+    assert!(asked[3].1.get("acting_user").is_none());
 }
