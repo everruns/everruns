@@ -312,8 +312,10 @@
         "browserless_close_browser",
         "browserless_content",
         "browserless_interact",
+        "browserless_list_logins",
         "browserless_navigate",
         "browserless_open_browser",
+        "browserless_save_login",
         "browserless_scrape",
         "browserless_screenshot"
       ]

@@ -96,7 +96,7 @@ Browser automation and web interaction capabilities.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Browserless](/capabilities/browserless/) | `browserless` | 7 |
+| [Browserless](/capabilities/browserless/) | `browserless` | 9 |
 | [Browser Use](/capabilities/browser-use/) | `browser_use` | 1; Browserless connection |
 | [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; Browserless connection |
 
