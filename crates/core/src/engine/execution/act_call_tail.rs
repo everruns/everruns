@@ -20,7 +20,6 @@ use crate::engine::durability::DurableToolResultStore;
 use crate::engine::error::Result;
 use crate::engine::event_emitter::EventEmitter;
 use crate::engine::events::{EventContext, EventRequest, ToolCompletedData};
-use crate::engine::message::ContentPart;
 use crate::engine::tool_context::ToolContext;
 use crate::engine::tool_execution::ToolExecutor;
 use crate::engine::tool_fingerprint::{tool_error_fingerprint, tool_result_fingerprint};
@@ -172,70 +171,30 @@ impl CallTail {
                     );
                 }
 
-                let completed_data = if success {
-                    let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
-                    // Convert result to ContentPart (text + optional images)
-                    let mut result_content = tool_result
-                        .result
-                        .as_ref()
-                        .map(|r| vec![ContentPart::tool_result_text(r)])
-                        .unwrap_or_default();
-                    // Append images as native Image content parts
-                    if let Some(ref images) = tool_result.images {
-                        for img in images {
-                            result_content.push(ContentPart::Image(
-                                crate::engine::message::ImageContentPart::from_base64(
-                                    &img.base64,
-                                    &img.media_type,
-                                ),
-                            ));
-                        }
-                    }
-                    ToolCompletedData::success(
-                        tool_call.id.clone(),
-                        tool_call.name.clone(),
-                        result_content,
-                        Some(tool_duration_ms),
-                    )
-                    .with_fingerprints(self.tool_call_fingerprint.clone(), result_fingerprint)
-                    .with_display_name(self.display_name.clone())
-                    .with_capability_attribution(
-                        self.capability_id.clone(),
-                        self.capability_name.clone(),
-                    )
-                    .with_executed_arguments(
-                        &self.authored_arguments,
-                        &execution_tool_call.arguments,
-                    )
-                    .with_acted_as(client_policy::mcp_acted_as(&self.tool_context))
-                    .with_details(tool_result.details.clone())
-                    .with_narration(
-                        self.narration(ToolNarrationPhase::Completed, Some(&tool_result)),
-                    )
+                let phase = if success {
+                    ToolNarrationPhase::Completed
                 } else {
-                    let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
-                    ToolCompletedData::failure(
-                        tool_call.id.clone(),
-                        tool_call.name.clone(),
-                        status.to_string(),
-                        tool_result.error.clone().unwrap_or_default(),
-                        Some(tool_duration_ms),
-                    )
-                    .with_fingerprints(self.tool_call_fingerprint.clone(), result_fingerprint)
-                    .with_display_name(self.display_name.clone())
-                    .with_capability_attribution(
-                        self.capability_id.clone(),
-                        self.capability_name.clone(),
-                    )
-                    .with_executed_arguments(
-                        &self.authored_arguments,
-                        &execution_tool_call.arguments,
-                    )
-                    .with_acted_as(client_policy::mcp_acted_as(&self.tool_context))
-                    .with_narration(self.narration(ToolNarrationPhase::Failed, None))
-                }
+                    ToolNarrationPhase::Failed
+                };
+                let completed_data = ToolCompletedData::from_tool_result(
+                    tool_call,
+                    &tool_result,
+                    status,
+                    Some(tool_duration_ms),
+                )
+                .with_fingerprints(
+                    self.tool_call_fingerprint.clone(),
+                    tool_result_fingerprint(&tool_call.name, &tool_result),
+                )
+                .with_display_name(self.display_name.clone())
+                .with_capability_attribution(
+                    self.capability_id.clone(),
+                    self.capability_name.clone(),
+                )
+                .with_executed_arguments(&self.authored_arguments, &execution_tool_call.arguments)
+                .with_acted_as(client_policy::mcp_acted_as(&self.tool_context))
+                .with_narration(self.narration(phase, success.then_some(&tool_result)))
                 .with_worker_thread_cpu_ns(worker_thread_cpu_ns);
-                self.emit_completed(completed_data).await;
 
                 tracing::debug!(
                     session_id = %self.context.session_id,
@@ -277,6 +236,10 @@ impl CallTail {
                         Ok(true) => {}
                     }
                 }
+
+                // The durable result must exist before publishing completion:
+                // a replacement worker can restore it if this event never commits.
+                self.emit_completed(completed_data).await;
 
                 let conn_req = tool_result.connection_required.clone();
                 ToolCallResult {

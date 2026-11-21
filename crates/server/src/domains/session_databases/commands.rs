@@ -1,3 +1,4 @@
+use super::plane::PlaneDatabases;
 use super::queries as q;
 use super::types::{DatabaseInfoResponse, SchemaResponse};
 use crate::domains::common::*;
@@ -35,6 +36,9 @@ impl Command for ListSessionDatabases {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<DatabaseInfoResponse>, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if let Some(plane) = PlaneDatabases::of(ctx, session_id).await? {
+            return plane.list().await;
+        }
 
         let items = sqldb_store(ctx)?
             .list_databases(session_id)
@@ -70,6 +74,9 @@ impl Command for CreateSessionDatabaseCmd {
     async fn execute(self, ctx: &Ctx) -> Result<DatabaseInfoResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if let Some(plane) = PlaneDatabases::of(ctx, session_id).await? {
+            return plane.create(&self.name).await;
+        }
 
         let info = sqldb_store(ctx)?
             .create_database(session_id, &self.name)
@@ -111,6 +118,9 @@ impl Command for GetSessionDatabase {
     async fn execute(self, ctx: &Ctx) -> Result<DatabaseInfoResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if let Some(plane) = PlaneDatabases::of(ctx, session_id).await? {
+            return plane.get(&self.name).await;
+        }
 
         sqldb_store(ctx)?
             .get_database(session_id, &self.name)
@@ -149,6 +159,10 @@ impl Command for DeleteSessionDatabase {
     async fn execute(self, ctx: &Ctx) -> Result<DeleteSessionDatabaseResult, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if let Some(plane) = PlaneDatabases::of(ctx, session_id).await? {
+            plane.delete(&self.name).await?;
+            return Ok(DeleteSessionDatabaseResult { deleted: true });
+        }
 
         let deleted = sqldb_store(ctx)?
             .delete_database(session_id, &self.name)
@@ -183,14 +197,16 @@ impl Command for GetSessionDatabaseSchema {
     async fn execute(self, ctx: &Ctx) -> Result<SchemaResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
-
-        let tables = sqldb_store(ctx)?
-            .sql_schema(session_id, &self.name, None)
-            .await
-            .map_err(|e| match e {
-                SessionSqlDbError::DatabaseNotFound(_) => CommandError::not_found("Database"),
-                other => CommandError::internal(other.into()),
-            })?;
+        let tables = match PlaneDatabases::of(ctx, session_id).await? {
+            Some(plane) => plane.schema(&self.name).await?,
+            None => sqldb_store(ctx)?
+                .sql_schema(session_id, &self.name, None)
+                .await
+                .map_err(|e| match e {
+                    SessionSqlDbError::DatabaseNotFound(_) => CommandError::not_found("Database"),
+                    other => CommandError::internal(other.into()),
+                })?,
+        };
 
         Ok(SchemaResponse {
             database: self.name,

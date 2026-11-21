@@ -16,16 +16,15 @@ fn parse_provider_type_accepts_mixed_case_known_values() {
     );
 }
 
-fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
+fn test_ctx(db: Arc<StorageBackend>) -> Ctx {
     let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
         crate::live_updates::event_delivery::EventDelivery::in_memory(),
     ));
     let capability_service = Arc::new(crate::services::CapabilityService::new(db.clone(), None));
-    // Internal caller: the owner principal resolves to the system principal,
-    // avoiding a user lookup the in-memory store cannot satisfy.
-    let mut ctx = Ctx::new(
+    // The internal caller uses the system principal without requiring a user fixture.
+    Ctx::new(
         Caller::internal(DEFAULT_ORG_ID),
         db,
         capability_service,
@@ -33,9 +32,7 @@ fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
         Arc::new(DefaultPermissionResolver),
     )
     .with_session_service(session_service)
-    .with_event_service(event_service);
-    ctx.resource_limits.max_sessions_per_org = max_sessions_per_org;
-    ctx
+    .with_event_service(event_service)
 }
 
 fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
@@ -126,7 +123,7 @@ async fn create_session_enforces_shared_org_rate_limit() {
         .check_session_create(DEFAULT_ORG_ID)
         .await
         .expect("initial permit");
-    let ctx = test_ctx(db, 100).with_org_rate_limiter(limiter);
+    let ctx = test_ctx(db).with_org_rate_limiter(limiter);
 
     let err = CreateSession(create_request(HarnessId::new()))
         .execute(&ctx)
@@ -149,7 +146,7 @@ async fn fork_session_enforces_shared_org_rate_limit() {
         .check_session_create(DEFAULT_ORG_ID)
         .await
         .expect("initial permit");
-    let ctx = test_ctx(db, 100).with_org_rate_limiter(limiter);
+    let ctx = test_ctx(db).with_org_rate_limiter(limiter);
 
     let err = ForkSession {
         session_id: SessionId::new().to_string(),
@@ -211,7 +208,7 @@ impl everruns_core::host::TurnBackend for CancelTestRunner {
 #[tokio::test]
 async fn cancel_active_session_transitions_to_idle() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner::default()));
+    let ctx = test_ctx(db.clone()).with_runner(Arc::new(CancelTestRunner::default()));
     let harness_id = seed_harness(&ctx).await;
 
     let session = CreateSession(create_request(harness_id))
@@ -253,7 +250,7 @@ async fn cancel_active_session_transitions_to_idle() {
 #[tokio::test]
 async fn cancel_names_the_running_turn() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner::default()));
+    let ctx = test_ctx(db.clone()).with_runner(Arc::new(CancelTestRunner::default()));
     let harness_id = seed_harness(&ctx).await;
     let session = CreateSession(create_request(harness_id))
         .execute(&ctx)
@@ -320,7 +317,7 @@ async fn cancel_names_the_running_turn() {
 #[tokio::test]
 async fn failed_cancel_does_not_publish_a_terminal_or_idle_the_session() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db, 100).with_runner(Arc::new(CancelTestRunner {
+    let ctx = test_ctx(db).with_runner(Arc::new(CancelTestRunner {
         cancel_error: Some("pool timed out while waiting for an open connection"),
     }));
     let harness_id = seed_harness(&ctx).await;
@@ -361,7 +358,7 @@ async fn failed_cancel_does_not_publish_a_terminal_or_idle_the_session() {
 #[tokio::test]
 async fn update_session_title_emits_one_semantic_event_per_change() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db, 100);
+    let ctx = test_ctx(db);
     let harness_id = seed_harness(&ctx).await;
     let session = CreateSession(create_request(harness_id))
         .execute(&ctx)
@@ -406,22 +403,48 @@ async fn update_session_title_emits_one_semantic_event_per_change() {
 }
 
 #[tokio::test]
-async fn session_creation_rejected_at_limit_and_allowed_below() {
+async fn session_creation_rejected_at_monthly_limit_after_deletion() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db, 1);
+    db.patch_organization_settings(
+        DEFAULT_ORG_ID,
+        crate::storage::UpdateOrganizationSettings {
+            monthly_session_limit: Some(1),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let ctx = test_ctx(db.clone());
     let harness_id = seed_harness(&ctx).await;
 
-    CreateSession(create_request(harness_id))
+    let (first, second) = tokio::join!(
+        CreateSession(create_request(harness_id)).execute(&ctx),
+        CreateSession(create_request(harness_id)).execute(&ctx),
+    );
+    let (session, rejected) = match (first, second) {
+        (Ok(session), Err(rejected)) | (Err(rejected), Ok(session)) => (session, rejected),
+        results => panic!("expected one session and one rejection: {results:?}"),
+    };
+    assert_eq!(rejected.status().as_u16(), 409);
+    assert!(
+        db.set_session_archived(DEFAULT_ORG_ID, session.id, true)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let rejected = CreateSession(create_request(harness_id))
         .execute(&ctx)
         .await
-        .expect("first session below limit");
+        .expect_err("archiving cannot restore quota");
+    assert_eq!(rejected.status().as_u16(), 409);
+    assert!(db.delete_session(DEFAULT_ORG_ID, session.id).await.unwrap());
 
     let err = CreateSession(create_request(harness_id))
         .execute(&ctx)
         .await
         .expect_err("second session exceeds the cap");
     assert_eq!(err.status().as_u16(), 409);
-    assert!(err.message().contains("Session limit reached"));
+    assert!(err.message().contains("Monthly session limit reached"));
 }
 
 #[tokio::test]
@@ -434,7 +457,7 @@ async fn create_session_with_non_internal_owner_sets_parent_session_id() {
     // before dispatch (see `strip_internal_only_fields` in api/sessions/mod.rs),
     // so the command layer must not reject a caller-set parent link.
     let db = Arc::new(StorageBackend::test_database());
-    let internal_ctx = test_ctx(db.clone(), 10);
+    let internal_ctx = test_ctx(db.clone());
     let harness_id = seed_harness(&internal_ctx).await;
     let owner = db
         .create_user(crate::storage::CreateUserRow {
@@ -508,7 +531,7 @@ async fn create_session_from_agent_inherits_agent_harness() {
     // Agent-first: a session created with only an agent runs on the agent's
     // own harness (D4), and an explicit request harness still overrides it.
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 10);
+    let ctx = test_ctx(db.clone());
     let agent_harness = seed_harness(&ctx).await;
     let override_harness = CreateHarness(CreateHarnessRequest {
         localizations: Default::default(),
@@ -559,7 +582,7 @@ async fn worker_session_read_sends_the_same_wire_session_as_the_full_read() {
     // The worker read skips owner and feature hydration; nothing it skips may
     // reach the wire, and the agent id must still be the public one.
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 10);
+    let ctx = test_ctx(db.clone());
     let harness_id = seed_harness(&ctx).await;
     let agent_id = seed_agent(&ctx, harness_id, "worker-read").await;
     let mut req = create_request(harness_id);
@@ -595,7 +618,7 @@ async fn worker_session_read_sends_the_same_wire_session_as_the_full_read() {
 #[tokio::test]
 async fn create_session_rejects_both_agent_id_and_agent_name() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db, 10);
+    let ctx = test_ctx(db);
     let harness_id = seed_harness(&ctx).await;
     let mut req = create_request(harness_id);
     req.agent_id = Some(AgentId::new());
@@ -611,7 +634,7 @@ async fn create_session_rejects_both_agent_id_and_agent_name() {
 #[tokio::test]
 async fn participant_commands_list_add_and_leave_history() {
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 10);
+    let ctx = test_ctx(db.clone());
     let harness_id = seed_harness(&ctx).await;
     let host_public_id = AgentId::new();
     let host_agent = db
@@ -785,7 +808,7 @@ async fn context_report_excludes_summary_calls_and_preserves_session_scope() {
     use crate::storage::CreateEventRow;
     use everruns_core::{RuntimeMessage, events::LlmGenerationData};
     let db = Arc::new(StorageBackend::test_database());
-    let ctx = test_ctx(db.clone(), 100);
+    let ctx = test_ctx(db.clone());
     let harness = seed_harness(&ctx).await;
     let mut request = create_request(harness);
     request.capabilities = vec![everruns_contracts::CapabilityRef::new("compaction")];
@@ -876,7 +899,7 @@ async fn context_report_excludes_summary_calls_and_preserves_session_scope() {
         before,
         "inspection cannot append events"
     );
-    let mut foreign = test_ctx(db, 100);
+    let mut foreign = test_ctx(db);
     foreign.caller.org_id = DEFAULT_ORG_ID + 1;
     let denied = GetSessionContextReport {
         session_id: session.id.to_string(),

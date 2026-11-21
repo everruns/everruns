@@ -28,6 +28,12 @@ pub enum EgressError {
     #[error("Outbound request signing is not configured")]
     SigningUnavailable,
 
+    #[error("Outbound request timed out")]
+    Timeout,
+
+    #[error("Could not connect to the outbound server")]
+    ConnectionFailed,
+
     #[error("Outbound transport error: {0}")]
     Transport(String),
 }

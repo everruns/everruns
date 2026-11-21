@@ -321,6 +321,40 @@ async fn a_tear_before_the_active_segment_refuses_to_open() {
     assert!(error.to_string().contains("hole"), "{error}");
 }
 
+/// A downgrade: an older build opening a log a newer one wrote. A record
+/// whose checksum holds but whose command this build cannot read must stop
+/// the open, not be cut away with everything after it as a torn tail.
+#[tokio::test]
+async fn an_intact_record_this_build_cannot_read_refuses_to_open() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = dir.path();
+    let wal = open(dir, 1 << 20);
+    append_durable(&wal, (1..=3).map(|index| entry(1, index)).collect()).await;
+    drop(wal);
+    let active = segments(dir).pop().expect("segment");
+    let before = fs::metadata(&active).expect("segment").len();
+    let payload = br#"{"log_id":{"leader_id":{"term":1,"node_id":1},"index":4},"payload":{"Normal":{"FromTheFuture":{}}}}"#;
+    let mut record = Vec::new();
+    record.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    record.extend_from_slice(&crc32fast::hash(payload).to_le_bytes());
+    record.extend_from_slice(payload);
+    OpenOptions::new()
+        .append(true)
+        .open(&active)
+        .expect("segment")
+        .write_all(&record)
+        .expect("record");
+    let error = Wal::open(dir)
+        .err()
+        .expect("an unreadable record refuses to open");
+    assert!(error.to_string().contains("unreadable"), "{error}");
+    assert_eq!(
+        fs::metadata(&active).expect("segment").len(),
+        before + record.len() as u64,
+        "the log is left as it was"
+    );
+}
+
 /// openraft's own storage conformance suite, against the log and the state
 /// machine a node runs.
 #[test]

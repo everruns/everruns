@@ -10769,6 +10769,13 @@
         "help": "Org-level default provider per service (EVE-569)."
       },
       {
+        "field": "monthly_session_limit",
+        "long": "monthly-session-limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum sessions this organization can create per UTC calendar month."
+      },
+      {
         "field": "name",
         "long": "name",
         "kind": "string",

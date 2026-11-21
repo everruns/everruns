@@ -43885,6 +43885,23 @@
         ],
         "description": "One command in the catalog: its command-line contract plus what a client\nneeds to call it safely."
       },
+      "CommandOutcome": {
+        "type": "object",
+        "description": "Exit of a shell command. A command with a nonzero exit code can still\nhave a successful tool invocation that faithfully reports its output.",
+        "required": [
+          "exit_code",
+          "success"
+        ],
+        "properties": {
+          "exit_code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
       "CommandRequest": {
         "type": "object",
         "description": "A command invocation.",
@@ -59688,6 +59705,7 @@
                 "system_decisions",
                 "web_search_defaults",
                 "background_limits",
+                "monthly_session_limit",
                 "self_healing",
                 "tool_approval_policy",
                 "created_at",
@@ -59766,6 +59784,13 @@
                 "id": {
                   "type": "string",
                   "description": "External identifier (org_<32-hex-chars>)"
+                },
+                "monthly_session_limit": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "Maximum sessions this organization can create per UTC calendar month.",
+                  "maximum": 100000,
+                  "minimum": 1
                 },
                 "name": {
                   "type": "string",
@@ -67085,6 +67110,7 @@
           "system_decisions",
           "web_search_defaults",
           "background_limits",
+          "monthly_session_limit",
           "self_healing",
           "tool_approval_policy",
           "created_at",
@@ -67163,6 +67189,13 @@
           "id": {
             "type": "string",
             "description": "External identifier (org_<32-hex-chars>)"
+          },
+          "monthly_session_limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum sessions this organization can create per UTC calendar month.",
+            "maximum": 100000,
+            "minimum": 1
           },
           "name": {
             "type": "string",
@@ -81134,6 +81167,17 @@
             ],
             "description": "Human-readable capability name snapshot, when known."
           },
+          "command_outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CommandOutcome",
+                "description": "Outcome of the shell command, independent of the tool's invocation status."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "details": {
             "description": "Details for people reading the run (chat details view, Session\nTrace) that the model never saw. Web search puts the provider that\nanswered, every attempt and the raw provider responses here."
           },
@@ -82873,6 +82917,17 @@
           "events"
         ],
         "properties": {
+          "command_outcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CommandOutcome",
+                "description": "Exit outcome for a completed shell command, independent of tool status."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "events": {
             "type": "array",
             "items": {
@@ -85626,6 +85681,16 @@
             "propertyNames": {
               "type": "string"
             }
+          },
+          "monthly_session_limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum sessions this organization can create per UTC calendar month.",
+            "maximum": 100000,
+            "minimum": 1
           },
           "name": {
             "type": [

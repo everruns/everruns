@@ -93,14 +93,9 @@ pub fn diff_image(image: &[u8], baseline: &[PageDigest]) -> Result<PageDiff, Sql
     })
 }
 
-/// Open a configured in-memory connection holding the given stored pages.
-///
-/// `pages` must be ordered and numbered `1..=n` with no gaps; anything else
-/// means the stored database is damaged, which is refused rather than opened
-/// half-empty.
-pub fn open_from_pages(
-    pages: &[(i32, Vec<u8>)],
-) -> Result<(Connection, Vec<PageDigest>), SqlDbError> {
+/// The database file the given stored pages make: the pages in order.
+/// Refused unless they are numbered `1..=n` with no gaps and all full.
+pub fn image(pages: &[(i32, Vec<u8>)]) -> Result<Vec<u8>, SqlDbError> {
     let mut image = Vec::with_capacity(pages.len() * PAGE_SIZE);
     for (index, (page_number, data)) in pages.iter().enumerate() {
         if *page_number != index as i32 + 1 || data.len() != PAGE_SIZE {
@@ -110,6 +105,18 @@ pub fn open_from_pages(
         }
         image.extend_from_slice(data);
     }
+    Ok(image)
+}
+
+/// Open a configured in-memory connection holding the given stored pages.
+///
+/// `pages` must be ordered and numbered `1..=n` with no gaps; anything else
+/// means the stored database is damaged, which is refused rather than opened
+/// half-empty.
+pub fn open_from_pages(
+    pages: &[(i32, Vec<u8>)],
+) -> Result<(Connection, Vec<PageDigest>), SqlDbError> {
+    let image = image(pages)?;
 
     let mut conn = Connection::open_in_memory()
         .map_err(|e| SqlDbError::Internal(format!("failed to open in-memory db: {e}")))?;

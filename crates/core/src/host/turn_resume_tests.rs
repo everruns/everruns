@@ -279,3 +279,81 @@ fn a_tail_from_the_last_turn_started_folds_like_the_whole_log() {
     // A tail cut after its `turn.started` holds no open turn.
     assert_eq!(fold(events[tail_start + 1..].to_vec()), None);
 }
+
+struct RestartedShellStore {
+    turn_id: TurnId,
+    call_id: String,
+}
+
+#[async_trait::async_trait]
+impl crate::durability::DurableToolResultStore for RestartedShellStore {
+    async fn try_claim_tool_call(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<crate::durability::ToolCallClaimResult> {
+        panic!("recovery must not claim an at-most-once call")
+    }
+
+    async fn settle_tool_call(
+        &self,
+        _: &str,
+        _: &str,
+        _: serde_json::Value,
+        _: &str,
+        _: uuid::Uuid,
+    ) -> Result<bool> {
+        panic!("recovery must not overwrite a durable result")
+    }
+
+    async fn get_tool_call_status(
+        &self,
+        turn_id: &str,
+        call_id: &str,
+    ) -> Result<Option<crate::durability::DurableToolCallStatus>> {
+        assert_eq!(turn_id, self.turn_id.to_string());
+        assert_eq!(call_id, self.call_id);
+        Ok(Some(crate::durability::DurableToolCallStatus::Settled {
+            result_json: serde_json::json!({
+                "tool_call_id": call_id,
+                "result": { "stdout": "test output", "stderr": "", "exit_code": 7 },
+                "error": null
+            }),
+        }))
+    }
+}
+
+#[tokio::test]
+async fn shell_result_committed_before_restart_is_recovered_without_running_again() {
+    let turn_id = TurnId::new();
+    let call = ToolCall {
+        id: "call_shell".to_string(),
+        name: "bash".to_string(),
+        arguments: serde_json::json!({"command": "printf 'test output'; exit 7"}),
+    };
+    let store = RestartedShellStore {
+        turn_id,
+        call_id: call.id.clone(),
+    };
+    let recovered = interrupted_completion(Some(&store), turn_id, &call)
+        .await
+        .unwrap();
+    let event = serde_json::to_value(recovered).unwrap();
+    assert_eq!(event["status"], "success");
+    assert_eq!(
+        event["command_outcome"],
+        serde_json::json!({"exit_code": 7, "success": false})
+    );
+    assert!(
+        event["result"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("test output")
+    );
+
+    let unknown = interrupted_completion(None, turn_id, &call).await.unwrap();
+    assert_eq!(unknown.status, "interrupted");
+    assert!(unknown.command_outcome.is_none());
+}

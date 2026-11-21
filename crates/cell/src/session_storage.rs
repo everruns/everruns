@@ -48,11 +48,30 @@ pub enum StorageOp {
     },
 }
 
-/// The session's values and secret names (never secret values).
+/// The session's values and secret names (never secret values), with
+/// when each was first set and last changed where the cell knows it
+/// (`stamps`: `value:<key>` and `secret:<name>`, RFC 3339).
 pub fn listed(state: &SessionState) -> Value {
+    let authority = &state.authority;
+    let time = |ms: i64| {
+        chrono::DateTime::from_timestamp_millis(ms)
+            .map(|t| t.to_rfc3339())
+            .unwrap_or_default()
+    };
+    let stamps: serde_json::Map<String, Value> = authority
+        .stamps
+        .iter()
+        .map(|(key, s)| {
+            (
+                key.clone(),
+                json!({ "created_at": time(s.created_ms), "updated_at": time(s.updated_ms) }),
+            )
+        })
+        .collect();
     json!({
-        "values": state.authority.values,
-        "secrets": state.authority.secrets.keys().collect::<Vec<_>>(),
+        "values": authority.values,
+        "secrets": authority.secrets.keys().collect::<Vec<_>>(),
+        "stamps": stamps,
     })
 }
 
@@ -94,6 +113,7 @@ pub(crate) fn apply(
     state: &mut SessionState,
     session: SessionId,
     op: StorageOp,
+    now_ms: i64,
     changes: &mut Vec<Change>,
 ) -> Response {
     if let Some(reason) = refused(session, &op) {
@@ -102,15 +122,23 @@ pub(crate) fn apply(
     let authority = &mut state.authority;
     let value = match op {
         StorageOp::SetValue { key, value } => {
+            authority.stamp(false, &key, now_ms);
             authority.values.insert(key, value);
             json!(true)
         }
-        StorageOp::DeleteValue { key } => json!(authority.values.remove(&key).is_some()),
+        StorageOp::DeleteValue { key } => {
+            authority.unstamp(false, &key);
+            json!(authority.values.remove(&key).is_some())
+        }
         StorageOp::SetSecret { name, sealed } => {
+            authority.stamp(true, &name, now_ms);
             authority.secrets.insert(name, sealed);
             json!(true)
         }
-        StorageOp::DeleteSecret { name } => json!(authority.secrets.remove(&name).is_some()),
+        StorageOp::DeleteSecret { name } => {
+            authority.unstamp(true, &name);
+            json!(authority.secrets.remove(&name).is_some())
+        }
     };
     changes.push(Change::Session(session));
     Response::Value { value }
@@ -193,13 +221,59 @@ mod tests {
             value: "v".into(),
         };
         assert!(matches!(
-            apply(&mut state, session, set, &mut changes),
+            apply(&mut state, session, set, 1_000, &mut changes),
             Response::Value { .. }
         ));
         let delete = || StorageOp::DeleteValue { key: "k".into() };
-        let first = apply(&mut state, session, delete(), &mut changes);
-        let second = apply(&mut state, session, delete(), &mut changes);
+        let first = apply(&mut state, session, delete(), 2_000, &mut changes);
+        let second = apply(&mut state, session, delete(), 2_000, &mut changes);
         assert!(matches!(first, Response::Value { value } if value == json!(true)));
         assert!(matches!(second, Response::Value { value } if value == json!(false)));
+    }
+
+    #[test]
+    fn a_value_keeps_when_it_was_first_set_and_last_changed() {
+        let session = SessionId::new();
+        let mut state = SessionState::default();
+        let mut changes = Vec::new();
+        let set = |value: &str| StorageOp::SetValue {
+            key: "k".into(),
+            value: value.into(),
+        };
+        apply(
+            &mut state,
+            session,
+            set("a"),
+            1_700_000_000_000,
+            &mut changes,
+        );
+        apply(
+            &mut state,
+            session,
+            set("b"),
+            1_700_000_060_000,
+            &mut changes,
+        );
+        let stamp = &listed(&state)["stamps"]["value:k"];
+        assert_eq!(stamp["created_at"], "2023-11-14T22:13:20+00:00");
+        assert_eq!(stamp["updated_at"], "2023-11-14T22:14:20+00:00");
+        let delete = StorageOp::DeleteValue { key: "k".into() };
+        apply(&mut state, session, delete, 1_700_000_120_000, &mut changes);
+        assert!(
+            state.authority.stamps.is_empty(),
+            "a removed value's times go with it"
+        );
+        apply(
+            &mut state,
+            session,
+            set("c"),
+            1_700_000_180_000,
+            &mut changes,
+        );
+        assert_eq!(
+            listed(&state)["stamps"]["value:k"]["created_at"],
+            "2023-11-14T22:16:20+00:00",
+            "set again, it starts over"
+        );
     }
 }

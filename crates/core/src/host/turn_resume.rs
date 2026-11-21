@@ -22,8 +22,8 @@
 //! that is safe: the tool is `Pure` or `Idempotent`, it never ran here
 //! (client-side, approval-gated, `ask_user`), the host says it waits on a
 //! person ([`WaitsOnPerson`]), or the log has no `tool.started` for it. Every
-//! other call is settled as `interrupted`, so the model learns its outcome is
-//! unknown and nothing runs twice that should run at most once. A turn cut
+//! other call reuses its durable result if available, or is settled as
+//! `interrupted` with an unknown outcome. A turn cut
 //! off outside its act (in a reason, or between steps) reasons again from the
 //! log.
 //!
@@ -71,8 +71,8 @@ pub struct InterruptedToolCalls {
     /// Empty when the turn was cut off outside its act.
     pub tool_calls: Vec<ToolCall>,
     /// The subset of [`tool_calls`](Self::tool_calls) resume does not run
-    /// again, because running them twice may not be safe. Resume settles
-    /// them as `interrupted`.
+    /// again, because running them twice may not be safe. Resume restores
+    /// their durable results when present, or settles them as `interrupted`.
     pub not_rerun: Vec<ToolCall>,
 }
 
@@ -436,8 +436,8 @@ pub async fn interrupted_tool_calls<A: RuntimeHostAdapter>(
 
 /// The step that continues `turn`: the engine state it resumes from and the
 /// act that runs its rerunnable calls again (no calls when the turn should
-/// reason again). Settles the calls it does not run again as `interrupted`
-/// through `adapter.event_emitter()` before it returns. `None` when the turn
+/// reason again). Records a durable result or an interruption for each call
+/// it does not run again through `adapter.event_emitter()` before returning. `None` when the turn
 /// already has its answer and only lacks its end.
 ///
 /// Pass the result to [`resume_entry_plan`] for the plan
@@ -463,8 +463,19 @@ pub async fn resume_open_turn<A: RuntimeHostAdapter>(
     else {
         return Ok(None);
     };
+    let mut recovered_issues = 0_u32;
+    let store = adapter.durable_tool_result_store();
     for call in &not_rerun {
-        settle_interrupted(adapter, &turn, call).await?;
+        let completed = interrupted_completion(store.as_deref(), turn.turn_id, call).await?;
+        recovered_issues = recovered_issues.saturating_add(u32::from(!completed.success));
+        adapter
+            .event_emitter()
+            .emit(EventRequest::new(
+                turn.session_id,
+                EventContext::turn(turn.turn_id, turn.input_message_id),
+                completed,
+            ))
+            .await?;
     }
     let snapshot = &context.snapshot;
     let state = TurnState {
@@ -482,10 +493,7 @@ pub async fn resume_open_turn<A: RuntimeHostAdapter>(
         cumulative_usage: turn.usage.clone(),
         tool_call_count: turn.tool_call_count,
         llm_call_count: turn.reasons,
-        // The calls settled as interrupted above are failed calls too.
-        issue_count: turn
-            .issue_count
-            .saturating_add(u32::try_from(not_rerun.len()).unwrap_or(u32::MAX)),
+        issue_count: turn.issue_count.saturating_add(recovered_issues),
         time_to_first_token_ms: None,
         final_message_id: turn.final_message_id,
         final_answer_preview: None,
@@ -553,33 +561,40 @@ pub fn resume_entry_plan(state: &TurnState, act: ActPlan) -> TurnPlan {
     }
 }
 
-/// Record `call` as cut off with an unknown outcome, so the next reason
-/// sees it answered and nothing runs it twice.
-async fn settle_interrupted<A: RuntimeHostAdapter>(
-    adapter: &A,
-    turn: &OpenTurn,
+/// Reuse a settled result before reporting an unknown outcome. A missing
+/// or unfinished claim never makes it safe to execute the tool again.
+async fn interrupted_completion(
+    store: Option<&dyn crate::durability::DurableToolResultStore>,
+    turn_id: TurnId,
     call: &ToolCall,
-) -> Result<()> {
+) -> Result<ToolCompletedData> {
+    if let Some(store) = store
+        && let Some(crate::durability::DurableToolCallStatus::Settled { result_json }) = store
+            .get_tool_call_status(&turn_id.to_string(), &call.id)
+            .await?
+        && let Ok(result) =
+            serde_json::from_value::<everruns_contracts::tool_types::ToolResult>(result_json)
+        && result.tool_call_id == call.id
+    {
+        return Ok(
+            ToolCompletedData::from_tool_result(call, &result, "error", None).with_fingerprints(
+                crate::tool_fingerprint::tool_call_fingerprint(call),
+                crate::tool_fingerprint::tool_result_fingerprint(&call.name, &result),
+            ),
+        );
+    }
     let message = format!(
         "tool '{}' was cut off by a restart while it ran; its outcome is unknown \
          and it was not run again, because running it twice may not be safe",
         call.name
     );
-    adapter
-        .event_emitter()
-        .emit(EventRequest::new(
-            turn.session_id,
-            EventContext::turn(turn.turn_id, turn.input_message_id),
-            ToolCompletedData::failure(
-                call.id.clone(),
-                call.name.clone(),
-                "interrupted".to_string(),
-                message,
-                None,
-            ),
-        ))
-        .await?;
-    Ok(())
+    Ok(ToolCompletedData::failure(
+        call.id.clone(),
+        call.name.clone(),
+        "interrupted".to_string(),
+        message,
+        None,
+    ))
 }
 
 /// Whether resume may run `call` again. `definition` is its tool in the

@@ -184,3 +184,44 @@ async fn a_write_host_calls_receipt_answers_its_duplicates() {
     assert_eq!(take(3).await, HostCallReceipt::Unknown);
     assert_eq!(cp.db.dp_expire_host_call_receipts(1).await.unwrap(), 0);
 }
+
+/// Review fix: two syncs of one org never overlap, so one that read the
+/// tables before a revocation cannot publish after the revocation's own
+/// sync. A sync waits for the one holding the org's lock, then reads the
+/// tables as they are by then.
+#[tokio::test]
+async fn an_orgs_syncs_run_one_at_a_time_and_read_after_the_one_before() {
+    let (cp, _, _) = control_plane().await;
+    cp.db
+        .set_org_egress_grants(ORG, None, Some(true))
+        .await
+        .unwrap();
+    // Another server's sync holds the org.
+    let held = cp
+        .db
+        .advisory_xact_lock_polling(
+            "dp-org-settings-sync",
+            &ORG.to_string(),
+            std::time::Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+    let waiting = tokio::spawn({
+        let cp = cp.clone();
+        async move { org_settings::sync(&cp, ORG).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!waiting.is_finished(), "waits for the sync before it");
+    // Revoked while it waits: it reads the tables after, not before.
+    cp.db
+        .set_org_egress_grants(ORG, None, Some(false))
+        .await
+        .unwrap();
+    drop(held);
+    waiting.await.unwrap().unwrap();
+    assert_eq!(
+        setting(&cp, EGRESS_SETTING).await.unwrap().1.settings["open"],
+        json!(false)
+    );
+    assert!(cp.db.dp_orgs_settings_behind(64).await.unwrap().is_empty());
+}

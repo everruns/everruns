@@ -106,7 +106,7 @@ impl InProcessRuntime {
     /// continues `session_id`'s interrupted turn with: the act that runs its
     /// rerunnable calls again (none when the turn should reason again), and
     /// the engine state that act starts from. Settles the calls it does not
-    /// run again as `interrupted` before it returns. `None` when the session
+    /// run again from durable results or as `interrupted`. `None` when the session
     /// has no interrupted turn (see
     /// [`interrupted_tool_calls`](Self::interrupted_tool_calls)).
     ///

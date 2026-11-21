@@ -18,6 +18,8 @@ export interface Organization {
   default_provider_per_service: Record<string, string>;
   /** Who answers guardrail jev checks and the Slack relevance check. */
   system_decisions: SystemDecisionsSource;
+  /** Sessions the organization may create per UTC calendar month. */
+  monthly_session_limit?: number;
   created_at: string;
   updated_at: string;
   /**
@@ -43,6 +45,8 @@ export interface UpdateOrganizationRequest {
   /** Default provider per service kind (EVE-569); replaces the whole map. */
   default_provider_per_service?: Record<string, string>;
   system_decisions?: SystemDecisionsSource;
+  /** Admin only. Accepts 1 to 100,000. */
+  monthly_session_limit?: number;
 }
 
 export type SystemDecisionsSource = "deployment" | "organization";

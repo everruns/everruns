@@ -101,6 +101,7 @@ pub struct OrganizationSettingsRow {
     pub base_harness_id: Option<HarnessId>,
     /// Org-level default provider per service (EVE-569); empty means none.
     pub default_provider_per_service: sqlx::types::Json<ServiceProviderDefaults>,
+    pub monthly_session_limit: i32,
     pub system_decisions: String, // `SystemDecisions` as stored
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -117,6 +118,7 @@ pub struct UpdateOrganizationSettings {
     pub base_harness_id: UpdateField<HarnessId>,
     /// Replaces the whole per-service map: `Set` overwrites, `Clear` empties.
     pub default_provider_per_service: UpdateField<ServiceProviderDefaults>,
+    pub monthly_session_limit: Option<i32>,
     pub system_decisions: Option<crate::storage::SystemDecisions>, // `None` keeps it
 }
 

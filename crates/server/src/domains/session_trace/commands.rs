@@ -17,6 +17,7 @@ use uuid::Uuid;
 use super::cache_reset;
 use super::plan::{PlannedRow, plan_turn};
 use super::source::{DataPlaneTrace, TraceSource};
+use super::tool_output::{tool_result_value, trace_command_outcome};
 use super::types::*;
 use crate::domains::common::*;
 use crate::domains::sessions::SESSION_VIEW;
@@ -606,6 +607,7 @@ impl Command for GetSessionTraceStep {
         let mut input = None;
         let mut output = None;
         let mut request = None;
+        let mut command_outcome = None;
         let events;
 
         if let Some(call_id) = row.tool_call_id.as_deref() {
@@ -632,6 +634,7 @@ impl Command for GetSessionTraceStep {
                                 .cloned()
                                 .map_or(Value::Null, tool_result_value),
                         };
+                        command_outcome = trace_command_outcome(&data, &value);
                         output = Some(payload(value, full));
                     }
                 }
@@ -686,6 +689,7 @@ impl Command for GetSessionTraceStep {
             step: step_out(row, turn.started_at, child),
             input,
             output,
+            command_outcome,
             request,
             events,
         })
@@ -786,29 +790,6 @@ fn model_call_output(data: &Value) -> Option<Value> {
             Some(out)
         }
         _ => data.get("output").cloned(),
-    }
-}
-
-fn tool_result_value(result: Value) -> Value {
-    let Value::Array(parts) = &result else {
-        return result;
-    };
-    let texts: Option<Vec<&str>> = parts
-        .iter()
-        .map(|p| match p.get("type").and_then(Value::as_str) {
-            Some("text") => p.get("text").and_then(Value::as_str),
-            _ => None,
-        })
-        .collect();
-    match texts {
-        Some(texts) if !texts.is_empty() => {
-            let text = texts.join("\n");
-            serde_json::from_str::<Value>(&text)
-                .ok()
-                .filter(|v| v.is_object() || v.is_array())
-                .unwrap_or(Value::String(text))
-        }
-        _ => result,
     }
 }
 

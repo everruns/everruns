@@ -42,6 +42,7 @@ pub fn router(node: Arc<Node>) -> Router {
         )
         .route("/cell/sessions/{session}/secrets", get(secrets))
         .route("/cell/sessions/{session}/sender", post(sender))
+        .route("/cell/sessions/{session}/activate", post(activate))
         .with_state(node)
 }
 
@@ -342,6 +343,32 @@ async fn record(
         request: Box::new(body.event),
     };
     Ok(Json(platform(&node, id, action).await?))
+}
+
+/// Open a moved v1 session to messages once the control plane imported it
+/// (`state::Command::Importing`). Retry-safe: an open session stays open.
+async fn activate(
+    State(node): State<Arc<Node>>,
+    Path(session): Path<String>,
+) -> Result<Json<CellReply>, ApiError> {
+    let id = parse(&session)?;
+    let (response, _) = node
+        .propose(crate::state::Command::Importing {
+            session: id,
+            on: false,
+        })
+        .await
+        .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
+    Ok(Json(match response {
+        crate::state::Response::Ok => CellReply::Ok {
+            value: json!({ "activated": true }),
+        },
+        crate::state::Response::Moved { cell } => CellReply::Moved { cell },
+        crate::state::Response::NotFound => CellReply::NotFound,
+        other => CellReply::Refused {
+            reason: format!("{other:?}"),
+        },
+    }))
 }
 
 /// The session's values and secret names (`session_storage.rs`).

@@ -553,3 +553,75 @@ async fn a_subagent_runs_its_agent_without_the_parents_own_settings() {
         "{child_agent}"
     );
 }
+
+/// Review fix: a moved v1 session is created closed to messages, so one
+/// the edge routes straight to its cell (as it routes every plain message)
+/// is refused until the control plane has imported it and opens it; its
+/// SQL databases come in whole before that.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_moved_session_takes_no_message_until_its_import_is_done() {
+    use base64::Engine as _;
+    let (fleet, cp) = setup(10_000_000).await;
+    let id = everruns_contracts::typed_id::SessionId::new();
+    let session = id.to_string();
+    let call = |path: String, body: Value| {
+        let (cp, base) = (&cp, fleet.base());
+        async move {
+            cp.call(&base, reqwest::Method::POST, &path, &body)
+                .await
+                .unwrap()
+        }
+    };
+    let (status, created) = call(
+        format!("/dp/v1/orgs/{ORG}/sessions"),
+        json!({ "id": id, "agent_ref": "helper", "importing": true }),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
+
+    // Straight to the cell, as the edge sends a plain message: refused.
+    let (status, _, refused) = fleet
+        .post_once(
+            &format!("/v1/sessions/{session}/messages"),
+            json!({ "text": "too early" }),
+        )
+        .await;
+    assert_eq!(status, 409, "{refused}");
+    assert!(refused.to_string().contains("moving"), "{refused}");
+
+    // Its database, whole; a file that is no database is refused.
+    let empty = base64::engine::general_purpose::STANDARD.encode(b"");
+    let (_, imported) = call(
+        format!("/dp/v1/orgs/{ORG}/sessions/{session}/sqldb"),
+        json!({ "op": "import", "name": "notes", "file": empty }),
+    )
+    .await;
+    assert_eq!(imported["result"], "done", "{imported}");
+    let (_, again) = call(
+        format!("/dp/v1/orgs/{ORG}/sessions/{session}/sqldb"),
+        json!({ "op": "import", "name": "notes", "file": empty }),
+    )
+    .await;
+    assert_eq!(again["result"], "done", "the same file again: {again}");
+    let junk = base64::engine::general_purpose::STANDARD.encode(b"not a database");
+    let (_, junk) = call(
+        format!("/dp/v1/orgs/{ORG}/sessions/{session}/sqldb"),
+        json!({ "op": "import", "name": "junk", "file": junk }),
+    )
+    .await;
+    assert_eq!(junk["result"], "failed", "{junk}");
+
+    // Opened: it takes messages now, and has its database.
+    let (status, opened) = call(
+        format!("/dp/v1/orgs/{ORG}/sessions/{session}/activate"),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{opened}");
+    fleet.say(&session, "go").await;
+    fleet.turns(&session, 1).await;
+    let listed = fleet
+        .get(&format!("/v1/sessions/{session}/databases"))
+        .await;
+    assert_eq!(listed["data"][0]["name"], "notes", "{listed}");
+}

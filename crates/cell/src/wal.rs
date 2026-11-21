@@ -129,9 +129,20 @@ fn read_segment(path: &Path) -> io::Result<(Vec<Entry>, u64)> {
         if crc32fast::hash(payload) != crc {
             break;
         }
+        // A record whose checksum holds was written whole: one that does
+        // not decode was written by a newer cell (a command this build
+        // does not know). Refuse to open rather than drop it and every
+        // record after it as a torn tail: an older binary pointed at an
+        // upgraded log must stop, not truncate acknowledged writes.
         match serde_json::from_slice::<Entry>(payload) {
             Ok(entry) => entries.push(entry),
-            Err(_) => break,
+            Err(error) => {
+                return Err(io::Error::other(format!(
+                    "{}: record at byte {at} is intact but unreadable by this build \
+                     (written by a newer cell?): {error}",
+                    path.display()
+                )));
+            }
         }
         at += 8 + len;
     }

@@ -230,6 +230,9 @@ impl crate::state::SessionState {
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
         .route("/cell/sessions/{session}/sqldb", post(sqldb))
+        // An import carries a whole database; the cell is a trusted
+        // network, and the gateway bounds what reaches it.
+        .layer(axum::extract::DefaultBodyLimit::disable())
         .with_state(node)
 }
 
@@ -238,10 +241,25 @@ pub fn router(node: Arc<Node>) -> Router {
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum SqlOp {
     List,
-    Get { name: String },
-    Create { name: String },
-    Delete { name: String },
-    Schema { name: String },
+    Get {
+        name: String,
+    },
+    Create {
+        name: String,
+    },
+    Delete {
+        name: String,
+    },
+    Schema {
+        name: String,
+    },
+    /// A moved v1 session's database, whole: `file` is the SQLite file,
+    /// base64 encoded. Only the control plane sends it (`sqldb` session
+    /// command), while it imports the session.
+    Import {
+        name: String,
+        file: String,
+    },
 }
 
 /// What a call came to, inside [`CellReply::Ok`].
@@ -346,6 +364,16 @@ async fn run(
             .sql_schema(session, &name, None)
             .await
             .map(|tables| json!({ "database": name, "tables": tables })),
+        SqlOp::Import { name, file } => {
+            use base64::Engine as _;
+            let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(file) else {
+                return Ok(failed(StatusCode::BAD_REQUEST, "file: not base64"));
+            };
+            store
+                .import(session, &name, bytes)
+                .await
+                .map(|info| shown(&info))
+        }
     };
     Ok(match outcome {
         Ok(value) => SqlResult::Done { value },

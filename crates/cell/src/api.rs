@@ -1128,6 +1128,10 @@ pub struct CreateBody {
     /// ([`crate::platform::Platform::memory`]).
     #[serde(default)]
     pub memory: Vec<String>,
+    /// A moved v1 session the control plane imports: closed to messages
+    /// until it opens it (`api_session::activate`).
+    #[serde(default)]
+    pub importing: bool,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -1138,6 +1142,24 @@ async fn create_session(
     Json(body): Json<CreateBody>,
 ) -> Result<Json<CellReply>, (StatusCode, String)> {
     let id = parse(&session)?;
+    // Marked before it exists, so no message reaches it before its import.
+    if body.importing {
+        let (marked, _) = node
+            .propose(Command::Importing {
+                session: id,
+                on: true,
+            })
+            .await
+            .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
+        if !matches!(marked, Response::Ok) {
+            return Ok(Json(match marked {
+                Response::Moved { cell } => CellReply::Moved { cell },
+                other => CellReply::Refused {
+                    reason: format!("{other:?}"),
+                },
+            }));
+        }
+    }
     // Held while creating: Engine resolves the build from the interned copy.
     let definition = crate::state::definitions::intern(body.definition);
     let build = crate::hosting::build_for(&definition, crate::hosting::BUILD_ID);
@@ -1202,6 +1224,10 @@ pub struct MessageBody {
     pub sender: Option<String>,
 }
 
+/// Why a message to a session still being imported is refused.
+pub(crate) const IMPORTING: &str =
+    "The session is moving to the data plane; send the message again in a moment";
+
 /// Admit a user message through Engine (`Session::send_with_id`): a retry
 /// with the same id finds the first admission.
 async fn send_message(
@@ -1224,6 +1250,11 @@ async fn send_message(
             return Ok(Json(reply));
         }
     };
+    if matches!(lookup(&node, id, |s| s.importing), Lookup::Here(true)) {
+        return Ok(Json(CellReply::Refused {
+            reason: IMPORTING.into(),
+        }));
+    }
     if let Some(reason) = missing_attachment(&node, id, &body.parts).await {
         return Ok(Json(CellReply::Refused { reason }));
     }

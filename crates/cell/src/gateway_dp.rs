@@ -37,6 +37,15 @@ use crate::dp::{
 };
 use crate::gateway::Gateway;
 use crate::node::{Node, now_ms};
+
+/// The largest session command body: a whole file or database, base64
+/// encoded (a third larger), with room for the JSON around it.
+const COMMAND_MAX: usize = {
+    let file = crate::api_files::FILE_MAX * 2;
+    let database =
+        (everruns::database::runtime::limits::MAX_DB_SIZE_BYTES as usize) / 3 * 4 + (1 << 20);
+    if file > database { file } else { database }
+};
 use crate::state::{Command, Response};
 
 type ApiError = (StatusCode, String);
@@ -52,14 +61,14 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
             get(org_session_sse),
         )
         // A session command may carry a whole file (`fs`: a moved v1
-        // session's files, one per call when large), as big as a cell
-        // holds, base64 encoded. Only the control plane reaches these
-        // routes (the link token).
+        // session's files, one per call when large; `sqldb`: one of its
+        // databases), as big as a cell holds, base64 encoded. Only the
+        // control plane reaches these routes (the link token).
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/{command}",
-            post(org_session_command).get(org_session_read).layer(
-                axum::extract::DefaultBodyLimit::max(crate::api_files::FILE_MAX * 2),
-            ),
+            post(org_session_command)
+                .get(org_session_read)
+                .layer(axum::extract::DefaultBodyLimit::max(COMMAND_MAX)),
         )
         .layer(axum::middleware::from_fn_with_state(
             gateway.link_token(),
@@ -202,6 +211,10 @@ struct OrgSession {
     /// there (`memory.rs`).
     #[serde(default)]
     memory: Vec<String>,
+    /// A moved v1 session the control plane imports into it: closed to
+    /// messages until it is activated.
+    #[serde(default)]
+    importing: bool,
 }
 
 /// `POST /dp/v1/orgs/{org}/sessions`: the control plane creating an org's
@@ -251,7 +264,10 @@ async fn org_session(
             Some(body.id),
             Some(org),
             Some(body.agent_ref),
-            body.memory,
+            crate::gateway::Joining {
+                memory: body.memory,
+                importing: body.importing,
+            },
         )
         .await?;
     if !initial_files.is_empty() {
