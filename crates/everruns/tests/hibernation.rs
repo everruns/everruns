@@ -19,6 +19,7 @@ use session_hosting::External;
 struct Flaky {
     calls: Arc<AtomicUsize>,
     failures: usize,
+    initial_delay: Duration,
 }
 
 #[async_trait]
@@ -29,7 +30,11 @@ impl ChatDriver for Flaky {
         _: Vec<everruns::llm::Message>,
         _: &LlmCallConfig,
     ) -> Result<LlmResponseStream, AgentLoopError> {
-        if self.calls.fetch_add(1, Ordering::SeqCst) < self.failures {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        if call == 0 && !self.initial_delay.is_zero() {
+            tokio::time::sleep(self.initial_delay).await;
+        }
+        if call < self.failures {
             return Err(AgentLoopError::llm_kind(
                 everruns_contracts::error::LlmErrorKind::Unavailable,
                 "temporary failure",
@@ -47,13 +52,24 @@ fn build() -> AgentBuild {
     AgentBuild::new("hibernation", "v1")
 }
 fn engine(profile: impl SessionHosting, calls: Arc<AtomicUsize>, failures: usize) -> Engine {
+    engine_with_driver(
+        profile,
+        Flaky {
+            calls,
+            failures,
+            initial_delay: Duration::ZERO,
+        },
+    )
+}
+
+fn engine_with_driver(profile: impl SessionHosting, driver: Flaky) -> Engine {
     Engine::builder()
         .hosting(profile)
         .register(
             build(),
             Agent::builder()
                 .instructions("Answer briefly.")
-                .provider(Provider::new("flaky", Flaky { calls, failures }))
+                .provider(Provider::new("flaky", driver))
                 .model("test")
                 .build()
                 .unwrap(),
@@ -62,15 +78,25 @@ fn engine(profile: impl SessionHosting, calls: Arc<AtomicUsize>, failures: usize
 }
 
 async fn exercise(profile: impl SessionHosting + Clone, failures: usize) {
+    // Activation includes provider latency and durable I/O. The call count and
+    // stored wake state prove parking; this timeout only guards deadlock.
+    const ACTIVATION_TIMEOUT: Duration = Duration::from_secs(5);
     let calls = Arc::new(AtomicUsize::new(0));
-    let first = engine(External(profile.clone()), calls.clone(), failures);
+    let first = engine_with_driver(
+        External(profile.clone()),
+        Flaky {
+            calls: calls.clone(),
+            failures,
+            initial_delay: Duration::from_millis(750),
+        },
+    );
     let id = SessionId::new();
     let session = Box::pin(first.create_registered(id, &build()))
         .await
         .unwrap();
     let message = MessageId::new();
     session.send_with_id(message, "hello").await.unwrap();
-    tokio::time::timeout(Duration::from_millis(500), Box::pin(first.activate(id)))
+    tokio::time::timeout(ACTIVATION_TIMEOUT, Box::pin(first.activate(id)))
         .await
         .expect("a retry must park instead of holding the invocation")
         .unwrap();
@@ -103,13 +129,10 @@ async fn exercise(profile: impl SessionHosting + Clone, failures: usize) {
         let remaining = status.wake_at.unwrap() - status.now_ms;
         tokio::time::sleep(Duration::from_millis(remaining.max(0) as u64 + 20)).await;
         let replacement = engine(External(profile.clone()), calls.clone(), failures);
-        tokio::time::timeout(
-            Duration::from_millis(500),
-            Box::pin(replacement.activate(id)),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        tokio::time::timeout(ACTIVATION_TIMEOUT, Box::pin(replacement.activate(id)))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), expected);
         if failures == 1 || expected == 3 {
             let session = replacement.resume(id).await.unwrap();
@@ -177,6 +200,7 @@ async fn the_default_engine_retries_without_an_external_host() {
             Flaky {
                 calls: calls.clone(),
                 failures: 1,
+                initial_delay: Duration::ZERO,
             },
         ))
         .model("test")
