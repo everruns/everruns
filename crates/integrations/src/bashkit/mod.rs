@@ -1893,39 +1893,7 @@ mod tests {
         );
     }
 
-    /// A failed command exits non-zero, so `&&` and `set -e` behave, and the
-    /// message is the tool's own — it already decided what may reach the model.
-    #[tokio::test]
-    async fn a_failed_command_exits_non_zero_with_the_tools_message() {
-        let (context, _) = context_with_spelled_tool(Some("unknown verb: lst".to_string()));
-        let tool = BashTool::default();
-
-        let result = tool
-            .execute_with_context(
-                json!({"commands": "everruns agents lst && echo unreachable"}),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(output) = result else {
-            panic!("expected the shell to report the failure, got {result:?}");
-        };
-        assert_ne!(output["exit_code"], 0);
-        assert!(
-            output["stderr"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("unknown verb: lst"),
-            "{output:?}"
-        );
-        assert!(
-            !output["stdout"]
-                .as_str()
-                .unwrap_or_default()
-                .contains("unreachable"),
-            "a non-zero exit must short-circuit `&&`: {output:?}"
-        );
-    }
+    mod shell_outcome;
 
     #[tokio::test]
     async fn bash_output_preserves_blank_lines_and_final_progress_in_raw_and_visible_results() {

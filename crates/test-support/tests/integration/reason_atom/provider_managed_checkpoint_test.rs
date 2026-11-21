@@ -1002,13 +1002,9 @@ async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
     )
     .with_file_store(Arc::new(file_store.clone()))
     .with_session_storage(Arc::new(storage.clone()));
-    let atom = ReasonAtom::new(
-        resolver,
-        message_retriever,
-        capabilities,
-        InMemoryEventEmitter::new(),
-    )
-    .with_compaction_checkpoint_store(checkpoint_store);
+    let events = InMemoryEventEmitter::new();
+    let atom = ReasonAtom::new(resolver, message_retriever, capabilities, events.clone())
+        .with_compaction_checkpoint_store(checkpoint_store);
     let input = || ReasonInput {
         context: create_context(session_id),
         harness_id,
@@ -1049,11 +1045,27 @@ async fn changing_agents_and_channel_context_bypass_a_native_checkpoint() {
                 .driver_options
                 .contains_key("anthropic/server_compaction")
         );
-        assert_eq!(
-            config.driver_options["everruns/provider_managed_reduction_fallback"]["reason"],
-            "dynamic_conversation_context"
+        assert!(
+            !config
+                .driver_options
+                .contains_key("everruns/provider_managed_reduction_fallback")
         );
     }
+    let recorded = events.events().await;
+    let fallback_reasons: Vec<_> = recorded
+        .iter()
+        .filter_map(|event| match &event.data {
+            everruns_core::EventData::LlmGeneration(data) => data
+                .metadata
+                .request_options
+                .as_ref()
+                .and_then(|options| options.provider_options.get(provider_type.as_str()))
+                .and_then(|options| options.get("fallback_reason"))
+                .and_then(serde_json::Value::as_str),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(fallback_reasons, ["dynamic_conversation_context"; 2]);
     let request_text = |index: usize| {
         calls[index]
             .0

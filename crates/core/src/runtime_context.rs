@@ -25,6 +25,9 @@ use crate::turn_agent::{TurnAgent, TurnAgentBuilder};
 use crate::typed_id::{MessageId, ModelId, SessionId};
 use crate::{AgentCapabilityConfig, ResolvedExecutionSnapshot};
 
+pub(crate) const PROVIDER_MANAGED_REDUCTION_FALLBACK: &str =
+    "everruns/provider_managed_reduction_fallback";
+
 /// Narrow host seam used by callers that cannot preassemble a context before
 /// invoking a reason atom. Implementations live outside the kernel.
 #[async_trait::async_trait]
@@ -223,7 +226,7 @@ pub async fn assemble_resolved_turn_context(
         .any(|config| config.capability_id() == "infinity_context")
     {
         turn_agent.driver_options.insert(
-            "everruns/provider_managed_reduction_fallback".to_string(),
+            PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
             serde_json::json!({"reason":"provider_or_model_ineligible"}),
         );
     }

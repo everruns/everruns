@@ -246,6 +246,31 @@ pub struct ToolStartedData {
     pub side_effect_class: Option<crate::tool_types::SideEffectClass>,
 }
 
+/// Exit of a shell command. A command with a nonzero exit code can still
+/// have a successful tool invocation that faithfully reports its output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct CommandOutcome {
+    pub exit_code: i32,
+    pub success: bool,
+}
+
+impl CommandOutcome {
+    pub fn from_shell_payload(tool_name: &str, result: &serde_json::Value) -> Option<Self> {
+        if !matches!(
+            tool_name,
+            "bash" | "boxd_exec" | "daytona_exec" | "e2b_exec" | "modal_exec"
+        ) {
+            return None;
+        }
+        let exit_code = i32::try_from(result.get("exit_code")?.as_i64()?).ok()?;
+        Some(Self {
+            exit_code,
+            success: exit_code == 0,
+        })
+    }
+}
+
 /// Data for tool.completed event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -273,6 +298,10 @@ pub struct ToolCompletedData {
 
     /// Status: "success", "error", "timeout", "cancelled"
     pub status: String,
+
+    /// Outcome of the shell command, independent of the tool's invocation status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_outcome: Option<CommandOutcome>,
 
     /// Severity of a failed call; absent when `success` is true. A failed
     /// tool call is returned to the model, which carries on, so it is an
@@ -354,6 +383,7 @@ impl ToolCompletedData {
             display_name: None,
             success: true,
             status: "success".to_string(),
+            command_outcome: None,
             severity: None,
             result: Some(result),
             error: None,
@@ -384,6 +414,7 @@ impl ToolCompletedData {
             display_name: None,
             success: false,
             status,
+            command_outcome: None,
             severity: Some(FailureSeverity::Issue),
             result: None,
             error: Some(error),
@@ -396,6 +427,45 @@ impl ToolCompletedData {
             executed_arguments_truncated: false,
             acted_as: None,
             details: None,
+        }
+    }
+
+    /// Build a completion from a live or durably settled result.
+    pub fn from_tool_result(
+        call: &crate::tool_types::ToolCall,
+        result: &crate::tool_types::ToolResult,
+        status: &str,
+        duration_ms: Option<u64>,
+    ) -> Self {
+        if let Some(error) = &result.error {
+            Self::failure(
+                call.id.clone(),
+                call.name.clone(),
+                status.to_string(),
+                error.clone(),
+                duration_ms,
+            )
+        } else {
+            let mut content = result
+                .result
+                .as_ref()
+                .map(|value| vec![ContentPart::tool_result_text(value)])
+                .unwrap_or_default();
+            if let Some(images) = &result.images {
+                content.extend(images.iter().map(|img| {
+                    ContentPart::Image(crate::runtime::message::ImageContentPart::from_base64(
+                        &img.base64,
+                        &img.media_type,
+                    ))
+                }));
+            }
+            let mut completed =
+                Self::success(call.id.clone(), call.name.clone(), content, duration_ms);
+            completed.command_outcome = result
+                .result
+                .as_ref()
+                .and_then(|value| CommandOutcome::from_shell_payload(&call.name, value));
+            completed.with_details(result.details.clone())
         }
     }
 

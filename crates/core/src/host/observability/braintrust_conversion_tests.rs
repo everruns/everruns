@@ -436,6 +436,7 @@ fn test_tool_call_events_have_act_as_parent() {
         display_name: None,
         success: true,
         status: "success".to_string(),
+        command_outcome: None,
         result: None,
         error: None,
         duration_ms: Some(200),

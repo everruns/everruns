@@ -311,10 +311,8 @@ pub(super) async fn execute(
 
     let response = match egress.send(egress_request).await {
         Ok(response) => response,
-        Err(EgressError::NetworkAccessDenied { url }) => {
-            return ToolExecutionResult::tool_error(format!(
-                "Outbound request blocked by network policy: {url}"
-            ));
+        Err(EgressError::NetworkAccessDenied { .. }) => {
+            return ToolExecutionResult::tool_error("Outbound request blocked by network policy");
         }
         Err(error) => return ToolExecutionResult::tool_error(format!("Request failed: {error}")),
     };

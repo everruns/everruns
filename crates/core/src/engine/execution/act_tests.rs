@@ -1295,6 +1295,9 @@ async fn test_idempotency_first_execution_claims_and_settles() {
     assert_eq!(row.status, "settled");
 }
 
+#[path = "act_durable_restart_tests.rs"]
+mod durable_restart_tests;
+
 /// Second execution replays the stored result without re-running the tool.
 #[tokio::test]
 async fn test_idempotency_replay_already_settled() {

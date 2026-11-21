@@ -594,7 +594,7 @@ impl DirectEgressService {
             .build_request(request)?
             .send()
             .await
-            .map_err(|error| EgressError::Transport(error.to_string()))?;
+            .map_err(classify_transport_error)?;
         let status = response.status().as_u16();
         let headers = response
             .headers()
@@ -609,7 +609,7 @@ impl DirectEgressService {
         let body = response
             .bytes()
             .await
-            .map_err(|error| EgressError::Transport(error.to_string()))?
+            .map_err(classify_transport_error)?
             .to_vec();
 
         Ok(EgressResponse {
@@ -629,7 +629,7 @@ impl DirectEgressService {
             .build_request(request)?
             .send()
             .await
-            .map_err(|error| EgressError::Transport(error.to_string()))?;
+            .map_err(classify_transport_error)?;
         let status = response.status().as_u16();
         let headers = response
             .headers()
@@ -644,7 +644,7 @@ impl DirectEgressService {
         let body = response.bytes_stream().map(|chunk| {
             chunk
                 .map(|bytes| bytes.to_vec())
-                .map_err(|error| EgressError::Transport(error.to_string()))
+                .map_err(classify_transport_error)
         });
 
         Ok(EgressStreamResponse {
@@ -652,6 +652,18 @@ impl DirectEgressService {
             headers,
             body: Box::pin(body),
         })
+    }
+}
+
+// reqwest keeps the category separately from its display text. Its URL can
+// include query credentials, so do not retain it in a trace or audit error.
+fn classify_transport_error(error: reqwest::Error) -> EgressError {
+    if error.is_timeout() {
+        EgressError::Timeout
+    } else if error.is_connect() {
+        EgressError::ConnectionFailed
+    } else {
+        EgressError::Transport(error.without_url().to_string())
     }
 }
 

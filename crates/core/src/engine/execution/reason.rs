@@ -798,6 +798,8 @@ impl ReasonAtom {
             &llm_config,
         );
 
+        let fallback = provider_managed_compaction::take_fallback(&mut llm_config);
+
         if !provider_managed && let Some(policy) = compaction_policy.as_deref() {
             compaction_info = apply_proactive_compaction(
                 ProactiveCompactionContext {
@@ -855,18 +857,15 @@ impl ReasonAtom {
             pending_delta,
             mut tripped,
         ) = 'stream_attempt: loop {
+            let endpoint = crate::engine::ProviderEndpoint::default();
+            let request = chat_driver.chat_completion_stream(
+                &endpoint,
+                llm_messages_for_call.clone(),
+                &llm_config,
+            );
             let stream_result =
                 if let Some(remaining) = remaining_retry_time(&retry_config, retry_started_at) {
-                    match everruns_contracts::rt::timeout(
-                        remaining,
-                        chat_driver.chat_completion_stream(
-                            &crate::engine::ProviderEndpoint::default(),
-                            llm_messages_for_call.clone(),
-                            &llm_config,
-                        ),
-                    )
-                    .await
-                    {
+                    match everruns_contracts::rt::timeout(remaining, request).await {
                         Ok(result) => result,
                         Err(_) => {
                             compaction_lifecycle.fail_if(provider_managed).await;
@@ -882,13 +881,7 @@ impl ReasonAtom {
                         }
                     }
                 } else {
-                    chat_driver
-                        .chat_completion_stream(
-                            &crate::engine::ProviderEndpoint::default(),
-                            llm_messages_for_call.clone(),
-                            &llm_config,
-                        )
-                        .await
+                    request.await
                 };
             let stream_result = stream_result.map_err(|error| {
                 if has_provider_executed_tools {
@@ -1621,6 +1614,7 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
+        provider_managed_compaction::restore_fallback(&mut llm_config, fallback);
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md).
