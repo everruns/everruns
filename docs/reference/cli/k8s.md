@@ -43,7 +43,7 @@ everruns k8s up [OPTIONS]
 | `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `openrouter`, `skip`. |
 | `--database-url <DATABASE_URL>` | Your PostgreSQL 15+ URL (postgres://user:password@host:5432/db) |
 | `--bundled-postgres` | Run a single PostgreSQL pod in the cluster, for trying Everruns out (no backups or failover) |
-| `--storage-class <STORAGE_CLASS>` | StorageClass for new volumes without a per-volume class, or `auto` to use the cluster default. Defaults to `auto`. |
+| `--storage-class <STORAGE_CLASS>` | StorageClass for new volumes without a per-volume class, or auto to use the cluster default. |
 | `--public-url <PUBLIC_URL>` | Public address such as https://everruns.example.com. Enables direct Ingress by default. |
 | `--ingress-class <INGRESS_CLASS>` | Ingress class for the public address, such as nginx. |
 | `--chart <CHART>` | Chart to install: a local path such as charts/everruns, or an OCI reference. |
@@ -63,13 +63,13 @@ everruns k8s up [OPTIONS]
 Create a local Kubernetes cluster with a shared image store and storage provisioner.
 
 ```bash
-everruns k8s cluster create --provider apple [OPTIONS]
+everruns k8s cluster create [OPTIONS] --provider <PROVIDER>
 ```
 
 | Flag | Description |
 |---|---|
-| `--provider <PROVIDER>` | Local Kubernetes provider. One of `apple`. |
-| `--name <NAME>` | Name for the new cluster and its kubeconfig context. Defaults to `everruns-dev`. |
+| `--provider <PROVIDER>` | Required. Local Kubernetes provider. One of `apple`. |
+| `--name <NAME>` | Name for the new cluster and its kubeconfig context. |
 
 
 ## k8s status
