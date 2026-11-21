@@ -1,6 +1,6 @@
 ---
-title: "Mistral AI connects without a flag; machine payments and Docker Container leave"
-description: "Mistral AI is in the provider picker for every organization. The never-enabled machine payments feature and the experimental Docker Container capability are removed."
+title: "Mistral AI without a flag; machine payments and Docker removed"
+description: "Mistral AI is in the provider picker for every organization. Never-enabled machine payments and the experimental Docker Container capability are gone."
 date: 2026-11-21
 kind: breaking
 significance: minor
@@ -26,4 +26,10 @@ Two features that no deployment ever switched on are gone:
   execution, or a hosted sandbox provider.
 
 `FEATURE_MACHINE_PAYMENTS` and `FEATURE_DOCKER_CAPABILITY` no longer affect
-anything; remove them from your environment when convenient.
+anything; remove them from your environment when convenient:
+
+```diff
+- FEATURE_MISTRAL=prod
+- FEATURE_MACHINE_PAYMENTS=internal
+- FEATURE_DOCKER_CAPABILITY=internal
+```
