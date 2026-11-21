@@ -16,7 +16,9 @@
       "updateNetworkSettings",
       "createSandboxSnapshot",
       "getSnapshot",
-      "removeSnapshot"
+      "removeSnapshot",
+      "forkSandbox",
+      "replaceLabels"
     ],
     "toolbox": [
       "CreateSession",

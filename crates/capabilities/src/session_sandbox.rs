@@ -7,6 +7,9 @@
 mod checkpoint;
 #[cfg(test)]
 mod concurrency_tests;
+#[cfg(test)]
+mod fork_tests;
+mod sandbox_fork;
 mod sandbox_recovery;
 #[cfg(test)]
 mod test_provider_files;
@@ -110,14 +113,25 @@ pub async fn ensure_session_sandbox_running(
                 sync.before_create(context, provider.as_ref(), config)
                     .await?;
             }
-            let mut instance = provider.create(context, config).await?;
-            workspace_seed::mark_pending(&mut instance);
+            // A session forked or spawned with `sandbox: "fork"` starts from a
+            // copy of its source's machine. The copy already holds the files
+            // and the finished init, so it skips both; anything that cannot be
+            // copied falls back to the ordinary fresh sandbox.
+            let (instance, init_completed_at) =
+                match sandbox_fork::fork_from_source(context, provider.as_ref(), config).await {
+                    Some(forked) => forked,
+                    None => {
+                        let mut instance = provider.create(context, config).await?;
+                        workspace_seed::mark_pending(&mut instance);
+                        (instance, None)
+                    }
+                };
             let mut state = SessionSandboxState {
                 sandbox: None,
                 provider: config.provider.clone(),
                 status: SessionSandboxStatus::Running,
                 instance,
-                init_completed_at: None,
+                init_completed_at,
                 last_init_error: None,
                 created_at: now_rfc3339(),
                 updated_at: now_rfc3339(),

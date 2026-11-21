@@ -58,6 +58,24 @@ pub struct ForkSessionRequest {
     #[serde(default)]
     #[schema(example = "msg_01933b5a00007000800000000000001")]
     pub up_to_message_id: Option<String>,
+    /// How the fork's sandbox starts. `fresh` (default) creates a new sandbox
+    /// from the copied workspace files. `fork` copies the parent's running
+    /// sandbox, with installed packages, build output and (on E2B) running
+    /// processes, when its first command runs. Where the provider cannot
+    /// copy that sandbox, the fork starts fresh.
+    #[serde(default)]
+    pub sandbox: ForkSandbox,
+}
+
+/// How a forked session's sandbox starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ForkSandbox {
+    /// A new sandbox, seeded from the fork's copy of the workspace files.
+    #[default]
+    Fresh,
+    /// A copy of the parent's running sandbox, falling back to `fresh`.
+    Fork,
 }
 
 // Trust boundary (client-side tools deprecation rollout): the `tools` field

@@ -595,6 +595,56 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
             .map_err(state_storage_error)?;
         Ok(deleted)
     }
+
+    async fn request_fork(
+        &self,
+        session_id: SessionId,
+        source_session_id: SessionId,
+    ) -> Result<bool, SandboxStateError> {
+        // THREAT[TM-AUTHZ]: a session may only copy the sandbox of the session
+        // it came from (its parent or fork source), never an arbitrary one.
+        let updated = sqlx::query(
+            r#"
+            UPDATE sessions
+            SET sandbox_fork_source_session_id = $2
+            WHERE id = $1
+              AND (parent_session_id = $2 OR forked_from_session_id = $2)
+            "#,
+        )
+        .bind(session_id)
+        .bind(source_session_id)
+        .execute(&self.pool)
+        .await
+        .map_err(state_storage_error)?
+        .rows_affected();
+        Ok(updated > 0)
+    }
+
+    async fn take_fork_source(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<SessionId>, SandboxStateError> {
+        let source: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            WITH pending AS (
+                SELECT id, sandbox_fork_source_session_id AS source
+                FROM sessions
+                WHERE id = $1 AND sandbox_fork_source_session_id IS NOT NULL
+                FOR UPDATE
+            )
+            UPDATE sessions s
+            SET sandbox_fork_source_session_id = NULL
+            FROM pending
+            WHERE s.id = pending.id
+            RETURNING pending.source
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(state_storage_error)?;
+        Ok(source.map(SessionId::from_uuid))
+    }
 }
 
 fn parse_kind(raw: &str) -> Result<SandboxCheckpointKind, SandboxCheckpointError> {

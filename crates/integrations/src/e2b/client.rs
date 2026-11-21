@@ -245,6 +245,33 @@ impl E2BClient {
             .map_err(|_| "Failed to parse sandbox resume response".to_string())
     }
 
+    /// Copy a running sandbox: files, memory and processes. The source keeps
+    /// running (its open connections drop). The copy inherits the source's
+    /// metadata, egress rules and auto-pause; callers re-apply their own.
+    pub async fn fork_sandbox(
+        &self,
+        sandbox_id: &str,
+        timeout_seconds: u64,
+    ) -> Result<E2BSandboxCreateResponse, String> {
+        let value = self
+            .management_request(
+                reqwest::Method::POST,
+                &format!("/sandboxes/{sandbox_id}/fork"),
+                Some(json!({ "count": 1, "timeout": timeout_seconds })),
+            )
+            .await?;
+        let first = value
+            .as_array()
+            .and_then(|items| items.first())
+            .ok_or_else(|| "E2B fork returned no sandbox".to_string())?;
+        if let Some(sandbox) = first.get("sandbox") {
+            return serde_json::from_value(sandbox.clone())
+                .map_err(|_| "Failed to parse sandbox fork response".to_string());
+        }
+        // THREAT[TM-FW-001]: report that the fork failed, not E2B's text.
+        Err("E2B could not fork the sandbox".to_string())
+    }
+
     pub async fn delete_sandbox(&self, sandbox_id: &str) -> Result<(), String> {
         self.management_request(
             reqwest::Method::DELETE,

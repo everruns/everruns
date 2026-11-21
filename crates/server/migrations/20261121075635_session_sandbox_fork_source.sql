@@ -1,0 +1,11 @@
+-- A session forked or spawned with `sandbox: "fork"` starts from a copy of
+-- its source session's sandbox. This column holds that request until the
+-- session's first sandbox is created, which takes (clears) it; the copy's
+-- provenance is then recorded in the sandbox instance metadata
+-- (`forked_from`). The source must be the session's parent or fork source,
+-- which the store enforces when it records the request.
+--
+-- No foreign key: sessions is large, and validating a new constraint scans
+-- it under lock. The column is transient and only ever set to an id read
+-- from the same row's parent or fork source.
+ALTER TABLE sessions ADD COLUMN sandbox_fork_source_session_id UUID;

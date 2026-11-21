@@ -237,41 +237,8 @@ const PUSH_CONFIGS_SPEC_KEY: &str = "push_configs";
 /// Valid `event_filter` members for a per-task push config.
 const VALID_PUSH_EVENT_FILTERS: [&str; 3] = ["terminal", "awaiting_input", "message"];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SpawnLifetime {
-    Linked,
-    Detached,
-}
-
-impl SpawnLifetime {
-    pub fn parse(arguments: &Value) -> Result<Self, ToolExecutionResult> {
-        match arguments.get("lifetime").and_then(Value::as_str) {
-            None | Some("linked") => Ok(Self::Linked),
-            Some("detached") => Ok(Self::Detached),
-            Some(other) => Err(ToolExecutionResult::tool_error(format!(
-                "Invalid lifetime: {other}. Expected 'linked' or 'detached'."
-            ))),
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Linked => "linked",
-            Self::Detached => "detached",
-        }
-    }
-}
-
-fn parse_seed(arguments: &Value) -> Result<SessionSeedMode, ToolExecutionResult> {
-    match arguments.get("seed").and_then(Value::as_str) {
-        None | Some("fresh") => Ok(SessionSeedMode::Fresh),
-        Some("fork") => Ok(SessionSeedMode::Fork),
-        Some("workspace") => Ok(SessionSeedMode::Workspace),
-        Some(other) => Err(ToolExecutionResult::tool_error(format!(
-            "Invalid seed: {other}. Expected 'fresh', 'fork', or 'workspace'."
-        ))),
-    }
-}
+pub use super::subagent_spawn_args::SpawnLifetime;
+use super::subagent_spawn_args::{child_sandbox_mode, parse_fork_sandbox, parse_seed};
 
 /// Per-slice wait used by the background watcher; the watcher loops slices
 /// until the child reaches a terminal state or the overall cap is hit.
@@ -898,6 +865,7 @@ async fn spawn_agent_subagent_impl(
     let mode = resolve_spawn_mode(&arguments, context)?;
     let lifetime = SpawnLifetime::parse(&arguments)?;
     let seed = parse_seed(&arguments)?;
+    let fork_sandbox = parse_fork_sandbox(&arguments)?;
 
     let store = get_subagent_delegate(context)?;
     let session_store = get_session_store(context)?;
@@ -1128,6 +1096,7 @@ async fn spawn_agent_subagent_impl(
                     mode,
                     lifetime,
                     seed,
+                    fork_sandbox,
                     Some((
                         spawn_store.as_ref(),
                         tool_call_id.as_str(),
@@ -1157,6 +1126,7 @@ async fn spawn_agent_subagent_impl(
         mode,
         lifetime,
         seed,
+        fork_sandbox,
         None,
     )
     .await)
@@ -1209,6 +1179,7 @@ async fn spawn_create_and_wait(
     mode: SpawnMode,
     lifetime: SpawnLifetime,
     seed: SessionSeedMode,
+    fork_sandbox: bool,
     settle_ctx: Option<(
         &dyn everruns_core::delegation_services::SubagentSpawnStore,
         &str,
@@ -1301,6 +1272,12 @@ async fn spawn_create_and_wait(
         Ok(s) => s,
         Err(e) => return ToolExecutionResult::internal_error(e),
     };
+    // Recorded before the child's first message, so its first sandbox use
+    // finds it. A host that cannot copy sandboxes leaves the child fresh.
+    let sandbox_mode = match child_sandbox_mode(context, fork_sandbox, child_session.id).await {
+        Ok(mode) => mode,
+        Err(error) => return error,
+    };
     // Create the session task tracking this subagent (knowledge/runtime-resources/session-tasks.md).
     // Background tasks wake the parent on terminal transition through the
     // registry-level wake policy; foreground spawns already return the result
@@ -1313,6 +1290,7 @@ async fn spawn_create_and_wait(
         "mode": mode.as_str(),
         "lifetime": lifetime.as_str(),
         "seed": seed.as_str(),
+        "sandbox": sandbox_mode,
         // Which helper model the child runs on and who picked it; the
         // resolved model is the child session's own model_id.
         "model": helper_model.key,
