@@ -133,7 +133,7 @@ Optional per-message overrides for model selection, reasoning configuration, spe
 
 **Speed (Service Tier):**
 
-When `controls.speed` is set (`flex`, `default`, `priority`, `fast`, or `ultrafast`), OpenAI requests carry the matching `service_tier`; see [LLM Drivers spec](llm-drivers.md).
+When `controls.speed` is set (`flex`, `default`, `priority`, `fast`, or `ultrafast`), OpenAI requests carry the matching `service_tier`; see [LLM Drivers spec](llm-drivers.md). First-party Anthropic requests carry `speed: "fast"` for `fast` or `priority` on the models whose profile offers fast mode (Opus 5.5, Fable 5.2, Mythos 5.2); the speed Anthropic reports in `usage.speed` prices the call. Only the first-party OpenAI and Anthropic surfaces keep the speed selector; other provider types strip it.
 
 **Verbosity:**
 

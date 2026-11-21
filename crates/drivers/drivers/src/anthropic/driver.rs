@@ -745,28 +745,6 @@ fn finalize_tool_arguments(tool_call: &mut ToolCall) {
 }
 
 // ============================================================================
-// Error Detection Helpers
-// ============================================================================
-
-fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
-    if driver_helpers::is_model_not_found(status, error_text, ANTHROPIC_NOT_FOUND_PATTERNS) {
-        return true;
-    }
-    // Compound check: both "model" and "not found" must appear together
-    if status == reqwest::StatusCode::NOT_FOUND {
-        let lower = error_text.to_lowercase();
-        if lower.contains("model") && lower.contains("not found") {
-            return true;
-        }
-    }
-    false
-}
-
-fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
-    driver_helpers::is_request_too_large(status, error_text, ANTHROPIC_TOO_LARGE_PATTERNS)
-}
-
-// ============================================================================
 // Anthropic API Types
 // ============================================================================
 
@@ -800,6 +778,10 @@ struct AnthropicRequest {
     context_management: Option<AnthropicContextManagement>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cache_control: Option<AnthropicCacheControl>,
+    /// Fast mode (`"fast"`). Sent only when the turn asks for it and the
+    /// model profile offers it; omitted means standard speed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    speed: Option<&'static str>,
 }
 
 /// Request-level `diagnostics` object.
@@ -1210,6 +1192,9 @@ struct AnthropicUsage {
     /// search, billed per search).
     #[serde(default)]
     server_tool_use: Option<Value>,
+    /// Speed the request ran at (`standard` or `fast`); prices the call.
+    #[serde(default)]
+    speed: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

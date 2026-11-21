@@ -745,10 +745,11 @@ pub fn get_model_profile(provider_type: &str, model_id: &str) -> Option<ModelPro
     if provider_type != "anthropic" {
         profile.supports_server_compaction = false;
     }
-    // Speed (service tier) is an OpenAI-platform billing feature. Azure has
-    // its own capacity model and gateways (OpenRouter) do their own routing,
-    // so only the first-party OpenAI surface keeps the selector.
-    if provider_type != "openai" {
+    // Speed is a first-party billing feature: OpenAI's service tier and
+    // Anthropic's fast mode. Azure has its own capacity model, Bedrock and
+    // Vertex do not offer fast mode, and gateways (OpenRouter) do their own
+    // routing, so only the first-party surfaces keep the selector.
+    if provider_type != "openai" && provider_type != "anthropic" {
         profile.speed = None;
     }
     // Verbosity (`text.verbosity` / `verbosity`) is an OpenAI-specific request

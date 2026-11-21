@@ -204,6 +204,7 @@ fn server_compaction_request_contract_uses_top_level_cache_control() {
             }],
         }),
         cache_control: Some(AnthropicCacheControl::ephemeral()),
+        speed: None,
     };
 
     let value = serde_json::to_value(request).unwrap();

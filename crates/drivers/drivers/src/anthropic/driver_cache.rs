@@ -113,6 +113,7 @@ mod tests {
             diagnostics: None,
             context_management: None,
             cache_control: None,
+            speed: None,
         }
     }
 

@@ -4,6 +4,12 @@ use crate::model_profile_data::types::{
 };
 
 pub(super) fn apply(profile: &mut ModelProfile) {
+    if matches!(
+        profile.family.as_str(),
+        "claude-opus-5-5" | "claude-fable-5-2" | "claude-mythos-5-2"
+    ) {
+        profile.speed = Some(super::speed::speed_anthropic_fast());
+    }
     profile.supports_server_compaction = matches!(
         profile.family.as_str(),
         "claude-fable-5-1"
