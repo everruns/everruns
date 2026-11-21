@@ -245,7 +245,6 @@ export const queryKeys = {
     detail: (key: string) => ["user-preferences", key] as const,
   },
 
-
   // Session schedule queries
   sessionSchedules: {
     all: ["session-schedules"] as const,
