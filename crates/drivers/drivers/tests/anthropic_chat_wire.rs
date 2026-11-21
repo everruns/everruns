@@ -182,6 +182,67 @@ async fn provider_reported_model_is_distinct_and_optional() {
     }
 }
 
+/// Fast mode: a turn asking for `fast` (or OpenAI's `priority` alias) sends
+/// `speed: "fast"` only on models whose profile offers it, and the speed
+/// Anthropic reports in `usage.speed` comes back as the served tier that
+/// prices the call at the fast rate.
+#[tokio::test]
+async fn fast_mode_is_sent_where_offered_and_reported_as_served_tier() {
+    for (model, requested, sent, served) in [
+        ("claude-opus-5-5", Some("fast"), Some("fast"), Some("fast")),
+        (
+            "claude-fable-5-2",
+            Some("priority"),
+            Some("fast"),
+            Some("fast"),
+        ),
+        (
+            "claude-mythos-5-2[1m]",
+            Some("fast"),
+            Some("fast"),
+            Some("fast"),
+        ),
+        ("claude-opus-5-5", Some("default"), None, None),
+        ("claude-opus-5-5", None, None, None),
+        // No fast mode without a beta flag on these: never sent.
+        ("claude-sonnet-5-5", Some("fast"), None, None),
+        ("claude-opus-4-8", Some("fast"), None, None),
+    ] {
+        let server = MockServer::start().await;
+        let usage_speed = served.unwrap_or("standard");
+        let body = [
+            sse_event(
+                "message_start",
+                &format!(
+                    r#"{{"type":"message_start","message":{{"id":"msg_fast","usage":{{"input_tokens":3,"speed":"{usage_speed}"}}}}}}"#
+                ),
+            ),
+            sse_event(
+                "message_delta",
+                &format!(
+                    r#"{{"type":"message_delta","delta":{{"stop_reason":"end_turn"}},"usage":{{"output_tokens":2,"speed":"{usage_speed}"}}}}"#
+                ),
+            ),
+            sse_event("message_stop", r#"{"type":"message_stop"}"#),
+        ]
+        .concat();
+        mount_sse(&server, body).await;
+
+        let mut call = config(model);
+        call.speed = requested.map(str::to_owned);
+        let response = driver(&server)
+            .chat_completion(vec![Message::text(MessageRole::User, "hi")], &call)
+            .await
+            .expect("completion should succeed");
+
+        let case = format!("{model} {requested:?}");
+        let requests = server.received_requests().await.unwrap();
+        let sent_body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(sent_body["speed"].as_str(), sent, "{case}");
+        assert_eq!(response.metadata.service_tier.as_deref(), served, "{case}");
+    }
+}
+
 /// Text streaming: `message_start` carries input/cache usage, two text deltas
 /// stream, and `message_delta` + `message_stop` close with output tokens. The
 /// golden output is the two text deltas plus a `Done` with disjoint buckets

@@ -20,6 +20,7 @@ and reasoning onto the Anthropic wire format.
   preserved across multi-turn conversations.
 - **Prompt caching** via bounded `cache_control` breakpoints on stable, high-value
   sections of the request.
+- **Fast mode** on Claude Opus 5.5, Fable 5.2 and Mythos 5.2.
 
 ## Configure in Everruns
 
@@ -122,6 +123,19 @@ Claude models that always think (Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.x) alw
 effort: the model's default when you choose none, and `low` when you choose
 `none`. These and the other adaptive-thinking models reject assistant prefill, so
 a conversation must end with a user or tool message.
+
+## Fast mode
+
+Claude Opus 5.5, Claude Fable 5.2 and Claude Mythos 5.2 offer a Fast speed next
+to Standard. Fast runs the same model with faster output at 2x the Standard
+price (Opus 5.5: $8 / $40 per million input / output tokens; Fable 5.2 and
+Mythos 5.2: $16 / $80). Choose it with the turn's speed control (`fast`, or
+`priority`, which Everruns treats as the same tier); usage is priced at the
+speed Anthropic reports serving. Switching speed starts a new prompt cache.
+
+Fast mode is only on the first-party Anthropic provider. Batch requests always
+run at Standard speed. Opus 5 and Opus 4.8 fast mode is a research preview
+behind a beta flag, so Everruns does not offer it.
 
 ## Links
 
