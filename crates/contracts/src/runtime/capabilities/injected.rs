@@ -34,6 +34,10 @@ const MAX_LABEL_BYTES: usize = 128;
 
 /// JWT `typ` header of a session token. Verification requires it, so no other
 /// token the data plane signs can be replayed as one.
+/// The control plane's files server for a session's Memory
+/// (`io.everruns/files`): a data plane mounts the session's Memory from it.
+pub const MEMORY_FILES: &str = "memory_files";
+
 pub const SESSION_TOKEN_TYP: &str = "everruns-session+jwt";
 /// How long a minted session token stays valid. Short, like the host-call
 /// receipts it replaces: a token is minted per call, never stored.
@@ -256,10 +260,23 @@ pub struct SessionTokenClaims {
     /// in an Everruns deployment). Absent on installs without a group label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grp: Option<String>,
+    /// The person whose message opened the session's turn, as the data
+    /// plane recorded it (RFC 8693 `act`). Absent when no person did (a
+    /// channel message, a trigger). A server that acts as a person rechecks
+    /// that they are a member of `grp`, and refuses without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub act: Option<SessionActor>,
     pub iat: u64,
     pub exp: u64,
     /// Unique token id, for audit.
     pub jti: String,
+}
+
+/// The `act` claim of a session token.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionActor {
+    /// The person's public user id.
+    pub sub: String,
 }
 
 #[cfg(test)]
@@ -391,15 +408,26 @@ mod tests {
             sub: "ses_1".into(),
             cap: "injected:knowledge".into(),
             grp: None,
+            act: None,
             iat: 1,
             exp: 2,
             jti: "j".into(),
         };
         let wire = serde_json::to_value(&claims).unwrap();
         assert!(wire.get("grp").is_none());
+        assert!(wire.get("act").is_none());
         assert_eq!(
             serde_json::from_value::<SessionTokenClaims>(wire).unwrap(),
             claims
         );
+        // RFC 8693: the actor is an object.
+        let acted = SessionTokenClaims {
+            act: Some(SessionActor {
+                sub: "usr_1".into(),
+            }),
+            ..claims
+        };
+        let wire = serde_json::to_value(&acted).unwrap();
+        assert_eq!(wire["act"], json!({ "sub": "usr_1" }));
     }
 }

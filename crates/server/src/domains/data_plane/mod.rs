@@ -392,6 +392,11 @@ impl DataPlane for HttpDataPlane {
         }
         if !session.memory.is_empty() {
             body["memory"] = serde_json::to_value(session.memory)?;
+            // Where the data plane reads and writes them, with a session
+            // token, once this control plane serves Memory as files.
+            if let Some(url) = crate::injected::hosted::memory::served_url() {
+                body["memory_server"] = Value::String(url);
+            }
         }
         if session.importing {
             body["importing"] = serde_json::json!(true);
@@ -607,6 +612,7 @@ pub async fn agent_published(
     let mut package = declaration.agent;
     mcp::prepare(cp, org_id, agent_key, &mut package).await?;
     sandboxes::strip(&mut package);
+    crate::injected::attach(&mut package, &crate::injected::served());
     let change = ConfigChange::Agent(dp::AgentDefinition {
         agent_id: agent_key.to_owned(),
         revision: n,

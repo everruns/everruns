@@ -152,6 +152,9 @@ services:
       EVERRUNS_DEFAULT_DATA_PLANE_URL: http://cell:7000
       EVERRUNS_DP_TOKEN: ${EVERRUNS_DP_TOKEN:-}
       EVERRUNS_DP_KEY: ${EVERRUNS_DP_KEY:-}
+      # Where the data plane calls this server's injected capabilities and
+      # Memory: its CELL_CONTROL_PLANE, which it trusts.
+      INJECTED_CAPABILITIES_BASE_URL: http://server:9000/api
     depends_on:
       postgres:
         condition: service_healthy

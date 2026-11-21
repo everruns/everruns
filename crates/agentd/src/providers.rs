@@ -106,6 +106,25 @@ pub trait OrgMaterial: Send + Sync {
         let _ = (org, op);
         anyhow::bail!("this node does not refresh org secrets")
     }
+    /// The person whose message opened the turn `session` has open, from
+    /// the session's own record (`senders.rs`); `None` when no person did
+    /// or no turn is open.
+    fn turn_sender(&self, session: SessionId) -> Option<String> {
+        let _ = session;
+        None
+    }
+    /// The data plane's key, which session tokens for injected
+    /// capabilities are signed with a key derived from
+    /// ([`session_token_pkcs8`](everruns_contracts::dataplane_seal::session_token_pkcs8));
+    /// `None` where no control plane wraps keys (a standalone cell).
+    fn data_plane_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
+        None
+    }
+    /// The orgs' MCP credentials, session tokens included; `None` on a
+    /// node that calls no control plane server (`memory.rs`).
+    fn mcp(&self) -> Option<Arc<crate::mcp::OrgMcp>> {
+        None
+    }
     /// Whether [`lookup`](Self::lookup) reaches a control plane: false on
     /// a standalone cell, whose tools then get the defaults a host without
     /// org settings gives.

@@ -127,7 +127,6 @@ spec:
             - { name: raft, containerPort: 7001 }
           env:
             {{- include "everruns.cellEnv" . | nindent 12 }}
-            - { name: CELL_CONTROL_PLANE, value: {{ printf "http://%s:9000/api" $server | quote }} }
             - { name: CELL_RAFT_PORT_OFFSET, value: "1" }
             # Turns the cell hands to executors at once: room for every slot,
             # with turns that wait on tools and models.

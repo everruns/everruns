@@ -245,12 +245,18 @@ impl Host for StandardHost {
         };
         // An org's MCP servers get their credentials per call, from the
         // calling session's org (`mcp.rs`).
-        // A turn's person's own servers (`user_mcp.rs`) too.
+        // A turn's person's own servers (`user_mcp.rs`) too, and injected
+        // capabilities' servers a session token.
         if let Some(orgs) = orgs
             && (!manifest.mcp_servers.is_empty()
-                || crate::user_mcp::user_mcp(&manifest.capabilities) == Some(true))
+                || crate::user_mcp::user_mcp(&manifest.capabilities) == Some(true)
+                || manifest.capabilities.iter().any(|c| {
+                    everruns_contracts::runtime::capabilities::injected::is_injected_capability(
+                        c.id(),
+                    )
+                }))
         {
-            services = services.shared_mcp_auth(Arc::new(orgs.mcp.for_agent(bindings)));
+            services = services.shared_mcp_auth(orgs.mcp.provider_for_agent(bindings));
         }
         // Decision: a session's workspace is its own durable one in the
         // cell, so its file tools may write it, as the platform's workers

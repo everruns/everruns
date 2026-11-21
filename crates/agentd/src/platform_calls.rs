@@ -88,7 +88,10 @@ impl PlatformCalls {
     /// Ask the control plane for a record for a new child of this session
     /// (the `subagent_record` host call, `subagents.rs`): the child's id and
     /// its Memory mounts. Needs no turn: the child acts as no one.
-    pub(crate) async fn record_subagent(&self, params: Value) -> Result<(SessionId, Vec<String>)> {
+    pub(crate) async fn record_subagent(
+        &self,
+        params: Value,
+    ) -> Result<(SessionId, crate::memory::Memory)> {
         let answer = self
             .lookups
             .execute_internal_command(everruns_contracts::host_calls::SUBAGENT_RECORD, params)
@@ -98,7 +101,10 @@ impl PlatformCalls {
             .as_str()
             .and_then(|id| id.parse().ok())
             .ok_or_else(|| AgentLoopError::store("the control plane named no child session"))?;
-        let memory = serde_json::from_value(answer["memory"].clone()).unwrap_or_default();
+        let memory = crate::memory::Memory {
+            mounts: serde_json::from_value(answer["memory"].clone()).unwrap_or_default(),
+            server: answer["memory_server"].as_str().map(str::to_string),
+        };
         Ok((id, memory))
     }
 }

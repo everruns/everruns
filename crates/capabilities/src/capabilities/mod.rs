@@ -132,8 +132,8 @@ pub use session_sql_database::{
 };
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use slack::{
-    SLACK_CAPABILITY_ID, SlackAddReactionTool, SlackCapability, SlackLookupUserTool,
-    SlackUpdateMessageTool, SlackUploadFileTool,
+    SLACK_CAPABILITY_ID, SLACK_MODEL_VIEW_CAPABILITY_ID, SlackAddReactionTool, SlackCapability,
+    SlackLookupUserTool, SlackModelViewCapability, SlackUpdateMessageTool, SlackUploadFileTool,
 };
 pub use subagents::{
     SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
@@ -247,6 +247,7 @@ pub fn register_hosted_capabilities(
     // registering it unconditionally costs an agent nothing until a Slack
     // endpoint creates its session.
     registry.register(SlackCapability);
+    registry.register(SlackModelViewCapability);
     // The hard approval gate (EVE-1140). Opt-in per agent like every guardrail;
     // decisions live in session storage, so a parked turn resumes on whichever
     // worker picks it up after a person answers.

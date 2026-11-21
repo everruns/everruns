@@ -566,7 +566,7 @@ impl Gateway {
 
     /// [`Self::create`] for a session of the control plane's agent
     /// `agent_ref` ([`crate::platform::Platform::agent_ref`]), joining it
-    /// as `joining` says.
+    /// as `joining` says (its Memory, whether it is being imported).
     pub async fn create_running(
         &self,
         definition: Value,
@@ -628,7 +628,8 @@ impl Gateway {
             "definition": definition,
             "tenant": tenant,
             "agent_ref": agent_ref,
-            "memory": memory,
+            "memory": memory.mounts,
+            "memory_server": memory.server,
             "importing": importing,
         });
         let deadline = Instant::now() + Duration::from_secs(30);
@@ -920,8 +921,9 @@ async fn check_org_token(
 /// How a control plane session joins its cell, beyond its agent.
 #[derive(Debug, Clone, Default)]
 pub struct Joining {
-    /// Its Memory mounts ([`crate::platform::Platform::memory`]).
-    pub memory: Vec<String>,
+    /// Its Memory ([`crate::platform::Platform::memory`] and
+    /// [`crate::platform::Platform::memory_server`]).
+    pub memory: crate::memory::Memory,
     /// A moved v1 session being imported: closed to messages until the
     /// control plane activates it (`state::Command::Importing`).
     pub importing: bool,

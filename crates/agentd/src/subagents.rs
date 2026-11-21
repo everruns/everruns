@@ -501,7 +501,7 @@ impl PlatformStore for CellPlatformStore {
                     }))
                     .await?
             }
-            _ => (SessionId::new(), Vec::new()),
+            _ => (SessionId::new(), Default::default()),
         };
         self.gateway
             .create_running(

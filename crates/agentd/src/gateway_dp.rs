@@ -215,6 +215,10 @@ struct OrgSession {
     /// messages until it is activated.
     #[serde(default)]
     importing: bool,
+    /// The control plane's files server they live on, reached with a
+    /// session token (`memory.rs`).
+    #[serde(default)]
+    memory_server: Option<String>,
 }
 
 /// `POST /dp/v1/orgs/{org}/sessions`: the control plane creating an org's
@@ -265,7 +269,10 @@ async fn org_session(
             Some(org),
             Some(body.agent_ref),
             crate::gateway::Joining {
-                memory: body.memory,
+                memory: crate::memory::Memory {
+                    mounts: body.memory,
+                    server: body.memory_server,
+                },
                 importing: body.importing,
             },
         )

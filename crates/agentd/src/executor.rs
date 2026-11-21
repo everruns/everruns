@@ -764,6 +764,21 @@ impl crate::providers::OrgMaterial for Executor {
         self.dp_key.lock().is_some()
     }
 
+    fn data_plane_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
+        *self.dp_key.lock()
+    }
+
+    fn mcp(&self) -> Option<Arc<crate::mcp::OrgMcp>> {
+        Some(self.mcp.clone())
+    }
+
+    fn turn_sender(&self, session: SessionId) -> Option<String> {
+        let state = self.remote.shared.state.read();
+        let s = state.sessions.get(&session)?;
+        let message = s.authority.open.and(s.authority.open_input)?;
+        s.platform.senders.of(message).map(str::to_owned)
+    }
+
     fn declared_host_calls(
         &self,
         session: SessionId,

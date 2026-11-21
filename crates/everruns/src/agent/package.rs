@@ -136,6 +136,9 @@ impl AgentBuilder {
                 .is_some_and(|services| services.resolves(reference.id()).is_some());
             if !registry.has(reference.id())
                 && !everruns_core::is_declarative_capability(reference.id())
+                && !everruns_contracts::runtime::capabilities::injected::is_injected_capability(
+                    reference.id(),
+                )
                 && !host_resolves
             {
                 return Err(failure(

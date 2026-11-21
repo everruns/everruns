@@ -287,6 +287,9 @@ is and the link to the server.
 - { name: CELL_STORE, value: {{ include "everruns.cellStore" . | quote }} }
 - { name: CELL_DATA_PLANE, value: local }
 - { name: CELL_JWKS_URL, value: {{ printf "http://%s:9000/api/.well-known/jwks.json" $server | quote }} }
+{{- /* Nodes deliver the feed there; nodes and executors call its injected
+capabilities and Memory there (INJECTED_CAPABILITIES_BASE_URL). */}}
+- { name: CELL_CONTROL_PLANE, value: {{ printf "http://%s:9000/api" $server | quote }} }
 - name: CELL_DP_TOKEN
   valueFrom: { secretKeyRef: { name: {{ $internal }}, key: EVERRUNS_DP_TOKEN } }
 - name: CELL_DP_KEY
@@ -324,6 +327,7 @@ is and the link to the server.
 {{- if eq .Values.dataPlane.version "v2" }}
 - { name: EVERRUNS_DEFAULT_DATA_PLANE, value: local }
 - { name: EVERRUNS_DEFAULT_DATA_PLANE_URL, value: {{ printf "http://%s-gateway:7000" (include "everruns.name" (list . "cell")) | quote }} }
+- { name: INJECTED_CAPABILITIES_BASE_URL, value: {{ printf "http://%s:9000/api" (include "everruns.name" (list . "server")) | quote }} }
 {{- end }}
 {{- $internal := include "everruns.internalSecretName" . }}
 - name: EVERRUNS_DP_TOKEN

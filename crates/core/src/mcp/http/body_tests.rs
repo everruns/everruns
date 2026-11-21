@@ -371,3 +371,15 @@ async fn successful_status_does_not_hide_body_failure() {
             .contains("broken body")
     );
 }
+
+#[test]
+fn only_a_trusted_controllers_origin_skips_the_private_address_check() {
+    const SERVER: &str = "http://127.0.0.1:59999/api/injected/memory_files/mcp";
+    assert!(controller_url(SERVER).is_none());
+    trust_controller_origin("http://127.0.0.1:59999/api");
+    assert!(controller_url(SERVER).is_some());
+    // Another port or scheme on the same host is another origin.
+    assert!(controller_url("http://127.0.0.1:59998/api/injected/x/mcp").is_none());
+    assert!(controller_url("https://127.0.0.1:59999/api/injected/x/mcp").is_none());
+    assert!(controller_url("not a url").is_none());
+}

@@ -91,6 +91,18 @@ impl McpClient {
         Ok(serde_json::from_value(result)?)
     }
 
+    /// One file operation on the server's file tree (`io.everruns/files`):
+    /// `method` one of `files_method(op)`, `params` its `path` and fields.
+    /// A file that is not there is `null`; a refusal is an error.
+    pub async fn files(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        self.request_raw(connection, method, params).await
+    }
+
     /// Tell the server a call ran, and take its changes to the result.
     pub async fn after_tool(
         &self,

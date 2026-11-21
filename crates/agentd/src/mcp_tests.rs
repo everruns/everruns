@@ -22,6 +22,8 @@ const TOKEN_URL: &str = "https://auth.example/token";
 struct Directory {
     state: parking_lot::Mutex<(Orgs, Feed)>,
     sessions: parking_lot::Mutex<HashMap<SessionId, String>>,
+    /// Who opened each session's turn.
+    senders: parking_lot::Mutex<HashMap<SessionId, String>>,
     /// Host calls made: (org, command, params).
     lookups: parking_lot::Mutex<Vec<(String, String, serde_json::Value)>>,
 }
@@ -60,6 +62,14 @@ impl Directory {
 impl OrgMaterial for Directory {
     fn tenant(&self, session: SessionId) -> Option<String> {
         self.sessions.lock().get(&session).cloned()
+    }
+
+    fn data_plane_key(&self) -> Option<Key> {
+        Some(KEY)
+    }
+
+    fn turn_sender(&self, session: SessionId) -> Option<String> {
+        self.senders.lock().get(&session).cloned()
     }
 
     async fn connection(&self, org: &str, id: &str) -> anyhow::Result<Option<Connection>> {
@@ -438,4 +448,78 @@ fn a_person_acting_server_declares_its_token_host_call() {
     assert!(crate::host::declared_host_calls(&definition("mcp_oauth_notes")).contains(token));
     let pushed = format!("{MCP_OAUTH}:grant-1");
     assert!(!crate::host::declared_host_calls(&definition(&pushed)).contains(token));
+}
+
+#[tokio::test]
+async fn an_injected_capabilitys_server_gets_a_session_token_naming_the_session_and_its_org() {
+    use everruns_core::mcp::session_token::SessionTokenVerifier;
+    const URL: &str = "https://cp.example/api/v1/injected/knowledge_base/mcp";
+    const CAP: &str = "injected:knowledge_base";
+    let directory = Arc::new(Directory::default());
+    let session = SessionId::new();
+    directory.sessions.lock().insert(session, ORG.into());
+    let mcp = executor(&directory, Arc::new(TokenEndpoint::default()));
+    let auth = mcp.provider_for_agent(Bindings::default());
+    let call = |session: Option<SessionId>| McpAuthRequest {
+        server_url: Some(URL),
+        server_name: "knowledge_base",
+        auth_mode: McpServerAuthMode::SessionToken,
+        oauth_provider_id: None,
+        session_id: session.map(|s| s.uuid()),
+    };
+
+    let credential = auth
+        .authorization(&call(Some(session)))
+        .await
+        .unwrap()
+        .unwrap();
+    let token = credential
+        .authorization
+        .as_deref()
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .expect("a bearer token");
+    // What the control plane derives from the same data plane key.
+    let signer = SessionTokenSigner::from_pkcs8(
+        everruns_contracts::dataplane_seal::SESSION_TOKEN_ISSUER,
+        &everruns_contracts::dataplane_seal::session_token_pkcs8(&KEY),
+    )
+    .unwrap();
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec![signer.issuer().into()]).unwrap();
+    let claims = verifier.verify(token, URL, CAP).unwrap();
+    assert_eq!(claims.sub, session.uuid().to_string());
+    assert_eq!(claims.grp.as_deref(), Some(ORG));
+    assert_eq!(claims.act, None, "no person opened the turn");
+    // The person who opened the turn, as the session's record has it.
+    directory.senders.lock().insert(session, "usr_1".into());
+    let credential = auth
+        .authorization(&call(Some(session)))
+        .await
+        .unwrap()
+        .unwrap();
+    let acted = credential.authorization.unwrap();
+    let acted = verifier
+        .verify(acted.strip_prefix("Bearer ").unwrap(), URL, CAP)
+        .unwrap();
+    assert_eq!(acted.act.map(|a| a.sub).as_deref(), Some("usr_1"));
+    // Not for another server.
+    assert!(
+        verifier
+            .verify(token, "https://elsewhere/mcp", CAP)
+            .is_err()
+    );
+
+    // A session not running here, or no session: refused, never unsigned.
+    assert!(
+        auth.authorization(&call(Some(SessionId::new())))
+            .await
+            .is_err()
+    );
+    assert!(auth.authorization(&call(None)).await.is_err());
+
+    // Every other server still gets the agent's own credentials.
+    let mut other = call(Some(session));
+    other.auth_mode = McpServerAuthMode::None;
+    other.server_name = "docs";
+    assert!(auth.authorization(&other).await.unwrap().is_none());
 }

@@ -21,7 +21,8 @@ use async_trait::async_trait;
 use base64::Engine as _;
 use ed25519_dalek::SigningKey;
 use everruns_contracts::runtime::capabilities::injected::{
-    SESSION_TOKEN_TTL_SECS, SESSION_TOKEN_TYP, SessionTokenClaims, injected_capability_id,
+    SESSION_TOKEN_TTL_SECS, SESSION_TOKEN_TYP, SessionActor, SessionTokenClaims,
+    injected_capability_id,
 };
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
@@ -123,6 +124,16 @@ impl SessionTokenSigner {
 
     /// Sign a token for one call.
     pub fn sign(&self, request: &SessionTokenRequest, group: Option<String>) -> Result<String> {
+        self.sign_as(request, group, None)
+    }
+
+    /// Sign a token for one call of the turn `actor` opened.
+    pub fn sign_as(
+        &self,
+        request: &SessionTokenRequest,
+        group: Option<String>,
+        actor: Option<SessionActor>,
+    ) -> Result<String> {
         let now = now_secs();
         let claims = SessionTokenClaims {
             iss: self.issuer.clone(),
@@ -130,6 +141,7 @@ impl SessionTokenSigner {
             sub: request.session_id.to_string(),
             cap: request.capability_id.clone(),
             grp: group,
+            act: actor,
             iat: now,
             exp: now + SESSION_TOKEN_TTL_SECS,
             jti: uuid::Uuid::now_v7().to_string(),
@@ -368,6 +380,7 @@ mod tests {
             sub: "s".into(),
             cap: CAP.into(),
             grp: None,
+            act: None,
             iat: past,
             exp: past + 60,
             jti: "j".into(),

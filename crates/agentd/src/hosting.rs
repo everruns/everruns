@@ -475,16 +475,20 @@ impl SessionHosting for RaftHosting {
         // read-only files its capabilities bring (`capability_files.rs`).
         let (memory, definition) = self
             .inner
-            .read(session, |s| {
-                (s.platform.memory.clone(), s.definition.clone())
-            })
+            .read(session, |s| (memory_of(&s.platform), s.definition.clone()))
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
         let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
-        let backends = if memory.is_empty() {
+        let backends = if memory.mounts.is_empty() {
             backends
         } else {
-            crate::memory::attach(backends, lookups.clone(), session, &memory)
+            crate::memory::attach(
+                backends,
+                self.inner.material.get(),
+                lookups.clone(),
+                session,
+                &memory,
+            )
         };
         // Decision (parity, step 10): a session's resources (fleet
         // sandboxes, activated skills) and the leases of what its tools
@@ -1401,10 +1405,16 @@ impl SessionEpoch for Ports {
         if self.epoch.is_none()
             && let Some(memory) = self
                 .inner
-                .peek(self.session, |s| s.platform.memory.clone())
-                .filter(|memory| !memory.is_empty())
+                .peek(self.session, |s| memory_of(&s.platform))
+                .filter(|memory| !memory.mounts.is_empty())
         {
-            backends = crate::memory::attach(backends, lookups, self.session, &memory);
+            backends = crate::memory::attach(
+                backends,
+                self.inner.material.get(),
+                lookups,
+                self.session,
+                &memory,
+            );
         }
         backends
     }
@@ -1478,6 +1488,14 @@ pub mod sqldb;
 #[path = "hosting_actors.rs"]
 mod actors;
 use actors::scopeguard;
+
+/// A session's Memory, from its platform record.
+fn memory_of(platform: &crate::platform::Platform) -> crate::memory::Memory {
+    crate::memory::Memory {
+        mounts: platform.memory.clone(),
+        server: platform.memory_server.clone(),
+    }
+}
 
 #[cfg(test)]
 mod org_tests {

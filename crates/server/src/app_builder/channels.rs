@@ -93,6 +93,8 @@ impl ChannelStates {
             deps.db.clone(),
             &deps.auth.config.base_url,
         ));
+        // Data planes get the served ones in place of hosted capabilities.
+        crate::injected::serve_to_data_planes(&injected);
         // api_endpoint execution keys.
         let mut api = api::channel_api::ChannelApiState::new(
             deps.db.clone(),

@@ -358,3 +358,209 @@ async fn endpoint_is_off_without_trusted_keys() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn the_linked_data_planes_tokens_are_trusted_from_its_key_alone() {
+    use everruns_contracts::dataplane_seal::{SESSION_TOKEN_ISSUER, session_token_pkcs8};
+    let dp_key = [5u8; 32];
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let service = Arc::new(KnowledgeBaseService::new(
+        BASE_URL,
+        Arc::new(OneSession { org, session }),
+        Arc::new(OneEntry),
+    ));
+    let verifier = super::linked_data_plane_verifier(&dp_key).unwrap();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier)).register(service);
+    let url = capabilities.definitions().remove(0).server.url;
+    let router = routes(Arc::new(capabilities), "/v1");
+    let path = "/v1/injected/knowledge_base/mcp";
+    let request = SessionTokenRequest {
+        session_id: session.uuid(),
+        capability_id: "injected:knowledge_base".into(),
+        audience: url,
+    };
+    // What a cell's executor signs with (`mcp.rs` in everruns-cell).
+    let executor =
+        SessionTokenSigner::from_pkcs8(SESSION_TOKEN_ISSUER, &session_token_pkcs8(&dp_key))
+            .unwrap();
+    let token = executor.sign(&request, Some(org.to_string())).unwrap();
+    assert_eq!(post(&router, path, Some(&token)).await, StatusCode::OK);
+    // Another data plane's key is not trusted.
+    let other =
+        SessionTokenSigner::from_pkcs8(SESSION_TOKEN_ISSUER, &session_token_pkcs8(&[6u8; 32]))
+            .unwrap();
+    let token = other.sign(&request, Some(org.to_string())).unwrap();
+    assert_eq!(
+        post(&router, path, Some(&token)).await,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[test]
+fn a_data_planes_package_calls_the_served_capability_instead_of_the_hosted_one() {
+    let served = vec![fixture().definition];
+    let mut package = serde_json::json!({
+        "name": "a",
+        "capabilities": [
+            "current_time",
+            { "ref": "knowledge_base", "config": { "limit": 3 } },
+            { "ref": "injected:knowledge_base", "config": {
+                "name": "knowledge_base", "description": "x",
+                "mcp_servers": { "knowledge_base": { "url": "https://evil.example/mcp", "actsAs": "none" } }
+            } },
+            { "ref": "injected:poppy" },
+        ],
+    });
+    super::attach(&mut package, &served);
+    let capabilities = package["capabilities"].as_array().unwrap();
+    // Hosted Knowledge Base becomes the injected one, once, in its place; an
+    // author's URL never survives; one not served here is dropped.
+    assert_eq!(capabilities.len(), 2, "{capabilities:?}");
+    assert_eq!(capabilities[0], "current_time");
+    assert_eq!(capabilities[1]["ref"], "injected:knowledge_base");
+    let server = &capabilities[1]["config"]["mcp_servers"]["knowledge_base"];
+    assert_eq!(server["url"], served[0].server.url.as_str());
+    assert_eq!(server["auth_mode"], "session_token");
+
+    // Nothing served (no trusted data plane): the package is left alone.
+    let mut untouched = serde_json::json!({ "capabilities": ["knowledge_base"] });
+    super::attach(&mut untouched, &[]);
+    assert_eq!(
+        untouched["capabilities"],
+        serde_json::json!(["knowledge_base"])
+    );
+}
+
+#[test]
+fn slacks_model_view_stays_native_beside_its_injected_tools() {
+    let served = vec![super::hosted::definition_of(
+        &everruns_capabilities::capabilities::SlackCapability,
+        BASE_URL,
+    )];
+    let mut package = serde_json::json!({ "capabilities": ["slack", "slack_model_view"] });
+    super::attach(&mut package, &served);
+    assert_eq!(
+        package["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| super::ref_id(c).unwrap())
+            .collect::<Vec<_>>(),
+        ["injected:slack", "slack_model_view"]
+    );
+    assert!(served[0].validate().is_ok(), "{:?}", served[0].validate());
+}
+
+/// The `memory_file` handler, for one org and session: `/memory/user` only.
+struct MemoryCalls {
+    org: OrgId,
+    session: SessionId,
+    asked: parking_lot::Mutex<Vec<Value>>,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for MemoryCalls {
+    async fn answer(
+        &self,
+        org: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        assert_eq!(call.name, everruns_contracts::host_calls::MEMORY_FILE);
+        assert_eq!(org, self.org);
+        assert_eq!(params["session_id"], self.session.uuid().to_string());
+        self.asked.lock().push(params.clone());
+        let path = params["path"].as_str().unwrap();
+        let answer = if !path.starts_with("/memory/user") {
+            json!({ "error": format!("{path} is not in this session's Memory") })
+        } else {
+            json!({ "ok": {
+                "path": path,
+                "content": "likes tea",
+                "encoding": "text",
+                "is_directory": false,
+            } })
+        };
+        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+            answer,
+        ))
+    }
+}
+
+#[tokio::test]
+async fn memory_is_served_as_files_through_the_memory_file_handler() {
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    let runner = Arc::new(MemoryCalls {
+        org,
+        session,
+        asked: Default::default(),
+    });
+    capabilities.host_calls().bind(runner.clone());
+    let service = hosted::memory::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities
+        .definitions()
+        .into_iter()
+        .find(|d| d.name() == hosted::memory::NAME)
+        .unwrap();
+    assert_eq!(
+        definition.server.url,
+        "http://8.8.8.8/v1/injected/memory_files/mcp"
+    );
+    let fixture = Fixture {
+        signer,
+        router: routes(Arc::new(capabilities), "/v1"),
+        org,
+        session,
+        definition,
+    };
+    let client = client(&fixture, org, session);
+    let connection = connection(&fixture.definition);
+
+    let read = client
+        .files(
+            &connection,
+            "everruns/files/read",
+            json!({ "path": "/memory/user/notes.md" }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(read["content"], "likes tea");
+    assert_eq!(
+        read["etag"],
+        everruns_contracts::runtime::mcp_extensions::file_etag("likes tea", "text").as_str()
+    );
+    assert_eq!(runner.asked.lock()[0]["op"], "read");
+
+    // The handler's refusal, and a path that escapes, are the caller's errors.
+    let refused = client
+        .files(
+            &connection,
+            "everruns/files/read",
+            json!({ "path": "/memory/agent/x.md" }),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("not in this session's Memory"),
+        "{refused}"
+    );
+    let asked = runner.asked.lock().len();
+    assert!(
+        client
+            .files(
+                &connection,
+                "everruns/files/read",
+                json!({ "path": "/memory/user/../agent/x.md" }),
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(runner.asked.lock().len(), asked);
+}

@@ -22,8 +22,9 @@ use everruns_contracts::runtime::capabilities::injected::{
 };
 use everruns_contracts::runtime::mcp_extensions::{
     AfterToolParams, AfterToolResult, BeforeToolParams, BeforeToolResult, EXTENSIONS_RESOURCE_URI,
-    FACTS_EXTENSION, FACTS_MIME_TYPE, FACTS_RESOURCE_URI, FactsDocument, HOOKS_AFTER_TOOL_METHOD,
-    HOOKS_BEFORE_TOOL_METHOD, HOOKS_EXTENSION, HooksDeclaration, UI_EXTENSION, WireFact,
+    FACTS_EXTENSION, FACTS_MIME_TYPE, FACTS_RESOURCE_URI, FILES_EXTENSION, FactsDocument,
+    HOOKS_AFTER_TOOL_METHOD, HOOKS_BEFORE_TOOL_METHOD, HOOKS_EXTENSION, HooksDeclaration,
+    UI_EXTENSION, WireFact, checked_file_path, file_etag, files_op,
 };
 use serde_json::{Map, Value, json};
 
@@ -100,6 +101,26 @@ pub trait InjectedCapabilityService: Send + Sync {
     fn renders_ui(&self) -> bool {
         false
     }
+
+    /// Whether the server owns a file tree the host mounts
+    /// ([`FILES_EXTENSION`]).
+    fn serves_files(&self) -> bool {
+        false
+    }
+
+    /// One file operation (`op` one of `FILES_OPS`) for the session, with
+    /// `params.path` already checked to stay inside the tree. The service
+    /// resolves it inside the session's own files (its group, its agent).
+    /// `if_match` and etags are handled before and after this call, so a
+    /// service implements only the plain operations.
+    async fn files(
+        &self,
+        _session: &VerifiedSession,
+        _op: &'static str,
+        _params: Value,
+    ) -> Result<Value> {
+        Err(anyhow::anyhow!("this server owns no files"))
+    }
 }
 
 fn success(id: &Value, result: Value) -> Value {
@@ -126,6 +147,9 @@ async fn extensions(service: &dyn InjectedCapabilityService, session: &VerifiedS
     }
     if service.renders_ui() {
         extensions.insert(UI_EXTENSION.to_string(), json!({}));
+    }
+    if service.serves_files() {
+        extensions.insert(FILES_EXTENSION.to_string(), json!({}));
     }
     Value::Object(extensions)
 }
@@ -279,8 +303,115 @@ async fn dispatch(
                 .map_err(internal)?;
             serde_json::to_value(result).map_err(|e| internal(e.into()))
         }
+        _ if service.serves_files() && files_op(method).is_some() => {
+            let op = files_op(method).unwrap_or_default();
+            files(service, session, op, params).await
+        }
         _ => Err((METHOD_NOT_FOUND, format!("method not found: {method}"))),
     }
+}
+
+/// One file operation: the path checked, `if_match` turned into a
+/// compare-and-set on the content it names, etags added to what comes back.
+async fn files(
+    service: &dyn InjectedCapabilityService,
+    session: &VerifiedSession,
+    op: &'static str,
+    mut params: Value,
+) -> std::result::Result<Value, (i64, String)> {
+    let path = params
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or((INVALID_PARAMS, "path is required".to_string()))?;
+    let path = checked_file_path(path).map_err(|error| (INVALID_PARAMS, error))?;
+    params["path"] = Value::String(path.clone());
+    // A failed operation is the server's answer, for the host's tool.
+    let refused = |error: anyhow::Error| (INVALID_PARAMS, error.to_string());
+    let if_match = params
+        .get("if_match")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    if let (Some(if_match), "write") = (if_match, op) {
+        let current = service
+            .files(session, "read", json!({ "path": path }))
+            .await
+            .map_err(refused)?;
+        let (Some(content), encoding) = (
+            current.get("content").and_then(Value::as_str),
+            current
+                .get("encoding")
+                .and_then(Value::as_str)
+                .unwrap_or("text"),
+        ) else {
+            return Err((
+                INVALID_PARAMS,
+                format!("precondition failed: {path} is not there"),
+            ));
+        };
+        if file_etag(content, encoding) != if_match {
+            return Err((
+                INVALID_PARAMS,
+                format!("precondition failed: {path} changed"),
+            ));
+        }
+        let written = service
+            .files(
+                session,
+                "write_if_matches",
+                json!({
+                    "path": path,
+                    "expected_content": content,
+                    "expected_encoding": encoding,
+                    "content": params.get("content").cloned().unwrap_or(Value::Null),
+                    "encoding": params.get("encoding").cloned().unwrap_or(json!("text")),
+                }),
+            )
+            .await
+            .map_err(refused)?;
+        if written.is_null() {
+            return Err((
+                INVALID_PARAMS,
+                format!("precondition failed: {path} changed"),
+            ));
+        }
+        return Ok(with_etag(written));
+    }
+    let result = service.files(session, op, params).await.map_err(refused)?;
+    match op {
+        "stat" if result.get("is_directory") == Some(&Value::Bool(false)) => {
+            let read = service
+                .files(session, "read", json!({ "path": path }))
+                .await
+                .map_err(refused)?;
+            let mut result = result;
+            if let Some(etag) = with_etag(read).get("etag").cloned() {
+                result["etag"] = etag;
+            }
+            Ok(result)
+        }
+        _ => Ok(with_etag(result)),
+    }
+}
+
+/// A file with content gains its `etag`; anything else stays as it is.
+fn with_etag(mut value: Value) -> Value {
+    let etag = match (
+        value.get("content").and_then(Value::as_str),
+        value.get("is_directory").and_then(Value::as_bool),
+    ) {
+        (Some(content), Some(false)) => Some(file_etag(
+            content,
+            value
+                .get("encoding")
+                .and_then(Value::as_str)
+                .unwrap_or("text"),
+        )),
+        _ => None,
+    };
+    if let Some(etag) = etag {
+        value["etag"] = Value::String(etag);
+    }
+    value
 }
 
 /// A tool result in MCP's `tools/call` shape: the JSON as text for the
@@ -401,6 +532,7 @@ mod tests {
             sub: id.to_string(),
             cap: injected_capability_id("echo"),
             grp: Some("org_1".into()),
+            act: None,
             iat: 0,
             exp: 0,
             jti: "j".into(),
@@ -555,5 +687,155 @@ mod tests {
         );
         claims.sub = "not-a-session".into();
         assert!(VerifiedSession::from_claims(claims).is_none());
+    }
+
+    /// A file tree in memory: path to (content, encoding).
+    struct Files {
+        definition: InjectedCapabilityDefinition,
+        tree: std::sync::Mutex<std::collections::HashMap<String, (String, String)>>,
+        seen: std::sync::Mutex<Vec<(String, Value)>>,
+    }
+
+    #[async_trait]
+    impl InjectedCapabilityService for Files {
+        fn definition(&self) -> &InjectedCapabilityDefinition {
+            &self.definition
+        }
+        async fn tools(&self, _session: &VerifiedSession) -> Result<Vec<Box<dyn Tool>>> {
+            Ok(Vec::new())
+        }
+        async fn tool_context(&self, session: &VerifiedSession) -> Result<ToolContext> {
+            Ok(ToolContext::new(SessionId::from_uuid(session.session_id)))
+        }
+        fn serves_files(&self) -> bool {
+            true
+        }
+        async fn files(
+            &self,
+            _session: &VerifiedSession,
+            op: &'static str,
+            params: Value,
+        ) -> Result<Value> {
+            self.seen
+                .lock()
+                .unwrap()
+                .push((op.to_string(), params.clone()));
+            let path = params["path"].as_str().unwrap().to_string();
+            let mut tree = self.tree.lock().unwrap();
+            let file = |path: &str, (content, encoding): &(String, String)| json!({"path": path, "content": content, "encoding": encoding, "is_directory": false});
+            Ok(match op {
+                "read" => tree
+                    .get(&path)
+                    .map(|f| file(&path, f))
+                    .unwrap_or(Value::Null),
+                "stat" => tree
+                    .get(&path)
+                    .map(|_| json!({"path": path, "is_directory": false}))
+                    .unwrap_or(Value::Null),
+                "write" => {
+                    let f = (
+                        params["content"].as_str().unwrap().to_string(),
+                        params["encoding"].as_str().unwrap_or("text").to_string(),
+                    );
+                    let out = file(&path, &f);
+                    tree.insert(path, f);
+                    out
+                }
+                "write_if_matches" => {
+                    let matches = tree
+                        .get(&path)
+                        .is_some_and(|(content, _)| params["expected_content"] == *content);
+                    if !matches {
+                        return Ok(Value::Null);
+                    }
+                    let f = (
+                        params["content"].as_str().unwrap().to_string(),
+                        "text".to_string(),
+                    );
+                    let out = file(&path, &f);
+                    tree.insert(path, f);
+                    out
+                }
+                other => anyhow::bail!("{other} not here"),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn files_are_one_method_per_operation_with_etags_and_if_match() {
+        let service = Files {
+            definition: EchoService::new(false).definition,
+            tree: Default::default(),
+            seen: Default::default(),
+        };
+        let call = |method: &str, params: Value| {
+            let message = json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params});
+            let service = &service;
+            async move {
+                handle_injected_request(service, &session(), message)
+                    .await
+                    .unwrap()
+            }
+        };
+        let extensions = call("initialize", json!({})).await;
+        assert!(
+            extensions["result"]["capabilities"]["extensions"]
+                .get(FILES_EXTENSION)
+                .is_some()
+        );
+
+        let written = call(
+            "everruns/files/write",
+            json!({"path": "/memory/user/a.md/", "content": "one", "encoding": "text"}),
+        )
+        .await;
+        let first = written["result"]["etag"].as_str().unwrap().to_string();
+        assert_eq!(first, file_etag("one", "text"));
+        assert_eq!(written["result"]["path"], "/memory/user/a.md");
+
+        let read = call("everruns/files/read", json!({"path": "/memory/user/a.md"})).await;
+        assert_eq!(read["result"]["etag"], first.as_str());
+        let stat = call("everruns/files/stat", json!({"path": "/memory/user/a.md"})).await;
+        assert_eq!(stat["result"]["etag"], first.as_str());
+
+        // if_match: the current tag writes, a stale one is refused.
+        let second = call(
+            "everruns/files/write",
+            json!({"path": "/memory/user/a.md", "content": "two", "if_match": first}),
+        )
+        .await;
+        assert_eq!(second["result"]["etag"], file_etag("two", "text").as_str());
+        let stale = call(
+            "everruns/files/write",
+            json!({"path": "/memory/user/a.md", "content": "three", "if_match": first}),
+        )
+        .await;
+        assert!(
+            stale["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("precondition failed")
+        );
+        let missing = call(
+            "everruns/files/write",
+            json!({"path": "/memory/user/b.md", "content": "x", "if_match": first}),
+        )
+        .await;
+        assert!(
+            missing["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("is not there")
+        );
+
+        // Escapes never reach the service; unknown operations are not methods.
+        let seen_before = service.seen.lock().unwrap().len();
+        for path in ["/memory/../etc/passwd", "memory/a", "/memory//a"] {
+            let refused = call("everruns/files/read", json!({ "path": path })).await;
+            assert_eq!(refused["error"]["code"], INVALID_PARAMS, "{path}");
+        }
+        let unknown = call("everruns/files/chmod", json!({"path": "/a"})).await;
+        assert_eq!(unknown["error"]["code"], METHOD_NOT_FOUND);
+        assert_eq!(service.seen.lock().unwrap().len(), seen_before);
     }
 }

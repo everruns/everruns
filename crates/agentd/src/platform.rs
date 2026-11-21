@@ -83,6 +83,11 @@ pub struct Platform {
     /// whose files stay in the control plane (`memory.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<String>,
+    /// The control plane's files server those mounts are read and written
+    /// through, with a session token (`memory.rs`). `None`: through the
+    /// `memory_file` host call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_server: Option<String>,
 }
 
 impl Platform {
@@ -206,6 +211,9 @@ pub enum Op {
         agent_ref: String,
         #[serde(default)]
         memory: Vec<String>,
+        /// [`Platform::memory_server`].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        memory_server: Option<String>,
     },
 }
 
@@ -358,11 +366,17 @@ impl CellState {
         if let Op::Storage(op) = op {
             return crate::session_storage::apply(state, session, op, now_ms, changes);
         }
-        if let Op::Agent { agent_ref, memory } = op {
+        if let Op::Agent {
+            agent_ref,
+            memory,
+            memory_server,
+        } = op
+        {
             // Set once: a retried create names the same agent.
             if state.platform.agent_ref.is_none() {
                 state.platform.agent_ref = Some(agent_ref);
                 state.platform.memory = memory;
+                state.platform.memory_server = memory_server;
                 changes.push(Change::Session(session));
             }
             return Response::Value {
