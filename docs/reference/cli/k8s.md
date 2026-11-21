@@ -13,6 +13,7 @@ Run Everruns in a Kubernetes cluster with the Helm chart.
 | Command | What it does |
 |---|---|
 | [`k8s up`](#k8s-up) | Install Everruns into the current Kubernetes cluster, or repair it. |
+| [`k8s cluster create`](#k8s-cluster-create) | Create a local Kubernetes cluster with a shared image store and storage provisioner. |
 | [`k8s status`](#k8s-status) | Show the install: where it is, whether its server is healthy, its pods, and which CLI profile points at it. |
 | [`k8s logs`](#k8s-logs) | Show the pods' logs. |
 | [`k8s open`](#k8s-open) | Open the UI in the browser (through a port-forward when there is no public URL) |
@@ -42,6 +43,7 @@ everruns k8s up [OPTIONS]
 | `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `openrouter`, `skip`. |
 | `--database-url <DATABASE_URL>` | Your PostgreSQL 15+ URL (postgres://user:password@host:5432/db) |
 | `--bundled-postgres` | Run a single PostgreSQL pod in the cluster, for trying Everruns out (no backups or failover) |
+| `--storage-class <STORAGE_CLASS>` | StorageClass for new volumes without a per-volume class, or `auto` to use the cluster default. Defaults to `auto`. |
 | `--public-url <PUBLIC_URL>` | Public address such as https://everruns.example.com. Enables direct Ingress by default. |
 | `--ingress-class <INGRESS_CLASS>` | Ingress class for the public address, such as nginx. |
 | `--chart <CHART>` | Chart to install: a local path such as charts/everruns, or an OCI reference. |
@@ -54,6 +56,20 @@ everruns k8s up [OPTIONS]
 | `--timeout <TIMEOUT>` | How long to wait for the pods, such as 15m. |
 | `-y`, `--yes` | Accept the default for every question, the cluster context included. |
 | `--no-open` | Do not open the browser. |
+
+
+## k8s cluster create
+
+Create a local Kubernetes cluster with a shared image store and storage provisioner.
+
+```bash
+everruns k8s cluster create --provider apple [OPTIONS]
+```
+
+| Flag | Description |
+|---|---|
+| `--provider <PROVIDER>` | Local Kubernetes provider. One of `apple`. |
+| `--name <NAME>` | Name for the new cluster and its kubeconfig context. Defaults to `everruns-dev`. |
 
 
 ## k8s status

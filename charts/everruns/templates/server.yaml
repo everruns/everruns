@@ -68,6 +68,24 @@ spec:
       {{- else if .Values.server.topologySpreadConstraints }}
       topologySpreadConstraints: {{- toYaml .Values.server.topologySpreadConstraints | nindent 8 }}
       {{- end }}
+      {{- if .Values.postgresql.enabled }}
+      initContainers:
+        - name: wait-for-postgresql
+          image: {{ .Values.postgresql.image }}
+          command: [sh, -ec]
+          args:
+            - |
+              echo "Waiting for bundled PostgreSQL"
+              until pg_isready -q -h "$PGHOST" -p 5432 -U everruns -d everruns; do sleep 2; done
+          env:
+            - { name: PGHOST, value: {{ include "everruns.name" (list . "postgresql") | quote }} }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+          securityContext:
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+      {{- end }}
       containers:
         - name: server
           image: {{ include "everruns.image" (list . "server") }}
