@@ -130,25 +130,26 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
         (FeatureFlagGrade::Prod, true, true),
         (FeatureFlagGrade::Off, false, false),
     ] {
-        let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod).with_grade("skills", grade);
+        let policy =
+            FeatureFlagPolicy::from_env(DeploymentGrade::Prod).with_grade("agent_views", grade);
         let server = TestServer::in_memory_with_feature_policy(policy).await;
         let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
-        assert_eq!(effective["skills"], default_enabled, "{grade}");
+        assert_eq!(effective["agent_views"], default_enabled, "{grade}");
 
         for enabled in [true, false] {
             let response = server
-                .patch(FLAGS, json!({"flags": {"skills": enabled}}))
+                .patch(FLAGS, json!({"flags": {"agent_views": enabled}}))
                 .await;
             if tenant_can_manage {
                 let effective: Value = response.assert_status(StatusCode::OK).json();
-                assert_eq!(effective["skills"], enabled);
+                assert_eq!(effective["agent_views"], enabled);
                 assert_eq!(
                     server
                         .db
                         .list_org_feature_flags(everruns_core::DEFAULT_ORG_ID)
                         .await
                         .unwrap()
-                        .get("skills"),
+                        .get("agent_views"),
                     Some(&enabled)
                 );
             } else {
@@ -156,9 +157,18 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
             }
         }
 
-        // The skills config route checks the org-effective flag on each request.
+        // The agent view route checks the org-effective flag on each request.
+        let agent: Value = server
+            .post(
+                "/v1/agents",
+                json!({"name":"grade-agent","system_prompt":"You help."}),
+            )
+            .await
+            .assert_status(StatusCode::CREATED)
+            .json();
+        let view_route = format!("/v1/agents/{}/view", agent["id"].as_str().unwrap());
         server
-            .get("/v1/skills/config")
+            .get(&view_route)
             .await
             .assert_status(StatusCode::NOT_FOUND);
 
@@ -172,7 +182,7 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
             StatusCode::BAD_REQUEST
         };
         server
-            .patch(&platform_route, json!({"flags":{"skills":true}}))
+            .patch(&platform_route, json!({"flags":{"agent_views":true}}))
             .await
             .assert_status(status);
         if matches!(
@@ -180,17 +190,14 @@ async fn test_feature_grades_control_http_defaults_mutations_and_route_access() 
             FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
         ) {
             let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
-            assert_eq!(effective["skills"], true);
+            assert_eq!(effective["agent_views"], true);
+            server.get(&view_route).await.assert_status(StatusCode::OK);
             server
-                .get("/v1/skills/config")
+                .patch(&platform_route, json!({"flags":{"agent_views":false}}))
                 .await
                 .assert_status(StatusCode::OK);
             server
-                .patch(&platform_route, json!({"flags":{"skills":false}}))
-                .await
-                .assert_status(StatusCode::OK);
-            server
-                .get("/v1/skills/config")
+                .get(&view_route)
                 .await
                 .assert_status(StatusCode::NOT_FOUND);
         }
