@@ -232,3 +232,62 @@ async fn postgres_pins_profile_and_keeps_logical_environment_after_instance_dele
     assert_eq!(logical.observed_state, "deleted");
     assert_eq!(logical.desired_state, "deleted");
 }
+
+/// A sandbox copy request names only the session's parent or fork source,
+/// and taking it clears it so a later replacement sandbox starts fresh.
+#[tokio::test]
+async fn postgres_records_sandbox_copy_requests_from_the_source_session_only() {
+    let pool = PgPool::connect(&get_database_url())
+        .await
+        .expect("connect to PostgreSQL");
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
+    let owner = create_test_principal(&backend, "sandbox-fork").await;
+    let parent = backend
+        .create_session(session_input(owner, "sandbox-fork-parent"))
+        .await
+        .expect("create parent");
+    let stranger = backend
+        .create_session(session_input(owner, "sandbox-fork-stranger"))
+        .await
+        .expect("create stranger");
+    let mut child_input = session_input(owner, "sandbox-fork-child");
+    child_input.parent_session_id = Some(parent.id);
+    let child = backend
+        .create_session(child_input)
+        .await
+        .expect("create child");
+    let fork = backend
+        .create_session(session_input(owner, "sandbox-fork-fork"))
+        .await
+        .expect("create fork");
+    backend
+        .set_session_fork_lineage(fork.id, parent.id, None)
+        .await
+        .expect("record fork lineage");
+    let store = PgSandboxCheckpointStore::new(pool.clone());
+
+    assert!(
+        !store
+            .request_fork(child.id, stranger.id)
+            .await
+            .expect("refuse stranger"),
+        "a session that is neither parent nor fork source cannot be copied from"
+    );
+    assert_eq!(store.take_fork_source(child.id).await.unwrap(), None);
+
+    assert!(store.request_fork(child.id, parent.id).await.unwrap());
+    assert!(store.request_fork(fork.id, parent.id).await.unwrap());
+    assert_eq!(
+        store.take_fork_source(child.id).await.unwrap(),
+        Some(parent.id)
+    );
+    assert_eq!(
+        store.take_fork_source(child.id).await.unwrap(),
+        None,
+        "taking the request clears it"
+    );
+    assert_eq!(
+        store.take_fork_source(fork.id).await.unwrap(),
+        Some(parent.id)
+    );
+}

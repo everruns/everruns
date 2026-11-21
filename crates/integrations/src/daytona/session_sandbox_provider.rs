@@ -29,6 +29,9 @@ use crate::daytona::{
     AUTO_STOP_INTERVAL_MINUTES, DAYTONA_WORKSPACE_PATH, EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
 };
 
+#[path = "sandbox_fork.rs"]
+mod sandbox_fork;
+
 pub struct DaytonaSessionSandboxProvider;
 
 const DAYTONA_STATE_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -702,6 +705,22 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             false,
         )
         .await
+    }
+
+    /// Daytona forks VM sandboxes (a `daytona-vm-*` or custom `LINUX_VM`
+    /// snapshot), memory and processes included. A container sandbox answers
+    /// 422, which means "start fresh".
+    ///
+    /// Decision: a source with a recovery volume is not forked. The copy would
+    /// mount the same volume subpath, and its checkpoints would overwrite the
+    /// source's recovery history.
+    async fn fork(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        source: &SessionSandboxInstance,
+    ) -> Result<Option<SessionSandboxInstance>, ToolExecutionResult> {
+        sandbox_fork::fork(context, config, source).await
     }
 
     async fn resume(

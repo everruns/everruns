@@ -7,8 +7,9 @@ impl SessionService {
     ///
     /// Creates a fresh session that is config-identical to `parent_id` (modulo
     /// `overrides`), then deep-copies the parent's conversation history (events)
-    /// and workspace files into it. Leased resources, sandboxes, tasks, and
-    /// schedules are intentionally not copied — the fork re-leases on demand.
+    /// and workspace files into it. Leased resources, tasks, and schedules are
+    /// intentionally not copied — the fork re-leases on demand. The sandbox
+    /// starts fresh unless `overrides.sandbox` asks for a copy of the parent's.
     /// Fork provenance is recorded via `set_session_fork_lineage`.
     ///
     /// Existence/active-status of the parent are also checked by the calling
@@ -159,6 +160,18 @@ impl SessionService {
             )
             .await?;
 
+        // The copy itself happens on the fork's first sandbox use, in the
+        // fork's own runtime context; here we only record the request.
+        if overrides.sandbox == crate::domains::sessions::types::ForkSandbox::Fork {
+            use everruns_capabilities::sandbox_state::SandboxStateStore;
+            let recorded = crate::storage::PgSandboxCheckpointStore::new(self.db.pool().clone())
+                .request_fork(child.id, parent_id)
+                .await?;
+            if !recorded {
+                tracing::warn!(session_id = %child.id, "sandbox copy request was not recorded");
+            }
+        }
+
         Ok(child)
     }
 
@@ -229,6 +242,11 @@ impl SessionService {
             .list_session_secrets(source_session_id.uuid())
             .await?
         {
+            // A legacy sandbox record names the parent's physical sandbox; a
+            // copy of it would have both sessions driving one machine.
+            if secret.name == everruns_capabilities::session_sandbox::SESSION_SANDBOX_SECRET_NAME {
+                continue;
+            }
             if let Some(row) = self
                 .db
                 .get_session_secret(source_session_id.uuid(), &secret.name)

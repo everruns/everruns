@@ -224,6 +224,65 @@ impl SessionSandboxProvider for E2BSessionSandboxProvider {
         Ok(instance)
     }
 
+    /// E2B forks any running sandbox, memory and processes included.
+    ///
+    /// Decision: the copy inherits the source's metadata, which E2B cannot
+    /// change afterwards, so its `everruns.session_id` label names the
+    /// source session. Nothing keys on that label: the orphan scan matches
+    /// sandboxes to records by external id, and the lease below names the
+    /// copy's own session. Egress is re-applied so the copy carries this
+    /// session's proxy credential, never the source's.
+    async fn fork(
+        &self,
+        context: &dyn SessionSandboxContext,
+        config: &SessionSandboxConfig,
+        source: &SessionSandboxInstance,
+    ) -> Result<Option<SessionSandboxInstance>, ToolExecutionResult> {
+        let client = client(context, config).await?;
+        let timeout = timeout_seconds(config)?;
+        let created = client
+            .fork_sandbox(&source.external_id, timeout)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+        let detail = super::tools::detail_from_create(created);
+        let sandbox_id = detail.sandbox_id.clone();
+        let setup = async {
+            let rules = super::network::session_rules(context, config)?;
+            let proxy = super::network::proxy_credential(context, &rules, timeout)?;
+            super::network::apply_to_running(&client, &sandbox_id, &rules, proxy.as_ref()).await?;
+            let display_name = provider_config_string(config, "title")
+                .map(str::to_string)
+                .or_else(|| Some(format!("Session Sandbox {}", context.session_id())));
+            let instance = instance_from_detail(
+                context,
+                detail,
+                timeout,
+                source
+                    .workspace_path
+                    .clone()
+                    .unwrap_or_else(|| E2B_DEFAULT_WORKSPACE_PATH.to_string()),
+                display_name,
+            )
+            .await?;
+            refresh_lease(context, config, &instance).await?;
+            Ok::<_, ToolExecutionResult>(instance)
+        }
+        .await;
+        match setup {
+            Ok(instance) => Ok(Some(instance)),
+            Err(error) => {
+                if let Err(delete_error) = client.delete_sandbox(&sandbox_id).await {
+                    tracing::warn!(
+                        sandbox_id = %sandbox_id,
+                        error = %delete_error,
+                        "Failed to delete E2B sandbox copy after setup failure"
+                    );
+                }
+                Err(error)
+            }
+        }
+    }
+
     async fn resume(
         &self,
         context: &dyn SessionSandboxContext,

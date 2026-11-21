@@ -177,6 +177,12 @@ impl UnifiedSpawnAgentTool {
                     "default": "fresh",
                     "description": "Detached-session seed mode: fresh starts blank, fork copies history/workspace/session storage, workspace copies workspace files only."
                 },
+                "sandbox": {
+                    "type": "string",
+                    "enum": ["fresh", "fork"],
+                    "default": "fresh",
+                    "description": "Subagent targets only. fresh gives the child its own new sandbox; fork starts it from a copy of this session's running sandbox (installed packages, build output), falling back to fresh where the provider cannot copy it."
+                },
                 "target": {
                     "type": "object",
                     "properties": {
