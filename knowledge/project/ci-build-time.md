@@ -44,6 +44,8 @@ capabilities, matching server/worker composition; either catalog alone can omit
 dependencies supplied by the other.
 Database-backend changes also exercise production-router fixtures that configure
 their own environment outside the shared API harness.
+API integration test, capability rollout and shared database fixture edits execute
+the API integration contracts in focused PR validation, preserving serial fixture isolation.
 Changes to the pool-isolation fixture execute that domain contract in focused PR
 checks; the [offline selector regression](../../.github/scripts/ci/test_policy.py)
 proves selection through actual Rust compilation and filtered execution.

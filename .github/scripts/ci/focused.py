@@ -146,13 +146,20 @@ def risk_filters(paths):
 
 def real_server_targets(paths):
     # These fixtures retain separate processes for router/host environment state.
-    targets = ['background_sweep_wiring_test', 'pat_scope_sweep_test', 'plugins_integration_test']
+    targets = ['background_sweep_wiring_test', 'pat_scope_sweep_test', 'plugins_integration_test',
+               'server_integration']
     if any(p.startswith(('crates/server/tests/test_harness',
                          'crates/server/src/storage/embedded_postgres/'))
            or p in ('crates/server/src/storage/test_database.rs',
                     'crates/server/src/setup/storage_init.rs') for p in paths):
         return targets
     selected = {target for target in targets if f'crates/server/tests/{target}.rs' in paths}
+    if any((p.startswith('crates/server/tests/server_integration/') and p.endswith('.rs'))
+           or p.startswith('crates/server/src/domains/capabilities/')
+           or p in ('crates/server/src/api/capabilities.rs',
+                    'crates/server/src/records/feature_flags.rs')
+           for p in paths):
+        selected.add('server_integration')
     if any(p.startswith(('crates/server/src/api/',
                          'crates/server/src/domains/',
                          'crates/server/src/app_builder/',
@@ -236,7 +243,7 @@ def run_server(selection, command):
     if selection.get('risk_filters'):
         targets[('domain', 'test')] = [*selection['risk_filters'], '--test-threads=1']
     executables = libtest.compile_tests(command, package, targets)
-    libtest.execute_tests(manifest, executables, targets)
+    libtest.execute_tests(manifest, executables, targets, batch_targets=('server_integration',))
 
 
 def main():
