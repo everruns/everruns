@@ -476,7 +476,8 @@ The current trigger shape (`docker-publish.yml`):
 
 1. **Release-only publish.** Multi-arch images are built only on version tag pushes and the `workflow_dispatch` the Release workflow fires after creating the tag. The slow arm64 path runs a handful of times per week instead of on every merge.
 2. **Path-filtered PR validation.** The workflow still runs on PRs, but only when Docker-relevant paths change (`docker/**`, `apps/ui/Dockerfile`, `apps/ui/.dockerignore`, `.dockerignore`, `.github/workflows/docker-publish.yml`, and its source resolver/tests). Rust/UI source changes are not validated per-PR; a broken Dockerfile will be caught by this gate, a source regression that only manifests inside the image is caught at release-tag time.
-3. **No rolling main-branch tag.** Dropping `:development` removes the hidden-drift problem where `:development` could silently lag main (e.g., under a paths-filter) or produce images for every commit (expensive). Consumers that need a mainline image should build locally or use a released tag.
+3. **No rolling main-branch tag.** Dropping `:development` removes the hidden-drift problem where `:development` could silently lag main (e.g., under a paths-filter) or produce images for every commit (expensive). Consumers that need a mainline image use an on-demand snapshot (below), build locally, or use a released tag.
+4. **On-demand main snapshot.** Dispatching Docker Publish from `main` with an empty `tag` publishes every image (server, worker, admin, cell, UI, sandbox images) for the dispatched commit, multi-arch, under its full and short SHA tags only: never `latest`, a version, or a release asset. It exists so a self-hosted cluster can run current main between releases (`gh workflow run docker-publish.yml --ref main`, then `everruns k8s up --chart charts/everruns --image-tag <sha>` from a main checkout, since the chart must match the images).
 
 #### Recovering a failed image publication
 

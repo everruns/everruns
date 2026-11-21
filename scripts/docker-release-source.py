@@ -22,6 +22,14 @@ def resolve(env, run=command):
     latest = False
     if event == "pull_request":
         sha = env["PR_HEAD_SHA"]
+    elif event == "workflow_dispatch" and not env.get("INPUT_TAG"):
+        # Main snapshot: a hand dispatch from main with no tag publishes the
+        # dispatched commit under its SHA tags only (never `latest` or a
+        # version), so `everruns k8s up --image-tag <sha>` can run current main
+        # between releases. Decision: on demand, not per push, see
+        # knowledge/project/release-process.md#trigger-rationale.
+        if ref != "refs/heads/main":
+            raise ValueError("a snapshot without a tag must be dispatched from main")
     else:
         tag = env["INPUT_TAG"] if event == "workflow_dispatch" else env["REF_NAME"]
         if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?", tag):
