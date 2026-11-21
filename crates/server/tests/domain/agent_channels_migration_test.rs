@@ -207,6 +207,18 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
             .is_err(),
         "the regression role must not be able to read app_channels"
     );
+    let quota_access: bool = sqlx::query_scalar(
+        "SELECT has_table_privilege('public.organization_settings', 'SELECT')
+             OR has_table_privilege('public.monthly_session_creations', 'UPDATE')
+             OR has_function_privilege('public.count_monthly_session_creation()', 'EXECUTE')",
+    )
+    .fetch_one(&restricted_pool)
+    .await
+    .expect("check restricted ingress quota privileges");
+    assert!(
+        !quota_access,
+        "ingress must charge quota through the trigger"
+    );
     let router = ingress_router(restricted_db).await;
     let app_id = &fixture.app_public_id;
     let initial_session_count: i64 =
@@ -493,6 +505,16 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         final_session_count >= initial_session_count + 5,
         "AG-UI, Public Chat, FCP, Webhook, and A2A aliases must create sessions"
     );
+    let sessions_charged: bool = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(sessions_created), 0) =
+             (SELECT COUNT(*) FROM sessions WHERE org_id = $1)
+         FROM monthly_session_creations WHERE org_id = $1",
+    )
+    .bind(fixture.org_id)
+    .fetch_one(&pool)
+    .await
+    .expect("count sessions charged to the test organization");
+    assert!(sessions_charged, "ingress sessions must consume quota");
 
     restricted_pool.close().await;
     let drop_role = format!(
