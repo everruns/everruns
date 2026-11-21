@@ -13001,7 +13001,7 @@
   },
   {
     "category": "agent_views",
-    "cli": null,
+    "cli": "agents view get",
     "description": "Read the view definition and its revision for an Agent.",
     "input_schema": {
       "$defs": {
@@ -14353,7 +14353,7 @@
   },
   {
     "category": "agent_views",
-    "cli": null,
+    "cli": "sessions agent-view get",
     "description": "Read the published Agent view for a visible session or an authorized Agent reference.",
     "input_schema": {
       "$defs": {
@@ -21471,7 +21471,7 @@
   },
   {
     "category": "agent_views",
-    "cli": null,
+    "cli": "agents view replace",
     "description": "Replace or remove an Agent view using its current revision.",
     "input_schema": {
       "$defs": {
@@ -22651,7 +22651,7 @@
   },
   {
     "category": "agent_views",
-    "cli": null,
+    "cli": "sessions agent-view set",
     "description": "Save a private layout for your view of this Agent.",
     "input_schema": {
       "$defs": {
