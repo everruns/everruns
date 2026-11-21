@@ -3527,6 +3527,70 @@
     ]
   },
   {
+    "wire_name": "get_agent_view_settings",
+    "path": [
+      "agents",
+      "view"
+    ],
+    "verb": "get",
+    "description": "Read the view definition and its revision for an Agent.",
+    "method": "GET",
+    "http_path": "/v1/agents/{agent_id}/view",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'agent' prefix"
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the view settings and revision before editing the layout",
+        "command": "everruns agents view get --agent-id agent_01933b5a00007000800000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "replace_agent_view",
+    "path": [
+      "agents",
+      "view"
+    ],
+    "verb": "replace",
+    "description": "Replace or remove an Agent view using its current revision.",
+    "method": "PUT",
+    "http_path": "/v1/agents/{agent_id}/view",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'agent' prefix"
+      },
+      {
+        "field": "revision",
+        "long": "revision",
+        "kind": "integer",
+        "required": true
+      },
+      {
+        "field": "view",
+        "long": "view",
+        "kind": "json",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Create a view that shows the status from a scheduled sweep",
+        "command": "everruns agents view replace --agent-id agent_01933b5a00007000800000000000001 --revision 0 --view '{\"title\":\"Repository sweep\",\"layout\":{\"format\":\"html\",\"source\":\"<p>{{status}}</p>\"},\"data_fields\":[\"status\"]}'"
+      }
+    ]
+  },
+  {
     "wire_name": "check_budget",
     "path": [
       "budgets"
@@ -14218,6 +14282,82 @@
       {
         "intent": "See when Sandboxes ran or were lost over the last day",
         "command": "everruns sandboxes timeline get --from 2026-05-01T00:00:00Z --to 2026-05-02T00:00:00Z --state running,lost"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_agent_view",
+    "path": [
+      "sessions",
+      "agent-view"
+    ],
+    "verb": "get",
+    "description": "Read the published Agent view for a visible session or an authorized Agent reference.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/agent-view",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'session' prefix"
+      },
+      {
+        "field": "view_agent",
+        "long": "view-agent",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the published view for a conversation",
+        "command": "everruns sessions agent-view get --session-id session_01933b5a00007000800000000000001"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_session_agent_view_preference",
+    "path": [
+      "sessions",
+      "agent-view"
+    ],
+    "verb": "set",
+    "description": "Save a private layout for your view of this Agent.",
+    "method": "PUT",
+    "http_path": "/v1/sessions/{session_id}/agent-view",
+    "args": [
+      {
+        "field": "layout",
+        "long": "layout",
+        "kind": "json",
+        "required": true
+      },
+      {
+        "field": "revision",
+        "long": "revision",
+        "kind": "integer",
+        "required": true
+      },
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Prefixed identifier with 'session' prefix"
+      },
+      {
+        "field": "view_agent",
+        "long": "view-agent",
+        "kind": "string",
+        "required": false
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Reset a private layout to the published layout",
+        "command": "everruns sessions agent-view set --session-id session_01933b5a00007000800000000000001 --revision 1 --layout null"
       }
     ]
   },

@@ -13000,6 +13000,36 @@
     "read_only": true
   },
   {
+    "category": "agent_views",
+    "cli": null,
+    "description": "Read the view definition and its revision for an Agent.",
+    "input_schema": {
+      "$defs": {
+        "agentId": {
+          "description": "Prefixed identifier with 'agent' prefix",
+          "example": "agent_01933b5a000070008000000000000001",
+          "pattern": "^agent_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "agent_id": {
+          "$ref": "#/$defs/agentId"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_agent_view_settings",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/view",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "budgets",
     "cli": "budgets get",
     "description": "Get a single budget by ID.",
@@ -14319,6 +14349,65 @@
     "output_shape": "unknown",
     "path": "/v1/sessions/{session_id}",
     "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
+    "category": "agent_views",
+    "cli": null,
+    "description": "Read the published Agent view for a visible session or an authorized Agent reference.",
+    "input_schema": {
+      "$defs": {
+        "ViewReference": {
+          "properties": {
+            "view_agent": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/agentId",
+                  "description": "An explicit Agent view opened in Platform Chat."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "agentId": {
+          "description": "Prefixed identifier with 'agent' prefix",
+          "example": "agent_01933b5a000070008000000000000001",
+          "pattern": "^agent_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "Prefixed identifier with 'session' prefix",
+          "example": "session_01933b5a000070008000000000000001",
+          "pattern": "^session_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ViewReference"
+        },
+        {
+          "properties": {
+            "session_id": {
+              "$ref": "#/$defs/sessionId"
+            }
+          },
+          "required": [
+            "session_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "GET",
+    "name": "get_session_agent_view",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/agent-view",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -21381,6 +21470,142 @@
     "read_only": false
   },
   {
+    "category": "agent_views",
+    "cli": null,
+    "description": "Replace or remove an Agent view using its current revision.",
+    "input_schema": {
+      "$defs": {
+        "AgentViewDefinition": {
+          "additionalProperties": false,
+          "properties": {
+            "allow_agent_layout": {
+              "description": "Whether a successful run may also publish a replacement layout.",
+              "type": "boolean"
+            },
+            "allow_personalization": {
+              "description": "Whether viewers may use a personal layout for this view.",
+              "type": "boolean"
+            },
+            "data_fields": {
+              "description": "Top-level keys that an agent is allowed to publish for this layout.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "layout": {
+              "$ref": "#/$defs/AgentViewLayout"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "layout"
+          ],
+          "type": "object"
+        },
+        "AgentViewLayout": {
+          "oneOf": [
+            {
+              "description": "A2UI 1.0 operations for one surface using the standard catalog.",
+              "properties": {
+                "format": {
+                  "enum": [
+                    "a2ui"
+                  ],
+                  "type": "string"
+                },
+                "operations": {
+                  "items": {},
+                  "type": "array"
+                }
+              },
+              "required": [
+                "operations",
+                "format"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Static markup rendered in a sandbox without scripts or network access.",
+              "properties": {
+                "format": {
+                  "enum": [
+                    "html"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "format"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ReplaceAgentViewRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "revision": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "view": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentViewDefinition",
+                  "description": "Pass null to remove the view."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "revision",
+            "view"
+          ],
+          "type": "object"
+        },
+        "agentId": {
+          "description": "Prefixed identifier with 'agent' prefix",
+          "example": "agent_01933b5a000070008000000000000001",
+          "pattern": "^agent_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReplaceAgentViewRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "$ref": "#/$defs/agentId"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PUT",
+    "name": "replace_agent_view",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/view",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "organizations",
     "cli": "orgs resolve",
     "description": "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
@@ -22421,6 +22646,135 @@
     "name": "set_org_egress_allowlist_grant",
     "output_shape": "unknown",
     "path": "/v1/orgs/{org}/egress-allowlist/grant",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agent_views",
+    "cli": null,
+    "description": "Save a private layout for your view of this Agent.",
+    "input_schema": {
+      "$defs": {
+        "AgentViewLayout": {
+          "oneOf": [
+            {
+              "description": "A2UI 1.0 operations for one surface using the standard catalog.",
+              "properties": {
+                "format": {
+                  "enum": [
+                    "a2ui"
+                  ],
+                  "type": "string"
+                },
+                "operations": {
+                  "items": {},
+                  "type": "array"
+                }
+              },
+              "required": [
+                "operations",
+                "format"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "Static markup rendered in a sandbox without scripts or network access.",
+              "properties": {
+                "format": {
+                  "enum": [
+                    "html"
+                  ],
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source",
+                "format"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "AgentViewPreference": {
+          "properties": {
+            "layout": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentViewLayout",
+                  "description": "Pass null to restore the published layout."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "revision": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "revision",
+            "layout"
+          ],
+          "type": "object"
+        },
+        "ViewReference": {
+          "properties": {
+            "view_agent": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/agentId",
+                  "description": "An explicit Agent view opened in Platform Chat."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "agentId": {
+          "description": "Prefixed identifier with 'agent' prefix",
+          "example": "agent_01933b5a000070008000000000000001",
+          "pattern": "^agent_[0-9a-f]{32}$",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "Prefixed identifier with 'session' prefix",
+          "example": "session_01933b5a000070008000000000000001",
+          "pattern": "^session_[0-9a-f]{32}$",
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ViewReference"
+        },
+        {
+          "$ref": "#/$defs/AgentViewPreference"
+        },
+        {
+          "properties": {
+            "session_id": {
+              "$ref": "#/$defs/sessionId"
+            }
+          },
+          "required": [
+            "session_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "PUT",
+    "name": "set_session_agent_view_preference",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/agent-view",
     "positional_arg": null,
     "read_only": false
   },

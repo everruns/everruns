@@ -199,6 +199,10 @@ pub struct GetAgentViewSettings {
     path = "/v1/agents/{agent_id}/view",
     policy = AGENT_VIEW,
     http = plain,
+    cli = CliRoute::new(&["agents", "view"], "get").with_examples(&[CliExample::new(
+        "Read the view settings and revision before editing the layout",
+        "everruns agents view get --agent-id agent_01933b5a00007000800000000000001",
+    )]),
 )]
 impl Command for GetAgentViewSettings {
     type Output = AgentViewSettings;
@@ -235,6 +239,10 @@ pub struct ReplaceAgentView {
     policy = AGENT_MANAGE,
     http = plain,
     request_body(ReplaceAgentViewRequest),
+    cli = CliRoute::new(&["agents", "view"], "replace").with_examples(&[CliExample::new(
+        "Create a view that shows the status from a scheduled sweep",
+        r#"everruns agents view replace --agent-id agent_01933b5a00007000800000000000001 --revision 0 --view '{"title":"Repository sweep","layout":{"format":"html","source":"<p>{{status}}</p>"},"data_fields":["status"]}'"#,
+    )]),
 )]
 impl Command for ReplaceAgentView {
     type Output = AgentViewSettings;

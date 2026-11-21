@@ -193,6 +193,10 @@ mod session_commands {
         policy = SESSION_VIEW,
         http = plain,
         params(ViewReference),
+        cli = CliRoute::new(&["sessions", "agent-view"], "get").with_examples(&[CliExample::new(
+            "Read the published view for a conversation",
+            "everruns sessions agent-view get --session-id session_01933b5a00007000800000000000001",
+        )]),
     )]
     impl Command for GetSessionAgentView {
         type Output = Option<PublishedAgentView>;
@@ -233,6 +237,10 @@ mod session_commands {
         http = plain,
         params(ViewReference),
         request_body(AgentViewPreference),
+        cli = CliRoute::new(&["sessions", "agent-view"], "set").with_examples(&[CliExample::new(
+            "Reset a private layout to the published layout",
+            "everruns sessions agent-view set --session-id session_01933b5a00007000800000000000001 --revision 1 --layout null",
+        )]),
     )]
     impl Command for SetSessionAgentViewPreference {
         type Output = Option<PublishedAgentView>;
