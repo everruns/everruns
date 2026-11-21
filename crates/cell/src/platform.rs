@@ -356,7 +356,7 @@ impl CellState {
             return record(state, session, event_id, *request, changes);
         }
         if let Op::Storage(op) = op {
-            return crate::session_storage::apply(state, session, op, changes);
+            return crate::session_storage::apply(state, session, op, now_ms, changes);
         }
         if let Op::Agent { agent_ref, memory } = op {
             // Set once: a retried create names the same agent.

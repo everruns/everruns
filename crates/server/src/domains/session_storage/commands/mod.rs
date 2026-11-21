@@ -54,17 +54,19 @@ impl Command for ListSessionStorage {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
         if let Some(plane) = PlaneStorage::of(ctx, session_id).await? {
-            return Ok(plane
-                .listed()
-                .await?
+            let listed = plane.listed().await?;
+            return Ok(listed
                 .values
-                .into_iter()
+                .iter()
                 .filter(|(key, _)| !is_internal_session_kv_key(key))
-                .map(|(key, value)| KeyValueInfo {
-                    key,
-                    value,
-                    created_at: String::new(),
-                    updated_at: String::new(),
+                .map(|(key, value)| {
+                    let stamp = listed.value_stamp(key);
+                    KeyValueInfo {
+                        key: key.clone(),
+                        value: value.clone(),
+                        created_at: stamp.created_at,
+                        updated_at: stamp.updated_at,
+                    }
                 })
                 .collect());
         }
@@ -141,17 +143,19 @@ impl Command for ListSessionSecrets {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
         if let Some(plane) = PlaneStorage::of(ctx, session_id).await? {
-            return Ok(plane
-                .listed()
-                .await?
+            let listed = plane.listed().await?;
+            return Ok(listed
                 .secrets
-                .into_iter()
+                .iter()
                 .filter(|name| !is_internal_session_secret_name(name))
-                .map(|name| SecretInfo {
-                    name,
-                    binding: None,
-                    created_at: String::new(),
-                    updated_at: String::new(),
+                .map(|name| {
+                    let stamp = listed.secret_stamp(name);
+                    SecretInfo {
+                        name: name.clone(),
+                        binding: None,
+                        created_at: stamp.created_at,
+                        updated_at: stamp.updated_at,
+                    }
                 })
                 .collect());
         }

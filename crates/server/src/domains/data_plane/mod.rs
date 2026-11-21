@@ -189,6 +189,9 @@ pub struct NewSession<'a> {
     /// The control plane's Memory mounts it has (`/memory/user`, ...),
     /// whose files stay in the control plane (`data_plane::memory`).
     pub memory: &'a [String],
+    /// A moved v1 session being imported: closed to messages until it is
+    /// activated (`moves.rs`).
+    pub importing: bool,
 }
 
 /// A data plane as the control plane talks to it. The v1 answer
@@ -389,6 +392,9 @@ impl DataPlane for HttpDataPlane {
         }
         if !session.memory.is_empty() {
             body["memory"] = serde_json::to_value(session.memory)?;
+        }
+        if session.importing {
+            body["importing"] = serde_json::json!(true);
         }
         self.request(reqwest::Method::POST, url)
             .json(&body)

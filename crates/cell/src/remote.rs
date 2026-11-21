@@ -125,6 +125,7 @@ pub fn view(s: &SessionState, since: Option<i32>) -> SessionState {
         tenant: s.tenant.clone(),
         generation: s.generation,
         moving_to: s.moving_to,
+        importing: s.importing,
         turn_start: s.turn_start,
         checkpoints: s.checkpoints.clone(),
         files: s.files.clone(),
