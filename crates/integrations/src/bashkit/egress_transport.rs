@@ -146,9 +146,13 @@ fn map_egress_error(error: EgressError) -> HttpTransportError {
         EgressError::SigningUnavailable => {
             HttpTransportError::Transport("outbound request signing unavailable".to_string())
         }
+        EgressError::Timeout => HttpTransportError::Timeout,
+        EgressError::ConnectionFailed => {
+            HttpTransportError::Transport("could not connect to the outbound server".to_string())
+        }
         EgressError::Transport(message) => {
-            // DirectEgressService surfaces reqwest deadline failures as
-            // transport strings; classify them so scripts see curl exit 28.
+            // Older/custom egress adapters can still send deadline failures
+            // as transport strings; retain the curl exit 28 mapping.
             if message.contains("timed out") || message.contains("timeout") {
                 HttpTransportError::Timeout
             } else {

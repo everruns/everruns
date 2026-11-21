@@ -816,10 +816,7 @@ async fn transport_failures_are_errors_on_both_execution_paths() {
     // Exercise the complete tool/FetchKit/error mapping without DNS or wall-clock waits.
     let url = "http://93.184.216.34/failure";
     for (kind, expected) in [
-        (
-            0,
-            "Request timed out: server did not respond within 1 second",
-        ),
+        (0, "Request timed out waiting for the server"),
         (1, "Request failed: failed to connect to server"),
         (2, "Request failed: connection reset"),
         (3, "Request failed: transport unavailable"),

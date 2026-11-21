@@ -394,6 +394,13 @@ The event log records what ran as well as what the model asked for (EVE-1209). `
 
 Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/core/src/host/host.rs` (`load_execution_capabilities`).
 
+The shell command's exit outcome is distinct from the tool invocation status. A
+shell invocation that captures a nonzero exit still returns its output, and the
+completion and Trace API report the exit separately. When a worker resumes a
+started at-most-once call, the runtime can restore the result by turn and tool
+call ID from the host's durable result store. A call without a settled result
+remains interrupted with an unknown outcome and cannot run again.
+
 ### PostToolExecHook (per-tool hooks)
 
 `PostToolExecHook` is an async contract in `everruns-core::tool_hooks` that runs

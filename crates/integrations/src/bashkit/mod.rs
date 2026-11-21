@@ -1907,9 +1907,27 @@ mod tests {
             )
             .await;
 
-        let ToolExecutionResult::Success(output) = result else {
-            panic!("expected the shell to report the failure, got {result:?}");
+        let call = everruns_contracts::tool_types::ToolCall {
+            id: "call_shell".into(),
+            name: "bash".into(),
+            arguments: json!({"commands": "everruns agents lst && echo unreachable"}),
         };
+        let result = result.into_tool_result(&call.id, &call.name);
+        let output = result
+            .result
+            .as_ref()
+            .expect("the shell ran and returned output");
+        let event = everruns_contracts::runtime::events::ToolCompletedData::from_tool_result(
+            &call, &result, "error", None,
+        );
+        assert!(event.success);
+        assert_eq!(event.status, "success");
+        let outcome = event.command_outcome.expect("the shell exit is reported");
+        assert_eq!(
+            i64::from(outcome.exit_code),
+            output["exit_code"].as_i64().unwrap()
+        );
+        assert!(!outcome.success);
         assert_ne!(output["exit_code"], 0);
         assert!(
             output["stderr"]

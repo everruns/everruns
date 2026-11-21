@@ -798,6 +798,12 @@ impl ReasonAtom {
             &llm_config,
         );
 
+        // This option belongs to runtime telemetry. Hosted providers validate
+        // driver options strictly, and must never receive the fallback marker.
+        let fallback_marker = llm_config
+            .driver_options
+            .remove(crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK);
+
         if !provider_managed && let Some(policy) = compaction_policy.as_deref() {
             compaction_info = apply_proactive_compaction(
                 ProactiveCompactionContext {
@@ -1621,6 +1627,12 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, mut reasoning, mut tool_calls) =
             (text, thinking, reasoning, tool_calls);
+        if let Some(marker) = fallback_marker {
+            llm_config.driver_options.insert(
+                crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
+                marker,
+            );
+        }
         compaction_lifecycle.record_observed(&mut llm_config, compaction_started_at);
 
         // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md).

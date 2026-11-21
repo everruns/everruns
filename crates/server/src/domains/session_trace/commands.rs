@@ -606,6 +606,7 @@ impl Command for GetSessionTraceStep {
         let mut input = None;
         let mut output = None;
         let mut request = None;
+        let mut command_outcome = None;
         let events;
 
         if let Some(call_id) = row.tool_call_id.as_deref() {
@@ -632,6 +633,7 @@ impl Command for GetSessionTraceStep {
                                 .cloned()
                                 .map_or(Value::Null, tool_result_value),
                         };
+                        command_outcome = trace_command_outcome(&data, &value);
                         output = Some(payload(value, full));
                     }
                 }
@@ -686,6 +688,7 @@ impl Command for GetSessionTraceStep {
             step: step_out(row, turn.started_at, child),
             input,
             output,
+            command_outcome,
             request,
             events,
         })
@@ -787,6 +790,20 @@ fn model_call_output(data: &Value) -> Option<Value> {
         }
         _ => data.get("output").cloned(),
     }
+}
+
+fn trace_command_outcome(
+    completed: &Value,
+    result: &Value,
+) -> Option<everruns_core::events::CommandOutcome> {
+    completed
+        .get("command_outcome")
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
+        .or_else(|| {
+            // Earlier events carried the exit code only in the output.
+            let tool_name = completed.get("tool_name")?.as_str()?;
+            everruns_core::events::CommandOutcome::from_shell_payload(tool_name, result)
+        })
 }
 
 fn tool_result_value(result: Value) -> Value {
@@ -1253,6 +1270,29 @@ impl Command for ListSessionTraceTurnEvents {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn trace_reports_shell_exit_separately_from_tool_success() {
+        let completion = json!({
+            "tool_name": "bash",
+            "success": true,
+            "status": "success",
+            "result": [{"type": "text", "text": "{\"stdout\":\"failed tests\",\"exit_code\":7}"}]
+        });
+        let output = tool_result_value(completion["result"].clone());
+        let outcome = trace_command_outcome(&completion, &output).unwrap();
+        assert_eq!(outcome.exit_code, 7);
+        assert!(!outcome.success);
+        assert_eq!(completion["status"], "success");
+        assert!(trace_command_outcome(&json!({"tool_name": "web_fetch"}), &output).is_none());
+
+        // A recorded exit remains available even when the output is omitted.
+        let explicit = json!({"tool_name": "bash", "command_outcome": outcome});
+        assert_eq!(
+            trace_command_outcome(&explicit, &Value::Null),
+            Some(outcome)
+        );
+    }
 
     #[test]
     fn a_failed_model_call_shows_its_error_not_the_empty_output() {

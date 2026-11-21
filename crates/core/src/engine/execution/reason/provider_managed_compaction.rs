@@ -405,7 +405,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                     && fallback.model.provider_managed_reduction_option.is_none() =>
             {
                 fallback.turn_agent.driver_options.insert(
-                    "everruns/provider_managed_reduction_fallback".to_string(),
+                    crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
                     serde_json::json!({"reason":reason}),
                 );
                 assembled = fallback;
@@ -561,7 +561,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                 "ReasonAtom: retrying provider capability rejection with legacy history"
             );
             fallback.turn_agent.driver_options.insert(
-                "everruns/provider_managed_reduction_fallback".to_string(),
+                crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
                 serde_json::json!({"reason":"provider_capability_rejected"}),
             );
             disclosure = resolve_error_disclosure(

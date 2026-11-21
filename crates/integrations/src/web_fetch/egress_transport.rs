@@ -103,9 +103,11 @@ impl HttpTransport for EgressHttpTransport {
 /// policy-explicit but list-neutral.
 fn map_egress_error(error: EgressError) -> TransportError {
     match error {
-        EgressError::NetworkAccessDenied { url } => {
-            TransportError::Request(format!("Outbound request blocked by network policy: {url}"))
+        EgressError::NetworkAccessDenied { .. } => {
+            TransportError::Request("Outbound request blocked by network policy".to_string())
         }
+        EgressError::Timeout => TransportError::Timeout,
+        EgressError::ConnectionFailed => TransportError::Connect,
         EgressError::InvalidRequest(message) => TransportError::Request(message),
         EgressError::SigningUnavailable => {
             TransportError::Other("outbound request signing unavailable".to_string())
@@ -369,7 +371,7 @@ mod tests {
                 EgressError::NetworkAccessDenied {
                     url: "https://blocked.example/path".to_string(),
                 },
-                "Outbound request blocked by network policy: https://blocked.example/path",
+                "Outbound request blocked by network policy",
                 false,
             ),
             (
@@ -406,6 +408,32 @@ mod tests {
                 egress.requested_urls(),
                 vec!["https://docs.example.test:8443/path?q=one"]
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_errors_distinguish_connection_timeout_and_policy() {
+        for (error, message) in [
+            (EgressError::ConnectionFailed, "Failed to connect to server"),
+            (
+                EgressError::Timeout,
+                "Request timed out waiting for the server",
+            ),
+            (
+                EgressError::NetworkAccessDenied {
+                    url: "https://blocked.example/path?credential=fixture".to_string(),
+                },
+                "Request failed: Outbound request blocked by network policy",
+            ),
+        ] {
+            let egress = Arc::new(MockEgress::with_responses(vec![Err(error)]));
+            let error = tool_with_egress(egress)
+                .execute(FetchRequest::new("http://93.184.216.34/page"))
+                .await
+                .unwrap_err();
+            let result = super::super::fetch_error::map_error(error)
+                .into_tool_result("call_fetch", "web_fetch");
+            assert_eq!(result.error.as_deref(), Some(message));
         }
     }
 

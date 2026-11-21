@@ -13055,6 +13055,15 @@ export interface components {
        */
       schema_hash: string;
     };
+    /**
+     * @description Exit of a shell command. A command with a nonzero exit code can still
+     *     have a successful tool invocation that faithfully reports its output.
+     */
+    CommandOutcome: {
+      /** Format: int32 */
+      exit_code: number;
+      success: boolean;
+    };
     /** @description A command invocation. */
     CommandRequest: {
       /**
@@ -33568,6 +33577,7 @@ export interface components {
       capability_id?: string | null;
       /** @description Human-readable capability name snapshot, when known. */
       capability_name?: string | null;
+      command_outcome?: components["schemas"]["CommandOutcome"] | null;
       /**
        * @description Details for people reading the run (chat details view, Session
        *     Trace) that the model never saw. Web search puts the provider that
@@ -34603,6 +34613,7 @@ export interface components {
     };
     /** @description Everything about one step, for the inspector. */
     TraceStepDetail: {
+      command_outcome?: components["schemas"]["CommandOutcome"] | null;
       /** @description Raw events of the step, in sequence order. */
       events: components["schemas"]["TraceEventRef"][];
       input?: components["schemas"]["TracePayload"] | null;

@@ -38,6 +38,10 @@ change; opaque native content is never translated. Current working-context size
 and raw evidence since the checkpoint trigger reduction; cumulative lifetime
 usage alone cannot rearm a checkpoint. See the [public contract](../../docs/advanced/compaction.md).
 
+The fallback reason is runtime telemetry. The model request records when
+provider-managed reduction falls back to the portable path, and the outgoing
+provider options contain only options the provider can use.
+
 ## Inspection and defaults
 
 The shared Base preset supplies compaction to its children; Framework's
