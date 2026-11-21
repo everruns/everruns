@@ -42,6 +42,7 @@ INDEX_EXEMPT = {
     "btw": "harness-composed side-question command",
     "error_disclosure": "harness-composed error detail setting",
     "human_intent": "harness-composed tool-call narration",
+    "slack_model_view": "Slack actions' native message view, added beside injected Slack by the control plane",
     "tool_output_distillation": "harness-composed output handling",
     "tool_output_persistence": "harness-composed output handling",
 }
