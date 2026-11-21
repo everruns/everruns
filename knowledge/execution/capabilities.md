@@ -20,6 +20,12 @@ invocation route.
 
 ## Requirements
 
+### Injected Capabilities
+
+Hosted capabilities a controller serves over MCP (`injected:{name}`) reuse the
+declarative shape plus one session-token MCP server. See
+[Injected Capabilities](injected-capabilities.md).
+
 ### Persisted Declarative Capabilities
 
 Declarative capabilities are organization-scoped, database-backed capability

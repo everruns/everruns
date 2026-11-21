@@ -47,6 +47,12 @@ pub enum McpServerAuthMode {
     /// User-scoped OAuth token resolved at runtime.
     #[serde(rename = "oauth", alias = "o_auth")]
     OAuth,
+    /// Short-lived session token signed by the data plane that runs the
+    /// session (`Authorization: Bearer <token>`). Marks an injected
+    /// capability's server: the host mints the token per call, scoped to the
+    /// session, its group and the capability, and the server verifies it
+    /// against the data plane's JWKS.
+    SessionToken,
 }
 
 impl std::fmt::Display for McpServerAuthMode {
@@ -55,6 +61,7 @@ impl std::fmt::Display for McpServerAuthMode {
             McpServerAuthMode::None => write!(f, "none"),
             McpServerAuthMode::ApiKey => write!(f, "api_key"),
             McpServerAuthMode::OAuth => write!(f, "oauth"),
+            McpServerAuthMode::SessionToken => write!(f, "session_token"),
         }
     }
 }
@@ -64,6 +71,7 @@ impl From<&str> for McpServerAuthMode {
         match s {
             "api_key" => McpServerAuthMode::ApiKey,
             "oauth" => McpServerAuthMode::OAuth,
+            "session_token" => McpServerAuthMode::SessionToken,
             _ => McpServerAuthMode::None,
         }
     }

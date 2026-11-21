@@ -41,6 +41,8 @@ pub(super) struct ChannelStates {
     pub fcp: crate::channels::fcp::FcpState,
     pub public_chat: crate::channels::ag_ui::AgUiState,
     pub poppy: crate::channels::poppy::PoppyState,
+    /// Hosted capabilities served to data planes over MCP.
+    pub injected: Arc<crate::injected::InjectedCapabilities>,
 }
 
 impl ChannelDeps {
@@ -87,6 +89,10 @@ impl ChannelStates {
             deps.rate_limiter("poppy"),
             a2a_replay_store,
         );
+        let injected = Arc::new(crate::injected::from_env(
+            deps.db.clone(),
+            &deps.auth.config.base_url,
+        ));
         // api_endpoint execution keys.
         let mut api = api::channel_api::ChannelApiState::new(
             deps.db.clone(),
@@ -140,6 +146,7 @@ impl ChannelStates {
             fcp,
             public_chat,
             poppy,
+            injected,
         }
     }
 
@@ -153,7 +160,8 @@ impl ChannelStates {
             .merge(crate::channels::ag_ui::routes(self.ag_ui))
             .merge(crate::channels::public_chat::routes(self.public_chat))
             .merge(crate::channels::fcp::routes(self.fcp))
-            .merge(crate::channels::poppy::routes(self.poppy.clone()));
+            .merge(crate::channels::poppy::routes(self.poppy.clone()))
+            .merge(crate::injected::routes(self.injected, "/v1"));
         let root = crate::channels::poppy::well_known_routes(self.poppy);
         (api, root)
     }

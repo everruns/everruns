@@ -74,6 +74,10 @@ pub struct ClientCapabilities {
     /// list their view tools to a client that declares this. Declared by
     /// hosted runtimes, whose console and channels show the views.
     pub ui_apps: bool,
+    /// The host speaks the Everruns MCP extensions
+    /// ([`everruns_contracts::runtime::mcp_extensions`]). Declared only to
+    /// injected capabilities' servers, the ones a controller runs.
+    pub everruns: bool,
 }
 
 impl ClientCapabilities {
@@ -94,6 +98,7 @@ impl ClientCapabilities {
 pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
     let tasks = capabilities.tasks;
     let capabilities_ui_apps = capabilities.ui_apps;
+    let everruns = capabilities.everruns;
     let mut modes = Map::new();
     if capabilities.url_elicitation {
         modes.insert("url".to_string(), json!({}));
@@ -117,6 +122,11 @@ pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
             everruns_contracts::runtime::mcp_apps::MCP_UI_EXTENSION_KEY.to_string(),
             ui_apps_extension(),
         );
+    }
+    if everruns {
+        for key in everruns_contracts::runtime::mcp_extensions::EVERRUNS_EXTENSIONS {
+            extensions.insert(key.to_string(), json!({}));
+        }
     }
     if !extensions.is_empty() {
         capabilities.insert("extensions".to_string(), Value::Object(extensions));
@@ -777,6 +787,7 @@ mod tests {
                 form_elicitation: false,
                 tasks: false,
                 ui_apps: false,
+                everruns: false,
             },
         );
         assert_eq!(
@@ -790,6 +801,7 @@ mod tests {
                 form_elicitation: true,
                 tasks: false,
                 ui_apps: false,
+                everruns: false,
             },
         );
         assert_eq!(
@@ -842,6 +854,25 @@ mod tests {
         assert_eq!(
             initialize_body(0, "2025-06-18")["params"]["capabilities"],
             json!({})
+        );
+        // Injected capabilities' servers also hear the Everruns extensions.
+        let with_everruns = request_meta(
+            MCP_PROTOCOL_VERSION_2026_07,
+            ClientCapabilities {
+                tasks: true,
+                everruns: true,
+                ..ClientCapabilities::none()
+            },
+        );
+        assert_eq!(
+            with_everruns.get(CLIENT_CAPABILITIES_META_KEY),
+            Some(&json!({ "extensions": {
+                "io.modelcontextprotocol/tasks": {},
+                "io.everruns/facts": {},
+                "io.everruns/files": {},
+                "io.everruns/hooks": {},
+                "io.everruns/ui": {},
+            } }))
         );
     }
 
@@ -937,6 +968,7 @@ mod tests {
                 form_elicitation: false,
                 tasks: false,
                 ui_apps: false,
+                everruns: false,
             },
             Some("AEAD-blob=="),
             &responses,

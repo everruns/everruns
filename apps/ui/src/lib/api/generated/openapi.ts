@@ -23950,7 +23950,7 @@ export interface components {
      * @example api_key
      * @enum {string}
      */
-    McpServerAuthMode: "none" | "api_key" | "oauth";
+    McpServerAuthMode: "none" | "api_key" | "oauth" | "session_token";
     /** @description MCP server preset with its active-agent usage count. */
     McpServerCatalogEntry: components["schemas"]["WithUrls_McpServer"] & {
       /**

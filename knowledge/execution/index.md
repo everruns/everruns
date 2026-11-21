@@ -17,6 +17,7 @@
 * [Work reports](work-reports.md) - One runtime-built record of what a piece of work is doing now and what it got done, read by every surface.
 * [Tool Output Distillation](tool-output-distillation.md) - Content-aware distillation of large non-exec tool results at capture time.
 * [Capabilities Specification](capabilities.md) - Agent capabilities system.
+* [Injected Capabilities](injected-capabilities.md) - Hosted capabilities a controller serves over MCP to any data plane: definition, session tokens, Everruns MCP extensions.
 * [Ask User](ask-user.md) - Structured choice questions that pause through the client-side tool-results lifecycle.
 * [Image Generation](image-generation.md) - Provider-neutral image capability: model resolution, GIF and SVG outputs, egress.
 * [Session Spend](session-spend.md) - What a session spent in dollars, for the session itself (`get_session_info`): sources, pricing basis, privacy, hosts.

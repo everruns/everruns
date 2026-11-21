@@ -697,7 +697,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -2441,7 +2442,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -5828,7 +5830,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -6173,7 +6176,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -9051,7 +9055,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -17733,7 +17738,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -18304,7 +18310,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -18846,7 +18853,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -21579,7 +21587,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -24548,7 +24557,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -24986,7 +24996,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -28574,7 +28585,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
