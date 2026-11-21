@@ -71,6 +71,9 @@ Unknown usage, cancellation and provider errors retain their reservations.
 Mira resume and retries use the same ledger. Do not delete or select a fresh
 ledger to replenish an existing budget. `COMPACTION_EVAL_SPEND_LIMIT` can lower
 the admission limit for a stage; it cannot exceed the fixed $30 ceiling.
+Provider-internal header retries and stream reconnects are explicitly disabled;
+any host-level retry must pass admission again. Offline transport-count tests
+cover transient HTTP failures, first-body failures and native compaction.
 
 Models are deliberately priced and allowlisted: OpenAI `gpt-6.2-sol`, then
 OpenRouter `openai/gpt-6.1-terra`. Global endpoints and Standard speed with 30m
@@ -156,5 +159,9 @@ Across calibration, diagnosis, qualification and holdouts, priced usage was
 **$19.4897**: $2.3191 provider-reported, $8.2381 estimated, and $8.9326 native
 usage priced at an upper bound. Final conservative holds were **$22.0707**,
 including a $0.64234 reservation for a rejected calibration attempt with no usage
-record. All 514 admitted attempts, including that rejection, share the same
-ledger. These figures are not invoice reconciliation.
+record. All 514 admitted driver invocations, including that rejection, share the
+same ledger. The historical runs used SDK retry defaults; no retry events were
+reported in retained full generation streams, but all nested transport retries
+were not independently audited. The final harness disables internal retries,
+verified offline without further paid calls. These figures describe observed
+usage and ledger holds, not invoice reconciliation or an account-wide limit.

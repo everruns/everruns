@@ -8,6 +8,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io,
     path::PathBuf,
+    sync::Arc,
     time::Instant,
 };
 
@@ -197,6 +198,7 @@ impl Budget {
             r["output_tokens"] = json!(meta.completion_tokens);
             r["reasoning_tokens"] = json!(meta.reasoning_tokens);
             r["response_model"] = json!(meta.response_model);
+            r["driver_retries"] = json!(meta.retry_metadata.as_ref().map(|retry| retry.attempts));
             r["duration_ms"] = json!(ms);
             if r["status"] == "accounted" && meta.provider_cost_usd.is_none() {
                 r["held_usd"] = json!(cost.max(usage_upper_bound(r)?));
@@ -229,6 +231,7 @@ use futures::StreamExt;
 
 struct Guard {
     inner: Box<dyn ChatDriver>,
+    endpoint: ProviderEndpoint,
     budget: Budget,
     provider: &'static str,
     case: String,
@@ -304,20 +307,20 @@ impl ChatDriver for Guard {
     }
     fn provider_managed_reduction_option(
         &self,
-        endpoint: &ProviderEndpoint,
+        _endpoint: &ProviderEndpoint,
         model: &str,
         budget: usize,
     ) -> Option<(String, Value)> {
         self.inner
-            .provider_managed_reduction_option(endpoint, model, budget)
+            .provider_managed_reduction_option(&self.endpoint, model, budget)
     }
     fn provider_managed_reduction_fallback_reason(
         &self,
-        endpoint: &ProviderEndpoint,
+        _endpoint: &ProviderEndpoint,
         c: &LlmCallConfig,
     ) -> Option<&'static str> {
         self.inner
-            .provider_managed_reduction_fallback_reason(endpoint, c)
+            .provider_managed_reduction_fallback_reason(&self.endpoint, c)
     }
     fn effective_context_window(&self, m: &str) -> Option<usize> {
         self.inner.effective_context_window(m)
@@ -336,14 +339,17 @@ impl ChatDriver for Guard {
     }
     async fn chat_completion_stream(
         &self,
-        e: &ProviderEndpoint,
+        _e: &ProviderEndpoint,
         m: Vec<Message>,
         c: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         let c = self.config(c)?;
         let id = self.reserve(&m, &c)?;
         let started = Instant::now();
-        let stream = self.inner.chat_completion_stream(e, m, &c).await?;
+        let stream = self
+            .inner
+            .chat_completion_stream(&self.endpoint, m, &c)
+            .await?;
         let budget = self.budget.clone();
         Ok(Box::pin(stream.map(move |event| {
             if let Ok(LlmStreamEvent::Done(meta)) = &event {
@@ -356,14 +362,17 @@ impl ChatDriver for Guard {
     }
     async fn chat_completion_non_streaming(
         &self,
-        e: &ProviderEndpoint,
+        _e: &ProviderEndpoint,
         m: Vec<Message>,
         c: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         let c = self.config(c)?;
         let id = self.reserve(&m, &c)?;
         let started = Instant::now();
-        let r = self.inner.chat_completion_non_streaming(e, m, &c).await?;
+        let r = self
+            .inner
+            .chat_completion_non_streaming(&self.endpoint, m, &c)
+            .await?;
         self.budget
             .finish(id, &r.metadata, started.elapsed().as_millis())
             .map_err(|e| AgentLoopError::config(e.to_string()))?;
@@ -371,7 +380,7 @@ impl ChatDriver for Guard {
     }
     async fn compact(
         &self,
-        e: &ProviderEndpoint,
+        _e: &ProviderEndpoint,
         r: CompactRequest,
     ) -> Result<Option<CompactResponse>> {
         // Native endpoint has no max-output setting. Reserve its 128K model cap.
@@ -387,7 +396,7 @@ impl ChatDriver for Guard {
             )
             .map_err(|e| AgentLoopError::config(e.to_string()))?;
         let started = Instant::now();
-        let result = self.inner.compact(e, r).await?;
+        let result = self.inner.compact(&self.endpoint, r).await?;
         if let Some(usage) = result.as_ref().and_then(|r| r.usage.as_ref()) {
             let mut meta = LlmCompletionMetadata::default();
             meta.prompt_tokens = usage.input_tokens;
@@ -399,6 +408,34 @@ impl ChatDriver for Guard {
         }
         Ok(result)
     }
+}
+
+fn study_driver(
+    name: &str,
+    transport: Option<Arc<dyn everruns_contracts::http_transport::HttpTransport>>,
+) -> std::result::Result<Box<dyn ChatDriver>, Box<dyn std::error::Error + Send + Sync>> {
+    // Retry admission belongs outside the driver, where the ledger can reserve
+    // every attempt before I/O. Defaults would hide header retries/reconnects.
+    let retry = everruns_contracts::LlmRetryConfig::no_retry();
+    Ok(match name {
+        "openai" => {
+            let mut driver =
+                everruns::providers::openai::OpenAIChatDriver::new().with_retry_config(retry);
+            if let Some(transport) = transport {
+                driver = driver.with_transport(transport);
+            }
+            Box::new(driver)
+        }
+        "openrouter" => {
+            let mut driver = everruns::providers::openrouter::OpenRouterChatDriver::new()
+                .with_retry_config(retry);
+            if let Some(transport) = transport {
+                driver = driver.with_transport(transport);
+            }
+            Box::new(driver)
+        }
+        _ => return Err("unsupported provider".into()),
+    })
 }
 
 pub fn provider(
@@ -426,7 +463,8 @@ pub fn provider(
     Ok(Provider::new(
         name,
         Guard {
-            inner: original.into_boxed_driver(),
+            inner: study_driver(name, None)?,
+            endpoint: original.endpoint().clone(),
             budget,
             provider: name,
             case,
@@ -437,6 +475,141 @@ pub fn provider(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_contracts::http_transport::{
+        HeaderMap, HttpError, HttpRequest, HttpResponse, HttpTransport, StatusCode,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct ServerError(Arc<AtomicUsize>, bool);
+    #[async_trait::async_trait]
+    impl HttpTransport for ServerError {
+        async fn execute(
+            &self,
+            request: HttpRequest,
+        ) -> std::result::Result<HttpResponse, HttpError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            assert_eq!(request.headers()["authorization"], "Bearer fake-test-key");
+            if self.1 {
+                return Ok(HttpResponse::new(
+                    StatusCode::OK,
+                    HeaderMap::new(),
+                    Box::pin(futures::stream::once(async {
+                        Err(HttpError::new("connection reset before first event", true))
+                    })),
+                ));
+            }
+            Ok(HttpResponse::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                HeaderMap::new(),
+                Box::pin(futures::stream::once(async {
+                    Ok("{\"error\":{\"message\":\"temporary server failure\"}}".into())
+                })),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn provider_header_failures_never_retry_beneath_one_reservation() {
+        for (name, model, url) in [
+            ("openai", "gpt-6.2-sol", "https://api.openai.com/v1"),
+            (
+                "openrouter",
+                "openai/gpt-6.1-terra",
+                "https://openrouter.ai/api/v1",
+            ),
+        ] {
+            for streaming in [false, true] {
+                for body_reset in [false, true] {
+                    let dir = tempfile::tempdir().unwrap();
+                    let budget = Budget::new(dir.path().join("b.json"));
+                    let sends = Arc::new(AtomicUsize::new(0));
+                    let guard = Guard {
+                        inner: study_driver(
+                            name,
+                            Some(Arc::new(ServerError(sends.clone(), body_reset))),
+                        )
+                        .unwrap(),
+                        endpoint: ProviderEndpoint::from_parts(
+                            url,
+                            everruns_contracts::runtime_provider::BearerAuth::new("fake-test-key"),
+                        ),
+                        budget: budget.clone(),
+                        provider: name,
+                        case: "retry regression".into(),
+                    };
+                    let messages = vec![Message::text(
+                        everruns_contracts::driver_registry::MessageRole::User,
+                        "test",
+                    )];
+                    let config = LlmCallConfig::new(model);
+                    let failed = if streaming {
+                        guard
+                            .chat_completion_stream(&ProviderEndpoint::default(), messages, &config)
+                            .await
+                            .is_err()
+                    } else {
+                        guard
+                            .chat_completion_non_streaming(
+                                &ProviderEndpoint::default(),
+                                messages,
+                                &config,
+                            )
+                            .await
+                            .is_err()
+                    };
+                    assert!(failed);
+                    assert_eq!(
+                        sends.load(Ordering::SeqCst),
+                        1,
+                        "one guarded invocation must mean one HTTP attempt"
+                    );
+                    let records = budget.records().unwrap();
+                    assert_eq!(records.len(), 1);
+                    assert!(held(&records[0]).unwrap() > 0.0);
+                }
+            }
+        }
+    }
+    #[tokio::test]
+    async fn native_failure_never_retries_beneath_one_reservation() {
+        let dir = tempfile::tempdir().unwrap();
+        let budget = Budget::new(dir.path().join("b.json"));
+        let sends = Arc::new(AtomicUsize::new(0));
+        let guard = Guard {
+            inner: study_driver("openai", Some(Arc::new(ServerError(sends.clone(), false))))
+                .unwrap(),
+            endpoint: ProviderEndpoint::from_parts(
+                "https://api.openai.com/v1",
+                everruns_contracts::runtime_provider::BearerAuth::new("fake-test-key"),
+            ),
+            budget: budget.clone(),
+            provider: "openai",
+            case: "native retry regression".into(),
+        };
+        let input = everruns_contracts::compact::messages_to_compact_input(&[Message::text(
+            everruns_contracts::driver_registry::MessageRole::User,
+            "test",
+        )]);
+        assert!(
+            guard
+                .compact(
+                    &ProviderEndpoint::default(),
+                    CompactRequest {
+                        reasoning_state: None,
+                        model: "gpt-6.2-sol".into(),
+                        input,
+                        previous_response_id: None,
+                        instructions: None
+                    }
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(sends.load(Ordering::SeqCst), 1);
+        let records = budget.records().unwrap();
+        assert_eq!(records.len(), 1);
+        assert!(held(&records[0]).unwrap() > 7.0);
+    }
     #[test]
     fn resume_and_unknown_usage_never_refund_reservations() {
         let dir = tempfile::tempdir().unwrap();
