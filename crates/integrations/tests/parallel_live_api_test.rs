@@ -18,6 +18,20 @@ fn with_api_key(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     } else {
         builder
     }
+    .header("Accept", "application/json, text/event-stream")
+}
+
+/// mcp.parallel.ai answers Streamable HTTP requests as a one-event SSE stream
+/// even when the client accepts JSON; read the JSON-RPC body from either shape.
+async fn json_rpc_body<T: serde::de::DeserializeOwned>(response: reqwest::Response) -> T {
+    let text = response.text().await.expect("MCP response body");
+    let payload = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .map(str::trim)
+        .find(|data| !data.is_empty())
+        .unwrap_or(text.trim());
+    serde_json::from_str(payload).expect("valid MCP JSON-RPC response")
 }
 
 fn is_free_tier_rate_limit(message: &str) -> bool {
@@ -45,10 +59,7 @@ async fn smoke_tools_list_free_mcp() {
         response.status()
     );
 
-    let body: everruns_contracts::runtime::McpToolsListResponse = response
-        .json()
-        .await
-        .expect("valid MCP tools/list response");
+    let body: everruns_contracts::runtime::McpToolsListResponse = json_rpc_body(response).await;
     if body
         .error
         .as_ref()
@@ -90,7 +101,7 @@ async fn smoke_web_search_free_mcp() {
         response.status()
     );
 
-    let body: McpToolCallResponse = response.json().await.expect("valid MCP call response");
+    let body: McpToolCallResponse = json_rpc_body(response).await;
     if body
         .error
         .as_ref()
