@@ -421,6 +421,22 @@ Not part of this design. The expected shape, for when it is picked up:
 - Whether `interruption: steer` should also cut tool calls that have not
   started yet.
 
+## Cascaded OpenAI speech transport
+
+The cascaded speech contract remains PCM. OpenAI
+[synthesis](../../crates/drivers/drivers/src/openai/realtime_speech.rs) uses an
+authenticated Realtime connection for the new default, retaining explicit legacy
+Speech API overrides without rewriting stored configuration. Each utterance is
+a separate out-of-band response: no history, no tools, configured voice/style.
+Only correlated PCM deltas play; successful completion requires a completed
+response with whole audio samples. Malformed, audio-free, failed, incomplete or
+interrupted streams report failure. Dropping playback cancels generation; a
+stalled utterance is bounded. Provider error payloads are not forwarded.
+
+Exact-text instructions express intent, not a verbatim generation guarantee.
+Mocked transport tests establish routing and PCM/error behavior, not real voice
+quality, latency, or the remaining transcription model retirement.
+
 ## Sources
 
 - OpenAI Realtime: WebRTC, SIP, server controls (sideband), VAD,

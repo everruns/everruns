@@ -1340,7 +1340,7 @@ See [voice.md](../operations/voice.md) for the feature contract.
 | TM-VOICE-004 | Raw audio retained without consent | High | V1 stores transcript text only; raw user/model audio, SDP bodies, and raw provider events are not persisted | MITIGATED |
 | TM-VOICE-005 | Sensitive spoken content leaks through transcripts/logs | High | Voice transcripts are treated as normal chat messages for retention/export/observability; logs must not include raw SDP, client secrets, or unsanitized sideband payloads | OPEN |
 | TM-VOICE-006 | Voice model performs write action after mishearing exact identifiers | High | Voice prompts require clarification for unclear audio and confirmation for high-precision identifiers and write/dangerous actions before tool calls | MITIGATED |
-| TM-VOICE-007 | Long-running voice session causes cost runaway | Medium | Voice Connections are leased session resources with expiry, explicit end endpoint, cleanup, and future budget enforcement using usage metadata | OPEN |
+| TM-VOICE-007 | Long-running voice session causes cost runaway | Medium | Voice Connections are leased session resources with expiry and explicit end/cleanup. Cascaded Realtime synthesis also bounds connection and utterance duration, limits individual deltas, and cancels generation on dropped playback. Per-call budget enforcement using usage metadata remains future work | OPEN |
 
 ## 15. Bash Sandbox (TM-BASH)
 
