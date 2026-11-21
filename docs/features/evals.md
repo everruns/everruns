@@ -174,6 +174,16 @@ Cases are matched by name, so importing again updates them instead of adding cop
 
 A Mira run published to Everruns can join an experiment. Publish with an experiment name and a variant label, and each eval's run becomes that variant of the experiment with that name, created on first use. The experiment page compares it case by case with the other variants and marks it as run in Mira. Publishing the same label again replaces the variant.
 
+## Harbor trajectories
+
+Trajectories recorded in [Harbor](https://harborframework.com)'s ATIF format can seed cases. Each trajectory becomes one case: its user steps are the conversation, and the last agent message is kept in the case description as a reference. ATIF has no assertions, so imported cases start without scorers.
+
+```bash
+everruns evals atif-import import --eval-id eval_01h9 --body "$(cat trajectories.ndjson)"
+```
+
+The import reads ATIF v1 documents and the draft v2.0 format. A v2 bundle imports only its root trajectory, not its subagent or rewind branches. A v2 event stream (`.atif-e.jsonl`) has to be consolidated into a trajectory first. Cases are matched by name, taken from `case_name` when the producer set one, otherwise the trajectory or session id.
+
 ## In the UI
 
 **Quality → Evals** opens on an overview of every agent with a dataset: its pass rate, the trend over recent runs, its live quality from observers over the last 7 days, open findings and the last activity. Tabs hold datasets, experiments, observers, findings from session detectors and classifiers (similar ones grouped, each opening a page with its evidence and the Inspector's account), and the graders a case can use. **Run experiment** starts one from any dataset. Each agent's page has an **Evals** tab with the same view for that agent, plus the observers that watch it and the Eval Builder's proposals. On an observer's edit page, the **Answers**, **Conversations** and **Tools** tabs hold the graders of each scope.

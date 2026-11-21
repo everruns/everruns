@@ -31,6 +31,18 @@ captures the full design intent, with per-surface status noted below.
 - Imports tolerate any `ATIF-*` version and ignore unknown fields at every
   level (the format's own compatibility rule); only `schema_version`, a
   non-empty `steps[]`, and at least one user step are required.
+- ATIF-v2.0 ([Harbor RFC 0004][atif-v2-rfc], draft as of 2026-11) is read on
+  import only: step text comes from `content[]` text parts when `message` is
+  absent, case identity and reward fall back to
+  `extensions["com.harborframework.v1"].extra` and
+  `extensions["com.harborframework.evaluation"]`, a bundle collapses to its
+  root trajectory (the one without `parent_trajectory_id`; children are
+  subagents, forks and discarded branches, not separate cases), and ATIF-E
+  event lines are rejected with a consolidate-first error. Exports stay on
+  v1.7 until the RFC lands, because Harbor upgrades v1 losslessly and v2 field
+  names may still move. v2 export (events stream, bundles, compaction steps,
+  `com.harborframework.evaluation` reward) is the follow-up; segmented export
+  will need a replacement for `continued_trajectory_ref`, which v2 removes.
 
 ## Event → ATIF mapping
 
@@ -207,3 +219,4 @@ reflects what has shipped on `main`.
   `knowledge/evaluation/evals.md` covers scored results; ATIF import produces cases).
 
 [atif-rfc]: https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md
+[atif-v2-rfc]: https://github.com/harbor-framework/harbor/pull/4134
