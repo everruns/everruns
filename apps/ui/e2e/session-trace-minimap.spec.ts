@@ -271,6 +271,14 @@ test("opens the requested message page or tools in a fixed-size model request mo
   await expect(modal.getByRole("button", { name: "Load earlier messages" })).toBeAttached();
   await expect.poll(() => modal.boundingBox()).toEqual(bounds);
 
+  const scroller = modal.getByRole("region", { name: "Messages" });
+  await expect(scroller).toHaveAttribute("tabindex", "0");
+  await scroller.focus();
+  await page.keyboard.press("Home");
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
+  await page.keyboard.press("PageDown");
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
   await modal.getByRole("button", { name: /^62 user/ }).click();
   await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
     "aria-expanded",
