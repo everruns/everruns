@@ -2145,6 +2145,7 @@ A `poppy` channel serves the Personal Agent Protocol (draft 0.1) at `/v1/channel
 | Error sanitization | TM-API, TM-OBS | Generic error messages, server-side logging only. The browser API client discards HTML and oversized gateway error bodies, retaining bounded safe messages and correlation IDs; see `apps/ui/src/lib/api/client.ts` |
 | Cookie security | TM-WEB | HTTP-only, SameSite=Lax, Secure flag in production |
 | Tool validation | TM-TOOL | Registry-based validation, defensive MCP parsing, skill archive validation |
+| Compaction quality monitoring | TM-TENANT, TM-AUTHZ, TM-LLM-007, TM-DOS | Off-by-default admin consent, org-scoped report/review/model resolution, exclusions and runtime raw-history permission checked before bounded evidence reads; untrusted excerpts with source/continuation citations, no agent mutation; atomic per-attempt conservative spend admission, deduplication, scoring fences and 30-day finding retention. Native state remains opaque. In-flight calls cannot be revoked and catalog pricing is not invoice proof. See [system observers](../evaluation/online-evals.md#opt-in-system-compaction-monitoring). |
 | Resource limits | TM-DOS, TM-BASH | Input sizes, iteration limits, query timeouts, bash limits |
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
 | Daytona sandbox isolation | TM-DAYTONA | Session-scoped secrets, encrypted API key, auto-stop, short-lived git tokens |

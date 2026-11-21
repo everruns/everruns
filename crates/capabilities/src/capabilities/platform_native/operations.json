@@ -7214,6 +7214,13 @@
     "description": "Create an observer (online scoring).",
     "input_schema": {
       "$defs": {
+        "CompactionCheck": {
+          "enum": [
+            "execution",
+            "continuity"
+          ],
+          "type": "string"
+        },
         "LlmJudgeConfig": {
           "description": "LLM-as-judge scoring configuration. The judge grades the scoped trace\nslice against `rubric` and returns a 0.0–1.0 value, an optional\ncategorical label, and free-text reasoning.",
           "properties": {
@@ -7309,7 +7316,8 @@
           "enum": [
             "turn",
             "session",
-            "tool"
+            "tool",
+            "compaction"
           ],
           "type": "string"
         },
@@ -7824,6 +7832,25 @@
                 }
               ],
               "description": "LLM-as-judge."
+            },
+            {
+              "description": "Versioned built-in checks, configured through organization settings.",
+              "properties": {
+                "check": {
+                  "$ref": "#/$defs/CompactionCheck"
+                },
+                "method": {
+                  "enum": [
+                    "system_compaction"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check",
+                "method"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -12640,6 +12667,24 @@
     "read_only": true
   },
   {
+    "description": "Read organization compaction monitoring policy, coverage and budget reservations.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization whose monitoring policy and coverage to inspect.",
+          "example": "org_00000000000000000000000000000001",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "name": "get_org_quality_monitoring",
+    "read_only": true
+  },
+  {
     "description": "Read an organization account's editable name. Credentials are never returned.",
     "input_schema": {
       "description": "Read the editable name of an authorized organization account.",
@@ -15703,6 +15748,24 @@
       "type": "object"
     },
     "name": "list_org_history",
+    "read_only": true
+  },
+  {
+    "description": "Read the newest fifty compaction monitoring findings with source trace references.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization whose newest monitoring findings to inspect.",
+          "example": "org_00000000000000000000000000000001",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "name": "list_org_quality_monitoring_scores",
     "read_only": true
   },
   {
@@ -19457,6 +19520,59 @@
       ]
     },
     "name": "review_observer_score",
+    "read_only": false
+  },
+  {
+    "description": "Record a person's agreement with a compaction assessment, without starting model work.",
+    "input_schema": {
+      "$defs": {
+        "ReviewScoreRequest": {
+          "description": "A person's verdict on one score.",
+          "properties": {
+            "agrees": {
+              "description": "True when the grader got it right.",
+              "type": "boolean"
+            },
+            "note": {
+              "description": "Optional note on why (at most 2000 characters).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "agrees"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReviewScoreRequest"
+        },
+        {
+          "properties": {
+            "org": {
+              "description": "Organization that owns the assessment.",
+              "example": "org_00000000000000000000000000000001",
+              "type": "string"
+            },
+            "score": {
+              "description": "Assessment whose human review to record.",
+              "example": "score_01933b5a000070008000000000000001",
+              "type": "string"
+            }
+          },
+          "required": [
+            "org",
+            "score"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "review_org_quality_monitoring_score",
     "read_only": false
   },
   {
@@ -25436,6 +25552,13 @@
     "description": "Update an observer.",
     "input_schema": {
       "$defs": {
+        "CompactionCheck": {
+          "enum": [
+            "execution",
+            "continuity"
+          ],
+          "type": "string"
+        },
         "LlmJudgeConfig": {
           "description": "LLM-as-judge scoring configuration. The judge grades the scoped trace\nslice against `rubric` and returns a 0.0–1.0 value, an optional\ncategorical label, and free-text reasoning.",
           "properties": {
@@ -25531,7 +25654,8 @@
           "enum": [
             "turn",
             "session",
-            "tool"
+            "tool",
+            "compaction"
           ],
           "type": "string"
         },
@@ -26056,6 +26180,25 @@
                 }
               ],
               "description": "LLM-as-judge."
+            },
+            {
+              "description": "Versioned built-in checks, configured through organization settings.",
+              "properties": {
+                "check": {
+                  "$ref": "#/$defs/CompactionCheck"
+                },
+                "method": {
+                  "enum": [
+                    "system_compaction"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check",
+                "method"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -26228,6 +26371,56 @@
                 "type": "string"
               },
               "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "QualityMonitoringPolicy": {
+          "additionalProperties": false,
+          "description": "Consent and spending admission for system-managed compaction observers.\nNo content is shared outside the organization's configured model provider.",
+          "properties": {
+            "daily_budget_usd": {
+              "default": 0.0,
+              "description": "UTC-day admission cap, including reserved uncertain/retry costs.\nZero disables model calls while retaining mechanical checks.",
+              "example": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Explicit organization consent. Disabled by default.",
+              "example": false,
+              "type": "boolean"
+            },
+            "excluded_tags": {
+              "default": [],
+              "description": "Sessions with any of these tags are excluded before reading content.",
+              "example": [
+                "sensitive"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "model_id": {
+              "default": null,
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/modelId",
+                  "description": "Explicit org model. None enables mechanical checks only."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sampling_rate": {
+              "default": 0.02,
+              "description": "Fraction of eligible checkpoints receiving a content-based assessment.",
+              "example": 0.02,
+              "format": "double",
+              "type": "number"
             }
           },
           "type": "object"
@@ -26415,6 +26608,17 @@
                 "null"
               ]
             },
+            "quality_monitoring": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/QualityMonitoringPolicy",
+                  "description": "Replaces the monitoring policy. Enabling paid checks requires a model\nand a positive daily budget; zero permits mechanical checks only."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "research_model_id": {
               "description": "Research model for agents set to \"Organization research model\". Omit to\npreserve; null returns to Automatic. Must be an enabled shared chat model.",
               "type": [
@@ -26522,6 +26726,12 @@
             }
           },
           "type": "object"
+        },
+        "modelId": {
+          "description": "Prefixed identifier with 'model' prefix",
+          "example": "model_01933b5a000070008000000000000001",
+          "pattern": "^model_[0-9a-f]{32}$",
+          "type": "string"
         }
       },
       "allOf": [

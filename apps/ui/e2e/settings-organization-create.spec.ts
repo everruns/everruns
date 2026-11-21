@@ -49,6 +49,21 @@ async function mockAppApi(page: Page) {
         can_edit: true,
         can_grant: false,
       };
+    } else if (pathname.endsWith("/quality-monitoring")) {
+      json = {
+        policy: {
+          enabled: false,
+          sampling_rate: 0.02,
+          model_id: null,
+          daily_budget_usd: 0,
+          excluded_tags: [],
+        },
+        observer_id: null,
+        today: { reserved_usd: 0, reported_usd: 0 },
+        checks: [],
+      };
+    } else if (pathname.endsWith("/quality-monitoring/scores")) {
+      json = [];
     } else if (/^\/api\/v1\/orgs\/[^/]+$/.test(pathname)) {
       json = {
         id: DEFAULT_ORG_ID,
@@ -94,6 +109,11 @@ test.describe("Settings > Organization create dialog", () => {
     test(`Create Organization button opens the dialog (${viewport.name})`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto("/settings/organization");
+
+      await expect(
+        page.getByRole("switch", { name: "Enable automatic monitoring" }),
+      ).not.toBeChecked();
+      await expect(page.getByText("No compaction assessments yet.", { exact: true })).toBeVisible();
 
       const createButton = page.getByRole("button", { name: "Create Organization" });
       await expect(createButton).toBeVisible();

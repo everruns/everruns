@@ -141,11 +141,13 @@ export function ScorerEditor({ scorers, onChange, errors }: ScorerEditorProps) {
   };
 
   const scopeLabel: Record<ObserverScorerScope, string> = {
+    compaction: ui("Compaction monitoring"),
     turn: ui("Answers"),
     session: ui("Conversations"),
     tool: ui("Tools"),
   };
   const scopeHint: Record<ObserverScorerScope, string> = {
+    compaction: ui("System-managed checks configured in organization settings."),
     turn: ui("Grades each answer the agent gives."),
     session: ui(
       "Grades the whole conversation, once the session has been idle for 10 minutes. Judges see the full transcript.",
@@ -241,6 +243,12 @@ interface ScorerRowProps {
 
 function ScorerRow({ scorer, index, error, onChange, onRemove }: ScorerRowProps) {
   const ui = useUiTranslations();
+  if (scorer.method === "system_compaction")
+    return (
+      <p className="text-sm text-muted-foreground">
+        {ui("System-managed checks configured in organization settings.")}
+      </p>
+    );
   const setMethod = (method: "rule" | "llm_judge") => {
     if (method === scorer.method) return;
     if (method === "rule") {

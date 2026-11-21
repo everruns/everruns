@@ -65,7 +65,8 @@ pub fn router(node: Arc<Node>) -> Router {
         // Raft batches and session images can be large; the cell is a
         // trusted network.
         .layer(axum::extract::DefaultBodyLimit::disable())
-        .with_state(node)
+        .with_state(node.clone())
+        .merge(crate::event_previews::router(node))
 }
 
 async fn propose(

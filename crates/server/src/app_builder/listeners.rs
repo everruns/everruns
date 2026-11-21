@@ -41,7 +41,7 @@ pub(super) struct Listeners {
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
     pub notification_service: Arc<crate::domains::notifications::NotificationService>,
     /// Wakes the observer scoring worker, which starts once the LLM stack exists.
-    pub observer_wake: Option<Arc<tokio::sync::Notify>>,
+    pub observer_wake: Option<(Arc<tokio::sync::Notify>, bool)>,
 }
 
 pub(super) fn build(
@@ -171,17 +171,17 @@ pub(super) fn build(
     // only db + wake). The background worker — which may call an LLM judge —
     // is spawned later, once the driver registry and provider resolver exist.
     // See knowledge/evaluation/online-evals.md.
-    let observer_wake = if deps.observers_enabled {
+    let observer_wake = {
         let observer_wake = Arc::new(tokio::sync::Notify::new());
-        let observer_listener: Arc<dyn EventListener> =
-            Arc::new(crate::domains::observers::ObserverMatchListener::new(
+        let observer_listener: Arc<dyn EventListener> = Arc::new(
+            crate::domains::observers::ObserverMatchListener::new(
                 db.clone(),
                 observer_wake.clone(),
-            ));
+            )
+            .with_user_observers_enabled(deps.observers_enabled),
+        );
         event_listeners.push(observer_listener);
-        Some(observer_wake)
-    } else {
-        None
+        Some((observer_wake, deps.observers_enabled))
     };
 
     if let Some(braintrust_listener) = BraintrustListener::from_env() {

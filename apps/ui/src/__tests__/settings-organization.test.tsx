@@ -146,6 +146,10 @@ jest.mock("@/components/organizations/everruns-github-app-settings", () => ({
   EverrunsGitHubAppSettings: () => <section aria-label="Everruns GitHub App" />,
 }));
 
+jest.mock("@/components/organizations/quality-monitoring-settings", () => ({
+  QualityMonitoringSettings: () => <section aria-label="Compaction monitoring" />,
+}));
+
 describe("OrganizationPage", () => {
   beforeEach(() => {
     viewerRole = "owner";

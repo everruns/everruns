@@ -475,3 +475,66 @@ available; genuine storage failures retain their recovery behavior.
 - [Capabilities Overview](/capabilities/), How capabilities are configured
 - [Harnesses](/features/harnesses/), Where capability configs are applied
 - [Events](/features/events/), SSE event streaming reference
+
+## Automatic quality monitoring
+
+Organization owners and admins can enable **Compaction quality monitoring** in
+**Settings → Organization**. It is off by default and applies to sessions using
+any harness, including built-in harnesses; adding another capability is unnecessary.
+Changes made through Chat are staged until you select **Save changes**.
+
+With a zero daily budget, operational checks report compaction failures, reported
+checkpoint installation and measured request reduction without a judge call.
+Unchanged message counts are not failures. An operational pass confirms the
+reported runtime step, rather than independently proving checkpoint durability
+or semantic fidelity.
+
+For sampled continuity checks, choose an organization model, a sample percentage
+and a daily USD allowance. Bounded source and subsequent excerpts from the compaction turn go to that
+model's provider. Checks assess one compaction boundary and its continuation,
+not the entire lifetime of an endless session. Native checkpoint contents remain
+opaque. Missing evidence, excluded sessions, unsafe raw-history access, unavailable
+pricing or exhausted allowance produce **Insufficient evidence**, never a pass.
+Request-local masking receives operational checks without a paid continuity job.
+
+The panel separates operational and continuity verdicts, links findings to session
+traces and lets admins agree or disagree with an assessment. Findings stay in the
+organization for 30 days. Existing Observer health alerts report sufficiently
+large pass-rate drops. Monitoring never changes agent instructions or retries a
+user turn. A sampled continuity failure is a suspected issue, not proof that
+compaction caused it or that all other information was preserved.
+
+Use the organization API to enable mechanical checks:
+
+```http
+PATCH /v1/orgs/{org}
+Content-Type: application/json
+
+{
+  "quality_monitoring": {
+    "enabled": true,
+    "sampling_rate": 0.02,
+    "model_id": null,
+    "daily_budget_usd": 0,
+    "excluded_tags": ["private"]
+  }
+}
+```
+
+`GET /v1/orgs/{org}/quality-monitoring` returns policy, seven-day coverage and
+UTC-day spending. `/quality-monitoring/scores` returns recent findings;
+`PUT /quality-monitoring/scores/{score}/review` accepts `{"agrees": false}`.
+Policy updates replace the monitoring policy. `eval` sessions are always excluded.
+The CLI exposes the same report as `everruns orgs quality-monitoring get --org <org>`
+and recent findings as `everruns orgs quality-monitoring scores list --org <org>`.
+Disabling monitoring stops new and queued assessments; an already dispatched
+provider call cannot be recalled.
+
+The allowance uses atomic conservative reservations, including retry capacity.
+Uncertain attempts keep their allowance until UTC midnight; reserved allowance
+and provider-reported cost are shown separately. This admission cap relies on
+catalog pricing and is not an invoice reconciliation guarantee.
+
+Embedded applications can use the shared [Framework observation
+API](/framework/evaluation-and-traces/#compaction-observation). The Framework does
+not silently enable organization monitoring or send content to a judge.

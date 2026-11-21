@@ -38,6 +38,7 @@ pub mod dispatch;
 pub mod dp;
 pub mod edge;
 mod edge_commands;
+mod event_previews;
 pub mod exec_api;
 pub mod executor;
 pub mod files;

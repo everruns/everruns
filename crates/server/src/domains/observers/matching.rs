@@ -136,6 +136,7 @@ pub fn plan_scores(
             .then(|| now + chrono::Duration::seconds(SESSION_SETTLE_SECONDS));
         for scorer in wanted {
             planned.push(CreateTraceScoreRow {
+                evidence_ref: None,
                 public_id: TraceScoreId::from_uuid(Uuid::now_v7()).to_string(),
                 observer_id: observer.id,
                 scorer_key: scorer.key,
@@ -183,6 +184,7 @@ mod tests {
 
     fn observer(scorers: Vec<ObserverScorerConfig>, rate: f64) -> ObserverRow {
         ObserverRow {
+            system_kind: None,
             id: Uuid::now_v7(),
             org_id: 1,
             public_id: "observer_00000000000000000000000000000001".into(),

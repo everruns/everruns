@@ -54,6 +54,21 @@ async function mockAppApi(page: Page, layout: Layout) {
       json = { key: "ui.layout", value: layout, updated_at: "2026-11-11T00:00:00Z" };
     } else if (pathname.endsWith("/config")) {
       json = { policies: {} };
+    } else if (pathname.endsWith("/quality-monitoring")) {
+      json = {
+        policy: {
+          enabled: false,
+          sampling_rate: 0.02,
+          model_id: null,
+          daily_budget_usd: 0,
+          excluded_tags: [],
+        },
+        observer_id: null,
+        today: { reserved_usd: 0, reported_usd: 0 },
+        checks: [],
+      };
+    } else if (pathname.endsWith("/quality-monitoring/scores")) {
+      json = [];
     } else if (pathname === "/api/v1/sessions/facets") {
       json = {
         active_now: 0,

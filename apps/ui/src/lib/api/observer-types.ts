@@ -30,13 +30,20 @@ export type ScorerRule =
   | { type: "json_schema"; schema: object; weight?: number };
 
 /** Trace slice a scorer grades: one turn, the whole conversation, or one tool call. */
-export type ObserverScorerScope = "turn" | "session" | "tool";
+export type ObserverScorerScope = "turn" | "session" | "tool" | "compaction";
 
 /**
  * Per-scorer configuration. FLATTENED tagged union discriminated by `method`:
  * the method-specific fields sit alongside `key`/`scope`, not nested.
  */
 export type ObserverScorerConfig =
+  | {
+      key: string;
+      scope: "compaction";
+      method: "system_compaction";
+      check: "execution" | "continuity";
+      tools?: string[];
+    }
   | {
       key: string;
       scope: ObserverScorerScope;
@@ -56,6 +63,7 @@ export type ObserverScorerConfig =
     };
 
 export interface Observer {
+  system_kind?: "compaction";
   id: string;
   name: string;
   description?: string;
@@ -108,6 +116,12 @@ export interface ScoreReview {
 
 /** One scored trace slice (turn, session or tool call) produced by an observer. */
 export interface TraceScore {
+  evidence_ref?: {
+    event_id?: string;
+    event_sequence?: number;
+    continuation_sequence?: number;
+    observation?: { checkpoint_id?: string; source_sequence?: number };
+  };
   id: string;
   observer_id: string;
   scorer_key: string;

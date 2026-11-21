@@ -252,3 +252,49 @@ non-blocking with respect to turn execution, and observational. Terminal tool/mo
 counts and final message identity must match retained evidence before grading;
 queue loss or overflow cannot silently produce a successful partial grade. Durable
 scoring, historical backfill and host reporting remain the Server subsystem above.
+
+## Opt-in system compaction monitoring
+
+Organization administrators can opt into a managed observer independently of the
+user-observer feature flag. The managed observer uses the existing durable queue,
+review records and health alerts, but cannot be edited, backfilled or deleted as
+a user observer. Its scores are excluded from generic agent answer-quality
+summaries so operational success cannot inflate answer quality. Unknown outcomes
+are excluded from pass-rate denominators. Alert windows assess each check
+separately, so mechanical success cannot hide a continuity regression.
+
+[System monitoring](../../crates/server/src/domains/observers/system/mod.rs)
+keeps operational assessment separate from sampled continuity. Every reported
+compaction outcome gets a metadata check. Durable/native boundaries may also get
+one bounded continuity check after their own turn terminates. Masking does not
+create paid semantic work on every request. Samples are deterministic per org
+and compaction event; none reads an endless session in full. Findings are retained
+for 30 days. No findings automatically modify an agent or trigger an evaluation.
+
+Consent and excluded tags are checked at matching and again before evidence
+reads. Continuation activation is bound to the compaction turn, preventing a
+later turn with different prompt hooks from supplying its evidence. Paid admission serializes on current org policy and reserves maximum
+catalog-priced input/output and retry capacity per scoring attempt. Ambiguous
+attempts keep the hold for that UTC day; provider-reported spend remains separate.
+Unknown pricing refuses admission. Score completion is fenced by attempt, and
+redelivery cannot dispatch the same admitted attempt again. An in-flight provider
+call cannot be recalled after opt-out. Catalog pricing is an admission estimate,
+not an invoice guarantee.
+
+[Evidence construction](../../crates/server/src/domains/observers/system/evidence.rs)
+uses small sequence windows, preserving event provenance and truncation markers.
+The judge payload is byte bounded; reading an offloaded cell window can still
+decode a larger stored segment, so payload bounds do not imply constant storage
+I/O or allocation independent of segment size.
+The judge treats excerpts as untrusted data and must cite real source and
+continuation IDs for a confident verdict. Missing evidence and invalid responses
+remain unassessed. Even a supported failure is a suspected continuity issue, not
+causal proof. Native opaque state is never decoded. Runtime prompt-hook history
+restrictions also restrict monitoring, and legacy events fail closed.
+
+Org API/report/review boundaries live in
+[quality_monitoring.rs](../../crates/server/src/domains/organizations/quality_monitoring.rs);
+[storage admission](../../crates/server/src/storage/observer_monitoring.rs) owns
+transaction and retention invariants. Framework hosts can opt into the shared
+[pure assessment](../../crates/core/src/compaction_observation.rs), while content
+judging and its consent/budget controls remain host responsibilities.

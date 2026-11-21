@@ -136,6 +136,7 @@ pub enum ObserverScope {
     Turn,
     Session,
     Tool,
+    Compaction,
 }
 
 impl ObserverScope {
@@ -144,6 +145,7 @@ impl ObserverScope {
             ObserverScope::Turn => "turn",
             ObserverScope::Session => "session",
             ObserverScope::Tool => "tool",
+            ObserverScope::Compaction => "compaction",
         }
     }
 }
@@ -159,6 +161,7 @@ impl From<&str> for ObserverScope {
         match s {
             "session" => ObserverScope::Session,
             "tool" => ObserverScope::Tool,
+            "compaction" => ObserverScope::Compaction,
             _ => ObserverScope::Turn,
         }
     }
@@ -205,6 +208,15 @@ pub enum ScorerMethod {
     Rule { rule: Scorer },
     /// LLM-as-judge.
     LlmJudge(LlmJudgeConfig),
+    /// Versioned built-in checks, configured through organization settings.
+    SystemCompaction { check: CompactionCheck },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactionCheck {
+    Execution,
+    Continuity,
 }
 
 /// One scorer inside an observer. `key` names the score series in listings
@@ -290,6 +302,9 @@ pub struct ScoreReview {
 /// An observer: online scoring config over production sessions.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Observer {
+    /// Present for system-managed observers, whose configuration is read-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_kind: Option<String>,
     /// External identifier (observer_<32-hex>). Shown as "id" in API.
     #[serde(rename = "id")]
     #[schema(value_type = String, example = "observer_01933b5a000070008000000000000001")]
@@ -370,6 +385,9 @@ impl From<&str> for TraceScoreStatus {
 /// denormalized at scoring time for aggregation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TraceScore {
+    /// Bounded runtime metadata and source-event references for system checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_ref: Option<serde_json::Value>,
     /// External identifier (score_<32-hex>). Shown as "id" in API.
     #[serde(rename = "id")]
     #[schema(value_type = String, example = "score_01933b5a000070008000000000000001")]
@@ -572,6 +590,7 @@ mod tests {
     #[test]
     fn observer_serde_skips_internal_fields() {
         let observer = Observer {
+            system_kind: None,
             public_id: ObserverId::from_uuid(Uuid::nil()),
             internal_id: Uuid::nil(),
             org_id: 1,

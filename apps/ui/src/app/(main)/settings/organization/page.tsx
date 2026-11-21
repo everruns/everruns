@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/table";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { EgressAllowlistSettings } from "@/components/organizations/egress-allowlist-settings";
+import { QualityMonitoringSettings } from "@/components/organizations/quality-monitoring-settings";
 import { EverrunsGitHubAppSettings } from "@/components/organizations/everruns-github-app-settings";
 import {
   useCreateOrganization,
@@ -543,6 +544,13 @@ export default function OrganizationPage() {
             </SettingsGroup>
 
             <EgressAllowlistSettings />
+            {organization && (
+              <QualityMonitoringSettings
+                key={organization.id}
+                organization={organization}
+                canManage={canManage}
+              />
+            )}
 
             {canManage && <EverrunsGitHubAppSettings />}
             {canManage && (

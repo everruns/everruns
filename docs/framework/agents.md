@@ -53,8 +53,11 @@ let response = session.send_and_wait("Tell me a joke.").await?;
 Enable optional host integrations for the tools your application needs. Worker
 [delegation requires host backends](/built-ins/harnesses/worker/); the default
 in-memory host does not supply them. `Harness::generic()` is deprecated and
-preserves its legacy capabilities. Sessions without a bound harness retain their
-existing empty foundation.
+preserves its legacy capabilities. With `builtins` enabled, sessions without a
+bound harness include managed compaction and history retrieval. Explicit custom
+harnesses keep their own capability selection. Compaction observation is available
+through the [Framework event API](/framework/evaluation-and-traces/#compaction-observation);
+organization monitoring consent and reporting remain host responsibilities.
 
 Presets preserve the framework's read-only workspace default. For an agent that
 writes files, explicitly select

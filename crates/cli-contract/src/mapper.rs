@@ -290,6 +290,14 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "Sandbox provider and web search accounts the organization holds.",
     ),
     (
+        "orgs quality-monitoring",
+        "Compaction monitoring consent, coverage and daily spending.",
+    ),
+    (
+        "orgs quality-monitoring scores",
+        "Compaction findings, source traces and human review.",
+    ),
+    (
         "payments",
         "Machine payments: wallets, spend policies and attempts.",
     ),

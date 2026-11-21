@@ -52,6 +52,16 @@ pub async fn wanted(
     if db.count_active_observers(org_id).await? > 0 {
         types.extend(crate::domains::observers::OBSERVED_EVENT_TYPES);
     }
+    if crate::domains::observers::system::policy(db, org_id)
+        .await?
+        .enabled
+    {
+        types.extend(
+            crate::domains::observers::system::EVENT_TYPES
+                .iter()
+                .copied(),
+        );
+    }
     if !db.tracing_export_destinations(org_id).await?.is_empty() {
         types.extend(crate::domains::trace_exports::router::TRACED_EVENT_TYPES);
     }
@@ -120,6 +130,9 @@ pub async fn deliver(
         return Ok(());
     }
     let kind = event.event_type.as_str();
+    // Persist system matching before handing the record to best-effort user
+    // listeners. A storage failure retries this feed position, idempotently.
+    crate::domains::observers::system::enqueue_event(&cp.db, &event).await?;
     for listener in listeners {
         if LISTENERS.contains(&listener.name())
             && listener

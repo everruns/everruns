@@ -1,3 +1,4 @@
+import { messages as qualityMonitoring } from "./de/quality-monitoring";
 import { messages as mcpApps } from "./de/mcp-apps";
 import { messages as extractions } from "./de/extractions";
 import { messages as rooms } from "./de/rooms";
@@ -42,6 +43,7 @@ import { messages as catalog20 } from "./de/semantic";
 import { messages as externalWorker } from "./de/external-agent";
 export const messages: Readonly<Record<string, string>> = Object.assign(
   Object.create(null),
+  qualityMonitoring,
   // First, so a translation another catalog already owns keeps its wording.
   toolApproval,
   sandboxBuilds,

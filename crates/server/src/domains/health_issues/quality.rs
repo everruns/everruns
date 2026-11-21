@@ -79,18 +79,32 @@ pub async fn sweep(db: &StorageBackend) -> anyhow::Result<()> {
             continue;
         };
         let since = Utc::now() - chrono::Duration::hours(alert.window_hours as i64);
-        let window = db
-            .summarize_trace_scores(
-                observer.org_id,
-                since,
-                crate::storage::ScoreGroup::Total,
-                Some(observer.id),
-                None,
-            )
-            .await?
-            .into_iter()
-            .next();
-        let (scored, passed) = window.map(|w| (w.scored, w.passed)).unwrap_or_default();
+        let (scored, passed) = if observer.system_kind.as_deref() == Some("compaction") {
+            // Frequent mechanical passes must not hide a continuity regression.
+            db.compaction_monitoring_window(observer.org_id, since)
+                .await?
+                .into_iter()
+                .filter(|row| breaches(&alert, row.passed + row.failed, row.passed))
+                .min_by(|a, b| {
+                    (a.passed as f64 / (a.passed + a.failed) as f64)
+                        .total_cmp(&(b.passed as f64 / (b.passed + b.failed) as f64))
+                })
+                .map(|row| (row.passed + row.failed, row.passed))
+                .unwrap_or_default()
+        } else {
+            let window = db
+                .summarize_trace_scores(
+                    observer.org_id,
+                    since,
+                    crate::storage::ScoreGroup::Total,
+                    Some(observer.id),
+                    None,
+                )
+                .await?
+                .into_iter()
+                .next();
+            window.map(|w| (w.scored, w.passed)).unwrap_or_default()
+        };
         if !breaches(&alert, scored, passed) {
             continue;
         }

@@ -383,3 +383,40 @@ fn refusals_map_to_the_control_planes_statuses() {
     );
     assert_eq!(status_of("not a directory: /a"), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn monitoring_previews_read_committed_bounded_windows_with_unicode() {
+    let cell = cell().await;
+    cell.gateway
+        .admit(cell.session, "世🙂".repeat(10000), None)
+        .await
+        .unwrap();
+    let previews = crate::event_previews::read(&cell.gateway, cell.session, 1, 32, 53)
+        .await
+        .unwrap();
+    assert!(
+        previews
+            .iter()
+            .any(|event| event.event_type == "input.message")
+    );
+    assert!(previews.iter().any(|event| event.truncated));
+    assert!(
+        previews
+            .iter()
+            .all(|event| event.text.len() <= 53 && event.sequence <= 32)
+    );
+    assert!(
+        crate::event_previews::read(&cell.gateway, cell.session, 1, 65, 53)
+            .await
+            .is_err()
+    );
+    assert!(
+        crate::event_previews::read(&cell.gateway, cell.session, 1, 32, 2049)
+            .await
+            .is_err()
+    );
+    let late = crate::event_previews::read(&cell.gateway, cell.session, 10000, 10031, 53)
+        .await
+        .unwrap();
+    assert!(late.is_empty());
+}

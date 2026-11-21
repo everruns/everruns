@@ -62,6 +62,7 @@ pub(super) fn materially_reduced(before: u64, after: u64) -> bool {
 }
 
 pub(super) struct ProactiveCompactionContext<'a> {
+    pub(super) history_evidence_allowed: bool,
     pub(super) chat_driver: &'a dyn crate::engine::ChatDriver,
     pub(super) policy: &'a dyn crate::engine::compaction_policy::CompactionPolicy,
     pub(super) checkpoint_store: Option<&'a Arc<dyn crate::engine::CompactionCheckpointStore>>,
@@ -368,6 +369,7 @@ pub(super) async fn apply_proactive_compaction(
                     context.session_id,
                     context.event_context.clone(),
                     ContextCompactedData {
+                        history_evidence_allowed: context.history_evidence_allowed,
                         checkpoint_id: applied.checkpoint_id.clone(),
                         checkpoint_bytes: None,
                         replay_source: None,
@@ -471,6 +473,7 @@ pub(super) async fn apply_proactive_compaction(
                 context.session_id,
                 context.event_context.clone(),
                 ContextCompactedData {
+                    history_evidence_allowed: context.history_evidence_allowed,
                     checkpoint_id: None,
                     checkpoint_bytes: None,
                     replay_source: None,
@@ -1075,6 +1078,7 @@ pub(super) async fn apply_reactive_compaction(
                 context.session_id,
                 context.event_context.clone(),
                 ContextCompactedData {
+                    history_evidence_allowed: context.allow_portable,
                     checkpoint_id,
                     checkpoint_bytes: None,
                     replay_source: None,
@@ -1107,6 +1111,7 @@ pub(super) async fn apply_reactive_compaction(
                 context.session_id,
                 context.event_context.clone(),
                 ContextCompactedData {
+                    history_evidence_allowed: context.allow_portable,
                     checkpoint_id: None,
                     checkpoint_bytes: None,
                     replay_source: None,

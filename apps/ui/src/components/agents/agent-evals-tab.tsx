@@ -118,6 +118,7 @@ export function observesAgent(observer: Observer, agentId: string): boolean {
 function ObservingList({ observers, agentId }: { observers: Observer[]; agentId: string }) {
   const ui = useUiTranslations();
   const scopeLabel: Record<ObserverScorerScope, string> = {
+    compaction: ui("Compaction monitoring"),
     turn: ui("answers"),
     session: ui("conversations"),
     tool: ui("tool calls"),

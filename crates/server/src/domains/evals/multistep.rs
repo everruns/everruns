@@ -484,6 +484,7 @@ impl UserSimulator for LlmUserSimulator {
                 system,
                 question,
                 CompletionOptions {
+                    monitoring: None,
                     // Some variety between trials, as real users vary.
                     temperature: 0.7,
                     max_tokens: 600,

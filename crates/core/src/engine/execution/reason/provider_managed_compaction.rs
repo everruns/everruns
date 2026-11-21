@@ -70,6 +70,7 @@ pub(super) fn decorate_request(
 }
 
 pub(super) struct Lifecycle<'a> {
+    history_evidence_allowed: bool,
     emitter: &'a dyn EventEmitter,
     session_id: SessionId,
     context: &'a EventContext,
@@ -91,8 +92,10 @@ impl<'a> Lifecycle<'a> {
         messages: usize,
         source_sequence: Option<i64>,
         config: &crate::engine::driver_registry::LlmCallConfig,
+        history_evidence_allowed: bool,
     ) -> Self {
         Self {
+            history_evidence_allowed,
             emitter,
             session_id,
             context,
@@ -272,6 +275,7 @@ impl<'a> Lifecycle<'a> {
                 self.session_id,
                 self.context.clone(),
                 ContextCompactedData {
+                    history_evidence_allowed: self.history_evidence_allowed,
                     checkpoint_id: install.checkpoint_id,
                     checkpoint_bytes: install.checkpoint_bytes,
                     replay_source: Some(replay_source.to_string()),

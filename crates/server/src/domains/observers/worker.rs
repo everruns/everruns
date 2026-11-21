@@ -19,6 +19,8 @@ use tracing::{debug, warn};
 use crate::storage::StorageBackend;
 use crate::storage::{CompleteTraceScoreRow, TraceScoreRow};
 
+const MAX_IN_FLIGHT: i64 = 4;
+
 /// Dependencies the worker loop needs to score: storage plus the graders
 /// shared with eval runs. Without a model stack (dev without providers) the
 /// model-backed scorers are skipped with a clear reason.
@@ -31,6 +33,7 @@ pub struct ObserverWorkerDeps {
 /// Worker tuning. Conservative defaults; bounded judge fan-out.
 #[derive(Clone, Copy, Debug)]
 pub struct ObserverWorkerConfig {
+    pub user_observers_enabled: bool,
     /// Max scores claimed per drain iteration.
     pub batch_size: i64,
     /// Catch-up poll interval (also heals missed wakeups).
@@ -44,6 +47,7 @@ pub struct ObserverWorkerConfig {
 impl Default for ObserverWorkerConfig {
     fn default() -> Self {
         Self {
+            user_observers_enabled: true,
             batch_size: 32,
             poll_interval: Duration::from_secs(5),
             stale_after: Duration::from_secs(120),
@@ -61,14 +65,21 @@ pub fn spawn_observer_worker(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         tracing::info!("Observer scoring worker started");
+        let mut last_prune = std::time::Instant::now();
         loop {
+            if last_prune.elapsed() >= Duration::from_secs(300) {
+                if let Err(error) = deps.db.prune_monitoring_scores().await {
+                    warn!(error = %error, "Monitoring retention cleanup failed");
+                }
+                last_prune = std::time::Instant::now();
+            }
             // Drain until a claim returns fewer than a full batch.
             loop {
                 match drain_once(&deps, config).await {
                     Ok(0) => break,
                     Ok(n) => {
                         debug!(scored = n, "Observer scoring batch processed");
-                        if (n as i64) < config.batch_size {
+                        if (n as i64) < config.batch_size.min(MAX_IN_FLIGHT) {
                             break;
                         }
                     }
@@ -99,23 +110,30 @@ async fn drain_once(
     let claimed = deps
         .db
         .claim_trace_scores(
-            config.batch_size,
+            config.batch_size.min(MAX_IN_FLIGHT),
             config.stale_after.as_secs() as i64,
             config.max_attempts,
         )
         .await?;
     let count = claimed.len();
-    for score in claimed {
-        if let Err(e) = process_score(deps, &score).await {
+    // Claimed rows share a lease start. Process the small batch concurrently
+    // so a slow judge cannot leave the rest waiting until their leases expire.
+    futures::future::join_all(claimed.into_iter().map(|score| async move {
+        if let Err(e) = process_score(deps, &score, config.user_observers_enabled).await {
             // Leave the row in `scoring`; a later claim retries it (or
             // finalizes it errored once attempts are exhausted).
             warn!(score_id = %score.public_id, error = %e, "Failed to process trace score");
         }
-    }
+    }))
+    .await;
     Ok(count)
 }
 
-async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyhow::Result<()> {
+async fn process_score(
+    deps: &ObserverWorkerDeps,
+    score: &TraceScoreRow,
+    user_observers_enabled: bool,
+) -> anyhow::Result<()> {
     let db = &deps.db;
     // Load the observer to recover the scorer config for this key.
     let Some(observer_row) = db.get_observer(score.observer_id).await? else {
@@ -123,6 +141,12 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
         finalize_skipped(db, score, "observer no longer exists").await?;
         return Ok(());
     };
+    if observer_row.system_kind.as_deref() == Some("compaction") {
+        return super::system::process_score(deps, score, &observer_row).await;
+    }
+    if !user_observers_enabled {
+        return finalize_skipped(db, score, "user observers are disabled").await;
+    }
     let scorers: Vec<ObserverScorerConfig> = serde_json::from_value(observer_row.scorers)?;
     let Some(scorer) = scorers.into_iter().find(|s| s.key == score.scorer_key) else {
         finalize_skipped(db, score, "scorer key no longer configured").await?;
@@ -145,6 +169,9 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
             pass_threshold: judge.pass_threshold,
             weight: 1.0,
         },
+        ScorerMethod::SystemCompaction { .. } => {
+            return finalize_skipped(db, score, "system scorer on a user observer").await;
+        }
     };
     let input = GradeInput {
         input_message: &evidence.input_message,
@@ -337,6 +364,7 @@ mod tests {
 
     fn observer_with_scorer(agent: AgentId, scorer: ObserverScorerConfig) -> CreateObserverRow {
         CreateObserverRow {
+            system_kind: None,
             public_id: ObserverId::from_uuid(Uuid::now_v7()).to_string(),
             name: "test".to_string(),
             description: None,
@@ -403,6 +431,7 @@ mod tests {
         db.enqueue_trace_scores(
             ORG,
             &[CreateTraceScoreRow {
+                evidence_ref: None,
                 public_id: TraceScoreId::from_uuid(Uuid::now_v7()).to_string(),
                 observer_id,
                 scorer_key: key.to_string(),
