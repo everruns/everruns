@@ -10,7 +10,7 @@ tags:
 
 # Operating data plane v2 cells
 
-Part of [design.md](design.md) (step 10). The tools here ship in `crates/cell`; the hosted load
+Part of [design.md](design.md) (step 10). The tools here ship in `crates/agentd`; the hosted load
 fleet that exercises them is described in the SaaS repository (`knowledge/operations/dataplane-load.md`).
 
 ## Looking at a fleet

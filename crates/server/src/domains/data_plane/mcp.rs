@@ -9,7 +9,7 @@
 //! - Every credential header (a literal the author wrote, or one the
 //!   catalog holds) becomes an org secret, `mcp:<BINDING>`, sealed with the
 //!   org's data key, and the header the placeholder `${BINDING}`. The
-//!   executor fills it per call (`crates/cell/src/mcp.rs`).
+//!   executor fills it per call (`crates/agentd/src/mcp.rs`).
 //! - A server that acts as the agent's service identity names the agent's
 //!   grant as an `mcp_oauth:<row id>` connection, its token secret the
 //!   grant as a self-contained OAuth token set. The data plane refreshes it

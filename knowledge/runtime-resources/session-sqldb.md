@@ -63,8 +63,8 @@ the object store by its hash, the session's replicated state indexes them, and a
 write commits its new file over the hash it started from, the same
 compare-and-set as Decision 5. The executor runs SQLite on a local working copy
 of the local store above, and the cell serves the API endpoints below for those
-sessions ([`crates/cell/src/sqldb.rs`](../../crates/cell/src/sqldb.rs),
-[`crates/cell/src/hosting_sqldb.rs`](../../crates/cell/src/hosting_sqldb.rs)).
+sessions ([`crates/agentd/src/sqldb.rs`](../../crates/agentd/src/sqldb.rs),
+[`crates/agentd/src/hosting_sqldb.rs`](../../crates/agentd/src/hosting_sqldb.rs)).
 
 ### Decision 7: Auto-Create on Execute
 **Chosen:** `sql_execute` tool auto-creates database if it doesn't exist

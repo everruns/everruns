@@ -70,7 +70,7 @@ jobs:
       - name: Build binaries
         run: |
           set -euo pipefail
-          cargo build --locked --release -p everruns-cell-testkit --bin cell-testnode --bin cell-drive
+          cargo build --locked --release -p everruns-agentd-testkit --bin cell-testnode --bin cell-drive
           mkdir -p bin
           cp target/release/cell-testnode target/release/cell-drive bin/
 

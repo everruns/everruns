@@ -3827,6 +3827,86 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-agentd"
+version = "0.53.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.23.1",
+ "bytes",
+ "chrono",
+ "chrono-tz",
+ "clap",
+ "crc32fast",
+ "everruns",
+ "everruns-capabilities",
+ "everruns-contracts",
+ "everruns-core",
+ "everruns-drivers",
+ "everruns-integrations",
+ "everruns-internal-protocol",
+ "everruns-llmsim",
+ "futures",
+ "hex",
+ "jsonwebtoken",
+ "libc",
+ "mime_guess",
+ "object_store 0.14.2",
+ "openraft",
+ "parking_lot",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tar",
+ "tempfile",
+ "tikv-jemallocator",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+ "zstd 0.14.3",
+]
+
+[[package]]
+name = "everruns-agentd-testkit"
+version = "0.53.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws-lc-rs",
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "clap",
+ "everruns",
+ "everruns-agentd",
+ "everruns-contracts",
+ "everruns-core",
+ "everruns-llmsim",
+ "futures",
+ "inventory",
+ "jsonwebtoken",
+ "parking_lot",
+ "rand 0.10.3",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "tikv-jemallocator",
+ "tokio",
+ "uuid",
+ "zstd 0.14.3",
+]
+
+[[package]]
 name = "everruns-ard"
 version = "0.53.1"
 dependencies = [
@@ -3905,94 +3985,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-cell"
-version = "0.53.1"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "base64 0.23.1",
- "bytes",
- "chrono",
- "chrono-tz",
- "clap",
- "crc32fast",
- "everruns",
- "everruns-capabilities",
- "everruns-contracts",
- "everruns-core",
- "everruns-drivers",
- "everruns-integrations",
- "everruns-internal-protocol",
- "everruns-llmsim",
- "futures",
- "hex",
- "jsonwebtoken",
- "libc",
- "mime_guess",
- "object_store 0.14.2",
- "openraft",
- "parking_lot",
- "rand 0.10.3",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "tar",
- "tempfile",
- "tikv-jemallocator",
- "tokio",
- "tokio-stream",
- "tower",
- "tracing",
- "tracing-subscriber",
- "url",
- "uuid",
- "zstd 0.14.3",
-]
-
-[[package]]
 name = "everruns-cell-example-assistant"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "everruns",
- "everruns-cell",
+ "everruns-agentd",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "everruns-cell-testkit"
-version = "0.53.1"
-dependencies = [
- "anyhow",
- "async-trait",
- "aws-lc-rs",
- "axum",
- "base64 0.23.1",
- "chrono",
- "clap",
- "everruns",
- "everruns-cell",
- "everruns-contracts",
- "everruns-core",
- "everruns-llmsim",
- "futures",
- "inventory",
- "jsonwebtoken",
- "parking_lot",
- "rand 0.10.3",
- "reqwest",
- "serde",
- "serde_json",
- "tar",
- "tempfile",
- "tikv-jemallocator",
- "tokio",
- "uuid",
- "zstd 0.14.3",
 ]
 
 [[package]]

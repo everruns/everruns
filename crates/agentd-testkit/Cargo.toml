@@ -1,5 +1,5 @@
 [package]
-name = "everruns-cell-testkit"
+name = "everruns-agentd-testkit"
 description = "Test-only cell node binary (simulated models) and the chaos and load drivers."
 publish = false
 version.workspace = true
@@ -9,11 +9,17 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 
+# Old crate name kept until the follow-up identifier rename (see agentd's
+# Cargo.toml).
+[lib]
+name = "everruns_cell_testkit"
+path = "src/lib.rs"
+
 [lints]
 workspace = true
 
 [dependencies]
-everruns-cell = { path = "../cell" }
+everruns-agentd = { path = "../agentd" }
 everruns = { workspace = true, features = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs"] }
 everruns-core = { workspace = true, features = ["host"] }
 everruns-contracts = { workspace = true, features = ["dataplane-seal", "session-sandbox", "runtime"] }

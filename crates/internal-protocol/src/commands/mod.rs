@@ -1,7 +1,7 @@
 //! Runtime stores served by the control plane's internal domain commands.
 //!
 //! Shared by the v1 worker (`everruns_worker::internal_commands`) and the
-//! data plane's executors (`everruns-cell`, step 11.6b), which reach the same
+//! data plane's executors (`everruns-agentd`, step 11.6b), which reach the same
 //! commands over the data plane link.
 //!
 //! Decision: a worker operation that is neither hot nor streaming is a domain

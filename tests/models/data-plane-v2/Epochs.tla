@@ -6,7 +6,7 @@
 (* a fence number that only grows. Every write it makes (a journal append,  *)
 (* a progress report, the release) names the epoch, and the authority      *)
 (* applies it only while that epoch is the current, unexpired one           *)
-(* (`Authority::owns`, `current` in crates/cell/src/authority.rs).          *)
+(* (`Authority::owns`, `current` in crates/agentd/src/authority.rs).        *)
 (*                                                                          *)
 (* Executors crash and come back under the same name, and every message    *)
 (* stays in `net`, so a write from an earlier incarnation can arrive late   *)

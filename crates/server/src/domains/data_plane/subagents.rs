@@ -3,7 +3,7 @@
 //! v1 subagent has.
 //!
 //! Decisions:
-//! - A cell starts a subagent itself (`crates/cell/src/subagents.rs`), but
+//! - A cell starts a subagent itself (`crates/agentd/src/subagents.rs`), but
 //!   asks here first: the record is made with the id the child then runs
 //!   under, so the calls that read a session's record (Memory mounts, a
 //!   connection acting as the turn's person, the console's lists) serve the

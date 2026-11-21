@@ -81,7 +81,7 @@ data_plane_local_start() {
   mkdir -p "$dir/logs" "$dir/data" "$dir/store"
   data_plane_local_topology "$dir"
   echo "   Building the cell binary..."
-  cargo build -p everruns-cell --bin everruns-cell || return 1
+  cargo build -p everruns-agentd --bin everruns-cell || return 1
   bin="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}/debug/everruns-cell"
   store="file://$dir/store"
   local node

@@ -10,7 +10,7 @@ tags:
 
 # Control plane ↔ data plane protocol
 
-Status: approved 2026-11-09; implemented in plan step 7 (2026-11-11). Part of [design.md](design.md) (data plane v2). The wire types are `everruns_contracts::dataplane`, and sealing is `everruns_contracts::dataplane_seal`. The data plane side is `crates/cell` (`gateway_dp.rs`, `node_control.rs`, `org_token.rs`), and `crates/cell-testkit/src/fake_cp.rs` is a fake control plane for cell tests. The control plane side is the server's `domains/data_plane` (outbox, feed, allowances, org tokens) and the operator CLI `everruns-dataplane`.
+Status: approved 2026-11-09; implemented in plan step 7 (2026-11-11). Part of [design.md](design.md) (data plane v2). The wire types are `everruns_contracts::dataplane`, and sealing is `everruns_contracts::dataplane_seal`. The data plane side is `crates/agentd` (`gateway_dp.rs`, `node_control.rs`, `org_token.rs`), and `crates/agentd-testkit/src/fake_cp.rs` is a fake control plane for cell tests. The control plane side is the server's `domains/data_plane` (outbox, feed, allowances, org tokens) and the operator CLI `everruns-dataplane`.
 
 ## Shape
 
