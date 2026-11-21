@@ -510,7 +510,10 @@ impl PlatformStore for CellPlatformStore {
                 Some(id),
                 parent.org.clone(),
                 agent_ref,
-                memory,
+                crate::gateway::Joining {
+                    memory,
+                    importing: false,
+                },
             )
             .await
             .map_err(api)?;

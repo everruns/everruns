@@ -26,6 +26,8 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use everruns::database::runtime::LocalSqlDbStore;
+use everruns::database::runtime::limits::MAX_DB_SIZE_BYTES;
+use everruns::database::runtime::validation::validate_database_name;
 use everruns_contracts::session_sqldb::{
     DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult, SqlQueryResult,
     TableSchema,
@@ -34,6 +36,9 @@ use everruns_contracts::session_sqldb::{
 use crate::sqldb::{CONFLICT, Database, LIMIT, SqlChange};
 
 type SqlResult<T> = std::result::Result<T, SessionSqlDbError>;
+
+/// The first bytes of every SQLite database file.
+const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 
 /// Sessions whose working copies a process keeps while not in use.
 const COPIES_MAX: usize = 64;
@@ -366,6 +371,51 @@ impl CellSqlDb {
             result
         })
         .await
+    }
+
+    /// Put a whole database file as `name`: a moved v1 session's database
+    /// (`data_plane::moves` on the control plane), whose stored pages, in
+    /// order, are an SQLite file. Retry-safe: the same file again is a
+    /// no-op, and it replaces only the file it was told it replaces.
+    pub(crate) async fn import(
+        &self,
+        session: SessionId,
+        name: &str,
+        bytes: Vec<u8>,
+    ) -> SqlResult<DatabaseInfo> {
+        validate_database_name(name).map_err(SessionSqlDbError::from)?;
+        // An empty file is a database with no pages yet.
+        if !bytes.is_empty() && !bytes.starts_with(SQLITE_HEADER) {
+            return Err(internal("not an SQLite database file"));
+        }
+        if bytes.len() as i64 > MAX_DB_SIZE_BYTES {
+            return Err(SessionSqlDbError::LimitExceeded(format!(
+                "database {name} is larger than {MAX_DB_SIZE_BYTES} bytes"
+            )));
+        }
+        let index = self.index_sql(session).await?;
+        let sha256 = sha256_of(&bytes);
+        let before = index.get(name);
+        if before.is_none_or(|d| d.sha256 != sha256) {
+            let size = bytes.len() as u64;
+            self.store()
+                .map_err(internal)?
+                .put_blob(bytes)
+                .await
+                .map_err(internal)?;
+            let change = SqlChange::Put {
+                name: name.to_owned(),
+                sha256,
+                size,
+                expected: before.map(|d| d.sha256.clone()),
+            };
+            self.commit(session, change).await?;
+        }
+        self.index_sql(session)
+            .await?
+            .get(name)
+            .map(|d| d.info(name))
+            .ok_or_else(|| internal("database missing after import"))
     }
 
     /// Run a read-only call on `name`.

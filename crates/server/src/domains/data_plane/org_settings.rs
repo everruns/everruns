@@ -23,6 +23,10 @@
 //!   the dispatcher syncs every org whose count is ahead of its last sync
 //!   ([`sync_owed`]). Revoking open egress therefore reaches the cells
 //!   even when the sync right after the change failed.
+//! - One sync of an org at a time, across servers (an advisory lock,
+//!   [`settle`]): each reads the change count and the tables under it, so
+//!   an older read never publishes after a newer one, and is never
+//!   recorded as covering a change it did not see.
 //! - The session owner's own approval settings are a person's, not the
 //!   org's: they stay a host call (`tool_approval_policy`), and without an
 //!   answer the turn runs with none, which only asks more.
@@ -45,6 +49,11 @@ use crate::storage::StorageBackend;
 /// The prefix of the search account key secrets.
 const KEY_PREFIX: &str = "web-search-key:";
 
+/// The lock that orders one org's syncs, keyed by the org.
+const SYNC_LOCK: &str = "dp-org-settings-sync";
+/// How long a sync waits for the one running before it.
+const SYNC_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Orgs synced per dispatcher pass.
 const OWED_BATCH: i64 = 64;
 
@@ -52,14 +61,10 @@ const OWED_BATCH: i64 = 64;
 pub async fn sync_owed(cp: &ControlPlane) -> anyhow::Result<usize> {
     let behind = cp.db.dp_orgs_settings_behind(OWED_BATCH).await?;
     let n = behind.len();
-    for (org_id, rev) in behind {
-        // Read before the tables: a change made while this sync runs bumps
-        // the count past `rev`, so it is synced again.
-        if let Err(error) = sync_tables(cp, org_id).await {
+    for (org_id, _) in behind {
+        if let Err(error) = settle(cp, org_id).await {
             tracing::warn!(org_id, %error, "the data plane's org settings were not synced");
-            continue;
         }
-        cp.db.dp_settings_synced(org_id, rev).await?;
     }
     Ok(n)
 }
@@ -67,6 +72,24 @@ pub async fn sync_owed(cp: &ControlPlane) -> anyhow::Result<usize> {
 /// Bring `org_id`'s pushed settings in line with its tables and record the
 /// change count it covered. A v1 org is left alone.
 pub async fn sync(cp: &ControlPlane, org_id: i64) -> anyhow::Result<()> {
+    settle(cp, org_id).await
+}
+
+/// Sync `org_id` from its tables and record the change count that covered,
+/// one sync of the org at a time across every server. Syncs overlap (a
+/// change's own sync on one server, the dispatcher on another); unordered,
+/// one that read the tables before a change could publish after that
+/// change's own sync, putting back what it took away (open egress after a
+/// revocation) while the count says it is synced. Under the lock each sync
+/// reads the count, then the tables, then publishes, so the one that read
+/// last publishes last.
+async fn settle(cp: &ControlPlane, org_id: i64) -> anyhow::Result<()> {
+    let _one_at_a_time = cp
+        .db
+        .advisory_xact_lock_polling(SYNC_LOCK, &org_id.to_string(), SYNC_LOCK_WAIT)
+        .await?;
+    // Read before the tables: a change made while this sync runs bumps the
+    // count past `rev`, so it is synced again.
     let Some(rev) = cp.db.dp_org_settings_rev(org_id).await? else {
         return Ok(());
     };

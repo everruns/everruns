@@ -142,6 +142,12 @@ pub struct Authority {
     pub values: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub secrets: BTreeMap<String, String>,
+    /// When each value and secret was first set and last changed, in ms
+    /// (the Storage tab's `created_at`, `updated_at`), keyed as
+    /// [`stamp_key`] writes them. Absent for ones set before cells kept
+    /// them; those show no time.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stamps: BTreeMap<String, Stamp>,
     /// The runtime's session record (Everruns `RuntimeSessionStore`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution: Option<Value>,
@@ -684,16 +690,27 @@ impl crate::state::SessionState {
                 Value::Null
             }
             WriteOp::SetValue { key, value } => {
+                a.stamp(false, &key, now_ms);
                 a.values.insert(key, value);
                 Value::Null
             }
-            WriteOp::TakeValue { key } => json!(a.values.remove(&key)),
-            WriteOp::DeleteValue { key } => json!(a.values.remove(&key).is_some()),
+            WriteOp::TakeValue { key } => {
+                a.unstamp(false, &key);
+                json!(a.values.remove(&key))
+            }
+            WriteOp::DeleteValue { key } => {
+                a.unstamp(false, &key);
+                json!(a.values.remove(&key).is_some())
+            }
             WriteOp::SetSecret { key, value } => {
+                a.stamp(true, &key, now_ms);
                 a.secrets.insert(key, value);
                 Value::Null
             }
-            WriteOp::DeleteSecret { key } => json!(a.secrets.remove(&key).is_some()),
+            WriteOp::DeleteSecret { key } => {
+                a.unstamp(true, &key);
+                json!(a.secrets.remove(&key).is_some())
+            }
             WriteOp::Execution { session } => {
                 a.execution = Some(session);
                 Value::Null
@@ -731,6 +748,34 @@ impl crate::state::SessionState {
             }
         };
         Applied::Done(reply, Vec::new())
+    }
+}
+
+/// When a session value or secret was first set and last changed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stamp {
+    pub created_ms: i64,
+    pub updated_ms: i64,
+}
+
+/// [`Authority::stamps`]' key for a value (`secret` false) or a secret.
+pub fn stamp_key(secret: bool, key: &str) -> String {
+    format!("{}:{key}", if secret { "secret" } else { "value" })
+}
+
+impl Authority {
+    /// Record that a value or secret was set at `now_ms`.
+    pub fn stamp(&mut self, secret: bool, key: &str, now_ms: i64) {
+        let stamp = self.stamps.entry(stamp_key(secret, key)).or_insert(Stamp {
+            created_ms: now_ms,
+            updated_ms: now_ms,
+        });
+        stamp.updated_ms = now_ms;
+    }
+
+    /// Forget a removed value's or secret's times.
+    pub fn unstamp(&mut self, secret: bool, key: &str) {
+        self.stamps.remove(&stamp_key(secret, key));
     }
 }
 

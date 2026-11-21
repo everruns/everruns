@@ -54,6 +54,11 @@ pub enum Command {
     Assign { session: SessionId, tenant: String },
     /// Read the authorization tenant through the log, after committed Assign.
     Tenant { session: SessionId },
+    /// Hold `session` closed to messages while the control plane imports a
+    /// moved v1 session into it (`on`), or open it once the import is done.
+    /// Proposed before the create, so the session never takes a message
+    /// before its history, storage and files are in.
+    Importing { session: SessionId, on: bool },
     /// Take a spend allowance grant for `tenant` (see `allowance`).
     Grant {
         tenant: String,
@@ -521,6 +526,10 @@ pub struct SessionState {
     /// The session's SQL databases (see `sqldb`).
     #[serde(default, skip_serializing_if = "crate::sqldb::Databases::is_empty")]
     pub sqldb: crate::sqldb::Databases,
+    /// Closed to messages while a moved v1 session is imported into it
+    /// ([`Command::Importing`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub importing: bool,
     /// The session's history branch: 0 until a restore takes it back to an
     /// earlier point, then a newer number no earlier branch of it used
     /// (`new_branch`). The segments it writes carry it (`store::SegRef`).
@@ -597,6 +606,10 @@ pub struct CellState {
     /// Commands arriving in pieces, by id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub parts: std::collections::BTreeMap<uuid::Uuid, Assembly>,
+    /// Sessions a create will make closed to messages ([`Command::Importing`]):
+    /// the import's mark, taken before the session exists.
+    #[serde(default, skip_serializing_if = "std::collections::HashSet::is_empty")]
+    pub importing: std::collections::HashSet<SessionId>,
     /// Durations (ms) of turns finished since the state machine last took
     /// them, for the turn SLO gauge. Not replicated state.
     #[serde(skip)]
@@ -815,6 +828,7 @@ impl CellState {
                             definition: definitions::intern(definition),
                             created_ms: now_ms,
                             generation: 1,
+                            importing: self.importing.contains(&session),
                             ..SessionState::default()
                         },
                     );
@@ -876,6 +890,26 @@ impl CellState {
                 },
                 None => self.missing(session),
             },
+            Command::Importing { session, on } => {
+                if on {
+                    self.importing.insert(session);
+                } else {
+                    self.importing.remove(&session);
+                }
+                let Some(state) = self.session_mut(session) else {
+                    // A mark waits for the create.
+                    return if on {
+                        Response::Ok
+                    } else {
+                        self.missing(session)
+                    };
+                };
+                if state.importing != on {
+                    state.importing = on;
+                    changes.push(Change::Session(session));
+                }
+                Response::Ok
+            }
             Command::Assign { session, tenant } => {
                 let Some(state) = self.session_mut(session) else {
                     return self.missing(session);

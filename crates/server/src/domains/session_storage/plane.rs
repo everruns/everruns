@@ -10,8 +10,8 @@
 //!   data key, bound to the session and its name, before it leaves the
 //!   control plane; the cell refuses anything else and never returns a
 //!   secret's value.
-//! - A cell keeps no timestamps for a key or secret: their `created_at` and
-//!   `updated_at` are empty and the console shows none.
+//! - A cell keeps when each key and secret was first set and last changed
+//!   (`stamps`); one set before cells kept them shows empty times.
 //! - Bound secrets (a secret the platform puts on requests to one URL) are
 //!   refused on a v2 session for now: the cell has no egress binding yet.
 
@@ -33,6 +33,37 @@ pub struct Listed {
     pub values: BTreeMap<String, String>,
     #[serde(default)]
     pub secrets: Vec<String>,
+    /// When each was first set and last changed, keyed `value:<key>` and
+    /// `secret:<name>`; absent for ones set before cells kept times.
+    #[serde(default)]
+    pub stamps: BTreeMap<String, Stamp>,
+}
+
+/// When a value or secret was first set and last changed (RFC 3339).
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct Stamp {
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+impl Listed {
+    /// A value's times, empty when the cell has none.
+    pub fn value_stamp(&self, key: &str) -> Stamp {
+        self.stamps
+            .get(&format!("value:{key}"))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// A secret's times, empty when the cell has none.
+    pub fn secret_stamp(&self, name: &str) -> Stamp {
+        self.stamps
+            .get(&format!("secret:{name}"))
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 /// One of an org's sessions on its data plane, for its storage.

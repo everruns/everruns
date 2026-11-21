@@ -239,6 +239,30 @@ Moves are what make every upgrade safe:
 - The same drain handles cell replacement, zone evacuation and shrinking
   the fleet.
 
+What the canary upgrade qualification (2026-11-20) showed, and what holds
+until mixed releases are checked in CI:
+
+- **The control plane and cells upgrade as a matched pair, with v2 writes
+  paused.** Neither order works on its own: a newer control plane refuses
+  an older cell's host calls it no longer serves, and a newer cell needs
+  host calls an older control plane lacks.
+- **With the edge down**, requests fall back to the control plane. For a v2
+  session it answers from the session's cell or with 503, never from the
+  v1 store (the session database API, `session_databases/plane.rs`, was
+  the last path that read the v1 store).
+- **Rollback is a restore, not an image swap.** An older control plane
+  refuses newer migrations, and an older cell cannot read newer Raft
+  records. Restore the pre-upgrade restore point with writes paused
+  ([Disaster recovery](#disaster-recovery)); never start older binaries on
+  upgraded volumes. A cell refuses to open a log holding an intact record
+  it cannot decode (`wal.rs`) rather than cutting it off as a torn tail,
+  so from this release on an older cell stops instead of truncating
+  acknowledged writes.
+- Data plane v2 has no production data yet (2026-11-21): a release that
+  changes cell state rebuilds the test fleets instead of migrating them, so
+  v2 sessions' SQL databases left in the control plane's store before
+  cells held them (everruns#5537) are not imported.
+
 ### Gateways
 
 Every cell node serves the `/v1` session API (create session, send message,
@@ -2293,14 +2317,21 @@ without a session moves every v1 session of the org). The move switches
 first: one transaction records it (`dp_session_moves`) and marks the
 session as the data plane's, so no message reaches the workers again; the
 control plane refuses its messages ("moving, send again") until the import
-is done. Only a session with no turn running or waiting is switched, and a
+is done, and so does the cell: the session is created there closed to
+messages (`importing`, marked in the cell's state before the create, so it
+holds from the session's first moment), since the edge sends plain
+messages straight to the cell once it finds the session there. The move's
+last step opens it (`activate`), after everything below is in. Only a session with no turn running or waiting is switched, and a
 turn that started just before the switch is waited out; a turn waiting on
 tool results is not moved, since its call would be left without an answer.
-The import carries what a fork carries: the conversation (the newest
+The import carries what a fork carries, and the session's databases: the conversation (the newest
 messages that fit one seed call, text and media only), the values and the
 secrets (sealed again for the session), and the workspace's files (one
 call each when large; the data plane's session commands take a file as
-big as a cell holds). A bound secret stays behind, since a cell has no
+big as a cell holds), and the SQL databases, each whole (v1 keeps a
+database as its pages, which in order are its SQLite file; both planes
+hold the same limits, so a database that does not go stops the move
+rather than stay behind). A bound secret stays behind, since a cell has no
 egress binding yet. The v1 log stays in the control plane's `events`, and
 the move records where it ends and what stayed behind. Every step is
 retry-safe, so a move that stopped midway is run again and continues.
