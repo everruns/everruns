@@ -510,6 +510,7 @@ async fn up(args: UpArgs) -> Result<()> {
     };
     let signed_in = Box::pin(signin::ensure_profile(
         &api_url,
+        &api_url,
         &inst.profile(),
         creds,
         switch,

@@ -99,6 +99,18 @@ up || fail "up after --set failed"
 [ "$(kubectl -n "$NS" get deploy "$NAME-everruns-server" -o jsonpath='{.spec.replicas}')" = "2" ] \
   || fail "a later up dropped --set server.replicas=2"
 
+step "Direct Ingress signs in before DNS is ready"
+public_url="http://everruns-smoke.invalid"
+up --public-url "$public_url" || fail "up could not sign in through a direct install's server Service"
+[ -z "$(kubectl -n "$NS" get svc "$NAME-everruns" --ignore-not-found -o name)" ] \
+  || fail "the Caddy Service still exists"
+[ -n "$(kubectl -n "$NS" get ingress "$NAME-everruns" -o name)" ] || fail "the Ingress was not created"
+jq -e --arg profile "$PROFILE" --arg url "$public_url/api" \
+  '.profiles[$profile] | .api_url == $url and (.api_key | length > 0)' \
+  "$XDG_CONFIG_HOME/everruns/credentials.json" >/dev/null || fail "the profile must use the public URL"
+up --set ingress.enabled=false --set publicUrl= || fail "up could not restore local access"
+with_forward signed_in || fail "the profile does not work after restoring local access"
+
 step "Status"
 "$BIN" k8s status --name "$NAME" 2>&1 | tee "$TMP/status.log"
 grep -q "$NAME-everruns-server" "$TMP/status.log" || fail "status lists no server pod"

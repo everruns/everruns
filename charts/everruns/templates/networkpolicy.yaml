@@ -17,6 +17,7 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
       app.kubernetes.io/name: {{ .Chart.Name }}
   policyTypes: [Ingress]
+{{- if include "everruns.proxyEnabled" . }}
 ---
 # The proxy is the way in: from the ingress controller, load balancer or
 # port-forward, which the chart cannot name.
@@ -33,6 +34,7 @@ spec:
     - ports:
         - { protocol: TCP, port: 9300 }
         - { protocol: TCP, port: 8080 }
+{{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -44,9 +46,13 @@ spec:
     matchLabels: {{- include "everruns.selector" (list . "server") | nindent 6 }}
   policyTypes: [Ingress]
   ingress:
-    # HTTP API: the proxy, and the UI's server-side rendering.
+    # HTTP API: public traffic and the UI's server-side requests.
     - from:
+        {{- if include "everruns.proxyEnabled" . }}
         {{- include "everruns.peer" (list . "proxy") | nindent 8 }}
+        {{- else }}
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+        {{- end }}
         {{- include "everruns.peer" (list . "ui") | nindent 8 }}
       ports:
         - { protocol: TCP, port: 9000 }
@@ -85,7 +91,11 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
+        {{- if include "everruns.proxyEnabled" . }}
         {{- include "everruns.peer" (list . "proxy") | nindent 8 }}
+        {{- else }}
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+        {{- end }}
       ports:
         - { protocol: TCP, port: 9305 }
 {{- if include "everruns.dataPlaneRuns" . }}
@@ -125,7 +135,11 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
+        {{- if include "everruns.proxyEnabled" . }}
         {{- include "everruns.peer" (list . "proxy") | nindent 8 }}
+        {{- else }}
+        {{- toYaml .Values.networkPolicy.ingressFrom | nindent 8 }}
+        {{- end }}
       ports:
         - { protocol: TCP, port: 7100 }
 {{- end }}

@@ -42,7 +42,7 @@ everruns k8s up [OPTIONS]
 | `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `openrouter`, `skip`. |
 | `--database-url <DATABASE_URL>` | Your PostgreSQL 15+ URL (postgres://user:password@host:5432/db) |
 | `--bundled-postgres` | Run a single PostgreSQL pod in the cluster, for trying Everruns out (no backups or failover) |
-| `--public-url <PUBLIC_URL>` | Public address people use, such as https://everruns.example.com; adds an Ingress. |
+| `--public-url <PUBLIC_URL>` | Public address such as https://everruns.example.com. Enables direct Ingress by default. |
 | `--ingress-class <INGRESS_CLASS>` | Ingress class for the public address, such as nginx. |
 | `--chart <CHART>` | Chart to install: a local path such as charts/everruns, or an OCI reference. |
 | `--chart-version <CHART_VERSION>` | Chart version for a new install (default: this CLI's version) |

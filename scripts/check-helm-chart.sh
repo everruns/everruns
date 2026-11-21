@@ -81,6 +81,47 @@ three="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.a
   --set dataPlane.cell.nodes=3)"
 grep -q 'check-everruns-cell-2.check-everruns-cell:7000' <<<"$three" || fail "three nodes are not in the topology"
 
+echo "==> Ingress defaults to direct routing"
+direct=(--set postgresql.enabled=true --set auth.adminEmail=admin@example.com
+  --set ingress.enabled=true --set ingress.host=everruns.example.com --set networkPolicy.enabled=true
+  --set 'networkPolicy.ingressFrom[0].namespaceSelector.matchLabels.kubernetes\.io/metadata\.name=ingress-system')
+for mode in v1 v2 keepRunning; do
+  data_plane=(--set "dataPlane.version=$mode")
+  if [[ "$mode" == keepRunning ]]; then
+    data_plane=(--set dataPlane.version=v1 --set dataPlane.keepRunning=true)
+  fi
+  helm template check "$CHART" "${direct[@]}" "${data_plane[@]}" | python3 -c '
+import re, sys
+mode = sys.argv[1]
+docs = sys.stdin.read().split("\n---")
+assert not any("component: proxy\n" in doc for doc in docs), "Caddy still renders"
+assert not any("name: check-everruns-proxy\n" in doc for doc in docs), "Caddy ConfigMap still renders"
+ingress, = (doc for doc in docs if "\nkind: Ingress\n" in doc)
+assert "host: \"everruns.example.com\"" in ingress
+routes = dict((path, (path_type, service)) for path, path_type, service in re.findall(
+    r"path: (\S+)\s+pathType: (\S+)\s+backend:\s+service:\s+name: check-everruns-(\w+)\s+port: \{ name: http \}",
+    ingress,
+))
+expected = {"/": ("Prefix", "ui")}
+expected.update({path: ("Prefix", "server") for path in ("/api", "/oauth", "/.well-known", "/api-doc")})
+expected.update({path: ("Exact", "server") for path in ("/mcp", "/health", "/llms.txt", "/auth.md", "/robots.txt", "/sitemap.xml")})
+if mode != "v1":
+    expected.update({"/api/v1/" + route: ("Prefix", "edge") for route in ("sessions", "commands", "workspaces")})
+assert routes == expected, routes
+for service in {backend for _, backend in expected.values()}:
+    name = f"check-everruns-{service}"
+    assert any("\nkind: Service\n" in doc and f"name: {name}\n" in doc for doc in docs), name
+    policy, = (doc for doc in docs if "\nkind: NetworkPolicy\n" in doc and f"name: {name}\n" in doc)
+    assert "kubernetes.io/metadata.name: ingress-system" in policy, name
+ui, = (doc for doc in docs if "\nkind: Deployment\n" in doc and "component: ui\n" in doc)
+assert "UI_HOMEPAGE_MARKDOWN_URL" in ui
+' "$mode"
+done
+if grep -q 'UI_HOMEPAGE_MARKDOWN_URL' <<<"$one"; then fail "the UI takes over discovery with Caddy enabled"; fi
+legacy="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set ingress.enabled=true --set proxy.enabled=true)"
+grep -q 'component: proxy' <<<"$legacy" || fail "proxy.enabled=true must keep Caddy with Ingress"
+
 echo "==> isolated sandboxes render least privilege"
 sbx="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set egressProxy.enabled=true --set networkPolicy.enabled=true --set sandboxes.kubernetes.enabled=true \
@@ -137,6 +178,10 @@ refuses "must be v1 or v2" --set postgresql.enabled=true --set auth.adminEmail=a
   --set dataPlane.version=v3
 refuses "must be 1, 3 or 5" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set dataPlane.cell.nodes=2
+refuses "needs ingress.enabled=true" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set proxy.enabled=false
+refuses "needs networkPolicy.ingressFrom" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
+  --set ingress.enabled=true --set networkPolicy.enabled=true
 refuses "cannot be used with auth.mode full" --set postgresql.enabled=true --set auth.mode=full \
   --set auth.adminEmail=admin@example.com --set seedDefaultProviderKeys=true
 

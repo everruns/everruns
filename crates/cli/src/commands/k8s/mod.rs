@@ -130,7 +130,7 @@ pub struct UpArgs {
     #[arg(long)]
     pub bundled_postgres: bool,
 
-    /// Public address people use, such as https://everruns.example.com; adds an Ingress
+    /// Public address such as https://everruns.example.com. Enables direct Ingress by default
     #[arg(long)]
     pub public_url: Option<String>,
 
@@ -553,20 +553,27 @@ async fn up(args: UpArgs) -> Result<()> {
         &args.timeout,
     )?;
 
-    // Sign the CLI in, through the public address when it answers, else a
-    // port-forward that lives for the sign-in.
-    let public = Known(&values).public_url().map(str::to_string);
+    // Helm applies -f and --set after the generated values. Use the deployed
+    // public URL and secret name for sign-in.
+    let applied = target
+        .release_values()?
+        .context("installed Helm release not found")?;
+    let public = Known(&applied).public_url().map(str::to_string);
     let (url, _forward) = reach(&target, public.as_deref(), port).await?;
     let api_url = format!("{url}/api");
+    let profile_api_url = format!(
+        "{}/api",
+        public.as_deref().unwrap_or(&url).trim_end_matches('/')
+    );
     let health = health(&url).await?;
     let password = if auth == AuthChoice::None {
         String::new()
     } else {
-        target.secret_value(&secret_name(&target, &values), "AUTH_ADMIN_PASSWORD")?
+        target.secret_value(&secret_name(&target, &applied), "AUTH_ADMIN_PASSWORD")?
     };
     let hint = format!(
         "store the new one as AUTH_ADMIN_PASSWORD in Secret {} (or set auth.adminPassword)",
-        secret_name(&target, &values)
+        secret_name(&target, &applied)
     );
     let creds = signin::Credentials {
         auth,
@@ -583,6 +590,7 @@ async fn up(args: UpArgs) -> Result<()> {
     };
     let signed_in = Box::pin(signin::ensure_profile(
         &api_url,
+        &profile_api_url,
         &inst.profile(),
         creds,
         switch,
@@ -654,10 +662,10 @@ async fn up(args: UpArgs) -> Result<()> {
             ui::cmd("--database-url")
         ));
     }
-    if first_install && values["secrets"]["existingSecret"].as_str().is_none() {
+    if first_install && applied["secrets"]["existingSecret"].as_str().is_none() {
         ui::warn(format!(
             "Back up Secret {} with the database: it holds the key that encrypts stored provider keys and secrets.",
-            ui::bold(secret_name(&target, &values))
+            ui::bold(secret_name(&target, &applied))
         ));
     }
     if let Some(v) = &version
@@ -753,14 +761,18 @@ async fn reach(
             "{url} does not answer yet (DNS or Ingress); signing in through a port-forward."
         ));
     }
+    let proxy = target.has_proxy_service()?;
+    if !proxy && public.is_none() {
+        bail!("direct Ingress needs a public address for CLI access; rerun with --public-url");
+    }
     if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
         // Most likely an `everruns k8s port-forward` already running.
-        if health(&local_url(port)).await.is_ok() {
+        if proxy && health(&local_url(port)).await.is_ok() {
             return Ok((local_url(port), None));
         }
         bail!("local port {port} is in use; pick another with --port");
     }
-    let forward = target.port_forward(port)?;
+    let forward = target.port_forward(port, proxy)?;
     let started = Instant::now();
     while started.elapsed() < HEALTH_TIMEOUT {
         if health(&local_url(port)).await.is_ok() {
@@ -774,7 +786,7 @@ async fn reach(
     )
 }
 
-/// The server's version from `/health` through the proxy.
+/// The server's version from the selected HTTP endpoint.
 async fn health(url: &str) -> Result<String> {
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
@@ -786,8 +798,11 @@ async fn health(url: &str) -> Result<String> {
     if !resp.status().is_success() {
         bail!("health answered {}", resp.status());
     }
-    let body: Value = resp.json().await.unwrap_or_default();
-    Ok(body["version"].as_str().unwrap_or("").to_string())
+    let body: Value = resp.json().await.context("health did not return JSON")?;
+    Ok(body["version"]
+        .as_str()
+        .context("health did not return a server version")?
+        .to_string())
 }
 
 /// The server's `/health` (liveness) and `/health/ready` (database answers,
@@ -1082,19 +1097,18 @@ fn logs(args: &InstanceArgs, component: Option<&str>, no_follow: bool) -> Result
 /// stops only this process would otherwise leave kubectl holding the port,
 /// forwarding to a pod that may be gone.
 async fn forward_foreground(target: &Target, port: u16) -> Result<()> {
+    if !target.has_proxy_service()? {
+        bail!(
+            "this install uses direct Ingress; use its public URL instead of a browser port-forward"
+        );
+    }
     ui::ok(format!(
         "Everruns at {} {}",
         ui::cmd(local_url(port)),
         ui::dim("(Ctrl+C to stop the port-forward)")
     ));
-    let mut cmd = tokio::process::Command::from(target.kubectl());
-    cmd.args([
-        "port-forward",
-        &format!("svc/{}", target.fullname()),
-        &format!("{port}:9300"),
-    ])
-    .stdout(Stdio::null())
-    .kill_on_drop(true);
+    let mut cmd = tokio::process::Command::from(target.port_forward_command(port, true));
+    cmd.stdout(Stdio::null()).kill_on_drop(true);
     let mut child = cmd.spawn().context("Failed to run kubectl port-forward")?;
     let status = tokio::select! {
         status = child.wait() => status.context("Failed to run kubectl port-forward")?,
