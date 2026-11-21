@@ -223,7 +223,7 @@ Display:   evr_pat_<first-8-chars>...      (prefix for identification)
 | TM-CRYPTO-005 | Stale encryption key | Medium | Key rotation supported (primary + previous KEK); key_id in payload | MITIGATED |
 | TM-CRYPTO-006 | Re-encryption job missing | Low | CLI tool `reencrypt_secrets` implemented with batch processing, dry-run mode, and key rotation detection | MITIGATED |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | LLM API keys encrypted; system prompt encryption reverted (PII should not be in prompts) | **OPEN** |
-| TM-CRYPTO-008 | Machine-payment wallet key exposure | Critical | When machine payments are disabled, custody UI/navigation is hidden, payment commands are omitted from live Platform/MCP discovery (the portable native catalog retains public operation metadata), and payment account/policy/attempt routes return a structured `feature_not_enabled` 404, and payment execution re-checks the durable org flag before spending; when enabled, wallet private keys are accepted only on payment account create/update, encrypted with the server envelope encryption service, never returned from API responses, decrypted only inside `ServerPaymentAuthority` immediately before native rail signing, and never sent to workers | MITIGATED |
+| TM-CRYPTO-008 | Machine-payment wallet key exposure | Critical | Machine payments were removed in 2026-11 before any deployment enabled them: no route, UI, RPC or code reads stored wallet material. Legacy `payment_accounts` rows, if any exist, stay encrypted and covered by key rotation | **RETIRED** |
 | TM-CRYPTO-009 | Public local KEK exposes persisted provider credentials | Medium | Local launchers generate a private per-prefix KEK with mode 0600; the former public key is accepted only as a previous key for migration | MITIGATED |
 
 ### Mitigation Details
@@ -251,19 +251,9 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 - Key rotation detection via `is_current_key()`
 - Full UPDATE statements to write re-encrypted data back
 
-**TM-CRYPTO-008, Machine-Payment Wallet Custody (MITIGATED):**
-`FEATURE_MACHINE_PAYMENTS` gates the entire custody surface. When its grade is off, the payment
-routes are not mounted and the UI removes Settings navigation, direct page access, and
-global-search discovery. When organisation-effective access is enabled, payment accounts store wallet signing material in
-`credential_encrypted`, protected by the same envelope encryption service used for other
-secrets. The public `PaymentAccount` model intentionally omits this field. Native x402 signing
-happens only in `ServerPaymentAuthority`; external workers call the control-plane
-`ExecuteMachinePayment` RPC and never receive private keys.
-
-Native EIP-712 signing also depends on upstream constant-time arithmetic. The RustSec
-gate covers its locked transitive dependencies; signing dependency upgrades retain
-the known EIP-3009 signature and recovery vectors in
-[`domains/payments`](../../crates/server/src/domains/payments/eip712.rs).
+**TM-CRYPTO-008, Machine-Payment Wallet Custody (RETIRED):**
+Machine payments were removed in 2026-11. The tables stay (records are never purged), and
+`payment_accounts.credential_encrypted` stays in the key-rotation column list.
 
 ## 3. Tenant Isolation (TM-TENANT)
 
@@ -1167,7 +1157,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `ag_ui_delegation`, `docker_container`, `daytona`, `e2b`, `bashkit_shell`, `web_fetch`, `model_scout`) require Admin role to assign via API; the same gate covers effective parent/dependency capabilities when assigning a harness to an agent or directly selecting one for a session; creating or updating a declarative capability is an assignment too, because agents already using it pick up new `dependencies` on their next turn: a non-Admin may not add a high-risk dependency, directly, through another declarative capability, or through a built-in's own dependencies (`check_high_risk_dependencies`; tests `member_cannot_create_declarative_capability_with_high_risk_dependency`, `member_cannot_add_high_risk_dependency_on_update`); running an already-configured agent remains permitted, and member-owned agents that already had high-risk capabilities are grandfathered (see `knowledge/execution/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
+| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `ag_ui_delegation`, `daytona`, `e2b`, `bashkit_shell`, `web_fetch`, `model_scout`) require Admin role to assign via API; the same gate covers effective parent/dependency capabilities when assigning a harness to an agent or directly selecting one for a session; creating or updating a declarative capability is an assignment too, because agents already using it pick up new `dependencies` on their next turn: a non-Admin may not add a high-risk dependency, directly, through another declarative capability, or through a built-in's own dependencies (`check_high_risk_dependencies`; tests `member_cannot_create_declarative_capability_with_high_risk_dependency`, `member_cannot_add_high_risk_dependency_on_update`); running an already-configured agent remains permitted, and member-owned agents that already had high-risk capabilities are grandfathered (see `knowledge/execution/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
 | TM-AGENT-006 | Cost runaway, unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway, many tools per iteration | Medium | `ActAtom` runs at most 64 server tool calls per model response (`EVERRUNS_ACT_MAX_TOOL_CALLS`, [`tool_scheduler`](../../crates/core/src/engine/execution/tool_scheduler.rs)); calls past the cap get an error result and never run, so the model has to split the work across turns | MITIGATED |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -1181,11 +1171,11 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | `ask_user` with `kind: "secret"` gives an agent an in-flow way to collect a credential that never reaches the event log: the client stores the value through the encrypted session-secret endpoint and the tool result carries only a `session:{name}` reference, with no `value` field on the answer type to put one in. Prompt guidance names it as the affordance instead of asking in prose. Does not stop a user pasting a key into an ordinary chat message; it removes the reason to | MITIGATED (partial, in-flow only) |
 | TM-AGENT-017 | Agent-initiated entity management | High | `platform` exposes the full scriptable command catalog. It is high-risk and explicitly assigned. Members may use the immutable managed assistant on the built-in Generic harness without attaching any new capabilities; assigning arbitrary high-risk capabilities still requires admin authority. Each call uses the session owner's real caller and active permission resolver; only that owner may submit Platform Chat turns, fork its conversations, change or fire its session schedules, or discover/execute its context-aware slash commands. Protection follows the managed built-in Agent identity rather than its harness name, and the distributed adapter reloads the org-scoped session without accepting a worker-supplied user identity. On data plane v2 the executor's call names only the session and the turn's input message; the cell that forwards it replaces any person with the one the session's own cell recorded as that message's sender (a verified org token's subject, or the control plane's authenticated sender), and the control plane re-derives the `platform` capability and the person's membership and role before running anything ([`platform_calls.rs`](../../crates/cell/src/platform_calls.rs), [`senders.rs`](../../crates/cell/src/senders.rs)). Channel, trigger and webhook messages carry no sender and fail closed. Runtime delegation responses are projected server-side by [`runtime_command_view`](../../crates/server/src/worker_link/runtime_command_view/mod.rs) after the same command authorization; every inherited harness ancestor is also resolved through that org-scoped command context. Unsupported response projections are rejected before any command runs. No fine-grained ownership RBAC exists within commands the caller is otherwise allowed to use. | **OPEN** |
 | TM-AGENT-018 | Outbound URL filtering on web_fetch | Medium | Per-layer `NetworkAccessList` (harness ∩ agent ∩ session, narrow-only merge) plus optional deployment-wide system allowlist, both enforced at the `EgressService` boundary; web_fetch routes through egress with per-redirect-hop re-validation | MITIGATED |
-| TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
+| TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; both rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 | TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
 | TM-AGENT-021 | System prompt regurgitation | Medium | Opt-in `prompt_canary_guardrail` capability runs a streaming output guardrail that replaces the assistant message when the first sentence of the system prompt appears verbatim in the model output; original tokens are dropped and never persisted. Catches verbatim leaks only, paraphrased or partial leaks pass through. See `knowledge/execution/capabilities.md` § Output Guardrails | MITIGATED (partial, opt-in) |
-| TM-AGENT-022 | Agent-initiated machine-payment spend | High | Paid capabilities cannot directly sign or submit arbitrary paid HTTP requests. They call `PaymentAuthority`, which selects an active policy matching the session/agent/agent identity/user/org, capability, target host, rail, and per-request limit before signing; a `user` policy matches only the user proven to have interactively sent the turn's input, so unattended turns never inherit the owner's wallet; attempts are audited | MITIGATED |
-| TM-AGENT-023 | Redirect-based payment host-allowlist bypass | High | The payment authority validates only the original request URL host against the active policy's `allowed_hosts`. The outbound `reqwest` client used by `ServerPaymentAuthority::send_http_request` disables redirect following (`redirect::Policy::none()`), so 30x responses cannot be used to redirect a paid request to an unvalidated/internal host or downgrade from HTTPS | MITIGATED |
+| TM-AGENT-022 | Agent-initiated machine-payment spend | High | Machine payments and the paid Parallel capability were removed in 2026-11; no tool can spend | **RETIRED** |
+| TM-AGENT-023 | Redirect-based payment host-allowlist bypass | High | Removed with machine payments (2026-11); there is no payment authority left to bypass | **RETIRED** |
 | TM-AGENT-024 | A2A outbound delegation egress / SSRF bypass | High | Outbound A2A delegation respects the merged `ToolContext.network_access` ACL. `enforce_network_access` (in `crates/capabilities/src/capabilities/a2a_delegation/`) validates the configured `base_url` and every resolved `AgentCard` interface URL against the runtime ACL before the A2A client is built. Discovery and every interface request additionally run `validate_url_dns_pinned` (or a controlled resolver in tests), pin the resolved addresses into the HTTP client, and disable redirects so DNS rebinding or a 30x cannot move the request into private/loopback/link-local/metadata space. `allow_local_urls` (default false) relaxes the address check only when `DEPLOYMENT_GRADE=dev`; other grades reject the hatch. `submit_run`, `wait_for_run`, and `cancel_task` all flow through this gate (EVE-1173) | MITIGATED |
 | TM-AGENT-027 | Untrusted A2A structured artifact bypasses the parent result contract | Medium | Schema-bound external delegation takes only the first terminal A2A data part, validates it with the same delegation-result validator used for local child reports, and persists it only after conformance. Missing data fails `no_result`; invalid data fails `schema_mismatch`; neither is exposed as a successful task result. `message_schema` is rejected because remote agents cannot receive the local progress-reporting tool. | MITIGATED |
 | TM-AGENT-026 | Exfiltration / web reach via OpenRouter provider-executed server tools | High | The opt-in `openrouter_server_tools` capability (`crates/integrations/src/openrouter/src/server_tools.rs`) lets the model invoke OpenRouter server tools (`web_search`, `web_fetch`, etc.). OpenRouter executes them **provider-side**, so Everruns' `NetworkAccessList`/`EgressService` egress controls (TM-AGENT-018) do **not** apply, same exfil class as TM-AGENT-013 but the egress boundary is OpenRouter's, not ours. Mitigations: capability is `RiskLevel::High` (admin-only assignment) and must be explicitly enabled per agent; only known server tools serialize (closed enum, unknown names dropped); no Everruns infra reach, secrets, or local execution are exposed. Residual cross-provider egress is the operator's OpenRouter-account responsibility | **ACCEPTED** |
@@ -1229,7 +1219,7 @@ Combined prompt sent to LLM as system message
 The agent creator is trusted within their org. A malicious system prompt can instruct the agent to misuse its capabilities, but only within the sandbox (session files, SQLite, bash sandbox). The blast radius is limited to the session.
 
 **TM-AGENT-005, Capability Escalation (MITIGATED):**
-Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` trait. High-risk capabilities (`docker_container`, `daytona`, `e2b`) require `OrgRole::Admin` to assign. The check runs in create/update/upsert/import agent API handlers, returning 403 if a non-admin user attempts to assign a high-risk capability. The `risk_level` field is exposed in the capabilities list API for UI display.
+Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` trait. High-risk capabilities (`daytona`, `e2b`) require `OrgRole::Admin` to assign. The check runs in create/update/upsert/import agent API handlers, returning 403 if a non-admin user attempts to assign a high-risk capability. The `risk_level` field is exposed in the capabilities list API for UI display.
 
 **TM-AGENT-006, Iteration Limit:**
 ```rust
@@ -1295,11 +1285,9 @@ Some execution capabilities intentionally originate network traffic outside the 
 - `daytona` sandboxes have full Linux access; network access is open unless the template or the session access list restricts it, which Daytona then enforces (TM-DAYTONA-015)
 - `e2b` sandboxes have full Linux access; network access is open unless the template or the session access list restricts it, which E2B then enforces (TM-E2B-005)
 - `modal` sandboxes have full Linux and network access by design, and can expose public tunnels
-- `docker_container` uses host networking and is experimental/dev-only
 
 This means an agent with one of these capabilities can probe whatever network the sandbox/container can reach. Current mitigations are:
 - Admin-only assignment for high-risk capabilities (TM-AGENT-005)
-- `docker_container` is gated to development-grade deployments
 
 Residual risk remains with the deployment topology. Production operators must enforce egress filtering and network segmentation for any execution environment that can reach internal services.
 
@@ -1310,21 +1298,8 @@ the backend. The session resource registry carries the same external-ID metadata
 that only expose the generic registry. Raw sandbox list calls are filtered to the IDs owned by
 the active session before results are returned to the agent.
 
-**TM-AGENT-022, Agent-Initiated Machine-Payment Spend (MITIGATED):**
-Agents can invoke paid capabilities such as Parallel search/extract/task, but V1 deliberately has
-no generic `paid_http_request` tool. The capability submits a typed payment request to
-`PaymentAuthority`; the server selects only active spend policies scoped to the current session,
-agent, agent identity, user, or organization and checks capability allowlist, host allowlist, rail
-preference, and per-request maximum before creating any rail-specific signature. A `user` policy
-is a candidate only when the turn's input carries a server-recorded management user, which
-`MessageService` writes solely for an authenticated user's own message; scheduled, agent-trigger,
-app-channel, health-check and eval turns record none, and a missing or foreign input binding fails
-closed, so unattended work cannot spend the session owner's wallet (EVE-1187). Every attempt is
-persisted with status, amount, target URL, and receipt/error. Registration of any money-spending
-capability is additionally gated by the `machine_payments` feature flag
-(`FEATURE_MACHINE_PAYMENTS`), off by default on every grade, so spend tools are never offered
-unless deliberately enabled. The same deployment gate removes wallet-management UI and leaves
-payment account, policy, and attempt API paths unmounted, preventing custody without spend.
+**TM-AGENT-022, Agent-Initiated Machine-Payment Spend (RETIRED):**
+Removed with machine payments in 2026-11; no capability can spend money.
 
 ## 14. Voice Sessions (TM-VOICE)
 

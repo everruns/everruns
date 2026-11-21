@@ -53,7 +53,7 @@ mod seed_ids {
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
     pub const RESEARCH_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000102);
     pub const MS_LEARN_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000103);
-    pub const PYTHON_CODER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000104);
+    // 0x…0104: retired Python Coder demo agent (Docker capability removed). Do not reuse.
     pub const SHELL_ASSISTANT_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000105);
     pub const DATA_ANALYST_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000106);
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
@@ -1357,10 +1357,8 @@ mod tests {
     #[test]
     fn test_coding_container_capability_unregistered_when_flag_disabled() {
         let _lock = lock_env();
-        let _env_guard =
-            EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX", "FEATURE_DOCKER_CAPABILITY"]);
+        let _env_guard = EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX"]);
         unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 
         let registry =
             crate::platform::oss_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);

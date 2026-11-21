@@ -1467,6 +1467,3 @@ async fn test_idempotency_idempotent_tool_stale_running_reexecutes() {
     );
     assert_eq!(result.error_count, 0);
 }
-
-#[path = "act_payment_tests.rs"]
-mod payment_tests;

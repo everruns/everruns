@@ -23,7 +23,6 @@ use crate::core::{
     file_services::FileResolver, file_services::ResolvedFile, image_services::ImageArtifactStore,
     image_services::ImageResolver, image_services::ResolvedImage,
     session_services::LeasedResourceStore, tool_execution::BudgetChecker,
-    tool_execution::PaymentAuthority,
 };
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
@@ -674,15 +673,6 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         _org_id: i64,
         _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn BudgetChecker>> {
-        None
-    }
-
-    /// Get the payment authority for paid internal capability tools, if available.
-    fn payment_authority(
-        &self,
-        _org_id: i64,
-        _agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn PaymentAuthority>> {
         None
     }
 

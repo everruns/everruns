@@ -283,22 +283,6 @@ pub(crate) fn command_schema_hash(
 
 // Helper functions for status conversion
 
-pub(crate) fn payment_error_to_status(error: everruns_contracts::error::AgentLoopError) -> Status {
-    use everruns_contracts::error::AgentLoopError;
-
-    match error {
-        AgentLoopError::Configuration(message) | AgentLoopError::ToolExecution(message) => {
-            Status::failed_precondition(message)
-        }
-        AgentLoopError::SessionNotFound(session_id) => {
-            Status::not_found(format!("Session not found: {session_id}"))
-        }
-        AgentLoopError::MessageStore(error) => internal_status("Failed to store message", error),
-        AgentLoopError::Internal(error) => internal_status("Internal server error", error),
-        other => internal_status("Internal server error", other),
-    }
-}
-
 pub(crate) fn circuit_state_to_proto(state: CircuitState) -> ProtoCircuitBreakerState {
     match state {
         CircuitState::Closed => ProtoCircuitBreakerState::Closed,

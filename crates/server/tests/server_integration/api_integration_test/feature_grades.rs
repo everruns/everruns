@@ -122,7 +122,7 @@ async fn test_agent_view_settings_require_adoption_and_keep_saved_revisions() {
 }
 
 #[tokio::test]
-async fn test_feature_grades_control_http_defaults_mutations_and_payment_access() {
+async fn test_feature_grades_control_http_defaults_mutations_and_route_access() {
     for (grade, default_enabled, tenant_can_manage) in [
         (FeatureFlagGrade::Dev, false, false),
         (FeatureFlagGrade::Internal, false, false),
@@ -130,26 +130,25 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
         (FeatureFlagGrade::Prod, true, true),
         (FeatureFlagGrade::Off, false, false),
     ] {
-        let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod)
-            .with_grade("machine_payments", grade);
+        let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod).with_grade("skills", grade);
         let server = TestServer::in_memory_with_feature_policy(policy).await;
         let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
-        assert_eq!(effective["machine_payments"], default_enabled, "{grade}");
+        assert_eq!(effective["skills"], default_enabled, "{grade}");
 
         for enabled in [true, false] {
             let response = server
-                .patch(FLAGS, json!({"flags": {"machine_payments": enabled}}))
+                .patch(FLAGS, json!({"flags": {"skills": enabled}}))
                 .await;
             if tenant_can_manage {
                 let effective: Value = response.assert_status(StatusCode::OK).json();
-                assert_eq!(effective["machine_payments"], enabled);
+                assert_eq!(effective["skills"], enabled);
                 assert_eq!(
                     server
                         .db
                         .list_org_feature_flags(everruns_core::DEFAULT_ORG_ID)
                         .await
                         .unwrap()
-                        .get("machine_payments"),
+                        .get("skills"),
                     Some(&enabled)
                 );
             } else {
@@ -157,9 +156,9 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
             }
         }
 
-        // No payment setup or spend occurs: this exercises the real query gate.
+        // The skills config route checks the org-effective flag on each request.
         server
-            .get("/v1/payments/accounts")
+            .get("/v1/skills/config")
             .await
             .assert_status(StatusCode::NOT_FOUND);
 
@@ -173,7 +172,7 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
             StatusCode::BAD_REQUEST
         };
         server
-            .patch(&platform_route, json!({"flags":{"machine_payments":true}}))
+            .patch(&platform_route, json!({"flags":{"skills":true}}))
             .await
             .assert_status(status);
         if matches!(
@@ -181,17 +180,17 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
             FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
         ) {
             let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
-            assert_eq!(effective["machine_payments"], true);
+            assert_eq!(effective["skills"], true);
             server
-                .get("/v1/payments/accounts")
+                .get("/v1/skills/config")
                 .await
                 .assert_status(StatusCode::OK);
             server
-                .patch(&platform_route, json!({"flags":{"machine_payments":false}}))
+                .patch(&platform_route, json!({"flags":{"skills":false}}))
                 .await
                 .assert_status(StatusCode::OK);
             server
-                .get("/v1/payments/accounts")
+                .get("/v1/skills/config")
                 .await
                 .assert_status(StatusCode::NOT_FOUND);
         }

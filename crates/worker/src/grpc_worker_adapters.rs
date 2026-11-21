@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use crate::grpc_adapters::{
     GrpcAdapter, GrpcBudgetChecker, GrpcClient, GrpcOrgAdapter, GrpcOutboundToolRateLimiter,
-    GrpcPaymentAuthority, GrpcSessionCreationAuthority,
+    GrpcSessionCreationAuthority,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -854,17 +854,6 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
         Some(Arc::new(
             crate::grpc_sandbox_persistence::GrpcSandboxPersistenceStore::new(self.client.clone()),
-        ))
-    }
-
-    fn payment_authority(
-        &self,
-        org_id: i64,
-        agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn crate::core::tool_execution::PaymentAuthority>> {
-        Some(Arc::new(
-            GrpcPaymentAuthority::new(self.client.clone(), org_id)
-                .with_agent_id(agent_id.map(|id| id.to_string())),
         ))
     }
 

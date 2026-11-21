@@ -449,15 +449,6 @@ where
         self
     }
 
-    /// Set the internal payment authority for paid capability tools.
-    pub fn with_payment_authority(
-        mut self,
-        authority: Arc<dyn crate::engine::tool_execution::PaymentAuthority>,
-    ) -> Self {
-        self.context_services.payment_authority = Some(authority);
-        self
-    }
-
     /// Set the authority used to authorize detached peer-session creation.
     pub fn with_session_creation_authority(
         mut self,

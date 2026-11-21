@@ -114,8 +114,6 @@ mod org_feature_flags;
 mod org_slack_connections;
 mod organizations;
 pub use organizations::rows::*;
-mod payments;
-pub use payments::rows::*;
 mod plugins;
 pub use plugins::rows::*;
 mod principals;

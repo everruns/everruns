@@ -77,8 +77,6 @@ pub fn with_platform_services<A: WorkerAdapters>(
 
     let budget = host.clone();
     extensions.authorities.budget = Some(Arc::new(move |_| budget.budget_checker(org, agent)));
-    let payment = host.clone();
-    extensions.authorities.payment = Some(Arc::new(move |_| payment.payment_authority(org, agent)));
     extensions.authorities.session_creation = host.session_creation_authority(org, session);
     extensions.authorities.outbound_rate_limiter = host.outbound_tool_rate_limiter(org);
 

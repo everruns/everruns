@@ -2019,8 +2019,8 @@ registers. The cell's host now registers that catalog, with the worker's
 features, for the capabilities an agent names
 (`crates/cell/src/host.rs`, `hosted_capabilities`), and 96 of 102 build
 and complete a turn. The rest: `container_sandbox`, `docker_container` and
-`parallel` are behind feature flags that are off by default, as on a
-worker; `dreaming` and `sandbox_desktop` need their config (and the
+`parallel` were behind feature flags that are off by default, as on a
+worker (the last two were removed in 2026-11); `dreaming` and `sandbox_desktop` need their config (and the
 control plane replaces `sandbox_desktop` with the pinned sandbox);
 `sandbox_fleet` fails its turn. A turn on the simulated model calls no
 tool, so "runs" means the capability builds and activates in a cell turn.

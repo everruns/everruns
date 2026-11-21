@@ -315,10 +315,6 @@ service WorkerService {
     // wire; the endpoint's bot_token never does.
     rpc InvokeSlackAction(InvokeSlackActionRequest) returns (InvokeSlackActionResponse);
 
-    // === Machine payment operations ===
-    // Execute a paid capability request through the control-plane payment authority.
-    rpc ExecuteMachinePayment(ExecuteMachinePaymentRequest) returns (ExecuteMachinePaymentResponse);
-
     // Authorize detached peer-session creation as the current session owner.
     rpc AuthorizeSessionCreation(AuthorizeSessionCreationRequest) returns (AuthorizeSessionCreationResponse);
 }
@@ -1995,34 +1991,6 @@ message InvokeSlackActionResponse {
         SlackActionError error = 5;
         SlackMessagePosted message_posted = 6;
     }
-}
-
-// === Machine payment messages ===
-
-message ExecuteMachinePaymentRequest {
-    int64 org_id = 1;
-    string session_id = 2;
-    optional string agent_id = 3;
-    string capability = 4;
-    string operation = 5;
-    string method = 6;
-    string url = 7;
-    optional google.protobuf.Value body = 8;
-    double max_amount_usd = 9;
-    repeated string rail_preference = 10;
-    google.protobuf.Value metadata = 11;
-    // The persisted input that caused this execution. The control plane reads
-    // its server-recorded invocation to decide whether a human user's wallet
-    // may be used; absent means unattended (EVE-1187).
-    optional Uuid input_message_id = 12;
-}
-
-message ExecuteMachinePaymentResponse {
-    optional string attempt_id = 1;
-    double amount_usd = 2;
-    optional string rail = 3;
-    google.protobuf.Value response = 4;
-    google.protobuf.Value receipt = 5;
 }
 
 message AuthorizeSessionCreationRequest {

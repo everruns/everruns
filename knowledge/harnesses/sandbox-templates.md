@@ -970,7 +970,7 @@ way.
   one `coding` harness plus environment profiles. Three duplicated prompts
   become one.
 - `daytona_*`, `e2b_*`, `sandbox_*` leave the default agent toolset.
-- `docker_container` is deleted, as
+- `docker_container` is deleted (done 2026-11), as
   [Sandbox Abstraction](sandbox-abstraction.md) already decided.
 - Prompt text describing lifecycle, tool names, and idle timeouts, replaced by
   the live environment context block.

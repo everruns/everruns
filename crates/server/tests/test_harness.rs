@@ -1144,10 +1144,6 @@ impl TestServer {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::org_feature_flags::routes(org_feature_flags_state))
-            .merge(api::payments::routes(
-                api_state.clone(),
-                feature_flags.machine_payments,
-            ))
             .merge(api::sandbox_templates::routes(environments_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(everruns_server::channels::ag_ui::routes(ag_ui_state))

@@ -44,10 +44,6 @@ pub(crate) fn for_builtin(name: &str) -> EntityLocalizations {
             "Помічник Microsoft Learn",
             "Допомагає знаходити та використовувати документацію Microsoft Learn.",
         ),
-        "python-coder" => (
-            "Програміст Python",
-            "Допомагає писати та виконувати код Python.",
-        ),
         "shell-assistant" => (
             "Помічник командного рядка",
             "Допомагає виконувати завдання в командному рядку.",
@@ -115,7 +111,6 @@ pub(crate) fn for_builtin(name: &str) -> EntityLocalizations {
             "Microsoft Learn Assistant",
             "Find and use Microsoft Learn documentation.",
         ),
-        "python-coder" => ("Python Coder", "Write and run Python code."),
         "shell-assistant" => ("Shell Assistant", "Perform tasks in the command line."),
         "image-studio-agent" => ("Image Studio", "Create and edit images."),
         "cursor-agent-manager" => ("Cursor Agent Manager", "Manage Cursor coding agents."),

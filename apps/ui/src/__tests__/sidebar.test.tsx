@@ -523,7 +523,6 @@ describe("Sidebar", () => {
     "/settings/organization",
     "/settings/members",
     "/settings/features",
-    "/settings/payments",
     "/settings/profile",
     "/settings/user-profile",
     "/settings/connections",

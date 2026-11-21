@@ -6,10 +6,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use everruns_core::deployment::DeploymentGrade;
-use everruns_core::execution_features::{
-    CONTAINER_SANDBOX_DEFAULT_GRADE, DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE,
-    MACHINE_PAYMENTS_DEFAULT_GRADE,
-};
+use everruns_core::execution_features::{CONTAINER_SANDBOX_DEFAULT_GRADE, LUA_DEFAULT_GRADE};
 pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 
 /// Feature flags exposed via `GET /v1/feature-flags` and consumed by the frontend.
@@ -43,24 +40,15 @@ pub struct FeatureFlags {
     /// channel). Experimental. Gates the public endpoints, channel creation,
     /// the builder UI, and the public web route.
     pub public_chat: bool,
-    /// Machine-payment custody, policy, audit, and paid capability surfaces.
-    pub machine_payments: bool,
     /// Run the org's sessions on the Engine (data plane v2 step 4).
     /// Internal: the platform enrols an org; no org manages it. The worker
     /// lease reads the enrolment row itself (`ENGINE_HOSTING_FLAG`).
     #[serde(default)]
     pub engine_hosting: bool,
     #[serde(default)]
-    pub docker_capability: bool,
-    #[serde(default)]
     pub container_sandbox: bool,
     #[serde(default)]
     pub lua: bool,
-    /// First-party Mistral AI provider (the `mistral` driver). Off until a
-    /// deployment raises its grade: model sync works, but the key we test with
-    /// is tier-limited, so chat has not been verified end to end.
-    #[serde(default)]
-    pub mistral: bool,
     /// Flags declared by integration crates (see
     /// [`everruns_capabilities::integrations_catalog::feature_flag_definitions`]), keyed by
     /// flag name. Serialized flat, next to the platform flags.
@@ -111,12 +99,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         label: "Agent views",
         description: "Configure custom A2UI and HTML views for agents.",
         grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "mistral",
-        label: "Mistral AI provider",
-        description: "Connect Mistral AI directly with your own API key.",
-        grade: FeatureFlagGrade::Off,
     },
     FeatureFlagDefinition {
         name: "evals",
@@ -176,23 +158,11 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
-        name: "machine_payments",
-        label: "Machine payments",
-        description: "Manage payment accounts, spending policies, and paid capabilities.",
-        grade: MACHINE_PAYMENTS_DEFAULT_GRADE,
-    },
-    FeatureFlagDefinition {
         name: "engine_hosting",
         label: "Engine hosting",
         description: "Runs the organization's sessions on the Everruns Engine. Platform rollout \
              switch; existing sessions move over between turns.",
         grade: FeatureFlagGrade::Internal,
-    },
-    FeatureFlagDefinition {
-        name: "docker_capability",
-        label: "Docker containers",
-        description: "Run agent tools in Docker containers.",
-        grade: DOCKER_CAPABILITY_DEFAULT_GRADE,
     },
     FeatureFlagDefinition {
         name: "container_sandbox",
@@ -282,10 +252,8 @@ impl FeatureFlags {
     pub fn to_map(&self) -> FeatureFlagMap {
         let mut map = BTreeMap::from([
             ("agent_views".to_string(), self.agent_views),
-            ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
-            ("mistral".to_string(), self.mistral),
             ("evals".to_string(), self.evals),
             ("extractions".to_string(), self.extractions),
             ("skills".to_string(), self.skills),
@@ -294,7 +262,6 @@ impl FeatureFlags {
             ("voice".to_string(), self.voice),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
-            ("machine_payments".to_string(), self.machine_payments),
             ("engine_hosting".to_string(), self.engine_hosting),
         ]);
         map.extend(
@@ -309,10 +276,8 @@ impl FeatureFlags {
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
             "agent_views" => self.agent_views,
-            "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
-            "mistral" => self.mistral,
             "evals" => self.evals,
             "extractions" => self.extractions,
             "skills" => self.skills,
@@ -321,7 +286,6 @@ impl FeatureFlags {
             "voice" => self.voice,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
-            "machine_payments" => self.machine_payments,
             "engine_hosting" => self.engine_hosting,
             _ => self.integrations.get(flag).copied().unwrap_or(false),
         }
@@ -338,12 +302,9 @@ impl FeatureFlags {
             "voice" => self.voice = enabled,
             "observers" => self.observers = enabled,
             "public_chat" => self.public_chat = enabled,
-            "machine_payments" => self.machine_payments = enabled,
             "engine_hosting" => self.engine_hosting = enabled,
-            "docker_capability" => self.docker_capability = enabled,
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
-            "mistral" => self.mistral = enabled,
             _ => {
                 assert!(
                     everruns_capabilities::integrations_catalog::feature_flag_definitions()
@@ -366,10 +327,8 @@ impl FeatureFlags {
             everruns_capabilities::capabilities::published_views::PUBLISHED_VIEWS_ID => {
                 Some("agent_views")
             }
-            "docker_container" => Some("docker_capability"),
             "container_sandbox" => Some("container_sandbox"),
             "lua" | "lua_code_mode" => Some("lua"),
-            "parallel" => Some("machine_payments"),
             "skills" => Some("skills"),
             "memory" => Some("memory"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
@@ -377,15 +336,6 @@ impl FeatureFlags {
             _ => {
                 everruns_capabilities::integrations_catalog::capability_feature_flag(capability_id)
             }
-        }
-    }
-
-    /// Whether an LLM driver may be listed and connected under these effective
-    /// flags. Ungated drivers are always offered.
-    pub fn is_driver_offered(&self, driver: &str) -> bool {
-        match driver {
-            "mistral" => self.mistral,
-            _ => true,
         }
     }
 
@@ -400,10 +350,8 @@ impl FeatureFlags {
     pub fn all_enabled() -> Self {
         Self {
             agent_views: true,
-            docker_capability: true,
             container_sandbox: true,
             lua: true,
-            mistral: true,
             evals: true,
             extractions: true,
             skills: true,
@@ -412,7 +360,6 @@ impl FeatureFlags {
             voice: true,
             observers: true,
             public_chat: true,
-            machine_payments: true,
             engine_hosting: true,
             integrations: everruns_capabilities::integrations_catalog::feature_flag_definitions()
                 .map(|definition| (definition.name.to_string(), true))
@@ -449,26 +396,6 @@ mod tests {
         for capability in ["dreaming", "knowledge", "knowledge_base", "knowledge_index"] {
             assert!(flags.is_capability_enabled(capability), "{capability}");
         }
-    }
-
-    #[test]
-    fn mistral_is_off_until_a_deployment_raises_it() {
-        let definition = API_FEATURE_FLAG_DEFINITIONS
-            .iter()
-            .find(|definition| definition.name == "mistral")
-            .unwrap();
-        assert_eq!(definition.grade, FeatureFlagGrade::Off);
-        let enrolled = HashMap::from([("mistral".into(), true)]);
-        for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
-            let flags = policy(deployment, definition.grade).for_org(&enrolled);
-            assert!(!flags.mistral);
-            assert!(!flags.is_driver_offered("mistral"));
-            assert!(flags.is_driver_offered("openai"));
-        }
-        let raised = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off)
-            .with_grade("mistral", FeatureFlagGrade::Adoption)
-            .for_org(&enrolled);
-        assert!(raised.is_driver_offered("mistral"));
     }
 
     #[test]
@@ -570,6 +497,9 @@ mod tests {
             "mcp_events",
             "agent_change_reasons_required",
             "reports",
+            "mistral",
+            "machine_payments",
+            "docker_capability",
         ] {
             assert!(!is_known_feature_flag(removed), "{removed}");
         }
@@ -578,12 +508,7 @@ mod tests {
             assert_eq!(policy.grade(name), FeatureFlagGrade::Dev, "{name}");
             assert!(!policy.deployment_flags().is_enabled(name), "{name}");
         }
-        for name in [
-            "machine_payments",
-            "docker_capability",
-            "container_sandbox",
-            "lua",
-        ] {
+        for name in ["container_sandbox", "lua"] {
             assert_eq!(policy.grade(name), FeatureFlagGrade::Off, "{name}");
             assert!(
                 !policy
@@ -648,11 +573,9 @@ mod tests {
             "skill:example",
             "memory",
             "plugin:example",
-            "docker_container",
             "container_sandbox",
             "lua",
             "lua_code_mode",
-            "parallel",
         ] {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");

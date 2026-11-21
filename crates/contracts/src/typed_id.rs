@@ -640,27 +640,6 @@ impl IdMarker for BudgetIdMarker {
     const PREFIX: &'static str = "bdgt";
 }
 
-/// Marker for payment account IDs
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PaymentAccountIdMarker;
-impl IdMarker for PaymentAccountIdMarker {
-    const PREFIX: &'static str = "payacct";
-}
-
-/// Marker for payment policy IDs
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PaymentPolicyIdMarker;
-impl IdMarker for PaymentPolicyIdMarker {
-    const PREFIX: &'static str = "paypol";
-}
-
-/// Marker for payment attempt IDs
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PaymentAttemptIdMarker;
-impl IdMarker for PaymentAttemptIdMarker {
-    const PREFIX: &'static str = "payatt";
-}
-
 /// Marker for Budget Ledger Entry IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LedgerEntryIdMarker;
@@ -816,12 +795,6 @@ pub type ObserverId = TypedId<ObserverIdMarker>;
 pub type TraceScoreId = TypedId<TraceScoreIdMarker>;
 /// Budget ID
 pub type BudgetId = TypedId<BudgetIdMarker>;
-/// Payment account ID
-pub type PaymentAccountId = TypedId<PaymentAccountIdMarker>;
-/// Payment policy ID
-pub type PaymentPolicyId = TypedId<PaymentPolicyIdMarker>;
-/// Payment attempt ID
-pub type PaymentAttemptId = TypedId<PaymentAttemptIdMarker>;
 /// Budget Ledger Entry ID
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
 /// Knowledge Base ID (curated org knowledge)

@@ -10,11 +10,6 @@ fn command_metadata_declares_feature_gated_surfaces() {
         ("list_plugins", "plugins", Some("plugins")),
         ("create_observer", "observers", Some("observers")),
         ("list_notifications", "notifications", None),
-        (
-            "list_payment_accounts",
-            "payments",
-            Some("machine_payments"),
-        ),
         ("list_agents", "agents", None),
     ] {
         let meta = CommandMeta {

@@ -211,10 +211,7 @@ function DriverList({
 }) {
   const ui = useUiTranslations();
   const { data: config } = useProvidersConfig();
-  const drivers = useMemo(
-    () => [...new Set(CONNECT_ORDER)].filter((driver) => isDriverOffered(driver, config?.drivers)),
-    [config?.drivers],
-  );
+  const drivers = useMemo(() => [...new Set(CONNECT_ORDER)].filter(isDriverOffered), []);
   return (
     <>
       <DrawerDescription>
