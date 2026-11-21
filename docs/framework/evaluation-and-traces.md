@@ -46,3 +46,29 @@ cargo run -p everruns --features openai,evaluation --example service_evaluation
 Install `OnlineScoring::new(evaluator, sink)` with `Engine::builder().listener(...)`. Implement `ScoreSink` to retain/export grades. It uses the same evaluator as offline runs and executes on the Engine's bounded observer queue, outside turn execution.
 
 The listener bounds retained turns and evidence size; overflow, unsuccessful turns and grading failures are reported to the sink. Monitor Engine observer drop statistics. Online scoring is observational and must not be used as a durable audit ledger; replay canonical events for complete historical grading. `Engine::shutdown(deadline)` flushes listeners within a caller-selected deadline. Server evaluation definitions, history/reporting storage, durable scoring jobs and dashboards remain host concerns.
+
+## Compaction observation
+
+The Framework exposes the same pure operational assessment used by hosted
+compaction monitoring, without an extra feature or capability:
+
+```rust
+use everruns::{SessionEvent, CompactionVerdict, observe_compaction};
+
+fn inspect(event: &SessionEvent) {
+    if let Some(observation) = observe_compaction(event) {
+        if observation.verdict == CompactionVerdict::Failed {
+            eprintln!("{}", observation.reason);
+        }
+    }
+}
+```
+
+Call it from an application-owned Engine listener and retain findings in your
+own sink. It does not make model calls or change the session. A pass reports
+execution metadata, not independent durability or semantic validation. Old events
+without the runtime's history-evidence permission are ineligible for content
+assessment. Hosts own consent, tenant boundaries, bounded evidence reads, judge
+selection and spending admission. Organization opt-in, durable jobs, reports and
+review UI are Platform features; built-in and custom harnesses share their runtime
+instrumentation.

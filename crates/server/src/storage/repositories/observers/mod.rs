@@ -25,8 +25,8 @@ impl Database {
     ) -> Result<ObserverRow> {
         let row = sqlx::query_as::<_, ObserverRow>(
             sql!(r#"
-            INSERT INTO observers (org_id, public_id, name, description, match_config, sampling_rate, scorers, alert)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO observers (org_id, public_id, name, description, match_config, sampling_rate, scorers, alert, system_kind)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING {ObserverRow}
             "#),
         )
@@ -38,6 +38,7 @@ impl Database {
         .bind(input.sampling_rate)
         .bind(&input.scorers)
         .bind(&input.alert)
+        .bind(&input.system_kind)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -88,7 +89,7 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT id, org_id, public_id, name, description, match_config,
-                      sampling_rate, scorers, status, created_at, updated_at, archived_at, alert
+                      sampling_rate, scorers, status, created_at, updated_at, archived_at, alert, system_kind
                FROM observers
                WHERE org_id = $1{status_sql}
                ORDER BY created_at DESC"#
@@ -117,7 +118,7 @@ impl Database {
 
     pub async fn count_active_observers(&self, org_id: i64) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM observers WHERE org_id = $1 AND status IN ('active', 'paused')",
+            "SELECT COUNT(*) FROM observers WHERE org_id = $1 AND status IN ('active', 'paused') AND system_kind IS NULL",
         )
         .bind(org_id)
         .fetch_one(&self.pool)
@@ -196,8 +197,8 @@ impl Database {
             let result = sqlx::query(
                 r#"
                 INSERT INTO trace_scores (org_id, public_id, observer_id, scorer_key, session_id,
-                                          turn_id, agent_id, harness_id, scope, not_before)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                                          turn_id, agent_id, harness_id, scope, not_before, evidence_ref)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 ON CONFLICT (observer_id, scorer_key, session_id, turn_id) DO UPDATE SET
                     status = 'pending', attempts = 0, not_before = EXCLUDED.not_before,
                     error_message = NULL, updated_at = NOW()
@@ -215,6 +216,7 @@ impl Database {
             .bind(input.harness_id)
             .bind(&input.scope)
             .bind(input.not_before)
+            .bind(&input.evidence_ref)
             .execute(&self.pool)
             .await?;
             inserted += result.rows_affected();
@@ -323,7 +325,7 @@ impl Database {
             r#"SELECT id, org_id, public_id, observer_id, scorer_key, session_id,
                       turn_id, agent_id, harness_id, status, attempts,
                       pass, value, label, reason, judge_input_tokens, judge_output_tokens,
-                      judge_cost_usd, error_message, created_at, updated_at, scope, review
+                      judge_cost_usd, error_message, created_at, updated_at, scope, review, evidence_ref
                FROM trace_scores
                WHERE org_id = $1 AND observer_id = $2{session_sql}{queue_sql}
                ORDER BY {order_sql}
@@ -390,11 +392,12 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT {key_sql} AS key,
-                      COUNT(*) AS scored,
+                      COUNT(t.pass) AS scored,
                       COUNT(*) FILTER (WHERE t.pass) AS passed,
                       COUNT(DISTINCT t.session_id) AS sessions
                FROM trace_scores t JOIN observers o ON o.id = t.observer_id
                WHERE t.org_id = $1 AND t.status = 'completed' AND t.updated_at >= $2
+                 AND (o.system_kind IS NULL OR $3::uuid IS NOT NULL)
                  AND ($3::uuid IS NULL OR t.observer_id = $3)
                  AND ($4::uuid IS NULL OR t.agent_id = $4){group_sql}"#
         );

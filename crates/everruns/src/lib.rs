@@ -232,6 +232,9 @@ pub use everruns_core::builtins::{
     AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
     ToolSearch,
 };
+mod compaction_observation;
+pub use compaction_observation::observe_compaction;
+pub use everruns_core::compaction_observation::{CompactionObservation, CompactionVerdict};
 pub use everruns_core::compaction_status::{
     CompactionEventSummary, CompactionStatus, ContextCheckpoint,
 };

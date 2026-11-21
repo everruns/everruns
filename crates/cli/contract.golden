@@ -284,9 +284,12 @@ orgs egress-allowlist set	--context-revision --org! --patterns!... --reason
 orgs get	--context-revision --org --reason <org>
 orgs list	--context-revision --reason
 orgs provider-accounts list	--context-revision --org! --reason
+orgs quality-monitoring get	--context-revision --org! --reason
+orgs quality-monitoring scores list	--context-revision --org! --reason
+orgs quality-monitoring scores review	--agrees! --context-revision --note --org! --reason --score!
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --coding-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --monthly-session-limit --name --org! --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --coding-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --monthly-session-limit --name --org! --quality-monitoring --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
 payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
 payments accounts disable	--context-revision --payment-account-id! --reason
 payments accounts get	--context-revision --payment-account-id! --reason

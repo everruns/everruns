@@ -36,6 +36,7 @@ pub async fn build_organization_response(
     let settings = db.get_organization_settings(org_id).await?;
 
     Ok(OrganizationResponse {
+        quality_monitoring: crate::domains::observers::system::policy(db, org_id).await?,
         id: row.public_id,
         name: row.name,
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),

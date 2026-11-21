@@ -1,6 +1,8 @@
+import { messages as qualityMonitoring } from "./en-GB/quality-monitoring";
 import { messages as extractions } from "./en-GB/extractions";
 // British English overrides; identifiers and authored values stay unchanged.
 export const messages: Readonly<Record<string, string>> = {
+  ...qualityMonitoring,
   Context: "Context",
   "Effective compaction policy": "Effective compaction policy",
   "Working history budget": "Working history budget",

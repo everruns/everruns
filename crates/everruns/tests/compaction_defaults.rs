@@ -77,6 +77,15 @@ async fn no_harness_compacts_across_turns_and_inspection_reuses_the_checkpoint()
         .checkpoint
         .expect("default policy installs continuity");
     assert_eq!(checkpoint.kind, "portable_summary");
+    assert!(
+        session.events_after(0).await.unwrap().iter().any(|event| {
+            everruns::observe_compaction(event).is_some_and(|observation| {
+                observation.verdict == everruns::CompactionVerdict::Passed
+                    && observation.continuity_eligible
+            })
+        }),
+        "the default Framework lane exposes host-owned monitoring evidence"
+    );
     let again = session
         .inspect()
         .await

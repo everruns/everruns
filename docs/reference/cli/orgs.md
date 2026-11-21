@@ -16,6 +16,9 @@ Organizations you belong to, and which one is active.
 | [`orgs get`](#orgs-get) | Get organization details. |
 | [`orgs list`](#orgs-list) | List organizations for the current user. |
 | [`orgs resolve`](#orgs-resolve) | Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). |
+| [`orgs quality-monitoring get`](#orgs-quality-monitoring-get) | Read organization compaction monitoring policy, coverage and budget reservations. |
+| [`orgs quality-monitoring scores list`](#orgs-quality-monitoring-scores-list) | Read the newest fifty compaction monitoring findings with source trace references. |
+| [`orgs quality-monitoring scores review`](#orgs-quality-monitoring-scores-review) | Record a person's agreement with a compaction assessment, without starting model work. |
 | [`orgs update`](#orgs-update) | Update the active organization's name and defaults. |
 | [`orgs audit-logs list`](#orgs-audit-logs-list) | List audit logs for the caller's organization. |
 | [`orgs decision-settings get`](#orgs-decision-settings-get) | Read the active organization's decision-model selection without model credentials. |
@@ -86,6 +89,66 @@ Example:
 everruns orgs resolve --id org_01h9
 ```
 
+## orgs quality-monitoring get
+
+Read organization compaction monitoring policy, coverage and budget reservations.
+
+```bash
+everruns orgs quality-monitoring get [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. |
+
+Example:
+
+```bash
+# Inspect compaction monitoring consent, coverage and allowance
+everruns orgs quality-monitoring get --org org_01h9
+```
+
+## orgs quality-monitoring scores list
+
+Read the newest fifty compaction monitoring findings with source trace references.
+
+```bash
+everruns orgs quality-monitoring scores list [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. |
+
+Example:
+
+```bash
+# Read recent compaction assessments and their trace references
+everruns orgs quality-monitoring scores list --org org_01h9
+```
+
+## orgs quality-monitoring scores review
+
+Record a person's agreement with a compaction assessment, without starting model work.
+
+```bash
+everruns orgs quality-monitoring scores review [OPTIONS] --agrees [<agrees>] --org <org> --score <score>
+```
+
+| Flag | Description |
+|---|---|
+| `--agrees` | Required. True when the grader got it right. |
+| `--note <NOTE>` | Optional note on why (at most 2000 characters). |
+| `--org <ORG>` | Required. |
+| `--score <SCORE>` | Required. |
+
+Example:
+
+```bash
+# Record a suspected continuity issue as a grader mistake
+everruns orgs quality-monitoring scores review --org org_01h9 --score score_01h9 --agrees false --note 'A later user correction explains the answer' --reason 'Calibrate compaction monitoring'
+```
+
 ## orgs update
 
 Update the active organization's name and defaults.
@@ -108,6 +171,7 @@ everruns orgs update [OPTIONS] --org <org>
 | `--monthly-session-limit <MONTHLY_SESSION_LIMIT>` | Maximum sessions this organization can create per UTC calendar month. |
 | `--name <NAME>` | The display name of the organization. |
 | `--org <ORG>` | Required. |
+| `--quality-monitoring <QUALITY_MONITORING>` |  |
 | `--research-model-id <RESEARCH_MODEL_ID>` | Research model for agents set to "Organization research model". |
 | `--self-healing <SELF_HEALING>` |  |
 | `--small-model-id <SMALL_MODEL_ID>` | Shared small chat model for lightweight work. |

@@ -45,6 +45,7 @@ pub mod eval_proposals;
 pub mod finding_actions;
 pub mod finding_fixes;
 pub mod finding_investigations;
+pub mod observer_monitoring;
 pub mod org_egress_allowlist;
 pub mod org_slack_connections;
 pub mod org_tool_approval;

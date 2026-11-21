@@ -6235,6 +6235,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/orgs/{org}/quality-monitoring": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get compaction monitoring
+     * @description Read organization compaction monitoring policy, coverage and budget reservations.
+     */
+    get: operations["get_org_quality_monitoring"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/quality-monitoring/scores": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List compaction findings
+     * @description Read the newest fifty compaction monitoring findings with source trace references.
+     */
+    get: operations["list_org_quality_monitoring_scores"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/orgs/{org}/quality-monitoring/scores/{score}/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Review a compaction finding
+     * @description Record a person's agreement with a compaction assessment, without starting model work.
+     */
+    put: operations["review_org_quality_monitoring_score"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/payments/accounts": {
     parameters: {
       query?: never;
@@ -13156,6 +13216,8 @@ export interface components {
      * @enum {string}
      */
     Communication: "direct" | "explicit";
+    /** @enum {string} */
+    CompactionCheck: "execution" | "continuity";
     /** @description Content-free lifecycle information suitable for chat and API inspection. */
     CompactionEventSummary: {
       /** @description Whether this observation installed a checkpoint rather than only masking a request. */
@@ -13513,6 +13575,11 @@ export interface components {
        * @description Total duration of all compaction steps in milliseconds.
        */
       duration_ms: number;
+      /**
+       * @description Runtime permission to inspect raw journal evidence. This is independent
+       *     of monitoring consent; absent on older events means disallowed.
+       */
+      history_evidence_allowed?: boolean;
       /** @description Number of messages after compaction. */
       messages_after: number;
       /**
@@ -21844,6 +21911,8 @@ export interface components {
         scorers: components["schemas"]["ObserverScorerConfig"][];
         /** @description Lifecycle status. */
         status: components["schemas"]["ObserverStatus"];
+        /** @description Present for system-managed observers, whose configuration is read-only. */
+        system_kind?: string | null;
         /** Format: date-time */
         updated_at: string;
       }[];
@@ -21915,6 +21984,8 @@ export interface components {
          *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
          */
         onboarding_completed_at?: string | null;
+        /** @description Opt-in system-managed compaction monitoring. Disabled by default. */
+        quality_monitoring: components["schemas"]["QualityMonitoringPolicy"];
         /**
          * @description Research model: the org's strongest model for hard reasoning and long
          *     research. None means Automatic.
@@ -22068,6 +22139,8 @@ export interface components {
         created_at: string;
         /** @description Error details if errored. */
         error_message?: string | null;
+        /** @description Bounded runtime metadata and source-event references for system checks. */
+        evidence_ref?: unknown;
         /** @description Harness of the session. */
         harness_id?: string | null;
         /**
@@ -25132,6 +25205,17 @@ export interface components {
        */
       to: string;
     };
+    MonitoringCheckTotals: {
+      check: string;
+      /** Format: int64 */
+      failed: number;
+      /** Format: int64 */
+      insufficient_evidence: number;
+      /** Format: int64 */
+      passed: number;
+      /** Format: int64 */
+      pending: number;
+    };
     /** @description Bounded execution breakdown for one organization and live lease holder. */
     MonitoringCohort: {
       /**
@@ -25326,6 +25410,12 @@ export interface components {
        * @example false
        */
       workers_truncated: boolean;
+    };
+    MonitoringSpend: {
+      /** Format: double */
+      reported_usd: number;
+      /** Format: double */
+      reserved_usd: number;
     };
     /** @description Payload-free timing projection of one step in the latest turn. */
     MonitoringStep: {
@@ -25741,6 +25831,8 @@ export interface components {
       scorers: components["schemas"]["ObserverScorerConfig"][];
       /** @description Lifecycle status. */
       status: components["schemas"]["ObserverStatus"];
+      /** @description Present for system-managed observers, whose configuration is read-only. */
+      system_kind?: string | null;
       /** Format: date-time */
       updated_at: string;
     };
@@ -25794,7 +25886,7 @@ export interface components {
      *     - `tool`: one tool call and its result, scored when the call completes.
      * @enum {string}
      */
-    ObserverScope: "turn" | "session" | "tool";
+    ObserverScope: "turn" | "session" | "tool" | "compaction";
     /**
      * @description One scorer inside an observer. `key` names the score series in listings
      *     and future dashboards; `scope` selects the trace slice; `method` is how
@@ -25994,6 +26086,8 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /** @description Opt-in system-managed compaction monitoring. Disabled by default. */
+      quality_monitoring: components["schemas"]["QualityMonitoringPolicy"];
       /**
        * @description Research model: the org's strongest model for hard reasoning and long
        *     research. None means Automatic.
@@ -27942,6 +28036,41 @@ export interface components {
       sessions: number;
       /** @description Daily pass rates, oldest first (agent groups only). */
       trend?: number[];
+    };
+    /**
+     * @description Consent and spending admission for system-managed compaction observers.
+     *     No content is shared outside the organization's configured model provider.
+     */
+    QualityMonitoringPolicy: {
+      /**
+       * Format: double
+       * @description UTC-day admission cap, including reserved uncertain/retry costs.
+       *     Zero disables model calls while retaining mechanical checks.
+       * @default 0
+       */
+      daily_budget_usd: number;
+      /** @default false */
+      enabled: boolean;
+      /**
+       * @description Sessions with any of these tags are excluded before reading content.
+       * @default []
+       */
+      excluded_tags: string[];
+      /** @default null */
+      model_id: components["schemas"]["modelId"] | null;
+      /**
+       * Format: double
+       * @description Fraction of eligible checkpoints receiving a content-based assessment.
+       * @default 0.02
+       */
+      sampling_rate: number;
+    };
+    QualityMonitoringReport: {
+      /** @description Separate execution and continuity verdict counts over seven days. */
+      checks: components["schemas"]["MonitoringCheckTotals"][];
+      observer_id?: string | null;
+      policy: components["schemas"]["QualityMonitoringPolicy"];
+      today: components["schemas"]["MonitoringSpend"];
     };
     /**
      * @description How production traffic scored over the last `days`: in total, by agent,
@@ -30990,7 +31119,12 @@ export interface components {
       | (components["schemas"]["LlmJudgeConfig"] & {
           /** @enum {string} */
           method: "llm_judge";
-        });
+        })
+      | {
+          check: components["schemas"]["CompactionCheck"];
+          /** @enum {string} */
+          method: "system_compaction";
+        };
     /** @description A saved script a trigger runs instead of sending its message to the model. */
     ScriptRun: {
       /** @description The script's input object, passed on its stdin. */
@@ -34464,6 +34598,8 @@ export interface components {
       created_at: string;
       /** @description Error details if errored. */
       error_message?: string | null;
+      /** @description Bounded runtime metadata and source-event references for system checks. */
+      evidence_ref?: unknown;
       /** @description Harness of the session. */
       harness_id?: string | null;
       /**
@@ -36038,6 +36174,7 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      quality_monitoring?: components["schemas"]["QualityMonitoringPolicy"] | null;
       /**
        * @description Research model for agents set to "Organization research model". Omit to
        *     preserve; null returns to Automatic. Must be an enabled shared chat model.
@@ -54519,6 +54656,77 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["VerifyConnectionResponse"];
+        };
+      };
+    };
+  };
+  get_org_quality_monitoring: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QualityMonitoringReport"];
+        };
+      };
+    };
+  };
+  list_org_quality_monitoring_scores: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceScore"][];
+        };
+      };
+    };
+  };
+  review_org_quality_monitoring_score: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        org: string;
+        /** @description Prefixed public identifier */
+        score: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceScore"] | null;
         };
       };
     };

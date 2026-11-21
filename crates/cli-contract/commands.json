@@ -10672,6 +10672,103 @@
     ]
   },
   {
+    "wire_name": "get_org_quality_monitoring",
+    "path": [
+      "orgs",
+      "quality-monitoring"
+    ],
+    "verb": "get",
+    "description": "Read organization compaction monitoring policy, coverage and budget reservations.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/quality-monitoring",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Inspect compaction monitoring consent, coverage and allowance",
+        "command": "everruns orgs quality-monitoring get --org org_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_org_quality_monitoring_scores",
+    "path": [
+      "orgs",
+      "quality-monitoring",
+      "scores"
+    ],
+    "verb": "list",
+    "description": "Read the newest fifty compaction monitoring findings with source trace references.",
+    "method": "GET",
+    "http_path": "/v1/orgs/{org}/quality-monitoring/scores",
+    "args": [
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read recent compaction assessments and their trace references",
+        "command": "everruns orgs quality-monitoring scores list --org org_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "review_org_quality_monitoring_score",
+    "path": [
+      "orgs",
+      "quality-monitoring",
+      "scores"
+    ],
+    "verb": "review",
+    "description": "Record a person's agreement with a compaction assessment, without starting model work.",
+    "method": "PUT",
+    "http_path": "/v1/orgs/{org}/quality-monitoring/scores/{score}/review",
+    "args": [
+      {
+        "field": "agrees",
+        "long": "agrees",
+        "kind": "boolean",
+        "required": true,
+        "help": "True when the grader got it right."
+      },
+      {
+        "field": "note",
+        "long": "note",
+        "kind": "string",
+        "required": false,
+        "help": "Optional note on why (at most 2000 characters)."
+      },
+      {
+        "field": "org",
+        "long": "org",
+        "kind": "string",
+        "required": true
+      },
+      {
+        "field": "score",
+        "long": "score",
+        "kind": "string",
+        "required": true
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Record a suspected continuity issue as a grader mistake",
+        "command": "everruns orgs quality-monitoring scores review --org org_01h9 --score score_01h9 --agrees false --note 'A later user correction explains the answer' --reason 'Calibrate compaction monitoring'"
+      }
+    ]
+  },
+  {
     "wire_name": "resolve_org",
     "path": [
       "orgs"
@@ -10787,6 +10884,12 @@
         "long": "org",
         "kind": "string",
         "required": true
+      },
+      {
+        "field": "quality_monitoring",
+        "long": "quality-monitoring",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "research_model_id",

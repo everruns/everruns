@@ -62,6 +62,12 @@ pub async fn read(
         }
         "events" => {
             let range = Range::parse(query)?;
+            if let Some(chars) = range.preview_chars {
+                return json(serde_json::to_value(
+                    crate::event_previews::read(gateway, session, range.from, range.to, chars)
+                        .await?,
+                ));
+            }
             let after = range.from.saturating_sub(1).max(0);
             let events = crate::gateway_v1::read_events(gateway, session, after).await?;
             json(serde_json::to_value(range.select(&events)))
@@ -186,6 +192,7 @@ fn find_child(value: &Value, depth: usize) -> Option<String> {
 /// them.
 #[derive(Debug, PartialEq)]
 struct Range {
+    preview_chars: Option<usize>,
     from: i32,
     to: i32,
     types: Vec<String>,
@@ -196,6 +203,7 @@ struct Range {
 impl Range {
     fn parse(query: Option<&str>) -> Result<Self, ApiError> {
         let mut range = Self {
+            preview_chars: None,
             from: 1,
             to: i32::MAX,
             types: Vec::new(),
@@ -209,6 +217,9 @@ impl Range {
                     .map_err(|_| (StatusCode::BAD_REQUEST, format!("invalid {key}")))
             };
             match key.as_ref() {
+                "preview_chars" => {
+                    range.preview_chars = Some(usize::try_from(bound()?).unwrap_or(0))
+                }
                 "from" => range.from = bound()?,
                 "to" => range.to = bound()?,
                 "types" => range.types = value.split(',').map(str::to_owned).collect(),

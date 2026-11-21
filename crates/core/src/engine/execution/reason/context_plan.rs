@@ -17,6 +17,26 @@ const PAGE_MESSAGES: usize = 256;
 const MIN_RECENT_MESSAGES: usize = 10;
 const CANDIDATE_MODEL: &str = "continuity-candidate-v1";
 
+pub(super) fn raw_history_allowed(
+    driver: &dyn ChatDriver,
+    registry: &crate::CapabilityRegistry,
+    configs: &[crate::AgentCapabilityConfig],
+) -> bool {
+    driver.supports_history_summarization()
+        && !configs.iter().any(|config| {
+            registry
+                .get(config.capability_id())
+                .is_some_and(|capability| {
+                    capability
+                        .user_hooks_with_config(config.config_value())
+                        .iter()
+                        .any(|hook| {
+                            hook.event == crate::user_hook_types::HookEvent::UserPromptSubmit
+                        })
+                })
+        })
+}
+
 fn portable_message(message: &RuntimeMessage) -> bool {
     message
         .metadata
@@ -731,6 +751,7 @@ impl Planner<'_> {
                     self.session_id,
                     self.event_context.clone(),
                     crate::events::ContextCompactedData {
+                        history_evidence_allowed: true,
                         checkpoint_id: Some(checkpoint.id.to_string()),
                         checkpoint_bytes: None,
                         replay_source: None,

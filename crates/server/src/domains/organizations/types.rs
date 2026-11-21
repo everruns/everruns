@@ -15,6 +15,8 @@ pub type ListOrganizationsResponse = crate::common_dto::ListResponse<Organizatio
 /// Response for organization operations
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct OrganizationResponse {
+    /// Opt-in system-managed compaction monitoring. Disabled by default.
+    pub quality_monitoring: crate::domains::observers::system::QualityMonitoringPolicy,
     /// External identifier (org_<32-hex-chars>)
     pub id: String,
     /// Display name
@@ -104,6 +106,10 @@ pub struct ResolveOrgResponse {
 /// Request to update an organization
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct UpdateOrganizationRequest {
+    /// Replaces the monitoring policy. Enabling paid checks requires a model
+    /// and a positive daily budget; zero permits mechanical checks only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality_monitoring: Option<crate::domains::observers::system::QualityMonitoringPolicy>,
     /// The display name of the organization.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Acme Corporation")]

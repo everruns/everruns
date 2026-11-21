@@ -64,6 +64,7 @@ function scoreStatusVariant(status: string): "default" | "secondary" | "destruct
 }
 
 function scorerSummary(scorer: ObserverScorerConfig): string {
+  if (scorer.method === "system_compaction") return scorer.check;
   const scope =
     scorer.scope === "session"
       ? "conversation · "
@@ -369,13 +370,13 @@ export default function ObserverDetailPage({
           )}
         </div>
         <div className="flex gap-2">
-          {!isArchived && (
+          {!isArchived && !observer.system_kind && (
             <LinkButton variant="outline" href={`/observers/${observerId}/edit`}>
               <Pencil className="mr-2 h-4 w-4" />
               {ui("Edit")}
             </LinkButton>
           )}
-          {!isArchived && (
+          {!isArchived && !observer.system_kind && (
             <Button
               variant="outline"
               onClick={handleToggleStatus}

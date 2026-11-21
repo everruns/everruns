@@ -236,18 +236,11 @@ impl ReasonAtom {
 
         // Native epochs own reduction. Portable continuity is lazy: use it for
         // local strategies or when a different provider/model owns the floor.
-        let raw_history_allowed = chat_driver.supports_history_summarization()
-            && !resolved_capability_configs.iter().any(|config| {
-                self.capability_registry
-                    .get(config.capability_id())
-                    .is_some_and(|cap| {
-                        cap.user_hooks_with_config(config.config_value())
-                            .iter()
-                            .any(|hook| {
-                                hook.event == crate::user_hook_types::HookEvent::UserPromptSubmit
-                            })
-                    })
-            });
+        let raw_history_allowed = context_plan::raw_history_allowed(
+            chat_driver.as_ref(),
+            &self.capability_registry,
+            &resolved_capability_configs,
+        );
         let mut prefer_portable = false;
         if raw_history_allowed
             && !provider_managed
@@ -796,6 +789,7 @@ impl ReasonAtom {
             llm_messages_for_call.len(),
             message_source_sequence,
             &llm_config,
+            raw_history_allowed,
         );
 
         let fallback = provider_managed_compaction::take_fallback(&mut llm_config);
@@ -803,6 +797,7 @@ impl ReasonAtom {
         if !provider_managed && let Some(policy) = compaction_policy.as_deref() {
             compaction_info = apply_proactive_compaction(
                 ProactiveCompactionContext {
+                    history_evidence_allowed: raw_history_allowed,
                     chat_driver: chat_driver.as_ref(),
                     policy,
                     checkpoint_store: self.compaction_checkpoint_store.as_ref(),

@@ -38,6 +38,19 @@ export default function EditObserverPage({ params }: { params: Promise<{ observe
     );
   }
 
+  if (observer?.system_kind) {
+    return (
+      <div className="container mx-auto space-y-3 p-6">
+        <p>{ui("System-managed checks configured in organization settings.")}</p>
+        <Link
+          className="text-primary hover:underline"
+          href="/settings/organization#quality-monitoring"
+        >
+          {ui("Organization settings")}
+        </Link>
+      </div>
+    );
+  }
   if (!observer) {
     return (
       <ResourceNotFound

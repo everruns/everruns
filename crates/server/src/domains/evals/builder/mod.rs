@@ -121,6 +121,7 @@ impl CaseProposer for LlmCaseProposer {
                 system,
                 prompt,
                 CompletionOptions {
+                    monitoring: None,
                     temperature: 0.4,
                     max_tokens: MAX_OUTPUT_TOKENS,
                     purpose: EVAL_BUILDER_PURPOSE,

@@ -77,6 +77,7 @@ impl Command for UpdateOrg {
             .await?
             .ok_or_else(|| CommandError::not_found("Organization"))?;
         let UpdateOrganizationRequest {
+            quality_monitoring,
             name,
             default_model_id,
             chat_model_id,
@@ -95,6 +96,11 @@ impl Command for UpdateOrg {
             self_healing,
             tool_approval_policy,
         } = self.request;
+        if let Some(policy) = &quality_monitoring {
+            crate::domains::observers::system::validate_policy(&ctx.db, row.org_id, policy)
+                .await
+                .map_err(CommandError::bad_request)?;
+        }
         if let Some(policy) = &tool_approval_policy {
             policy.validate().map_err(CommandError::bad_request)?;
         }
@@ -295,6 +301,9 @@ impl Command for UpdateOrg {
         }
         if let Some(cap) = agentid_agents_per_owner {
             ctx.db.set_agentid_agents_per_owner(row.org_id, cap).await?;
+        }
+        if let Some(policy) = quality_monitoring {
+            crate::domains::observers::system::configure(&ctx.db, row.org_id, &policy).await?;
         }
         q::build_organization_response(&ctx.db, row.org_id, updated).await
     }

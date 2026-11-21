@@ -24139,6 +24139,142 @@
         }
       }
     },
+    "/v1/orgs/{org}/quality-monitoring": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Get compaction monitoring",
+        "description": "Read organization compaction monitoring policy, coverage and budget reservations.",
+        "operationId": "get_org_quality_monitoring",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityMonitoringReport"
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/quality-monitoring/scores": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "List compaction findings",
+        "description": "Read the newest fifty compaction monitoring findings with source trace references.",
+        "operationId": "list_org_quality_monitoring_scores",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TraceScore"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
+    "/v1/orgs/{org}/quality-monitoring/scores/{score}/review": {
+      "put": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "Review a compaction finding",
+        "description": "Record a person's agreement with a compaction assessment, without starting model work.",
+        "operationId": "review_org_quality_monitoring_score",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TraceScore"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-docs": {
+          "audience": "public",
+          "availability": "Everruns Cloud and self-hosted Platform",
+          "group": "identity-access",
+          "support": "preview"
+        }
+      }
+    },
     "/v1/payments/accounts": {
       "get": {
         "tags": [
@@ -44059,6 +44195,13 @@
           "explicit"
         ]
       },
+      "CompactionCheck": {
+        "type": "string",
+        "enum": [
+          "execution",
+          "continuity"
+        ]
+      },
       "CompactionEventSummary": {
         "type": "object",
         "description": "Content-free lifecycle information suitable for chat and API inspection.",
@@ -44863,6 +45006,10 @@
             "format": "int64",
             "description": "Total duration of all compaction steps in milliseconds.",
             "minimum": 0
+          },
+          "history_evidence_allowed": {
+            "type": "boolean",
+            "description": "Runtime permission to inspect raw journal evidence. This is independent\nof monitoring consent; absent on older events means disallowed."
           },
           "messages_after": {
             "type": "integer",
@@ -59664,6 +59811,13 @@
                   "$ref": "#/components/schemas/ObserverStatus",
                   "description": "Lifecycle status."
                 },
+                "system_kind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Present for system-managed observers, whose configuration is read-only."
+                },
                 "updated_at": {
                   "type": "string",
                   "format": "date-time"
@@ -59687,6 +59841,7 @@
               "type": "object",
               "description": "Response for organization operations",
               "required": [
+                "quality_monitoring",
                 "id",
                 "name",
                 "default_provider_per_service",
@@ -59791,6 +59946,10 @@
                   ],
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
+                "quality_monitoring": {
+                  "$ref": "#/components/schemas/QualityMonitoringPolicy",
+                  "description": "Opt-in system-managed compaction monitoring. Disabled by default."
                 },
                 "research_model_id": {
                   "type": [
@@ -60090,6 +60249,9 @@
                     "null"
                   ],
                   "description": "Error details if errored."
+                },
+                "evidence_ref": {
+                  "description": "Bounded runtime metadata and source-event references for system checks."
                 },
                 "harness_id": {
                   "type": [
@@ -65742,6 +65904,37 @@
           }
         }
       },
+      "MonitoringCheckTotals": {
+        "type": "object",
+        "required": [
+          "check",
+          "passed",
+          "failed",
+          "insufficient_evidence",
+          "pending"
+        ],
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "insufficient_evidence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "MonitoringCohort": {
         "type": "object",
         "description": "Bounded execution breakdown for one organization and live lease holder.",
@@ -66044,6 +66237,23 @@
             "type": "boolean",
             "description": "Whether worker detail exceeded its limit; population and phase counts remain complete.",
             "example": false
+          }
+        }
+      },
+      "MonitoringSpend": {
+        "type": "object",
+        "required": [
+          "reserved_usd",
+          "reported_usd"
+        ],
+        "properties": {
+          "reported_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "reserved_usd": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
@@ -66737,6 +66947,13 @@
             "$ref": "#/components/schemas/ObserverStatus",
             "description": "Lifecycle status."
           },
+          "system_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present for system-managed observers, whose configuration is read-only."
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time"
@@ -66814,7 +67031,8 @@
         "enum": [
           "turn",
           "session",
-          "tool"
+          "tool",
+          "compaction"
         ]
       },
       "ObserverScorerConfig": {
@@ -67092,6 +67310,7 @@
         "type": "object",
         "description": "Response for organization operations",
         "required": [
+          "quality_monitoring",
           "id",
           "name",
           "default_provider_per_service",
@@ -67196,6 +67415,10 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "quality_monitoring": {
+            "$ref": "#/components/schemas/QualityMonitoringPolicy",
+            "description": "Opt-in system-managed compaction monitoring. Disabled by default."
           },
           "research_model_id": {
             "type": [
@@ -70550,6 +70773,78 @@
               "format": "double"
             },
             "description": "Daily pass rates, oldest first (agent groups only)."
+          }
+        }
+      },
+      "QualityMonitoringPolicy": {
+        "type": "object",
+        "description": "Consent and spending admission for system-managed compaction observers.\nNo content is shared outside the organization's configured model provider.",
+        "properties": {
+          "daily_budget_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "UTC-day admission cap, including reserved uncertain/retry costs.\nZero disables model calls while retaining mechanical checks.",
+            "default": 0
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "excluded_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sessions with any of these tags are excluded before reading content.",
+            "default": []
+          },
+          "model_id": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/modelId",
+                "description": "Explicit org model. None enables mechanical checks only."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sampling_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Fraction of eligible checkpoints receiving a content-based assessment.",
+            "default": 0.02
+          }
+        },
+        "additionalProperties": false
+      },
+      "QualityMonitoringReport": {
+        "type": "object",
+        "required": [
+          "policy",
+          "today",
+          "checks"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringCheckTotals"
+            },
+            "description": "Separate execution and continuity verdict counts over seven days."
+          },
+          "observer_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "policy": {
+            "$ref": "#/components/schemas/QualityMonitoringPolicy"
+          },
+          "today": {
+            "$ref": "#/components/schemas/MonitoringSpend"
           }
         }
       },
@@ -76306,6 +76601,25 @@
               }
             ],
             "description": "LLM-as-judge."
+          },
+          {
+            "type": "object",
+            "description": "Versioned built-in checks, configured through organization settings.",
+            "required": [
+              "check",
+              "method"
+            ],
+            "properties": {
+              "check": {
+                "$ref": "#/components/schemas/CompactionCheck"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "system_compaction"
+                ]
+              }
+            }
           }
         ],
         "description": "How a scorer grades a trace slice: a deterministic `rule` (reusing the\neval scorer vocabulary) or an `llm_judge`."
@@ -82593,6 +82907,9 @@
             ],
             "description": "Error details if errored."
           },
+          "evidence_ref": {
+            "description": "Bounded runtime metadata and source-event references for system checks."
+          },
           "harness_id": {
             "type": [
               "string",
@@ -85687,6 +86004,17 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "quality_monitoring": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QualityMonitoringPolicy",
+                "description": "Replaces the monitoring policy. Enabling paid checks requires a model\nand a positive daily budget; zero permits mechanical checks only."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "research_model_id": {
             "type": [
