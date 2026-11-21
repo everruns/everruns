@@ -106,6 +106,45 @@ pub trait OrgMaterial: Send + Sync {
         let _ = (org, op);
         anyhow::bail!("this node does not refresh org secrets")
     }
+    /// The person whose message opened the turn `session` has open, with
+    /// that message, from the session's own record (`senders.rs`); `None`
+    /// when no person did or no turn is open.
+    fn turn_actor(
+        &self,
+        session: SessionId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let _ = session;
+        None
+    }
+    /// The person who sent `message` in `session`, with that message, from
+    /// the session's own record (`senders.rs`); `None` when no person did.
+    fn message_actor(
+        &self,
+        session: SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let _ = (session, message);
+        None
+    }
+    /// The URL of the control plane's server `name`
+    /// (`injected::CONTROLLER_SERVERS`) that `session`'s create brought;
+    /// `None` without one, or for a session not known here.
+    fn controller_url(&self, session: SessionId, name: &str) -> Option<String> {
+        let _ = (session, name);
+        None
+    }
+    /// The data plane's key, which session tokens for injected
+    /// capabilities are signed with a key derived from
+    /// ([`session_token_pkcs8`](everruns_contracts::dataplane_seal::session_token_pkcs8));
+    /// `None` where no control plane wraps keys (a standalone cell).
+    fn data_plane_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
+        None
+    }
+    /// The orgs' MCP credentials, session tokens included; `None` on a
+    /// node that calls no control plane server (`memory.rs`).
+    fn mcp(&self) -> Option<Arc<crate::mcp::OrgMcp>> {
+        None
+    }
     /// Whether [`lookup`](Self::lookup) reaches a control plane: false on
     /// a standalone cell, whose tools then get the defaults a host without
     /// org settings gives.

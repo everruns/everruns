@@ -764,6 +764,55 @@ impl crate::providers::OrgMaterial for Executor {
         self.dp_key.lock().is_some()
     }
 
+    fn data_plane_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
+        *self.dp_key.lock()
+    }
+
+    fn mcp(&self) -> Option<Arc<crate::mcp::OrgMcp>> {
+        Some(self.mcp.clone())
+    }
+
+    fn turn_actor(
+        &self,
+        session: SessionId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let state = self.remote.shared.state.read();
+        let s = state.sessions.get(&session)?;
+        let message = s.authority.open.and(s.authority.open_input)?;
+        s.platform.senders.of(message).map(|sub| {
+            everruns_contracts::runtime::capabilities::injected::SessionActor {
+                sub: sub.to_owned(),
+                turn: Some(message.uuid().to_string()),
+            }
+        })
+    }
+
+    fn message_actor(
+        &self,
+        session: SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let state = self.remote.shared.state.read();
+        let s = state.sessions.get(&session)?;
+        s.platform.senders.of(message).map(|sub| {
+            everruns_contracts::runtime::capabilities::injected::SessionActor {
+                sub: sub.to_owned(),
+                turn: Some(message.uuid().to_string()),
+            }
+        })
+    }
+
+    fn controller_url(&self, session: SessionId, name: &str) -> Option<String> {
+        let state = self.remote.shared.state.read();
+        state
+            .sessions
+            .get(&session)?
+            .platform
+            .servers
+            .get(name)
+            .cloned()
+    }
+
     fn declared_host_calls(
         &self,
         session: SessionId,

@@ -40,8 +40,11 @@ use everruns_core::{
 use serde_json::Value;
 
 use crate::authority::{ProactiveAttempt, WriteOp};
+use crate::mcp::ControllerServer;
+use crate::memory::SessionMemory;
 use crate::node::{Node, now_ms};
 use crate::state::{Checkpoint, Command, Response, SessionState};
+use crate::user_mcp;
 
 /// `backends` with the session's SQL databases for the `sql_database`
 /// tools (`hosting_sqldb.rs`), on every cell, with or without a control
@@ -473,19 +476,20 @@ impl SessionHosting for RaftHosting {
         let backends = crate::subagents::attach(session, backends, Port(self.inner.clone())).await;
         // The session's Memory, in the control plane (`memory.rs`), and the
         // read-only files its capabilities bring (`capability_files.rs`).
-        let (memory, definition) = self
+        let (memory, definition, servers) = self
             .inner
             .read(session, |s| {
-                (s.platform.memory.clone(), s.definition.clone())
+                (
+                    SessionMemory::of(&s.platform),
+                    s.definition.clone(),
+                    s.platform.servers.clone(),
+                )
             })
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
-        let lookups = crate::lookups::org_lookups(self.inner.material.get(), session);
-        let backends = if memory.is_empty() {
-            backends
-        } else {
-            crate::memory::attach(backends, lookups.clone(), session, &memory)
-        };
+        let material = self.inner.material.get();
+        let lookups = crate::lookups::org_lookups(material, session);
+        let backends = crate::memory::attach(backends, material, lookups.clone(), session, &memory);
         // Decision (parity, step 10): a session's resources (fleet
         // sandboxes, activated skills) and the leases of what its tools
         // started at a provider stay in the control plane, as for a v1
@@ -505,9 +509,13 @@ impl SessionHosting for RaftHosting {
             ));
         }
         // The person's own MCP servers and the session's MCP records (`user_mcp.rs`).
-        let backends = crate::user_mcp::attach(
+        let person_mcp = servers.get(user_mcp::SERVER).and_then(|url| {
+            ControllerServer::for_session(material, session, user_mcp::SERVER, url)
+        });
+        let backends = user_mcp::attach(
             backends,
             lookups,
+            person_mcp,
             Port(self.inner.clone()),
             session,
             &definition,
@@ -1401,10 +1409,10 @@ impl SessionEpoch for Ports {
         if self.epoch.is_none()
             && let Some(memory) = self
                 .inner
-                .peek(self.session, |s| s.platform.memory.clone())
-                .filter(|memory| !memory.is_empty())
+                .peek(self.session, |s| SessionMemory::of(&s.platform))
         {
-            backends = crate::memory::attach(backends, lookups, self.session, &memory);
+            let material = self.inner.material.get();
+            backends = crate::memory::attach(backends, material, lookups, self.session, &memory);
         }
         backends
     }

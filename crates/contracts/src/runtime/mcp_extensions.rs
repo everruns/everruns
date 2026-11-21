@@ -26,7 +26,8 @@ use serde_json::Value;
 
 /// Server contributes [`Fact`]s through [`FACTS_RESOURCE_URI`].
 pub const FACTS_EXTENSION: &str = "io.everruns/facts";
-/// Server reads and writes session files with `If-Match` preconditions.
+/// Server owns a file tree the host mounts (a session's Memory), read and
+/// written through the [`FILES_METHOD_PREFIX`] methods.
 pub const FILES_EXTENSION: &str = "io.everruns/files";
 /// Server observes or changes tool calls ([`HOOKS_BEFORE_TOOL_METHOD`],
 /// [`HOOKS_AFTER_TOOL_METHOD`]).
@@ -50,6 +51,74 @@ pub const EXTENSIONS_RESOURCE_URI: &str = "everruns://extensions";
 /// JSON [`FactsDocument`].
 pub const FACTS_RESOURCE_URI: &str = "everruns://facts";
 pub const FACTS_MIME_TYPE: &str = "application/json";
+
+/// Prefix of the file methods, one per operation: `everruns/files/read`,
+/// `everruns/files/write`, ... (see [`FILES_OPS`]). Params carry `path` and
+/// the operation's own fields; the result is the operation's value (a
+/// `SessionFile`, a `FileInfo` list, a `FileStat`, a bool, or `null` for a
+/// file that is not there).
+pub const FILES_METHOD_PREFIX: &str = "everruns/files/";
+/// The file operations. `write` takes `content`, `encoding` and optionally
+/// `if_match` (an [`file_etag`] the file must still have);
+/// `write_if_matches` takes `expected_content` and `expected_encoding`
+/// instead; `create_if_absent` `content`; `delete` `recursive`. `read` and
+/// `stat` of a file add its `etag`.
+pub const FILES_OPS: [&str; 8] = [
+    "read",
+    "write",
+    "write_if_matches",
+    "create_if_absent",
+    "delete",
+    "list",
+    "stat",
+    "mkdir",
+];
+
+/// The method of one file operation.
+pub fn files_method(op: &str) -> String {
+    format!("{FILES_METHOD_PREFIX}{op}")
+}
+
+/// The operation a file method names, if it is one.
+pub fn files_op(method: &str) -> Option<&'static str> {
+    let op = method.strip_prefix(FILES_METHOD_PREFIX)?;
+    FILES_OPS.into_iter().find(|known| *known == op)
+}
+
+/// A file's entity tag: a hash of its bytes, so the same bytes sent as text
+/// or as base64 have one tag.
+pub fn file_etag(content: &str, encoding: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let bytes = crate::runtime::session_file::SessionFile::decode_content(content, encoding)
+        .unwrap_or_else(|_| content.as_bytes().to_vec());
+    let digest = Sha256::digest(&bytes);
+    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("\"sha256:{hex}\"")
+}
+
+/// A file path as a server takes it: absolute, without `.`, `..` or empty
+/// segments, a trailing `/` dropped. THREAT: the server resolves every path
+/// inside the session's own tree; refusing escapes here means no service
+/// has to get that right on its own.
+pub fn checked_file_path(path: &str) -> Result<String, String> {
+    if !path.starts_with('/') {
+        return Err(format!("{path:?} is not an absolute path"));
+    }
+    if path.contains('\0') || path.contains('\\') {
+        return Err(format!("{path:?} is not a valid path"));
+    }
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Ok("/".to_string());
+    }
+    if trimmed[1..]
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return Err(format!("{path:?} leaves the file tree or is not normal"));
+    }
+    Ok(trimmed.to_string())
+}
 
 pub const HOOKS_BEFORE_TOOL_METHOD: &str = "everruns/hooks/beforeTool";
 pub const HOOKS_AFTER_TOOL_METHOD: &str = "everruns/hooks/afterTool";
@@ -241,6 +310,44 @@ pub struct AfterToolResult {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn file_methods_are_one_per_operation() {
+        assert_eq!(files_method("read"), "everruns/files/read");
+        assert_eq!(files_op("everruns/files/write"), Some("write"));
+        assert_eq!(files_op("everruns/files/chmod"), None);
+        assert_eq!(files_op("everruns/files"), None);
+        assert_eq!(files_op("everruns/hooks/beforeTool"), None);
+    }
+
+    #[test]
+    fn a_files_etag_follows_its_bytes_not_their_encoding() {
+        let text = file_etag("hi", "text");
+        assert_eq!(text, file_etag("aGk=", "base64"));
+        assert_ne!(text, file_etag("ho", "text"));
+        assert!(text.starts_with("\"sha256:"));
+    }
+
+    #[test]
+    fn file_paths_stay_inside_the_tree() {
+        assert_eq!(
+            checked_file_path("/memory/user/a.md").unwrap(),
+            "/memory/user/a.md"
+        );
+        assert_eq!(checked_file_path("/memory/user/").unwrap(), "/memory/user");
+        assert_eq!(checked_file_path("/").unwrap(), "/");
+        for bad in [
+            "memory/a.md",
+            "/memory/../etc",
+            "/memory/./a",
+            "/memory//a",
+            "/memory/a/..",
+            "/a\0b",
+            "/a\\b",
+        ] {
+            assert!(checked_file_path(bad).is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn facts_document_round_trips_and_is_capped() {

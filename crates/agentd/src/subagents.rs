@@ -65,9 +65,28 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
         return backends;
     };
     let lookups = crate::lookups::org_lookups(port.material(), session);
+    // The control plane's commands server, when it sent one with the create.
+    let commands = port
+        .read(session, |s| {
+            s.platform
+                .servers
+                .get(everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMANDS)
+                .cloned()
+        })
+        .await
+        .ok()
+        .flatten()
+        .and_then(|url| {
+            crate::mcp::ControllerServer::for_session(
+                port.material(),
+                session,
+                everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMANDS,
+                &url,
+            )
+        });
     let calls = lookups
         .clone()
-        .map(|lookups| crate::platform_calls::PlatformCalls::new(lookups, session));
+        .map(|lookups| crate::platform_calls::PlatformCalls::new(lookups, session, commands));
     // The shell's saved scripts (`saved_scripts.rs`). A save is allowed here
     // and decided by the control plane, which reads the agent's shell
     // settings and the turn's person.
@@ -489,7 +508,7 @@ impl PlatformStore for CellPlatformStore {
         // first (`subagent_record`), as a v1 subagent has, and runs under the
         // id that record has, with the Memory mounts resolved from it. A cell
         // with no control plane (standalone) starts it without one.
-        let (id, memory) = match (&self.calls, &parent.org) {
+        let (id, memory, servers) = match (&self.calls, &parent.org) {
             (Some(calls), Some(_)) => {
                 calls
                     .record_subagent(serde_json::json!({
@@ -501,7 +520,7 @@ impl PlatformStore for CellPlatformStore {
                     }))
                     .await?
             }
-            _ => (SessionId::new(), Vec::new()),
+            _ => (SessionId::new(), Vec::new(), Default::default()),
         };
         self.gateway
             .create_running(
@@ -512,6 +531,7 @@ impl PlatformStore for CellPlatformStore {
                 agent_ref,
                 crate::gateway::Joining {
                     memory,
+                    servers,
                     importing: false,
                 },
             )

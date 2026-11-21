@@ -358,3 +358,571 @@ async fn endpoint_is_off_without_trusted_keys() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn the_linked_data_planes_tokens_are_trusted_from_its_key_alone() {
+    use everruns_contracts::dataplane_seal::{SESSION_TOKEN_ISSUER, session_token_pkcs8};
+    let dp_key = [5u8; 32];
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let service = Arc::new(KnowledgeBaseService::new(
+        BASE_URL,
+        Arc::new(OneSession { org, session }),
+        Arc::new(OneEntry),
+    ));
+    let verifier = super::linked_data_plane_verifier(&dp_key).unwrap();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier)).register(service);
+    let url = capabilities.definitions().remove(0).server.url;
+    let router = routes(Arc::new(capabilities), "/v1");
+    let path = "/v1/injected/knowledge_base/mcp";
+    let request = SessionTokenRequest {
+        session_id: session.uuid(),
+        capability_id: "injected:knowledge_base".into(),
+        audience: url,
+    };
+    // What a cell's executor signs with (`mcp.rs` in everruns-agentd).
+    let executor =
+        SessionTokenSigner::from_pkcs8(SESSION_TOKEN_ISSUER, &session_token_pkcs8(&dp_key))
+            .unwrap();
+    let token = executor.sign(&request, Some(org.to_string())).unwrap();
+    assert_eq!(post(&router, path, Some(&token)).await, StatusCode::OK);
+    // Another data plane's key is not trusted.
+    let other =
+        SessionTokenSigner::from_pkcs8(SESSION_TOKEN_ISSUER, &session_token_pkcs8(&[6u8; 32]))
+            .unwrap();
+    let token = other.sign(&request, Some(org.to_string())).unwrap();
+    assert_eq!(
+        post(&router, path, Some(&token)).await,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[test]
+fn a_data_planes_package_calls_the_served_capability_instead_of_the_hosted_one() {
+    let served = vec![fixture().definition];
+    let mut package = serde_json::json!({
+        "name": "a",
+        "capabilities": [
+            "current_time",
+            { "ref": "knowledge_base", "config": { "limit": 3 } },
+            { "ref": "injected:knowledge_base", "config": {
+                "name": "knowledge_base", "description": "x",
+                "mcp_servers": { "knowledge_base": { "url": "https://evil.example/mcp", "actsAs": "none" } }
+            } },
+            { "ref": "injected:poppy" },
+        ],
+    });
+    super::attach(&mut package, &served);
+    let capabilities = package["capabilities"].as_array().unwrap();
+    // Hosted Knowledge Base becomes the injected one, once, in its place; an
+    // author's URL never survives; one not served here is dropped.
+    assert_eq!(capabilities.len(), 2, "{capabilities:?}");
+    assert_eq!(capabilities[0], "current_time");
+    assert_eq!(capabilities[1]["ref"], "injected:knowledge_base");
+    let server = &capabilities[1]["config"]["mcp_servers"]["knowledge_base"];
+    assert_eq!(server["url"], served[0].server.url.as_str());
+    assert_eq!(server["auth_mode"], "session_token");
+
+    // Nothing served (no trusted data plane): the package is left alone.
+    let mut untouched = serde_json::json!({ "capabilities": ["knowledge_base"] });
+    super::attach(&mut untouched, &[]);
+    assert_eq!(
+        untouched["capabilities"],
+        serde_json::json!(["knowledge_base"])
+    );
+}
+
+#[test]
+fn slacks_model_view_stays_native_beside_its_injected_tools() {
+    let served = vec![super::hosted::definition_of(
+        &everruns_capabilities::capabilities::SlackCapability,
+        BASE_URL,
+    )];
+    let mut package = serde_json::json!({ "capabilities": ["slack", "slack_model_view"] });
+    super::attach(&mut package, &served);
+    assert_eq!(
+        package["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| super::ref_id(c).unwrap())
+            .collect::<Vec<_>>(),
+        ["injected:slack", "slack_model_view"]
+    );
+    assert!(served[0].validate().is_ok(), "{:?}", served[0].validate());
+}
+
+/// The `memory_file` handler, for one org and session: `/memory/user` only.
+struct MemoryCalls {
+    org: OrgId,
+    session: SessionId,
+    asked: parking_lot::Mutex<Vec<Value>>,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for MemoryCalls {
+    async fn answer(
+        &self,
+        org: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        assert_eq!(call.name, everruns_contracts::host_calls::MEMORY_FILE);
+        assert_eq!(org, self.org);
+        assert_eq!(params["session_id"], self.session.uuid().to_string());
+        self.asked.lock().push(params.clone());
+        let path = params["path"].as_str().unwrap();
+        let answer = if !path.starts_with("/memory/user") {
+            json!({ "error": format!("{path} is not in this session's Memory") })
+        } else {
+            json!({ "ok": {
+                "path": path,
+                "content": "likes tea",
+                "encoding": "text",
+                "is_directory": false,
+            } })
+        };
+        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+            answer,
+        ))
+    }
+}
+
+#[tokio::test]
+async fn memory_is_served_as_files_through_the_memory_file_handler() {
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    let runner = Arc::new(MemoryCalls {
+        org,
+        session,
+        asked: Default::default(),
+    });
+    capabilities.host_calls().bind(runner.clone());
+    let service = hosted::memory::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities
+        .definitions()
+        .into_iter()
+        .find(|d| d.name() == hosted::memory::NAME)
+        .unwrap();
+    assert_eq!(
+        definition.server.url,
+        "http://8.8.8.8/v1/injected/memory_files/mcp"
+    );
+    let fixture = Fixture {
+        signer,
+        router: routes(Arc::new(capabilities), "/v1"),
+        org,
+        session,
+        definition,
+    };
+    let client = client(&fixture, org, session);
+    let connection = connection(&fixture.definition);
+
+    let read = client
+        .files(
+            &connection,
+            "everruns/files/read",
+            json!({ "path": "/memory/user/notes.md" }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(read["content"], "likes tea");
+    assert_eq!(
+        read["etag"],
+        everruns_contracts::runtime::mcp_extensions::file_etag("likes tea", "text").as_str()
+    );
+    assert_eq!(runner.asked.lock()[0]["op"], "read");
+
+    // The handler's refusal, and a path that escapes, are the caller's errors.
+    let refused = client
+        .files(
+            &connection,
+            "everruns/files/read",
+            json!({ "path": "/memory/agent/x.md" }),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        refused.to_string().contains("not in this session's Memory"),
+        "{refused}"
+    );
+    let asked = runner.asked.lock().len();
+    assert!(
+        client
+            .files(
+                &connection,
+                "everruns/files/read",
+                json!({ "path": "/memory/user/../agent/x.md" }),
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(runner.asked.lock().len(), asked);
+}
+
+/// The `platform_command` handler: says who ran what.
+struct PlatformCalls {
+    org: OrgId,
+    session: SessionId,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for PlatformCalls {
+    async fn answer(
+        &self,
+        org: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        assert_eq!(call.name, everruns_contracts::host_calls::PLATFORM_COMMAND);
+        assert_eq!(org, self.org);
+        assert_eq!(params["session_id"], self.session.to_string());
+        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+            Value::String(format!(
+                "{} ran {} {}",
+                params["acting_user"].as_str().unwrap(),
+                params["operation"].as_str().unwrap(),
+                params["arguments"]
+            )),
+        ))
+    }
+}
+
+/// Mints as a data plane does for a turn `actor` opened.
+struct Acting {
+    signer: Arc<SessionTokenSigner>,
+    org: OrgId,
+    actor: Option<everruns_contracts::runtime::capabilities::injected::SessionActor>,
+}
+
+#[async_trait]
+impl everruns_core::mcp::session_token::SessionTokenMinter for Acting {
+    async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
+        self.signer
+            .sign_as(request, Some(self.org.to_string()), self.actor.clone())
+    }
+}
+
+#[tokio::test]
+async fn platform_commands_run_as_the_person_who_opened_the_turn() {
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    capabilities
+        .host_calls()
+        .bind(Arc::new(PlatformCalls { org, session }));
+    let service = hosted::platform::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities.definitions().remove(0);
+    assert_eq!(definition.name(), hosted::platform::NAME);
+    let router = routes(Arc::new(capabilities), "/v1");
+    let call = |actor: Option<&str>| {
+        let client = McpClient::new(
+            Arc::new(RouterEgress {
+                router: router.clone(),
+            }),
+            Arc::new(SessionTokenAuthProvider::new(
+                Arc::new(NoAuthProvider),
+                Arc::new(Acting {
+                    signer: signer.clone(),
+                    org,
+                    actor: actor.map(|sub| {
+                        everruns_contracts::runtime::capabilities::injected::SessionActor {
+                            sub: sub.to_string(),
+                            turn: None,
+                        }
+                    }),
+                }),
+            )),
+        )
+        .for_session(session.uuid());
+        let connection = connection(&definition);
+        async move {
+            client
+                .call(
+                    &connection,
+                    hosted::platform::TOOL,
+                    json!({ "operation": "execute", "arguments": { "command": "agents list" } }),
+                    None,
+                )
+                .await
+                .unwrap()
+        }
+    };
+    let text = |result: &everruns_core::McpToolCallResult| match &result.content[0] {
+        everruns_core::McpContent::Text { text, .. } => text.clone(),
+        other => panic!("{other:?}"),
+    };
+
+    let ran = call(Some("usr_1")).await;
+    assert!(!ran.is_error);
+    assert!(
+        text(&ran).starts_with("usr_1 ran execute"),
+        "{}",
+        text(&ran)
+    );
+    // No person opened the turn: nothing runs.
+    let refused = call(None).await;
+    assert!(refused.is_error);
+    assert!(text(&refused).contains("a turn a person started"));
+}
+
+/// The `user_mcp` handlers: record what they were asked, answer `ok`.
+struct PersonCalls {
+    org: OrgId,
+    asked: parking_lot::Mutex<Vec<(&'static str, Value)>>,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for PersonCalls {
+    async fn answer(
+        &self,
+        org: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        assert_eq!(org, self.org);
+        self.asked.lock().push((call.name, params));
+        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+            json!({ "ok": { "reply": "list", "servers": [] } }),
+        ))
+    }
+}
+
+#[tokio::test]
+async fn the_persons_mcp_servers_are_asked_for_as_the_tokens_person_and_turn() {
+    use everruns_contracts::host_calls::{USER_MCP_SERVERS, USER_MCP_STORE};
+    use everruns_contracts::runtime::capabilities::injected::SessionActor;
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    let runner = Arc::new(PersonCalls {
+        org,
+        asked: parking_lot::Mutex::default(),
+    });
+    capabilities.host_calls().bind(runner.clone());
+    let service = hosted::person_mcp::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities.definitions().remove(0);
+    assert_eq!(definition.name(), hosted::person_mcp::NAME);
+    let router = routes(Arc::new(capabilities), "/v1");
+    let call = |actor: Option<SessionActor>, tool: &'static str, arguments: Value| {
+        let client = McpClient::new(
+            Arc::new(RouterEgress {
+                router: router.clone(),
+            }),
+            Arc::new(SessionTokenAuthProvider::new(
+                Arc::new(NoAuthProvider),
+                Arc::new(Acting {
+                    signer: signer.clone(),
+                    org,
+                    actor,
+                }),
+            )),
+        )
+        .for_session(session.uuid());
+        let connection = connection(&definition);
+        async move {
+            let result = client
+                .call(&connection, tool, arguments, None)
+                .await
+                .unwrap();
+            assert!(!result.is_error, "{result:?}");
+            match &result.content[0] {
+                everruns_core::McpContent::Text { text, .. } => {
+                    serde_json::from_str::<Value>(text).unwrap()
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    };
+    let turn = uuid::Uuid::new_v4().to_string();
+    let person = SessionActor {
+        sub: "usr_1".into(),
+        turn: Some(turn.clone()),
+    };
+
+    // The store: the person and turn from the token, whatever the call says.
+    let answer = call(
+        Some(person.clone()),
+        hosted::person_mcp::STORE_TOOL,
+        json!({ "call": { "op": "list" }, "input_message_id": "forged", "acting_user": "usr_2" }),
+    )
+    .await;
+    assert_eq!(answer["ok"]["reply"], "list");
+    {
+        let asked = runner.asked.lock();
+        let (name, params) = &asked[0];
+        assert_eq!(*name, USER_MCP_STORE);
+        assert_eq!(params["session_id"], session.to_string());
+        assert_eq!(params["acting_user"], "usr_1");
+        assert_eq!(params["input_message_id"], turn.as_str());
+        assert_eq!(params["call"]["op"], "list");
+    }
+
+    // The turn's servers: the person's only when asked for.
+    call(
+        Some(person.clone()),
+        hosted::person_mcp::SERVERS_TOOL,
+        json!({ "person": true, "session_servers": true }),
+    )
+    .await;
+    call(
+        Some(person),
+        hosted::person_mcp::SERVERS_TOOL,
+        json!({ "person": false, "session_servers": true }),
+    )
+    .await;
+    {
+        let asked = runner.asked.lock();
+        assert_eq!(asked[1].0, USER_MCP_SERVERS);
+        assert_eq!(asked[1].1["input_message_id"], turn.as_str());
+        assert_eq!(asked[1].1["session_servers"], true);
+        assert!(asked[2].1.get("input_message_id").is_none());
+    }
+
+    // No person opened the turn: no store, the session's records only.
+    let refused = call(
+        None,
+        hosted::person_mcp::STORE_TOOL,
+        json!({ "call": { "op": "list" } }),
+    )
+    .await;
+    assert_eq!(refused["error"]["kind"], "unavailable");
+    assert_eq!(runner.asked.lock().len(), 3);
+    call(
+        None,
+        hosted::person_mcp::SERVERS_TOOL,
+        json!({ "person": true, "session_servers": true }),
+    )
+    .await;
+    let asked = runner.asked.lock();
+    assert!(asked[3].1.get("input_message_id").is_none());
+    assert!(asked[3].1.get("acting_user").is_none());
+}
+
+/// The credential handlers: a connection token, or a refused GitHub token.
+struct CredentialCalls {
+    asked: parking_lot::Mutex<Vec<(&'static str, Value)>>,
+}
+
+#[async_trait]
+impl hosted::HostCallRunner for CredentialCalls {
+    async fn answer(
+        &self,
+        _: OrgId,
+        call: &'static everruns_contracts::host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        use everruns_contracts::host_calls::HostCallAnswer;
+        self.asked.lock().push((call.name, params));
+        Ok(match call.name {
+            everruns_contracts::host_calls::GITHUB_TOKEN => HostCallAnswer::Error {
+                kind: 3,
+                message: "no GitHub connection".into(),
+            },
+            _ => HostCallAnswer::Value(json!({ "token": "t0k" })),
+        })
+    }
+}
+
+#[tokio::test]
+async fn credentials_are_looked_up_as_the_tokens_person_and_turn_only() {
+    use everruns_contracts::runtime::capabilities::injected::SessionActor;
+    let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
+    let verifier =
+        SessionTokenVerifier::from_jwks(&signer.jwks(), vec!["https://dp.example".into()]).unwrap();
+    let org = OrgId::new();
+    let session = SessionId::new();
+    let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
+    let runner = Arc::new(CredentialCalls {
+        asked: parking_lot::Mutex::default(),
+    });
+    capabilities.host_calls().bind(runner.clone());
+    let service = hosted::credentials::service(BASE_URL, capabilities.host_calls());
+    let capabilities = capabilities.register(Arc::new(service));
+    let definition = capabilities.definitions().remove(0);
+    assert_eq!(definition.name(), hosted::credentials::NAME);
+    let router = routes(Arc::new(capabilities), "/v1");
+    let call = |actor: Option<SessionActor>, arguments: Value| {
+        let client = McpClient::new(
+            Arc::new(RouterEgress {
+                router: router.clone(),
+            }),
+            Arc::new(SessionTokenAuthProvider::new(
+                Arc::new(NoAuthProvider),
+                Arc::new(Acting {
+                    signer: signer.clone(),
+                    org,
+                    actor,
+                }),
+            )),
+        )
+        .for_session(session.uuid());
+        let connection = connection(&definition);
+        async move {
+            client
+                .call(&connection, hosted::credentials::TOOL, arguments, None)
+                .await
+                .unwrap()
+        }
+    };
+    let text = |result: &everruns_core::McpToolCallResult| match &result.content[0] {
+        everruns_core::McpContent::Text { text, .. } => text.clone(),
+        other => panic!("{other:?}"),
+    };
+    let turn = uuid::Uuid::new_v4().to_string();
+    let person = SessionActor {
+        sub: "usr_1".into(),
+        turn: Some(turn.clone()),
+    };
+
+    let found = call(
+        Some(person),
+        json!({ "call": "connection_token", "params": {
+            "provider": "github",
+            "session_id": SessionId::new().to_string(),
+            "acting_user": "usr_2",
+            "input_message_id": "forged",
+        } }),
+    )
+    .await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&text(&found)).unwrap(),
+        json!({ "ok": { "token": "t0k" } })
+    );
+    {
+        let asked = runner.asked.lock();
+        let (name, params) = &asked[0];
+        assert_eq!(*name, everruns_contracts::host_calls::CONNECTION_TOKEN);
+        assert_eq!(params["provider"], "github");
+        assert_eq!(params["session_id"], session.to_string());
+        assert_eq!(params["acting_user"], "usr_1");
+        assert_eq!(params["input_message_id"], turn.as_str());
+    }
+
+    // No person: the agent's own; a refusal keeps its kind.
+    let refused = call(None, json!({ "call": "github_token", "params": {} })).await;
+    assert_eq!(
+        serde_json::from_str::<Value>(&text(&refused)).unwrap(),
+        json!({ "error": { "kind": 3, "message": "no GitHub connection" } })
+    );
+    assert!(runner.asked.lock()[1].1["acting_user"].is_null());
+    assert!(runner.asked.lock()[1].1["input_message_id"].is_null());
+
+    // Only the credential lookups.
+    let other = call(None, json!({ "call": "knowledge", "params": {} })).await;
+    assert!(other.is_error);
+    assert_eq!(runner.asked.lock().len(), 2);
+}

@@ -20,8 +20,6 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
-use crate::is_plugin_capability;
-
 use super::*;
 
 /// Maximum number of capabilities after dependency resolution.
@@ -217,10 +215,9 @@ pub fn resolve_capability_configs(
 ) -> Result<Vec<AgentCapabilityConfig>, DependencyError> {
     let mut selected_ids: Vec<String> = Vec::new();
     for config in selected_configs {
-        // Both `declarative:` and `plugin:` carry a `DeclarativeCapabilityDefinition`
-        // config that may declare dependencies.
-        if (is_declarative_capability(config.capability_id())
-            || is_plugin_capability(config.capability_id()))
+        // `declarative:`, `plugin:` and `injected:` carry a
+        // `DeclarativeCapabilityDefinition` config that may declare dependencies.
+        if carries_declarative_definition(config.capability_id())
             && let Ok(definition) = serde_json::from_value::<DeclarativeCapabilityDefinition>(
                 config.config_value().clone(),
             )
@@ -287,12 +284,10 @@ pub(crate) fn resolve_single_capability(
     let capability = match registry.get(cap_id) {
         Some(cap) => cap,
         None => {
-            // `declarative:` and `plugin:` refs carry their full definition in
+            // `declarative:`, `plugin:` and `injected:` refs carry their full definition in
             // the config payload — they don't need a registry entry. Pass them
             // through so `collect_capabilities_with_configs` can process them.
-            if (is_declarative_capability(cap_id) || is_plugin_capability(cap_id))
-                && !resolved_set.contains(cap_id)
-            {
+            if carries_declarative_definition(cap_id) && !resolved_set.contains(cap_id) {
                 resolved.push(cap_id.to_string());
                 resolved_set.insert(cap_id.to_string());
                 if !user_selected.contains(cap_id) {

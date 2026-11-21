@@ -54,7 +54,10 @@ capabilities.
 
 The data plane signs one EdDSA (Ed25519) JWT, the key type of its org tokens, per call (`typ: everruns-session+jwt`,
 5-minute TTL): `sub` session, `grp` the group label value (the organization in
-an Everruns deployment), `cap` the capability id, `aud` the exact server URL.
+an Everruns deployment), `cap` the capability id, `aud` the exact server URL,
+and `act` (RFC 8693, `{"sub": <public user id>, "turn": <input message id>}`)
+the person whose message opened the session's turn, and that message, when
+one did.
 The server verifies signature, `typ`, issuer, audience, `cap` and expiry against
 the JWKS of the data planes it trusts. A token for one server never verifies at
 another. Source: `crates/core/src/mcp/session_token.rs` (feature
@@ -63,7 +66,15 @@ another. Source: `crates/core/src/mcp/session_token.rs` (feature
 THREAT: a session token is a bearer credential for one session in one
 organization. It is minted per call and never stored, and the audience pin
 stops a server from replaying it elsewhere. The server resolves every lookup
-inside `grp`, so a session id from another organization reads as missing.
+inside `grp`, so a session id from another organization reads as missing. The
+data plane vouches for `act` from its own record of who sent the turn, never
+from the turn's tools; a server that acts as the person rechecks that they are
+a member of `grp`, with their current role, and refuses without one.
+
+A data plane of an Everruns deployment signs with a key derived from its link
+key (`dataplane_seal::session_token_pkcs8`), so every executor signs with the
+same key and the control plane trusts its linked data plane without a JWKS or a
+key to distribute. `INJECTED_CAPABILITIES_JWKS` adds other data planes.
 
 ### Everruns MCP extensions
 
@@ -78,11 +89,14 @@ server capabilities):
 | instructions | the capability's system prompt (declarative `system_prompt`, also `initialize.instructions`) |
 | facts | `everruns://facts` resource read at turn start, capped at 32 facts of 4 KiB |
 | hooks | `everruns/hooks/beforeTool` (allow, rewrite arguments, deny) and `everruns/hooks/afterTool` (replace result or error, add context) for the tools the server subscribed to |
-| files | session file reads and writes with `If-Match`; reserved, wire shape lands with Memory |
+| files | a file tree the host mounts: one method per operation (`everruns/files/read`, `.../write`, ...); `read` and `stat` return an `etag` (content hash) and `write` takes `if_match`; paths are absolute and normal, and the server resolves them inside `grp` and the session's own tree |
 | ui | `structuredContent` and `_meta` on tool results, rendered by the host |
 
 A `beforeTool` hook that cannot be reached blocks the call; an `afterTool` hook
-that cannot be reached leaves the result unchanged. Wire types:
+that cannot be reached leaves the result unchanged. The serving handler refuses
+a file path with `.`, `..` or empty segments before a service sees it, and
+turns `if_match` into a compare-and-set on the content the tag names, so a
+service implements only the plain operations. Wire types:
 `crates/contracts/src/runtime/mcp_extensions.rs`; host side:
 `crates/core/src/mcp/extensions.rs`; serving side:
 `crates/core/src/mcp/injected_server.rs`.
@@ -94,6 +108,15 @@ until `INJECTED_CAPABILITIES_JWKS` and `INJECTED_CAPABILITIES_ISSUERS` name the
 trusted data planes. Every authentication failure is the same 401. Source:
 `crates/server/src/injected/`.
 
+The URLs it hands data planes (and the audiences it checks) use
+`INJECTED_CAPABILITIES_BASE_URL` when set, the address data planes reach it on
+(a cluster service, `127.0.0.1` locally), else the public base URL. A cell
+trusts its configured control plane's origin (`CELL_CONTROL_PLANE`) and skips
+the MCP client's private-address check only there.
+
+THREAT: the exemption follows operator configuration, never a URL an agent,
+tool or package names; every other MCP server keeps the DNS-pinned check.
+
 ## Status
 
 Built (side by side with today's paths, nothing switched over):
@@ -104,9 +127,54 @@ Built (side by side with today's paths, nothing switched over):
   `search_knowledge` tool; the session's config comes from its agent's
   `injected:knowledge_base` or `knowledge_base` entry.
 
+- Cells mint session tokens per call (`everruns-agentd` `mcp.rs`), with the
+  key derived from their link key; the control plane trusts its linked data
+  plane from that key alone.
+- Hosts collect `injected:` refs whose config is the controller's
+  definition (`carries_declarative_definition`); a bare one contributes
+  nothing.
+- When a data plane is trusted, the control plane swaps the hosted
+  capabilities it serves for their injected refs in every package it hands
+  a v2 data plane (`server/src/injected/mod.rs` `attach`), in place, and
+  keeps a hosted capability's native part beside it (Slack's model view as
+  `slack_model_view`).
+- Served: Knowledge Base, Poppy client and Slack (`hosted.rs`: the
+  capability's own tools, with the same host call handlers a cell's calls
+  get, run in process). Slack's `slack_upload_file` reads the session's file
+  from its cell through the `fs` session command (`io.everruns/files` serves
+  the control plane's trees to data planes, not the reverse). Platform stays native (its tools, `/docs` mount, skills and the shell's
+  `everruns` builtin); only its command catalog is served, as the
+  `platform_commands` server whose one tool runs a command as the token's
+  `act` (`hosted.rs` `platform`), and a cell calls it instead of the
+  `platform_command` host call (`everruns-agentd` `platform_calls.rs`).
+- Memory is a remote mount: the control plane serves it as the
+  `memory_files` files server (`hosted.rs` `memory`, the same mount check as
+  the `memory_file` host call). The URLs of these control plane servers
+  (`CONTROLLER_SERVERS`) come with each create, never from a package; a cell
+  mounts the session's Memory from it with a session token (`everruns-agentd`
+  `memory.rs`), and falls back to the host call only when none is sent.
+- The turn's person's own MCP servers (`user_mcp`) stay native in the cell
+  (the manage tools, the per-turn servers hook); their list and its
+  resolution are the `person_mcp` server's (`hosted.rs` `person_mcp`): one
+  tool for the manage tools' store and one for the servers a turn adds. The
+  token's `act` names the person and the open turn's input message
+  (`SessionActor.turn`, from the same session record), so the tools take
+  neither as an argument, and the control plane records the turn's
+  invocation for that person as the host call does (`everruns-agentd`
+  `user_mcp.rs`).
+- Connection lookups are one credential lookup: the `credentials` server
+  (`hosted.rs` `credentials`) has one tool for the four credential calls
+  (`CREDENTIAL_CALLS`: provider connections, MCP sign-ins, GitHub, service
+  keys), run by the handlers their host calls run. A cell mints its token
+  acting as the sender of the message the lookup names (`"open"`: the open
+  turn's; none: no one), from the session's record, so a detached tool
+  call of an earlier turn still acts for that turn's person
+  (`everruns-agentd` `lookups.rs`, `mcp.rs` `Acting`). Org connections stay
+  pushed config.
+
 Next, in order:
 
-1. Data planes publish JWKS and mint tokens (cell gateway, then agentd).
+1. Agentd publishes JWKS and mints tokens.
 2. Hosts honor `tools: native` and load facts and hooks per turn.
 3. Step 0 on data plane v2: convert the hosted capabilities, then delete the
    host-call path. The audit found none uses facts or tool hooks; Slack's

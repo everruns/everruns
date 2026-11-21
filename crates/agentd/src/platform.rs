@@ -83,6 +83,12 @@ pub struct Platform {
     /// whose files stay in the control plane (`memory.rs`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<String>,
+    /// The control plane's servers the session calls with a session token,
+    /// by name ([`Servers`]): its Memory's files (`memory.rs`), its platform
+    /// commands (`platform_calls.rs`). One it lacks goes through the host
+    /// call instead.
+    #[serde(default, skip_serializing_if = "Servers::is_empty")]
+    pub servers: Servers,
 }
 
 impl Platform {
@@ -206,8 +212,15 @@ pub enum Op {
         agent_ref: String,
         #[serde(default)]
         memory: Vec<String>,
+        /// [`Platform::servers`].
+        #[serde(default, skip_serializing_if = "Servers::is_empty")]
+        servers: Servers,
     },
 }
+
+/// The control plane's servers a session calls, by name
+/// (`injected::MEMORY_FILES`, `injected::PLATFORM_COMMANDS`) to URL.
+pub type Servers = std::collections::BTreeMap<String, String>;
 
 /// The event types the control plane may record on a session: reactions,
 /// and a voice call's traces (the call runs on the control plane, which
@@ -358,11 +371,17 @@ impl CellState {
         if let Op::Storage(op) = op {
             return crate::session_storage::apply(state, session, op, now_ms, changes);
         }
-        if let Op::Agent { agent_ref, memory } = op {
+        if let Op::Agent {
+            agent_ref,
+            memory,
+            servers,
+        } = op
+        {
             // Set once: a retried create names the same agent.
             if state.platform.agent_ref.is_none() {
                 state.platform.agent_ref = Some(agent_ref);
                 state.platform.memory = memory;
+                state.platform.servers = servers;
                 changes.push(Change::Session(session));
             }
             return Response::Value {

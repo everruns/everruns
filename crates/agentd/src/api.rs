@@ -1133,6 +1133,9 @@ pub struct CreateBody {
     /// until it opens it (`api_session::activate`).
     #[serde(default)]
     pub importing: bool,
+    /// ([`crate::platform::Platform::servers`]).
+    #[serde(default)]
+    pub servers: crate::platform::Servers,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -1188,6 +1191,7 @@ async fn create_session(
         let action = crate::platform::Op::Agent {
             agent_ref,
             memory: body.memory,
+            servers: body.servers,
         };
         match crate::api_session::platform(&node, id, action).await? {
             CellReply::Ok { .. } => {}

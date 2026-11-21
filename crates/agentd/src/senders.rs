@@ -12,6 +12,9 @@
 //!   that forwards its lookup asks the session's cell who sent that message
 //!   (`gateway_dp.rs`), and the control plane checks the person is still a
 //!   member of the org, with their current role.
+//!   An injected capability's session token names the person the same way:
+//!   the executor that signs it reads the session's record (`act`), never
+//!   anything the turn's tools pass (`mcp.rs`).
 //! - A sender is recorded only by a trusted admission path: the gateway
 //!   from the caller's verified org token (`sub`, a user), and the control
 //!   plane for a message a person sent through it. A channel message, an

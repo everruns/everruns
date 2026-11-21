@@ -1673,6 +1673,21 @@
       ]
     },
     {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "slack_model_view",
+      "name": "Slack messages",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Safety",
       "dependencies": [],
       "docs_slug": "soft-approval",

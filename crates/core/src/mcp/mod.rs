@@ -84,7 +84,7 @@ pub use form_elicitation::{
 };
 pub use http::{
     HttpToolsList, HttpTransport, McpHttpStatusError, McpRpcError, http_call_tool, http_list_tools,
-    http_list_tools_with_cache_hints, http_request, http_send_rpc,
+    http_list_tools_with_cache_hints, http_request, http_send_rpc, trust_controller_origin,
 };
 pub use oauth::validate_oauth_resource;
 pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};

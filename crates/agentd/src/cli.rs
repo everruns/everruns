@@ -102,7 +102,8 @@ enum Mode {
         #[arg(long, env = "CELL_EXECUTOR_CAP", default_value = "0")]
         executor_cap: usize,
         /// The control plane's `/dp/v1` base URL: the leader delivers the
-        /// feed there and asks it for spend allowances.
+        /// feed there and asks it for spend allowances. Every mode trusts
+        /// its origin for injected capabilities and Memory (`run`).
         #[arg(long, env = "CELL_CONTROL_PLANE")]
         control_plane: Option<String>,
     },
@@ -250,6 +251,16 @@ pub fn init_tracing() {
 pub async fn run(host: impl Host) -> anyhow::Result<()> {
     init_tracing();
     let host: Arc<dyn Host> = Arc::new(host);
+    // Decision: the control plane this data plane is linked to serves its
+    // injected capabilities and its sessions' Memory; it is often on an
+    // internal address (a cluster service, `127.0.0.1` locally), which the
+    // MCP client refuses for any other server. Every mode reads it, since
+    // nodes and executors both run turns.
+    if let Ok(control_plane) = std::env::var("CELL_CONTROL_PLANE")
+        && !control_plane.is_empty()
+    {
+        everruns_core::mcp::trust_controller_origin(&control_plane);
+    }
     match Cli::parse().command {
         Mode::Node {
             topology,

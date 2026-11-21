@@ -34,6 +34,44 @@ const MAX_LABEL_BYTES: usize = 128;
 
 /// JWT `typ` header of a session token. Verification requires it, so no other
 /// token the data plane signs can be replayed as one.
+/// The control plane's files server for a session's Memory
+/// (`io.everruns/files`): a data plane mounts the session's Memory from it.
+pub const MEMORY_FILES: &str = "memory_files";
+/// The control plane's server for the platform commands of a session's
+/// native Platform tools and shell builtin, run as the token's `act`.
+pub const PLATFORM_COMMANDS: &str = "platform_commands";
+/// [`PLATFORM_COMMANDS`]' one tool: `{operation, arguments}`.
+pub const PLATFORM_COMMAND_TOOL: &str = "platform_command";
+/// The control plane's server for the turn's person's own MCP servers
+/// (`user_mcp`), as the token's `act`. Not named `user_mcp`: a controller
+/// server's name never matches a hosted capability.
+pub const PERSON_MCP: &str = "person_mcp";
+/// [`PERSON_MCP`]'s tool for the `user_mcp` manage tools' store: `{call}`.
+pub const PERSON_MCP_STORE_TOOL: &str = "person_mcp_store";
+/// [`PERSON_MCP`]'s tool for the servers the turn adds:
+/// `{session_servers}`.
+pub const PERSON_MCP_SERVERS_TOOL: &str = "person_mcp_servers";
+/// The control plane's servers a data plane calls for a session's native
+/// capabilities rather than lists as capabilities: their URLs come with the
+/// session's create, never from an agent's package.
+/// The control plane's server for the credentials a session's native
+/// integrations use (provider connections, MCP sign-ins, GitHub, service
+/// keys), as the token's `act`: the one lookup that crosses planes.
+pub const CREDENTIALS: &str = "credentials";
+/// [`CREDENTIALS`]' one tool: `{call, params}`, `call` one of
+/// [`CREDENTIAL_CALLS`]. Answers `{"ok": value}` or
+/// `{"error": {"kind", "message"}}` as text.
+pub const CREDENTIAL_TOOL: &str = "credential";
+/// The credential lookups [`CREDENTIALS`] serves, by host call name.
+pub const CREDENTIAL_CALLS: [&str; 4] = [
+    crate::host_calls::CONNECTION_TOKEN,
+    crate::host_calls::MCP_CONNECTION_TOKEN,
+    crate::host_calls::GITHUB_TOKEN,
+    crate::host_calls::SERVICE_API_KEY,
+];
+pub const CONTROLLER_SERVERS: [&str; 4] =
+    [MEMORY_FILES, PLATFORM_COMMANDS, PERSON_MCP, CREDENTIALS];
+
 pub const SESSION_TOKEN_TYP: &str = "everruns-session+jwt";
 /// How long a minted session token stays valid. Short, like the host-call
 /// receipts it replaces: a token is minted per call, never stored.
@@ -256,10 +294,29 @@ pub struct SessionTokenClaims {
     /// in an Everruns deployment). Absent on installs without a group label.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grp: Option<String>,
+    /// The person whose message opened the session's turn, as the data
+    /// plane recorded it (RFC 8693 `act`). Absent when no person did (a
+    /// channel message, a trigger). A server that acts as a person rechecks
+    /// that they are a member of `grp`, and refuses without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub act: Option<SessionActor>,
     pub iat: u64,
     pub exp: u64,
     /// Unique token id, for audit.
     pub jti: String,
+}
+
+/// The `act` claim of a session token.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionActor {
+    /// The person's public user id.
+    pub sub: String,
+    /// The input message of the turn the person opened, from the same
+    /// session record as `sub`: a server that acts for the turn (its
+    /// invocation, its `user_mcp` layer) names it from here, never from a
+    /// tool's arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<String>,
 }
 
 #[cfg(test)]
@@ -391,15 +448,27 @@ mod tests {
             sub: "ses_1".into(),
             cap: "injected:knowledge".into(),
             grp: None,
+            act: None,
             iat: 1,
             exp: 2,
             jti: "j".into(),
         };
         let wire = serde_json::to_value(&claims).unwrap();
         assert!(wire.get("grp").is_none());
+        assert!(wire.get("act").is_none());
         assert_eq!(
             serde_json::from_value::<SessionTokenClaims>(wire).unwrap(),
             claims
         );
+        // RFC 8693: the actor is an object.
+        let acted = SessionTokenClaims {
+            act: Some(SessionActor {
+                sub: "usr_1".into(),
+                turn: None,
+            }),
+            ..claims
+        };
+        let wire = serde_json::to_value(&acted).unwrap();
+        assert_eq!(wire["act"], json!({ "sub": "usr_1" }));
     }
 }

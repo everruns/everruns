@@ -28,6 +28,9 @@ use crate::slack_action::{
 };
 
 pub const SLACK_CAPABILITY_ID: &str = "slack";
+/// The native part of Slack when its tools are injected: how Slack messages
+/// look to the model.
+pub const SLACK_MODEL_VIEW_CAPABILITY_ID: &str = "slack_model_view";
 
 /// Largest file an agent may share, before base64 or multipart overhead.
 ///
@@ -39,6 +42,44 @@ const MAX_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 /// Slack capability: the agent acts as the bot already in the room.
 pub struct SlackCapability;
+
+/// Slack's model view without its tools: what a data plane keeps native when
+/// a controller serves the Slack tools as an injected capability. The view
+/// rewrites every model call's history, which a tool call cannot do, and
+/// reads only the messages' own metadata.
+pub struct SlackModelViewCapability;
+
+impl Capability for SlackModelViewCapability {
+    fn id(&self) -> &str {
+        SLACK_MODEL_VIEW_CAPABILITY_ID
+    }
+
+    fn name(&self) -> &str {
+        "Slack messages"
+    }
+
+    fn description(&self) -> &str {
+        "Shows the model which Slack message each turn replies to."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("slack")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Integrations")
+    }
+
+    fn model_view_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn everruns_core::capabilities::ModelViewProvider>> {
+        Some(std::sync::Arc::new(model_view::SlackModelViewProvider))
+    }
+}
 
 impl Capability for SlackCapability {
     fn id(&self) -> &str {

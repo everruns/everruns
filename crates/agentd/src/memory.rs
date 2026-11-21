@@ -17,12 +17,20 @@
 //!   ago, as on a v1 worker.
 //! - No content search: the control plane's file service searches a whole
 //!   workspace, not one mount. A shell's `grep` reads the files instead.
+//! - Where the control plane serves Memory as files
+//!   ([`Memory::server`], an injected files server speaking
+//!   `io.everruns/files`), each operation is one MCP request there with a
+//!   session token naming the session and its org, not a host call; the
+//!   server makes the same check against the session's record. The host
+//!   call stays for a control plane that does not serve it yet.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::host_calls::MEMORY_FILE;
+use everruns_contracts::runtime::capabilities::injected::MEMORY_FILES;
+use everruns_contracts::runtime::mcp_extensions::files_method;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::HostBackends;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
@@ -32,6 +40,30 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::lookups::OrgLookups;
+use crate::providers::OrgMaterial;
+
+/// A session's Memory as its control plane gives it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionMemory {
+    /// The mounts it has ([`MOUNTS`]).
+    pub mounts: Vec<String>,
+    /// The control plane's files server they live on
+    /// ([`crate::platform::Platform::servers`]).
+    pub server: Option<String>,
+}
+
+impl SessionMemory {
+    /// A session's Memory, from its platform record.
+    pub fn of(platform: &crate::platform::Platform) -> Self {
+        Self {
+            mounts: platform.memory.clone(),
+            server: platform
+                .servers
+                .get(everruns_contracts::runtime::capabilities::injected::MEMORY_FILES)
+                .cloned(),
+        }
+    }
+}
 
 /// The Memory mount points a control plane may give a session.
 pub const MOUNTS: &[&str] = &[
@@ -42,20 +74,45 @@ pub const MOUNTS: &[&str] = &[
     "/room",
 ];
 
-/// `backends` with `mounts` of `session`'s Memory, served through
-/// `lookups`. No lookups (no control plane): no Memory.
+/// How a mount reaches the control plane.
+#[derive(Clone)]
+enum Via {
+    /// The `memory_file` host call over the link.
+    HostCall(OrgLookups),
+    /// The control plane's files server, with a session token.
+    Files(crate::mcp::ControllerServer),
+}
+
+/// `backends` with the mounts of `session`'s Memory, served by its files
+/// server when it has one, else through `lookups`. Neither (no control
+/// plane): no Memory.
 pub(crate) fn attach(
     mut backends: HostBackends,
+    material: Option<&std::sync::Weak<dyn OrgMaterial>>,
     lookups: Option<OrgLookups>,
     session: SessionId,
-    mounts: &[String],
+    memory: &SessionMemory,
 ) -> HostBackends {
-    let Some(lookups) = lookups else {
+    if memory.mounts.is_empty() {
+        return backends;
+    }
+    let via = match &memory.server {
+        Some(url) => {
+            crate::mcp::ControllerServer::for_session(material, session, MEMORY_FILES, url)
+                .map(Via::Files)
+        }
+        None => lookups.map(Via::HostCall),
+    };
+    let Some(via) = via else {
         return backends;
     };
-    for mount in mounts.iter().filter(|m| MOUNTS.contains(&m.as_str())) {
+    for mount in memory
+        .mounts
+        .iter()
+        .filter(|m| MOUNTS.contains(&m.as_str()))
+    {
         let backend: Arc<dyn SessionFileSystem> = Arc::new(CellMemory {
-            lookups: lookups.clone(),
+            via: via.clone(),
             session,
             mount: mount.clone(),
         });
@@ -73,7 +130,7 @@ pub(crate) fn attach(
 
 /// One Memory mount of one session, in the control plane.
 struct CellMemory {
-    lookups: OrgLookups,
+    via: Via,
     session: SessionId,
     /// Where it hangs (`/memory/user`).
     mount: String,
@@ -117,6 +174,22 @@ impl CellMemory {
                 "a session's tools reach only its own Memory",
             ));
         }
+        let lookups = match &self.via {
+            Via::HostCall(lookups) => lookups,
+            Via::Files(server) => {
+                let mut params = json!({ "path": self.outer(path) });
+                if let (Some(params), Value::Object(args)) = (params.as_object_mut(), args) {
+                    params.extend(args);
+                }
+                let answer = server
+                    .client
+                    .files(&server.connection, &files_method(op), params)
+                    .await
+                    .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+                return serde_json::from_value(answer)
+                    .map_err(|error| AgentLoopError::store(error.to_string()));
+            }
+        };
         let mut params = json!({
             "session_id": session.to_string(),
             "op": op,
@@ -125,11 +198,7 @@ impl CellMemory {
         if let (Some(params), Value::Object(args)) = (params.as_object_mut(), args) {
             params.extend(args);
         }
-        let answer = match self
-            .lookups
-            .execute_internal_command(MEMORY_FILE, params)
-            .await
-        {
+        let answer = match lookups.execute_internal_command(MEMORY_FILE, params).await {
             Ok(Ok(answer)) => answer,
             Ok(Err(error)) => return Err(AgentLoopError::tool(error.message)),
             Err(error) => return Err(AgentLoopError::store(error.to_string())),

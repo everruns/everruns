@@ -30,6 +30,17 @@ pub fn parse_declarative_capability_id(capability_id: &str) -> Option<&str> {
     capability_id.strip_prefix(DECLARATIVE_CAPABILITY_PREFIX)
 }
 
+/// Whether a capability ref carries its whole [`DeclarativeCapabilityDefinition`]
+/// in its config instead of naming a registry entry: `declarative:`,
+/// `plugin:` and `injected:` refs. A controller fills an injected ref's
+/// config with its definition when it hands the session to a data plane; an
+/// injected ref without one contributes nothing.
+pub fn carries_declarative_definition(capability_id: &str) -> bool {
+    is_declarative_capability(capability_id)
+        || crate::is_plugin_capability(capability_id)
+        || super::injected::is_injected_capability(capability_id)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclarativeCapabilityDefinition {
     pub name: String,

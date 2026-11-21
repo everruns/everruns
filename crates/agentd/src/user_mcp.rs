@@ -3,15 +3,21 @@
 //!
 //! The person's server list is theirs across every chat and agent of the
 //! org, so it stays in the control plane (`data_plane/user_mcp.rs`). A
-//! session reaches it two ways, both host calls that act as the turn's
-//! person, whom the session's cell names, never the executor:
+//! session reaches it two ways, both acting as the turn's person, whom the
+//! session's cell names, never the executor:
 //!
-//! - The manage tools' store (`UserMcpStoreExt`): each call goes over as
-//!   [`USER_MCP_STORE`], bound to the turn the session has open
-//!   ([`OPEN_TURN`]).
-//! - The turn's servers: asked once per turn ([`USER_MCP_SERVERS`], for
-//!   the open turn's input message), and they join the turn through the
-//!   runtime's `TurnMcpServers` hook, under the agent's own.
+//! - The manage tools' store (`UserMcpStoreExt`): each call goes over,
+//!   bound to the turn the session has open.
+//! - The turn's servers: asked once per turn, and they join the turn
+//!   through the runtime's `TurnMcpServers` hook, under the agent's own.
+//!
+//! Both go to the control plane's `person_mcp` server (its
+//! `person_mcp_store` and `person_mcp_servers` tools) with a session token
+//! whose `act` names the person and the open turn's input message, when
+//! the session's create brought that server's URL. Otherwise they are
+//! host calls ([`USER_MCP_STORE`] for the open turn ([`OPEN_TURN`]),
+//! [`USER_MCP_SERVERS`] for its input message), which this cell fills in
+//! the person for.
 //!
 //! The same call brings the session's own MCP records (chat-only servers
 //! and ARD MCP targets, kept in the session's storage on this cell), which
@@ -63,7 +69,47 @@ use uuid::Uuid;
 
 use crate::hosting::Port;
 use crate::lookups::OrgLookups;
-use crate::mcp::PerTurnGrant;
+use crate::mcp::{ControllerServer, PerTurnGrant};
+use everruns_contracts::runtime::capabilities::injected::{
+    PERSON_MCP_SERVERS_TOOL, PERSON_MCP_STORE_TOOL,
+};
+
+/// How a session reaches the person's servers in the control plane.
+#[derive(Clone)]
+enum Via {
+    HostCall(OrgLookups),
+    Server(ControllerServer),
+}
+
+impl Via {
+    /// The control plane handler's `{"ok"}`/`{"error"}` answer: a host
+    /// call's `params`, or the server `tool`'s `arguments` (the token names
+    /// the session and the turn).
+    async fn answer(
+        &self,
+        host_call: &'static str,
+        params: Value,
+        tool: &str,
+        arguments: Value,
+    ) -> Result<Value, String> {
+        match self {
+            Via::HostCall(lookups) => {
+                match lookups.execute_internal_command(host_call, params).await {
+                    Ok(Ok(answer)) => Ok(answer),
+                    Ok(Err(error)) => Err(error.message),
+                    Err(error) => Err(error.to_string()),
+                }
+            }
+            Via::Server(server) => {
+                let text = server.call_tool(tool, arguments).await?;
+                serde_json::from_str(&text).map_err(|error| error.to_string())
+            }
+        }
+    }
+}
+
+/// The control plane's server for the person's MCP servers.
+pub(crate) use everruns_contracts::runtime::capabilities::injected::PERSON_MCP as SERVER;
 
 /// How many sessions' turns are kept before the record is cleared.
 pub const MAX_SESSIONS: usize = 4096;
@@ -99,22 +145,26 @@ pub(crate) fn grant(session: Uuid, server: &str, url: Option<&str>) -> Option<Pe
 
 /// Give `session`'s activation the `user_mcp` store and its turns the
 /// person's servers, when its agent (`definition`) has `user_mcp` and the
-/// control plane is reached.
+/// control plane is reached: over its `person_mcp` server when there is
+/// one (`server`), else over host calls (`lookups`).
 pub(crate) fn attach(
     mut backends: HostBackends,
     lookups: Option<OrgLookups>,
+    server: Option<ControllerServer>,
     port: Port,
     session: SessionId,
     definition: &Value,
 ) -> HostBackends {
-    let Some(lookups) = lookups else {
-        return backends;
+    let via = match (server, lookups) {
+        (Some(server), _) => Via::Server(server),
+        (None, Some(lookups)) => Via::HostCall(lookups),
+        (None, None) => return backends,
     };
     let uses = crate::host::package(definition)
         .ok()
         .and_then(|package| user_mcp(&package.manifest().capabilities));
     backends.extensions.hooks.turn_mcp_servers = Some(Arc::new(PersonServers {
-        lookups: lookups.clone(),
+        via: via.clone(),
         port,
         session,
         person: uses == Some(true),
@@ -122,10 +172,7 @@ pub(crate) fn attach(
     let Some(_) = uses else {
         return backends;
     };
-    let invoker: Arc<dyn UserMcpCallInvoker> = Arc::new(CellUserMcpStore {
-        lookups: lookups.clone(),
-        session,
-    });
+    let invoker: Arc<dyn UserMcpCallInvoker> = Arc::new(CellUserMcpStore { via, session });
     let inner = backends.tool_context_extensions_factory.take();
     backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
         let mut extensions = inner
@@ -140,7 +187,7 @@ pub(crate) fn attach(
 
 /// The `user_mcp` store of one session, in the control plane.
 struct CellUserMcpStore {
-    lookups: OrgLookups,
+    via: Via,
     session: SessionId,
 }
 
@@ -153,20 +200,22 @@ impl UserMcpCallInvoker for CellUserMcpStore {
     ) -> UserMcpStoreResult<UserMcpStoreReply> {
         let internal =
             |error: &dyn std::fmt::Display| UserMcpStoreError::Internal(error.to_string());
+        let call = serde_json::to_value(&call).map_err(|e| internal(&e))?;
         let params = json!({
             "session_id": self.session.to_string(),
             "input_message_id": input_message.map_or_else(|| OPEN_TURN.to_owned(), |m| m.to_string()),
-            "call": serde_json::to_value(&call).map_err(|e| internal(&e))?,
+            "call": call,
         });
-        let answer = match self
-            .lookups
-            .execute_internal_command(USER_MCP_STORE, params)
+        let answer = self
+            .via
+            .answer(
+                USER_MCP_STORE,
+                params,
+                PERSON_MCP_STORE_TOOL,
+                json!({ "call": call }),
+            )
             .await
-        {
-            Ok(Ok(answer)) => answer,
-            Ok(Err(error)) => return Err(UserMcpStoreError::Internal(error.message)),
-            Err(error) => return Err(internal(&error)),
-        };
+            .map_err(UserMcpStoreError::Internal)?;
         if let Some(error) = answer.get("error") {
             return Err(serde_json::from_value(error.clone()).map_err(|e| internal(&e))?);
         }
@@ -177,7 +226,7 @@ impl UserMcpCallInvoker for CellUserMcpStore {
 /// The servers a turn of `session` adds: its person's (when its agent has
 /// `user_mcp` with `use` on) and the session's own MCP records.
 struct PersonServers {
-    lookups: OrgLookups,
+    via: Via,
     port: Port,
     session: SessionId,
     person: bool,
@@ -222,18 +271,15 @@ impl PersonServers {
         if ask.person {
             params["input_message_id"] = json!(ask.message.uuid().to_string());
         }
+        let arguments = json!({ "person": ask.person, "session_servers": ask.records });
         let answer = match self
-            .lookups
-            .execute_internal_command(USER_MCP_SERVERS, params)
+            .via
+            .answer(USER_MCP_SERVERS, params, PERSON_MCP_SERVERS_TOOL, arguments)
             .await
         {
-            Ok(Ok(answer)) => answer,
-            Ok(Err(error)) => {
-                tracing::warn!(session = %self.session, message = %error.message, "no person's MCP servers for the turn");
-                return ScopedMcpServers::new();
-            }
-            Err(error) => {
-                tracing::warn!(session = %self.session, %error, "no person's MCP servers for the turn");
+            Ok(answer) => answer,
+            Err(message) => {
+                tracing::warn!(session = %self.session, %message, "no person's MCP servers for the turn");
                 return ScopedMcpServers::new();
             }
         };

@@ -60,7 +60,7 @@ fn store(cp: &Arc<ControlPlane>, session: SessionId) -> super::CellUserMcpStore 
     // Kept alive by the test's `cp`.
     std::mem::forget(material);
     super::CellUserMcpStore {
-        lookups: crate::lookups::org_lookups(Some(&weak), session).unwrap(),
+        via: super::Via::HostCall(crate::lookups::org_lookups(Some(&weak), session).unwrap()),
         session,
     }
 }
@@ -131,4 +131,87 @@ fn a_persons_grant_serves_only_their_server_at_its_address() {
     );
     assert_eq!(super::grant(session.uuid(), "docs", url), None);
     assert_eq!(super::grant(SessionId::new().uuid(), "notes", url), None);
+}
+
+mod person_server {
+    //! The person's servers through the control plane's `person_mcp`
+    //! server: each call a tool call with a session token whose `act`
+    //! names the person and the open turn, never the call's arguments.
+
+    use everruns_capabilities::capabilities::UserMcpCallInvoker;
+    use everruns_contracts::runtime::capabilities::injected::{
+        PERSON_MCP, PERSON_MCP_SERVERS_TOOL, PERSON_MCP_STORE_TOOL, SessionActor,
+    };
+    use everruns_contracts::typed_id::{MessageId, SessionId};
+    use everruns_core::mcp::{UserMcpStoreCall, UserMcpStoreReply};
+    use serde_json::json;
+
+    use crate::controller_fixture::Fixture;
+    use crate::mcp::ControllerServer;
+
+    const URL: &str = "https://93.184.215.14/api/v1/injected/person_mcp/mcp";
+
+    #[tokio::test]
+    async fn the_store_and_the_turns_servers_go_to_the_person_mcp_server_as_the_turns_person() {
+        let fixture = Fixture::new(
+            PERSON_MCP,
+            URL,
+            &[
+                (
+                    PERSON_MCP_STORE_TOOL,
+                    json!({ "ok": { "reply": "removed", "removed": true } }),
+                ),
+                (PERSON_MCP_SERVERS_TOOL, json!({ "ok": {} })),
+            ],
+        );
+        let session = SessionId::new();
+        let actor = SessionActor {
+            sub: "usr_1".into(),
+            turn: Some(MessageId::new().uuid().to_string()),
+        };
+        fixture.executor.open.lock().insert(session, actor.clone());
+        let server =
+            ControllerServer::for_session(Some(&fixture.material), session, PERSON_MCP, URL)
+                .unwrap();
+        let via = super::super::Via::Server(server);
+
+        let store = super::super::CellUserMcpStore {
+            via: via.clone(),
+            session,
+        };
+        let reply = store
+            .invoke(
+                None,
+                UserMcpStoreCall::Remove {
+                    name: "notes".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(reply, UserMcpStoreReply::Removed { removed: true });
+        {
+            let asked = fixture.asked.lock();
+            let (tool, arguments, act) = &asked[0];
+            assert_eq!(tool, PERSON_MCP_STORE_TOOL);
+            assert_eq!(arguments["call"]["op"], json!("remove"));
+            // The person and the turn come with the token only.
+            assert!(arguments.get("session_id").is_none());
+            assert!(arguments.get("input_message_id").is_none());
+            assert_eq!(act.as_ref(), Some(&actor));
+        }
+
+        let answer = via
+            .answer(
+                everruns_contracts::host_calls::USER_MCP_SERVERS,
+                json!({}),
+                PERSON_MCP_SERVERS_TOOL,
+                json!({ "person": true, "session_servers": false }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(answer, json!({ "ok": {} }));
+        let asked = fixture.asked.lock();
+        assert_eq!(asked[1].0, PERSON_MCP_SERVERS_TOOL);
+        assert_eq!(asked[1].1["person"], json!(true));
+    }
 }

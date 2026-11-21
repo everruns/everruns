@@ -36,6 +36,9 @@ use std::time::{Duration, Instant};
 use everruns::hosting::services::{McpAuthProvider, McpAuthRequest, McpCredential};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::mcp::oauth::{OAuthClient, TokenSet};
+use everruns_core::mcp::session_token::{
+    SessionTokenAuthProvider, SessionTokenMinter, SessionTokenRequest, SessionTokenSigner,
+};
 use parking_lot::Mutex;
 
 use crate::providers::OrgMaterial;
@@ -161,6 +164,92 @@ pub struct OpenedSecret {
 
 type Kept<T> = Mutex<HashMap<(String, String), (Instant, T)>>;
 
+/// One of the control plane's own servers (`injected::CONTROLLER_SERVERS`),
+/// called for one session with session tokens.
+#[derive(Clone)]
+pub(crate) struct ControllerServer {
+    pub client: Arc<everruns_core::mcp::McpClient>,
+    pub connection: Arc<everruns_core::mcp::McpConnection>,
+}
+
+impl ControllerServer {
+    /// The server `name` at `url`, for `session`, signed with `material`'s
+    /// MCP credentials. `None` where this node holds none.
+    pub(crate) fn for_session(
+        material: Option<&Weak<dyn OrgMaterial>>,
+        session: everruns_contracts::typed_id::SessionId,
+        name: &str,
+        url: &str,
+    ) -> Option<Self> {
+        let mcp = material?.upgrade()?.mcp()?;
+        let auth = mcp.provider_for_agent(Default::default());
+        let client =
+            everruns_core::mcp::McpClient::new(mcp.egress(), auth).for_session(session.uuid());
+        let mut connection = everruns_core::mcp::McpConnection::http(name, url);
+        connection.auth_mode =
+            everruns_contracts::runtime::mcp_server::McpServerAuthMode::SessionToken;
+        Some(Self {
+            client: Arc::new(client),
+            connection: Arc::new(connection),
+        })
+    }
+
+    /// [`for_session`](Self::for_session), but its tokens' `act` is
+    /// whoever `acting` names, not the open turn's person.
+    pub(crate) fn acting(
+        material: Option<&Weak<dyn OrgMaterial>>,
+        session: SessionId,
+        acting: Acting,
+        name: &str,
+        url: &str,
+    ) -> Option<Self> {
+        let mcp = material?.upgrade()?.mcp()?;
+        let auth: Arc<dyn McpAuthProvider> = Arc::new(SessionTokenAuthProvider::new(
+            Arc::new(everruns_core::mcp::NoAuthProvider),
+            Arc::new(ActingMinter {
+                org: mcp.clone(),
+                acting,
+            }),
+        ));
+        let client =
+            everruns_core::mcp::McpClient::new(mcp.egress(), auth).for_session(session.uuid());
+        let mut connection = everruns_core::mcp::McpConnection::http(name, url);
+        connection.auth_mode =
+            everruns_contracts::runtime::mcp_server::McpServerAuthMode::SessionToken;
+        Some(Self {
+            client: Arc::new(client),
+            connection: Arc::new(connection),
+        })
+    }
+
+    /// Call its `tool` with `arguments`: the result's text, or the error's
+    /// (a failed call, or a result marked as an error).
+    pub(crate) async fn call_tool(
+        &self,
+        tool: &str,
+        arguments: serde_json::Value,
+    ) -> Result<String, String> {
+        use everruns_core::McpContent;
+        let result = self
+            .client
+            .call(&self.connection, tool, arguments, None)
+            .await
+            .map_err(|error| error.to_string())?;
+        let text: String = result
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                McpContent::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        if result.is_error {
+            return Err(text);
+        }
+        Ok(text)
+    }
+}
+
 /// MCP credentials of the orgs whose turns run here.
 pub struct OrgMcp {
     material: OnceLock<Weak<dyn OrgMaterial>>,
@@ -169,6 +258,14 @@ pub struct OrgMcp {
     holder: String,
     bindings: Kept<Option<String>>,
     tokens: Kept<TokenSet>,
+    /// The session token signer, for the data plane key it was derived
+    /// from.
+    signer: Mutex<
+        Option<(
+            everruns_contracts::dataplane_seal::Key,
+            Arc<SessionTokenSigner>,
+        )>,
+    >,
     /// Time spent finding a call's credentials, by `kind`.
     pub resolve: crate::prom::Histograms,
     /// Refreshes, by `outcome`.
@@ -183,9 +280,15 @@ impl OrgMcp {
             holder: format!("mcp-{}", uuid::Uuid::new_v4().simple()),
             bindings: Mutex::default(),
             tokens: Mutex::default(),
+            signer: Mutex::default(),
             resolve: Default::default(),
             refreshes: Default::default(),
         }
+    }
+
+    /// The egress calls to the control plane's own servers go through.
+    pub fn egress(&self) -> Arc<dyn everruns_core::EgressService> {
+        self.egress.clone()
     }
 
     /// Token refreshes go out through the runtime's own egress.
@@ -346,6 +449,34 @@ impl OrgMcp {
         }
     }
 
+    /// [`for_agent`](Self::for_agent), plus session tokens for the agent's
+    /// injected capabilities' servers.
+    pub fn provider_for_agent(self: &Arc<Self>, bindings: Bindings) -> Arc<dyn McpAuthProvider> {
+        Arc::new(SessionTokenAuthProvider::new(
+            Arc::new(self.for_agent(bindings)),
+            self.clone(),
+        ))
+    }
+
+    /// The signer for the data plane's current key.
+    fn signer(&self, material: &Arc<dyn OrgMaterial>) -> anyhow::Result<Arc<SessionTokenSigner>> {
+        let key = material
+            .data_plane_key()
+            .ok_or_else(|| anyhow::anyhow!("no data plane key to sign session tokens with"))?;
+        let mut kept = self.signer.lock();
+        if let Some((for_key, signer)) = kept.as_ref()
+            && *for_key == key
+        {
+            return Ok(signer.clone());
+        }
+        let signer = Arc::new(SessionTokenSigner::from_pkcs8(
+            everruns_contracts::dataplane_seal::SESSION_TOKEN_ISSUER,
+            &everruns_contracts::dataplane_seal::session_token_pkcs8(&key),
+        )?);
+        *kept = Some((key, signer.clone()));
+        Ok(signer)
+    }
+
     async fn credential(
         &self,
         bindings: &Bindings,
@@ -444,6 +575,64 @@ impl OrgMcp {
                 Ok(None)
             }
         }
+    }
+}
+
+/// Whom a session token acts for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Acting {
+    /// The person who opened the session's open turn.
+    Open,
+    /// The person whose message this is, in the session's record (a lookup
+    /// for a tool call of an earlier turn).
+    Message(everruns_contracts::typed_id::MessageId),
+    /// No one: the agent's own.
+    NoOne,
+}
+
+impl OrgMcp {
+    /// A token for one call of `request.session_id`, naming its org, acting
+    /// for whoever `acting` names. A session not known here gets none: the
+    /// call fails closed.
+    async fn mint_acting(
+        &self,
+        request: &SessionTokenRequest,
+        acting: Acting,
+    ) -> anyhow::Result<String> {
+        let material = self.material()?;
+        let session = SessionId::from_uuid(request.session_id);
+        let org = material
+            .tenant(session)
+            .ok_or_else(|| anyhow::anyhow!("session token for a session not running here"))?;
+        // The person comes from the session's own record of who sent the
+        // turn's message, never from the turn's tools (THREAT[TM-AGENT-017]).
+        let actor = match acting {
+            Acting::Open => material.turn_actor(session),
+            Acting::Message(message) => material.message_actor(session, message),
+            Acting::NoOne => None,
+        };
+        self.signer(&material)?.sign_as(request, Some(org), actor)
+    }
+}
+
+#[async_trait::async_trait]
+impl SessionTokenMinter for OrgMcp {
+    /// A token acting for the open turn's person.
+    async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
+        self.mint_acting(request, Acting::Open).await
+    }
+}
+
+/// Mints acting for one named person, for [`ControllerServer::acting`].
+struct ActingMinter {
+    org: Arc<OrgMcp>,
+    acting: Acting,
+}
+
+#[async_trait::async_trait]
+impl SessionTokenMinter for ActingMinter {
+    async fn mint(&self, request: &SessionTokenRequest) -> anyhow::Result<String> {
+        self.org.mint_acting(request, self.acting).await
     }
 }
 

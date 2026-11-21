@@ -299,6 +299,37 @@ async fn token(
     })))
 }
 
+/// Host calls run in process for the injected capabilities this control
+/// plane serves (`injected/hosted.rs`): the same handler, caller and
+/// feature flags as [`answer_call`], for an org on a data plane only.
+pub struct InjectedHostCalls(pub ApiState);
+
+#[async_trait::async_trait]
+impl crate::injected::hosted::HostCallRunner for InjectedHostCalls {
+    async fn answer(
+        &self,
+        org: everruns_contracts::typed_id::OrgId,
+        call: &'static host_calls::HostCall,
+        params: Value,
+    ) -> anyhow::Result<host_calls::HostCallAnswer> {
+        let state = &self.0;
+        let cp = control_plane(state).map_err(|(_, message)| anyhow::anyhow!(message))?;
+        let org_id = everruns_core::organization::org_internal_id_from_public(org);
+        anyhow::ensure!(
+            cp.db.dp_org(org_id).await?.is_some(),
+            "org {org} is not on a data plane"
+        );
+        let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &state.db,
+            org_id,
+            &crate::records::FeatureFlagPolicy::current(),
+        )
+        .await?;
+        let ctx = state.internal_ctx(org_id, flags);
+        dp_domain::host_calls::answer(&cp, &ctx, call, params).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

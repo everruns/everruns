@@ -89,5 +89,9 @@ pub async fn record(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Res
         })
         .await?;
     let memory = super::memory::mounts(cp, child.id).await?;
-    Ok(json!({ "session_id": child.id, "memory": memory }))
+    Ok(json!({
+        "session_id": child.id,
+        "memory": memory,
+        "servers": crate::injected::hosted::controller_servers(),
+    }))
 }
