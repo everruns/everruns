@@ -18610,6 +18610,11 @@ export interface components {
      */
     ForecastInterval: "step" | "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year";
     /**
+     * @description How a forked session's sandbox starts.
+     * @enum {string}
+     */
+    ForkSandbox: "fresh" | "fork";
+    /**
      * @description Request to fork a session. Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
      *     to "{parent title} (fork)" when omitted.
@@ -18635,6 +18640,14 @@ export interface components {
        * @example model_01933b5a00007000800000000000001
        */
       model_id?: string | null;
+      /**
+       * @description How the fork's sandbox starts. `fresh` (default) creates a new sandbox
+       *     from the copied workspace files. `fork` copies the parent's running
+       *     sandbox, with installed packages, build output and (on E2B) running
+       *     processes, when its first command runs. Where the provider cannot
+       *     copy that sandbox, the fork starts fresh.
+       */
+      sandbox?: components["schemas"]["ForkSandbox"];
       /** @description Override the session-level system prompt. */
       system_prompt?: string | null;
       /**
