@@ -413,7 +413,7 @@ function StepDetail({
           <ul className="border text-xs">
             {request.tool_count > 0 && (
               <RequestRow
-                role={ui("Tools")}
+                label={ui("Tools")}
                 preview={ui("View {value0} tools", { value0: formatCount(request.tool_count) })}
                 onOpen={() => openRequest("tools")}
               />
@@ -421,7 +421,7 @@ function StepDetail({
             {/* When every message is new, the system prompt is already among them. */}
             {request.system_preview && request.new_from > 0 && (
               <RequestRow
-                role="system"
+                label="system"
                 preview={request.system_preview}
                 onOpen={() => openRequest()}
               />
@@ -435,7 +435,7 @@ function StepDetail({
             {request.new_messages.map((m) => (
               <RequestRow
                 key={m.index}
-                role={m.role}
+                label={m.role}
                 preview={m.preview}
                 isNew
                 onOpen={() => openRequest(m.index)}
@@ -507,12 +507,12 @@ function StepDetail({
 }
 
 function RequestRow({
-  role,
+  label,
   preview,
   isNew,
   onOpen,
 }: {
-  role: string;
+  label: string;
   preview: string;
   isNew?: boolean;
   onOpen: () => void;
@@ -529,11 +529,11 @@ function RequestRow({
         <span
           className={cn(
             "w-[62px] shrink-0 font-mono text-[11px]",
-            ROLE_COLOR[role] ?? "text-muted-foreground",
+            ROLE_COLOR[label] ?? "text-muted-foreground",
           )}
-          title={ROLE_COLOR[role] ? ROLE_HINT : undefined}
+          title={ROLE_COLOR[label] ? ROLE_HINT : undefined}
         >
-          {role}
+          {label}
         </span>
         <span className="min-w-0 flex-1 truncate">{preview || "—"}</span>
         {isNew && (

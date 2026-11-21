@@ -147,6 +147,7 @@ export function RequestSheet({
           key={view}
           role="region"
           aria-label={ui(VIEW_LABEL[view])}
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard users need to scroll long requests, including JSON views with no focusable children.
           tabIndex={0}
           className="min-h-0 flex-1 overflow-auto overscroll-contain border"
         >
