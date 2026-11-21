@@ -204,3 +204,77 @@ test("a minimap cell brings its turns into view", async ({ page, baseURL }) => {
   await minimap.getByRole("listitem", { name: /^Turns 1841 to 1851/ }).click();
   await expect.poll(() => headerInView(page, 1841), { timeout: 10_000 }).toBe(true);
 });
+
+test("opens the requested message page or tools in a fixed-size model request modal", async ({
+  page,
+  baseURL,
+}) => {
+  test.setTimeout(90_000);
+  await mockSession(page, baseURL!);
+  const call = `**/api/v1/sessions/${SESSION}/trace/turns/1833/steps/1`;
+  const preview = "Inspect the attached report";
+  const longMessage = `${preview}\n${"A long line in the report.\n".repeat(150)}`;
+  const messages = Array.from({ length: 65 }, (_, index) => ({
+    index,
+    role: "user",
+    preview: index === 62 ? preview : `Message ${index}`,
+    size_bytes: index === 62 ? longMessage.length : 20,
+    content: { content: [{ type: "text", text: index === 62 ? longMessage : `Message ${index}` }] },
+  }));
+  await page.route(call, (route) =>
+    route.fulfill({
+      json: {
+        step: turn(1833).items[0],
+        events: [],
+        request: {
+          message_count: messages.length,
+          new_from: 62,
+          tool_count: 1,
+          new_messages: [messages[62]],
+        },
+      },
+    }),
+  );
+  await page.route(`${call}/request?*`, (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const offset = Number(params.get("offset"));
+    const limit = Number(params.get("limit"));
+    return route.fulfill({
+      json: {
+        message_count: messages.length,
+        new_from: 62,
+        has_native_request: false,
+        tools: offset === 0 ? [{ name: "read_file", description: "Read a workspace file" }] : [],
+        messages: messages.slice(offset, offset + limit),
+      },
+    });
+  });
+  await page.goto(`/sessions/${SESSION}/trace?step=1833.1`);
+  const toolsLink = page.getByRole("button", { name: /View 1 tools/ });
+  await expect(toolsLink).toBeVisible({ timeout: 30_000 });
+  await toolsLink.click();
+  const modal = page.getByRole("dialog", { name: "Model request" });
+  await expect(modal.getByText("Read a workspace file")).toBeVisible();
+  await expect.poll(async () => (await modal.boundingBox())?.height).toBe(868);
+  const bounds = await modal.boundingBox();
+  expect(bounds?.width).toBeGreaterThan(1300);
+  await modal.getByRole("button", { name: "Close" }).click();
+  await expect(modal).toBeHidden();
+
+  await page.getByRole("button", { name: new RegExp(preview) }).click();
+  await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await expect(modal.getByText(/A long line in the report/)).toBeVisible();
+  await expect(modal.getByText(preview, { exact: true })).toHaveCount(0);
+  await expect(modal.getByRole("button", { name: "Load earlier messages" })).toBeAttached();
+  await expect.poll(() => modal.boundingBox()).toEqual(bounds);
+
+  await modal.getByRole("button", { name: /^62 user/ }).click();
+  await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect.poll(() => modal.boundingBox()).toEqual(bounds);
+});

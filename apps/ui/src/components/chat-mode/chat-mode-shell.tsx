@@ -299,6 +299,8 @@ function EnabledShell({
   );
 
   const mainChatId = thread?.id;
+  const independentChat =
+    (fullChat && pathname.startsWith("/chats/")) || (!chatRoute && (!!newChat || !!activeChatId));
   // A remembered side chat from another organization or a deleted one falls
   // back to Main chat inside the workspace.
   const selectedChatId = activeChatId ?? mainChatId;
@@ -483,7 +485,7 @@ function EnabledShell({
           inert={!conversationVisible}
           aria-hidden={!conversationVisible}
         >
-          {(visited || conversationVisible) && thread ? (
+          {(visited || conversationVisible) && (thread || independentChat) ? (
             // Its own boundary: Chat loads beside the page on arrival, and a
             // suspended conversation must not hold back the page's navigations
             // (a server redirect or router.replace would otherwise never commit).
@@ -507,14 +509,16 @@ function EnabledShell({
                       {inlineMode === "floating" && (
                         <FloatingMoveHandle onMove={floating.move} onNudge={floating.nudge} />
                       )}
-                      <ChatSwitcher
-                        mainChatId={thread.id}
-                        activeChatId={selectedChatId ?? thread.id}
-                        drafting={!!newChat}
-                        onSelectChat={selectChat}
-                        onSelectThread={openThreadBeside}
-                        onNewChat={startNewChat}
-                      />
+                      {thread && (
+                        <ChatSwitcher
+                          mainChatId={thread.id}
+                          activeChatId={selectedChatId ?? thread.id}
+                          drafting={!!newChat}
+                          onSelectChat={selectChat}
+                          onSelectThread={openThreadBeside}
+                          onNewChat={startNewChat}
+                        />
+                      )}
                       <Button
                         variant="ghost"
                         size="icon-sm"
@@ -553,14 +557,16 @@ function EnabledShell({
                     </>
                   ) : beside ? (
                     <>
-                      <ChatSwitcher
-                        mainChatId={thread.id}
-                        activeChatId={selectedChatId ?? thread.id}
-                        drafting={!!newChat}
-                        onSelectChat={selectChat}
-                        onSelectThread={openThreadBeside}
-                        onNewChat={startNewChat}
-                      />
+                      {thread && (
+                        <ChatSwitcher
+                          mainChatId={thread.id}
+                          activeChatId={selectedChatId ?? thread.id}
+                          drafting={!!newChat}
+                          onSelectChat={selectChat}
+                          onSelectThread={openThreadBeside}
+                          onNewChat={startNewChat}
+                        />
+                      )}
                       <Button
                         variant="ghost"
                         size="icon-sm"

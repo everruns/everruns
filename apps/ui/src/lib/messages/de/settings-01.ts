@@ -186,8 +186,8 @@ export const messages: Readonly<Record<string, string>> = {
   "Knowledge:": "Wissen:",
   "Last synced": "Zuletzt synchronisiert",
   "Last used:": "Zuletzt verwendet:",
-  "Leave empty to use the platform default, GPT-6 Luna.":
-    "Lassen Sie das Feld leer, um den Plattformstandard GPT-6 Luna zu verwenden.",
+  "Leave empty to use the platform default, GPT-6.2 Sol.":
+    "Lassen Sie das Feld leer, um den Plattformstandard GPT-6.2 Sol zu verwenden.",
   Link: "Link",
   lists: "Listen",
   "Load more presets": "Weitere Voreinstellungen laden",
@@ -296,7 +296,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Personal access tokens are tied to your user account, not to an organization. The token inherits access to every organization and resource available to your account, limited by the access you choose below.":
     "Persönliche Zugriffstoken sind an Ihr Benutzerkonto gebunden, nicht an eine Organisation. Der Token erbt den Zugriff auf alle Organisationen und Ressourcen, die Ihrem Konto zur Verfügung stehen, begrenzt durch den Zugriff, den Sie unten auswählen.",
   "placeholders.": "Platzhalter.",
-  "Platform default · GPT-6 Luna": "Plattformstandard · GPT-6 Luna",
+  "Platform default · GPT-6.2 Sol": "Plattformstandard · GPT-6.2 Sol",
   "prefix. Public hostnames only; the deployment's deny list still applies.":
     "Präfix. Nur öffentliche Hostnamen; Die Verweigerungsliste der Bereitstellung gilt weiterhin.",
   "Private Key": "Privater Schlüssel",

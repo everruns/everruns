@@ -47,7 +47,8 @@ export const traceKeys = {
     turn: number,
     step: number,
     view: "messages" | "full" | "native" = "messages",
-  ) => ["session-trace", org, sessionId, "request", turn, step, view] as const,
+    offset = 0,
+  ) => ["session-trace", org, sessionId, "request", turn, step, view, offset] as const,
   search: (org: string | undefined, sessionId: string, q: string) =>
     ["session-trace", org, sessionId, "search", q] as const,
 };
@@ -391,8 +392,10 @@ export function useTraceRequest(
   /** `full`: whole message contents (the JSON view); `native`: also the
    * provider request body. */
   view: "messages" | "full" | "native" = "messages",
+  messageIndex = 0,
 ) {
   const { currentOrg } = useOrg();
+  const offset = Math.floor(messageIndex / REQUEST_PAGE) * REQUEST_PAGE;
   return useInfiniteQuery({
     queryKey: traceKeys.request(
       currentOrg?.public_id,
@@ -400,6 +403,7 @@ export function useTraceRequest(
       selection?.turn ?? 0,
       selection?.step ?? 0,
       view,
+      offset,
     ),
     queryFn: ({ pageParam }) =>
       listSessionTraceRequest(sessionId, selection!.turn, selection!.step, {
@@ -408,14 +412,39 @@ export function useTraceRequest(
         full: view === "full",
         native: view === "native",
       }),
-    initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((sum, page) => sum + page.messages.length, 0);
-      return last.messages.length === REQUEST_PAGE && loaded < last.message_count
-        ? loaded
-        : undefined;
+    initialPageParam: offset,
+    getPreviousPageParam: (_first, _pages, firstOffset) =>
+      firstOffset > 0 ? firstOffset - REQUEST_PAGE : undefined,
+    getNextPageParam: (last, _pages, lastOffset) => {
+      const next = lastOffset + last.messages.length;
+      return last.messages.length === REQUEST_PAGE && next < last.message_count ? next : undefined;
     },
     enabled: selection !== null,
+  });
+}
+
+export function useTraceRequestMessage(
+  sessionId: string,
+  { turn, step }: { turn: number; step: number },
+  index: number,
+  enabled: boolean,
+) {
+  const { currentOrg } = useOrg();
+  return useQuery({
+    queryKey: [
+      ...traceKeys.request(currentOrg?.public_id, sessionId, turn, step),
+      "message",
+      index,
+    ],
+    queryFn: async () => {
+      const page = await listSessionTraceRequest(sessionId, turn, step, {
+        offset: index,
+        limit: 1,
+        full: true,
+      });
+      return page.messages[0]?.content ?? null;
+    },
+    enabled,
   });
 }
 

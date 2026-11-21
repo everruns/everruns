@@ -119,6 +119,12 @@ cache. The first open of a large session would still read everything.
   call with the previous one in the same turn and returns only the new messages plus one
   "N earlier messages, unchanged" row. The full request sheet pages through all messages.
   Only these two reads ever touch a stored prompt, and only for one call.
+- **Request inspection stays in one viewport modal**: opening a message replaces its
+  preview with its content, and the body scrolls without moving the modal chrome.
+  The step inspector opens the relevant message page or the expanded tools list
+  directly. Larger messages load individually. Recorded image bytes and references
+  can be previewed and stored files can be downloaded through the organization-scoped
+  media APIs. Inspecting a request does not fetch captured remote image URLs.
 - **The request is shown as the driver receives it, not as the wire sees it**: roles are
   the four a driver is handed (`system`, `user`, `assistant`, `tool`), mapped from the
   stored `agent` and `tool_result`. The provider's own request body is recorded on

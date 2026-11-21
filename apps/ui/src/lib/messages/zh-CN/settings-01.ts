@@ -175,7 +175,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Knowledge:": "知识：",
   "Last synced": "最后同步",
   "Last used:": "最后使用：",
-  "Leave empty to use the platform default, GPT-6 Luna.": "留空以使用平台默认值 GPT-6 Luna。",
+  "Leave empty to use the platform default, GPT-6.2 Sol.": "留空以使用平台默认值 GPT-6.2 Sol。",
   Link: "链接",
   lists: "列表",
   "Load more presets": "加载更多预设",
@@ -280,7 +280,7 @@ export const messages: Readonly<Record<string, string>> = {
   "Personal access tokens are tied to your user account, not to an organization. The token inherits access to every organization and resource available to your account, limited by the access you choose below.":
     "个人访问令牌与您的用户帐户绑定，而不是与组织绑定。该令牌继承对您帐户可用的每个组织和资源的访问权限，但受您在下面选择的访问权限的限制。",
   "placeholders.": "占位符。",
-  "Platform default · GPT-6 Luna": "平台默认 · GPT-6 Luna",
+  "Platform default · GPT-6.2 Sol": "平台默认 · GPT-6.2 Sol",
   "prefix. Public hostnames only; the deployment's deny list still applies.":
     "前缀。仅限公共主机名；部署的拒绝列表仍然适用。",
   "Private Key": "私钥",

@@ -325,6 +325,10 @@ export const messages: Readonly<Record<string, string>> = {
   Request: "Запит",
   "Request credentials from": "Запит облікових даних від",
   "Request view": "Надіслати запит на перегляд",
+  "Load earlier messages": "Завантажити попередні повідомлення",
+  "Load full message": "Завантажити повне повідомлення",
+  "Full message is unavailable.": "Повне повідомлення недоступне.",
+  "View {value0} tools": "Переглянути інструменти ({value0})",
   requested: "запит",
   Requested: "Просили",
   "Requests and the approvals recorded for them will show up here together.":

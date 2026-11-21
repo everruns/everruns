@@ -14,7 +14,7 @@ tags:
 
 The shell groups navigation by **what you do with a thing**, not by what the thing is.
 Chats and Overview sit on top with no header; four groups carry every other destination:
-Build, Activity, Blocks, Quality, with Settings pinned below them. The data lives in
+Build, Observability, Blocks, Quality, with Settings pinned below them. The data lives in
 [`navigation.ts`](../../apps/ui/src/lib/navigation.ts)
 and renders through the generic section renderer in
 [`sidebar-navigation.tsx`](../../apps/ui/src/components/layout/sidebar-navigation.tsx).
@@ -59,7 +59,7 @@ than as a destination of its own.
 | **Chats** | Where you talk: Main chat, then the Side chats group with its new-side-chat affordance. First, no section header. |
 | **Overview** | The org's [home](org-home.md), right under the chats with no section header. It carries a count of the items waiting on it. |
 | **Build** | Agents, Playground, and the organization-adopted Extractions console. |
-| **Activity** | What ran: Sessions, Rooms, and Monitoring. |
+| **Observability** | What ran: Sessions, Rooms, and Monitoring. |
 | **Blocks** | Everything agents are made from and run on. What agents use by name first (Harnesses, Capabilities, Skills, Plugins, Knowledge, Memory, Virtual Users), then the provider-backed pages (Models, Web search, Sandboxes), each with its own accounts tab. |
 | **Quality** | Evaluation and observation. |
 
@@ -89,7 +89,7 @@ gating and stay out of the groups for the same reason.
   each tab its own URL (`/models/providers`, `/sandboxes/templates`) so a tab can be linked,
   opened in a new browser tab and kept in history; filters stay query params. Retired
   `?tab=` links redirect ([`tab-routes.ts`](../../apps/ui/src/lib/tab-routes.ts)).
-* **Approvals stays within its session.** Activity stays focused on what ran.
+* **Approvals stays within its session.** Observability stays focused on what ran.
 
 ## Playground
 

@@ -25,3 +25,8 @@ Cmd/Ctrl-Shift-J switches to full screen and back. This is
 now on for every organization: the Chat workspace and Chat background work
 opt-ins are gone. Home is now **Overview**, under Building, with a count of the
 items waiting there. See [Platform Chat](/built-ins/harnesses/platform-chat/).
+
+## Update 2026-11-20
+
+Main chat recovers from a rolled-back first attempt. Side chats open
+independently of the Main chat lookup.

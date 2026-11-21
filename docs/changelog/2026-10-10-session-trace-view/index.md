@@ -27,3 +27,9 @@ the URL.
 
 See [Web UI](/features/ui/#sessions), the [sessions CLI reference](/reference/cli/sessions/)
 and [#4481](https://github.com/everruns/everruns/pull/4481), [#4500](https://github.com/everruns/everruns/pull/4500), [#4503](https://github.com/everruns/everruns/pull/4503), [#4556](https://github.com/everruns/everruns/pull/4556).
+
+## Update 2026-11-20
+
+Open a message or the tools list straight from the step inspector. The model
+request opens in a near-full-screen modal with image previews and file downloads
+for attachments retained in the trace.
