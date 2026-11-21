@@ -24,6 +24,7 @@ pub mod client;
 pub mod computer;
 pub mod connection;
 mod interaction_code;
+pub mod saved_logins;
 pub mod session_tools;
 pub mod state;
 #[cfg(test)]
@@ -42,7 +43,10 @@ use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 
 use connection::BrowserlessConnector;
 
-use session_tools::{BrowserlessCloseBrowserTool, BrowserlessOpenBrowserTool};
+use session_tools::{
+    BrowserlessCloseBrowserTool, BrowserlessListLoginsTool, BrowserlessOpenBrowserTool,
+    BrowserlessSaveLoginTool,
+};
 use tools::{
     BrowserlessContentTool, BrowserlessInteractTool, BrowserlessNavigateTool,
     BrowserlessScrapeTool, BrowserlessScreenshotTool,
@@ -176,7 +180,7 @@ impl Capability for BrowserlessCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "Browserless tools use fresh browsers by default. Open a persistent browser only for login/stateful flows; active persistent sessions are reused automatically and should be closed when done. Use screenshots for visual state and DOM/content/scrape tools for text or structured data.",
+            "Browserless tools use fresh browsers by default. Open a persistent browser only for login/stateful flows (a saved login restores one: browserless_list_logins); active persistent sessions are reused automatically and should be closed when done. Use screenshots for visual state and DOM/content/scrape tools for text or structured data.",
         )
     }
 
@@ -184,6 +188,8 @@ impl Capability for BrowserlessCapability {
         vec![
             Box::new(BrowserlessOpenBrowserTool),
             Box::new(BrowserlessCloseBrowserTool),
+            Box::new(BrowserlessSaveLoginTool),
+            Box::new(BrowserlessListLoginsTool),
             Box::new(BrowserlessNavigateTool),
             Box::new(BrowserlessScreenshotTool),
             Box::new(BrowserlessContentTool),
@@ -220,6 +226,15 @@ impl Capability for BrowserlessCapability {
                 "Closing browser",
                 "Closed browser",
                 "Failed to close browser",
+                None,
+            ),
+            "browserless_save_login" => {
+                ("Saving login", "Saved login", "Failed to save login", None)
+            }
+            "browserless_list_logins" => (
+                "Listing saved logins",
+                "Listed saved logins",
+                "Failed to list saved logins",
                 None,
             ),
             "browserless_navigate" => (
