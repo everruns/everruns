@@ -21477,26 +21477,36 @@
       "$defs": {
         "AgentViewDefinition": {
           "additionalProperties": false,
+          "description": "An Agent author's default layout and publication permissions.",
           "properties": {
             "allow_agent_layout": {
               "description": "Whether a successful run may also publish a replacement layout.",
+              "example": false,
               "type": "boolean"
             },
             "allow_personalization": {
               "description": "Whether viewers may use a personal layout for this view.",
+              "example": true,
               "type": "boolean"
             },
             "data_fields": {
               "description": "Top-level keys that an agent is allowed to publish for this layout.",
+              "example": [
+                "status",
+                "changes"
+              ],
               "items": {
                 "type": "string"
               },
               "type": "array"
             },
             "layout": {
-              "$ref": "#/$defs/AgentViewLayout"
+              "$ref": "#/$defs/AgentViewLayout",
+              "description": "Default layout used until a run publishes a replacement."
             },
             "title": {
+              "description": "Display name used in the chat and full-page placements.",
+              "example": "Repository activity",
               "type": "string"
             }
           },
@@ -21507,6 +21517,7 @@
           "type": "object"
         },
         "AgentViewLayout": {
+          "description": "A fixed or generated layout used to render an Agent view.",
           "oneOf": [
             {
               "description": "A2UI 1.0 operations for one surface using the standard catalog.",
@@ -21538,6 +21549,7 @@
                   "type": "string"
                 },
                 "source": {
+                  "example": "<h2>Repository activity</h2>",
                   "type": "string"
                 }
               },
@@ -21551,8 +21563,11 @@
         },
         "ReplaceAgentViewRequest": {
           "additionalProperties": false,
+          "description": "Replaces or removes a view at the supplied revision.",
           "properties": {
             "revision": {
+              "description": "The revision returned by the most recent read of the Agent's settings.",
+              "example": 1,
               "format": "int64",
               "type": "integer"
             },
@@ -22656,6 +22671,7 @@
     "input_schema": {
       "$defs": {
         "AgentViewLayout": {
+          "description": "A fixed or generated layout used to render an Agent view.",
           "oneOf": [
             {
               "description": "A2UI 1.0 operations for one surface using the standard catalog.",
@@ -22687,6 +22703,7 @@
                   "type": "string"
                 },
                 "source": {
+                  "example": "<h2>Repository activity</h2>",
                   "type": "string"
                 }
               },
@@ -22699,6 +22716,7 @@
           ]
         },
         "AgentViewPreference": {
+          "description": "Saves or resets the current viewer's personal layout at a given revision.",
           "properties": {
             "layout": {
               "oneOf": [
@@ -22712,6 +22730,8 @@
               ]
             },
             "revision": {
+              "description": "The revision returned by the most recent read of the published view.",
+              "example": 1,
               "format": "int64",
               "type": "integer"
             }

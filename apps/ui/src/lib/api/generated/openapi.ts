@@ -1996,9 +1996,15 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Get work chat view */
+    /**
+     * Get work chat view
+     * @description Return the view available to the signed-in Work Chat viewer.
+     */
     get: operations["get_work_chat_view"];
-    /** Set work chat view preference */
+    /**
+     * Set work chat view preference
+     * @description Save or reset the signed-in Work Chat viewer's personal layout.
+     */
     put: operations["set_work_chat_view_preference"];
     post?: never;
     delete?: never;
@@ -3316,11 +3322,13 @@ export interface paths {
     /**
      * Get work chat view legacy
      * @deprecated
+     * @description Return the view available to the signed-in Work Chat viewer.
      */
     get: operations["get_work_chat_view_legacy"];
     /**
      * Set work chat view preference legacy
      * @deprecated
+     * @description Save or reset the signed-in Work Chat viewer's personal layout.
      */
     put: operations["set_work_chat_view_preference_legacy"];
     post?: never;
@@ -11385,16 +11393,35 @@ export interface components {
      * @enum {string}
      */
     AgentTriggerType: "schedule" | "webhook" | "github" | "mcp_event";
+    /** @description An Agent author's default layout and publication permissions. */
     AgentViewDefinition: {
-      /** @description Whether a successful run may also publish a replacement layout. */
+      /**
+       * @description Whether a successful run may also publish a replacement layout.
+       * @example false
+       */
       allow_agent_layout?: boolean;
-      /** @description Whether viewers may use a personal layout for this view. */
+      /**
+       * @description Whether viewers may use a personal layout for this view.
+       * @example true
+       */
       allow_personalization?: boolean;
-      /** @description Top-level keys that an agent is allowed to publish for this layout. */
+      /**
+       * @description Top-level keys that an agent is allowed to publish for this layout.
+       * @example [
+       *       "status",
+       *       "changes"
+       *     ]
+       */
       data_fields?: string[];
+      /** @description Default layout used until a run publishes a replacement. */
       layout: components["schemas"]["AgentViewLayout"];
+      /**
+       * @description Display name used in the chat and full-page placements.
+       * @example Repository activity
+       */
       title: string;
     };
+    /** @description A fixed or generated layout used to render an Agent view. */
     AgentViewLayout:
       | {
           /** @enum {string} */
@@ -11404,17 +11431,25 @@ export interface components {
       | {
           /** @enum {string} */
           format: "html";
+          /** @example <h2>Repository activity</h2> */
           source: string;
         };
+    /** @description Saves or resets the current viewer's personal layout at a given revision. */
     AgentViewPreference: {
       layout: components["schemas"]["AgentViewLayout"] | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description The revision returned by the most recent read of the published view.
+       * @example 1
+       */
       revision: number;
     };
+    /** @description The current revision and optional view definition for an Agent. */
     AgentViewSettings: {
       /**
        * Format: int64
        * @description Revision zero represents an Agent with no saved view settings.
+       * @example 1
        */
       revision: number;
       view?: components["schemas"]["AgentViewDefinition"] | null;
@@ -27802,17 +27837,42 @@ export interface components {
         [key: string]: boolean;
       };
     };
+    /** @description The view snapshot available to the current chat viewer. */
     PublishedAgentView: {
+      /**
+       * @description Whether the current viewer may save a personal layout.
+       * @example true
+       */
       allow_personalization: boolean;
+      /**
+       * @description Most recently published data allowed by this definition.
+       * @example {
+       *       "changes": 3,
+       *       "status": "Up to date"
+       *     }
+       */
       data: {
         [key: string]: unknown;
       };
+      /** @description Published layout or the Agent's default layout. */
       layout: components["schemas"]["AgentViewLayout"];
       personal_layout?: components["schemas"]["AgentViewLayout"] | null;
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Revision of the Agent's current view settings.
+       * @example 1
+       */
       revision: number;
+      /**
+       * @description Display name from the Agent's view definition.
+       * @example Repository activity
+       */
       title: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time of the latest successful publication, if available.
+       * @example 2026-11-20T19:00:00Z
+       */
       updated_at?: string | null;
     };
     /** @description Completed scores in one group of a live-quality summary. */
@@ -28236,8 +28296,13 @@ export interface components {
     RenameOrganizationConnectionRequest: {
       name: string;
     };
+    /** @description Replaces or removes a view at the supplied revision. */
     ReplaceAgentViewRequest: {
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description The revision returned by the most recent read of the Agent's settings.
+       * @example 1
+       */
       revision: number;
       view: components["schemas"]["AgentViewDefinition"] | null;
     };

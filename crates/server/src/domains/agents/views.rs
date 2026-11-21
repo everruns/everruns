@@ -9,41 +9,58 @@ use utoipa::ToSchema;
 
 const MAX_SOURCE_BYTES: usize = 64 * 1024;
 
+/// A fixed or generated layout used to render an Agent view.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "format", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentViewLayout {
     /// A2UI 1.0 operations for one surface using the standard catalog.
     A2ui { operations: Vec<Value> },
     /// Static markup rendered in a sandbox without scripts or network access.
-    Html { source: String },
+    Html {
+        #[schema(example = "<h2>Repository activity</h2>")]
+        source: String,
+    },
 }
 
+/// An Agent author's default layout and publication permissions.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentViewDefinition {
+    /// Display name used in the chat and full-page placements.
+    #[schema(example = "Repository activity")]
     pub title: String,
+    /// Default layout used until a run publishes a replacement.
     pub layout: AgentViewLayout,
     /// Whether viewers may use a personal layout for this view.
     #[serde(default)]
+    #[schema(example = true)]
     pub allow_personalization: bool,
     /// Top-level keys that an agent is allowed to publish for this layout.
     #[serde(default)]
+    #[schema(example = json!(["status", "changes"]))]
     pub data_fields: Vec<String>,
     /// Whether a successful run may also publish a replacement layout.
     #[serde(default)]
+    #[schema(example = false)]
     pub allow_agent_layout: bool,
 }
 
+/// The current revision and optional view definition for an Agent.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentViewSettings {
     /// Revision zero represents an Agent with no saved view settings.
+    #[schema(example = 1)]
     pub revision: i64,
+    /// Configured view, if enabled for this Agent.
     pub view: Option<AgentViewDefinition>,
 }
 
+/// Replaces or removes a view at the supplied revision.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReplaceAgentViewRequest {
+    /// The revision returned by the most recent read of the Agent's settings.
+    #[schema(example = 1)]
     pub revision: i64,
     /// Pass null to remove the view.
     #[serde(deserialize_with = "Deserialize::deserialize")]

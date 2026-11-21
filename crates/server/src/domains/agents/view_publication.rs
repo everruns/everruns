@@ -31,19 +31,35 @@ struct Publication {
     layout: Option<AgentViewLayout>,
 }
 
+/// The view snapshot available to the current chat viewer.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PublishedAgentView {
+    /// Revision of the Agent's current view settings.
+    #[schema(example = 1)]
     pub revision: i64,
+    /// Display name from the Agent's view definition.
+    #[schema(example = "Repository activity")]
     pub title: String,
+    /// Published layout or the Agent's default layout.
     pub layout: AgentViewLayout,
+    /// Most recently published data allowed by this definition.
+    #[schema(example = json!({"status": "Up to date", "changes": 3}))]
     pub data: Map<String, Value>,
+    /// Whether the current viewer may save a personal layout.
+    #[schema(example = true)]
     pub allow_personalization: bool,
+    /// Time of the latest successful publication, if available.
+    #[schema(example = "2026-11-20T19:00:00Z")]
     pub updated_at: Option<DateTime<Utc>>,
+    /// Layout saved privately by the current viewer, if available.
     pub personal_layout: Option<AgentViewLayout>,
 }
 
+/// Saves or resets the current viewer's personal layout at a given revision.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct AgentViewPreference {
+    /// The revision returned by the most recent read of the published view.
+    #[schema(example = 1)]
     pub revision: i64,
     /// Pass null to restore the published layout.
     #[serde(deserialize_with = "Deserialize::deserialize")]

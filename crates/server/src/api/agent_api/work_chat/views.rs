@@ -4,7 +4,7 @@
 use super::*;
 use crate::domains::agent_channels::record::work_chat::WorkChatViewPlacement;
 use crate::domains::agents::view_publication::{self, AgentViewPreference};
-use axum::extract::Query;
+use axum::extract::{Query, rejection::JsonRejection};
 use everruns_contracts::typed_id::AgentId;
 use uuid::Uuid;
 
@@ -109,6 +109,7 @@ async fn read(state: &ChannelApiState, target: Target) -> ApiResponse<Response> 
 
 #[utoipa::path(
     get, path = "/v1/channels/{channel_id}/chat/view",
+    description = "Return the view available to the signed-in Work Chat viewer.",
     params(("channel_id" = String, Path), ViewQuery),
     responses((status = 200, description = "Published view", body = view_publication::PublishedAgentView),
         (status = 404, description = "View unavailable")),
@@ -130,6 +131,7 @@ pub(crate) async fn get_work_chat_view(
 
 #[utoipa::path(
     put, path = "/v1/channels/{channel_id}/chat/view",
+    description = "Save or reset the signed-in Work Chat viewer's personal layout.",
     params(("channel_id" = String, Path), ViewQuery),
     request_body = AgentViewPreference,
     responses((status = 200, description = "Saved personal layout", body = view_publication::PublishedAgentView),
@@ -141,10 +143,11 @@ pub(crate) async fn set_work_chat_view_preference(
     Path(channel): Path<String>,
     headers: HeaderMap,
     Query(query): Query<ViewQuery>,
-    Json(preference): Json<AgentViewPreference>,
+    preference: Result<Json<AgentViewPreference>, JsonRejection>,
 ) -> Response {
     async {
         let target = target(&state, &channel, &headers, query).await?;
+        let Json(preference) = preference.map_err(IntoResponse::into_response)?;
         view_publication::save_preference(
             &state.db,
             target.agent,

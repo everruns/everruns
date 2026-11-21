@@ -7439,6 +7439,7 @@
           "agent-execution"
         ],
         "summary": "Get work chat view",
+        "description": "Return the view available to the signed-in Work Chat viewer.",
         "operationId": "get_work_chat_view",
         "parameters": [
           {
@@ -7490,6 +7491,7 @@
           "agent-execution"
         ],
         "summary": "Set work chat view preference",
+        "description": "Save or reset the signed-in Work Chat viewer's personal layout.",
         "operationId": "set_work_chat_view_preference",
         "parameters": [
           {
@@ -12913,6 +12915,7 @@
           "agent-execution"
         ],
         "summary": "Get work chat view legacy",
+        "description": "Return the view available to the signed-in Work Chat viewer.",
         "operationId": "get_work_chat_view_legacy",
         "parameters": [
           {
@@ -12969,6 +12972,7 @@
           "agent-execution"
         ],
         "summary": "Set work chat view preference legacy",
+        "description": "Save or reset the signed-in Work Chat viewer's personal layout.",
         "operationId": "set_work_chat_view_preference_legacy",
         "parameters": [
           {
@@ -40798,6 +40802,7 @@
       },
       "AgentViewDefinition": {
         "type": "object",
+        "description": "An Agent author's default layout and publication permissions.",
         "required": [
           "title",
           "layout"
@@ -40805,24 +40810,33 @@
         "properties": {
           "allow_agent_layout": {
             "type": "boolean",
-            "description": "Whether a successful run may also publish a replacement layout."
+            "description": "Whether a successful run may also publish a replacement layout.",
+            "example": false
           },
           "allow_personalization": {
             "type": "boolean",
-            "description": "Whether viewers may use a personal layout for this view."
+            "description": "Whether viewers may use a personal layout for this view.",
+            "example": true
           },
           "data_fields": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Top-level keys that an agent is allowed to publish for this layout."
+            "description": "Top-level keys that an agent is allowed to publish for this layout.",
+            "example": [
+              "status",
+              "changes"
+            ]
           },
           "layout": {
-            "$ref": "#/components/schemas/AgentViewLayout"
+            "$ref": "#/components/schemas/AgentViewLayout",
+            "description": "Default layout used until a run publishes a replacement."
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name used in the chat and full-page placements.",
+            "example": "Repository activity"
           }
         },
         "additionalProperties": false
@@ -40864,14 +40878,17 @@
                 ]
               },
               "source": {
-                "type": "string"
+                "type": "string",
+                "example": "<h2>Repository activity</h2>"
               }
             }
           }
-        ]
+        ],
+        "description": "A fixed or generated layout used to render an Agent view."
       },
       "AgentViewPreference": {
         "type": "object",
+        "description": "Saves or resets the current viewer's personal layout at a given revision.",
         "required": [
           "revision",
           "layout"
@@ -40890,12 +40907,15 @@
           },
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The revision returned by the most recent read of the published view.",
+            "example": 1
           }
         }
       },
       "AgentViewSettings": {
         "type": "object",
+        "description": "The current revision and optional view definition for an Agent.",
         "required": [
           "revision"
         ],
@@ -40903,12 +40923,14 @@
           "revision": {
             "type": "integer",
             "format": "int64",
-            "description": "Revision zero represents an Agent with no saved view settings."
+            "description": "Revision zero represents an Agent with no saved view settings.",
+            "example": 1
           },
           "view": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/AgentViewDefinition"
+                "$ref": "#/components/schemas/AgentViewDefinition",
+                "description": "Configured view, if enabled for this Agent."
               },
               {
                 "type": "null"
@@ -70352,6 +70374,7 @@
       },
       "PublishedAgentView": {
         "type": "object",
+        "description": "The view snapshot available to the current chat viewer.",
         "required": [
           "revision",
           "title",
@@ -70361,22 +70384,31 @@
         ],
         "properties": {
           "allow_personalization": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the current viewer may save a personal layout.",
+            "example": true
           },
           "data": {
             "type": "object",
+            "description": "Most recently published data allowed by this definition.",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "changes": 3,
+              "status": "Up to date"
             }
           },
           "layout": {
-            "$ref": "#/components/schemas/AgentViewLayout"
+            "$ref": "#/components/schemas/AgentViewLayout",
+            "description": "Published layout or the Agent's default layout."
           },
           "personal_layout": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/AgentViewLayout"
+                "$ref": "#/components/schemas/AgentViewLayout",
+                "description": "Layout saved privately by the current viewer, if available."
               },
               {
                 "type": "null"
@@ -70385,17 +70417,23 @@
           },
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Revision of the Agent's current view settings.",
+            "example": 1
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name from the Agent's view definition.",
+            "example": "Repository activity"
           },
           "updated_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time of the latest successful publication, if available.",
+            "example": "2026-11-20T19:00:00Z"
           }
         }
       },
@@ -71232,6 +71270,7 @@
       },
       "ReplaceAgentViewRequest": {
         "type": "object",
+        "description": "Replaces or removes a view at the supplied revision.",
         "required": [
           "revision",
           "view"
@@ -71239,7 +71278,9 @@
         "properties": {
           "revision": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "The revision returned by the most recent read of the Agent's settings.",
+            "example": 1
           },
           "view": {
             "oneOf": [

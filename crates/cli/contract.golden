@@ -73,6 +73,8 @@ agents triggers update	--agent-id! --auth --context-revision --cron-expression -
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --model-preset --model-role --name --reason --tag/-t... --writable <agent_id>
 agents upsert	--capabilities --communication --completion-check --context-revision --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --localizations --max-iterations --max-output-tokens --mcpServers --model-preset --model-role --name! --network-access --owner-agent-id --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
+agents view get	--agent-id! --context-revision --reason
+agents view replace	--agent-id! --context-revision --reason --revision! --view!
 budgets check	--budget-id! --context-revision --reason
 budgets create	--context-revision --currency! --limit! --metadata --period --policy --reason --soft-limit --subject-id! --subject-type!
 budgets delete	--budget-id --context-revision --reason <budget_id>
@@ -370,6 +372,8 @@ sandboxes list	--agent-id --context-revision --include-in-process --limit --need
 sandboxes provider get	--context-revision --id --reason <id>
 sandboxes stats get	--agent-id --context-revision --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
 sandboxes timeline get	--agent-id --context-revision --from --include-in-process --limit --needs-attention --provider --reason --sandbox-template-id --search --state --to
+sessions agent-view get	--context-revision --reason --session-id! --view-agent
+sessions agent-view set	--context-revision --layout! --reason --revision! --session-id! --view-agent
 sessions approval-mode get	--context-revision --reason --session-id!
 sessions approval-mode set	--context-revision --mode --reason --session-id!
 sessions archive	--context-revision --reason --session <session_id>

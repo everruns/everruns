@@ -3574,7 +3574,8 @@
         "field": "revision",
         "long": "revision",
         "kind": "integer",
-        "required": true
+        "required": true,
+        "help": "The revision returned by the most recent read of the Agent's settings."
       },
       {
         "field": "view",
@@ -14338,7 +14339,8 @@
         "field": "revision",
         "long": "revision",
         "kind": "integer",
-        "required": true
+        "required": true,
+        "help": "The revision returned by the most recent read of the published view."
       },
       {
         "field": "session_id",
