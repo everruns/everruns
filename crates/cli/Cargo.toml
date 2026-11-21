@@ -37,6 +37,7 @@ futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 urlencoding = "2"
+tempfile.workspace = true
 uuid.workspace = true
 serde_yaml.workspace = true
 toml = "1.1"
@@ -68,9 +69,6 @@ hostname = "0.4"
 # No-follow, dirfd-relative opens for workspace upload (EVE-1191)
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["fs"] }
-
-[dev-dependencies]
-tempfile.workspace = true
 
 [lints]
 workspace = true
