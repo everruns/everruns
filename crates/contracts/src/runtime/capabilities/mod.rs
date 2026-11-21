@@ -94,6 +94,7 @@ use crate::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 
 mod declarative;
 pub mod facts;
+pub mod injected;
 pub mod skill_contribution;
 pub mod util;
 

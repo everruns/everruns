@@ -37,6 +37,7 @@ pub(super) async fn request_with_inputs(
         form_elicitation: is_resource_read && handlers.form.is_some(),
         tasks: false,
         ui_apps: handlers.ui_apps,
+        everruns: false,
     };
     tokio::time::timeout(CALL_TIMEOUT, async {
         let (text, negotiated) = negotiate_and_send(

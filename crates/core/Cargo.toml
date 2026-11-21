@@ -109,7 +109,8 @@ tracing-subscriber = { workspace = true, optional = true }
 # `channel-auth`: JWT verification and the discovery/JWKS caches.
 jsonwebtoken = { workspace = true, optional = true }
 moka = { workspace = true, optional = true }
-# Web Bot Auth request signing (host::web_bot_auth), direct-egress only.
+# Ed25519: Web Bot Auth request signing (host::web_bot_auth, direct-egress)
+# and injected capabilities' session tokens (session-token).
 ed25519-dalek = { version = "3", optional = true }
 
 [features]
@@ -129,6 +130,9 @@ native-containment = ["process", "dep:tree-sitter", "dep:tree-sitter-bash", "dep
 host-shell = ["native-containment"]
 mcp = ["dep:serde_urlencoded"]
 mcp-stdio = ["mcp", "process"]
+# Session tokens for injected capabilities (knowledge/execution/injected-capabilities.md):
+# EdDSA signing, JWKS verification and the minting auth provider.
+session-token = ["mcp", "dep:jsonwebtoken", "dep:ed25519-dalek"]
 # Shared voice loop for voice channels (knowledge/framework/voice-agents.md).
 voice = []
 # Shared channel host: reply delivery, session binding, recovery

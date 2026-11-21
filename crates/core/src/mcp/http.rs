@@ -726,6 +726,7 @@ pub async fn http_call_tool(
         // A connection-less call has no transport to keep polling with.
         tasks: false,
         ui_apps: false,
+        everruns: false,
     };
     let (text, negotiated) = negotiate_and_send(
         egress,
@@ -1163,6 +1164,7 @@ impl HttpTransport {
             form_elicitation: handlers.form.is_some(),
             tasks: false,
             ui_apps: self.ui_apps,
+            everruns: connection.auth_mode == crate::McpServerAuthMode::SessionToken,
         }
     }
 

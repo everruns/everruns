@@ -272,6 +272,13 @@ pub fn validate_declarative_capability_definition(
             "mcp_servers cannot contain more than {MAX_MCP_SERVERS} entries"
         ));
     }
+    if let Some(servers) = &definition.mcp_servers {
+        super::injected::reject_session_token_servers(
+            servers
+                .iter()
+                .map(|(name, server)| (name, server.as_scoped())),
+        )?;
+    }
     if definition.files.len() > MAX_FILES {
         return Err(format!(
             "files cannot contain more than {MAX_FILES} entries"

@@ -182,6 +182,17 @@ impl McpClient {
         Ok(serde_json::from_value(result)?)
     }
 
+    /// Send any other JSON-RPC method and return its `result`. Used by the
+    /// Everruns extensions (`everruns/hooks/*`).
+    pub(crate) async fn request_raw(
+        &self,
+        connection: &McpConnection,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
+        self.request(connection, method, params).await
+    }
+
     async fn request(
         &self,
         connection: &McpConnection,

@@ -142,7 +142,9 @@ pub async fn offered_presets(ctx: &Ctx) -> Result<Vec<OfferedPreset>, CommandErr
 fn acts_as_for(auth_mode: McpServerAuthMode) -> McpServerActsAs {
     match auth_mode {
         McpServerAuthMode::OAuth => McpServerActsAs::Service,
-        McpServerAuthMode::None | McpServerAuthMode::ApiKey => McpServerActsAs::None,
+        McpServerAuthMode::None | McpServerAuthMode::ApiKey | McpServerAuthMode::SessionToken => {
+            McpServerActsAs::None
+        }
     }
 }
 
