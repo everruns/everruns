@@ -170,8 +170,23 @@ appears in the manifest.
     matchLabels: {{- include "everruns.selector" . | nindent 6 }}
 {{- end -}}
 
+{{/* Omitted or null means the presence of an Ingress chooses the routing mode. */}}
+{{- define "everruns.proxyEnabled" -}}
+{{- if kindIs "bool" .Values.proxy.enabled -}}
+{{- if .Values.proxy.enabled }}true{{ end -}}
+{{- else if not .Values.ingress.enabled }}true{{ end -}}
+{{- end -}}
+
 {{/* Stop with a clear message before anything is created. */}}
 {{- define "everruns.validate" -}}
+{{- if not (include "everruns.proxyEnabled" .) }}
+{{- if not .Values.ingress.enabled }}
+{{- fail "proxy.enabled=false needs ingress.enabled=true" }}
+{{- end }}
+{{- if and .Values.networkPolicy.enabled (not .Values.networkPolicy.ingressFrom) }}
+{{- fail "direct Ingress with networkPolicy.enabled=true needs networkPolicy.ingressFrom, or set proxy.enabled=true to use Caddy" }}
+{{- end }}
+{{- end }}
 {{- with .Values.sandboxes.kubernetes }}
 {{- if .enabled }}
 {{- if not (has .egress (list "proxy" "direct" "none")) }}

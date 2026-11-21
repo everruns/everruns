@@ -1,3 +1,4 @@
+{{- if include "everruns.proxyEnabled" . }}
 {{- $name := include "everruns.name" (list . "proxy") }}
 {{- $caddyfile := .Files.Get "files/Caddyfile" }}
 {{- if not (include "everruns.dataPlaneRuns" .) }}
@@ -79,33 +80,4 @@ spec:
   selector: {{- include "everruns.selector" (list . "proxy") | nindent 4 }}
   ports:
     - { name: http, port: {{ .Values.proxy.service.port }}, targetPort: http }
-{{- if .Values.ingress.enabled }}
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: {{ include "everruns.fullname" . }}
-  labels: {{- include "everruns.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
-  annotations: {{- toYaml . | nindent 4 }}
-  {{- end }}
-spec:
-  {{- with .Values.ingress.className }}
-  ingressClassName: {{ . }}
-  {{- end }}
-  {{- with .Values.ingress.tls }}
-  tls: {{- toYaml . | nindent 4 }}
-  {{- end }}
-  rules:
-    - {{- with .Values.ingress.host }}
-      host: {{ . | quote }}
-      {{- end }}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "everruns.fullname" . }}
-                port: { name: http }
 {{- end }}

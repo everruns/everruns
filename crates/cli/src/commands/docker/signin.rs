@@ -34,10 +34,11 @@ pub struct Credentials<'a> {
     pub password_hint: &'a str,
 }
 
-/// Make `profile` a working sign-in to `api_url`, then decide whether it
-/// becomes the CLI's current profile.
+/// Sign in at `api_url` and save the long-lived `profile_api_url`. They differ
+/// when Kubernetes bootstraps the sign-in through a temporary port-forward.
 pub async fn ensure_profile(
     api_url: &str,
+    profile_api_url: &str,
     profile: &str,
     creds: Credentials<'_>,
     switch: SwitchPolicy,
@@ -48,7 +49,7 @@ pub async fn ensure_profile(
     let existing = store
         .profiles
         .get(profile)
-        .filter(|p| p.api_url == api_url)
+        .filter(|p| p.api_url == profile_api_url)
         .cloned();
     let reusable = match &existing {
         Some(p) => me(&http, api_url, &p.api_key)
@@ -65,7 +66,7 @@ pub async fn ensure_profile(
             let me = me(&http, api_url, &token).await?;
             let org_id = select_org(me.organizations.as_deref().unwrap_or_default())?;
             let saved = Profile {
-                api_url: api_url.to_string(),
+                api_url: profile_api_url.to_string(),
                 api_key: token,
                 org_id: Some(org_id),
                 user_email: Some(me.email.clone()),

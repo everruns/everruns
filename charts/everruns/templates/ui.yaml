@@ -31,6 +31,9 @@ spec:
             - { name: HOSTNAME, value: "0.0.0.0" }
             - { name: AUTH_MODE, value: {{ .Values.auth.mode | quote }} }
             - { name: UI_SERVER_API_URL, value: {{ printf "http://%s:9000/api" (include "everruns.name" (list . "server")) | quote }} }
+            {{- if not (include "everruns.proxyEnabled" .) }}
+            - { name: UI_HOMEPAGE_MARKDOWN_URL, value: {{ printf "http://%s:9000/llms.txt" (include "everruns.name" (list . "server")) | quote }} }
+            {{- end }}
             {{- with .Values.ui.extraEnv }}{{ toYaml . | nindent 12 }}{{ end }}
           readinessProbe:
             httpGet: { path: /login, port: http }

@@ -102,7 +102,7 @@ backups or failover, so use it only for experiments.
 | Data plane v2 | Where new organizations run agents (`dataPlane.version`, default `v2`): a cell (StatefulSet, `dataPlane.cell.nodes`, default 1), executors that run its turns (`dataPlane.executor.replicas`) and the edge router the proxy sends session calls to. See [Choose the data plane](#choose-the-data-plane). |
 | Workers | `worker.replicas` (default 1), or scaled by [KEDA](https://keda.sh) with `worker.autoscaling.enabled=true` on waiting and running work: background tasks and chat turns. |
 | UI | `ui.replicas` (default 1). |
-| Proxy | Caddy with the same routes as the [Docker Compose](/getting-started/docker-compose/) setup: `/api`, `/mcp`, OAuth and agent-readable documents go to the server, the rest to the UI. Service `everruns`, port 9300. `proxy.replicas` (default 1). |
+| Proxy | Caddy for installs without Ingress, with the same routes as the [Docker Compose](/getting-started/docker-compose/) setup. Service `everruns`, port 9300. See [Ingress routing](#ingress-routing). |
 | NATS | Bundled with JetStream and a generated password for live event delivery, or `nats.url` for your own. |
 | Valkey | Optional with one server (`valkey.enabled` or `valkey.url`), which then keeps rate limits in memory. Required with more. |
 
@@ -132,7 +132,7 @@ the v2 organizations' sessions live in the cell.
 
 ## Expose it
 
-Point an Ingress at the proxy service:
+Enable Ingress to send traffic directly to the application Services:
 
 ```yaml
 publicUrl: https://everruns.example.com
@@ -147,6 +147,43 @@ ingress:
 
 `publicUrl` is the address people use. Sign-in callbacks and links are built
 from it.
+
+### Ingress routing
+
+The chart sends browser routes to the UI and public API, MCP, OAuth and
+discovery routes to the server. When the data plane is running, session,
+command and workspace paths go through its edge router. The UI serves the
+server's `llms.txt` at `/` for clients requesting `text/markdown`.
+
+Set the Ingress controller's streaming options for the API and MCP endpoints.
+Disable response buffering and compression for `text/event-stream`, use
+timeouts that allow long-lived connections, and forward the original host and
+trusted client address. Keep request-size limits large enough for workspace
+uploads. Configure compression for eligible non-streaming responses at the
+controller.
+
+If you set `networkPolicy.enabled: true`, specify the controller's network
+peers, for example a namespace selector for controllers in `ingress-system`:
+
+```yaml
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-system
+```
+
+Direct mode uses the public Ingress URL. The chart's single-service port-forward
+for browser access uses Caddy. When no Ingress is configured, the chart deploys
+Caddy automatically. Set `proxy.enabled: true` to also use Caddy behind an
+Ingress, including on upgrades where you want to retain an existing proxy.
+
+`everruns k8s up --public-url https://everruns.example.com` uses the same
+default. Pass `--ingress-class` to select a controller and `--values` for TLS
+or controller-specific settings. If the public endpoint is still coming up,
+the CLI signs in through a temporary port-forward and saves the public URL in
+its profile.
 
 ## Run several servers
 
