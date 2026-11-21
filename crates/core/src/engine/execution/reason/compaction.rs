@@ -915,7 +915,8 @@ pub(super) async fn apply_reactive_compaction(
                     .clone()
                     .unwrap_or_else(|| context.summarization_model_fallback.to_string()),
             );
-            summary_config.temperature = Some(0.0);
+            // Match portable continuity: internal summaries must also work on
+            // models that do not accept a temperature override.
             summary_config.max_tokens = Some(2000);
 
             match context

@@ -69,8 +69,9 @@ impl MessageRetriever for TestMessageRetriever {
                     let query = query.to_lowercase();
                     messages.retain(|message| {
                         message
-                            .text()
-                            .is_some_and(|text| text.to_lowercase().contains(&query))
+                            .content_to_llm_string()
+                            .to_lowercase()
+                            .contains(&query)
                     });
                 }
                 MessageFilter::Custom(predicate) => messages.retain(|message| predicate(message)),

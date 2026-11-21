@@ -1197,9 +1197,13 @@ fn apply_filters(
             MessageFilter::Search(search) => {
                 let search = search.to_lowercase();
                 projected.retain(|item| {
+                    // Tool observations are canonical history too. `text()`
+                    // sees only a Text part, excluding ToolResult bodies.
+                    // The model projection excludes opaque/reasoning artifacts.
                     item.message
-                        .text()
-                        .is_some_and(|text| text.to_lowercase().contains(&search))
+                        .content_to_llm_string()
+                        .to_lowercase()
+                        .contains(&search)
                 });
             }
             MessageFilter::ExcludeIds(ids) => {

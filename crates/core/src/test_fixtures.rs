@@ -159,10 +159,8 @@ impl MessageRetriever for TestMessageRetriever {
                 }
                 MessageFilter::Search(q) => {
                     let q_lower = q.to_lowercase();
-                    messages.retain(|m| {
-                        m.text()
-                            .is_some_and(|t| t.to_lowercase().contains(&q_lower))
-                    });
+                    messages
+                        .retain(|m| m.content_to_llm_string().to_lowercase().contains(&q_lower));
                 }
                 MessageFilter::Custom(predicate) => {
                     messages.retain(|m| predicate(m));

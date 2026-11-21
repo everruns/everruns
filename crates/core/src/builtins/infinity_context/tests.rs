@@ -2,6 +2,29 @@ use super::*;
 use crate::builtins::test_fixtures::TestMessageRetriever;
 use crate::builtins::typed_id::SessionId;
 
+#[test]
+fn search_previews_show_a_late_match_with_unicode_context() {
+    let message = RuntimeMessage::user(format!(
+        "{} first MARIGOLD receipt {}",
+        "🙂İ ".repeat(700),
+        "tail ".repeat(500)
+    ));
+    let results = search_messages(std::slice::from_ref(&message), "marigold", 5);
+    let ToolExecutionResult::Success(result) = format_search_result(&results, 0) else {
+        panic!("search failed")
+    };
+    let found = &result["messages"][0];
+    assert!(
+        found["content"]
+            .as_str()
+            .unwrap()
+            .contains("MARIGOLD receipt")
+    );
+    assert_eq!(found["truncated"], true);
+    assert!(found["content_offset_chars"].as_u64().unwrap() > 500);
+    assert!(found["content"].as_str().unwrap().chars().count() <= 506);
+}
+
 // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
 #[test]

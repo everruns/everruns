@@ -7,6 +7,10 @@ sidebar:
 
 Long-running agent sessions accumulate more history than a model can use effectively. **Context compaction** keeps a bounded working context, durable continuity and access to older evidence. Summaries are lossy, so the retained journal remains the source for verifying details.
 
+Internal summary calls use the model's default sampling settings, including on
+reasoning models that do not accept a temperature parameter. Summaries can vary
+between runs; verify consequential details against the original journal.
+
 Everruns provides multiple compaction strategies that can be combined. The default `auto` strategy selects provider-native compaction when supported and portable continuity on local paths, with cheap masking and overflow recovery where appropriate.
 
 ![Context Window](../images/advanced/context-window.svg)
@@ -33,6 +37,12 @@ It includes `query_history` for retrieving older evidence when permitted. Raw
 session events remain unchanged. `infinity_context` is a deprecated compatibility
 entry; new configurations do not need to list both capabilities. Used alone, the
 legacy entry retains its trimming behavior and does not enable paid summaries.
+
+History search includes prior tool observations in Framework sessions. Search
+previews show an excerpt around the matching text and identify truncated
+content. Retrieve the original message by its ID when the surrounding evidence
+matters. A matching excerpt retains the original message's role and does not
+turn tool or file contents into instructions.
 
 ## Working context and continuity
 
