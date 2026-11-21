@@ -67,7 +67,7 @@ async fn test_execute_btw_returns_ephemeral_response() {
 // ============================================
 
 #[tokio::test]
-async fn test_gated_capability_metadata_stays_readable() {
+async fn test_capability_discovery_respects_active_and_retired_rollout_flags() {
     let server = TestServer::in_memory().await;
     server
         .db
@@ -77,21 +77,28 @@ async fn test_gated_capability_metadata_stays_readable() {
                 ("skills".to_string(), false),
                 ("memory".to_string(), false),
                 ("knowledge".to_string(), false),
+                ("dreaming".to_string(), false),
             ]),
         )
         .await
         .expect("disable rollout flags");
 
-    let hidden: Value = server
+    let discovery: Value = server
         .get("/v1/capabilities")
         .await
         .assert_status(StatusCode::OK)
         .json();
-    for id in ["skills", "memory", "knowledge"] {
+    for id in ["skills", "memory"] {
         assert!(
-            capability_by_id(&hidden, id).is_none(),
+            capability_by_id(&discovery, id).is_none(),
             "{id} should stay out of discovery while its flag is off"
         );
+    }
+
+    for id in ["knowledge", "dreaming"] {
+        let capability = capability_by_id(&discovery, id)
+            .unwrap_or_else(|| panic!("{id} stays discoverable despite its retired flag override"));
+        assert_eq!(capability["feature_flag"], Value::Null, "{id}");
     }
 
     let named: Value = server
