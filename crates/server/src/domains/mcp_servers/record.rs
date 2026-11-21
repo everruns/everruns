@@ -1,5 +1,6 @@
 //! Organization-owned MCP server connections.
 use chrono::{DateTime, Utc};
+use everruns_contracts::runtime::mcp_apps::McpInteractiveViews;
 use everruns_contracts::typed_id::McpServerId;
 use everruns_core::mcp_server::{McpServerAuthMode, McpServerTransportType};
 use everruns_core::{McpElicitationPolicy, McpProtocolMode};
@@ -84,6 +85,10 @@ pub struct McpServer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 300000)]
     pub tool_timeout_ms: Option<u64>,
+    /// Where this server's MCP App views are shown: `on` (console and a
+    /// picture in Slack), `console_only`, or `off`.
+    #[serde(default, skip_serializing_if = "McpInteractiveViews::is_default")]
+    pub interactive_views: McpInteractiveViews,
     /// Stable provider id used for user-scoped OAuth connections.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,

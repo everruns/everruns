@@ -502,6 +502,38 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
     fn reactions(&self) -> Option<&dyn ChannelReactionSurface> {
         None
     }
+
+    /// Views (MCP Apps) a tool call produced, when the platform can show a
+    /// stand-in for one, such as a picture and a link. `None`, the default,
+    /// leaves the agent's reply to say what the view showed.
+    fn app_views(&self) -> Option<&dyn ChannelAppViewSurface> {
+        None
+    }
+}
+
+/// A view an MCP server shipped for a tool call (MCP Apps), as a channel
+/// without a browser gets it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChannelAppView {
+    /// The view and the data the call returned for it.
+    pub app: crate::runtime::mcp_apps::McpAppCallDetails,
+    /// The call the view belongs to.
+    pub tool_call_id: String,
+    /// The call's text result, for a fallback.
+    pub text: String,
+}
+
+/// Shows a stand-in for an MCP App view in a conversation: a rendered
+/// picture, a link to the interactive view, or both. Advisory, like status:
+/// a failure never fails the turn.
+#[async_trait]
+pub trait ChannelAppViewSurface: Send + Sync {
+    async fn show(
+        &self,
+        session_id: SessionId,
+        view: &ChannelAppView,
+        context: &DeliveryContext,
+    ) -> DeliveryResult;
 }
 
 /// Input message metadata key holding the platform's key for the message, in

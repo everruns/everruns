@@ -519,6 +519,7 @@ export type OpenApiMcpElicitationPolicy = Schemas["McpElicitationPolicy"];
 export type OpenApiMcpErrorCategory = Schemas["McpErrorCategory"];
 export type OpenApiMcpErrorCode = Schemas["McpErrorCode"];
 export type OpenApiMcpExecuteError = Schemas["McpExecuteError"];
+export type OpenApiMcpInteractiveViews = Schemas["McpInteractiveViews"];
 export type OpenApiMcpProtocolMode = Schemas["McpProtocolMode"];
 export type OpenApiMcpServer = Schemas["McpServer"];
 export type OpenApiMcpServerActsAs = Schemas["McpServerActsAs"];

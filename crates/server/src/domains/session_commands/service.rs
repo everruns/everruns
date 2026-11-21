@@ -30,10 +30,10 @@ use std::sync::Arc;
 
 pub struct SessionCommandService {
     encryption: Option<Arc<crate::storage::EncryptionService>>,
-    db: Arc<StorageBackend>,
+    pub(super) db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     provider_resolver: Arc<ProviderResolverService>,
-    mcp_server_service: Arc<McpServerService>,
+    pub(super) mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     sqldb_store: std::sync::Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>,
@@ -210,7 +210,7 @@ impl SessionCommandService {
             })
     }
 
-    fn adapters(&self) -> DirectWorkerAdapters {
+    pub(super) fn adapters(&self) -> DirectWorkerAdapters {
         let mut adapters = DirectWorkerAdapters::new(
             self.db.clone(),
             self.event_service.clone(),
@@ -287,7 +287,7 @@ impl SessionCommandService {
     }
 }
 
-async fn authorize_platform_chat_owner(
+pub(super) async fn authorize_platform_chat_owner(
     db: &StorageBackend,
     caller: &Caller,
     session: &crate::domains::sessions::record::Session,

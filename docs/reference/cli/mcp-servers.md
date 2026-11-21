@@ -57,6 +57,7 @@ everruns mcp-servers create [OPTIONS] --name <name> --url <url>
 | `--description <DESCRIPTION>` | A human-readable description of what the MCP server provides. |
 | `--elicitation-policy <ELICITATION_POLICY>` |  |
 | `--headers <HEADERS>` | Additional HTTP headers for authentication. |
+| `--interactive-views <INTERACTIVE_VIEWS>` |  |
 | `--name <NAME>` | Required. The name of the MCP server. |
 | `--protocol-mode <PROTOCOL_MODE>` |  |
 | `--service-connection-provider <SERVICE_CONNECTION_PROVIDER>` | Connection provider whose connection on an agent's service virtual user supplies the service ... |
@@ -223,6 +224,7 @@ everruns mcp-servers update [OPTIONS] [ID]
 | `--description <DESCRIPTION>` | A human-readable description of what the MCP server provides. |
 | `--elicitation-policy <ELICITATION_POLICY>` |  |
 | `--headers <HEADERS>` | Additional HTTP headers for authentication. |
+| `--interactive-views <INTERACTIVE_VIEWS>` |  |
 | `--name <NAME>` | The name of the MCP server. |
 | `--protocol-mode <PROTOCOL_MODE>` |  |
 | `--service-connection-provider <SERVICE_CONNECTION_PROVIDER>` | Connection provider whose connection on an agent's service virtual user supplies the service ... |

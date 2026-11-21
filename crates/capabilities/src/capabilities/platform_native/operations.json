@@ -6147,6 +6147,16 @@
           "example": "url",
           "type": "string"
         },
+        "McpInteractiveViews": {
+          "description": "Where an organization MCP server's views are shown. A display preference:\nhosted runtimes always tell servers they can render views, so turning views\noff never changes what a tool returns to the model.",
+          "enum": [
+            "on",
+            "console_only",
+            "off"
+          ],
+          "example": "on",
+          "type": "string"
+        },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
           "enum": [
@@ -6232,6 +6242,17 @@
           "type": [
             "object",
             "null"
+          ]
+        },
+        "interactive_views": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/McpInteractiveViews",
+              "description": "Where the server's MCP App views are shown (`on`, `console_only`,\n`off`). Defaults to `on`."
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "name": {
@@ -24461,6 +24482,16 @@
           "example": "url",
           "type": "string"
         },
+        "McpInteractiveViews": {
+          "description": "Where an organization MCP server's views are shown. A display preference:\nhosted runtimes always tell servers they can render views, so turning views\noff never changes what a tool returns to the model.",
+          "enum": [
+            "on",
+            "console_only",
+            "off"
+          ],
+          "example": "on",
+          "type": "string"
+        },
         "McpProtocolMode": {
           "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
           "enum": [
@@ -24557,6 +24588,17 @@
               "type": [
                 "object",
                 "null"
+              ]
+            },
+            "interactive_views": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/McpInteractiveViews",
+                  "description": "Where the server's MCP App views are shown (`on`, `console_only`,\n`off`). Defaults to `on`."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "name": {

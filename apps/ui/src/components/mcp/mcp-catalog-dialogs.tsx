@@ -44,6 +44,7 @@ import type {
   McpServerAuthMode,
   McpProtocolMode,
   McpElicitationPolicy,
+  McpInteractiveViews,
 } from "@/lib/api/types";
 import {
   apiKeySecretSchema,
@@ -56,6 +57,7 @@ import {
 import { pluralize } from "@/lib/formatting";
 import {
   ElicitationPolicyField,
+  InteractiveViewsField,
   ServiceConnectionField,
   ToolTimeoutField,
   parseToolTimeoutSeconds,
@@ -456,6 +458,7 @@ export function EditMcpServerDialog({
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
   const [toolTimeout, setToolTimeout] = useState("");
   const [serviceConnection, setServiceConnection] = useState<McpServiceConnectionChoice>("none");
+  const [interactiveViews, setInteractiveViews] = useState<McpInteractiveViews>("on");
   const [apiKey, setApiKey] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
@@ -557,6 +560,7 @@ export function EditMcpServerDialog({
     setElicitationPolicy(server.elicitation_policy ?? "url");
     setToolTimeout(server.tool_timeout_ms ? String(server.tool_timeout_ms / 1000) : "");
     setServiceConnection(server.service_connection_provider === "github" ? "github" : "none");
+    setInteractiveViews(server.interactive_views ?? "on");
     setApiKey("");
     setFieldErrors({});
     updateServer.reset();
@@ -621,6 +625,9 @@ export function EditMcpServerDialog({
           parsed.data.service_connection_provider === "none"
             ? ""
             : parsed.data.service_connection_provider,
+        ...(interactiveViews !== (server.interactive_views ?? "on")
+          ? { interactive_views: interactiveViews }
+          : {}),
         ...(needsFreshApiKey ? { api_key: freshApiKey } : {}),
         ...(clearsHeaders ? { headers: {} } : {}),
       });
@@ -768,6 +775,11 @@ export function EditMcpServerDialog({
             id="edit-service-connection"
             value={serviceConnection}
             onChange={setServiceConnection}
+          />
+          <InteractiveViewsField
+            id="edit-interactive-views"
+            value={interactiveViews}
+            onChange={setInteractiveViews}
           />
           <p className="text-xs text-muted-foreground">
             {ui("Authentication (")}

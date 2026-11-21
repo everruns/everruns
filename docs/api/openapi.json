@@ -46891,6 +46891,17 @@
               "X-Atlassian-Cloud-Id": "00000000-0000-0000-0000-000000000000"
             }
           },
+          "interactive_views": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpInteractiveViews",
+                "description": "Where the server's MCP App views are shown (`on`, `console_only`,\n`off`). Defaults to `on`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "type": "string",
             "description": "The name of the MCP server. Must be unique.",
@@ -58380,6 +58391,10 @@
                   "description": "Unique identifier for the MCP server.",
                   "example": "mcp_01933b5a00007000800000000000001"
                 },
+                "interactive_views": {
+                  "$ref": "#/components/schemas/McpInteractiveViews",
+                  "description": "Where this server's MCP App views are shown: `on` (console and a\npicture in Slack), `console_only`, or `off`."
+                },
                 "name": {
                   "type": "string",
                   "description": "Display name of the MCP server.",
@@ -60048,6 +60063,10 @@
                       "type": "string",
                       "description": "Unique identifier for the MCP server.",
                       "example": "mcp_01933b5a00007000800000000000001"
+                    },
+                    "interactive_views": {
+                      "$ref": "#/components/schemas/McpInteractiveViews",
+                      "description": "Where this server's MCP App views are shown: `on` (console and a\npicture in Slack), `console_only`, or `off`."
                     },
                     "name": {
                       "type": "string",
@@ -62503,6 +62522,16 @@
           }
         }
       },
+      "McpInteractiveViews": {
+        "type": "string",
+        "description": "Where an organization MCP server's views are shown. A display preference:\nhosted runtimes always tell servers they can render views, so turning views\noff never changes what a tool returns to the model.",
+        "enum": [
+          "on",
+          "console_only",
+          "off"
+        ],
+        "example": "on"
+      },
       "McpProtocolMode": {
         "type": "string",
         "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
@@ -62594,6 +62623,10 @@
             "type": "string",
             "description": "Unique identifier for the MCP server.",
             "example": "mcp_01933b5a00007000800000000000001"
+          },
+          "interactive_views": {
+            "$ref": "#/components/schemas/McpInteractiveViews",
+            "description": "Where this server's MCP App views are shown: `on` (console and a\npicture in Slack), `console_only`, or `off`."
           },
           "name": {
             "type": "string",
@@ -84428,6 +84461,17 @@
               "X-Atlassian-Cloud-Id": "00000000-0000-0000-0000-000000000000"
             }
           },
+          "interactive_views": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpInteractiveViews",
+                "description": "Where the server's MCP App views are shown (`on`, `console_only`,\n`off`). Defaults to `on`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "name": {
             "type": [
               "string",
@@ -87893,6 +87937,10 @@
                 "type": "string",
                 "description": "Unique identifier for the MCP server.",
                 "example": "mcp_01933b5a00007000800000000000001"
+              },
+              "interactive_views": {
+                "$ref": "#/components/schemas/McpInteractiveViews",
+                "description": "Where this server's MCP App views are shown: `on` (console and a\npicture in Slack), `console_only`, or `off`."
               },
               "name": {
                 "type": "string",

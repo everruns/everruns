@@ -245,6 +245,7 @@ async fn ordinary_operations_and_initialization_reject_endless_bodies() {
             None,
             "2025-06-18",
             Duration::from_secs(1),
+            false,
         )
         .await
         .err()

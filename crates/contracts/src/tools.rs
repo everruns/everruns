@@ -82,6 +82,19 @@ const DETAILS_SIDECAR_KEY: &str = "_details";
 /// Carrier for a non-object success value that also has details.
 const DETAILS_SCALAR_KEY: &str = "_details_scalar";
 
+fn with_details_sidecar(mut value: Value, details: Value) -> Value {
+    match value.as_object_mut() {
+        Some(obj) if !obj.contains_key(DETAILS_SIDECAR_KEY) => {
+            obj.insert(DETAILS_SIDECAR_KEY.to_string(), details);
+            value
+        }
+        _ => serde_json::json!({
+            DETAILS_SCALAR_KEY: value,
+            DETAILS_SIDECAR_KEY: details,
+        }),
+    }
+}
+
 fn take_details_sidecar(value: &mut Value) -> Option<Value> {
     let obj = value.as_object_mut()?;
     let details = obj.remove(DETAILS_SIDECAR_KEY)?;
@@ -129,19 +142,20 @@ impl ToolExecutionResult {
     /// never sees. Carried in a sidecar key and lifted out in
     /// [`Self::into_tool_result`], like `_raw_output`.
     pub fn success_with_details(value: impl Into<Value>, details: Value) -> Self {
-        let mut value = value.into();
-        match value.as_object_mut() {
-            Some(obj) if !obj.contains_key(DETAILS_SIDECAR_KEY) => {
-                obj.insert(DETAILS_SIDECAR_KEY.to_string(), details);
-            }
-            _ => {
-                value = serde_json::json!({
-                    DETAILS_SCALAR_KEY: value,
-                    DETAILS_SIDECAR_KEY: details,
-                });
-            }
+        ToolExecutionResult::Success(with_details_sidecar(value.into(), details))
+    }
+
+    /// [`Self::success_with_images`] that also carries
+    /// [`ToolResult::details`].
+    pub fn success_with_images_and_details(
+        value: impl Into<Value>,
+        images: Vec<ToolResultImage>,
+        details: Value,
+    ) -> Self {
+        ToolExecutionResult::SuccessWithImages {
+            result: with_details_sidecar(value.into(), details),
+            images,
         }
-        ToolExecutionResult::Success(value)
     }
 
     /// Create a successful result with images
@@ -250,8 +264,8 @@ impl ToolExecutionResult {
                     raw_output,
                 }
             }
-            ToolExecutionResult::SuccessWithImages { result, images } => ToolResult {
-                details: None,
+            ToolExecutionResult::SuccessWithImages { mut result, images } => ToolResult {
+                details: take_details_sidecar(&mut result),
                 tool_call_id: tool_call_id.to_string(),
                 result: Some(result),
                 images: if images.is_empty() {

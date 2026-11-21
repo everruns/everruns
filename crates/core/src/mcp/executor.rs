@@ -622,6 +622,25 @@ impl McpToolInvoker for McpExecutor {
         Ok(Some(McpServerTools::Listed(definitions)))
     }
 
+    async fn list_server_tool_specs(
+        &self,
+        server_prefix: &str,
+    ) -> CoreResult<Option<Vec<crate::McpToolDefinition>>> {
+        let connection = match self.resource_connection(server_prefix).await? {
+            Ok(connection) => connection,
+            Err(_) => {
+                return Err(AgentLoopError::tool(format!(
+                    "MCP server '{server_prefix}' needs a connection first"
+                )));
+            }
+        };
+        self.client
+            .discover(&connection)
+            .await
+            .map(Some)
+            .map_err(|e| AgentLoopError::tool(e.to_string()))
+    }
+
     async fn list_resources(
         &self,
         server_prefix: &str,

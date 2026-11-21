@@ -66,7 +66,9 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/commands/execute",
             post(execute_session_command),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        // MCP App views are session commands too: same state and auth.
+        .merge(super::mcp_apps::routes(state))
 }
 
 /// GET /v1/sessions/{session_id}/commands

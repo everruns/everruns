@@ -906,11 +906,20 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 session_id,
             ),
         );
-        let client = Arc::new(McpClient::with_url_and_form_elicitation(
-            egress,
+        // Hosted sessions show MCP Apps views (console frame, Slack picture),
+        // so this host declares the extension to every server.
+        let client = Arc::new(McpClient::with_http(
+            Arc::new(
+                crate::mcp::HttpTransport::new(egress)
+                    .with_elicitation_handler(Arc::new(crate::mcp::ConsentingUrlElicitations::new(
+                        answers.clone(),
+                    )))
+                    .with_form_elicitation_handler(Arc::new(crate::mcp::StoredFormAnswers::new(
+                        answers,
+                    )))
+                    .with_ui_apps(),
+            ),
             Arc::new(NoAuthProvider),
-            Arc::new(crate::mcp::ConsentingUrlElicitations::new(answers.clone())),
-            Arc::new(crate::mcp::StoredFormAnswers::new(answers)),
         ));
         let resolver = Arc::new(WorkerMcpResolver {
             input_message_id: None,
