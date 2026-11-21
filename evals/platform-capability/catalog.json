@@ -12504,6 +12504,14 @@
     "description": "Fork a session into a new, independent session that copies its conversation history and workspace files.",
     "input_schema": {
       "$defs": {
+        "ForkSandbox": {
+          "description": "How a forked session's sandbox starts.",
+          "enum": [
+            "fresh",
+            "fork"
+          ],
+          "type": "string"
+        },
         "ForkSessionRequest": {
           "description": "Request to fork a session. Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
           "properties": {
@@ -12538,6 +12546,10 @@
                 "string",
                 "null"
               ]
+            },
+            "sandbox": {
+              "$ref": "#/$defs/ForkSandbox",
+              "description": "How the fork's sandbox starts. `fresh` (default) creates a new sandbox\nfrom the copied workspace files. `fork` copies the parent's running\nsandbox, with installed packages, build output and (on E2B) running\nprocesses, when its first command runs. Where the provider cannot\ncopy that sandbox, the fork starts fresh."
             },
             "system_prompt": {
               "description": "Override the session-level system prompt.",
