@@ -33,6 +33,7 @@ mod non_streaming;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod batch;
+mod interactions;
 mod request;
 mod streaming;
 use streaming::{ContinuationRequest, convert_gemini_stream};
@@ -103,6 +104,8 @@ fn configured_provider(
 #[derive(Clone)]
 pub struct GeminiChatDriver {
     retry_config: LlmRetryConfig,
+    /// Force the Interactions transport on or off; `None` uses it on Google's endpoint.
+    interactions: Option<bool>,
 }
 
 impl GeminiChatDriver {
@@ -115,6 +118,7 @@ impl GeminiChatDriver {
         everruns_contracts::install_default_crypto_provider();
         Self {
             retry_config: LlmRetryConfig::default(),
+            interactions: None,
         }
     }
 
@@ -471,7 +475,7 @@ impl GeminiChatDriver {
     async fn send_generate_content_request(
         &self,
         endpoint: &everruns_contracts::ProviderEndpoint,
-        request: &GeminiRequest,
+        request: &(impl Serialize + Sync),
         url: &str,
         model: &str,
         extra_headers: &[(String, String)],
@@ -591,6 +595,12 @@ impl ChatDriver for GeminiChatDriver {
         true
     }
 
+    /// Only Interactions responses carry an id, so a continuation never
+    /// reaches the generateContent path.
+    fn supports_stateful_responses(&self) -> bool {
+        true
+    }
+
     async fn chat_completion_non_streaming(
         &self,
         endpoint: &everruns_contracts::ProviderEndpoint,
@@ -613,6 +623,9 @@ impl ChatDriver for GeminiChatDriver {
         messages: Vec<Message>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        if self.uses_interactions(endpoint, config) {
+            return self.interaction_response(endpoint, &messages, config).await;
+        }
         let (request, grounded) = self.prepare_request(&messages, config, true)?;
 
         // Long decodes use stream-only continuation checkpoints. Whole JSON
