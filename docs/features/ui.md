@@ -309,6 +309,18 @@ sessions count toward the month in which they were created.
 On self-hosted installations, this setting replaces the
 `RESOURCE_LIMIT_MAX_SESSIONS_PER_ORG` environment variable.
 
+### Monthly agent limit
+
+Each organization can create 500 agents per UTC calendar month by default.
+Organization owners and admins can set a limit from 1 to 100,000 under
+**Settings → Limits → Agent creation**. At the limit, agent creation stops
+until an admin raises it or the next UTC month begins. Archived and deleted
+agents count toward the month in which they were created; built-in agents never
+count.
+
+On self-hosted installations, this setting replaces the
+`RESOURCE_LIMIT_MAX_AGENTS_PER_ORG` environment variable.
+
 ### Personal access tokens
 
 Manage personal access tokens for programmatic access. Tokens are tied to your

@@ -120,8 +120,8 @@ impl Database {
 
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
             sql!(r#"
-            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions, small_model_id, chat_model_id, research_model_id, coding_model_id, monthly_session_limit)
-            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'), $11, $13, $15, $17, COALESCE($19, $20))
+            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions, small_model_id, chat_model_id, research_model_id, coding_model_id, monthly_session_limit, monthly_agent_limit)
+            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'), $11, $13, $15, $17, COALESCE($19, $20), COALESCE($21, $22))
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = CASE
                     WHEN $3 THEN $2
@@ -145,6 +145,7 @@ impl Database {
                 research_model_id = CASE WHEN $16 THEN $15 ELSE organization_settings.research_model_id END,
                 coding_model_id = CASE WHEN $18 THEN $17 ELSE organization_settings.coding_model_id END,
                 monthly_session_limit = COALESCE($19, organization_settings.monthly_session_limit),
+                monthly_agent_limit = COALESCE($21, organization_settings.monthly_agent_limit),
                 updated_at = NOW()
             RETURNING {OrganizationSettingsRow}
             "#),
@@ -169,6 +170,8 @@ impl Database {
         .bind(input.coding_model_id.is_changed())
         .bind(input.monthly_session_limit)
         .bind(crate::domains::organizations::types::DEFAULT_MONTHLY_SESSION_LIMIT)
+        .bind(input.monthly_agent_limit)
+        .bind(crate::domains::organizations::types::DEFAULT_MONTHLY_AGENT_LIMIT)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

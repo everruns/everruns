@@ -10870,6 +10870,13 @@
         "help": "Org-level default provider per service (EVE-569)."
       },
       {
+        "field": "monthly_agent_limit",
+        "long": "monthly-agent-limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum agents this organization can create per UTC calendar month."
+      },
+      {
         "field": "monthly_session_limit",
         "long": "monthly-session-limit",
         "kind": "integer",

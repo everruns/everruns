@@ -9,6 +9,8 @@ use utoipa::ToSchema;
 
 pub const DEFAULT_MONTHLY_SESSION_LIMIT: i32 = 10_000;
 pub const MAX_MONTHLY_SESSION_LIMIT: i32 = 100_000;
+pub const DEFAULT_MONTHLY_AGENT_LIMIT: i32 = 500;
+pub const MAX_MONTHLY_AGENT_LIMIT: i32 = 100_000;
 
 pub type ListOrganizationsResponse = crate::common_dto::ListResponse<OrganizationResponse>;
 
@@ -75,6 +77,10 @@ pub struct OrganizationResponse {
     /// Maximum sessions this organization can create per UTC calendar month.
     #[schema(minimum = 1, maximum = 100000)]
     pub monthly_session_limit: i32,
+    /// Maximum agents this organization can create per UTC calendar month.
+    /// Built-in agents do not count; archiving or deleting never refunds.
+    #[schema(minimum = 1, maximum = 100000)]
+    pub monthly_agent_limit: i32,
     /// What Everruns does on its own when a finding opens (Settings →
     /// Limits): pause a repeating schedule automatically, and whether the
     /// Inspector suggests changes to agents. Code defaults when the
@@ -118,6 +124,10 @@ pub struct UpdateOrganizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(minimum = 1, maximum = 100000)]
     pub monthly_session_limit: Option<i32>,
+    /// Maximum agents this organization can create per UTC calendar month.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(minimum = 1, maximum = 100000)]
+    pub monthly_agent_limit: Option<i32>,
     /// Default LLM model for this organization. Must be enabled; pass null to use the platform
     /// default.
     #[serde(default, deserialize_with = "double_option")]
