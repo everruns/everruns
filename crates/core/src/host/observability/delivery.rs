@@ -77,7 +77,7 @@ impl DeliveryObserver for OtelDeliveryObserver {
 pub(crate) mod test_support {
     use super::*;
     use opentelemetry::trace::TracerProvider as _;
-    use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+    use opentelemetry_sdk::trace::{InMemorySpanExporter, Sampler, SdkTracerProvider};
     use std::sync::Arc;
 
     pub(crate) struct DeliveryTraceFixture {
@@ -89,6 +89,8 @@ pub(crate) mod test_support {
         pub(crate) fn new() -> Self {
             let exporter = InMemorySpanExporter::default();
             let provider = SdkTracerProvider::builder()
+                // The fixture must sample its root regardless of the environment.
+                .with_sampler(Sampler::ParentBased(Box::new(Sampler::AlwaysOn)))
                 .with_simple_exporter(exporter.clone())
                 .build();
             Self { exporter, provider }
