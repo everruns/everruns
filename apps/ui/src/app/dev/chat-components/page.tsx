@@ -18,7 +18,8 @@ import { NoIntelligenceMessage } from "@/components/chat/no-intelligence-notice"
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import type { PendingImage } from "@/lib/api/images";
-import type { ReasoningEffortConfig, VerbosityConfig } from "@/lib/api/types";
+import type { ReasoningEffortConfig, SessionTask, VerbosityConfig } from "@/lib/api/types";
+import type { ChatRun } from "@/components/chat/run-cards";
 
 const reasoningEffortConfig: ReasoningEffortConfig = {
   default: "medium",
@@ -61,26 +62,97 @@ export default function DevChatComponentsPage() {
         ts: `2026-10-26T02:2${sequence}:00Z`,
         metadata: { everruns_origin: "task_wake" },
       });
+    const reply = (id: string, sequence: number, text: string) =>
+      makeOutputEvent({
+        id,
+        sequence,
+        sessionId,
+        text,
+        ts: `2026-10-26T02:2${sequence}:00Z`,
+      });
     return [
+      reply("reply-start", 1, "Started a thread to investigate the three sandboxes."),
+      wake(
+        "wake-adjacent",
+        2,
+        'Task "Investigate three running sandboxes" (task_00sbx) finished: succeeded.\n- summary: All three records show Running, but Daytona returns not_found for each.',
+      ),
+      reply(
+        "reply-cleanup",
+        3,
+        "All three sandboxes are gone on Daytona's side. I started a cleanup proposal.",
+      ),
+      makeInputEvent({
+        id: "user-quota",
+        sequence: 4,
+        sessionId,
+        text: "Meanwhile, what's our Daytona quota?",
+        ts: "2026-10-26T02:24:00Z",
+      }),
+      reply("reply-quota", 5, "You have 20 sandboxes, 3 in use."),
       wake(
         "wake-done",
-        1,
-        'Task "Prepare closed-PR sandbox cleanup" (task_01abc) finished: succeeded.\n- summary: PROPOSAL READY, NOT ENABLED. All closed pull requests, seven days after closure. Keep workspaces paused while open. No deletion, publishing, or external messages.',
+        6,
+        'Task "Prepare closed-PR sandbox cleanup" (task_01abc) finished: succeeded.\n- summary: PROPOSAL READY, NOT ENABLED. All closed pull requests, seven days after closure.',
       ),
-      makeOutputEvent({
-        id: "reply-done",
-        sequence: 2,
-        sessionId,
-        ts: "2026-10-26T02:22:08Z",
-        text: "Prepare closed-PR sandbox cleanup is ready as a proposal. Nothing is enabled yet.",
-      }),
+      reply(
+        "reply-done",
+        7,
+        "Prepare closed-PR sandbox cleanup is ready as a proposal. Nothing is enabled yet.",
+      ),
+      wake("wake-progress", 8, 'Task "Pricing FAQ" (task_02def) sent a message: halfway'),
       wake(
         "wake-ask",
-        3,
+        9,
         'Task "Pricing FAQ" (task_02def) is awaiting input: Which tone, plain or formal?',
       ),
-      wake("wake-failed", 4, 'Task "Nightly digest" (task_03ghi) finished: failed.'),
     ];
+  }, []);
+
+  const automaticUpdateRuns = useMemo(() => {
+    const task = (id: string, display_name: string, started_at: string, finished_at: string) =>
+      ({
+        id,
+        session_id: "session-automatic-updates",
+        kind: "subagent",
+        display_name,
+        state: "succeeded",
+        wake_policy: "on_terminal",
+        created_at: started_at,
+        updated_at: finished_at,
+        started_at,
+        finished_at,
+      }) as unknown as SessionTask;
+    return new Map<string, ChatRun[]>([
+      [
+        "reply-start",
+        [
+          {
+            task: task(
+              "task_00sbx",
+              "Investigate three running sandboxes",
+              "2026-10-26T02:20:00Z",
+              "2026-10-26T02:21:45Z",
+            ),
+            subagentCount: 0,
+          },
+        ],
+      ],
+      [
+        "reply-cleanup",
+        [
+          {
+            task: task(
+              "task_01abc",
+              "Prepare closed-PR sandbox cleanup",
+              "2026-10-26T02:23:00Z",
+              "2026-10-26T02:25:30Z",
+            ),
+            subagentCount: 0,
+          },
+        ],
+      ],
+    ]);
   }, []);
 
   return (
@@ -169,7 +241,7 @@ export default function DevChatComponentsPage() {
             <h2 className="text-lg font-semibold text-foreground">{ui("Automatic updates")}</h2>
             <p className="text-sm text-muted-foreground">
               {ui(
-                "A thread report is one folded line. Open it to read the report. A wake with nothing to read is the line only.",
+                "A task wake right after its run card adds no row. Further down it is one status line; the report stays in the task's thread.",
               )}
             </p>
           </div>
@@ -177,6 +249,7 @@ export default function DevChatComponentsPage() {
             <ChatMessageList
               events={automaticUpdateEvents}
               chatEvents={automaticUpdateEvents}
+              runsByEventId={automaticUpdateRuns}
               sessionId="session-automatic-updates"
               toolResultsMap={emptyToolResults}
               toolProgressMap={emptyToolProgress}

@@ -3,9 +3,9 @@
  *
  * Decisions:
  * - The texts stay written for the model (task ids, the worker's
- *   instructions). The transcript shows the readable headline and folds the
- *   rest; it falls back to the raw text, still folded, when a message does
- *   not match.
+ *   instructions). A task update becomes a status line without the report
+ *   (task-update-marker.tsx); a message that does not match stays the raw
+ *   text, folded.
  * - Formats come from `wake_text_for` (crates/core/src/wake_queue.rs) and
  *   `frame_brief` / `frame_relay` (crates/capabilities/src/capabilities/coordination.rs).
  *   Change them together.
@@ -16,13 +16,15 @@ export type TaskUpdateKind = "done" | "failed" | "canceled" | "needs_input" | "m
 export type TaskUpdate = {
   kind: TaskUpdateKind;
   title: string;
+  /** The task the update is about, so the transcript can tie it to its run card. */
+  taskId: string;
   /** The summary, question or detail, without the task id or field labels. */
   body: string;
 };
 
-const TERMINAL = /^Task "(.*)" \([^)\s]+\) finished: (\w+)\.\n?([\s\S]*)$/;
-const AWAITING = /^Task "(.*)" \([^)\s]+\) is awaiting input: ([\s\S]*)$/;
-const MESSAGE = /^Task "(.*)" \([^)\s]+\) sent a message: ([\s\S]*)$/;
+const TERMINAL = /^Task "(.*)" \(([^)\s]+)\) finished: (\w+)\.\n?([\s\S]*)$/;
+const AWAITING = /^Task "(.*)" \(([^)\s]+)\) is awaiting input: ([\s\S]*)$/;
+const MESSAGE = /^Task "(.*)" \(([^)\s]+)\) sent a message: ([\s\S]*)$/;
 
 const TERMINAL_KIND: Record<string, TaskUpdateKind> = {
   succeeded: "done",
@@ -34,26 +36,28 @@ const TERMINAL_KIND: Record<string, TaskUpdateKind> = {
 export function parseTaskUpdate(text: string): TaskUpdate | null {
   const terminal = TERMINAL.exec(text);
   if (terminal) {
-    const kind = TERMINAL_KIND[terminal[2]];
+    const kind = TERMINAL_KIND[terminal[3]];
     if (!kind) return null;
-    const summary = terminal[3]
+    const summary = terminal[4]
       .split("\n")
       // The result path is a file the model can read; people get the summary.
       .filter((line) => !line.startsWith("- result_path: "))
       .join("\n")
       .replace(/^- summary: /, "")
       .trim();
-    return { kind, title: terminal[1], body: summary };
+    return { kind, title: terminal[1], taskId: terminal[2], body: summary };
   }
   const awaiting = AWAITING.exec(text);
   if (awaiting)
     return {
       kind: "needs_input",
       title: awaiting[1],
-      body: awaiting[2].trim(),
+      taskId: awaiting[2],
+      body: awaiting[3].trim(),
     };
   const message = MESSAGE.exec(text);
-  if (message) return { kind: "message", title: message[1], body: message[2].trim() };
+  if (message)
+    return { kind: "message", title: message[1], taskId: message[2], body: message[3].trim() };
   return null;
 }
 

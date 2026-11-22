@@ -46,9 +46,11 @@ thread** card. On narrow screens the panel is a drawer.
 
 Idle threads remain **Open**. **Resolve thread** puts one away without losing its
 history; **Reopen thread** lets you continue. Background work shows its actual progress,
-input requests, and failures. When a thread reports back, the conversation shows one
-folded line, such as "Releases is done". Open the line to read the report. The
-coordinator still receives the full text and answers in the conversation.
+input requests, and failures. When a thread reports back, the coordinator receives
+its full report and answers in the conversation; the report itself stays in the
+thread. Right after the thread's card, nothing extra appears, because the card already
+shows the outcome. Further down, one line says which thread finished, failed, or asks
+a question, with **View thread** beside it.
 
 By default the app keeps the left sidebar and opens the conversation full screen.
 To keep it next to the page instead, choose **Floating** (a card you can move and

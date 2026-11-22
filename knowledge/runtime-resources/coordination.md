@@ -72,16 +72,20 @@ assignment as needing attention, so the coordinator always hears back
 
 Task state changes wake the coordinator with an injected user-role message that
 carries `everruns_origin = task_wake` metadata. The model sees it prefixed as an
-automatic update. The transcript shows one folded line, because the report is
-for the coordinator, and client-supplied metadata cannot forge the origin
+automatic update. The report is for the coordinator, and client-supplied
+metadata cannot forge the origin
 (`strip_reserved_message_metadata` in `crates/contracts/src/runtime/message.rs`).
 
 Wake texts and the briefs a thread receives stay written for the model (task
-ids, the worker's instructions). The line is a readable headline, with the
-report folded under it, and falls back to the raw text, still folded, when a
-message does not match
+ids, the worker's instructions). The person reads the coordinator's reply, and
+the report stays in the task's own thread, so the main chat never shows it. A
+wake right after its task's run card renders nothing, because the card already
+shows the outcome. Elsewhere it is one status line (finished, failed, or the
+task's question, cut to one line) that jumps to the card and opens the thread.
+Progress messages render nothing. The raw text stays in the message info
+popover, and a wake that does not parse falls back to a folded line
 ([`chat-thread-messages.ts`](../../apps/ui/src/lib/chat-thread-messages.ts),
-[`automatic-update.tsx`](../../apps/ui/src/components/chat/automatic-update.tsx)).
+[`task-update-marker.tsx`](../../apps/ui/src/components/chat/task-update-marker.tsx)).
 
 ## Framework
 

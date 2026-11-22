@@ -21,3 +21,6 @@ the full text and answers in the conversation with what matters.
 The Threads panel still lists what is working, what needs you, and what is
 ready for review. See [Chat and threads](/features/ui/#chat-and-threads) and
 [Coordination](/framework/coordination/).
+
+Update: since November 22, reports no longer show in Chat at all; see
+[Thread reports stay in their thread](/changelog/2026-11-22-thread-reports-stay-in-thread/).

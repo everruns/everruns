@@ -1,8 +1,8 @@
 /**
  * Decisions:
- * - A task wake is written for the coordinator. The transcript shows one line,
- *   the headline a person can read, and keeps the report folded. It is not
- *   something the person typed, so it does not take the user-turn wash.
+ * - A message the platform wrote is not something the person typed, so it
+ *   does not take the user-turn wash. The transcript shows one line and keeps
+ *   the text folded. Task wakes that parse use task-update-marker.tsx instead.
  * - A wake with no report is the line only. There is nothing to open.
  * - An opened report scrolls inside the row, so a long proposal does not take
  *   over the transcript.

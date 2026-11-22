@@ -124,8 +124,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Une page de référence section par sortie entièrement construite à partir des composants de transcription de l'outil de production.",
   "A Session gets a Sandbox when its Agent or harness uses a Sandbox Template with a provider such as Daytona or Modal. Sandboxes appear here once a Session starts one. In-process sandboxes are not listed.":
     "Une Session obtient un Sandbox lorsque son Agent ou cadre d'exécution utilise un Modèle Sandbox avec un fournisseur tel que Daytona ou Modal. Les bacs à sable apparaissent ici une fois qu'une session en démarre une. Les sandbox en cours ne sont pas répertoriés.",
-  "A thread report is one folded line. Open it to read the report. A wake with nothing to read is the line only.":
-    "Un rapport de fil est une ligne pliée. Ouvrez-le pour lire le rapport. Un sillage sans rien à lire n'est que la ligne.",
+  "A task wake right after its run card adds no row. Further down it is one status line; the report stays in the task's thread.":
+    "Un réveil de tâche juste après sa carte n'ajoute aucune ligne. Plus bas, c'est une ligne d'état ; le rapport reste dans le fil de la tâche.",
   "A virtual user has its own profile, runtime defaults, and connections. End users use agents; service accounts let agents act on external services.":
     "Un utilisateur virtuel a son propre profil, ses propres paramètres d'exécution par défaut et ses propres connexions. Les utilisateurs finaux utilisent des agents ; les comptes de service permettent aux agents d'agir sur des services externes.",
   Accent: "Accent",

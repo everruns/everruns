@@ -9,11 +9,13 @@ describe("task updates", () => {
     ).toEqual({
       kind: "done",
       title: "Three latest releases",
+      taskId: "task_01a11d2c",
       body: "Found v0.44.0.\n\nValidation: checked the listing.",
     });
     expect(parseTaskUpdate('Task "Draft" (task_1) finished: failed.')).toEqual({
       kind: "failed",
       title: "Draft",
+      taskId: "task_1",
       body: "",
     });
   });
@@ -21,11 +23,13 @@ describe("task updates", () => {
     expect(parseTaskUpdate('Task "Draft" (task_1) is awaiting input: Which tone?')).toEqual({
       kind: "needs_input",
       title: "Draft",
+      taskId: "task_1",
       body: "Which tone?",
     });
     expect(parseTaskUpdate('Task "Draft" (task_1) sent a message: halfway')).toEqual({
       kind: "message",
       title: "Draft",
+      taskId: "task_1",
       body: "halfway",
     });
   });
