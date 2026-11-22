@@ -11029,14 +11029,14 @@
         }
       }
     },
-    "/v1/durable/monitoring/cells": {
+    "/v1/durable/monitoring/shards": {
       "get": {
         "tags": [
           "durable"
         ],
-        "summary": "List cells with their newest report and history",
-        "description": "List cells with their newest report and history. Requires platform-user access.",
-        "operationId": "get_fleet_monitoring_cells",
+        "summary": "List shards with their newest report and history",
+        "description": "List shards with their newest report and history. Requires platform-user access.",
+        "operationId": "get_fleet_monitoring_shards",
         "parameters": [
           {
             "name": "range",
@@ -11082,11 +11082,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Cells and their history",
+            "description": "Shards and their history",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MonitoringCells"
+                  "$ref": "#/components/schemas/MonitoringShards"
                 }
               }
             }
@@ -11120,19 +11120,19 @@
         }
       }
     },
-    "/v1/durable/monitoring/cells/{cell}/detail": {
+    "/v1/durable/monitoring/shards/{shard}/detail": {
       "get": {
         "tags": [
           "durable"
         ],
-        "summary": "Read one cell's per-node detail for the last hour",
-        "description": "Read one cell's per-node detail for the last hour. Requires platform-user access.",
-        "operationId": "get_fleet_monitoring_cell_detail",
+        "summary": "Read one shard's per-node detail for the last hour",
+        "description": "Read one shard's per-node detail for the last hour. Requires platform-user access.",
+        "operationId": "get_fleet_monitoring_shard_detail",
         "parameters": [
           {
-            "name": "cell",
+            "name": "shard",
             "in": "path",
-            "description": "Cell name",
+            "description": "Shard name",
             "required": true,
             "schema": {
               "type": "string"
@@ -11156,13 +11156,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MonitoringCellDetail"
+                  "$ref": "#/components/schemas/MonitoringShardDetail"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid cell name or minutes",
+            "description": "Invalid shard name or minutes",
             "content": {
               "application/json": {
                 "schema": {
@@ -40976,7 +40976,7 @@
           },
           "status": {
             "type": "string",
-            "description": "Current durable execution status."
+            "description": "Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding."
           }
         }
       },
@@ -43182,79 +43182,6 @@
           "timeout",
           "skipped"
         ]
-      },
-      "CellNodeDetail": {
-        "type": "object",
-        "description": "One node's detail.",
-        "required": [
-          "node",
-          "points"
-        ],
-        "properties": {
-          "node": {
-            "type": "string",
-            "description": "Node id within the cell.",
-            "example": "2"
-          },
-          "points": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CellNodePoint"
-            },
-            "description": "Points, oldest first."
-          }
-        }
-      },
-      "CellNodePoint": {
-        "type": "object",
-        "description": "One point of a node's detail.",
-        "required": [
-          "t"
-        ],
-        "properties": {
-          "admit_p99_ms": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "One-minute p99 time to admit a turn, in milliseconds.",
-            "example": 12.5
-          },
-          "queued": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Messages waiting for a turn, as the node sees them.",
-            "example": 0
-          },
-          "rss_bytes": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Resident memory in bytes.",
-            "example": 1073741824
-          },
-          "running": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Turns running on the node.",
-            "example": 81
-          },
-          "t": {
-            "type": "string",
-            "format": "date-time",
-            "description": "UTC time of the point.",
-            "example": "2026-11-15T19:59:50Z"
-          }
-        }
       },
       "Channel": {
         "type": "object",
@@ -65595,407 +65522,6 @@
           }
         }
       },
-      "MonitoringCell": {
-        "type": "object",
-        "description": "One data plane v2 cell: its newest minute report and its history.",
-        "required": [
-          "cell",
-          "data_plane",
-          "reported_at",
-          "silent",
-          "nodes",
-          "nodes_answering",
-          "sessions",
-          "running",
-          "queued",
-          "resumed",
-          "memory_bytes",
-          "cpu_cores",
-          "admit_p99_ms",
-          "ship_lag_p99_ms",
-          "term",
-          "buckets"
-        ],
-        "properties": {
-          "admit_p99_ms": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Worst node's p99 time to admit a turn, in milliseconds.",
-            "example": 12,
-            "minimum": 0
-          },
-          "buckets": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MonitoringCellBucket"
-            },
-            "description": "History over the range, oldest first; buckets without a report are absent."
-          },
-          "cell": {
-            "type": "string",
-            "description": "Cell name.",
-            "example": "cell-07"
-          },
-          "cpu_cores": {
-            "type": "number",
-            "format": "double",
-            "description": "The busiest node's CPU, in cores.",
-            "example": 1.2
-          },
-          "cpu_limit_cores": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Its CPU limit in cores; null when unknown.",
-            "example": 2
-          },
-          "data_plane": {
-            "type": "string",
-            "description": "Data plane the cell belongs to.",
-            "example": "dp-eks-1"
-          },
-          "leader": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Leader node at the newest report.",
-            "example": "cell-07-node-2"
-          },
-          "memory_bytes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The fullest node's resident memory, in bytes.",
-            "example": 3221225472,
-            "minimum": 0
-          },
-          "memory_limit_bytes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Its memory limit in bytes; null when unknown.",
-            "example": 4294967296,
-            "minimum": 0
-          },
-          "nodes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Members.",
-            "example": 3,
-            "minimum": 0
-          },
-          "nodes_answering": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Members that answered the leader.",
-            "example": 3,
-            "minimum": 0
-          },
-          "queued": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Messages waiting for a turn.",
-            "example": 0,
-            "minimum": 0
-          },
-          "reported_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Minute of the newest report.",
-            "example": "2026-11-15T19:59:00Z"
-          },
-          "resumed": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns running on a second or later attempt.",
-            "example": 1,
-            "minimum": 0
-          },
-          "running": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns running.",
-            "example": 239,
-            "minimum": 0
-          },
-          "sessions": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Sessions resident.",
-            "example": 2650,
-            "minimum": 0
-          },
-          "ship_lag_p99_ms": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Worst node's p99 log shipping lag, in milliseconds.",
-            "example": 380,
-            "minimum": 0
-          },
-          "silent": {
-            "type": "boolean",
-            "description": "No report for the last three minutes.",
-            "example": false
-          },
-          "term": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Raft term.",
-            "example": 4,
-            "minimum": 0
-          }
-        }
-      },
-      "MonitoringCellBucket": {
-        "type": "object",
-        "description": "One cell over one bucket.",
-        "required": [
-          "start",
-          "reports",
-          "elections",
-          "moves",
-          "turns_completed",
-          "turns_failed",
-          "turns_cancelled"
-        ],
-        "properties": {
-          "admit_p99_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Worst node's p99 time to admit a turn, in milliseconds.",
-            "minimum": 0
-          },
-          "cpu_peak_pct": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "The busiest node's CPU use as a percentage of its limit."
-          },
-          "elections": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Leader elections.",
-            "minimum": 0
-          },
-          "memory_peak_pct": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "The fullest node's memory use as a percentage of its limit."
-          },
-          "moves": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Sessions moved to another cell.",
-            "minimum": 0
-          },
-          "nodes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Highest node count.",
-            "minimum": 0
-          },
-          "nodes_answering": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Lowest count of nodes that answered the leader.",
-            "minimum": 0
-          },
-          "queued_peak": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Highest messages waiting for a turn.",
-            "minimum": 0
-          },
-          "reports": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Minute reports received in the bucket.",
-            "minimum": 0
-          },
-          "running_peak": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Highest turns running.",
-            "minimum": 0
-          },
-          "sessions_peak": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Highest sessions resident.",
-            "minimum": 0
-          },
-          "ship_lag_p99_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Worst node's p99 log shipping lag, in milliseconds.",
-            "minimum": 0
-          },
-          "start": {
-            "type": "string",
-            "format": "date-time",
-            "description": "UTC start of the bucket."
-          },
-          "turns_cancelled": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns cancelled.",
-            "minimum": 0
-          },
-          "turns_completed": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns completed.",
-            "minimum": 0
-          },
-          "turns_failed": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns failed.",
-            "minimum": 0
-          }
-        }
-      },
-      "MonitoringCellDetail": {
-        "type": "object",
-        "description": "A cell's per-node detail, or why there is none.",
-        "required": [
-          "cell",
-          "available",
-          "step_seconds",
-          "from",
-          "to",
-          "nodes"
-        ],
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "description": "Whether detail could be read.",
-            "example": true
-          },
-          "cell": {
-            "type": "string",
-            "description": "Cell name.",
-            "example": "cell-07"
-          },
-          "from": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Inclusive UTC start.",
-            "example": "2026-11-15T19:00:00Z"
-          },
-          "nodes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CellNodeDetail"
-            },
-            "description": "Nodes, by id."
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Why not, when `available` is false.",
-            "example": "No detail store is configured (MONITORING_DETAIL)."
-          },
-          "source": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The detail store's scheme and host, without credentials or path.",
-            "example": "http://victoriametrics:8428"
-          },
-          "step_seconds": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Seconds between points.",
-            "example": 10,
-            "minimum": 0
-          },
-          "to": {
-            "type": "string",
-            "format": "date-time",
-            "description": "UTC end.",
-            "example": "2026-11-15T20:00:00Z"
-          }
-        }
-      },
-      "MonitoringCells": {
-        "type": "object",
-        "description": "Data plane v2 cells as their minute reports show them.",
-        "required": [
-          "generated_at",
-          "from",
-          "to",
-          "bucket_seconds",
-          "cells"
-        ],
-        "properties": {
-          "bucket_seconds": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Bucket size in seconds.",
-            "example": 60,
-            "minimum": 0
-          },
-          "cells": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MonitoringCell"
-            },
-            "description": "Cells that reported in the last week, by name."
-          },
-          "from": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Inclusive UTC start of the history.",
-            "example": "2026-11-15T14:00:00Z"
-          },
-          "generated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "UTC time of this read.",
-            "example": "2026-11-15T20:00:00Z"
-          },
-          "to": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Exclusive UTC end.",
-            "example": "2026-11-15T20:00:00Z"
-          }
-        }
-      },
       "MonitoringCheckTotals": {
         "type": "object",
         "description": "Verdict counts for one operational or continuity check in the report window.",
@@ -66189,6 +65715,407 @@
             "type": "string",
             "description": "Execution state: runnable, model, tools, waiting, or setup.",
             "example": "model"
+          }
+        }
+      },
+      "MonitoringShard": {
+        "type": "object",
+        "description": "One data plane v2 shard: its newest minute report and its history.",
+        "required": [
+          "shard",
+          "data_plane",
+          "reported_at",
+          "silent",
+          "nodes",
+          "nodes_answering",
+          "sessions",
+          "running",
+          "queued",
+          "resumed",
+          "memory_bytes",
+          "cpu_cores",
+          "admit_p99_ms",
+          "ship_lag_p99_ms",
+          "term",
+          "buckets"
+        ],
+        "properties": {
+          "admit_p99_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Worst node's p99 time to admit a turn, in milliseconds.",
+            "example": 12,
+            "minimum": 0
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringShardBucket"
+            },
+            "description": "History over the range, oldest first; buckets without a report are absent."
+          },
+          "cpu_cores": {
+            "type": "number",
+            "format": "double",
+            "description": "The busiest node's CPU, in cores.",
+            "example": 1.2
+          },
+          "cpu_limit_cores": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Its CPU limit in cores; null when unknown.",
+            "example": 2
+          },
+          "data_plane": {
+            "type": "string",
+            "description": "Data plane the shard belongs to.",
+            "example": "dp-eks-1"
+          },
+          "leader": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Leader node at the newest report.",
+            "example": "shard-07-node-2"
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The fullest node's resident memory, in bytes.",
+            "example": 3221225472,
+            "minimum": 0
+          },
+          "memory_limit_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Its memory limit in bytes; null when unknown.",
+            "example": 4294967296,
+            "minimum": 0
+          },
+          "nodes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Members.",
+            "example": 3,
+            "minimum": 0
+          },
+          "nodes_answering": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Members that answered the leader.",
+            "example": 3,
+            "minimum": 0
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Messages waiting for a turn.",
+            "example": 0,
+            "minimum": 0
+          },
+          "reported_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Minute of the newest report.",
+            "example": "2026-11-15T19:59:00Z"
+          },
+          "resumed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns running on a second or later attempt.",
+            "example": 1,
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns running.",
+            "example": 239,
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions resident.",
+            "example": 2650,
+            "minimum": 0
+          },
+          "shard": {
+            "type": "string",
+            "description": "Shard name.",
+            "example": "shard-07"
+          },
+          "ship_lag_p99_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Worst node's p99 log shipping lag, in milliseconds.",
+            "example": 380,
+            "minimum": 0
+          },
+          "silent": {
+            "type": "boolean",
+            "description": "No report for the last three minutes.",
+            "example": false
+          },
+          "term": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Raft term.",
+            "example": 4,
+            "minimum": 0
+          }
+        }
+      },
+      "MonitoringShardBucket": {
+        "type": "object",
+        "description": "One shard over one bucket.",
+        "required": [
+          "start",
+          "reports",
+          "elections",
+          "moves",
+          "turns_completed",
+          "turns_failed",
+          "turns_cancelled"
+        ],
+        "properties": {
+          "admit_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Worst node's p99 time to admit a turn, in milliseconds.",
+            "minimum": 0
+          },
+          "cpu_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The busiest node's CPU use as a percentage of its limit."
+          },
+          "elections": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Leader elections.",
+            "minimum": 0
+          },
+          "memory_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "The fullest node's memory use as a percentage of its limit."
+          },
+          "moves": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions moved to another shard.",
+            "minimum": 0
+          },
+          "nodes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest node count.",
+            "minimum": 0
+          },
+          "nodes_answering": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Lowest count of nodes that answered the leader.",
+            "minimum": 0
+          },
+          "queued_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest messages waiting for a turn.",
+            "minimum": 0
+          },
+          "reports": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Minute reports received in the bucket.",
+            "minimum": 0
+          },
+          "running_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest turns running.",
+            "minimum": 0
+          },
+          "sessions_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest sessions resident.",
+            "minimum": 0
+          },
+          "ship_lag_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Worst node's p99 log shipping lag, in milliseconds.",
+            "minimum": 0
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC start of the bucket."
+          },
+          "turns_cancelled": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns cancelled.",
+            "minimum": 0
+          },
+          "turns_completed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns completed.",
+            "minimum": 0
+          },
+          "turns_failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns failed.",
+            "minimum": 0
+          }
+        }
+      },
+      "MonitoringShardDetail": {
+        "type": "object",
+        "description": "A shard's per-node detail, or why there is none.",
+        "required": [
+          "shard",
+          "available",
+          "step_seconds",
+          "from",
+          "to",
+          "nodes"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "Whether detail could be read.",
+            "example": true
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive UTC start.",
+            "example": "2026-11-15T19:00:00Z"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShardNodeDetail"
+            },
+            "description": "Nodes, by id."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why not, when `available` is false.",
+            "example": "No detail store is configured (MONITORING_DETAIL)."
+          },
+          "shard": {
+            "type": "string",
+            "description": "Shard name.",
+            "example": "shard-07"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The detail store's scheme and host, without credentials or path.",
+            "example": "http://victoriametrics:8428"
+          },
+          "step_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Seconds between points.",
+            "example": 10,
+            "minimum": 0
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC end.",
+            "example": "2026-11-15T20:00:00Z"
+          }
+        }
+      },
+      "MonitoringShards": {
+        "type": "object",
+        "description": "Data plane v2 shards as their minute reports show them.",
+        "required": [
+          "generated_at",
+          "from",
+          "to",
+          "bucket_seconds",
+          "shards"
+        ],
+        "properties": {
+          "bucket_seconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bucket size in seconds.",
+            "example": 60,
+            "minimum": 0
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Inclusive UTC start of the history.",
+            "example": "2026-11-15T14:00:00Z"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC time of this read.",
+            "example": "2026-11-15T20:00:00Z"
+          },
+          "shards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitoringShard"
+            },
+            "description": "Shards that reported in the last week, by name."
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Exclusive UTC end.",
+            "example": "2026-11-15T20:00:00Z"
           }
         }
       },
@@ -66467,7 +66394,7 @@
             "items": {
               "$ref": "#/components/schemas/TimelineMarker"
             },
-            "description": "Deploys, worker changes and cell leader changes inside the range."
+            "description": "Deploys, worker changes and shard leader changes inside the range."
           },
           "open_sessions_now": {
             "type": "integer",
@@ -73954,13 +73881,6 @@
           "recent_events"
         ],
         "properties": {
-          "cell_sandbox": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "description": "The sandbox as its cell records it (v2 sessions)."
-          },
           "findings": {
             "type": "array",
             "items": {
@@ -74009,6 +73929,13 @@
           },
           "sandbox": {
             "$ref": "#/components/schemas/SandboxFleetItem"
+          },
+          "shard_sandbox": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The sandbox as its shard records it (v2 sessions)."
           },
           "status": {
             "$ref": "#/components/schemas/CheckStatus",
@@ -74837,7 +74764,7 @@
           },
           "data_plane": {
             "type": "boolean",
-            "description": "The session runs on a v2 data plane (a cell)."
+            "description": "The session runs on a v2 data plane (a shard)."
           },
           "pending_inputs": {
             "type": [
@@ -79224,6 +79151,79 @@
         },
         "additionalProperties": false
       },
+      "ShardNodeDetail": {
+        "type": "object",
+        "description": "One node's detail.",
+        "required": [
+          "node",
+          "points"
+        ],
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "Node id within the shard.",
+            "example": "2"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShardNodePoint"
+            },
+            "description": "Points, oldest first."
+          }
+        }
+      },
+      "ShardNodePoint": {
+        "type": "object",
+        "description": "One point of a node's detail.",
+        "required": [
+          "t"
+        ],
+        "properties": {
+          "admit_p99_ms": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "One-minute p99 time to admit a turn, in milliseconds.",
+            "example": 12.5
+          },
+          "queued": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Messages waiting for a turn, as the node sees them.",
+            "example": 0
+          },
+          "rss_bytes": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Resident memory in bytes.",
+            "example": 1073741824
+          },
+          "running": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Turns running on the node.",
+            "example": 81
+          },
+          "t": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC time of the point.",
+            "example": "2026-11-15T19:59:50Z"
+          }
+        }
+      },
       "SideEffectClass": {
         "type": "string",
         "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed during turn recovery when the journal records a tool start without a\ncompleted result:\n\n* `Pure` / `Idempotent` — safe to re-execute with the same inputs.\n* `AtMostOnce` — do not repeat an execution with an unknown outcome; settle\n  it as `interrupted` and surface the uncertainty to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -80548,17 +80548,6 @@
             "type": "boolean",
             "description": "Whether this bucket includes history rebuilt from turn records (no phase split or queue data)."
           },
-          "cells": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/TimelineCellsBucket",
-                "description": "Data plane v2 cells; absent when no cell reported and no cell turn finished in the bucket."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "cost_usd": {
             "type": "number",
             "format": "double",
@@ -80665,6 +80654,17 @@
             "format": "double",
             "description": "Average sessions in turn setup or a phase handoff."
           },
+          "shards": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimelineShardsBucket",
+                "description": "Data plane v2 shards; absent when no shard reported and no shard turn finished in the bucket."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "start": {
             "type": "string",
             "format": "date-time",
@@ -80761,195 +80761,6 @@
           }
         }
       },
-      "TimelineCellsBucket": {
-        "type": "object",
-        "description": "What data plane v2 cells reported over a bucket. Population comes from\neach cell's one-minute report; counters from the cells' feed.",
-        "required": [
-          "reporting",
-          "sessions_avg",
-          "sessions_peak",
-          "running_avg",
-          "running_peak",
-          "queued_peak",
-          "agents_working_avg",
-          "agents_working_peak",
-          "turns_completed",
-          "turns_failed",
-          "turns_cancelled",
-          "model_calls",
-          "input_tokens",
-          "output_tokens",
-          "cost_usd"
-        ],
-        "properties": {
-          "admit_p99_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: worst node's p99 time to admit a turn, in milliseconds.",
-            "minimum": 0
-          },
-          "agents_working_avg": {
-            "type": "number",
-            "format": "double",
-            "description": "Average distinct agents with a running turn on cells."
-          },
-          "agents_working_peak": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Highest per-minute agents with a running turn on cells.",
-            "minimum": 0
-          },
-          "cost_usd": {
-            "type": "number",
-            "format": "double",
-            "description": "Model spend on cells in USD."
-          },
-          "cpu_peak_pct": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Platform only: the busiest node's CPU use as a percentage of its limit."
-          },
-          "elections": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: leader elections across cells.",
-            "minimum": 0
-          },
-          "input_tokens": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Model input tokens on cells.",
-            "minimum": 0
-          },
-          "memory_peak_pct": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Platform only: the fullest node's memory use as a percentage of its limit."
-          },
-          "model_calls": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Model calls made on cells.",
-            "minimum": 0
-          },
-          "moves": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: sessions moved to another cell.",
-            "minimum": 0
-          },
-          "nodes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: highest total of cell nodes (pods) in one minute.",
-            "minimum": 0
-          },
-          "nodes_answering": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: lowest total of nodes that answered their leader in one minute.",
-            "minimum": 0
-          },
-          "output_tokens": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Model output tokens on cells.",
-            "minimum": 0
-          },
-          "queued_peak": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Highest per-minute messages waiting for a turn on cells.",
-            "minimum": 0
-          },
-          "reporting": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Highest number of cells that reported in one minute.",
-            "example": 12,
-            "minimum": 0
-          },
-          "resumed_peak": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: highest per-minute turns running on a second or later attempt.",
-            "minimum": 0
-          },
-          "running_avg": {
-            "type": "number",
-            "format": "double",
-            "description": "Average turns running on cells."
-          },
-          "running_peak": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Highest per-minute turns running on cells.",
-            "minimum": 0
-          },
-          "sessions_avg": {
-            "type": "number",
-            "format": "double",
-            "description": "Average sessions resident on cells."
-          },
-          "sessions_peak": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Highest per-minute sessions resident on cells.",
-            "minimum": 0
-          },
-          "ship_lag_p99_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: worst node's p99 log shipping lag, in milliseconds.",
-            "minimum": 0
-          },
-          "turns_cancelled": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns cancelled on cells.",
-            "minimum": 0
-          },
-          "turns_completed": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns completed on cells.",
-            "minimum": 0
-          },
-          "turns_failed": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Turns failed on cells.",
-            "minimum": 0
-          }
-        }
-      },
       "TimelineFailure": {
         "type": "object",
         "description": "Failed turns of one classified error code.",
@@ -80992,7 +80803,7 @@
           },
           "label": {
             "type": "string",
-            "description": "Server version for a deploy, worker id or cell name otherwise.",
+            "description": "Server version for a deploy, worker id or shard name otherwise.",
             "example": "0.50.1"
           }
         }
@@ -81033,6 +80844,195 @@
           }
         }
       },
+      "TimelineShardsBucket": {
+        "type": "object",
+        "description": "What data plane v2 shards reported over a bucket. Population comes from\neach shard's one-minute report; counters from the shards' feed.",
+        "required": [
+          "reporting",
+          "sessions_avg",
+          "sessions_peak",
+          "running_avg",
+          "running_peak",
+          "queued_peak",
+          "agents_working_avg",
+          "agents_working_peak",
+          "turns_completed",
+          "turns_failed",
+          "turns_cancelled",
+          "model_calls",
+          "input_tokens",
+          "output_tokens",
+          "cost_usd"
+        ],
+        "properties": {
+          "admit_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: worst node's p99 time to admit a turn, in milliseconds.",
+            "minimum": 0
+          },
+          "agents_working_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average distinct agents with a running turn on shards."
+          },
+          "agents_working_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute agents with a running turn on shards.",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "format": "double",
+            "description": "Model spend on shards in USD."
+          },
+          "cpu_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Platform only: the busiest node's CPU use as a percentage of its limit."
+          },
+          "elections": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: leader elections across shards.",
+            "minimum": 0
+          },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model input tokens on shards.",
+            "minimum": 0
+          },
+          "memory_peak_pct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Platform only: the fullest node's memory use as a percentage of its limit."
+          },
+          "model_calls": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model calls made on shards.",
+            "minimum": 0
+          },
+          "moves": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: sessions moved to another shard.",
+            "minimum": 0
+          },
+          "nodes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: highest total of shard nodes (pods) in one minute.",
+            "minimum": 0
+          },
+          "nodes_answering": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: lowest total of nodes that answered their leader in one minute.",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Model output tokens on shards.",
+            "minimum": 0
+          },
+          "queued_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute messages waiting for a turn on shards.",
+            "minimum": 0
+          },
+          "reporting": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest number of shards that reported in one minute.",
+            "example": 12,
+            "minimum": 0
+          },
+          "resumed_peak": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: highest per-minute turns running on a second or later attempt.",
+            "minimum": 0
+          },
+          "running_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average turns running on shards."
+          },
+          "running_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute turns running on shards.",
+            "minimum": 0
+          },
+          "sessions_avg": {
+            "type": "number",
+            "format": "double",
+            "description": "Average sessions resident on shards."
+          },
+          "sessions_peak": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest per-minute sessions resident on shards.",
+            "minimum": 0
+          },
+          "ship_lag_p99_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: worst node's p99 log shipping lag, in milliseconds.",
+            "minimum": 0
+          },
+          "turns_cancelled": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns cancelled on shards.",
+            "minimum": 0
+          },
+          "turns_completed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns completed on shards.",
+            "minimum": 0
+          },
+          "turns_failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Turns failed on shards.",
+            "minimum": 0
+          }
+        }
+      },
       "TimelineSummary": {
         "type": "object",
         "description": "Totals over a range, for the summary row and the previous-period comparison.",
@@ -81045,24 +81045,6 @@
           "cost_usd"
         ],
         "properties": {
-          "cells_elections": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Platform only: leader elections across cells; null when no cell reported.",
-            "minimum": 0
-          },
-          "cells_peak_running": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Highest per-minute turns running on cells; null when no cell reported.",
-            "minimum": 0
-          },
           "cost_usd": {
             "type": "number",
             "format": "double",
@@ -81114,6 +81096,24 @@
             ],
             "format": "int64",
             "description": "Platform only: seconds of buckets whose peak load exceeded 90% of capacity.",
+            "minimum": 0
+          },
+          "shards_elections": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Platform only: leader elections across shards; null when no shard reported.",
+            "minimum": 0
+          },
+          "shards_peak_running": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Highest per-minute turns running on shards; null when no shard reported.",
             "minimum": 0
           },
           "tool_calls": {

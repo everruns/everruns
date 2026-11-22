@@ -477,7 +477,7 @@ impl SessionActorStore for Progress {
     }
 }
 
-/// The cell's chaos run: node kills cut one long turn off three times while
+/// The shard's chaos run: node kills cut one long turn off three times while
 /// every lease moved it on, and the poison guard sealed it. A lease after a
 /// death reports progress once, at its second stored boundary (the first
 /// only follows the resume's repair); the first lease never reports.

@@ -5,9 +5,9 @@
 //!
 //! Decisions:
 //! - The values and secrets stay where the agent's tools read them, in the
-//!   session's authority on its cell. The control plane keeps serving the
+//!   session's authority on its shard. The control plane keeps serving the
 //!   Storage API for both planes with one code path: it reads them here
-//!   (`GET /cell/sessions/{id}/storage`) and changes them as a platform
+//!   (`GET /shard/sessions/{id}/storage`) and changes them as a platform
 //!   command (`POST`), so a change is ordered with the session's other
 //!   writes and reaches the executor running it.
 //! - THREAT[TM-TENANT]: a secret arrives sealed by the control plane with
@@ -49,7 +49,7 @@ pub enum StorageOp {
 }
 
 /// The session's values and secret names (never secret values), with
-/// when each was first set and last changed where the cell knows it
+/// when each was first set and last changed where the shard knows it
 /// (`stamps`: `value:<key>` and `secret:<name>`, RFC 3339).
 pub fn listed(state: &SessionState) -> Value {
     let authority = &state.authority;

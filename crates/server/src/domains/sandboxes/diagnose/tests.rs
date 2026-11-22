@@ -332,8 +332,8 @@ fn provider_free_text_is_scrubbed() {
 }
 
 #[test]
-fn cell_reads_map_to_work_and_sandbox() {
-    let (work, sandbox) = cell_work(&json!({
+fn shard_reads_map_to_work_and_sandbox() {
+    let (work, sandbox) = shard_work(&json!({
         "work": {"turn_running": true, "inbox": 2, "claimed": false, "attempts": 1, "phase": "running"},
         "sandbox": {"provider": "daytona", "external_id": "dtn-9", "status": "running"}
     }));
@@ -341,6 +341,6 @@ fn cell_reads_map_to_work_and_sandbox() {
     assert_eq!(work.session_status.as_deref(), Some("active"));
     assert_eq!(work.pending_inputs, Some(2));
     assert_eq!(sandbox.unwrap()["external_id"], "dtn-9");
-    let (_, none) = cell_work(&json!({"work": {}, "sandbox": null}));
+    let (_, none) = shard_work(&json!({"work": {}, "sandbox": null}));
     assert!(none.is_none());
 }

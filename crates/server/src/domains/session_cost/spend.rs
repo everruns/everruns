@@ -2,13 +2,13 @@
 // (`get_session_info`). See knowledge/execution/session-spend.md.
 //
 // Decisions:
-// - Internal command (`worker_get_session_spend`): a v1 worker and a cell
+// - Internal command (`worker_get_session_spend`): a v1 worker and a shard
 //   executor ask through their internal command channel (a host call on a
-//   cell), as for knowledge and tokens. It reads only the session that asks
+//   shard), as for knowledge and tokens. It reads only the session that asks
 //   and the subagents it started, never the org's other spend.
 // - Model calls are counted as the Cost tab counts them (provider-reported
 //   cost, else the price-table estimate). A v1 session's come from
-//   `llm_generations`; a v2 session's from its cell's log (`spend` read),
+//   `llm_generations`; a v2 session's from its shard's log (`spend` read),
 //   priced here the same way (`session_spend::summarize`).
 // - Sandboxes are priced from their lifecycle spans: the org's rate for the
 //   provider wins, else the provider's list price on the pinned profile's
@@ -118,7 +118,7 @@ pub(crate) fn session_spend<'a>(
     })
 }
 
-/// Model calls, failed turns, image results and children: from the cell
+/// Model calls, failed turns, image results and children: from the shard
 /// for a v2 session, from the control plane's tables for v1.
 async fn spend_inputs(ctx: &Ctx, session_id: SessionId) -> Result<SpendInputs, CommandError> {
     let org = ctx.org_id();

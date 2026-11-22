@@ -13,7 +13,7 @@
 //!
 //! Decisions:
 //! - A per-turn token names the session's open turn, not a message: the
-//!   session's cell, which recorded who sent it, names the person
+//!   session's shard, which recorded who sent it, names the person
 //!   (THREAT[TM-AGENT-017]). It is never kept, since the next turn may be
 //!   another person's; the control plane refreshes the grant, as for a v1
 //!   worker.
@@ -25,7 +25,7 @@
 //! - Opened values are kept for [`KEEP`] (a rotated value reaches running
 //!   sessions within that), token sets until they near expiry.
 //! - A token set within [`REFRESH_SKEW_S`] of its expiry is renewed here,
-//!   under the directory cell's lease (`secrets.rs`), and written back as
+//!   under the directory shard's lease (`secrets.rs`), and written back as
 //!   the secret's next revision: every executor then uses the new token,
 //!   and the control plane gets it on the feed.
 
@@ -103,7 +103,7 @@ pub fn names_org_credentials(definition: &serde_json::Value) -> bool {
 
 /// Take every `${BINDING}` header and `mcp_oauth` connection out of
 /// `servers`, to be filled per call. Environment placeholders go too: a
-/// cell runs no local-process servers.
+/// shard runs no local-process servers.
 ///
 /// Decision: a server whose token comes from a connection is left with no
 /// auth mode of its own. The token is sent from the first call, and the

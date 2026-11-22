@@ -5,7 +5,7 @@
 //!
 //! Decisions:
 //! - Memory stays in the control plane: it is shared across sessions,
-//!   people and agents of the org, so no one session's cell can own it.
+//!   people and agents of the org, so no one session's shard can own it.
 //!   Each file operation is one host call ([`MEMORY_FILE`]), and the control
 //!   plane serves it only inside the session's own mounts, resolved from
 //!   its record (`data_plane::memory` in the server).
@@ -111,7 +111,7 @@ pub(crate) fn attach(
         .iter()
         .filter(|m| MOUNTS.contains(&m.as_str()))
     {
-        let backend: Arc<dyn SessionFileSystem> = Arc::new(CellMemory {
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(ShardMemory {
             via: via.clone(),
             session,
             mount: mount.clone(),
@@ -129,14 +129,14 @@ pub(crate) fn attach(
 }
 
 /// One Memory mount of one session, in the control plane.
-struct CellMemory {
+struct ShardMemory {
     via: Via,
     session: SessionId,
     /// Where it hangs (`/memory/user`).
     mount: String,
 }
 
-impl CellMemory {
+impl ShardMemory {
     /// The control plane's path for `path` inside this mount.
     fn outer(&self, path: &str) -> String {
         let path = path.trim_end_matches('/');
@@ -222,7 +222,7 @@ impl CellMemory {
 }
 
 #[async_trait]
-impl SessionFileSystem for CellMemory {
+impl SessionFileSystem for ShardMemory {
     fn is_mount_resolver(&self) -> bool {
         false
     }

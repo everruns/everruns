@@ -9,13 +9,13 @@
 //!   source index), and a session summary never replaces a newer version.
 //! - The acknowledgement names the last record stored. A record that fails
 //!   to store ends the batch there, so the data plane sends it again.
-//! - A batch from an older incarnation of a cell than one already heard
-//!   (a node of a cell that was rebuilt, still running somewhere) is
+//! - A batch from an older incarnation of a shard than one already heard
+//!   (a node of a shard that was rebuilt, still running somewhere) is
 //!   stored, and flagged: its usage was really spent and is journaled once
 //!   per attempt, and its session summaries carry versions below the
 //!   rebuilt sessions' (`control::turn_finished`), so they change nothing.
 //!   Refusing it would lose that spend.
-//! - Monitoring (knowledge/operations/monitoring.md): a cell's minute
+//! - Monitoring (knowledge/operations/monitoring.md): a shard's minute
 //!   `Health` report carries no organization and is stored before the
 //!   organization check; finished turns and model calls are tallied per
 //!   batch and added to the minute history once the batch's records are
@@ -25,8 +25,8 @@
 //!   warehouse files first when it exports them (`warehouse.rs`).
 //! - A v2 task's transition goes to its webhooks (`task_webhooks.rs`).
 //! - Feed lag (record time to stored) is logged per batch at debug level.
-//!   The gate measures it in the cell suite (`FakeCp::feed_lag`); a metric
-//!   comes with step 10's per-cell dashboards.
+//!   The gate measures it in the shard suite (`FakeCp::feed_lag`); a metric
+//!   comes with step 10's per-shard dashboards.
 
 use std::sync::Arc;
 
@@ -36,7 +36,7 @@ use everruns_core::EventListener;
 
 use super::{ControlPlane, org_internal};
 use crate::domains::budgets::{BudgetService, DataPlaneUsage};
-use crate::storage::{CellBatchCounters, CellMinuteReport, DpSessionSummary};
+use crate::storage::{DpSessionSummary, ShardBatchCounters, ShardMinuteReport};
 
 /// Store `batch`; the position through which it is stored.
 pub async fn ingest(
@@ -53,7 +53,7 @@ pub async fn ingest(
             source = %batch.source,
             incarnation,
             newest,
-            "feed from a cell incarnation that was rebuilt; storing its usage only once"
+            "feed from a shard incarnation that was rebuilt; storing its usage only once"
         );
     }
     let mut through = cp
@@ -63,7 +63,7 @@ pub async fn ingest(
         .map_or((0, 0), |(i, o)| (i as u64, o as u32));
     let start = through;
     super::warehouse::export(cp, &batch, start).await?;
-    let mut counters = CellBatchCounters::default();
+    let mut counters = ShardBatchCounters::default();
     for record in &batch.records {
         if (record.index, record.ordinal) <= start {
             continue;
@@ -76,7 +76,7 @@ pub async fn ingest(
     }
     if let Err(error) = cp
         .db
-        .monitoring_add_cell_counters(&batch.source, &batch.data_plane, &counters)
+        .monitoring_add_shard_counters(&batch.source, &batch.data_plane, &counters)
         .await
     {
         tracing::warn!(source = %batch.source, %error, "feed counters not added to monitoring");
@@ -113,11 +113,11 @@ async fn store(
     listeners: &[Arc<dyn EventListener>],
     batch: &FeedBatch,
     record: &FeedRecord,
-    counters: &mut CellBatchCounters,
+    counters: &mut ShardBatchCounters,
 ) -> anyhow::Result<()> {
     if let Record::Health { .. } = &record.record {
         if let Err(error) = store_health(cp, batch, record).await {
-            tracing::warn!(source = %batch.source, %error, "cell minute report not stored");
+            tracing::warn!(source = %batch.source, %error, "shard minute report not stored");
         }
         return Ok(());
     }
@@ -266,7 +266,7 @@ async fn store(
     Ok(())
 }
 
-/// A cell's minute report: platform-wide, with per-organization population
+/// A shard's minute report: platform-wide, with per-organization population
 /// for organizations this control plane knows.
 async fn store_health(
     cp: &ControlPlane,
@@ -317,8 +317,8 @@ async fn store_health(
     let saturate = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
     let stored = cp
         .db
-        .monitoring_record_cell_report(&CellMinuteReport {
-            cell: batch.source.clone(),
+        .monitoring_record_shard_report(&ShardMinuteReport {
+            shard: batch.source.clone(),
             data_plane: batch.data_plane.clone(),
             minute: at(*minute_unix_ms),
             leader: leader.clone(),
@@ -340,7 +340,7 @@ async fn store_health(
         })
         .await?;
     if !stored {
-        tracing::debug!(source = %batch.source, "cell minute already reported");
+        tracing::debug!(source = %batch.source, "shard minute already reported");
     }
     Ok(())
 }

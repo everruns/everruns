@@ -16,7 +16,7 @@ const KEY: Key = [7u8; 32];
 const GRANT: &str = "mcp_oauth:grant-1";
 const TOKEN_URL: &str = "https://auth.example/token";
 
-/// The directory cell and the org's sealed secrets, in memory: what every
+/// The directory shard and the org's sealed secrets, in memory: what every
 /// executor reads and leases through.
 #[derive(Default)]
 struct Directory {

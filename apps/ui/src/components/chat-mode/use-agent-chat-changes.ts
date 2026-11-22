@@ -35,9 +35,14 @@ export function useAgentChatChanges(agentId: string): ChatChanges {
   const legacy = useLegacyAgentChatChanges(agentId, !controller);
   if (!controller) return legacy;
   const resource = { kind: "agent", id: agentId, label: "Agent" };
+  // The person's own saves also leave a receipt (the saved-changes bar offers
+  // their Undo); only Chat's changes are marked inline as "Changed by chat".
   const receipt = controller
     .receipts()
-    .find((item) => item.resource.kind === "agent" && item.resource.id === agentId);
+    .find(
+      (item) =>
+        item.by === "chat" && item.resource.kind === "agent" && item.resource.id === agentId,
+    );
   return {
     shared: true,
     fields: receipt?.fields ?? [],

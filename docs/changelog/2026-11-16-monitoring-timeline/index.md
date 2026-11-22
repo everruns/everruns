@@ -1,6 +1,6 @@
 ---
-title: "Monitoring Timeline: sessions, agents, cells and errors on one axis"
-description: "Monitoring's Timeline shows open sessions, agents, errors and spend together, explains what failed, and adds servers, cells and nodes for the platform."
+title: "Monitoring Timeline: sessions, agents, shards and errors on one axis"
+description: "Monitoring's Timeline shows open sessions, agents, errors and spend together, explains what failed, and adds servers, shards and nodes for the platform."
 date: 2026-11-16
 kind: feature
 significance: notable
@@ -19,9 +19,9 @@ sessions, agents, turns, failed turns and spend share a time axis with deploy
 and leader-change markers. **What failed** lists failed turns by cause and failed
 tool calls by tool.
 
-An organization sees only the path it runs on: its sessions on cells, or the
+An organization sees only the path it runs on: its sessions on shards, or the
 worker view. The platform view has both, a fleet chart of servers, workers,
-cells and nodes, and a **Cells** tab with each cell's latest minute and history.
+shards and nodes, and a **Shards** tab with each shard's latest minute and history.
 
 History is kept in PostgreSQL, one row a minute, with no metrics database. For
 10-second, per-node detail, point the server at VictoriaMetrics:

@@ -1,28 +1,28 @@
-//! Restore points: what disaster recovery rebuilds a cell from (data plane
+//! Restore points: what disaster recovery rebuilds a shard from (data plane
 //! v2 design, "Disaster recovery").
 //!
-//! A restore point is an archived snapshot plus the log its cell shipped
+//! A restore point is an archived snapshot plus the log its shard shipped
 //! after it, and everything they name: session segments, blobs, workspace
 //! objects. In the object store:
 //!
-//! - `cells/<cell>/snapshots/i<inc>-n<index>-t<clock_ms>-<id>.snap`: the
+//! - `shards/<shard>/snapshots/i<inc>-n<index>-t<clock_ms>-<id>.snap`: the
 //!   archived snapshots, named by the incarnation, the last log index and
-//!   the cell clock they hold, so a restore picks one without reading it.
-//! - `cells/<cell>/log/i<inc>/<first>-<last>.json`: the shipped log of
-//!   each incarnation (`ship.rs`). A rebuilt cell reuses log indexes the
+//!   the shard clock they hold, so a restore picks one without reading it.
+//! - `shards/<shard>/log/i<inc>/<first>-<last>.json`: the shipped log of
+//!   each incarnation (`ship.rs`). A rebuilt shard reuses log indexes the
 //!   lost one had used, so each incarnation ships under its own prefix.
-//! - `cells/<cell>/incarnations/<inc>`: one object per incarnation, created
+//! - `shards/<shard>/incarnations/<inc>`: one object per incarnation, created
 //!   once (`claim_incarnation`), so two restores never share a number.
 //! - `retired/<hour>/<session>/<segment>`: segments a compaction replaced,
 //!   by the hour they were replaced in.
 //!
 //! Decisions:
 //! - Every point inside the restore window (7 days by default,
-//!   `CELL_RESTORE_WINDOW_HOURS`) can be restored. Nothing a point in the
+//!   `AGENTD_RESTORE_WINDOW_HOURS`) can be restored. Nothing a point in the
 //!   window refers to is deleted: a replaced segment waits a full window
 //!   after it was replaced; the shipped log stays while a kept snapshot is
 //!   older than it.
-//! - Snapshot copies are thinned, not all kept: a cell at full load
+//! - Snapshot copies are thinned, not all kept: a shard at full load
 //!   snapshots every few minutes and a copy is over 100 MB. Kept: the
 //!   newest [`SNAPSHOT_COPIES`], the first of each hour inside the window,
 //!   and the newest one before the window, the base for a point in its
@@ -39,14 +39,14 @@ use object_store::{ObjectStoreExt, PutMode, PutOptions, PutPayload};
 
 use crate::store::{SegRef, Store, parse_segment, retry};
 
-/// Snapshot copies always kept per cell, whatever their age.
+/// Snapshot copies always kept per shard, whatever their age.
 pub const SNAPSHOT_COPIES: usize = 3;
 
 const HOUR_MS: i64 = 3_600_000;
 
-/// How far back a cell can be restored.
+/// How far back a shard can be restored.
 pub fn restore_window() -> Duration {
-    let hours = std::env::var("CELL_RESTORE_WINDOW_HOURS")
+    let hours = std::env::var("AGENTD_RESTORE_WINDOW_HOURS")
         .ok()
         .and_then(|h| h.parse::<u64>().ok())
         .unwrap_or(7 * 24);
@@ -56,11 +56,11 @@ pub fn restore_window() -> Duration {
 /// One archived snapshot, as its name describes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotCopy {
-    /// The cell incarnation that took it.
+    /// The shard incarnation that took it.
     pub inc: u64,
     /// Its last log index.
     pub index: u64,
-    /// The cell clock it holds (the newest command time it applied).
+    /// The shard clock it holds (the newest command time it applied).
     pub clock_ms: i64,
     /// When it was stored.
     pub stored_ms: i64,
@@ -76,10 +76,10 @@ pub struct Collected {
 }
 
 impl Store {
-    /// Keep a copy of a cell snapshot, then thin the cell's copies.
+    /// Keep a copy of a shard snapshot, then thin the shard's copies.
     pub async fn put_snapshot(
         &self,
-        cell: u32,
+        shard: u32,
         id: &str,
         inc: u64,
         index: u64,
@@ -91,21 +91,21 @@ impl Store {
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
             .collect();
         let key = self.key(&format!(
-            "cells/{cell}/snapshots/i{inc}-n{index}-t{clock_ms}-{id}.snap"
+            "shards/{shard}/snapshots/i{inc}-n{index}-t{clock_ms}-{id}.snap"
         ));
         let payload: PutPayload = parts.into_iter().collect();
         retry(|| async { self.inner.put(&key, payload.clone()).await.map(|_| ()) }).await?;
         let now = now_ms();
-        let copies = self.snapshot_copies(cell).await?;
+        let copies = self.snapshot_copies(shard).await?;
         for gone in thin(&copies, restore_window(), now) {
             let _ = self.inner.delete(&gone.key).await;
         }
         Ok(())
     }
 
-    /// Every archived snapshot of `cell`, oldest first.
-    pub async fn snapshot_copies(&self, cell: u32) -> anyhow::Result<Vec<SnapshotCopy>> {
-        let dir = self.key(&format!("cells/{cell}/snapshots"));
+    /// Every archived snapshot of `shard`, oldest first.
+    pub async fn snapshot_copies(&self, shard: u32) -> anyhow::Result<Vec<SnapshotCopy>> {
+        let dir = self.key(&format!("shards/{shard}/snapshots"));
         let metas: Vec<_> = self.inner.list(Some(&dir)).try_collect().await?;
         let mut copies: Vec<SnapshotCopy> = metas
             .into_iter()
@@ -129,24 +129,24 @@ impl Store {
         self.get(copy.key.clone()).await
     }
 
-    /// Ship committed log entries `first..=last` of `cell`'s incarnation
+    /// Ship committed log entries `first..=last` of `shard`'s incarnation
     /// `inc` (see `ship`). Idempotent: the same range of one incarnation
     /// always holds the same entries.
     pub async fn put_log(
         &self,
-        cell: u32,
+        shard: u32,
         inc: u64,
         first: u64,
         last: u64,
         bytes: Vec<u8>,
     ) -> anyhow::Result<()> {
-        self.put(self.log_key(cell, inc, first, last), bytes).await
+        self.put(self.log_key(shard, inc, first, last), bytes).await
     }
 
-    /// The shipped ranges of `cell`'s incarnation `inc`, by first index.
-    pub async fn shipped(&self, cell: u32, inc: u64) -> anyhow::Result<Vec<(u64, u64)>> {
+    /// The shipped ranges of `shard`'s incarnation `inc`, by first index.
+    pub async fn shipped(&self, shard: u32, inc: u64) -> anyhow::Result<Vec<(u64, u64)>> {
         Ok(self
-            .shipped_objects(cell, inc)
+            .shipped_objects(shard, inc)
             .await?
             .into_iter()
             .map(|(range, _, _)| range)
@@ -155,10 +155,10 @@ impl Store {
 
     async fn shipped_objects(
         &self,
-        cell: u32,
+        shard: u32,
         inc: u64,
     ) -> anyhow::Result<Vec<((u64, u64), i64, Path)>> {
-        let dir = self.key(&format!("cells/{cell}/log/i{inc}"));
+        let dir = self.key(&format!("shards/{shard}/log/i{inc}"));
         let objects: Vec<_> = self.inner.list(Some(&dir)).try_collect().await?;
         let mut ranges: Vec<_> = objects
             .into_iter()
@@ -178,23 +178,23 @@ impl Store {
 
     pub async fn get_log(
         &self,
-        cell: u32,
+        shard: u32,
         inc: u64,
         first: u64,
         last: u64,
     ) -> anyhow::Result<bytes::Bytes> {
-        self.get(self.log_key(cell, inc, first, last)).await
+        self.get(self.log_key(shard, inc, first, last)).await
     }
 
-    fn log_key(&self, cell: u32, inc: u64, first: u64, last: u64) -> Path {
+    fn log_key(&self, shard: u32, inc: u64, first: u64, last: u64) -> Path {
         self.key(&format!(
-            "cells/{cell}/log/i{inc}/{first:020}-{last:020}.json"
+            "shards/{shard}/log/i{inc}/{first:020}-{last:020}.json"
         ))
     }
 
-    /// The incarnations of `cell` taken so far, ascending.
-    pub async fn incarnations(&self, cell: u32) -> anyhow::Result<Vec<u64>> {
-        let dir = self.key(&format!("cells/{cell}/incarnations"));
+    /// The incarnations of `shard` taken so far, ascending.
+    pub async fn incarnations(&self, shard: u32) -> anyhow::Result<Vec<u64>> {
+        let dir = self.key(&format!("shards/{shard}/incarnations"));
         let metas: Vec<_> = self.inner.list(Some(&dir)).try_collect().await?;
         let mut taken: Vec<u64> = metas
             .iter()
@@ -204,17 +204,17 @@ impl Store {
         Ok(taken)
     }
 
-    /// Take the next free incarnation of `cell`, at least `at_least`. The
+    /// Take the next free incarnation of `shard`, at least `at_least`. The
     /// object is created only if absent, so two restores racing for a
     /// number never both get it.
-    pub async fn claim_incarnation(&self, cell: u32, at_least: u64) -> anyhow::Result<u64> {
+    pub async fn claim_incarnation(&self, shard: u32, at_least: u64) -> anyhow::Result<u64> {
         let mut next = self
-            .incarnations(cell)
+            .incarnations(shard)
             .await?
             .last()
             .map_or(at_least, |n| (n + 1).max(at_least));
         loop {
-            let key = self.key(&format!("cells/{cell}/incarnations/{next}"));
+            let key = self.key(&format!("shards/{shard}/incarnations/{next}"));
             let created = self
                 .inner
                 .put_opts(
@@ -255,22 +255,22 @@ impl Store {
     }
 
     /// Delete what no restore point inside `window` can refer to: thinned
-    /// snapshot copies and shipped log of `cell`, and (with `segments`) the
+    /// snapshot copies and shipped log of `shard`, and (with `segments`) the
     /// segments retired longer than `window` ago, fleet-wide.
     pub async fn collect(
         &self,
-        cell: u32,
+        shard: u32,
         segments: bool,
         window: Duration,
         now_ms: i64,
     ) -> anyhow::Result<Collected> {
         let mut done = Collected::default();
-        let copies = self.snapshot_copies(cell).await?;
+        let copies = self.snapshot_copies(shard).await?;
         for gone in thin(&copies, window, now_ms) {
             self.inner.delete(&gone.key).await?;
             done.snapshots += 1;
         }
-        let kept: Vec<_> = self.snapshot_copies(cell).await?;
+        let kept: Vec<_> = self.snapshot_copies(shard).await?;
         let window_ms = window.as_millis() as i64;
         let mut incs: Vec<u64> = kept.iter().map(|c| c.inc).collect();
         incs.sort_unstable();
@@ -281,7 +281,7 @@ impl Store {
             let Some(base) = kept.iter().filter(|c| c.inc == inc).map(|c| c.index).min() else {
                 continue;
             };
-            for ((_, last), stored_ms, key) in self.shipped_objects(cell, inc).await? {
+            for ((_, last), stored_ms, key) in self.shipped_objects(shard, inc).await? {
                 if last < base && stored_ms < now_ms - window_ms {
                     self.inner.delete(&key).await?;
                     done.logs += 1;

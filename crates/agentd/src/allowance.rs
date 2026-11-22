@@ -1,13 +1,13 @@
-//! Spend allowances: a tenant's money a cell may spend without asking.
+//! Spend allowances: a tenant's money a shard may spend without asking.
 //!
 //! Data plane v2 design, "Budgets stay in the control plane, enforced with
 //! allowances", and the `Grants` model (tests/models/data-plane-v2). The
-//! control plane grants a cell money from a tenant's balance; the cell
+//! control plane grants a shard money from a tenant's balance; the shard
 //! spends it locally and reports what each grant used. The guarantee is a
 //! strict cap on authorized spend:
 //!
 //! - Every grant has an id; granting the same id again changes nothing.
-//! - Before each provider call the cell reserves the call's maximum cost
+//! - Before each provider call the shard reserves the call's maximum cost
 //!   from one grant. A call the allowance can't cover does not start: the
 //!   Engine's budget gate ends the turn as `budget_exhausted`.
 //! - The call's `llm.generation` event settles the reservation at its
@@ -16,16 +16,16 @@
 //!   spent at its maximum (the next epoch's claim closes it): the call may
 //!   have run, and money only returns to the balance through a settlement.
 //! - An expired grant stops being spendable at once; what it reserved and
-//!   used stays until the cell reports it closed.
-//! - A metered session in a cell that holds no grant for its tenant (it
-//!   moved here, say, before the control plane granted this cell money)
+//!   used stays until the shard reports it closed.
+//! - A metered session in a shard that holds no grant for its tenant (it
+//!   moved here, say, before the control plane granted this shard money)
 //!   is exhausted, not unmetered: only a session with no tenant runs
 //!   without an allowance.
 //! - A session that moves out takes no reservation with it: the leaving
 //!   copy's open reservation, if its executor died mid-call, closes at its
 //!   maximum when the move forwards it.
 //!
-//! Decision: everything here is replicated cell state, changed only by
+//! Decision: everything here is replicated shard state, changed only by
 //! committed commands, so every replica reports the same usage and a new
 //! leader keeps every reservation.
 //!
@@ -35,7 +35,7 @@
 //! the one it has instead of doubling it.
 //!
 //! Grants arrive from the control plane's allowance endpoint (the leader's
-//! control loop, `node_control.rs`), or through the cell API in tests that
+//! control loop, `node_control.rs`), or through the shard API in tests that
 //! run without one. Not here yet (plan step 7): the per-call maximum is the
 //! grant's `per_call_micros`, not the model's price times the prompt and
 //! `max_tokens`.
@@ -46,7 +46,7 @@ use everruns_contracts::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// Every tenant's allowance in this cell.
+/// Every tenant's allowance in this shard.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Allowances {
     pub tenants: BTreeMap<String, Allowance>,
@@ -74,7 +74,7 @@ pub struct Grant {
     pub granted_micros: i64,
     /// The most one provider call may cost.
     pub per_call_micros: i64,
-    /// After this the cell stops spending from the grant.
+    /// After this the shard stops spending from the grant.
     pub spend_until_ms: i64,
     /// Actual cost settled against the grant.
     #[serde(default)]
@@ -108,7 +108,7 @@ impl Allowances {
             return json!({ "status": "no_budgets", "budgets": [] });
         };
         let Some(allowance) = self.tenants.get_mut(tenant) else {
-            // Metered, but nothing granted to this cell for the tenant.
+            // Metered, but nothing granted to this shard for the tenant.
             return json!({ "status": "exhausted", "budgets": [] });
         };
         if allowance.reserved.contains_key(&session) {
@@ -145,7 +145,7 @@ impl Allowances {
         }
     }
 
-    /// A new epoch took `session`, or the session left this cell: a
+    /// A new epoch took `session`, or the session left this shard: a
     /// reservation still open belongs to an executor that died mid-call,
     /// and counts as spent at its maximum.
     pub fn close_dangling(&mut self, tenant: Option<&str>, session: SessionId) {

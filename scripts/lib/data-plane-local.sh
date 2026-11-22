@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local data plane v2 (`just start-all`, the default; DATA_PLANE=v1 leaves
-# it out): one cell (cell 0, the directory cell) of three nodes, one
+# it out): one shard (shard 0, the directory shard) of three nodes, one
 # executor and the edge router, next to the usual stack.
 #
 # Decisions:
@@ -17,7 +17,7 @@
 #   no sessions on it (EVERRUNS_DEFAULT_DATA_PLANE_URL), as a self-hosted
 #   install does. Orgs with v1 sessions stay on the workers; `just
 #   dp-enable` moves one by hand.
-# - The cell binary is the production `everruns-cell`, which registers the
+# - The shard binary is the production `agentd`, which registers the
 #   simulated `llmsim` provider like the worker, so an agent can chat
 #   without any key, and an org's own providers through its sealed
 #   connections.
@@ -31,7 +31,7 @@ data_plane_local_dir() {
   echo "$PROJECT_ROOT/.local/data-plane/${PORT_PREFIX:-default}"
 }
 
-# Export what the API server and the cells share. Call before the API starts.
+# Export what the API server and the shards share. Call before the API starts.
 data_plane_local_env() {
   local dir
   dir="$(data_plane_local_dir)"
@@ -46,17 +46,17 @@ data_plane_local_env() {
   EVERRUNS_DP_TOKEN="$(cat "$dir/link-token")"
   EVERRUNS_DP_KEY="$(cat "$dir/dp-key")"
   export EVERRUNS_DP_TOKEN EVERRUNS_DP_KEY
-  export CELL_DP_TOKEN="$EVERRUNS_DP_TOKEN"
-  export CELL_DP_KEY="$EVERRUNS_DP_KEY"
-  export CELL_DATA_PLANE="$DP_LOCAL_ID"
+  export AGENTD_DP_TOKEN="$EVERRUNS_DP_TOKEN"
+  export AGENTD_DP_KEY="$EVERRUNS_DP_KEY"
+  export AGENTD_DATA_PLANE="$DP_LOCAL_ID"
   export EVERRUNS_DATA_PLANE=v2
   export EVERRUNS_DEFAULT_DATA_PLANE="$DP_LOCAL_ID"
   export EVERRUNS_DEFAULT_DATA_PLANE_URL="http://127.0.0.1:${PORT_PREFIX}41"
-  export CELL_CONTROL_PLANE="http://127.0.0.1:${API_PORT}/api"
-  # Injected capabilities and Memory are served to the cells at the address
+  export AGENTD_CONTROL_PLANE="http://127.0.0.1:${API_PORT}/api"
+  # Injected capabilities and Memory are served to the shards at the address
   # they reach the API on, which they trust as their control plane.
-  export INJECTED_CAPABILITIES_BASE_URL="$CELL_CONTROL_PLANE"
-  export CELL_JWKS_URL="http://127.0.0.1:${API_PORT}/api/.well-known/jwks.json"
+  export INJECTED_CAPABILITIES_BASE_URL="$AGENTD_CONTROL_PLANE"
+  export AGENTD_JWKS_URL="http://127.0.0.1:${API_PORT}/api/.well-known/jwks.json"
   export DP_EDGE_PORT="${PORT_PREFIX}45"
   export SESSIONS_UPSTREAM="127.0.0.1:${DP_EDGE_PORT}"
 }
@@ -65,8 +65,8 @@ data_plane_local_topology() {
   local dir="$1"
   cat > "$dir/topology.json" <<EOF
 {
-  "directory_cell": 0,
-  "cells": {
+  "directory_shard": 0,
+  "shards": {
     "0": {
       "1": "127.0.0.1:${PORT_PREFIX}41",
       "2": "127.0.0.1:${PORT_PREFIX}42",
@@ -83,29 +83,29 @@ data_plane_local_start() {
   dir="$(data_plane_local_dir)"
   mkdir -p "$dir/logs" "$dir/data" "$dir/store"
   data_plane_local_topology "$dir"
-  echo "   Building the cell binary..."
-  cargo build -p everruns-agentd --bin everruns-cell || return 1
-  bin="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}/debug/everruns-cell"
+  echo "   Building the shard binary..."
+  cargo build -p everruns-agentd --bin agentd || return 1
+  bin="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}/debug/agentd"
   store="file://$dir/store"
   local node
   for node in 1 2 3; do
-    CELL_EXECUTOR_CAP=256 \
-      "$bin" node --topology "$dir/topology.json" --cell 0 --node "$node" \
+    AGENTD_EXECUTOR_CAP=256 \
+      "$bin" node --topology "$dir/topology.json" --shard 0 --node "$node" \
       --data "$dir/data/n$node" --store "$store" \
-      --control-plane "$CELL_CONTROL_PLANE" \
+      --control-plane "$AGENTD_CONTROL_PLANE" \
       >> "$dir/logs/n$node.log" 2>&1 &
-    record_pid "cell-n$node" "$!"
+    record_pid "shard-n$node" "$!"
     CHILD_PIDS+=("$!")
   done
   "$bin" executor --topology "$dir/topology.json" --id $((1 << 32)) \
     --store "$store" --listen "127.0.0.1:${PORT_PREFIX}44" \
     >> "$dir/logs/executor.log" 2>&1 &
-  record_pid cell-executor "$!"
+  record_pid shard-executor "$!"
   CHILD_PIDS+=("$!")
   "$bin" edge --topology "$dir/topology.json" --listen "127.0.0.1:${DP_EDGE_PORT}" \
     --control-plane "http://127.0.0.1:${API_PORT}" --api-prefix /api \
     >> "$dir/logs/edge.log" 2>&1 &
-  record_pid cell-edge "$!"
+  record_pid shard-edge "$!"
   CHILD_PIDS+=("$!")
 
   local i
@@ -118,7 +118,7 @@ data_plane_local_start() {
   done
   # The API server registered it (EVERRUNS_DEFAULT_DATA_PLANE_URL) and
   # places new orgs on it within seconds.
-  echo "   ✅ Data plane $DP_LOCAL_ID: cell 0 (3 nodes), 1 executor, edge :${DP_EDGE_PORT}"
+  echo "   ✅ Data plane $DP_LOCAL_ID: shard 0 (3 nodes), 1 executor, edge :${DP_EDGE_PORT}"
   echo "      New orgs run on it; move an org with v1 sessions: just dp-enable <org public id>"
 }
 

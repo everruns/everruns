@@ -14,12 +14,12 @@
 //! quorum).
 //!
 //! Decisions:
-//! - Every session runs concurrently, like a cell's sessions do, so tenths
+//! - Every session runs concurrently, like a shard's sessions do, so tenths
 //!   line up with session length.
 //! - `cargo test` runs this as a smoke (`test = true`); `cargo bench` runs
 //!   the full scale.
 //! - The authority keeps `llm.generation` events without their prompts
-//!   ([`MemoryHosting::without_prompts`]), as a cell keeps prompts in S3:
+//!   ([`MemoryHosting::without_prompts`]), as a shard keeps prompts in S3:
 //!   at about 77 KB a turn they would not fit 200 000 turns in memory, and
 //!   no turn reads them back. `--keep-prompts` keeps them, to check that
 //!   the numbers do not change.

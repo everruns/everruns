@@ -63,7 +63,7 @@ async fn session_uuid<'a>(
         return Err(CommandError::not_found("Session"));
     }
     let id = session_id.uuid();
-    // A v2 session's events are in its cell (`source.rs`).
+    // A v2 session's events are in its shard (`source.rs`).
     if let Some(plane) = crate::domains::data_plane::session_plane::SessionPlane::of(
         &ctx.db,
         ctx.org_id(),

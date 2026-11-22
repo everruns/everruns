@@ -1,26 +1,26 @@
-//! Rebuilding a cell from its restore points (data plane v2 design,
-//! "Disaster recovery"): after a cell lost quorum, or to take it back to a
+//! Rebuilding a shard from its restore points (data plane v2 design,
+//! "Disaster recovery"): after a shard lost quorum, or to take it back to a
 //! moment before a bad release.
 //!
 //! ```text
-//! app restore --topology cluster.json --cell 0 --store s3://... \
-//!             --node 1=/var/cell/c0n1 [--at 2026-11-12T09:00:00Z] [--dry-run]
-//! app restore --topology cluster.json --cell 0 --store s3://... \
-//!             --node 2=/var/cell/c0n2 --incarnation 2
+//! app restore --topology cluster.json --shard 0 --store s3://... \
+//!             --node 1=/var/shard/c0n1 [--at 2026-11-12T09:00:00Z] [--dry-run]
+//! app restore --topology cluster.json --shard 0 --store s3://... \
+//!             --node 2=/var/shard/c0n2 --incarnation 2
 //! ```
 //!
-//! [`state_at`] reads the cell's state as of a time (or its newest) from
+//! [`state_at`] reads the shard's state as of a time (or its newest) from
 //! the object store alone; [`rebuild`] writes it as the starting point of
 //! new nodes, which then start as usual. Nodes on other machines are seeded
 //! from the rebuilt incarnation's archived snapshot with [`seed`].
 //!
 //! Decisions:
-//! - A rebuilt cell is a new incarnation, claimed in the store so two
+//! - A rebuilt shard is a new incarnation, claimed in the store so two
 //!   rebuilds never share one. Its segments, shipped log and feed carry the
 //!   number, so nothing the lost incarnation wrote is read as its own.
 //! - Every session's epoch numbers jump by [`FENCE_GAP`] and its claim is
 //!   dropped. An executor still running a turn of the lost incarnation
-//!   holds an epoch the rebuilt cell never hands out again, so all it
+//!   holds an epoch the rebuilt shard never hands out again, so all it
 //!   writes is refused; the turn resumes from the log under a new epoch.
 //!   Feed records and moves need no such step: the feed carries the
 //!   incarnation, and every move step shipped before it was answered.
@@ -44,7 +44,7 @@ use openraft::{BasicNode, EntryPayload, Membership, SnapshotMeta, StoredMembersh
 use crate::restore_points::SnapshotCopy;
 use everruns_contracts::typed_id::SessionId;
 
-use crate::state::{CellId, CellState, Command, Response, SessionState};
+use crate::state::{Command, Response, SessionState, ShardId, ShardState};
 use crate::store::Store;
 use crate::types::{Entry, NodeId, Vote};
 
@@ -54,7 +54,7 @@ pub const FENCE_GAP: u64 = 1 << 32;
 /// What [`state_at`] found.
 #[derive(Debug)]
 pub struct Restored {
-    pub state: CellState,
+    pub state: ShardState,
     /// The archived snapshot it started from, if any.
     pub from: Option<SnapshotCopy>,
     /// Index of the last entry applied.
@@ -63,12 +63,16 @@ pub struct Restored {
     pub replayed: usize,
 }
 
-/// `cell`'s state as of `at_ms` (its newest without one), from the object
+/// `shard`'s state as of `at_ms` (its newest without one), from the object
 /// store alone: the newest archived snapshot at or before the point, then
 /// its incarnation's shipped log after it, up to the point.
-pub async fn state_at(store: &Store, cell: CellId, at_ms: Option<i64>) -> anyhow::Result<Restored> {
+pub async fn state_at(
+    store: &Store,
+    shard: ShardId,
+    at_ms: Option<i64>,
+) -> anyhow::Result<Restored> {
     let base = store
-        .snapshot_copies(cell)
+        .snapshot_copies(shard)
         .await?
         .into_iter()
         .filter(|c| at_ms.is_none_or(|at| c.clock_ms <= at))
@@ -78,8 +82,8 @@ pub async fn state_at(store: &Store, cell: CellId, at_ms: Option<i64>) -> anyhow
             crate::sm::decode_archived(&store.get_snapshot(copy).await?)?,
             copy.inc,
         ),
-        // No snapshot: the log of the cell's first life, from the start.
-        None => (CellState::default(), 0),
+        // No snapshot: the log of the shard's first life, from the start.
+        None => (ShardState::default(), 0),
     };
     let snapshot = state.last_applied.map_or(0, |id| id.index);
     // `read`: the last entry read; entries without a time wait in
@@ -88,19 +92,19 @@ pub async fn state_at(store: &Store, cell: CellId, at_ms: Option<i64>) -> anyhow
     let (mut read, mut replayed) = (snapshot, 0);
     let mut pending: Vec<Entry> = Vec::new();
     let mut changes = Vec::new();
-    'ranges: for (first, end) in store.shipped(cell, inc).await? {
+    'ranges: for (first, end) in store.shipped(shard, inc).await? {
         if end <= read {
             continue;
         }
         if first > read + 1 {
             anyhow::bail!(
-                "shipped log of cell {cell} (incarnation {inc}) has a hole: {} to {}",
+                "shipped log of shard {shard} (incarnation {inc}) has a hole: {} to {}",
                 read + 1,
                 first - 1
             );
         }
         let entries: Vec<Entry> =
-            serde_json::from_slice(&store.get_log(cell, inc, first, end).await?)?;
+            serde_json::from_slice(&store.get_log(shard, inc, first, end).await?)?;
         for entry in entries {
             if entry.log_id.index <= read {
                 continue;
@@ -146,7 +150,7 @@ pub async fn state_at(store: &Store, cell: CellId, at_ms: Option<i64>) -> anyhow
 /// A point-in-time restore then never takes in a step from after the point
 /// (an import carrying a session's later history, say), at the cost of
 /// leaving out, at the very end, steps it cannot place.
-fn replay(state: &mut CellState, entry: Entry, changes: &mut Vec<crate::state::Change>) {
+fn replay(state: &mut ShardState, entry: Entry, changes: &mut Vec<crate::state::Change>) {
     match entry.payload {
         EntryPayload::Blank => {}
         EntryPayload::Normal(command) => {
@@ -163,7 +167,7 @@ fn replay(state: &mut CellState, entry: Entry, changes: &mut Vec<crate::state::C
 /// What [`rebuild`] wrote.
 #[derive(Debug, serde::Serialize)]
 pub struct Rebuilt {
-    pub cell: CellId,
+    pub shard: ShardId,
     pub incarnation: u64,
     /// The snapshot it started from: (incarnation, index).
     pub from: Option<(u64, u64)>,
@@ -173,36 +177,36 @@ pub struct Rebuilt {
     pub replayed: usize,
 }
 
-/// Rebuild `cell` as of `at_ms` (its newest without one) as a new
+/// Rebuild `shard` as of `at_ms` (its newest without one) as a new
 /// incarnation whose voters are `members` (id to address), writing the
 /// starting point of the nodes in `local` (id to an empty data directory).
 /// Seed the others with [`seed`] on their machines, then start every node
 /// as usual.
 pub async fn rebuild(
     store: &Store,
-    cell: CellId,
+    shard: ShardId,
     members: &BTreeMap<NodeId, String>,
     local: &BTreeMap<NodeId, PathBuf>,
     at_ms: Option<i64>,
 ) -> anyhow::Result<Rebuilt> {
     if members.is_empty() {
-        anyhow::bail!("a rebuilt cell needs at least one member");
+        anyhow::bail!("a rebuilt shard needs at least one member");
     }
     for (node, dir) in local {
         if !members.contains_key(node) {
-            anyhow::bail!("node {node} is not a member of cell {cell}");
+            anyhow::bail!("node {node} is not a member of shard {shard}");
         }
         refuse_used(*node, dir)?;
     }
-    let restored = state_at(store, cell, at_ms).await?;
+    let restored = state_at(store, shard, at_ms).await?;
     let Some(last_log_id) = restored.state.last_applied else {
-        anyhow::bail!("nothing to restore for cell {cell}: no snapshot and no shipped log");
+        anyhow::bail!("nothing to restore for shard {shard}: no snapshot and no shipped log");
     };
     let mut state = restored.state;
-    // A cell never rebuilt is incarnation 0 here and 1 on its feed, so the
+    // A shard never rebuilt is incarnation 0 here and 1 on its feed, so the
     // first rebuild is 2.
     let incarnation = store
-        .claim_incarnation(cell, (state.incarnation + 1).max(2))
+        .claim_incarnation(shard, (state.incarnation + 1).max(2))
         .await?;
     renew(&mut state, incarnation);
     let voters: std::collections::BTreeSet<NodeId> = members.keys().copied().collect();
@@ -222,7 +226,7 @@ pub async fn rebuild(
     let data = bytes::Bytes::from(serde_json::to_vec(&state)?);
     store
         .put_snapshot(
-            cell,
+            shard,
             &meta.snapshot_id,
             incarnation,
             last_log_id.index,
@@ -234,7 +238,7 @@ pub async fn rebuild(
         seed_dir(dir, *node, &meta, &data).await?;
     }
     Ok(Rebuilt {
-        cell,
+        shard,
         incarnation,
         from: restored.from.map(|c| (c.inc, c.index)),
         last_index: last_log_id.index,
@@ -251,25 +255,25 @@ pub struct OrgRestored {
     pub at_ms: i64,
     /// Sessions taken back to the point.
     pub restored: Vec<SessionId>,
-    /// Sessions of the org at the point that no cell holds any more.
+    /// Sessions of the org at the point that no shard holds any more.
     pub missing: Vec<SessionId>,
-    /// Sessions a cell refused for now (moving); run the restore again.
+    /// Sessions a shard refused for now (moving); run the restore again.
     pub refused: Vec<(SessionId, String)>,
 }
 
 /// `org`'s sessions as of `at_ms`, from the object store alone: each
-/// cell's state at the point, the newest copy of each session. A session
+/// shard's state at the point, the newest copy of each session. A session
 /// that was moving at the point has two copies; the higher generation is
 /// the one the move was installing.
 pub async fn org_at(
     store: &Store,
-    cells: impl IntoIterator<Item = CellId>,
+    shards: impl IntoIterator<Item = ShardId>,
     org: &str,
     at_ms: i64,
 ) -> anyhow::Result<std::collections::HashMap<SessionId, SessionState>> {
     let mut sessions = std::collections::HashMap::<SessionId, SessionState>::new();
-    for cell in cells {
-        let state = state_at(store, cell, Some(at_ms)).await?.state;
+    for shard in shards {
+        let state = state_at(store, shard, Some(at_ms)).await?.state;
         for (id, session) in state.sessions {
             if session.tenant.as_deref() != Some(org) {
                 continue;
@@ -286,7 +290,7 @@ pub async fn org_at(
 }
 
 /// Take `org`'s sessions back to `at_ms` where they live now, through each
-/// one's cell (`Command::Revert`). No other org's sessions change.
+/// one's shard (`Command::Revert`). No other org's sessions change.
 ///
 /// Decisions:
 /// - A session goes back in place, on a new history branch: no move, so
@@ -302,14 +306,14 @@ pub async fn restore_org(
     org: &str,
     at_ms: i64,
 ) -> anyhow::Result<OrgRestored> {
-    let cells: Vec<CellId> = gateway
+    let shards: Vec<ShardId> = gateway
         .topology()
         .map_err(|(_, error)| anyhow::anyhow!(error))?
-        .cells
+        .shards
         .keys()
         .copied()
         .collect();
-    let images = org_at(store, cells, org, at_ms).await?;
+    let images = org_at(store, shards, org, at_ms).await?;
     let mut report = OrgRestored {
         org: org.to_owned(),
         at_ms,
@@ -334,7 +338,7 @@ pub async fn restore_org(
                 break;
             };
             match gateway
-                .propose(placed.cell, &command)
+                .propose(placed.shard, &command)
                 .await
                 .map_err(|(_, error)| anyhow::anyhow!(error))?
             {
@@ -395,30 +399,32 @@ async fn seed_dir(
 }
 
 /// Seed `node`'s empty data directory `dir` for incarnation `incarnation`
-/// of `cell`, already rebuilt elsewhere: from that incarnation's newest
+/// of `shard`, already rebuilt elsewhere: from that incarnation's newest
 /// archived snapshot. The node then starts as usual and catches up from
-/// its cell's leader.
+/// its shard's leader.
 ///
-/// Decision: a node of a rebuilt cell never starts empty. An empty node
+/// Decision: a node of a rebuilt shard never starts empty. An empty node
 /// begins at term 0 with no membership of its own, so two of them could
 /// elect each other over an empty log; a seeded one holds the restored
 /// membership and a vote at its term.
 pub async fn seed(
     store: &Store,
-    cell: CellId,
+    shard: ShardId,
     incarnation: u64,
     node: NodeId,
     dir: &std::path::Path,
 ) -> anyhow::Result<u64> {
     refuse_used(node, dir)?;
     let Some(copy) = store
-        .snapshot_copies(cell)
+        .snapshot_copies(shard)
         .await?
         .into_iter()
         .filter(|c| c.inc == incarnation)
         .max_by_key(|c| c.index)
     else {
-        anyhow::bail!("cell {cell} has no snapshot of incarnation {incarnation}; rebuild it first");
+        anyhow::bail!(
+            "shard {shard} has no snapshot of incarnation {incarnation}; rebuild it first"
+        );
     };
     let bytes = store.get_snapshot(&copy).await?;
     let (meta, at) = crate::sm::split_snapshot(&bytes)?;
@@ -428,7 +434,7 @@ pub async fn seed(
         .voter_ids()
         .any(|id| id == node)
     {
-        anyhow::bail!("node {node} is not a member of cell {cell}'s incarnation {incarnation}");
+        anyhow::bail!("node {node} is not a member of shard {shard}'s incarnation {incarnation}");
     }
     seed_dir(dir, node, &meta, &bytes[at..]).await?;
     Ok(copy.index)
@@ -437,7 +443,7 @@ pub async fn seed(
 /// Make `state` incarnation `incarnation`: every session's epochs jump past
 /// anything the lost incarnation handed out, no claim survives, and every
 /// session writes its history on a new branch.
-fn renew(state: &mut CellState, incarnation: u64) {
+fn renew(state: &mut ShardState, incarnation: u64) {
     state.incarnation = incarnation;
     let branch = crate::state::new_branch(crate::node::now_ms());
     for session in state.sessions.values_mut() {
@@ -517,7 +523,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_empty_store_restores_an_empty_cell_and_rebuilds_nothing() {
+    async fn an_empty_store_restores_an_empty_shard_and_rebuilds_nothing() {
         let store = Store::open("memory:///").unwrap();
         let restored = state_at(&store, 7, None).await.unwrap();
         assert_eq!(restored.last, 0);
@@ -533,7 +539,7 @@ mod tests {
 
     #[test]
     fn a_rebuild_fences_every_epoch_the_lost_incarnation_handed_out() {
-        let mut state = CellState::default();
+        let mut state = ShardState::default();
         let mut session = crate::state::SessionState::default();
         session.authority.fence = 7;
         session.authority.holder = Some(crate::authority::Holder {

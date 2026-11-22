@@ -230,8 +230,8 @@ appears in the manifest.
 {{- if not (has .Values.dataPlane.version (list "v1" "v2")) -}}
 {{- fail (printf "dataPlane.version must be v1 or v2, got %q" .Values.dataPlane.version) -}}
 {{- end -}}
-{{- if not (has (int .Values.dataPlane.cell.nodes) (list 1 3 5)) -}}
-{{- fail "dataPlane.cell.nodes must be 1, 3 or 5: a cell needs a majority of its nodes" -}}
+{{- if not (has (int .Values.dataPlane.shard.nodes) (list 1 3 5)) -}}
+{{- fail "dataPlane.shard.nodes must be 1, 3 or 5: a shard needs a majority of its nodes" -}}
 {{- end -}}
 {{- if and .Values.metrics.serviceMonitor.enabled (not .Values.metrics.enabled) -}}
 {{- fail "metrics.serviceMonitor.enabled needs metrics.enabled" -}}
@@ -243,36 +243,37 @@ appears in the manifest.
 {{- if or (eq .Values.dataPlane.version "v2") .Values.dataPlane.keepRunning }}true{{ end -}}
 {{- end -}}
 
-{{- define "everruns.cellImage" -}}
-{{- .Values.dataPlane.image | default (include "everruns.image" (list . "cell")) -}}
+{{- define "everruns.shardImage" -}}
+{{- $release := ternary "latest" (printf "v%s" .Chart.AppVersion) (eq .Chart.AppVersion "latest") -}}
+{{- .Values.dataPlane.image | default (printf "%s/agentd:%s" .Values.image.registry (.Values.image.tag | default $release)) -}}
 {{- end -}}
 
-{{/* A cell node's gateway address: pass (list $ ordinal). */}}
-{{- define "everruns.cellAddr" -}}
+{{/* A shard node's gateway address: pass (list $ ordinal). */}}
+{{- define "everruns.shardAddr" -}}
 {{- $ := index . 0 -}}
-{{- $cell := include "everruns.name" (list $ "cell") -}}
-{{- printf "%s-%d.%s:7000" $cell (int (index . 1)) $cell -}}
+{{- $shard := include "everruns.name" (list $ "agentd") -}}
+{{- printf "%s-%d.%s:7000" $shard (int (index . 1)) $shard -}}
 {{- end -}}
 
-{{/* Where cells keep session history: dataPlane.store, S3, or the shared volume. */}}
-{{- define "everruns.cellStore" -}}
+{{/* Where shards keep session history: dataPlane.store, S3, or the shared volume. */}}
+{{- define "everruns.shardStore" -}}
 {{- if .Values.dataPlane.store -}}
 {{- .Values.dataPlane.store -}}
 {{- else if .Values.storage.s3.enabled -}}
 {{- $prefix := trimSuffix "/" .Values.storage.s3.prefix -}}
 {{- if $prefix -}}
-{{- printf "s3://%s/%s/cells" .Values.storage.s3.bucket $prefix -}}
+{{- printf "s3://%s/%s/shards" .Values.storage.s3.bucket $prefix -}}
 {{- else -}}
-{{- printf "s3://%s/cells" .Values.storage.s3.bucket -}}
+{{- printf "s3://%s/shards" .Values.storage.s3.bucket -}}
 {{- end -}}
 {{- else -}}
 file:///store
 {{- end -}}
 {{- end -}}
 
-{{/* Whether cells and executors mount the shared store volume. */}}
-{{- define "everruns.cellStoreVolume" -}}
-{{- if hasPrefix "file://" (include "everruns.cellStore" .) }}true{{ end -}}
+{{/* Whether shards and executors mount the shared store volume. */}}
+{{- define "everruns.shardStoreVolume" -}}
+{{- if hasPrefix "file://" (include "everruns.shardStore" .) }}true{{ end -}}
 {{- end -}}
 
 {{/*
@@ -280,19 +281,19 @@ Env entries every data plane pod shares: the topology, the store and its
 S3 settings (from storage.s3 when the store is there), the data plane it
 is and the link to the server.
 */}}
-{{- define "everruns.cellEnv" -}}
+{{- define "everruns.shardEnv" -}}
 {{- $internal := include "everruns.internalSecretName" . -}}
 {{- $server := include "everruns.name" (list . "server") -}}
-- { name: CELL_TOPOLOGY, value: /etc/cell/topology.json }
-- { name: CELL_STORE, value: {{ include "everruns.cellStore" . | quote }} }
-- { name: CELL_DATA_PLANE, value: local }
-- { name: CELL_JWKS_URL, value: {{ printf "http://%s:9000/api/.well-known/jwks.json" $server | quote }} }
+- { name: AGENTD_TOPOLOGY, value: /etc/shard/topology.json }
+- { name: AGENTD_STORE, value: {{ include "everruns.shardStore" . | quote }} }
+- { name: AGENTD_DATA_PLANE, value: local }
+- { name: AGENTD_JWKS_URL, value: {{ printf "http://%s:9000/api/.well-known/jwks.json" $server | quote }} }
 {{- /* Nodes deliver the feed there; nodes and executors call its injected
 capabilities and Memory there (INJECTED_CAPABILITIES_BASE_URL). */}}
-- { name: CELL_CONTROL_PLANE, value: {{ printf "http://%s:9000/api" $server | quote }} }
-- name: CELL_DP_TOKEN
+- { name: AGENTD_CONTROL_PLANE, value: {{ printf "http://%s:9000/api" $server | quote }} }
+- name: AGENTD_DP_TOKEN
   valueFrom: { secretKeyRef: { name: {{ $internal }}, key: EVERRUNS_DP_TOKEN } }
-- name: CELL_DP_KEY
+- name: AGENTD_DP_KEY
   valueFrom: { secretKeyRef: { name: {{ $internal }}, key: EVERRUNS_DP_KEY } }
 - { name: RUST_LOG, value: "info,openraft=warn" }
 {{- if and .Values.storage.s3.enabled (not .Values.dataPlane.store) }}
@@ -326,7 +327,7 @@ capabilities and Memory there (INJECTED_CAPABILITIES_BASE_URL). */}}
 {{- if include "everruns.dataPlaneRuns" . }}
 {{- if eq .Values.dataPlane.version "v2" }}
 - { name: EVERRUNS_DEFAULT_DATA_PLANE, value: local }
-- { name: EVERRUNS_DEFAULT_DATA_PLANE_URL, value: {{ printf "http://%s-gateway:7000" (include "everruns.name" (list . "cell")) | quote }} }
+- { name: EVERRUNS_DEFAULT_DATA_PLANE_URL, value: {{ printf "http://%s-gateway:7000" (include "everruns.name" (list . "agentd")) | quote }} }
 - { name: INJECTED_CAPABILITIES_BASE_URL, value: {{ printf "http://%s:9000/api" (include "everruns.name" (list . "server")) | quote }} }
 {{- end }}
 {{- $internal := include "everruns.internalSecretName" . }}

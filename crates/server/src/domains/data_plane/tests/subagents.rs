@@ -1,4 +1,4 @@
-//! A subagent a cell starts (`subagents.rs`), on a real database: the
+//! A subagent a shard starts (`subagents.rs`), on a real database: the
 //! `subagent_record` host call gives it a record under its parent, marked
 //! as the data plane's, and only for the org's own v2 sessions.
 
@@ -16,7 +16,7 @@ fn internal_ctx(cp: &ControlPlane, org_id: i64) -> crate::domains::common::Ctx {
 }
 
 #[tokio::test]
-async fn a_cells_subagent_gets_a_record_under_its_parent() {
+async fn a_shards_subagent_gets_a_record_under_its_parent() {
     let (cp, _, _) = control_plane().await;
     let harness = harness(&cp.db, ORG).await;
     let mut row = crate::storage::test_database::test_session_row(ORG);

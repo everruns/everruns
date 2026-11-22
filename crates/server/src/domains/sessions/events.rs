@@ -3,7 +3,7 @@
 //!
 //! Decisions:
 //! - A v1 session's events are the control plane's `events` table. A v2
-//!   session's events live in its cell; the control plane reads them over
+//!   session's events live in its shard; the control plane reads them over
 //!   the link (`SessionPlane`). A feature calls [`list`] or [`advanced`]
 //!   with the arguments it gave `StorageBackend::list_events` or
 //!   `list_events_advanced` and gets the same rows for either plane, so no
@@ -17,7 +17,7 @@
 //!   with a `limit` keeps the newest `limit` before `before_sequence` and
 //!   ignores the forward cursors; without one it reads forward from the
 //!   cursor, at most 10 000 rows, and ignores `before_sequence`.
-//! - The cell answers in pages of at most 1000 committed events in their
+//! - The shard answers in pages of at most 1000 committed events in their
 //!   public form, without deltas, filtered by sequence range and type.
 //!   Every other filter (excluded types, context ids, tool name, time,
 //!   search) is applied here over the pages. An event id cursor is found by
@@ -39,7 +39,7 @@ use everruns_contracts::typed_id::{EventId, SessionId};
 use crate::domains::data_plane::session_plane::{MAX_LOG, SessionPlane};
 use crate::storage::{EventRow, ListEventsParams, StorageBackend};
 
-/// Events the cell returns in one `events` read.
+/// Events the shard returns in one `events` read.
 const PAGE: usize = 1_000;
 /// Rows `list_events` returns at most without a `limit` (the table's
 /// forward safety limit).
@@ -63,7 +63,7 @@ impl SessionEvents {
     }
 
     /// Last main-model generation, excluding separately billed continuity work.
-    /// Platform reads use the indexed lookup; cell reads inspect at most 128
+    /// Platform reads use the indexed lookup; shard reads inspect at most 128
     /// recent generations and return None when no main sample is in that bound.
     pub async fn latest_context_generation(&self) -> Result<Option<EventRow>> {
         match self {
@@ -240,7 +240,7 @@ pub async fn wait_for(
     }
 }
 
-/// A session's committed events, a page at a time: the cell's `events`
+/// A session's committed events, a page at a time: the shard's `events`
 /// read (a fake in tests).
 trait Pages {
     fn session(&self) -> SessionId;
@@ -380,7 +380,7 @@ async fn anchor(pages: &impl Pages, id: EventId) -> Result<Option<i32>> {
     }
 }
 
-/// Whether `params` has filters the cell's read lacks.
+/// Whether `params` has filters the shard's read lacks.
 fn filters_here(params: &ListEventsParams) -> bool {
     !params.exclude_types.is_empty()
         || params.from_ts.is_some()
@@ -419,7 +419,7 @@ fn matches(params: &ListEventsParams, r: &EventRow) -> bool {
         })
 }
 
-/// A cell's event row in the table's shape.
+/// A shard's event row in the table's shape.
 fn row(session: SessionId, r: SessionEventRow) -> EventRow {
     EventRow {
         id: r.id.parse().unwrap_or_default(),
@@ -442,7 +442,7 @@ mod tests {
 
     use super::*;
 
-    /// A session's log, served a page at a time as the cell does.
+    /// A session's log, served a page at a time as the shard does.
     struct Log {
         session: SessionId,
         rows: Vec<SessionEventRow>,
@@ -493,7 +493,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_cells_rows_read_as_the_tables() {
+    async fn a_shards_rows_read_as_the_tables() {
         let log = log(3, |_| "turn.completed");
         let params = ListEventsParams {
             session_id: log.session,
@@ -525,7 +525,7 @@ mod tests {
         };
         let rows = select(&log, &params, 3).await.unwrap();
         assert_eq!(sequences(&rows), vec![2_399, 2_397, 2_395]);
-        // Without filters of its own the cell picks the newest itself.
+        // Without filters of its own the shard picks the newest itself.
         let plain = ListEventsParams {
             exclude_types: vec![],
             ..params
@@ -612,7 +612,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn context_measurement_skips_flat_and_legacy_compaction_calls_in_a_cells_log() {
+    async fn context_measurement_skips_flat_and_legacy_compaction_calls_in_a_shards_log() {
         let mut log = log(6, |_| "llm.generation");
         log.rows[0].data = json!({"metadata":{"model":"old-main"}});
         log.rows[1].data = json!({"metadata":{"model":"last-main"}});

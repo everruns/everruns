@@ -101,8 +101,8 @@ pub(super) async fn plane(
         })
 }
 
-/// Record a call's event on the session: in its log on its cell for a v2
-/// session (one of the cell's `RECORDABLE` events), else through the event
+/// Record a call's event on the session: in its log on its shard for a v2
+/// session (one of the shard's `RECORDABLE` events), else through the event
 /// service.
 pub(super) async fn emit(
     state: &AppState,

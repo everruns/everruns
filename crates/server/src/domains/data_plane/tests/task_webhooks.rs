@@ -111,7 +111,7 @@ async fn a_v2_tasks_transitions_reach_its_webhooks_once() {
         secret_held: true,
     };
     let budgets = BudgetService::new(cp.db.clone());
-    let source = format!("cell-tasks-{}", uuid::Uuid::new_v4().simple());
+    let source = format!("shard-tasks-{}", uuid::Uuid::new_v4().simple());
     let batch = FeedBatch {
         source: source.clone(),
         data_plane: "dp-1".into(),

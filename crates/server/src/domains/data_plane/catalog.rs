@@ -3,7 +3,7 @@
 //!
 //! Tools that hand work to another agent (coordination, handoff, teams)
 //! name it by the platform's agent id, from their configuration. On the
-//! platform's workers they ask the control plane for it; on a cell the
+//! platform's workers they ask the control plane for it; on a shard the
 //! answer is pushed ahead instead, as the design's rule says ("a value
 //! that can be known before the call is pushed, never asked").
 //!

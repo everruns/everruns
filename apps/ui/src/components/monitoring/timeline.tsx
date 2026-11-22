@@ -3,8 +3,8 @@
 // Monitoring → Timeline: recorded history over a chosen range
 // (knowledge/operations/monitoring.md). Execution shows now; Timeline shows
 // the same population, turns, queue, and worker load over time, for workers
-// and data plane v2 cells on one time axis. The platform view adds the fleet:
-// servers, workers, cells, nodes, and the fullest cell node's CPU and memory.
+// and data plane v2 shards on one time axis. The platform view adds the fleet:
+// servers, workers, shards, nodes, and the fullest shard node's CPU and memory.
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -46,7 +46,7 @@ import {
   axisFormatter,
   bucketLabel,
   change,
-  hasCells,
+  hasShards,
   type Plane,
   selectionTotals,
   timelineColors as C,
@@ -67,7 +67,7 @@ function axisCount(v: number): string {
 }
 
 /** `path` pins an organization to the execution path it runs on, which hides
- * the All / Workers / Cells filter; the platform view leaves it unset. */
+ * the All / Workers / Shards filter; the platform view leaves it unset. */
 export function MonitoringTimelineView({ scope, path }: { scope: MonitoringScope; path?: Plane }) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
@@ -112,9 +112,9 @@ export function MonitoringTimelineView({ scope, path }: { scope: MonitoringScope
             </Button>
           )}
         </div>
-        {data && !path && hasCells(data) && (
+        {data && !path && hasShards(data) && (
           <div className="flex" role="group" aria-label={ui("Execution path")}>
-            {(["all", "workers", "cells"] as const).map((p) => (
+            {(["all", "workers", "shards"] as const).map((p) => (
               <Button
                 key={p}
                 variant="outline"
@@ -123,7 +123,7 @@ export function MonitoringTimelineView({ scope, path }: { scope: MonitoringScope
                 onClick={() => setPlane(p)}
                 className={`-ml-px first:ml-0 ${plane === p ? "relative z-10 border-primary font-semibold" : "text-muted-foreground"}`}
               >
-                {p === "all" ? ui("All") : p === "workers" ? ui("Workers") : ui("Cells")}
+                {p === "all" ? ui("All") : p === "workers" ? ui("Workers") : ui("Shards")}
               </Button>
             ))}
           </div>
@@ -152,7 +152,7 @@ export function MonitoringTimelineView({ scope, path }: { scope: MonitoringScope
         <TimelineBody
           scope={scope}
           data={data}
-          plane={path ?? (hasCells(data) ? plane : "workers")}
+          plane={path ?? (hasShards(data) ? plane : "workers")}
           selection={selection}
           onSelect={setSelection}
           onZoom={(from, to) => {
@@ -209,8 +209,8 @@ function TimelineBody({
   const { displayLocale } = useLocale();
   const fleet = scope === "fleet";
   const rows = useMemo(() => timelineRows(data.buckets, plane), [data.buckets, plane]);
-  const cells = plane !== "workers" && hasCells(data);
-  const workers = plane !== "cells";
+  const shards = plane !== "workers" && hasShards(data);
+  const workers = plane !== "shards";
   const [errorsOpen, setErrorsOpen] = useState(false);
   const bucketMs = data.bucket_seconds * 1000;
   const formatX = axisFormatter(data.bucket_seconds, displayLocale);
@@ -218,7 +218,7 @@ function TimelineBody({
   const rebuilt = data.buckets.some((b) => b.backfilled && !b.sampled);
   const markers = data.markers
     .filter((m) => fleet || m.kind === "deploy")
-    .filter((m) => m.kind !== "leader_change" || cells)
+    .filter((m) => m.kind !== "leader_change" || shards)
     .filter((m) => !m.kind.startsWith("worker_") || workers)
     .map((m) => ({ at: Date.parse(m.at), label: markerLabel(ui, m) }));
   const common = {
@@ -271,12 +271,12 @@ function TimelineBody({
     : [];
   const sessions: TimeSeries[] = [
     ...phaseSeries,
-    ...(cells
+    ...(shards
       ? [
           {
-            key: "on_cells",
-            label: ui("On cells"),
-            color: C.cells,
+            key: "on_shards",
+            label: ui("On shards"),
+            color: C.shards,
             kind: "area",
             stack: "p",
           } as TimeSeries,
@@ -358,12 +358,12 @@ function TimelineBody({
   const fleetSeries: TimeSeries[] = [
     { key: "servers", label: ui("Servers"), color: C.servers, kind: "line" },
     { key: "workers", label: ui("Workers"), color: C.workers, kind: "line" },
-    ...(hasCells(data)
+    ...(hasShards(data)
       ? ([
-          { key: "cells", label: ui("Cells"), color: C.cells, kind: "line" },
+          { key: "shards", label: ui("Shards"), color: C.shards, kind: "line" },
           {
             key: "nodes",
-            label: ui("Cell nodes"),
+            label: ui("Shard nodes"),
             color: C.nodes,
             kind: "line",
             dashed: true,
@@ -404,12 +404,12 @@ function TimelineBody({
         <ChartCard
           title={fleet && workers ? ui("Working now, against capacity") : ui("Working now")}
           description={
-            cells && workers
+            shards && workers
               ? ui(
-                  "Turns running: on workers by phase, on cells as one band (cells report once a minute); dashed line is the peak.",
+                  "Turns running: on workers by phase, on shards as one band (shards report once a minute); dashed line is the peak.",
                 )
-              : cells
-                ? ui("Turns running on cells, average per bucket; dashed line is the peak.")
+              : shards
+                ? ui("Turns running on shards, average per bucket; dashed line is the peak.")
                 : fleet
                   ? ui(
                       "All organizations, average per bucket by phase; dashed line is the peak, grey line is worker slots.",
@@ -433,7 +433,7 @@ function TimelineBody({
           <ChartCard
             title={ui("Fleet")}
             description={ui(
-              "Server replicas, workers, cells, and cell nodes (pods) running, highest per bucket.",
+              "Server replicas, workers, shards, and shard nodes (pods) running, highest per bucket.",
             )}
             series={fleetSeries}
           >
@@ -446,9 +446,9 @@ function TimelineBody({
             />
           </ChartCard>
         )}
-        {fleet && cells && (
+        {fleet && shards && (
           <ChartCard
-            title={ui("Cell node CPU and memory")}
+            title={ui("Shard node CPU and memory")}
             description={ui(
               "The busiest node's CPU and the fullest node's memory, as a share of their limits.",
             )}
@@ -459,7 +459,7 @@ function TimelineBody({
               series={resources}
               height={110}
               formatY={(v) => `${number(v)}%`}
-              ariaLabel={ui("Cell node CPU and memory over time")}
+              ariaLabel={ui("Shard node CPU and memory over time")}
             />
           </ChartCard>
         )}
@@ -568,10 +568,10 @@ function TimelineBody({
               },
             ]}
           />
-          {fleet && cells && (
+          {fleet && shards && (
             <SmallChart
               title={ui("Leader changes and moves")}
-              description={ui("Cell leader elections, and sessions moved to another cell.")}
+              description={ui("Shard leader elections, and sessions moved to another shard.")}
               common={common}
               series={[
                 {
@@ -589,10 +589,10 @@ function TimelineBody({
               ]}
             />
           )}
-          {cells && (
+          {shards && (
             <SmallChart
-              title={ui("Waiting on cells")}
-              description={ui("Most messages waiting for a turn on cells in one minute.")}
+              title={ui("Waiting on shards")}
+              description={ui("Most messages waiting for a turn on shards in one minute.")}
               common={common}
               series={[
                 {
@@ -754,19 +754,19 @@ function Kpis({ data, fleet, plane }: { data: MonitoringTimeline; fleet: boolean
       value: number(data.open_sessions_now),
       detail: ui("{value0} agents", { value0: number(data.agents_now) }),
     },
-    plane === "cells"
+    plane === "shards"
       ? {
           label: ui("Peak parallel sessions"),
-          value: number(summary.cells_peak_running ?? 0),
-          detail: ui("on cells"),
+          value: number(summary.shards_peak_running ?? 0),
+          detail: ui("on shards"),
         }
       : {
           label: ui("Peak parallel sessions"),
           value: number(summary.peak_active),
           detail:
-            plane === "all" && summary.cells_peak_running != null
-              ? ui("on workers · {value0} on cells", {
-                  value0: number(summary.cells_peak_running),
+            plane === "all" && summary.shards_peak_running != null
+              ? ui("on workers · {value0} on shards", {
+                  value0: number(summary.shards_peak_running),
                 })
               : summary.peak_at
                 ? ui("at {value0}", { value0: time(summary.peak_at)! })
@@ -791,10 +791,10 @@ function Kpis({ data, fleet, plane }: { data: MonitoringTimeline; fleet: boolean
           </span>
         ),
     },
-    plane === "cells"
+    plane === "shards"
       ? {
-          label: ui("Most waiting on cells"),
-          value: number(Math.max(0, ...data.buckets.map((b) => b.cells?.queued_peak ?? 0))),
+          label: ui("Most waiting on shards"),
+          value: number(Math.max(0, ...data.buckets.map((b) => b.shards?.queued_peak ?? 0))),
           detail: ui("turns queued at once"),
         }
       : fleet && summary.seconds_above_90 != null
@@ -985,7 +985,7 @@ function SelectionRail({
               {scope === "fleet" && totals.elections + totals.moves > 0 && (
                 <>
                   <Row
-                    label={ui("Cell leader changes")}
+                    label={ui("Shard leader changes")}
                     value={number(totals.elections)}
                     warn={totals.elections > 0}
                   />
@@ -1133,7 +1133,7 @@ function FailureList({
 
 /**
  * What failed in the selected range (or the whole range): platform problems
- * first (cell leader changes and moves, platform view only), then failed
+ * first (shard leader changes and moves, platform view only), then failed
  * turns by cause and failed tool calls by tool.
  */
 function ErrorsDrawer({
@@ -1178,7 +1178,7 @@ function ErrorsDrawer({
       : [];
   const moves = data.buckets
     .filter((b) => Date.parse(b.start) >= Date.parse(from) && Date.parse(b.start) < Date.parse(to))
-    .reduce((a, b) => a + (b.cells?.moves ?? 0), 0);
+    .reduce((a, b) => a + (b.shards?.moves ?? 0), 0);
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent className="overflow-y-auto">
@@ -1200,7 +1200,7 @@ function ErrorsDrawer({
               ))}
               {moves > 0 && (
                 <div className="flex justify-between gap-3">
-                  <dt>{ui("Sessions moved between cells")}</dt>
+                  <dt>{ui("Sessions moved between shards")}</dt>
                   <dd className="tabular-nums">{number(moves)}</dd>
                 </div>
               )}

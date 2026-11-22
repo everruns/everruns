@@ -1,5 +1,5 @@
 //! The session stream against a live fleet (design.md, step 8): every
-//! session has one stream node, picked by rendezvous hash over its cell's
+//! session has one stream node, picked by rendezvous hash over its shard's
 //! members, and deltas are fenced by the epoch that produced them.
 //!
 //! The four cases the step 8 plan names:
@@ -15,7 +15,7 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use everruns_cell::stream::{Deliver, LiveBatch, LiveItem, Redirect, View};
+use everruns_agentd::stream::{Deliver, LiveBatch, LiveItem, Redirect, View};
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::events::{Event, EventContext, OutputMessageDeltaData};
 use serde_json::{Value, json};
@@ -99,7 +99,7 @@ impl Sse {
 /// The ids of every committed event, once a read shows `turns` completed
 /// turns and, when given, the event `last`.
 ///
-/// Decision: wait for both. The gateway spreads reads over the cell's
+/// Decision: wait for both. The gateway spreads reads over the shard's
 /// members and each answers from its own applied log, so a member that
 /// restarted and still catches up answers with an older prefix of the log.
 async fn all_ids(fleet: &Fleet, session: &str, turns: usize, last: Option<&str>) -> Vec<String> {
@@ -182,7 +182,7 @@ fn marker(session: &str, seq: u64, text: &str) -> LiveItem {
 async fn post_live(fleet: &Fleet, addr: &str, batch: &LiveBatch) -> (u16, Value) {
     let reply = fleet
         .http
-        .post(format!("http://{addr}/cell/exec/live"))
+        .post(format!("http://{addr}/shard/exec/live"))
         .json(batch)
         .send()
         .await
@@ -194,7 +194,7 @@ async fn post_live(fleet: &Fleet, addr: &str, batch: &LiveBatch) -> (u16, Value)
 async fn view(fleet: &Fleet, addr: &str) -> View {
     fleet
         .http
-        .get(format!("http://{addr}/cell/view"))
+        .get(format!("http://{addr}/shard/view"))
         .send()
         .await
         .unwrap()
@@ -207,11 +207,11 @@ async fn view(fleet: &Fleet, addr: &str) -> View {
 fn slow_turns() {
     // This binary's tests all want the same value.
     unsafe {
-        std::env::set_var("CELL_MODEL_DELAY_MS", "8000");
+        std::env::set_var("AGENTD_MODEL_DELAY_MS", "8000");
     }
 }
 
-/// The gateway on cell 1's node, so cell 0's nodes can come and go under
+/// The gateway on shard 1's node, so shard 0's nodes can come and go under
 /// a client's stream.
 fn gateway(fleet: &Fleet) -> String {
     format!("http://{}", fleet.addrs(1)[0].1)
@@ -398,7 +398,7 @@ async fn a_move_between_replay_and_live_keeps_one_stream() {
     let before = fleet.events(&session).await;
     let since = before[1]["id"].as_str().unwrap().to_string();
     // The client resumes from early on (a replay), and the session moves
-    // to the other cell while the stream replays and then goes live.
+    // to the other shard while the stream replays and then goes live.
     let url = format!(
         "{}/v1/sessions/{session}/sse?since_id={since}",
         fleet.base()
@@ -408,7 +408,7 @@ async fn a_move_between_replay_and_live_keeps_one_stream() {
     fleet
         .post(
             &format!("/v1/sessions/{session}/move"),
-            json!({ "cell": 1 }),
+            json!({ "shard": 1 }),
         )
         .await;
     fleet.say(&session, "four").await;

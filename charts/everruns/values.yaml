@@ -140,9 +140,9 @@ worker:
     tasksPerWorker: 15
 
 # Where agents run.
-#   v2 (default): data plane v2. Cells keep each organization's sessions (a
+#   v2 (default): data plane v2. Shards keep each organization's sessions (a
 #     Raft group with its history in an object store), executors run turns,
-#     and an edge router sends session calls to the cell. New organizations
+#     and an edge router sends session calls to the shard. New organizations
 #     run there; ones that already have sessions stay on the workers.
 #   v1: every organization runs on the workers.
 # Switching an install that ran v2 back to v1: also set keepRunning=true, or
@@ -150,10 +150,10 @@ worker:
 dataPlane:
   version: v2
   keepRunning: false
-  # Empty: <image.registry>/everruns-cell at image.tag.
+  # Empty: <image.registry>/agentd at image.tag.
   image: ""
-  # Where cells keep session history and snapshots. Empty: storage.s3's bucket
-  # (under <prefix>cells/) when it is enabled, else a volume the cells and
+  # Where shards keep session history and snapshots. Empty: storage.s3's bucket
+  # (under <prefix>shards/) when it is enabled, else a volume the shards and
   # executors share, which ReadWriteOnce allows on one node only: use S3 or a
   # ReadWriteMany storageClass for more.
   store: ""
@@ -161,7 +161,7 @@ dataPlane:
     size: 10Gi
     storageClass: ""
     accessMode: ReadWriteOnce
-  cell:
+  shard:
     # 1, or 3 to keep running when a node is lost.
     nodes: 1
     # Memory a node may use for sessions before it unloads idle ones. Keep

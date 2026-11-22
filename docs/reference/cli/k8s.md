@@ -13,6 +13,7 @@ Run Everruns in a Kubernetes cluster with the Helm chart.
 | Command | What it does |
 |---|---|
 | [`k8s up`](#k8s-up) | Install Everruns into the current Kubernetes cluster, or repair it. |
+| [`k8s cluster create`](#k8s-cluster-create) | Create a local Kubernetes cluster with a shared image store and storage provisioner. |
 | [`k8s status`](#k8s-status) | Show the install: where it is, whether its server is healthy, its pods, and which CLI profile points at it. |
 | [`k8s logs`](#k8s-logs) | Show the pods' logs. |
 | [`k8s open`](#k8s-open) | Open the UI in the browser (through a port-forward when there is no public URL) |
@@ -42,6 +43,7 @@ everruns k8s up [OPTIONS]
 | `--provider <PROVIDER>` | LLM provider for the server's default key. The key comes from OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY, or a prompt. One of `openai`, `anthropic`, `gemini`, `openrouter`, `skip`. |
 | `--database-url <DATABASE_URL>` | Your PostgreSQL 15+ URL (postgres://user:password@host:5432/db) |
 | `--bundled-postgres` | Run a single PostgreSQL pod in the cluster, for trying Everruns out (no backups or failover) |
+| `--storage-class <STORAGE_CLASS>` | StorageClass for new volumes without a per-volume class, or auto to use the cluster default. |
 | `--public-url <PUBLIC_URL>` | Public address such as https://everruns.example.com. Enables direct Ingress by default. |
 | `--ingress-class <INGRESS_CLASS>` | Ingress class for the public address, such as nginx. |
 | `--chart <CHART>` | Chart to install: a local path such as charts/everruns, or an OCI reference. |
@@ -49,11 +51,25 @@ everruns k8s up [OPTIONS]
 | `--image-tag <IMAGE_TAG>` | Image tag to run, such as v0.51.0 or latest (default: the chart's release) |
 | `--set <KEY=VALUE>` | Extra chart value (key=value), as with helm --set; kept on later runs. Repeatable. |
 | `-f`, `--values <FILE>` | Extra values file, as with helm --values. Repeatable. |
-| `--data-plane <DATA_PLANE>` | Where new organizations run agents: v2 (cells, the default) or v1 (workers). Organizations that already have sessions stay where they are. One of `v2`, `v1`. |
+| `--data-plane <DATA_PLANE>` | Where new organizations run agents: v2 (shards, the default) or v1 (workers). Organizations that already have sessions stay where they are. One of `v2`, `v1`. |
 | `--port <PORT>` | Local port for the port-forward when there is no public URL (default 9300) |
 | `--timeout <TIMEOUT>` | How long to wait for the pods, such as 15m. |
 | `-y`, `--yes` | Accept the default for every question, the cluster context included. |
 | `--no-open` | Do not open the browser. |
+
+
+## k8s cluster create
+
+Create a local Kubernetes cluster with a shared image store and storage provisioner.
+
+```bash
+everruns k8s cluster create [OPTIONS] --provider <PROVIDER>
+```
+
+| Flag | Description |
+|---|---|
+| `--provider <PROVIDER>` | Required. Local Kubernetes provider. One of `apple`. |
+| `--name <NAME>` | Name for the new cluster and its kubeconfig context. |
 
 
 ## k8s status

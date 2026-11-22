@@ -24,7 +24,7 @@ pub fn routes(state: ApiState) -> Router {
         .route("/dp/v1/feed", post(feed))
         .route("/dp/v1/tenants/{org}/allowances", post(allowances))
         .route("/dp/v1/tenants/{org}/host-calls/{name}", post(host_call))
-        // The route host calls replaced, kept while cells of the release
+        // The route host calls replaced, kept while shards of the release
         // before roll over. Remove with the release after.
         .route("/dp/v1/tenants/{org}/lookups", post(lookups))
         .route("/.well-known/jwks.json", get(jwks))

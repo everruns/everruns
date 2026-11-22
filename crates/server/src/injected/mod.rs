@@ -28,7 +28,7 @@
 // - Every failure to authenticate is the same 401, so the endpoint does not
 //   tell a caller which part of its token was wrong.
 // - Side by side with today's paths: serving a capability here does not take
-//   it off v1 workers or cells. Converting each one is a separate step.
+//   it off v1 workers or shards. Converting each one is a separate step.
 
 pub mod hosted;
 pub mod knowledge_base;
@@ -57,7 +57,7 @@ pub const JWKS_ENV: &str = "INJECTED_CAPABILITIES_JWKS";
 pub const ISSUERS_ENV: &str = "INJECTED_CAPABILITIES_ISSUERS";
 /// The base URL data planes reach this server at (API prefix included),
 /// when not the public one: a cluster service or `127.0.0.1`. Data planes
-/// trust it as their control plane (`CELL_CONTROL_PLANE`).
+/// trust it as their control plane (`AGENTD_CONTROL_PLANE`).
 pub const BASE_URL_ENV: &str = "INJECTED_CAPABILITIES_BASE_URL";
 
 /// The capabilities this server serves, and whom it trusts to call them.

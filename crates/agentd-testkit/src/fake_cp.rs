@@ -1,4 +1,4 @@
-//! A fake control plane serving `/dp/v1` to the cells (data plane v2 step
+//! A fake control plane serving `/dp/v1` to the shards (data plane v2 step
 //! 6, design.md "Levels", level 2): a ledger that grants spend allowances
 //! from each org's balance and takes settlements, a feed store, and knobs
 //! that break it the ways the failure suite needs (down, lost replies,
@@ -21,7 +21,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
-use everruns_cell::dp::{
+use everruns_agentd::dp::{
     AllowanceGrant, AllowanceRequest, ConfigAck, ConfigUpdate, FeedAck, FeedBatch, Record,
 };
 use parking_lot::Mutex;
@@ -87,7 +87,7 @@ struct Knobs {
     /// Requests to answer as lost, per channel: processed, then a 503.
     /// Decision: one count per channel, so a test that loses replies
     /// knows both the allowance and the feed path saw it, whichever the
-    /// cell happened to call first.
+    /// shard happened to call first.
     lose_allowance_replies: AtomicUsize,
     lose_feed_replies: AtomicUsize,
     grant_ttl_ms: Mutex<i64>,
@@ -163,7 +163,7 @@ impl FakeCp {
         *self.knobs.link_token.lock() = Some(token.to_owned());
     }
 
-    /// Where the cells find the keys of org tokens.
+    /// Where the shards find the keys of org tokens.
     pub fn jwks_url(&self) -> String {
         format!("{}/.well-known/jwks.json", self.url)
     }
@@ -208,7 +208,7 @@ impl FakeCp {
         let Some(token) = self.knobs.link_token.lock().clone() else {
             return Ok(());
         };
-        let sent = everruns_cell::org_token::bearer(headers);
+        let sent = everruns_agentd::org_token::bearer(headers);
         if sent == Some(token.as_str()) {
             Ok(())
         } else {
@@ -243,7 +243,7 @@ impl FakeCp {
             .insert(command.to_owned(), answer);
     }
 
-    /// Dreaming's state row `key` of `org`, as the cells left it.
+    /// Dreaming's state row `key` of `org`, as the shards left it.
     pub fn dream_state(&self, org: &str, key: &str) -> Option<serde_json::Value> {
         self.ledger
             .lock()
@@ -348,13 +348,13 @@ impl FakeCp {
         self.ledger.lock().org_events.clone()
     }
 
-    /// The task transitions the cells put on the feed for webhooks, in
+    /// The task transitions the shards put on the feed for webhooks, in
     /// feed order.
     pub fn task_transitions(&self) -> Vec<TaskTransitionSeen> {
         self.ledger.lock().task_transitions.clone()
     }
 
-    /// The session events the cells tapped onto the feed, in feed order.
+    /// The session events the shards tapped onto the feed, in feed order.
     pub fn tapped_events(&self) -> Vec<(String, String, serde_json::Value)> {
         self.ledger.lock().events.clone()
     }
@@ -385,7 +385,7 @@ impl FakeCp {
     }
 
     /// Push `update` for `org` to a data plane gateway, as the outbox
-    /// does: retried until the data plane answers (a directory cell that
+    /// does: retried until the data plane answers (a directory shard that
     /// is electing a leader answers 5xx for a moment), for up to 30 s.
     pub async fn push_config(
         &self,
@@ -499,7 +499,7 @@ async fn host_call(
     Path((org, name)): Path<(String, String)>,
     headers: axum::http::HeaderMap,
     Json(request): Json<everruns_contracts::host_calls::HostCallRequest>,
-) -> Reply<everruns_cell::dp::SealedSecret> {
+) -> Reply<everruns_agentd::dp::SealedSecret> {
     use everruns_contracts::dataplane_seal as seal;
     use everruns_contracts::host_calls::{HostCallAnswer, by_name, host_call_secret};
     cp.admit(&headers)?;

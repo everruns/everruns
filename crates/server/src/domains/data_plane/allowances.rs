@@ -78,7 +78,7 @@ pub async fn answer(
         .dp_allowance(DpAllowanceAsk {
             org_id,
             request_id: &request.request_id,
-            cell: &request.cell,
+            shard: &request.shard,
             want_micros: request.want_micros.max(0),
             settlements: request
                 .settlements

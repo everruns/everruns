@@ -635,61 +635,6 @@ impl Command for GetAgentTrigger {
 }
 
 // ============================================================================
-// ListAgentTriggerRuns
-// ============================================================================
-
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
-pub struct ListAgentTriggerRuns {
-    /// Owning agent's prefixed public identifier.
-    pub agent_id: String,
-    /// Agent trigger's prefixed public identifier.
-    pub trigger_id: String,
-}
-
-#[command(
-    name = "list_agent_trigger_runs",
-    category = "agent_triggers",
-    description = "List recent execution outcomes for an agent trigger.",
-    method = "GET",
-    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
-    policy = AGENT_VIEW,
-    cli = CliRoute::new(&["agents", "triggers", "runs"], "list").with_examples(&[CliExample::new("See whether recent firings of a trigger succeeded", "everruns agents triggers runs list --agent-id agent_01h9 --trigger-id trg_01h9")]),
-)]
-impl Command for ListAgentTriggerRuns {
-    type Output = Vec<AgentTriggerRun>;
-
-    async fn execute(self, ctx: &Ctx) -> Result<Vec<AgentTriggerRun>, CommandError> {
-        let (_, trigger) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
-        let Some(schedule_id) = trigger.durable_schedule_id else {
-            return Ok(Vec::new());
-        };
-        let executions = durable_store(ctx)?
-            .list_schedule_executions(
-                ScheduleExecutionFilter {
-                    schedule_id: Some(schedule_id),
-                    status: None,
-                },
-                DurablePagination {
-                    offset: 0,
-                    limit: 10,
-                },
-            )
-            .await
-            .map_err(|err| classify_anyhow(err.into()))?;
-        Ok(executions
-            .into_iter()
-            .map(|execution| AgentTriggerRun {
-                id: execution.id.to_string(),
-                status: execution.status.to_string(),
-                scheduled_at: execution.scheduled_at,
-                completed_at: execution.completed_at,
-                error: execution.error,
-            })
-            .collect())
-    }
-}
-
-// ============================================================================
 // UpdateAgentTrigger
 // ============================================================================
 
@@ -1497,4 +1442,8 @@ pub(super) fn emit_agent_trigger_audit_event(
 mod tests;
 
 mod resolve_trigger;
+mod runs;
 pub(super) use resolve_trigger::resolve_trigger_for_agent;
+pub use runs::ListAgentTriggerRuns;
+#[cfg(test)]
+use runs::apply_task_outcome;

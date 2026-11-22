@@ -175,7 +175,7 @@ impl Command for GetSessionRun {
         let rows: Vec<_> = rows.into_iter().take(MAX_RUN_SESSIONS as usize).collect();
         let ids: Vec<Uuid> = rows.iter().map(|row| row.id.uuid()).collect();
         // Turns come from the trace index; bring each session's up to date.
-        // A v2 session's turns come from its cell's trace rows instead.
+        // A v2 session's turns come from its shard's trace rows instead.
         let cp = crate::domains::data_plane::ControlPlane::from_env(ctx.db.clone());
         let mut indexed = Vec::with_capacity(ids.len());
         let mut turns = Vec::new();

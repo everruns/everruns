@@ -1,9 +1,9 @@
-//! A session's tasks on a cell (data plane v2 step 11.4): the subagents,
+//! A session's tasks on a shard (data plane v2 step 11.4): the subagents,
 //! threads and background work it started, with their message channels.
-//! They live in the owning session's cell state, next to its schedules.
+//! They live in the owning session's shard state, next to its schedules.
 //!
 //! Decisions:
-//! - Every write is a [`Command::Platform`] on the owner's cell, built in
+//! - Every write is a [`Command::Platform`] on the owner's shard, built in
 //!   full by the proposer (ids and times travel in the command), and goes
 //!   through the shared `apply_task_update` invariants, as on every host.
 //! - A transition that wakes the owner (per the task's wake policy: a
@@ -26,7 +26,7 @@
 //!   state (the org's task webhooks fire on those), and waiting for input
 //!   or an outbound message only when a push config names it. The feed is
 //!   the channel the control plane drains once per position, so a leader
-//!   change neither loses nor repeats a delivery; a cell has no outbound
+//!   change neither loses nor repeats a delivery; a shard has no outbound
 //!   webhook path of its own.
 
 use std::sync::Arc;
@@ -579,12 +579,12 @@ pub fn api_op(write: ApiWrite, kind: &str) -> std::result::Result<TaskOp, String
     })
 }
 
-/// The session tasks of an activation, in the owning sessions' cell state.
-pub(crate) struct CellTasks {
+/// The session tasks of an activation, in the owning sessions' shard state.
+pub(crate) struct ShardTasks {
     port: Port,
 }
 
-impl CellTasks {
+impl ShardTasks {
     pub(crate) fn new(port: Port) -> Self {
         Self { port }
     }
@@ -614,7 +614,7 @@ impl CellTasks {
 }
 
 #[async_trait]
-impl SessionTaskRegistry for CellTasks {
+impl SessionTaskRegistry for ShardTasks {
     async fn create(&self, input: CreateSessionTask) -> Result<SessionTask> {
         let session = input.session_id;
         let task = new_session_task(input, Utc::now());

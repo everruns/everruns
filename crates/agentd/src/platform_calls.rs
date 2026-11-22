@@ -8,7 +8,7 @@
 //!
 //! Decisions:
 //! - THREAT[TM-AGENT-017]: a call names only the session and the turn's
-//!   input message ([`PLATFORM_COMMAND_SURFACE`]'s params). The cell that
+//!   input message ([`PLATFORM_COMMAND_SURFACE`]'s params). The shard that
 //!   forwards it adds the person from the session's own record
 //!   (`senders.rs`, `gateway_dp.rs`), replacing anything the call carried,
 //!   and the control plane re-derives the session's `platform` capability

@@ -1,14 +1,14 @@
-//! Load and invariant checks against a running cell fleet.
+//! Load and invariant checks against a running shard fleet.
 //!
 //! ```text
-//! cell-drive load  --gateways http://127.0.0.1:7101 --agent worker --sessions 1000 --turns 3
-//! cell-drive check --gateways http://127.0.0.1:7101 --sessions-file s.txt --turns 3 --ledger l.txt
+//! agentd-drive load  --gateways http://127.0.0.1:7101 --agent worker --sessions 1000 --turns 3
+//! agentd-drive check --gateways http://127.0.0.1:7101 --sessions-file s.txt --turns 3 --ledger l.txt
 //! ```
 //!
 //! Against a data plane joined to a control plane, the gateways want an org
 //! token: `--control-plane https://app.example.com/api --org <public id>`
 //! with the org member's API key in `EVERRUNS_API_KEY`
-//! (`everruns_cell_testkit::org_token`).
+//! (`everruns_agentd_testkit::org_token`).
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand};
-use everruns_cell_testkit::org_token::OrgToken;
+use everruns_agentd_testkit::org_token::OrgToken;
 use futures::stream::{self, StreamExt};
 use serde_json::{Value, json};
 
@@ -35,7 +35,7 @@ enum Mode {
         #[arg(long)]
         gateways: String,
         /// The agent every session runs: a test definition by name (see
-        /// `everruns_cell_testkit::definition`), `@path` to a JSON definition,
+        /// `everruns_agentd_testkit::definition`), `@path` to a JSON definition,
         /// or `mix` for the step 11.7 feature mix (see [`MIX_FEATURES`]).
         #[arg(long, default_value = "worker")]
         agent: String,
@@ -140,7 +140,7 @@ struct Client {
     gateways: Vec<String>,
     next: AtomicUsize,
     persistent: bool,
-    /// Requests a cell refused for being short of memory (429).
+    /// Requests a shard refused for being short of memory (429).
     shed: AtomicUsize,
     /// Pad messages to this many bytes (`--message-bytes`).
     message_bytes: usize,
@@ -176,7 +176,7 @@ impl Client {
                 None => None,
             };
             if let Some(token) = &token {
-                request = request.header(everruns_cell::org_token::HEADER, &**token);
+                request = request.header(everruns_agentd::org_token::HEADER, &**token);
             }
             match request.timeout(Duration::from_secs(60)).send().await {
                 Ok(response) if response.status().is_success() => {
@@ -361,7 +361,7 @@ async fn main() -> anyhow::Result<()> {
             join,
         } => check(gateways, sessions_file, turns, ledger, join.token()?).await,
         Mode::Agent { name } => {
-            let definition = everruns_cell_testkit::definition(&name)
+            let definition = everruns_agentd_testkit::definition(&name)
                 .ok_or_else(|| anyhow::anyhow!("no test agent {name}"))?;
             println!("{}", serde_json::to_string_pretty(&definition)?);
             Ok(())
@@ -438,12 +438,13 @@ fn feature_agent(feature: &str) -> anyhow::Result<Value> {
         "sandbox" => "sandbox",
         other => anyhow::bail!("no feature {other}"),
     };
-    let mut agent = everruns_cell_testkit::definition(name)
+    let mut agent = everruns_agentd_testkit::definition(name)
         .ok_or_else(|| anyhow::anyhow!("no test agent {name}"))?;
     if feature == "sandbox" {
         // About a warm provider: 1.5 s to create, 50 ms a call.
-        agent["capabilities"] =
-            json!([everruns_cell_testkit::local_sandbox::capability(50, 1_500)]);
+        agent["capabilities"] = json!([everruns_agentd_testkit::local_sandbox::capability(
+            50, 1_500
+        )]);
     }
     if feature == "files" || feature == "schedule" || feature == "team" {
         // `team` already names its capability; it also keeps notes.
@@ -485,7 +486,7 @@ impl Plans {
         // The client owns the agent: every session carries its definition.
         let agent: Value = match agent.strip_prefix('@') {
             Some(path) => serde_json::from_str(&std::fs::read_to_string(path)?)?,
-            None => everruns_cell_testkit::definition(agent)
+            None => everruns_agentd_testkit::definition(agent)
                 .ok_or_else(|| anyhow::anyhow!("no test agent {agent}"))?,
         };
         Ok(Self {
@@ -563,7 +564,7 @@ fn follow(client: &Client, id: &str, progress: Arc<Progress>) -> tokio::task::Jo
             if let Some(source) = &token {
                 match source.get().await {
                     Ok(token) => {
-                        request = request.header(everruns_cell::org_token::HEADER, &*token)
+                        request = request.header(everruns_agentd::org_token::HEADER, &*token)
                     }
                     Err(_) => {
                         progress.stream_errors.fetch_add(1, Ordering::Relaxed);
@@ -868,8 +869,8 @@ async fn load(
             Err(error) => errors.push(error.to_string()),
         }
     }
-    let cells = client
-        .send("GET", "/v1/cells", None)
+    let shards = client
+        .send("GET", "/v1/shards", None)
         .await
         .unwrap_or(Value::Null);
     let report = json!({
@@ -904,7 +905,7 @@ async fn load(
             .into_iter()
             .map(|(name, samples)| (name, summary(samples)))
             .collect::<serde_json::Map<_, _>>(),
-        "cells": cells,
+        "shards": shards,
     });
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())

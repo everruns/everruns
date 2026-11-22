@@ -90,7 +90,7 @@ async fn delete_expired(pool: &PgPool, service: &SessionSandboxService) {
     }
 }
 
-/// Sessions on a data plane: their sandbox's state is on their cell
+/// Sessions on a data plane: their sandbox's state is on their shard
 /// (`domains/session_sandbox/plane.rs`).
 async fn pause_idle_on_data_planes(pool: &PgPool, service: &SessionSandboxService) {
     use crate::domains::session_sandbox::plane;

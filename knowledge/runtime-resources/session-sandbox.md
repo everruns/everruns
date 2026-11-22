@@ -304,9 +304,9 @@ access tokens, and none of them is copied. Error text is scrubbed again. Its
 most useful fields are provider-side auto-stop and last activity, which explain
 a provider stopping a Sandbox before the Everruns idle limit.
 
-Data plane v2 sessions are managed by their cell, not by the control plane's
+Data plane v2 sessions are managed by their shard, not by the control plane's
 idle timer and sweep. Diagnosis reads their work and Sandbox state through the
-cell gateway (`sandbox` read) and says so in a `data_plane.lifecycle` finding.
+shard gateway (`sandbox` read) and says so in a `data_plane.lifecycle` finding.
 
 ### Orphaned sandbox scan
 

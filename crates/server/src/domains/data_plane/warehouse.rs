@@ -143,8 +143,8 @@ mod tests {
     #[test]
     fn files_are_partitioned_by_org_and_hour_and_named_by_feed_position() {
         assert_eq!(
-            key("org_1", "date=2026-11-17/hour=14", "cell-1", 2, (40, 3)),
-            "warehouse/org_1/date=2026-11-17/hour=14/cell-1-2-40-3.ndjson.gz"
+            key("org_1", "date=2026-11-17/hour=14", "shard-1", 2, (40, 3)),
+            "warehouse/org_1/date=2026-11-17/hour=14/shard-1-2-40-3.ndjson.gz"
         );
         let mut policy = TenantPolicy::default();
         assert!(!enabled(&policy));

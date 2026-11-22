@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import type { EntityChange } from "@/lib/api/types";
 import { ChatModeContext, type ChatModeState } from "@/components/chat-mode/chat-mode-context";
 import { useAgentChatChanges } from "@/components/chat-mode/use-agent-chat-changes";
+import { PageChangeReviewContext } from "@/components/chat-mode/page-change-review-provider";
+import type { PageChangeReviewController } from "@/components/chat-mode/page-change-review-controller";
 import {
   diffEntityRevisions,
   listEntityHistory,
@@ -162,4 +164,39 @@ it("includes all Chat saves between polls in Undo all", async () => {
   await refresh(queryClient);
   await waitFor(() => expect(result.current.fields).toHaveLength(2));
   expect(diffEntityRevisions).toHaveBeenCalledWith("agent_1", 1, 3);
+});
+
+it("marks only Chat's saves inline, not the person's own saves on the page", () => {
+  const agent = { kind: "agent", id: "agent_1", label: "Agent" };
+  const receipt = (by: "chat" | "page") => ({
+    resource: agent,
+    from: 1,
+    revision: 2,
+    fields: [promptDiff],
+    stale: false,
+    pending: false,
+    by,
+  });
+  let receipts = [receipt("page")];
+  const controller = {
+    subscribe: () => () => {},
+    snapshot: () => receipts.length,
+    receipts: () => receipts,
+    hasDirtyDraft: () => false,
+    undo: jest.fn(),
+    dismiss: jest.fn(),
+  } as unknown as PageChangeReviewController;
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>
+      <PageChangeReviewContext.Provider value={controller}>
+        {children}
+      </PageChangeReviewContext.Provider>
+    </QueryClientProvider>
+  );
+  const own = renderHook(() => useAgentChatChanges("agent_1"), { wrapper });
+  expect(own.result.current.fields).toEqual([]);
+  receipts = [receipt("chat")];
+  const chat = renderHook(() => useAgentChatChanges("agent_1"), { wrapper });
+  expect(chat.result.current.fields).toEqual([promptDiff]);
 });

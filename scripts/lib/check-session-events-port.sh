@@ -2,7 +2,7 @@
 # Session events port guard: control plane features read a session's events
 # through `domains::sessions::events`, never the `events` table directly.
 #
-# Why: a session that runs on data plane v2 keeps its events in its cell, and
+# Why: a session that runs on data plane v2 keeps its events in its shard, and
 # the control plane's table has none of them. A feature that calls
 # `StorageBackend::list_events` or `list_events_advanced` itself sees an
 # empty session there and fails quietly: no pending question, an eval that
@@ -43,11 +43,11 @@ ALLOWED=(
   "services/event/"                           # the v1 event service: writes, replay, human waits
   "turns/"                                    # the v1 turn runtime
   "background/tool_result_timeout.rs"         # sweeps turns parked on the platform's workers
-  "live_updates/"                             # v1 delivery; a v2 session streams from its cell
+  "live_updates/"                             # v1 delivery; a v2 session streams from its shard
   "domains/sessions/commands/mod.rs"          # reads after its own data plane branch
   "domains/sessions/service/fork.rs"          # v1 fork; fork_plane.rs forks a v2 session
-  "domains/messages/service/mod.rs"           # v1 admission; a v2 session admits in its cell
-  "domains/data_plane/moves.rs"               # imports the v1 log of a session already switched to its cell
+  "domains/messages/service/mod.rs"           # v1 admission; a v2 session admits in its shard
+  "domains/data_plane/moves.rs"               # imports the v1 log of a session already switched to its shard
 )
 
 allowed() {

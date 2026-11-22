@@ -3,7 +3,7 @@
 // Decisions:
 // - A v1 session's trace is the control plane's trace index, caught up
 //   with its events before each read. A v2 session's events stay in its
-//   cell, so its data plane computes the same rows with the same fold
+//   shard, so its data plane computes the same rows with the same fold
 //   (`everruns_core::session_trace`) and the control plane answers from
 //   them in memory. The Trace commands read through `TraceSource` with the
 //   index's own method names, so both kinds of session share one code path

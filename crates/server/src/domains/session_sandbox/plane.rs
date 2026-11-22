@@ -4,7 +4,7 @@
 //! Decisions:
 //! - The control plane does it, with the v1 lifecycle code: it pinned the
 //!   sandbox at create (`data_plane/sandboxes.rs`) and holds the provider
-//!   account. What it starts from is the session's cell: the agent's sandbox
+//!   account. What it starts from is the session's shard: the agent's sandbox
 //!   keeps its state there as a reserved session secret, sealed with the
 //!   org's data key, and the control plane reads it, opens it, and writes
 //!   the new state back sealed. The executor's next sandbox call reads that
@@ -12,7 +12,7 @@
 //!   restored from the session's workspace.
 //! - The config is the pinned sandbox's, the one the data plane runs, not
 //!   the agent's current capabilities.
-//! - No hosted state store is installed here: it would adopt the cell's
+//! - No hosted state store is installed here: it would adopt the shard's
 //!   state into the control plane's tables and take it away from the
 //!   executor.
 //! - Idle pause: the control plane's sweep (`background::sandbox_idle_sweep`)
@@ -197,7 +197,7 @@ impl SessionStorageStore for PlaneSandboxStorage {
             .map_err(store_err)
     }
 
-    /// THREAT[TM-TENANT]: the sandbox's state is the one secret a cell
+    /// THREAT[TM-TENANT]: the sandbox's state is the one secret a shard
     /// hands back, and only to the control plane, which sealed the org's
     /// key; a person's or agent's secrets are never read here.
     async fn get_secret(&self, session: SessionId, name: &str) -> Result<Option<String>> {

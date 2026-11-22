@@ -3875,6 +3875,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-agentd-example-assistant"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "everruns",
+ "everruns-agentd",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-agentd-testkit"
 version = "0.53.1"
 dependencies = [
@@ -3982,17 +3993,6 @@ dependencies = [
  "utoipa",
  "uuid",
  "wiremock",
-]
-
-[[package]]
-name = "everruns-cell-example-assistant"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "everruns",
- "everruns-agentd",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use everruns::prelude::*;
 use everruns::{LlmSimConfig, OnExhausted, SimToolCall, SimTurn};
-use everruns_cell::StandardHost;
+use everruns_agentd::StandardHost;
 use serde_json::{Value, json};
 
 fn env_ms(name: &str, default: u64) -> Duration {
@@ -34,7 +34,7 @@ fn env_ms(name: &str, default: u64) -> Duration {
 /// Append `session` to the ledger file each time the `work` tool really runs,
 /// so a check can compare real executions with `tool.started` events.
 fn record(session: &str) {
-    if let Ok(path) = std::env::var("CELL_LEDGER")
+    if let Ok(path) = std::env::var("AGENTD_LEDGER")
         && let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -51,7 +51,7 @@ fn work_tool() -> FunctionTool {
         json!({ "type": "object", "properties": {} }),
         |context, _args: Value| async move {
             record(&context.session_id().to_string());
-            tokio::time::sleep(env_ms("CELL_WORK_MS", 50)).await;
+            tokio::time::sleep(env_ms("AGENTD_WORK_MS", 50)).await;
             Ok::<_, String>(json!({ "done": true }))
         },
     )
@@ -438,8 +438,8 @@ fn delegate_tool() -> FunctionTool {
                 format!("{kind}_{}", uuid.simple())
             };
             let child = derive("session");
-            let base =
-                std::env::var("CELL_GATEWAY").map_err(|_| "CELL_GATEWAY not set".to_string())?;
+            let base = std::env::var("AGENTD_GATEWAY")
+                .map_err(|_| "AGENTD_GATEWAY not set".to_string())?;
             let http = reqwest::Client::builder()
                 .no_proxy()
                 .build()
@@ -536,10 +536,10 @@ fn delegate_tool() -> FunctionTool {
 /// The research notes the Everruns llmsim scenarios read
 /// (`/load-test/research.md`).
 const RESEARCH: &str =
-    "# Research notes\n\nCells hold sessions in memory and replicate them with Raft.\n";
+    "# Research notes\n\nShards hold sessions in memory and replicate them with Raft.\n";
 
 fn scale() -> f64 {
-    std::env::var("CELL_TOOL_SCALE")
+    std::env::var("AGENTD_TOOL_SCALE")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(1.0)
@@ -561,7 +561,7 @@ fn file_tool(name: &'static str, description: &'static str) -> FunctionTool {
         }),
         move |context, args: Value| async move {
             record(&context.session_id().to_string());
-            tokio::time::sleep(env_ms("CELL_FILE_MS", 5).mul_f64(scale())).await;
+            tokio::time::sleep(env_ms("AGENTD_FILE_MS", 5).mul_f64(scale())).await;
             let path = args["path"].as_str().unwrap_or("/load-test");
             Ok::<_, String>(match name {
                 "list_directory" => json!({ "path": path, "entries": ["research.md"] }),
@@ -574,7 +574,7 @@ fn file_tool(name: &'static str, description: &'static str) -> FunctionTool {
 }
 
 /// `bash` for the long-tool scenario: honours `sleep N`, scaled by
-/// `CELL_TOOL_SCALE`, and echoes the rest. Not idempotent, so a cut-off
+/// `AGENTD_TOOL_SCALE`, and echoes the rest. Not idempotent, so a cut-off
 /// call is reported as interrupted rather than run again.
 fn bash_tool() -> FunctionTool {
     FunctionTool::with_context(
@@ -637,7 +637,7 @@ fn blob_model() -> Model {
 }
 
 static BLOB_SIM: std::sync::LazyLock<LlmSimConfig> = std::sync::LazyLock::new(|| {
-    let kb: u64 = std::env::var("CELL_BLOB_KB")
+    let kb: u64 = std::env::var("AGENTD_BLOB_KB")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(64);
@@ -656,11 +656,11 @@ static BLOB_SIM: std::sync::LazyLock<LlmSimConfig> = std::sync::LazyLock::new(||
 ///
 /// Models (`model.provider` = `llmsim`):
 /// - `work-1`, `work-3`: call `work` that many times, then answer;
-/// - `slow`: `work-1` behind a slow model call (`CELL_MODEL_DELAY_MS`);
+/// - `slow`: `work-1` behind a slow model call (`AGENTD_MODEL_DELAY_MS`);
 /// - `lead`: delegate to the member `worker3`, then report;
 /// - `chat`: a long answer, with no tools, and native compaction;
 /// - `files`: writes or reads a workspace file the message names;
-/// - `slow-chat`: a plain answer after `CELL_MODEL_DELAY_MS` (3 s);
+/// - `slow-chat`: a plain answer after `AGENTD_MODEL_DELAY_MS` (3 s);
 /// - `approve`: calls `guarded`, which waits for a person's approval,
 ///   then answers;
 /// - `gate`: the same with `note`, which the agent's `tool_approval`
@@ -679,7 +679,7 @@ pub fn host() -> StandardHost {
             Some(match model {
                 "work-1" => worker_model(1, None),
                 "work-3" => worker_model(3, None),
-                "slow" => worker_model(1, Some(env_ms("CELL_MODEL_DELAY_MS", 3000))),
+                "slow" => worker_model(1, Some(env_ms("AGENTD_MODEL_DELAY_MS", 3000))),
                 "lead" => lead_model(),
                 "chat" => chat_model(),
                 "blob" => blob_model(),
@@ -688,11 +688,11 @@ pub fn host() -> StandardHost {
                 "eyes" => eyes_model(),
                 "approve" => approve_model("guarded"),
                 "gate" => approve_model("note"),
-                // A plain answer that takes `CELL_MODEL_DELAY_MS`: a turn
+                // A plain answer that takes `AGENTD_MODEL_DELAY_MS`: a turn
                 // to cancel, for an agent the control plane defines.
                 "slow-chat" => Model::simulated_with_config(
                     LlmSimConfig::fixed("Thought about it for a while.")
-                        .with_response_delay(env_ms("CELL_MODEL_DELAY_MS", 3000)),
+                        .with_response_delay(env_ms("AGENTD_MODEL_DELAY_MS", 3000)),
                 ),
                 _ => Model::simulated("done."),
             })
@@ -791,7 +791,7 @@ pub fn definition(name: &str) -> Option<Value> {
             chat
         }
         "blob" => {
-            // A large tool result each turn (`CELL_BLOB_KB` on the node).
+            // A large tool result each turn (`AGENTD_BLOB_KB` on the node).
             let mut blob = agent("blob", "Read, then answer.", "blob", &["blob"]);
             blob["capabilities"] = json!([{
                 "ref": "compaction",

@@ -10,10 +10,10 @@
 //!   session's org, and never for a credential the session's pinned
 //!   capability does not name (members cannot send a definition naming one:
 //!   `gateway.rs`).
-//! - The session's workspace in the cell stays the source of truth (`fs.md`
+//! - The session's workspace in the shard stays the source of truth (`fs.md`
 //!   "sync mode"): before a sandbox call the sandbox catches up with the
 //!   workspace, after a mutating call the workspace takes what the sandbox
-//!   changed ([`CellSandboxSync`]). A lost sandbox restores from the
+//!   changed ([`ShardSandboxSync`]). A lost sandbox restores from the
 //!   workspace, so there are no provider checkpoints.
 //!
 //! Decision: sync mode first, mount mode later (step 11 plan, decision 3A).
@@ -43,7 +43,7 @@ use serde_json::{Value, json};
 use sha2::Digest;
 
 use crate::files::{Change, Content, Entry};
-use crate::hosting::files::CellFiles;
+use crate::hosting::files::ShardFiles;
 use crate::providers::OrgMaterial;
 
 /// Where a sandbox's record of its last sync lives, in its state's
@@ -107,7 +107,7 @@ impl OrgSandboxes {
         self: &Arc<Self>,
         session: SessionId,
         backends: HostBackends,
-        files: CellFiles,
+        files: ShardFiles,
     ) -> HostBackends {
         let mut backends = crate::lookups::attach(
             backends,
@@ -115,7 +115,7 @@ impl OrgSandboxes {
             self.material.get(),
             session,
         );
-        let sync = SandboxWorkspaceSyncExt(Arc::new(CellSandboxSync {
+        let sync = SandboxWorkspaceSyncExt(Arc::new(ShardSandboxSync {
             sandboxes: self.clone(),
             files,
         }));
@@ -394,10 +394,10 @@ fn parse_scan(stdout: &str) -> std::result::Result<Scan, ToolExecutionResult> {
     Ok(scan)
 }
 
-/// Keeps a session's sandbox and its workspace in the cell together.
-struct CellSandboxSync {
+/// Keeps a session's sandbox and its workspace in the shard together.
+struct ShardSandboxSync {
     sandboxes: Arc<OrgSandboxes>,
-    files: CellFiles,
+    files: ShardFiles,
 }
 
 /// A sandbox call, for one sync.
@@ -470,7 +470,7 @@ impl Call<'_> {
     async fn write(
         &self,
         state: &SessionSandboxState,
-        files: &CellFiles,
+        files: &ShardFiles,
         entries: &BTreeMap<String, Entry>,
         writes: &[String],
         deletes: &[String],
@@ -538,7 +538,7 @@ fn same(entry: &Entry, content: &str, encoding: &str) -> bool {
         }
 }
 
-impl CellSandboxSync {
+impl ShardSandboxSync {
     async fn push_inner(
         &self,
         call: &Call<'_>,
@@ -811,7 +811,7 @@ fn newer(a: &str, b: &str) -> bool {
 }
 
 #[async_trait]
-impl SandboxWorkspaceSync for CellSandboxSync {
+impl SandboxWorkspaceSync for ShardSandboxSync {
     async fn before_create(
         &self,
         context: &ToolContext,

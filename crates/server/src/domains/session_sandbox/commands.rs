@@ -49,7 +49,7 @@ impl Command for ManageSessionSandbox {
     async fn execute(self, ctx: &Ctx) -> Result<ManageSessionSandboxResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let service = q::session_sandbox_service(ctx)?;
-        // A v2 session: the pinned sandbox, its state on the session's cell
+        // A v2 session: the pinned sandbox, its state on the session's shard
         // (`plane.rs`).
         let plane =
             crate::domains::session_storage::plane::PlaneStorage::of(ctx, session_id).await?;
@@ -493,7 +493,7 @@ impl Command for GetSessionRepositories {
             work_branch: None,
             repositories: Vec::new(),
         };
-        // A v2 session: its pinned sandbox, whose state is on its cell
+        // A v2 session: its pinned sandbox, whose state is on its shard
         // (`plane.rs`, data plane v2 parity Phase B).
         if let Some(plane) =
             crate::domains::session_storage::plane::PlaneStorage::of(ctx, session_id).await?
@@ -558,7 +558,7 @@ impl Command for GetSessionRepositories {
 }
 
 /// [`GetSessionRepositories`] for a v2 session: the same read, against the
-/// sandbox the control plane pinned for it, whose state its cell keeps.
+/// sandbox the control plane pinned for it, whose state its shard keeps.
 /// As on v1, a page view never starts or resumes the sandbox: only a
 /// running one is read.
 async fn plane_repositories(

@@ -1,4 +1,4 @@
-//! A cell node binary with simulated models and test tools (tests only).
+//! A shard node binary with simulated models and test tools (tests only).
 //! Agents come from the clients.
 
 // Decision: jemalloc, not the system allocator or mimalloc. Under glibc
@@ -20,5 +20,5 @@ pub static malloc_conf: Option<&u8> =
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    everruns_cell::cli::run(everruns_cell_testkit::host()).await
+    everruns_agentd::cli::run(everruns_agentd_testkit::host()).await
 }

@@ -1,7 +1,7 @@
 //! Agent definitions as data (data plane v2 plan step 3).
 //!
 //! Decision: an Engine that hosts sessions for agents defined by data (the
-//! platform, a cell) does not register code per agent and does not ask
+//! platform, a shard) does not register code per agent and does not ask
 //! anyone to build one. The authority keeps every revision of a definition
 //! with the sessions that use it ([`AgentDefinitions::publish_definition`]),
 //! and the Engine that activates a session reads the revision the session

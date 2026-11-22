@@ -1,11 +1,11 @@
-//! Seeded simulation of one three-node cell: the real log, state machine
+//! Seeded simulation of one three-node shard: the real log, state machine
 //! and openraft, wired through an in-memory network that drops, delays and
 //! partitions messages, while nodes are killed and restarted from their
 //! disks. Small snapshot thresholds make lagging and restarted nodes catch
 //! up by snapshot install as well as by log.
 //!
 //! What must hold after every run, once the faults stop:
-//! - every write the cell acknowledged is in every node's state;
+//! - every write the shard acknowledged is in every node's state;
 //! - every node's state is the same (state machine safety);
 //! - nothing appears that no client wrote;
 //! - no node ever saw the committed leader go backwards.
@@ -17,7 +17,7 @@
 //! is that a node only ever follows a newer leader id than the last one.
 //!
 //! The leader also ships the committed log to an object store while the
-//! faults run. At the end every node is lost at once, and the cell is
+//! faults run. At the end every node is lost at once, and the shard is
 //! rebuilt from the store alone (archived snapshot plus shipped log): every
 //! acknowledged write the shipper had reached is in the rebuilt state, and
 //! nothing else that nobody wrote.
@@ -34,12 +34,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use everruns::SessionId;
-use everruns_cell::ship::Shipper;
-use everruns_cell::sm::{Shared, StateMachine};
-use everruns_cell::state::{Command, Response};
-use everruns_cell::store::Store;
-use everruns_cell::types::{NodeId, Raft, TypeConfig};
-use everruns_cell::wal::Wal;
+use everruns_agentd::ship::Shipper;
+use everruns_agentd::sm::{Shared, StateMachine};
+use everruns_agentd::state::{Command, Response};
+use everruns_agentd::store::Store;
+use everruns_agentd::types::{NodeId, Raft, TypeConfig};
+use everruns_agentd::wal::Wal;
 use openraft::error::{
     InstallSnapshotError, NetworkError, RPCError, RaftError, RemoteError, Unreachable,
 };
@@ -198,7 +198,7 @@ impl RaftNetwork<TypeConfig> for Peer {
     }
 }
 
-struct Cell {
+struct Shard {
     root: tempfile::TempDir,
     router: Arc<Router>,
     shared: Mutex<HashMap<NodeId, Arc<Shared>>>,
@@ -211,7 +211,7 @@ struct Cell {
     regressions: Arc<Mutex<Vec<String>>>,
 }
 
-impl Cell {
+impl Shard {
     fn dir(&self, node: NodeId) -> PathBuf {
         self.root.path().join(format!("n{node}"))
     }
@@ -297,7 +297,7 @@ impl Cell {
     }
 
     /// Write through whichever node says it leads. `Some(Some(index))`: the
-    /// cell acknowledged it at that log index; `None`: the outcome is
+    /// shard acknowledged it at that log index; `None`: the outcome is
     /// unknown.
     async fn write(&self, command: Command, rng: &mut Rng) -> Option<Option<u64>> {
         let up = self.up();
@@ -346,7 +346,7 @@ impl Cell {
     fn directory(&self, node: NodeId) -> HashMap<SessionId, u32> {
         let shared = self.shared.lock().get(&node).cloned().unwrap();
         let state = shared.state.read();
-        state.directory.iter().map(|(k, v)| (*k, v.cell)).collect()
+        state.directory.iter().map(|(k, v)| (*k, v.shard)).collect()
     }
 }
 
@@ -354,7 +354,7 @@ async fn run(seed: u64) {
     let mut rng = Rng::new(seed);
     let root = tempfile::tempdir().unwrap();
     let store = Store::open(&format!("file://{}", root.path().join("store").display())).unwrap();
-    let cell = Cell {
+    let shard = Shard {
         store,
         shippers: Mutex::default(),
         root,
@@ -369,13 +369,13 @@ async fn run(seed: u64) {
         regressions: Arc::default(),
     };
     for node in NODES {
-        cell.start(node).await;
+        shard.start(node).await;
     }
     let members: BTreeMap<NodeId, BasicNode> = NODES
         .iter()
         .map(|id| (*id, BasicNode::new(format!("n{id}"))))
         .collect();
-    cell.raft(1).unwrap().initialize(members).await.unwrap();
+    shard.raft(1).unwrap().initialize(members).await.unwrap();
 
     let mut kills = 0;
     let mut written: HashMap<SessionId, u32> = HashMap::new();
@@ -384,9 +384,9 @@ async fn run(seed: u64) {
     let mut shipped = 0u64;
     let mut last_ship = tokio::time::Instant::now();
     for step in 0..400u32 {
-        if last_ship.elapsed() >= everruns_cell::ship::SHIP_EVERY {
+        if last_ship.elapsed() >= everruns_agentd::ship::SHIP_EVERY {
             last_ship = tokio::time::Instant::now();
-            if let Some(through) = cell.ship().await {
+            if let Some(through) = shard.ship().await {
                 shipped = shipped.max(through);
             }
         }
@@ -394,15 +394,15 @@ async fn run(seed: u64) {
         match rng.below(100) {
             0..=3 => {
                 let node = NODES[rng.below(3) as usize];
-                if cell.up().len() == 3 {
-                    cell.kill(node).await;
+                if shard.up().len() == 3 {
+                    shard.kill(node).await;
                     kills += 1;
                 }
             }
             4..=9 => {
                 for node in NODES {
-                    if !cell.up().contains(&node) {
-                        cell.start(node).await;
+                    if !shard.up().contains(&node) {
+                        shard.start(node).await;
                     }
                 }
             }
@@ -410,11 +410,11 @@ async fn run(seed: u64) {
                 let a = NODES[rng.below(3) as usize];
                 let b = NODES[rng.below(3) as usize];
                 if a != b {
-                    cell.router.cut.lock().insert((a, b));
+                    shard.router.cut.lock().insert((a, b));
                 }
             }
-            13..=17 => cell.router.cut.lock().clear(),
-            18..=19 => *cell.router.loss.lock() = rng.below(30),
+            13..=17 => shard.router.cut.lock().clear(),
+            18..=19 => *shard.router.loss.lock() = rng.below(30),
             _ => {}
         }
         let session = SessionId::new();
@@ -426,11 +426,11 @@ async fn run(seed: u64) {
         for _ in 0..5 {
             let command = Command::Place {
                 session,
-                cell: target,
+                shard: target,
                 generation: 1,
                 previous: 0,
             };
-            if let Some(outcome) = cell.write(command, &mut rng).await {
+            if let Some(outcome) = shard.write(command, &mut rng).await {
                 if let Some(index) = outcome {
                     acked.insert(session, target);
                     acked_at.push((session, target, index));
@@ -443,11 +443,11 @@ async fn run(seed: u64) {
     }
 
     // Disaster: every node is lost at once. Rebuild from the store alone.
-    let up = cell.up();
+    let up = shard.up();
     for node in &up {
-        cell.kill(*node).await;
+        shard.kill(*node).await;
     }
-    let restored = everruns_cell::restore::state_at(&cell.store, 0, None)
+    let restored = everruns_agentd::restore::state_at(&shard.store, 0, None)
         .await
         .unwrap();
     assert!(
@@ -460,7 +460,7 @@ async fn run(seed: u64) {
         if *index <= shipped {
             covered += 1;
             assert_eq!(
-                restored.state.directory.get(session).map(|p| p.cell),
+                restored.state.directory.get(session).map(|p| p.shard),
                 Some(*target),
                 "seed {seed}: restore lost shipped write {session} at {index}"
             );
@@ -469,7 +469,7 @@ async fn run(seed: u64) {
     for (session, placed) in &restored.state.directory {
         assert_eq!(
             written.get(session),
-            Some(&placed.cell),
+            Some(&placed.shard),
             "seed {seed}: restore holds {session}, which nobody wrote"
         );
     }
@@ -479,22 +479,22 @@ async fn run(seed: u64) {
         restored.from.as_ref().map_or(0, |c| c.index)
     );
 
-    // Heal: everything up, nothing lost or cut, then let the cell settle.
-    cell.router.cut.lock().clear();
-    *cell.router.loss.lock() = 0;
+    // Heal: everything up, nothing lost or cut, then let the shard settle.
+    shard.router.cut.lock().clear();
+    *shard.router.loss.lock() = 0;
     for node in NODES {
-        if !cell.up().contains(&node) {
-            cell.start(node).await;
+        if !shard.up().contains(&node) {
+            shard.start(node).await;
         }
     }
     // A blank write through the leader commits everything before it.
     let mut settled = false;
     for _ in 0..200 {
-        if cell
+        if shard
             .write(
                 Command::Place {
                     session: SessionId::new(),
-                    cell: 99,
+                    shard: 99,
                     generation: 1,
                     previous: 0,
                 },
@@ -508,20 +508,22 @@ async fn run(seed: u64) {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert!(settled, "seed {seed}: the healed cell elects a leader");
+    assert!(settled, "seed {seed}: the healed shard elects a leader");
     let mut converged = false;
     for _ in 0..400 {
         let applied: Vec<Option<u64>> = NODES
             .iter()
             .map(|node| {
-                cell.raft(*node)
+                shard
+                    .raft(*node)
                     .and_then(|raft| raft.metrics().borrow().last_applied.map(|id| id.index))
             })
             .collect();
         let last_log = NODES
             .iter()
             .filter_map(|node| {
-                cell.raft(*node)
+                shard
+                    .raft(*node)
                     .and_then(|raft| raft.metrics().borrow().last_log_index)
             })
             .max();
@@ -533,9 +535,9 @@ async fn run(seed: u64) {
     }
     assert!(converged, "seed {seed}: every node applies the whole log");
 
-    let reference = cell.directory(1);
+    let reference = shard.directory(1);
     for node in NODES {
-        let directory = cell.directory(node);
+        let directory = shard.directory(node);
         assert_eq!(
             directory, reference,
             "seed {seed}: node {node} diverged from node 1"
@@ -558,35 +560,36 @@ async fn run(seed: u64) {
             );
         }
     }
-    let regressions = cell.regressions.lock().clone();
+    let regressions = shard.regressions.lock().clone();
     assert!(
         regressions.is_empty(),
         "seed {seed}: a committed leader went backwards: {regressions:?}"
     );
     assert!(
         acked.len() > 100,
-        "seed {seed}: the cell made progress ({} of 400 acknowledged)",
+        "seed {seed}: the shard made progress ({} of 400 acknowledged)",
         acked.len()
     );
     let snapshots: Vec<Option<u64>> = NODES
         .iter()
         .map(|node| {
-            cell.raft(*node)
+            shard
+                .raft(*node)
                 .and_then(|raft| raft.metrics().borrow().snapshot.map(|id| id.index))
         })
         .collect();
     eprintln!(
         "seed {seed}: {} of 400 acknowledged, {} leaders, {kills} kills, snapshots at {snapshots:?}",
         acked.len(),
-        cell.leaders.lock().len(),
+        shard.leaders.lock().len(),
     );
     for node in NODES {
-        cell.kill(node).await;
+        shard.kill(node).await;
     }
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
-async fn a_cell_under_kills_partitions_and_loss_keeps_every_acknowledged_write() {
+async fn a_shard_under_kills_partitions_and_loss_keeps_every_acknowledged_write() {
     for seed in 0..12 {
         run(seed).await;
     }

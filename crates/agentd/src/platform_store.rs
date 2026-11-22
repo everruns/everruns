@@ -1,6 +1,6 @@
-//! The session services an activation on a cell gets (data plane v2 step
+//! The session services an activation on a shard gets (data plane v2 step
 //! 11.4): the schedule store the `session_schedule` tools use. Every write
-//! is a [`Command::Platform`] on the session's cell, so it is replicated
+//! is a [`Command::Platform`] on the session's shard, so it is replicated
 //! with the session and applied there with its limits (`platform.rs`).
 
 use std::sync::Arc;
@@ -20,14 +20,14 @@ use crate::hosting::Port;
 use crate::platform::{Op, ScheduleChange, next_cron};
 use crate::state::Command;
 
-/// Give an activation's runtime the cell's session services.
+/// Give an activation's runtime the shard's session services.
 pub(crate) fn attach(backends: HostBackends, port: Port) -> HostBackends {
-    let schedules: Arc<dyn SessionScheduleStore> = Arc::new(CellSchedules { port });
+    let schedules: Arc<dyn SessionScheduleStore> = Arc::new(ShardSchedules { port });
     backends.with_schedule_store_factory(Arc::new(move |_org| schedules.clone()))
 }
 
-/// Schedules in the session's cell state.
-pub(crate) struct CellSchedules {
+/// Schedules in the session's shard state.
+pub(crate) struct ShardSchedules {
     port: Port,
 }
 
@@ -76,7 +76,7 @@ pub fn build(
     Ok(schedule)
 }
 
-impl CellSchedules {
+impl ShardSchedules {
     async fn propose(&self, session: SessionId, op: Op) -> Result<serde_json::Value> {
         self.port
             .propose(
@@ -106,7 +106,7 @@ impl CellSchedules {
 }
 
 #[async_trait]
-impl SessionScheduleStore for CellSchedules {
+impl SessionScheduleStore for ShardSchedules {
     async fn create_schedule(
         &self,
         session_id: SessionId,
@@ -214,7 +214,7 @@ impl SessionScheduleStore for CellSchedules {
             .await
     }
 
-    /// An org's sessions spread over cells, so a cell cannot count them;
+    /// An org's sessions spread over shards, so a shard cannot count them;
     /// the per-session cap still holds (see `platform.rs`).
     async fn count_active_org_schedules(&self) -> Result<u32> {
         Ok(0)

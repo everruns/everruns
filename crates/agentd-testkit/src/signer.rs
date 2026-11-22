@@ -1,10 +1,10 @@
 //! A control plane's org token signing key and its JWKS, for tests of the
-//! gateway's org token check (`everruns_cell::org_token`).
+//! gateway's org token check (`everruns_agentd::org_token`).
 
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{Ed25519KeyPair, KeyPair};
 use base64::Engine as _;
-use everruns_cell::org_token::OrgTokenClaims;
+use everruns_agentd::org_token::OrgTokenClaims;
 use jsonwebtoken::jwk::JwkSet;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 

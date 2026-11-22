@@ -1,11 +1,11 @@
 //! Creating a message on a v2 session from the control plane (data plane
 //! v2, step 11.6).
 //!
-//! Decision: a v2 session's text messages go straight to its cell through
+//! Decision: a v2 session's text messages go straight to its shard through
 //! the edge. The ones that reach the control plane are those the edge
 //! passes here because they refer to uploads, and the platform's own (a
 //! reaction note). Their uploads are copied into the session's files on
-//! the cell first (`data_plane::attachments`), then the message is
+//! the shard first (`data_plane::attachments`), then the message is
 //! admitted there with its parts, under the client's message id when it
 //! gave one, so a retry is the same message. The message's metadata
 //! carries the platform's entries (its origin), as on v1.
@@ -70,7 +70,7 @@ pub(super) async fn create(
                 "metadata": metadata,
                 "external_actor": req.external_actor,
                 // The person who sent it, so the turn's platform tools act
-                // as them; none for a platform message (the cell's
+                // as them; none for a platform message (the shard's
                 // `senders.rs`), as v1 records the invocation.
                 "sender": ctx.event_metadata.is_none().then_some(ctx.user_id).flatten(),
             }),
