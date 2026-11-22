@@ -189,6 +189,11 @@ pub(crate) async fn create_on_plane(
     // the sandbox's key when the session first calls it.
     let sandbox = super::sandboxes::pinned(cp, org_id, session).await?;
     let memory = super::memory::mounts(cp, session).await?;
+    let owner = cp
+        .db
+        .get_session(org_id, session)
+        .await?
+        .and_then(|row| row.resolved_owner_user_id);
     let plane = for_org(cp, org_id).await?;
     let public = org_public(org_id);
     let mut last = None;
@@ -220,6 +225,7 @@ pub(crate) async fn create_on_plane(
                     sandbox: sandbox.as_ref(),
                     memory: &memory,
                     importing,
+                    owner,
                 },
             )
             .await

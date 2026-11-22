@@ -61,6 +61,7 @@ pub async fn card(
         harness_id: harness_id.to_string(),
         agent: serde_json::to_value(&agent)?,
         harness: serde_json::to_value(&harness)?,
+        model_preset: row.model_preset.clone(),
     }))
 }
 

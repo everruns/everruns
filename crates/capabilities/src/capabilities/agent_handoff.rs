@@ -103,10 +103,6 @@ impl Capability for AgentHandoffCapability {
         AGENT_HANDOFF_CAPABILITY_ID
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[everruns_contracts::host_calls::CONNECTION_TOKEN]
-    }
-
     fn name(&self) -> &str {
         "Agents"
     }

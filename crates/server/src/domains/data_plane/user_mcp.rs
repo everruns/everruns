@@ -4,11 +4,11 @@
 //! Decisions:
 //! - The person's server list stays in the control plane: it is theirs
 //!   across every chat and agent of the org, so no session's shard owns it.
-//!   A shard reaches it with two host calls, both acting as the turn's
-//!   person ([`USER_MCP_STORE`], [`USER_MCP_SERVERS`]). As for every such
-//!   call, the person is the one the session's shard recorded for the open
-//!   turn, and the dispatcher records the turn's invocation first
-//!   (`host_calls::record_turn`); the call itself names no one
+//!   A shard reaches it with two calls of the person's MCP server, both
+//!   acting as the turn's person ([`USER_MCP_STORE`], [`USER_MCP_SERVERS`]).
+//!   The person is the one the session's shard recorded for the open turn
+//!   (the token's `act`), and the dispatcher records the turn's invocation
+//!   first (`calls::record_turn`); the call itself names no one
 //!   (THREAT[TM-AGENT-017]).
 //! - The manage tools run the v1 worker's own store
 //!   (`invoke_user_mcp_store_for_session`), with its checks: the agent must
@@ -35,7 +35,7 @@
 //! - A server that does not resolve (a preset archived meanwhile) is left
 //!   out, as on v1 one bad entry never takes the turn's tools down.
 
-use everruns_contracts::host_calls::{USER_MCP_SERVERS, USER_MCP_STORE};
+use crate::domains::data_plane::calls::{USER_MCP_SERVERS, USER_MCP_STORE};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::mcp::{UserMcpStoreCall, UserMcpStoreError};
 use everruns_core::{McpServerActsAs, McpServerAuthMode, ScopedMcpServers};

@@ -23,9 +23,6 @@ impl Capability for KnowledgeCapability {
         "knowledge"
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[everruns_contracts::host_calls::KNOWLEDGE]
-    }
     fn name(&self) -> &str {
         "Knowledge"
     }

@@ -19,6 +19,9 @@
 //! - Reads of the parent's own agent and harness name them by the Engine's
 //!   session-local ids, and answer from the parent's card.
 //! - Billed to the parent's org.
+//! - A child of an org's session is reported on the feed
+//!   (`Record::Subagent`); the control plane gives it a session record under
+//!   the child's id, owned as its parent is. The shard never waits for it.
 //! - A detached child records its lineage only (`forked_from_session_id`
 //!   with a fresh seed). Seeded children (a fork, a workspace copy) and
 //!   blueprints are not on the data plane yet.
@@ -37,6 +40,7 @@ use async_trait::async_trait;
 use everruns_capabilities::{
     PlatformCreateSessionRequest, PlatformHostBackendsExt, PlatformMessage, PlatformStore,
 };
+use everruns_contracts::dataplane::SubagentOrigin;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{
     AgentId, HarnessId, MessageId, SessionId, SessionParticipantId,
@@ -75,27 +79,26 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
         })
         .await
         .ok()
-        .flatten()
-        .and_then(|url| {
-            crate::mcp::ControllerServer::for_session(
-                port.material(),
-                session,
-                everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMANDS,
-                &url,
-            )
-        });
-    let calls = lookups
-        .clone()
-        .map(|lookups| crate::platform_calls::PlatformCalls::new(lookups, session, commands));
+        .flatten();
+    let calls = commands.as_ref().map(|url| {
+        crate::platform_calls::PlatformCalls::new(crate::mcp::ControllerServer::for_session(
+            port.material(),
+            session,
+            everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMANDS,
+            url,
+        ))
+    });
     // The shell's saved scripts (`saved_scripts.rs`). A save is allowed here
     // and decided by the control plane, which reads the agent's shell
     // settings and the turn's person.
-    let scripts = lookups.clone().map(|lookups| SavedScripts {
-        store: Arc::new(crate::saved_scripts::ShardSavedScripts::new(
-            lookups, session,
-        )),
-        can_save: true,
-    });
+    let scripts = commands
+        .zip(port.material().cloned())
+        .map(|(url, material)| SavedScripts {
+            store: Arc::new(crate::saved_scripts::ShardSavedScripts::new(
+                material, session, url,
+            )),
+            can_save: true,
+        });
     let bind = calls.is_some();
     let store: Arc<dyn PlatformStore> = Arc::new(ShardPlatformStore {
         parent: session,
@@ -146,9 +149,9 @@ struct ShardPlatformStore {
     gateway: Arc<Gateway>,
     /// Children made by this activation, shared with its bound copies.
     children: Arc<parking_lot::Mutex<HashMap<SessionId, ExecutionSession>>>,
-    /// The platform tools' calls, when the executor reaches a control plane.
+    /// The platform tools' calls, when the control plane serves them.
     calls: Option<crate::platform_calls::PlatformCalls>,
-    /// The org's host calls, for a child's helper model.
+    /// The org's pushed settings, for a child's helper model.
     lookups: Option<crate::lookups::OrgLookups>,
 }
 
@@ -226,6 +229,11 @@ struct Parent {
     /// The Engine's session-local ids of its agent and harness.
     agent: Option<AgentId>,
     harness: Option<HarnessId>,
+    /// Its Memory mounts and servers, which its children inherit.
+    memory: Vec<String>,
+    servers: crate::platform::Servers,
+    /// The person who owns it, whom its children belong to.
+    owner: Option<String>,
 }
 
 fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T> {
@@ -234,7 +242,7 @@ fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T>
 
 impl ShardPlatformStore {
     async fn parent(&self) -> Result<Parent> {
-        let (definition, org, agent_ref, record) = self
+        let (definition, org, agent_ref, record, memory, servers, owner) = self
             .port
             .read(self.parent, |s| {
                 (
@@ -242,6 +250,9 @@ impl ShardPlatformStore {
                     s.tenant.clone(),
                     s.platform.agent_ref.clone(),
                     s.authority.execution.clone(),
+                    s.platform.memory.clone(),
+                    s.platform.servers.clone(),
+                    s.platform.owner.clone(),
                 )
             })
             .await?;
@@ -252,6 +263,9 @@ impl ShardPlatformStore {
             agent_ref,
             agent: record.as_ref().and_then(|r| r.agent_id),
             harness: record.map(|r| r.harness_id),
+            memory,
+            servers,
+            owner,
         })
     }
 
@@ -293,39 +307,53 @@ impl ShardPlatformStore {
 
     /// The `model` a child's definition takes for its helper key: the
     /// parent's own for `same` (the session's model rides in its
-    /// definition), else what the control plane resolves the key to
-    /// (host call `helper_model`). `None` keeps the child's agent model,
-    /// also on a shard without a control plane.
+    /// definition), else what the key resolves to in the org's helper
+    /// catalog, pushed with its config (`dataplane::HELPER_MODEL_SETTING`),
+    /// with the control plane's own resolver. `None` keeps the child's
+    /// agent model, also on a shard with no catalog (standalone).
     async fn helper_model(
         &self,
         parent: &Parent,
         helper: &everruns_core::helper_models::SpawnHelperModel,
     ) -> Result<Option<serde_json::Value>> {
+        use everruns_contracts::runtime::helper_models::{HelperCatalog, resolve_helper_model};
         use everruns_core::helper_models::HelperModelTarget;
-        use everruns_internal_protocol::commands::InternalCommandTransport;
         if helper.target == HelperModelTarget::Same {
             return Ok(parent.definition.get("model").cloned());
         }
         let Some(lookups) = &self.lookups else {
             return Ok(None);
         };
-        let answer = lookups
-            .execute_internal_command(
-                "worker_resolve_helper_model",
-                serde_json::json!({ "session_id": self.parent.to_string(), "helper": helper }),
-            )
-            .await?;
-        Ok(match answer {
-            Ok(choice) if choice.is_object() => Some(serde_json::json!({
-                "provider": choice["provider"],
-                "model": choice["model"],
-            })),
-            Ok(_) => None,
-            Err(error) => {
-                tracing::warn!(error = %error.message, "helper model lookup refused; keeping the agent model");
-                None
-            }
-        })
+        let Some(catalog) = lookups
+            .setting::<HelperCatalog>(everruns_contracts::dataplane::HELPER_MODEL_SETTING)
+            .await
+        else {
+            tracing::warn!("no helper model catalog yet; keeping the agent model");
+            return Ok(None);
+        };
+        let preset = self
+            .parent_card(parent)
+            .await?
+            .and_then(|card| card.model_preset);
+        // The provider the parent runs on, for `other_provider`.
+        let provider = parent.definition["model"]["provider"].as_str();
+        let provider_type = catalog
+            .models
+            .iter()
+            .find(|model| Some(model.provider.as_str()) == provider)
+            .map(|model| model.provider_type.clone());
+        Ok(resolve_helper_model(
+            &catalog,
+            &helper.target,
+            preset.as_deref(),
+            provider_type.as_deref(),
+        )
+        .map(|model| {
+            serde_json::json!({
+                "provider": model.provider,
+                "model": model.model,
+            })
+        }))
     }
 
     /// What a child of the parent's own agent runs, and its agent key.
@@ -504,24 +532,19 @@ impl PlatformStore for ShardPlatformStore {
         {
             definition["model"] = model;
         }
-        // Decision: a child gets a session record on the control plane
-        // first (`subagent_record`), as a v1 subagent has, and runs under the
-        // id that record has, with the Memory mounts resolved from it. A shard
-        // with no control plane (standalone) starts it without one.
-        let (id, memory, servers) = match (&self.calls, &parent.org) {
-            (Some(calls), Some(_)) => {
-                calls
-                    .record_subagent(serde_json::json!({
-                        "parent_session_id": self.parent.to_string(),
-                        "harness_id": request.harness_id.to_string(),
-                        "agent_id": request.agent_id.map(|id| id.to_string()),
-                        "title": request.title.clone(),
-                        "locale": request.locale.clone(),
-                    }))
-                    .await?
-            }
-            _ => (SessionId::new(), Vec::new(), Default::default()),
-        };
+        // Decision: a child runs under an id minted here, with its parent's
+        // Memory mounts and servers. Its create reports it on the feed
+        // (`Record::Subagent`), where the control plane gives it a session
+        // record under that id, as a v1 subagent has; nothing waits on the
+        // control plane. A session no org owns (standalone) reports nothing.
+        let id = SessionId::new();
+        let subagent = parent.org.as_ref().map(|_| SubagentOrigin {
+            parent_session_id: self.parent.to_string(),
+            harness_id: request.harness_id.to_string(),
+            agent_id: request.agent_id.map(|id| id.to_string()),
+            title: request.title.clone(),
+            locale: request.locale.clone(),
+        });
         self.gateway
             .create_running(
                 definition,
@@ -530,9 +553,11 @@ impl PlatformStore for ShardPlatformStore {
                 parent.org.clone(),
                 agent_ref,
                 crate::gateway::Joining {
-                    memory,
-                    servers,
+                    memory: parent.memory.clone(),
+                    servers: parent.servers.clone(),
                     importing: false,
+                    subagent,
+                    owner: parent.owner.clone(),
                 },
             )
             .await

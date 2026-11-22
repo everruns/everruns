@@ -167,15 +167,6 @@ impl Capability for ShellCodeModeCapability {
         SHELL_CODE_MODE_CAPABILITY_ID
     }
 
-    /// `tools scripts` reads and saves the agent's saved scripts through
-    /// the control plane on a data plane.
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[
-            everruns_contracts::host_calls::AGENT_SCRIPTS,
-            everruns_contracts::host_calls::AGENT_SCRIPT_SAVE,
-        ]
-    }
-
     fn name(&self) -> &str {
         "Shell Code Mode"
     }

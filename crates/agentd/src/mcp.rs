@@ -9,7 +9,8 @@
 //! the executor that runs the session's turn, for the session's own org.
 //! A server whose grant depends on the turn (one that acts as the turn's
 //! person, or a connection-backed preset) keeps its OAuth provider instead,
-//! and its token is a host call per use ([`MCP_CONNECTION_COMMAND`]).
+//! and its token is asked of the control plane's credentials server per use
+//! (`OrgLookups::open_turn_mcp_token`).
 //!
 //! Decisions:
 //! - A per-turn token names the session's open turn, not a message: the
@@ -45,13 +46,6 @@ use crate::providers::OrgMaterial;
 use crate::secrets::{SecretOp, SecretReply};
 
 pub use everruns_contracts::dataplane::{MCP_OAUTH, mcp_binding_secret};
-use everruns_contracts::host_calls::{HostCallAnswer, OPEN_TURN};
-
-/// The v1 worker command the [`MCP_CONNECTION_TOKEN`] host call runs, as
-/// lookups name it.
-///
-/// [`MCP_CONNECTION_TOKEN`]: everruns_contracts::host_calls::MCP_CONNECTION_TOKEN
-pub const MCP_CONNECTION_COMMAND: &str = "worker_get_mcp_connection_token";
 /// How long an opened binding value is reused.
 const KEEP: Duration = Duration::from_secs(30);
 /// How far ahead of its expiry a token is renewed.
@@ -74,7 +68,7 @@ pub struct Bindings {
 }
 
 /// An MCP server's grant that only the control plane can answer, for the
-/// turn running now ([`MCP_CONNECTION_COMMAND`]).
+/// turn running now (`OrgLookups::open_turn_mcp_token`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PerTurnGrant {
     /// The attachment's OAuth provider (`mcp_oauth_<server>`).
@@ -552,29 +546,25 @@ impl OrgMcp {
     /// next turn may be another person's.
     async fn per_turn_token(
         &self,
-        material: &Arc<dyn OrgMaterial>,
+        _material: &Arc<dyn OrgMaterial>,
         org: &str,
         session: uuid::Uuid,
         server: &str,
         grant: &PerTurnGrant,
     ) -> anyhow::Result<Option<String>> {
-        let params = serde_json::json!({
-            "session_id": SessionId::from_uuid(session).to_string(),
-            "server_prefix": everruns_contracts::runtime::sanitize_mcp_server_name(server),
-            "provider": grant.provider,
-            "acts_as": grant.acts_as.to_string(),
-            "input_message_id": OPEN_TURN,
-        });
-        match material.lookup(org, MCP_CONNECTION_COMMAND, params).await? {
-            HostCallAnswer::Value(serde_json::Value::String(token)) => Ok(Some(token)),
-            HostCallAnswer::Value(_) => Ok(None),
-            HostCallAnswer::Error { message, .. } => {
-                // As a v1 worker: no grant is an unauthorized call, which
-                // tells the person to connect.
-                tracing::warn!(%org, server, %message, "no MCP grant for the turn");
-                Ok(None)
-            }
-        }
+        let session = SessionId::from_uuid(session);
+        let Some(lookups) = crate::lookups::org_lookups(self.material.get(), session) else {
+            tracing::warn!(%org, server, "no org for the turn's MCP grant");
+            return Ok(None);
+        };
+        Ok(lookups
+            .open_turn_mcp_token(
+                session,
+                &everruns_contracts::runtime::sanitize_mcp_server_name(server),
+                &grant.provider,
+                &grant.acts_as.to_string(),
+            )
+            .await?)
     }
 }
 

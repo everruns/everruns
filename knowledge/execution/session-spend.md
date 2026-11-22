@@ -67,7 +67,7 @@ session's Cost tab for anyone who can view the session.
 | Host | Spend |
 |---|---|
 | v1 worker (gRPC) and in-process server | internal command over the worker link |
-| Shard (data plane v2) | host call `session_spend`; the control plane reads the shard's log and prices it |
+| Shard (data plane v2) | the `spend` operation of the control plane's `platform_commands` server, for the session the token names; the control plane reads the shard's log and prices it |
 | Embedded framework, Yolop | none yet: `spend` is `null`, tokens only |
 
 A failed read returns `spend: null` and the tool still succeeds.

@@ -261,6 +261,19 @@ async fn store(
             super::task_webhooks::deliver(cp, org_id, session_id, transition, task, targets)
                 .await?;
         }
+        Record::SessionResource {
+            session_id,
+            resource_id,
+            resource,
+        } => {
+            super::session_records::resource(cp, org_id, session_id, resource_id, resource).await?;
+        }
+        Record::Lease { session_id, lease } => {
+            super::session_records::lease(cp, org_id, session_id, lease).await?;
+        }
+        Record::Subagent { session_id, origin } => {
+            super::subagents::record(cp, org_id, session_id, origin).await?;
+        }
         Record::Health { .. } | Record::Unknown => {}
     }
     Ok(())

@@ -91,8 +91,9 @@ preset, never a raw model name, so the owner controls cost and which providers s
   model, so it sticks for follow-ups. `same` copies the person's explicit parent choice (session
   model, else the latest message's model). Unusable targets leave the child on ordinary
   resolution rather than failing the spawn.
-- Shards ask the same resolution over the `helper_model` host call and write the answer into the
-  child's definition; `same` copies the parent's definition model. Framework (local) runs every
+- Shards resolve the same way from the org's helper catalog, pushed with its config
+  (`dataplane::HELPER_MODEL_SETTING`), and write the answer into the child's definition; no
+  catalog yet keeps the agent's model, and `same` copies the parent's definition model. Framework (local) runs every
   key on the parent's model.
 - The task spec records `model`, `model_pick`, `model_pick_reason` and `model_id`; the session's
   Subagents tab shows them as a chip. Hand-offs keep the member agent's own model. Fixed

@@ -20,7 +20,7 @@
 //!   build the same agents executors run, and nothing outside a session
 //!   can call a model with an org's key.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
@@ -126,6 +126,12 @@ pub trait OrgMaterial: Send + Sync {
         let _ = (session, message);
         None
     }
+    /// The person who owns `session` ([`crate::platform::Platform::owner`]);
+    /// `None` when no person does, or for a session not known here.
+    fn owner(&self, session: SessionId) -> Option<String> {
+        let _ = session;
+        None
+    }
     /// The URL of the control plane's server `name`
     /// (`injected::CONTROLLER_SERVERS`) that `session`'s create brought;
     /// `None` without one, or for a session not known here.
@@ -144,35 +150,6 @@ pub trait OrgMaterial: Send + Sync {
     /// node that calls no control plane server (`memory.rs`).
     fn mcp(&self) -> Option<Arc<crate::mcp::OrgMcp>> {
         None
-    }
-    /// Whether [`lookup`](Self::lookup) reaches a control plane: false on
-    /// a standalone shard, whose tools then get the defaults a host without
-    /// org settings gives.
-    fn looks_up(&self) -> bool {
-        false
-    }
-    /// The host calls `session`'s agent declares (its capabilities'
-    /// `host_calls`); `None` when the session is not known here, and then
-    /// nothing is checked.
-    fn declared_host_calls(&self, session: SessionId) -> Option<BTreeSet<&'static str>> {
-        let _ = session;
-        None
-    }
-    /// A session made host call `call`, which its capabilities do not
-    /// declare (counted for the matrix's declarations to be checked live).
-    fn undeclared_host_call(&self, call: &str) {
-        let _ = call;
-    }
-    /// Make one of `org`'s host calls, named by its v1 worker command
-    /// (`lookups.rs`).
-    async fn lookup(
-        &self,
-        org: &str,
-        command: &str,
-        params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        let _ = (org, command, params);
-        anyhow::bail!("this node does not reach a control plane")
     }
 }
 

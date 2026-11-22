@@ -1,0 +1,277 @@
+//! The calls the control plane's injected servers run for a session on a
+//! data plane (`injected/hosted.rs`): a hosted capability's tools, the
+//! platform commands, a session's Memory, the turn's person's MCP servers,
+//! and the credentials of a session's native integrations. This is their
+//! one dispatcher, run in process as the org's internal caller with the
+//! org's feature flags: the same caller, checks and failures a v1 worker's
+//! `ExecuteCommand` gets (a session of another org is not found).
+//!
+//! Decisions:
+//! - A call is named here ([`CALLS`]), never by a data plane: the servers
+//!   build each one from a session token the data plane signed, which names
+//!   the session, its org and the person (`act`). Nothing crosses a link
+//!   but MCP over TLS.
+//! - A platform tool's call ([`PLATFORM_COMMAND`], Platform Chat) runs on
+//!   the command catalog as the token's person, never as the internal
+//!   caller: the session must resolve `platform` and the person must still
+//!   be an org member, with their current role (THREAT[TM-AGENT-017]).
+//! - A call that acts as the turn's person (a connection token, a GitHub
+//!   token, the agent's service key, the person's MCP servers, a script
+//!   save) records the turn's invocation first, from the token's person and
+//!   the session's agent, as v1 records it when the message comes through
+//!   its API ([`record_turn`]). A v2 session's messages reach the shard
+//!   without the control plane, so without it every credential check that
+//!   reads the invocation (which person's connection, which responder's
+//!   service identity) would find none and answer nothing. Only for a
+//!   session the data plane runs, once per turn; a person who is no longer
+//!   a member records nothing, so the lookup acts as no one and asks again
+//!   next time (fail closed).
+//! - A Slack action ([`SLACK_ACTION`]) runs as the bot of the endpoint the
+//!   session came through, resolved within the org; its token stays here.
+//! - Each call is counted by name and outcome
+//!   (`everruns_injected_calls_total`).
+
+use everruns_contracts::typed_id::{MessageId, SessionId};
+
+use super::ControlPlane;
+use crate::domains::common::Ctx;
+
+/// A call one of the injected servers runs.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Call {
+    pub name: &'static str,
+    /// The v1 worker command that answers it, where one does.
+    pub command: &'static str,
+    /// Whether it acts as the turn's person ([`record_turn`]).
+    pub person: bool,
+}
+
+pub const CONNECTION_TOKEN: &str = "connection_token";
+pub const MCP_CONNECTION_TOKEN: &str = "mcp_connection_token";
+pub const GITHUB_TOKEN: &str = "github_token";
+pub const SERVICE_API_KEY: &str = "service_api_key";
+pub const KNOWLEDGE: &str = "knowledge";
+pub const POPPY_CALL: &str = "poppy_call";
+pub const PLATFORM_COMMAND: &str = "platform_command";
+pub const SLACK_ACTION: &str = "slack_action";
+pub const MEMORY_FILE: &str = "memory_file";
+pub const USER_MCP_STORE: &str = "user_mcp_store";
+pub const USER_MCP_SERVERS: &str = "user_mcp_servers";
+pub const SESSION_SPEND: &str = "session_spend";
+pub const AGENT_SCRIPTS: &str = "agent_scripts";
+pub const AGENT_SCRIPT_SAVE: &str = "agent_script_save";
+
+const fn call(name: &'static str, command: &'static str, person: bool) -> Call {
+    Call {
+        name,
+        command,
+        person,
+    }
+}
+
+/// Every call, by name.
+pub const CALLS: &[Call] = &[
+    call(CONNECTION_TOKEN, "worker_get_connection_token", true),
+    call(
+        MCP_CONNECTION_TOKEN,
+        "worker_get_mcp_connection_token",
+        true,
+    ),
+    call(GITHUB_TOKEN, "worker_get_github_token", true),
+    call(
+        SERVICE_API_KEY,
+        "worker_get_service_api_key_connection",
+        true,
+    ),
+    call(KNOWLEDGE, "worker_knowledge", false),
+    call(POPPY_CALL, "worker_poppy_call", false),
+    // The person is the command catalog's caller, not a recorded turn.
+    call(PLATFORM_COMMAND, "platform_command_surface", false),
+    call(SLACK_ACTION, "slack_action", false),
+    call(MEMORY_FILE, "memory_file", false),
+    call(USER_MCP_STORE, "user_mcp_store", true),
+    call(USER_MCP_SERVERS, "user_mcp_servers", true),
+    call(SESSION_SPEND, "worker_get_session_spend", false),
+    call(AGENT_SCRIPTS, "list_agent_scripts", false),
+    call(AGENT_SCRIPT_SAVE, "agent_script_save", true),
+];
+
+/// The call named `name`.
+pub fn by_name(name: &str) -> Option<&'static Call> {
+    CALLS.iter().find(|call| call.name == name)
+}
+
+/// A call's answer: a value, or a refusal with its
+/// `proto::command_error::Kind`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Answer {
+    Value(serde_json::Value),
+    Error { kind: i32, message: String },
+}
+
+/// Run `call` with `params` as `ctx` (the org's internal caller).
+pub async fn answer(
+    cp: &ControlPlane,
+    ctx: &Ctx,
+    call: &Call,
+    params: serde_json::Value,
+) -> anyhow::Result<Answer> {
+    if call.person
+        && let Err(error) = record_turn(cp, ctx, &params).await
+    {
+        // The lookup then finds no invocation and answers nothing.
+        tracing::warn!(call = call.name, %error, "could not record the turn's invocation");
+    }
+    let answer = run(cp, ctx, call, params).await;
+    let outcome = match &answer {
+        Ok(Answer::Value(_)) => "ok",
+        Ok(Answer::Error { .. }) => "refused",
+        Err(_) => "failed",
+    };
+    metrics::counter!(
+        "everruns_injected_calls_total",
+        "call" => call.name,
+        "outcome" => outcome,
+    )
+    .increment(1);
+    answer
+}
+
+async fn run(
+    cp: &ControlPlane,
+    ctx: &Ctx,
+    call: &Call,
+    params: serde_json::Value,
+) -> anyhow::Result<Answer> {
+    match call.name {
+        // A platform tool's call (Platform Chat) is not an internal
+        // command: it runs on the command catalog as the token's person.
+        PLATFORM_COMMAND => Ok(
+            match crate::worker_link::platform_command_surface::data_plane_call(ctx, &params).await
+            {
+                Ok(output) => Answer::Value(serde_json::Value::String(output)),
+                Err((kind, message)) => Answer::Error {
+                    kind: kind as i32,
+                    message,
+                },
+            },
+        ),
+        MEMORY_FILE => Ok(Answer::Value(super::memory::answer(ctx, &params).await)),
+        SLACK_ACTION => Ok(Answer::Value(slack_action(ctx, &params).await)),
+        USER_MCP_STORE => Ok(Answer::Value(super::user_mcp::store(ctx, &params).await)),
+        USER_MCP_SERVERS => Ok(Answer::Value(super::user_mcp::servers(ctx, &params).await)),
+        AGENT_SCRIPTS => super::agent_scripts::list(cp, ctx, &params).await,
+        AGENT_SCRIPT_SAVE => super::agent_scripts::save(cp, ctx, &params).await,
+        _ => Ok(
+            match crate::domains::common::dispatch(call.command, params, ctx).await {
+                Ok(json) => Answer::Value(serde_json::from_str(&json)?),
+                Err(error) => {
+                    let error = crate::worker_link::grpc_service::command_error_to_proto(error);
+                    Answer::Error {
+                        kind: error.kind,
+                        message: error.message,
+                    }
+                }
+            },
+        ),
+    }
+}
+
+/// Record the invocation of the turn a call names (`input_message_id`) on
+/// a session the data plane runs, as v1 does when the message comes
+/// through its API: the token's person (`acting_user`,
+/// `null` for a channel message or a trigger) with their default runtime
+/// identity, and the session's agent as the responder. The checks are the
+/// v1 ones (`record_runtime_invocation_with`): an active member, an active
+/// agent of the org. A call outside a turn, a v1 session's, or one already
+/// recorded is left alone.
+async fn record_turn(
+    cp: &ControlPlane,
+    ctx: &Ctx,
+    params: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let Some(message) = params["input_message_id"].as_str().and_then(input_message) else {
+        return Ok(());
+    };
+    let Some(session) = params["session_id"]
+        .as_str()
+        .and_then(|id| SessionId::parse(id).ok())
+    else {
+        return Ok(());
+    };
+    let org_id = ctx.org_id();
+    if !super::sessions::runs_on_data_plane(cp, org_id, session).await?
+        || ctx
+            .db
+            .runtime_invocation_exists(session, message.uuid())
+            .await?
+    {
+        return Ok(());
+    }
+    // Another org's session: the call itself refuses it.
+    let Some(row) = ctx.db.get_session(org_id, session).await? else {
+        return Ok(());
+    };
+    let person = match params["acting_user"].as_str() {
+        None => None,
+        Some(user) => {
+            let user = uuid::Uuid::parse_str(user)?;
+            Some((user, ctx.db.default_virtual_user(org_id, user).await?))
+        }
+    };
+    ctx.db
+        .record_runtime_invocation_with(
+            org_id,
+            session,
+            message.uuid(),
+            person.as_ref().map(|(_, subject)| subject.id),
+            person.as_ref().map(|(user, _)| *user),
+            row.agent_id.map(|agent| agent.uuid()),
+            crate::storage::runtime_identity::InvocationRows {
+                default_subject: person.as_ref().map(|(user, subject)| (*user, subject)),
+                responder: None,
+            },
+        )
+        .await
+}
+
+/// An input message id as a call names it: prefixed or a bare UUID.
+fn input_message(id: &str) -> Option<MessageId> {
+    MessageId::parse(id)
+        .ok()
+        .or_else(|| uuid::Uuid::parse_str(id).ok().map(MessageId::from_uuid))
+}
+
+/// A Slack action for one session of the org (`SLACK_ACTION`), as the bot
+/// of the Slack endpoint the session came through, as a v1 worker's
+/// `InvokeSlackAction`: the session is read within the org, so another
+/// org's session has no endpoint, and the bot token stays here.
+async fn slack_action(ctx: &Ctx, params: &serde_json::Value) -> serde_json::Value {
+    use everruns_contracts::slack_action::{SlackAction, SlackActionError};
+    let session = params["session_id"]
+        .as_str()
+        .and_then(|id| everruns_contracts::typed_id::SessionId::parse(id).ok());
+    let action = serde_json::from_value::<SlackAction>(params["action"].clone());
+    let outcome = match (session, action) {
+        (Some(session), Ok(action)) => {
+            crate::channels::slack::actions::in_process_invoker(
+                &ctx.db,
+                ctx.encryption.as_ref(),
+                ctx.org_id(),
+                session,
+            )
+            .invoke(action)
+            .await
+        }
+        (None, _) => Err(SlackActionError::InvalidArgument(
+            "invalid session_id".into(),
+        )),
+        (_, Err(error)) => Err(SlackActionError::InvalidArgument(format!(
+            "invalid Slack action: {error}"
+        ))),
+    };
+    match outcome {
+        Ok(outcome) => serde_json::json!({ "outcome": outcome }),
+        Err(error) => serde_json::json!({ "error": error }),
+    }
+}

@@ -1085,8 +1085,8 @@ async fn an_orgs_agents_are_in_its_data_planes_catalog() {
     assert!(live.iter().all(|item| item.item_id != key), "{live:?}");
 }
 
+mod calls;
 mod event_tap;
-mod host_calls;
 mod mcp;
 mod memory;
 mod moves;

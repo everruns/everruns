@@ -14,10 +14,8 @@
 //! Both go to the control plane's `person_mcp` server (its
 //! `person_mcp_store` and `person_mcp_servers` tools) with a session token
 //! whose `act` names the person and the open turn's input message, when
-//! the session's create brought that server's URL. Otherwise they are
-//! host calls ([`USER_MCP_STORE`] for the open turn ([`OPEN_TURN`]),
-//! [`USER_MCP_SERVERS`] for its input message), which this shard fills in
-//! the person for.
+//! the session's create brought that server's URL. Without it (a
+//! standalone shard) a turn has neither.
 //!
 //! The same call brings the session's own MCP records (chat-only servers
 //! and ARD MCP targets, kept in the session's storage on this shard), which
@@ -53,7 +51,6 @@ use async_trait::async_trait;
 use everruns_capabilities::capabilities::{
     USER_MCP_CAPABILITY_ID, UserMcpCallInvoker, install_user_mcp_store, user_mcp_use_enabled,
 };
-use everruns_contracts::host_calls::{OPEN_TURN, USER_MCP_SERVERS, USER_MCP_STORE};
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::ScopedMcpServers;
 use everruns_core::host::{HostBackends, TurnMcpServers};
@@ -62,50 +59,21 @@ use everruns_core::mcp::{
 };
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_mcp_servers::SESSION_MCP_SERVER_KV_PREFIX;
-use everruns_internal_protocol::commands::InternalCommandTransport;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::hosting::Port;
-use crate::lookups::OrgLookups;
 use crate::mcp::{ControllerServer, PerTurnGrant};
 use everruns_contracts::runtime::capabilities::injected::{
     PERSON_MCP_SERVERS_TOOL, PERSON_MCP_STORE_TOOL,
 };
 
-/// How a session reaches the person's servers in the control plane.
-#[derive(Clone)]
-enum Via {
-    HostCall(OrgLookups),
-    Server(ControllerServer),
-}
-
-impl Via {
-    /// The control plane handler's `{"ok"}`/`{"error"}` answer: a host
-    /// call's `params`, or the server `tool`'s `arguments` (the token names
-    /// the session and the turn).
-    async fn answer(
-        &self,
-        host_call: &'static str,
-        params: Value,
-        tool: &str,
-        arguments: Value,
-    ) -> Result<Value, String> {
-        match self {
-            Via::HostCall(lookups) => {
-                match lookups.execute_internal_command(host_call, params).await {
-                    Ok(Ok(answer)) => Ok(answer),
-                    Ok(Err(error)) => Err(error.message),
-                    Err(error) => Err(error.to_string()),
-                }
-            }
-            Via::Server(server) => {
-                let text = server.call_tool(tool, arguments).await?;
-                serde_json::from_str(&text).map_err(|error| error.to_string())
-            }
-        }
-    }
+/// The control plane handler's `{"ok"}`/`{"error"}` answer from the
+/// `person_mcp` server's `tool` (the token names the session and the turn).
+async fn answer(server: &ControllerServer, tool: &str, arguments: Value) -> Result<Value, String> {
+    let text = server.call_tool(tool, arguments).await?;
+    serde_json::from_str(&text).map_err(|error| error.to_string())
 }
 
 /// The control plane's server for the person's MCP servers.
@@ -145,20 +113,17 @@ pub(crate) fn grant(session: Uuid, server: &str, url: Option<&str>) -> Option<Pe
 
 /// Give `session`'s activation the `user_mcp` store and its turns the
 /// person's servers, when its agent (`definition`) has `user_mcp` and the
-/// control plane is reached: over its `person_mcp` server when there is
-/// one (`server`), else over host calls (`lookups`).
+/// session's create brought the control plane's `person_mcp` server
+/// (`server`).
 pub(crate) fn attach(
     mut backends: HostBackends,
-    lookups: Option<OrgLookups>,
     server: Option<ControllerServer>,
     port: Port,
     session: SessionId,
     definition: &Value,
 ) -> HostBackends {
-    let via = match (server, lookups) {
-        (Some(server), _) => Via::Server(server),
-        (None, Some(lookups)) => Via::HostCall(lookups),
-        (None, None) => return backends,
+    let Some(via) = server else {
+        return backends;
     };
     let uses = crate::host::package(definition)
         .ok()
@@ -172,7 +137,7 @@ pub(crate) fn attach(
     let Some(_) = uses else {
         return backends;
     };
-    let invoker: Arc<dyn UserMcpCallInvoker> = Arc::new(ShardUserMcpStore { via, session });
+    let invoker: Arc<dyn UserMcpCallInvoker> = Arc::new(ShardUserMcpStore { via });
     let inner = backends.tool_context_extensions_factory.take();
     backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
         let mut extensions = inner
@@ -187,33 +152,21 @@ pub(crate) fn attach(
 
 /// The `user_mcp` store of one session, in the control plane.
 struct ShardUserMcpStore {
-    via: Via,
-    session: SessionId,
+    via: ControllerServer,
 }
 
 #[async_trait]
 impl UserMcpCallInvoker for ShardUserMcpStore {
     async fn invoke(
         &self,
-        input_message: Option<Uuid>,
+        // The token names the session and the open turn's person.
+        _input_message: Option<Uuid>,
         call: UserMcpStoreCall,
     ) -> UserMcpStoreResult<UserMcpStoreReply> {
         let internal =
             |error: &dyn std::fmt::Display| UserMcpStoreError::Internal(error.to_string());
         let call = serde_json::to_value(&call).map_err(|e| internal(&e))?;
-        let params = json!({
-            "session_id": self.session.to_string(),
-            "input_message_id": input_message.map_or_else(|| OPEN_TURN.to_owned(), |m| m.to_string()),
-            "call": call,
-        });
-        let answer = self
-            .via
-            .answer(
-                USER_MCP_STORE,
-                params,
-                PERSON_MCP_STORE_TOOL,
-                json!({ "call": call }),
-            )
+        let answer = answer(&self.via, PERSON_MCP_STORE_TOOL, json!({ "call": call }))
             .await
             .map_err(UserMcpStoreError::Internal)?;
         if let Some(error) = answer.get("error") {
@@ -226,7 +179,7 @@ impl UserMcpCallInvoker for ShardUserMcpStore {
 /// The servers a turn of `session` adds: its person's (when its agent has
 /// `user_mcp` with `use` on) and the session's own MCP records.
 struct PersonServers {
-    via: Via,
+    via: ControllerServer,
     port: Port,
     session: SessionId,
     person: bool,
@@ -264,19 +217,8 @@ impl PersonServers {
     }
 
     async fn ask(&self, ask: &Ask) -> ScopedMcpServers {
-        let mut params = json!({
-            "session_id": self.session.to_string(),
-            "session_servers": ask.records,
-        });
-        if ask.person {
-            params["input_message_id"] = json!(ask.message.uuid().to_string());
-        }
         let arguments = json!({ "person": ask.person, "session_servers": ask.records });
-        let answer = match self
-            .via
-            .answer(USER_MCP_SERVERS, params, PERSON_MCP_SERVERS_TOOL, arguments)
-            .await
-        {
+        let answer = match answer(&self.via, PERSON_MCP_SERVERS_TOOL, arguments).await {
             Ok(answer) => answer,
             Err(message) => {
                 tracing::warn!(session = %self.session, %message, "no person's MCP servers for the turn");

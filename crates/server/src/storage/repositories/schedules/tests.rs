@@ -24,6 +24,7 @@ fn schedule_input(session_id: SessionId) -> CreateSessionScheduleRow {
 
 fn leased_input(session_id: SessionId) -> UpsertLeasedResourceRow {
     UpsertLeasedResourceRow {
+        id: None,
         org_id: DEFAULT_ORG_ID,
         session_id,
         provider: "test".to_string(),

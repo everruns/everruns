@@ -24,6 +24,46 @@ pub const LEASED_RESOURCE_EXTERNAL_ID_KEY: &str = "leased_resource_external_id";
 /// Reserved metadata key storing the leased-resource public ID.
 pub const LEASED_RESOURCE_ID_KEY: &str = "leased_resource_id";
 
+/// The metadata of the session resource a lease registers: the provider's
+/// own, with the lease's provider, type, external id and id under the
+/// reserved keys, so ownership checks find it from the registry alone.
+pub fn lease_registry_metadata(
+    metadata: serde_json::Value,
+    resource_id: &str,
+    provider: &str,
+    resource_type: &str,
+    external_id: &str,
+) -> serde_json::Value {
+    let mut object = match metadata {
+        serde_json::Value::Object(map) => map,
+        serde_json::Value::Null => serde_json::Map::new(),
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("provider_metadata".to_string(), other);
+            map
+        }
+    };
+
+    object.insert(
+        LEASED_RESOURCE_PROVIDER_KEY.to_string(),
+        serde_json::Value::String(provider.to_string()),
+    );
+    object.insert(
+        LEASED_RESOURCE_TYPE_KEY.to_string(),
+        serde_json::Value::String(resource_type.to_string()),
+    );
+    object.insert(
+        LEASED_RESOURCE_EXTERNAL_ID_KEY.to_string(),
+        serde_json::Value::String(external_id.to_string()),
+    );
+    object.insert(
+        LEASED_RESOURCE_ID_KEY.to_string(),
+        serde_json::Value::String(resource_id.to_string()),
+    );
+
+    serde_json::Value::Object(object)
+}
+
 /// Return the set of provider-owned external IDs currently attached to the
 /// active session.
 ///

@@ -15,12 +15,12 @@
 //!   stops before sending loses that delivery, as a v1 worker that stops
 //!   after a transition does.
 //! - The record names the targets; the control plane adds only the org's
-//!   own webhooks, which it keeps, and the signing secrets of push configs
-//!   made through the API: the node that adds one hands its secret over
-//!   ([`keep_secret`], the `task_push_secret` host call) and the shard keeps
-//!   only that it has one, so no such secret is in replicated state or on
-//!   the feed. A target whose secret cannot be found here is sent unsigned
-//!   no more than v1 would: it is skipped, and logged.
+//!   own webhooks, which it keeps. A push config made through the API
+//!   carries its signing secret sealed with the org's data key (the edge
+//!   that took it sealed it, `PushTarget::sealed`), so only ciphertext is
+//!   in replicated state or on the feed; it is opened here to sign. A
+//!   target whose secret does not open is never sent unsigned: it is
+//!   skipped, and logged.
 
 use std::sync::Arc;
 
@@ -38,30 +38,6 @@ fn event_name(transition: &str) -> Option<&'static str> {
         "message" => Some("task.message"),
         _ => None,
     }
-}
-
-/// Keep push config `config_id`'s signing secret for `session_id` of
-/// `org_id` (the `task_push_secret` host call), encrypted with the
-/// server's secrets key. Only a session of the org on its data plane.
-pub async fn keep_secret(cp: &ControlPlane, org_id: i64, params: &Value) -> anyhow::Result<()> {
-    let text = |name: &str| {
-        params[name]
-            .as_str()
-            .filter(|v| !v.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("{name} is required"))
-    };
-    let (session, config, secret) = (text("session_id")?, text("config_id")?, text("secret")?);
-    let session_id: everruns_contracts::typed_id::SessionId = session.parse()?;
-    anyhow::ensure!(
-        super::sessions::runs_on_data_plane(cp, org_id, session_id).await?
-            && cp.db.dp_session_org(session).await? == Some(org_id),
-        "session {session} is not the org's"
-    );
-    anyhow::ensure!(config.starts_with("tpc_"), "not a push config id");
-    let encrypted = cp.encryption()?.encrypt_string(secret)?;
-    cp.db
-        .dp_put_task_push_secret(config, org_id, session, &encrypted)
-        .await
 }
 
 /// The deliveries one transition makes: the org's webhooks on a terminal
@@ -85,27 +61,55 @@ pub async fn targets(
                     label: w.public_id,
                     url: w.url,
                     secret: w.secret,
-                    secret_held: false,
+                    sealed: None,
                 }),
         );
     }
     for target in targets {
         let mut target = target.clone();
-        if target.secret_held {
-            let held = cp
-                .db
-                .dp_task_push_secret(org_id, session_id, &target.label)
-                .await?;
-            let Some(encrypted) = held else {
-                tracing::warn!(org_id, config = %target.label, "push config secret not found; not delivered");
-                continue;
-            };
-            target.secret = Some(cp.encryption()?.decrypt_to_string(&encrypted)?);
-            target.secret_held = false;
+        if let Some(sealed) = target.sealed.take() {
+            match open(cp, org_id, session_id, &target.label, &sealed).await {
+                Ok(secret) => target.secret = Some(secret),
+                Err(error) => {
+                    tracing::warn!(org_id, config = %target.label, %error, "push config secret did not open; not delivered");
+                    continue;
+                }
+            }
         }
         out.push(target);
     }
     Ok(out)
+}
+
+/// Open push config `config`'s sealed secret: it must be sealed for this
+/// session and config, with the org's data key.
+async fn open(
+    cp: &ControlPlane,
+    org_id: i64,
+    session_id: &str,
+    config: &str,
+    sealed: &everruns_contracts::dataplane::SealedSecret,
+) -> anyhow::Result<String> {
+    use everruns_contracts::dataplane_seal::{push_secret_id, unseal};
+    anyhow::ensure!(
+        sealed.secret_id == push_secret_id(session_id, config),
+        "sealed for another config"
+    );
+    let row = cp
+        .db
+        .dp_org(org_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("the org is not on a data plane"))?;
+    anyhow::ensure!(
+        sealed.data_key_id == row.data_key_id,
+        "sealed under {}, the org's key is {}",
+        sealed.data_key_id,
+        row.data_key_id
+    );
+    let key = cp.data_key(&row)?;
+    let plain =
+        unseal(&key, &super::org_public(org_id), sealed).map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(String::from_utf8(plain)?)
 }
 
 /// Deliver `transition` of `task` to its webhooks, in the background.

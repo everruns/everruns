@@ -267,7 +267,17 @@ impl Database {
     // ============================================
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
-        let session_id = uuid::Uuid::now_v7();
+        self.create_session_with_id(uuid::Uuid::now_v7(), input)
+            .await
+    }
+
+    /// [`Self::create_session`] under an id the caller minted: a session a
+    /// data plane started (a subagent) keeps the id it runs under there.
+    pub async fn create_session_with_id(
+        &self,
+        session_id: uuid::Uuid,
+        input: CreateSessionRow,
+    ) -> Result<SessionRow> {
         // Attach to an existing workspace when requested; otherwise auto-create
         // a default workspace whose primary key equals the session's id. That
         // equality invariant lets existing app code that uses session.id as the

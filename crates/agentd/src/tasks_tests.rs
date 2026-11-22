@@ -307,6 +307,13 @@ fn push_config(id: &str, filter: &[&str], secret: Option<&str>) -> PushConfig {
         id: id.into(),
         url: format!("https://example.test/{id}"),
         has_secret: secret.is_some(),
+        sealed_secret: secret.map(|secret| everruns_contracts::dataplane::SealedSecret {
+            secret_id: format!("push/session/{id}"),
+            revision: 0,
+            ciphertext: format!("sealed:{secret}"),
+            nonce: "n".into(),
+            data_key_id: "dk".into(),
+        }),
         event_filter: filter.iter().map(|f| (*f).to_owned()).collect(),
         created_at: at(T0),
         updated_at: at(T0),
@@ -359,6 +366,7 @@ fn push_configs_are_kept_without_their_secrets_and_listed_without_them() {
     ));
     assert_eq!(shown["has_secret"], true);
     assert!(shown.get("secret").is_none(), "a secret is never shown");
+    assert!(shown.get("sealed_secret").is_none(), "nor its sealed form");
     // A retried add keeps one.
     value(apply_op(
         &mut state,
@@ -477,12 +485,12 @@ fn transitions_go_on_the_feed_with_the_targets_that_ask_for_them() {
     let Record::TaskTransition { targets, .. } = &state.feed.records.back().unwrap().record else {
         panic!("a task transition");
     };
-    // An API config's secret stays in the control plane; a spawn-time one
-    // travels as the agent gave it.
+    // An API config's secret travels sealed; a spawn-time one as the agent
+    // gave it.
     assert_eq!(targets[0].secret, None);
-    assert!(targets[0].secret_held);
+    assert!(targets[0].sealed.is_some());
     assert_eq!(targets[1].secret.as_deref(), Some("s3"));
-    assert!(!targets[1].secret_held);
+    assert!(targets[1].sealed.is_none());
 }
 
 #[test]

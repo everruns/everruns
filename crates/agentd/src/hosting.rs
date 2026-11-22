@@ -488,33 +488,18 @@ impl SessionHosting for RaftHosting {
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
         let material = self.inner.material.get();
-        let lookups = crate::lookups::org_lookups(material, session);
-        let backends = crate::memory::attach(backends, material, lookups.clone(), session, &memory);
-        // Decision (parity, step 10): a session's resources (fleet
-        // sandboxes, activated skills) and the leases of what its tools
-        // started at a provider stay in the control plane, as for a v1
-        // session: the console lists the resources, and the lease sweeper
-        // stops a sandbox a session left running. Without them a fleet
-        // tool fails its turn, and a provider sandbox is never reaped.
-        let mut backends = backends;
-        if let Some(lookups) = &lookups {
-            use everruns_internal_protocol::commands::{
-                CommandLeasedResourceStore, CommandSessionResourceRegistry,
-            };
-            backends.extensions.stores.session_resources = Some(std::sync::Arc::new(
-                CommandSessionResourceRegistry::new(lookups.clone()),
-            ));
-            backends.extensions.stores.leased_resources = Some(std::sync::Arc::new(
-                CommandLeasedResourceStore::new(lookups.clone()),
-            ));
-        }
+        let backends = crate::memory::attach(backends, material, session, &memory);
+        // The session's resources and leases (`session_records.rs`).
+        let backends = crate::session_records::attach(
+            backends,
+            crate::session_records::ShardRecords::new(Port(self.inner.clone()), session),
+        );
         // The person's own MCP servers and the session's MCP records (`user_mcp.rs`).
         let person_mcp = servers.get(user_mcp::SERVER).and_then(|url| {
             ControllerServer::for_session(material, session, user_mcp::SERVER, url)
         });
         let backends = user_mcp::attach(
             backends,
-            lookups,
             person_mcp,
             Port(self.inner.clone()),
             session,
@@ -1389,20 +1374,13 @@ impl SessionEpoch for Ports {
         backends.session_store = Arc::new(self.clone());
         backends.storage_store = Arc::new(self.clone());
         backends.compaction_checkpoint_store = Arc::new(self.clone());
-        // Decision (parity, step 10): dreaming's state (turn counters, the
-        // dream job, the daily budgets a Memory scope shares across
-        // sessions) stays in the control plane, as for a v1 session, so it
-        // outlives this process and a budget holds across sessions. Both
+        // Dreaming's state is the session's own (`session_records.rs`):
         // the turn that records it and a later sweep that runs the dream
         // (`Executor::dreams_loop`, through reader ports) use it.
-        let lookups = crate::lookups::org_lookups(self.inner.material.get(), self.session);
-        if let Some(lookups) = &lookups {
-            use everruns_internal_protocol::commands::dreaming::SessionCommandDreamingStore;
-            backends.dreaming_store = Arc::new(SessionCommandDreamingStore::new(
-                Arc::new(lookups.clone()),
-                self.session,
-            ));
-        }
+        backends.dreaming_store = Arc::new(crate::session_records::ShardRecords::new(
+            Port(self.inner.clone()),
+            self.session,
+        ));
         // An activation attaches the session's Memory from its caught-up
         // record (`prepare_activation`); reader ports, which a dream sweep
         // runs on, attach it from what this replica holds now.
@@ -1412,7 +1390,7 @@ impl SessionEpoch for Ports {
                 .peek(self.session, |s| SessionMemory::of(&s.platform))
         {
             let material = self.inner.material.get();
-            backends = crate::memory::attach(backends, material, lookups, self.session, &memory);
+            backends = crate::memory::attach(backends, material, self.session, &memory);
         }
         backends
     }
