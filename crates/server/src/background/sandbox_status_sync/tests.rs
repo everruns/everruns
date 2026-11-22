@@ -82,6 +82,7 @@ async fn fixture() -> (
     // The wire fixture replaces transport after validating the authored
     // template. A caller cannot configure a Daytona management endpoint.
     spec.target.options["api_base"] = json!(provider.uri());
+    spec.target.options["toolbox_base"] = json!(provider.uri());
     db.pin_primary_sandbox(session, "build", &spec)
         .await
         .unwrap();
