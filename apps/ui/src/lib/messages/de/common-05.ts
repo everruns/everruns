@@ -146,6 +146,7 @@ export const messages: Readonly<Record<string, string>> = {
   "New folder": "Neuer Ordner",
   "New Memory": "Neuer Speicher",
   "New password": "Neues Passwort",
+  "New private Platform Chat": "Neuer privater Platform Chat",
   "New Playground chat": "Neuer Playground-Chat",
   "New registrations are currently disabled on this deployment.":
     "Neue Registrierungen sind derzeit für diese Bereitstellung deaktiviert.",

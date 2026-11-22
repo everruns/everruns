@@ -82,18 +82,30 @@ it("names who started an automatic turn instead of calling it a user turn", () =
       run: { number: 12, limit: 96 },
     },
   };
-  const { rerender } = render(
-    <TurnHeader turn={scheduled} collapsed={false} onToggle={() => {}} showScale={false} />,
-  );
+  const controls = {
+    collapsed: false,
+    onToggle: jest.fn(),
+    inputSelected: false,
+    onOpenInput: jest.fn(),
+    showScale: false,
+  };
+  const { rerender } = render(<TurnHeader turn={scheduled} {...controls} />);
   expect(screen.queryByText(/· user/)).not.toBeInTheDocument();
   expect(screen.getByText("Scheduled")).toBeInTheDocument();
   expect(screen.getByText("· Shipmail claim poll")).toBeInTheDocument();
   expect(screen.getByText("run 12 of 96")).toBeInTheDocument();
   expect(screen.getByTitle("sched_01a124cd7e9571ac")).toBeInTheDocument();
   // Every turn stays a turn: an automatic one is gray, not folded away.
-  expect(screen.getByRole("button")).toHaveClass("bg-muted/70");
+  expect(screen.getByRole("button", { name: /Shipmail claim poll\. Read/ })).toHaveClass(
+    "bg-muted/70",
+  );
 
-  rerender(<TurnHeader turn={turn} collapsed={false} onToggle={() => {}} showScale={false} />);
+  fireEvent.click(screen.getByRole("button", { name: "View full message" }));
+  expect(controls.onOpenInput).toHaveBeenCalledTimes(1);
+  expect(controls.onToggle).not.toHaveBeenCalled();
+
+  rerender(<TurnHeader turn={turn} {...controls} />);
   expect(screen.getByText(/· user/)).toBeInTheDocument();
-  expect(screen.getByRole("button")).toHaveClass("bg-accent/9");
+  expect(screen.getByRole("button", { name: /· user/ })).toHaveClass("bg-accent/9");
+  expect(screen.queryByRole("button", { name: "View full message" })).toBeNull();
 });

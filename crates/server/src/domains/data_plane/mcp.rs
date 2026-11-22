@@ -27,8 +27,8 @@
 //!   only when its tokens did (the data plane's own refreshes come back as
 //!   the same tokens). An agent's bindings it no longer has are removed.
 //! - A server whose grant depends on the turn keeps its OAuth provider and
-//!   identity, and the data plane asks for its token per use with a host
-//!   call (`host_calls::MCP_CONNECTION_TOKEN`, data plane v2 parity gap 8):
+//!   identity, and the data plane asks for its token per use of the
+//!   credentials server (`calls::MCP_CONNECTION_TOKEN`, parity gap 8):
 //!   one that acts as the turn's person (`user`, and `user_or_service`,
 //!   whose person comes first), and a service one with no grant of the
 //!   agent's to push (a connection-backed preset, whose token is the org's

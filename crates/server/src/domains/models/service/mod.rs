@@ -52,21 +52,43 @@ impl IntelligenceBootstrap {
 const BOOTSTRAP_ENABLE_LIMIT: usize = 8;
 const BOOTSTRAP_FAVORITE_LIMIT: usize = 3;
 
-/// Curated first pick per vendor, by model family. Recency alone elects the
-/// newest model the day it ships, which is the wrong default for everyday
-/// agent work: GPT-6 Astra costs 100x GPT-6 Luna on input without being the
-/// better fit for most runs. Luna is also the platform fallback
-/// (`platform::PLATFORM_DEFAULT_MODEL_ID`), so a freshly credentialed org lands
-/// on the same model the default org already uses. Families not listed here
-/// keep falling back to the recency order below.
-const PREFERRED_DEFAULT_FAMILIES: &[&str] = &["gpt-6-luna", "gemini-4-hydrogen"];
+/// Prefer agent-oriented models, with the newest version within each family.
+/// Gateways share this policy with direct providers via the catalog profile.
+fn default_family_priority(family: &str) -> u8 {
+    match family {
+        _ if family.starts_with("gpt-") && family.ends_with("-sol") => 0,
+        _ if family.starts_with("muse-spark-") => 1,
+        _ if family.starts_with("claude-opus-") => 2,
+        "gemini-4-neon" => 3,
+        _ if family.starts_with("grok-") => 4,
+        _ => 5,
+    }
+}
+
+/// Astra is an explicit selection, including on vendor-qualified gateways.
+fn auto_default_eligible(model_id: &str) -> bool {
+    let id = model_id.rsplit('/').next().unwrap_or(model_id);
+    let mut parts = id.split('-');
+    !(parts
+        .next()
+        .is_some_and(|part| part.eq_ignore_ascii_case("gpt"))
+        && parts.any(|part| part.eq_ignore_ascii_case("astra")))
+}
+
+fn model_is_stale(
+    source: &str,
+    last_seen: Option<chrono::DateTime<chrono::Utc>>,
+    last_synced: Option<chrono::DateTime<chrono::Utc>>,
+) -> bool {
+    source == "discovered"
+        && last_synced.is_some_and(|synced| last_seen.is_none_or(|seen| seen < synced))
+}
 
 /// Default-model preference order: the curated pick first, then newest release,
 /// then the model with the fewest missing agent-relevant traits. Lower sorts
 /// better.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct ModelRank {
-    /// 0 for a curated family, 1 otherwise, so the curated pick sorts first.
     curated: u8,
     /// `Reverse` so a later date — and a known date over an unknown one — wins.
     release: std::cmp::Reverse<String>,
@@ -79,7 +101,7 @@ impl ModelRank {
             + u8::from(!profile.attachment)
             + u8::from(!profile.structured_output);
         Self {
-            curated: u8::from(!PREFERRED_DEFAULT_FAMILIES.contains(&profile.family.as_str())),
+            curated: default_family_priority(&profile.family),
             release: std::cmp::Reverse(profile.release_date.clone().unwrap_or_default()),
             capability_gaps: gaps,
         }
@@ -344,14 +366,14 @@ impl ModelService {
         // Model is stale if it is discovered and its last_seen_at predates the
         // provider's last sync (or it was never seen by one).
         let is_stale = |row: &ModelWithProviderRow| {
-            row.source == "discovered"
-                && provider_sync_times
+            model_is_stale(
+                &row.source,
+                row.last_seen_at,
+                provider_sync_times
                     .get(&row.provider_id.uuid())
                     .copied()
-                    .flatten()
-                    .is_some_and(|last_synced| {
-                        row.last_seen_at.is_none_or(|seen| seen < last_synced)
-                    })
+                    .flatten(),
+            )
         };
 
         let visible: std::collections::HashSet<_> = providers
@@ -668,11 +690,27 @@ impl ModelService {
     /// whose only other enabled model was `text-embedding-3-small`.
     async fn elect_new_default(&self, org_id: i64) -> Result<()> {
         let all_models = self.db.list_all_models(org_id).await?;
-        let new_default = all_models.iter().find(|m| {
-            m.provider_type != "chatgpt"
-                && m.enabled
-                && Self::row_is_chat_model(&m.capabilities, m.provider_metadata.as_ref())
-        });
+        let new_default = all_models
+            .iter()
+            .filter(|m| {
+                m.provider_type != "chatgpt"
+                    && m.enabled
+                    && auto_default_eligible(&m.model_id)
+                    && Self::row_is_chat_model(&m.capabilities, m.provider_metadata.as_ref())
+            })
+            .min_by_key(|m| {
+                let profile = m
+                    .provider_type
+                    .parse::<DriverId>()
+                    .ok()
+                    .and_then(|driver| get_model_profile(&driver, &m.model_id));
+                // Known chat profiles come before unknown custom models.
+                (
+                    profile.is_none(),
+                    profile.as_ref().map(ModelRank::of),
+                    &m.model_id,
+                )
+            });
 
         let new_default_id = new_default.map(|m| m.id.uuid());
         self.db
@@ -719,6 +757,9 @@ impl ModelService {
 
         let org_has_enabled_chat = self.db.list_all_models(org_id).await?.iter().any(|row| {
             row.enabled
+                && row.provider_type != "chatgpt"
+                && row.provider_status == "active"
+                && (row.provider_api_key_set || row.provider_type == "llmsim")
                 && Self::row_is_chat_model(&row.capabilities, row.provider_metadata.as_ref())
         });
 
@@ -754,10 +795,45 @@ impl ModelService {
             }
         }
 
-        // `get_default_model` fails closed on a disabled model or an inactive
-        // provider, so "resolves to nothing" — not merely a NULL setting — is
-        // the condition that makes chat unusable.
-        if self.db.get_default_model(org_id).await?.is_none() {
+        // Give an unreviewed provider a usable set of calibrated decision
+        // models. Review owns the selection from then on.
+        if !provider.managed && provider.models_reviewed_at.is_none() {
+            let models = self
+                .db
+                .list_models_for_provider(org_id, provider_id)
+                .await?;
+            for row in models.iter().filter(|row| {
+                !row.enabled
+                    && row.source != "manual"
+                    && !model_is_stale(&row.source, row.last_seen_at, provider.last_synced_at)
+                    && crate::domains::models::catalog::service(row.provider_metadata.as_ref())
+                        == everruns_contracts::ServiceKind::Decisions
+                    && crate::domains::models::catalog::profile(row.provider_metadata.as_ref())
+                        .and_then(|profile| profile.decisions)
+                        .is_some_and(|profile| profile.calibrated)
+            }) {
+                self.db
+                    .update_model(
+                        org_id,
+                        row.id.uuid(),
+                        UpdateModel {
+                            enabled: Some(true),
+                            ..Default::default()
+                        },
+                    )
+                    .await?;
+                outcome.enabled_models += 1;
+            }
+        }
+
+        // An enabled row on a provider without a key (including the platform
+        // fallback) does not make this organization able to run a chat.
+        if self
+            .db
+            .get_default_model(org_id)
+            .await?
+            .is_none_or(|row| !row.provider_api_key_set && row.provider_type != "llmsim")
+        {
             let pick = self
                 .chat_candidates(org_id, &provider, &provider_type)
                 .await?
@@ -804,7 +880,9 @@ impl ModelService {
             .await?
             .into_iter()
             .filter(|row| {
-                Self::row_is_chat_model(&row.capabilities, row.provider_metadata.as_ref())
+                auto_default_eligible(&row.model_id)
+                    && !model_is_stale(&row.source, row.last_seen_at, provider.last_synced_at)
+                    && Self::row_is_chat_model(&row.capabilities, row.provider_metadata.as_ref())
             })
             .collect();
 

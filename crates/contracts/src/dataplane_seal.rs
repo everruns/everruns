@@ -49,7 +49,7 @@ pub fn data_key_aad(org: &str, data_key_id: &str) -> String {
     format!("everruns/dp/v1/data-key/{org}/{data_key_id}")
 }
 
-/// A key from its base64 form (`CELL_DP_KEY`, a control plane's setting).
+/// A key from its base64 form (`AGENTD_DP_KEY`, a control plane's setting).
 pub fn key_from_base64(encoded: &str) -> Result<Key, SealError> {
     let raw = B64
         .decode(encoded.trim())
@@ -181,10 +181,16 @@ pub fn session_secret_id(session: &str, name: &str) -> String {
     format!("session/{session}/{name}")
 }
 
+/// The secret id a task push config's signing secret is sealed under:
+/// binds it to the session and the config.
+pub fn push_secret_id(session: &str, config: &str) -> String {
+    format!("push/{session}/{config}")
+}
+
 /// Seal a session secret's value as it is kept in the session's state on
-/// its cell (design.md, "Session secrets ... sealed with the same org data
+/// its shard (design.md, "Session secrets ... sealed with the same org data
 /// key"): the JSON of its [`SealedSecret`]. Whoever writes it (the control
-/// plane for a person, an executor for the agent) seals; cell nodes only
+/// plane for a person, an executor for the agent) seals; shard nodes only
 /// store it.
 pub fn seal_session_secret(
     data_key: &Key,

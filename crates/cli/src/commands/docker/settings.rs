@@ -42,12 +42,12 @@ pub const COMPOSE_PROFILES: &str = "COMPOSE_PROFILES";
 pub const TS_AUTHKEY: &str = "TS_AUTHKEY";
 pub const CLOUDFLARE_TUNNEL_TOKEN: &str = "CLOUDFLARE_TUNNEL_TOKEN";
 pub const NGROK_AUTHTOKEN: &str = "NGROK_AUTHTOKEN";
-/// `v2` (cells, the default) or `v1` (workers): where new organizations run.
+/// `v2` (shards, the default) or `v1` (workers): where new organizations run.
 pub const DATA_PLANE: &str = "EVERRUNS_DATA_PLANE";
-/// How many cell, executor and edge containers run: `1`, or `0` for an
+/// How many shard, executor and edge containers run: `1`, or `0` for an
 /// install that never ran v2.
 pub const DATA_PLANE_REPLICAS: &str = "DATA_PLANE_REPLICAS";
-/// `never` while no data plane container runs, so no cell image is pulled.
+/// `never` while no data plane container runs, so no shard image is pulled.
 pub const DATA_PLANE_PULL_POLICY: &str = "DATA_PLANE_PULL_POLICY";
 /// The link between the server and the data plane: a bearer token and the
 /// key that wraps each organization's data key.
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn data_plane_key_decodes_to_32_bytes() {
-        // The shape the server's EVERRUNS_DP_KEY and the cell's CELL_DP_KEY read.
+        // The shape the server's EVERRUNS_DP_KEY and the shard's AGENTD_DP_KEY read.
         let raw = base64::engine::general_purpose::STANDARD
             .decode(data_plane_key())
             .unwrap();

@@ -110,10 +110,6 @@ impl Capability for PoppyClientCapability {
         POPPY_CLIENT_CAPABILITY_ID
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[everruns_contracts::host_calls::POPPY_CALL]
-    }
-
     fn narrate(
         &self,
         _tool_def: Option<&ToolDefinition>,

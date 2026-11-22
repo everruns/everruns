@@ -8,8 +8,8 @@ use crate::api::command_http::CommandRouterExt;
 use crate::api::state::ApiState;
 use crate::domains::session_cost::{GetSessionCost, GetSessionRun};
 use crate::domains::session_trace::{
-    GetSessionTrace, GetSessionTraceStep, ListSessionTraceRequest, ListSessionTraceSteps,
-    ListSessionTraceTurnEvents, ListSessionTraceTurns,
+    GetSessionTrace, GetSessionTraceStep, GetSessionTraceTurnInput, ListSessionTraceRequest,
+    ListSessionTraceSteps, ListSessionTraceTurnEvents, ListSessionTraceTurns,
 };
 use axum::Router;
 
@@ -17,6 +17,7 @@ pub fn routes(state: ApiState) -> Router {
     Router::new()
         .command::<GetSessionTrace>()
         .command::<ListSessionTraceTurns>()
+        .command::<GetSessionTraceTurnInput>()
         .command::<ListSessionTraceSteps>()
         .command::<GetSessionTraceStep>()
         .command::<ListSessionTraceRequest>()

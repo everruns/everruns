@@ -62,7 +62,7 @@ it("uses the committed receipt rather than including a later writer's change in 
   setRevision(3); // This browser saved revision 2; another writer already made 3.
   await write!.succeeded({ ...resource, revision: 2 });
   expect(transport.diff).toHaveBeenCalledWith(resource, 1, 2);
-  expect(manager.receipts()[0]).toMatchObject({ revision: 2, stale: true });
+  expect(manager.receipts()[0]).toMatchObject({ revision: 2, stale: true, by: "page" });
   manager.update({ ...form, baseline: "saved-3" });
   await manager.undo(resource);
   expect(transport.restore).not.toHaveBeenCalled();
@@ -352,7 +352,7 @@ it("does not include a foreign writer's save between two Chat polls in Undo", as
   ]);
   await manager.poll();
   expect(transport.diff).toHaveBeenCalledWith(resource, 2, 4);
-  expect(manager.receipts()[0]).toMatchObject({ from: 2, revision: 4 });
+  expect(manager.receipts()[0]).toMatchObject({ from: 2, revision: 4, by: "chat" });
 });
 
 it("uses the server's captured baseline when first writing a migrated resource", async () => {

@@ -1,11 +1,11 @@
-//! Schedules in cell state: create, limits, fire once, end.
+//! Schedules in shard state: create, limits, fire once, end.
 
 use super::*;
 use crate::platform_store::build;
 
 const T0: i64 = 1_800_000_000_000; // 2027-01-15T08:00:00Z
 
-fn session() -> (CellState, SessionId) {
+fn session() -> (ShardState, SessionId) {
     use everruns::hosting::spi::session_commands::SessionCommand;
     let id = SessionId::new();
     let mut s = SessionState {
@@ -23,12 +23,12 @@ fn session() -> (CellState, SessionId) {
         binding: serde_json::to_value(binding).unwrap(),
     };
     s.command(id, create, T0, EventId::new()).unwrap();
-    let mut state = CellState::default();
+    let mut state = ShardState::default();
     state.sessions.insert(id, s);
     (state, id)
 }
 
-fn apply(state: &mut CellState, session: SessionId, action: Op, now_ms: i64) -> Response {
+fn apply(state: &mut ShardState, session: SessionId, action: Op, now_ms: i64) -> Response {
     let mut changes = Vec::new();
     state.apply(
         Command::Platform {
@@ -42,7 +42,7 @@ fn apply(state: &mut CellState, session: SessionId, action: Op, now_ms: i64) -> 
 }
 
 fn create(
-    state: &mut CellState,
+    state: &mut ShardState,
     session: SessionId,
     cron: Option<&str>,
     at_ms: Option<i64>,
@@ -69,7 +69,7 @@ fn create(
 }
 
 fn fire(
-    state: &mut CellState,
+    state: &mut ShardState,
     session: SessionId,
     id: ScheduleId,
     due_ms: i64,
@@ -81,7 +81,7 @@ fn fire(
     }
 }
 
-fn stored(state: &CellState, session: SessionId, id: ScheduleId) -> SessionSchedule {
+fn stored(state: &ShardState, session: SessionId, id: ScheduleId) -> SessionSchedule {
     state.sessions[&session].platform.schedules[&id.to_string()].clone()
 }
 
@@ -225,7 +225,7 @@ fn a_session_holds_five_active_schedules() {
         at(T0),
     )
     .unwrap();
-    let create_extra = |state: &mut CellState| {
+    let create_extra = |state: &mut ShardState| {
         apply(
             state,
             session,
@@ -428,7 +428,7 @@ fn the_control_plane_records_a_voice_calls_traces() {
 fn a_schedule_stops_when_its_runs_spend_its_cap() {
     let (mut state, session) = session();
     let schedule = create(&mut state, session, Some("*/5 * * * *"), None);
-    let cap = |state: &mut CellState, limit: f64| {
+    let cap = |state: &mut ShardState, limit: f64| {
         apply(
             state,
             session,

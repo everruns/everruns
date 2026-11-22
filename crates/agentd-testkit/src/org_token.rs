@@ -1,5 +1,5 @@
 //! An org token for a load driver that runs against a data plane joined to a
-//! real control plane (`cell-drive load --control-plane`).
+//! real control plane (`agentd-drive load --control-plane`).
 //!
 //! Decisions:
 //! - The driver acts as one member of one org, with an API key, the way a

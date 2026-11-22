@@ -1,4 +1,4 @@
-//! `POST /v1/sessions/{id}/messages?wait=true` for a session on a cell: the
+//! `POST /v1/sessions/{id}/messages?wait=true` for a session on a shard: the
 //! message is admitted as without `wait`, then the call follows the
 //! session's events until the turn that carries the message ends, and
 //! answers as the control plane does (`api/messages.rs`): `200` with
@@ -6,7 +6,7 @@
 //! with `timeout` and what exists so far.
 //!
 //! The turn is found by the message, not by a count taken before it was
-//! sent: a cell admits a message into a running turn (it steers it), so the
+//! sent: a shard admits a message into a running turn (it steers it), so the
 //! turn that answers is the first one to end after the message's own
 //! `input.message`. A cancelled turn ends the wait as `failed`, where the
 //! control plane's wait runs on to its deadline.

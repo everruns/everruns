@@ -1,5 +1,5 @@
 //! A v2 session's SQL databases through the control plane: its API answers
-//! from the session's cell, or 503 when the cell is out of reach, never
+//! from the session's shard, or 503 when the shard is out of reach, never
 //! from the v1 store (`session_databases/plane.rs`).
 
 use everruns_contracts::session_sqldb::SessionSqlDbStore as _;
@@ -69,13 +69,13 @@ async fn v1_names(cp: &ControlPlane, session: SessionId) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn a_v2_sessions_databases_come_from_its_cell_never_the_v1_store() {
+async fn a_v2_sessions_databases_come_from_its_shard_never_the_v1_store() {
     let (cp, seen, _) = control_plane().await;
     let session = v2_session_with_a_v1_database(&cp).await;
     let id = session.to_string();
     let ctx = ctx(&cp);
 
-    // The v1 store's `notes` is not the session's: its cell holds none yet.
+    // The v1 store's `notes` is not the session's: its shard holds none yet.
     let listed = ListSessionDatabases {
         session_id: id.clone(),
     }
@@ -92,7 +92,7 @@ async fn a_v2_sessions_databases_come_from_its_cell_never_the_v1_store() {
     .await
     .unwrap();
     assert_eq!(created.name, "fresh");
-    assert_eq!(seen.lock().databases[&id].len(), 1, "created on the cell");
+    assert_eq!(seen.lock().databases[&id].len(), 1, "created on the shard");
     let again = CreateSessionDatabaseCmd {
         session_id: id.clone(),
         name: "fresh".into(),
@@ -141,7 +141,7 @@ async fn a_v2_sessions_databases_come_from_its_cell_never_the_v1_store() {
 }
 
 #[tokio::test]
-async fn a_v2_session_whose_cell_is_out_of_reach_answers_503_not_the_v1_store() {
+async fn a_v2_session_whose_shard_is_out_of_reach_answers_503_not_the_v1_store() {
     let (cp, _, _) = control_plane().await;
     let session = v2_session_with_a_v1_database(&cp).await;
     // The data plane's gateway is gone (the edge down).

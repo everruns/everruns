@@ -61,29 +61,29 @@ grep -q 'type: Recreate' <<<"$one" || fail "a single server must be replaced wit
 if grep -q 'kind: NetworkPolicy' <<<"$one"; then fail "network policies render when off"; fi
 
 echo "==> data plane v2 by default, v1 one setting away"
-grep -q 'name: check-everruns-cell$' <<<"$one" || fail "v2 is the default but no cell renders"
-grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-everruns-cell-gateway:7000"' <<<"$one" \
-  || fail "the server does not reach the cell through the gateway Service over its ready nodes"
+grep -q 'name: check-everruns-agentd$' <<<"$one" || fail "v2 is the default but no shard renders"
+grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL, value: "http://check-everruns-agentd-gateway:7000"' <<<"$one" \
+  || fail "the server does not reach the shard through the gateway Service over its ready nodes"
 grep -q 'INJECTED_CAPABILITIES_BASE_URL, value: "http://check-everruns-server:9000/api"' <<<"$one" \
   || fail "the server hands the data plane injected capabilities at an address it cannot reach"
-[ "$(grep -c 'CELL_CONTROL_PLANE, value: "http://check-everruns-server:9000/api"' <<<"$one")" -ge 3 ] \
+[ "$(grep -c 'AGENTD_CONTROL_PLANE, value: "http://check-everruns-server:9000/api"' <<<"$one")" -ge 3 ] \
   || fail "a data plane pod (node, executor, edge) does not know its control plane"
 grep -q 'reverse_proxy check-everruns-edge:7100 check-everruns-server:9000' <<<"$one" \
   || fail "the proxy does not send session calls to the edge router"
-grep -q 'CELL_STORE, value: "file:///store"' <<<"$one" || fail "without S3 the cells do not share a store volume"
-grep -q 'CELL_STORE, value: "s3://files/cells"' <<<"$out" || fail "with S3 the cells do not keep history there"
+grep -q 'AGENTD_STORE, value: "file:///store"' <<<"$one" || fail "without S3 the shards do not share a store volume"
+grep -q 'AGENTD_STORE, value: "s3://files/shards"' <<<"$out" || fail "with S3 the shards do not keep history there"
 v1="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set dataPlane.version=v1)"
-if grep -q 'everruns-cell' <<<"$v1"; then fail "v1 renders the data plane"; fi
+if grep -q 'everruns-agentd' <<<"$v1"; then fail "v1 renders the data plane"; fi
 if grep -q 'check-everruns-edge' <<<"$v1"; then fail "v1 routes to an edge router that does not run"; fi
 grep -q 'EVERRUNS_DATA_PLANE, value: "v1"' <<<"$v1" || fail "v1 does not tell the server"
 kept="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set dataPlane.version=v1 --set dataPlane.keepRunning=true)"
-grep -q 'name: check-everruns-cell$' <<<"$kept" || fail "keepRunning does not keep the cell"
+grep -q 'name: check-everruns-agentd$' <<<"$kept" || fail "keepRunning does not keep the shard"
 if grep -q 'EVERRUNS_DEFAULT_DATA_PLANE_URL' <<<"$kept"; then fail "v1 still places new organizations on v2"; fi
 three="$(helm template check "$CHART" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
-  --set dataPlane.cell.nodes=3)"
-grep -q 'check-everruns-cell-2.check-everruns-cell:7000' <<<"$three" || fail "three nodes are not in the topology"
+  --set dataPlane.shard.nodes=3)"
+grep -q 'check-everruns-agentd-2.check-everruns-agentd:7000' <<<"$three" || fail "three nodes are not in the topology"
 
 echo "==> Ingress defaults to direct routing"
 direct=(--set postgresql.enabled=true --set auth.adminEmail=admin@example.com
@@ -181,7 +181,7 @@ refuses "needs storage.s3.bucket" --set postgresql.enabled=true --set auth.admin
 refuses "must be v1 or v2" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set dataPlane.version=v3
 refuses "must be 1, 3 or 5" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
-  --set dataPlane.cell.nodes=2
+  --set dataPlane.shard.nodes=2
 refuses "needs ingress.enabled=true" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \
   --set proxy.enabled=false
 refuses "needs networkPolicy.ingressFrom" --set postgresql.enabled=true --set auth.adminEmail=admin@example.com \

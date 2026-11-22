@@ -511,6 +511,7 @@ pub fn declared(name: &str) -> Change {
         "set_agent_avatar" | "generate_agent_avatar" => on(K::Agent, Updated, Param("agent_id")),
         "create_agent_credential_binding" => on(K::Agent, Attached, Param("agent_id")),
         "disconnect_agent_github" => on(K::Agent, Detached, Param("agent_id")),
+        "revoke_agent_mcp_connection" => on(K::Agent, Detached, Param("id")),
         "use_agent_everruns_app" => on(K::Agent, Attached, Param("agent_id")),
         "connect_agent_github" => {
             Change::Exempt("starts GitHub's install flow; GitHub's callback records the connection")
@@ -807,9 +808,6 @@ pub fn declared(name: &str) -> Change {
         // carry credential material (TM-AUTHZ-023).
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
-        }
-        "worker_resolve_helper_model" => {
-            Change::Exempt("reads which model a subagent's helper key resolves to; changes nothing")
         }
         "worker_dreaming_state" => Change::Exempt(
             "private runtime maintenance and reservations; payload-free activity is recorded separately",

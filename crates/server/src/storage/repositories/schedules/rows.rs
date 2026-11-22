@@ -116,6 +116,9 @@ pub struct LeasedResourceRow {
 
 #[derive(Debug, Clone)]
 pub struct UpsertLeasedResourceRow {
+    /// The id a new row takes: a data plane's own lease id when the row
+    /// mirrors one (`data_plane/session_records.rs`), else a new one.
+    pub id: Option<LeasedResourceId>,
     pub org_id: i64,
     pub session_id: SessionId,
     pub provider: String,

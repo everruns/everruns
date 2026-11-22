@@ -1,8 +1,8 @@
 //! The stateless public API: a subset of the Everruns `/v1` session API.
 //!
-//! A gateway finds a session's cell through the directory (cached), then
-//! talks to any node of that cell; nodes forward writes to their leader.
-//! Creating and admitting go through the cell nodes' Everruns Engine
+//! A gateway finds a session's shard through the directory (cached), then
+//! talks to any node of that shard; nodes forward writes to their leader.
+//! Creating and admitting go through the shard nodes' Everruns Engine
 //! (`Engine::create_registered`, `Session::send_with_id`): admission returns
 //! once Engine's admit command is committed on a quorum, which is the
 //! durable receipt. The Everruns-shaped session calls are in
@@ -24,10 +24,10 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::api::{CellReply, Lookup, SessionView, Stats};
+use crate::api::{Lookup, SessionView, ShardReply, Stats};
 use crate::cluster::TopologySource;
 use crate::node::Proposed;
-use crate::state::{CellId, Command, Placed, Response};
+use crate::state::{Command, Placed, Response, ShardId};
 
 type ApiError = (StatusCode, String);
 
@@ -35,18 +35,18 @@ fn unavailable(error: impl std::fmt::Display) -> ApiError {
     (StatusCode::SERVICE_UNAVAILABLE, error.to_string())
 }
 
-/// A cell short of memory refused new work: the caller retries later
+/// A shard short of memory refused new work: the caller retries later
 /// (`retry_after` adds the hint as a header).
-fn busy(cell: CellId, retry_after_ms: u64) -> ApiError {
+fn busy(shard: ShardId, retry_after_ms: u64) -> ApiError {
     (
         StatusCode::TOO_MANY_REQUESTS,
-        format!("cell {cell} is short of memory; retry after {retry_after_ms} ms"),
+        format!("shard {shard} is short of memory; retry after {retry_after_ms} ms"),
     )
 }
 
 /// Every 429 tells the caller when to retry.
 ///
-/// Decision: one hint for every refusal (the cell's own, rounded up to
+/// Decision: one hint for every refusal (the shard's own, rounded up to
 /// seconds), carried as a header by this layer, so the error type stays a
 /// status and a message.
 async fn retry_after(
@@ -72,13 +72,13 @@ const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Gateway {
     topology: TopologySource,
-    /// The directory cell's cell registry, refreshed every second.
+    /// The directory shard's shard registry, refreshed every second.
     registry: Mutex<crate::api::Registry>,
-    /// Each cell's load, refreshed with the registry; placement and the
+    /// Each shard's load, refreshed with the registry; placement and the
     /// rebalancer read it.
-    loads: Mutex<BTreeMap<CellId, crate::api::CellLoad>>,
+    loads: Mutex<BTreeMap<ShardId, crate::api::ShardLoad>>,
     pub(crate) http: reqwest::Client,
-    cache: Mutex<HashMap<SessionId, CellId>>,
+    cache: Mutex<HashMap<SessionId, ShardId>>,
     next: AtomicUsize,
     /// Messages admitted (`accepted`, `duplicate`) and sessions created.
     pub admitted: crate::prom::Counters,
@@ -91,9 +91,11 @@ pub struct Gateway {
     org_tokens: std::sync::OnceLock<Arc<crate::org_token::OrgTokens>>,
     /// Assigned tenants never change; an unassigned session is not cached.
     tenants: Mutex<HashMap<SessionId, String>>,
-    /// The link's token, required on `/dp/v1` (`CELL_DP_TOKEN`).
+    /// The link's token, required on `/dp/v1` (`AGENTD_DP_TOKEN`).
     link_token: Mutex<crate::node_control::LinkToken>,
-    /// Each cell's stream view, for finding a session's stream node.
+    /// The data plane's key, when linked (`ControlPlane::dp_key`).
+    dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
+    /// Each shard's stream view, for finding a session's stream node.
     pub(crate) views: crate::stream::Deliver,
 }
 
@@ -122,6 +124,7 @@ impl Gateway {
             org_tokens: std::sync::OnceLock::new(),
             tenants: Mutex::default(),
             link_token: Mutex::new(crate::node_control::link_token().map(Arc::from)),
+            dp_key: Mutex::new(crate::executor::data_plane_key().ok().flatten()),
             views: Default::default(),
         });
         if let Some(tokens) = crate::org_token::OrgTokens::from_env() {
@@ -142,6 +145,16 @@ impl Gateway {
     /// Require `token` on `/dp/v1`; takes effect for routers built after.
     pub fn set_link_token(&self, token: Option<String>) {
         *self.link_token.lock() = token.map(Arc::from);
+    }
+
+    /// Use `key` as the data plane's key.
+    pub fn set_dp_key(&self, key: Option<everruns_contracts::dataplane_seal::Key>) {
+        *self.dp_key.lock() = key;
+    }
+
+    /// The data plane's key; none when this data plane is not linked.
+    pub fn dp_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
+        *self.dp_key.lock()
     }
 
     pub fn link_token(&self) -> crate::node_control::LinkToken {
@@ -165,13 +178,13 @@ impl Gateway {
         // may still be unassigned after create returned, so authorization
         // must read through the leader rather than cache that stale view.
         let tenant: Option<String> = self
-            .with_cell(session, |cell| async move {
-                match self.propose(cell, &Command::Tenant { session }).await? {
+            .with_shard(session, |shard| async move {
+                match self.propose(shard, &Command::Tenant { session }).await? {
                     Response::Value { value } => serde_json::from_value(value)
                         .map(Lookup::Here)
                         .map_err(unavailable),
                     Response::NotFound => Ok(Lookup::Missing),
-                    Response::Moved { cell } => Ok(Lookup::Moved { cell }),
+                    Response::Moved { shard } => Ok(Lookup::Moved { shard }),
                     other => Err(unavailable(format!("tenant: {other:?}"))),
                 }
             })
@@ -188,25 +201,25 @@ impl Gateway {
         Ok(tenant)
     }
 
-    /// The fleet's topology: the file (seed nodes and the directory cell)
-    /// overlaid with the registry, which holds each cell's live membership.
+    /// The fleet's topology: the file (seed nodes and the directory shard)
+    /// overlaid with the registry, which holds each shard's live membership.
     ///
-    /// Decision: the file only seeds. A cell is added by starting its nodes
-    /// (they register with the directory), and a cell's nodes change with
+    /// Decision: the file only seeds. A shard is added by starting its nodes
+    /// (they register with the directory), and a shard's nodes change with
     /// Raft membership changes, so nothing has to edit the file or restart
     /// a gateway.
     pub fn topology(&self) -> Result<crate::cluster::Topology, ApiError> {
         let mut topology = self.topology.read().map_err(unavailable)?;
         let registry = self.registry.lock();
-        for (cell, members) in &registry.cells {
+        for (shard, members) in &registry.shards {
             if !members.is_empty() {
-                topology.cells.insert(*cell, members.clone());
+                topology.shards.insert(*shard, members.clone());
             }
         }
-        // A retired cell is gone even if the seed file still names it.
+        // A retired shard is gone even if the seed file still names it.
         topology
-            .cells
-            .retain(|cell, _| !registry.retired.contains(cell));
+            .shards
+            .retain(|shard, _| !registry.retired.contains(shard));
         Ok(topology)
     }
 
@@ -214,10 +227,10 @@ impl Gateway {
         let Ok(topology) = self.topology() else {
             return;
         };
-        for addr in topology.nodes(topology.directory_cell) {
+        for addr in topology.nodes(topology.directory_shard) {
             let response = self
                 .http
-                .get(format!("http://{addr}/cell/registry"))
+                .get(format!("http://{addr}/shard/registry"))
                 .timeout(Duration::from_secs(2))
                 .send()
                 .await;
@@ -236,19 +249,19 @@ impl Gateway {
             return;
         };
         let mut loads = BTreeMap::new();
-        for cell in topology.cells.keys().copied() {
-            for addr in topology.nodes(cell) {
+        for shard in topology.shards.keys().copied() {
+            for addr in topology.nodes(shard) {
                 let response = self
                     .http
-                    .get(format!("http://{addr}/cell/load"))
+                    .get(format!("http://{addr}/shard/load"))
                     .timeout(Duration::from_secs(2))
                     .send()
                     .await;
                 if let Ok(response) = response
                     && response.status().is_success()
-                    && let Ok(load) = response.json::<crate::api::CellLoad>().await
+                    && let Ok(load) = response.json::<crate::api::ShardLoad>().await
                 {
-                    loads.insert(cell, load);
+                    loads.insert(shard, load);
                     break;
                 }
             }
@@ -256,84 +269,84 @@ impl Gateway {
         *self.loads.lock() = loads;
     }
 
-    /// Cells being emptied: no new sessions, and the rebalancer moves
+    /// Shards being emptied: no new sessions, and the rebalancer moves
     /// theirs out.
-    pub fn draining(&self) -> std::collections::BTreeSet<CellId> {
+    pub fn draining(&self) -> std::collections::BTreeSet<ShardId> {
         self.registry.lock().draining.clone()
     }
 
-    pub async fn set_draining(&self, cell: CellId, drain: bool) -> Result<Json<Value>, ApiError> {
-        let directory = self.directory_cell()?;
-        if drain && cell == directory {
-            // Decision: the directory cell holds the directory; retiring it
+    pub async fn set_draining(&self, shard: ShardId, drain: bool) -> Result<Json<Value>, ApiError> {
+        let directory = self.directory_shard()?;
+        if drain && shard == directory {
+            // Decision: the directory shard holds the directory; retiring it
             // would need the directory itself to move. Not supported.
             return Err((
                 StatusCode::CONFLICT,
-                "the directory cell cannot be drained".into(),
+                "the directory shard cannot be drained".into(),
             ));
         }
         match self
-            .propose(directory, &Command::DrainCell { cell, drain })
+            .propose(directory, &Command::DrainShard { shard, drain })
             .await?
         {
             Response::Ok | Response::Duplicate => {}
             Response::NotFound => {
-                return Err((StatusCode::NOT_FOUND, format!("unknown cell {cell}")));
+                return Err((StatusCode::NOT_FOUND, format!("unknown shard {shard}")));
             }
             other => return Err((StatusCode::CONFLICT, format!("{other:?}"))),
         }
         self.refresh_registry().await;
-        let load: crate::api::CellLoad = self.call(cell, "/cell/load", None).await?;
+        let load: crate::api::ShardLoad = self.call(shard, "/shard/load", None).await?;
         Ok(Json(
-            json!({ "cell": cell, "draining": drain, "load": load }),
+            json!({ "shard": shard, "draining": drain, "load": load }),
         ))
     }
 
-    /// The last known load of every reachable cell.
-    pub fn loads(&self) -> BTreeMap<CellId, crate::api::CellLoad> {
+    /// The last known load of every reachable shard.
+    pub fn loads(&self) -> BTreeMap<ShardId, crate::api::ShardLoad> {
         self.loads.lock().clone()
     }
 
-    /// Sessions the rebalancer may move out of `cell` (see `/cell/movable`).
+    /// Sessions the rebalancer may move out of `shard` (see `/shard/movable`).
     pub async fn movable(
         &self,
-        cell: CellId,
+        shard: ShardId,
         n: usize,
         kind: &str,
     ) -> Result<Vec<SessionId>, ApiError> {
-        self.call(cell, &format!("/cell/movable?n={n}&kind={kind}"), None)
+        self.call(shard, &format!("/shard/movable?n={n}&kind={kind}"), None)
             .await
     }
 
-    /// Where a new session goes: the less loaded of two random cells.
+    /// Where a new session goes: the less loaded of two random shards.
     ///
     /// Decision: two random choices, not the global minimum. Every gateway
     /// places from a load view up to a second old; all of them sending
-    /// every new session to the one emptiest cell would overfill it before
+    /// every new session to the one emptiest shard would overfill it before
     /// the next refresh, while two choices spread a burst and still steer
-    /// clearly away from full cells. The cached load is bumped on each
+    /// clearly away from full shards. The cached load is bumped on each
     /// placement so one gateway's own burst counts at once.
     ///
-    /// A cell short of memory (`CellLoad::closed`) gets none while any other
-    /// cell takes them.
-    fn place(&self, cells: &[CellId]) -> CellId {
+    /// A shard short of memory (`ShardLoad::closed`) gets none while any other
+    /// shard takes them.
+    fn place(&self, shards: &[ShardId]) -> ShardId {
         let mut loads = self.loads.lock();
-        let open: Vec<CellId> = cells
+        let open: Vec<ShardId> = shards
             .iter()
             .copied()
             .filter(|c| !loads.get(c).is_some_and(|l| l.closed))
             .collect();
-        let cells = if open.is_empty() { cells } else { &open };
-        let pick = if cells.len() < 2 {
-            cells[0]
+        let shards = if open.is_empty() { shards } else { &open };
+        let pick = if shards.len() < 2 {
+            shards[0]
         } else {
-            let i = rand::random_range(0..cells.len());
-            let mut j = rand::random_range(0..cells.len() - 1);
+            let i = rand::random_range(0..shards.len());
+            let mut j = rand::random_range(0..shards.len() - 1);
             if j >= i {
                 j += 1;
             }
-            let (a, b) = (cells[i], cells[j]);
-            // A cell with no known load is new or unreachable: prefer the
+            let (a, b) = (shards[i], shards[j]);
+            // A shard with no known load is new or unreachable: prefer the
             // known one unless both are unknown.
             match (loads.get(&a), loads.get(&b)) {
                 (Some(la), Some(lb)) => {
@@ -353,36 +366,36 @@ impl Gateway {
         pick
     }
 
-    pub(crate) fn nodes(&self, cell: CellId) -> Result<Vec<String>, ApiError> {
+    pub(crate) fn nodes(&self, shard: ShardId) -> Result<Vec<String>, ApiError> {
         let topology = self.topology()?;
-        let nodes = topology.nodes(cell);
+        let nodes = topology.nodes(shard);
         if nodes.is_empty() {
-            return Err((StatusCode::NOT_FOUND, format!("unknown cell {cell}")));
+            return Err((StatusCode::NOT_FOUND, format!("unknown shard {shard}")));
         }
         Ok(nodes)
     }
 
-    /// Call `path` on the cell's nodes, starting from a rotating one, until
+    /// Call `path` on the shard's nodes, starting from a rotating one, until
     /// one answers.
     pub(crate) async fn call<T: DeserializeOwned>(
         &self,
-        cell: CellId,
+        shard: ShardId,
         path: &str,
         body: Option<&Value>,
     ) -> Result<T, ApiError> {
-        self.call_within(cell, path, body, ATTEMPT_TIMEOUT).await
+        self.call_within(shard, path, body, ATTEMPT_TIMEOUT).await
     }
 
     /// [`call`](Self::call) for a request that may take up to `attempt` at
     /// one member (a long poll).
     pub(crate) async fn call_within<T: DeserializeOwned>(
         &self,
-        cell: CellId,
+        shard: ShardId,
         path: &str,
         body: Option<&Value>,
         attempt_timeout: Duration,
     ) -> Result<T, ApiError> {
-        let nodes = self.nodes(cell)?;
+        let nodes = self.nodes(shard)?;
         let start = self.next.fetch_add(1, Ordering::Relaxed);
         // Decision: each try gets at most `ATTEMPT_TIMEOUT`, so a member
         // that accepts connections but never answers (a hung or stopped
@@ -416,38 +429,38 @@ impl Gateway {
         Err(unavailable(last_error))
     }
 
-    pub async fn propose(&self, cell: CellId, command: &Command) -> Result<Response, ApiError> {
+    pub async fn propose(&self, shard: ShardId, command: &Command) -> Result<Response, ApiError> {
         let body = serde_json::to_value(command).map_err(unavailable)?;
-        let proposed: Proposed = self.call(cell, "/cell/propose", Some(&body)).await?;
+        let proposed: Proposed = self.call(shard, "/shard/propose", Some(&body)).await?;
         Ok(proposed.response)
     }
 
-    pub fn directory_cell(&self) -> Result<CellId, ApiError> {
-        Ok(self.topology()?.directory_cell)
+    pub fn directory_shard(&self) -> Result<ShardId, ApiError> {
+        Ok(self.topology()?.directory_shard)
     }
 
-    /// The cell holding `session`'s directory entry.
-    pub fn directory_of(&self, session: SessionId) -> Result<CellId, ApiError> {
-        let shard = crate::state::shard_of(session);
-        let owner = self.registry.lock().shards.get(&shard).copied();
+    /// The shard holding `session`'s directory entry.
+    pub fn directory_of(&self, session: SessionId) -> Result<ShardId, ApiError> {
+        let slot = crate::state::slot_of(session);
+        let owner = self.registry.lock().slots.get(&slot).copied();
         match owner {
-            Some(cell) => Ok(cell),
-            None => self.directory_cell(),
+            Some(shard) => Ok(shard),
+            None => self.directory_shard(),
         }
     }
 
-    /// Record that `session` lives in `cell` at `generation`, over the
+    /// Record that `session` lives in `shard` at `generation`, over the
     /// entry at `previous` (see `Command::Place`).
     pub async fn place_entry(
         &self,
         session: SessionId,
-        cell: CellId,
+        shard: ShardId,
         generation: u64,
         previous: u64,
     ) -> Result<Response, ApiError> {
         let command = Command::Place {
             session,
-            cell,
+            shard,
             generation,
             previous,
         };
@@ -465,8 +478,8 @@ impl Gateway {
         }
     }
 
-    /// Propose `command` to the cell holding `session`'s directory shard,
-    /// following a shard that is being handed over.
+    /// Propose `command` to the shard holding `session`'s directory slot,
+    /// following a slot that is being handed over.
     async fn directory_command(
         &self,
         session: SessionId,
@@ -475,42 +488,42 @@ impl Gateway {
         let mut owner = self.directory_of(session)?;
         for _ in 0..5 {
             match self.propose(owner, command).await? {
-                Response::Moved { cell: next } => owner = next,
+                Response::Moved { shard: next } => owner = next,
                 other => return Ok(other),
             }
         }
-        Err(unavailable("directory shard keeps moving"))
+        Err(unavailable("directory slot keeps moving"))
     }
 
-    /// The cell a session lives in, from the cache or the directory.
-    pub async fn locate(&self, session: SessionId) -> Result<CellId, ApiError> {
+    /// The shard a session lives in, from the cache or the directory.
+    pub async fn locate(&self, session: SessionId) -> Result<ShardId, ApiError> {
         let cached = self.cache.lock().get(&session).copied();
-        if let Some(cell) = cached {
-            // A cached cell that has since retired is stale.
-            if self.topology()?.cells.contains_key(&cell) {
-                return Ok(cell);
+        if let Some(shard) = cached {
+            // A cached shard that has since retired is stale.
+            if self.topology()?.shards.contains_key(&shard) {
+                return Ok(shard);
             }
             self.forget(session);
         }
         for attempt in 0..2 {
             if attempt > 0 {
-                // The shard may have moved since the last registry refresh.
+                // The slot may have moved since the last registry refresh.
                 self.refresh_registry().await;
             }
             let directory = self.directory_of(session)?;
             // A replica may not have applied a fresh placement yet; ask each.
             for addr in self.nodes(directory)? {
-                let url = format!("http://{addr}/cell/directory/{session}");
+                let url = format!("http://{addr}/shard/directory/{session}");
                 if let Ok(response) = self
                     .http
                     .get(url)
                     .timeout(Duration::from_secs(5))
                     .send()
                     .await
-                    && let Ok(Some(Placed { cell, .. })) = response.json::<Option<Placed>>().await
+                    && let Ok(Some(Placed { shard, .. })) = response.json::<Option<Placed>>().await
                 {
-                    self.cache.lock().insert(session, cell);
-                    return Ok(cell);
+                    self.cache.lock().insert(session, shard);
+                    return Ok(shard);
                 }
             }
         }
@@ -524,19 +537,23 @@ impl Gateway {
         self.cache.lock().remove(&session);
     }
 
-    /// Run `f` against the session's cell, following moves.
-    pub(crate) async fn with_cell<T, F, Fut>(&self, session: SessionId, f: F) -> Result<T, ApiError>
+    /// Run `f` against the session's shard, following moves.
+    pub(crate) async fn with_shard<T, F, Fut>(
+        &self,
+        session: SessionId,
+        f: F,
+    ) -> Result<T, ApiError>
     where
-        F: Fn(CellId) -> Fut,
+        F: Fn(ShardId) -> Fut,
         Fut: std::future::Future<Output = Result<Lookup<T>, ApiError>>,
     {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let cell = self.locate(session).await?;
-            match f(cell).await? {
+            let shard = self.locate(session).await?;
+            match f(shard).await? {
                 Lookup::Here(value) => return Ok(value),
-                Lookup::Moved { cell } => {
-                    self.cache.lock().insert(session, cell);
+                Lookup::Moved { shard } => {
+                    self.cache.lock().insert(session, shard);
                 }
                 Lookup::Missing => {
                     self.forget(session);
@@ -556,11 +573,11 @@ impl Gateway {
     pub async fn create(
         &self,
         definition: Value,
-        cell: Option<CellId>,
+        shard: Option<ShardId>,
         id: Option<SessionId>,
         tenant: Option<String>,
     ) -> Result<Value, ApiError> {
-        self.create_running(definition, cell, id, tenant, None, Joining::default())
+        self.create_running(definition, shard, id, tenant, None, Joining::default())
             .await
     }
 
@@ -570,7 +587,7 @@ impl Gateway {
     pub async fn create_running(
         &self,
         definition: Value,
-        cell: Option<CellId>,
+        shard: Option<ShardId>,
         id: Option<SessionId>,
         tenant: Option<String>,
         agent_ref: Option<String>,
@@ -580,6 +597,8 @@ impl Gateway {
             memory,
             servers,
             importing,
+            subagent,
+            owner,
         } = joining;
         // Reject a malformed definition here, not at its first turn. Whether
         // a node has the tools and provider it names shows at the turn.
@@ -588,44 +607,44 @@ impl Gateway {
             .manifest()
             .name
             .clone();
-        // A known id keeps its cell; placing and creating again are no-ops.
+        // A known id keeps its shard; placing and creating again are no-ops.
         let known = match id {
             Some(session) => self.locate(session).await.ok(),
             None => None,
         };
         let topology = self.topology()?;
         let draining = self.draining();
-        let mut cells: Vec<CellId> = topology
-            .cells
+        let mut shards: Vec<ShardId> = topology
+            .shards
             .keys()
             .copied()
             .filter(|c| !draining.contains(c))
             .collect();
         let session = id.unwrap_or_default();
         // Place first: a session the directory cannot find is unreachable,
-        // and an orphan placement costs nothing. A cell that started
+        // and an orphan placement costs nothing. A shard that started
         // draining since the last registry refresh refuses; pick another.
         // A known session is already placed.
-        let requested = cell;
-        let cell = loop {
-            if let Some(cell) = known {
-                break cell;
+        let requested = shard;
+        let shard = loop {
+            if let Some(shard) = known {
+                break shard;
             }
-            if cells.is_empty() {
-                return Err(unavailable("no cell takes new sessions"));
+            if shards.is_empty() {
+                return Err(unavailable("no shard takes new sessions"));
             }
-            let cell = requested.unwrap_or_else(|| self.place(&cells));
-            let placed = self.place_entry(session, cell, 1, 0).await?;
+            let shard = requested.unwrap_or_else(|| self.place(&shards));
+            let placed = self.place_entry(session, shard, 1, 0).await?;
             match placed {
-                Response::Ok | Response::Duplicate => break cell,
+                Response::Ok | Response::Duplicate => break shard,
                 // Placed before (a retry the lookup missed): it stays there.
                 Response::Placement {
-                    current: Some(Placed { cell, .. }),
-                } => break cell,
-                other if requested.is_some() || cells.len() < 2 => {
+                    current: Some(Placed { shard, .. }),
+                } => break shard,
+                other if requested.is_some() || shards.len() < 2 => {
                     return Err((StatusCode::CONFLICT, format!("{other:?}")));
                 }
-                _ => cells.retain(|c| *c != cell),
+                _ => shards.retain(|c| *c != shard),
             }
         };
         let body = json!({
@@ -635,35 +654,37 @@ impl Gateway {
             "memory": memory,
             "servers": servers,
             "importing": importing,
+            "subagent": subagent,
+            "owner": owner,
         });
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let reply: CellReply = self
+            let reply: ShardReply = self
                 .call(
-                    cell,
-                    &format!("/cell/sessions/{session}/create"),
+                    shard,
+                    &format!("/shard/sessions/{session}/create"),
                     Some(&body),
                 )
                 .await?;
             match reply {
-                CellReply::Ok { .. } => break,
-                CellReply::Busy { retry_after_ms } => return Err(busy(cell, retry_after_ms)),
-                CellReply::Frozen | CellReply::NotFound if Instant::now() < deadline => {
+                ShardReply::Ok { .. } => break,
+                ShardReply::Busy { retry_after_ms } => return Err(busy(shard, retry_after_ms)),
+                ShardReply::Frozen | ShardReply::NotFound if Instant::now() < deadline => {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
                 // A known session that moved since: it exists.
-                CellReply::Moved { cell } if known.is_some() => {
-                    self.cache.lock().insert(session, cell);
-                    return Ok(json!({ "id": session, "agent": agent, "cell": cell }));
+                ShardReply::Moved { shard } if known.is_some() => {
+                    self.cache.lock().insert(session, shard);
+                    return Ok(json!({ "id": session, "agent": agent, "shard": shard }));
                 }
                 other => return Err((StatusCode::CONFLICT, format!("{other:?}"))),
             }
         }
-        self.cache.lock().insert(session, cell);
+        self.cache.lock().insert(session, shard);
         if known.is_none() {
             self.created.inc(&[]);
         }
-        Ok(json!({ "id": session, "agent": agent, "cell": cell }))
+        Ok(json!({ "id": session, "agent": agent, "shard": shard }))
     }
 
     pub async fn admit(
@@ -719,8 +740,8 @@ impl Gateway {
         self.session_command(session, "cancel", &body).await
     }
 
-    /// Run a session command (`POST /cell/sessions/{id}/{command}`, which
-    /// answers a [`CellReply`]) on the session's cell, following moves and
+    /// Run a session command (`POST /shard/sessions/{id}/{command}`, which
+    /// answers a [`ShardReply`]) on the session's shard, following moves and
     /// waiting out a move's freeze. A refusal is a 409 with its reason.
     pub(crate) async fn session_command(
         &self,
@@ -729,55 +750,55 @@ impl Gateway {
         body: &Value,
     ) -> Result<Value, ApiError> {
         let deadline = Instant::now() + Duration::from_secs(60);
-        // A cell may not know a session its directory entry already names
+        // A shard may not know a session its directory entry already names
         // for a moment (a create or a move in flight); longer is missing.
         let missing = Instant::now() + Duration::from_secs(10);
         loop {
-            let cell = self.locate(session).await?;
-            let reply: CellReply = self
+            let shard = self.locate(session).await?;
+            let reply: ShardReply = self
                 .call(
-                    cell,
-                    &format!("/cell/sessions/{session}/{command}"),
+                    shard,
+                    &format!("/shard/sessions/{session}/{command}"),
                     Some(body),
                 )
                 .await?;
             match reply {
-                CellReply::Ok { value } => return Ok(value),
-                CellReply::Moved { cell } => {
-                    self.cache.lock().insert(session, cell);
+                ShardReply::Ok { value } => return Ok(value),
+                ShardReply::Moved { shard } => {
+                    self.cache.lock().insert(session, shard);
                 }
-                CellReply::Frozen if Instant::now() < deadline => {
+                ShardReply::Frozen if Instant::now() < deadline => {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
-                CellReply::NotFound if Instant::now() < missing => {
+                ShardReply::NotFound if Instant::now() < missing => {
                     self.forget(session);
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
-                CellReply::NotFound => {
+                ShardReply::NotFound => {
                     return Err((
                         StatusCode::NOT_FOUND,
                         format!("session {session} not found"),
                     ));
                 }
-                CellReply::Refused { reason } => return Err((StatusCode::CONFLICT, reason)),
-                CellReply::Busy { retry_after_ms } => {
+                ShardReply::Refused { reason } => return Err((StatusCode::CONFLICT, reason)),
+                ShardReply::Busy { retry_after_ms } => {
                     if command == "messages" {
                         self.admitted.inc(&[("status", "shed")]);
                     }
-                    return Err(busy(cell, retry_after_ms));
+                    return Err(busy(shard, retry_after_ms));
                 }
                 other => return Err((StatusCode::CONFLICT, format!("{other:?}"))),
             }
         }
     }
 
-    /// Move a session to `to`. The source cell records the move and its
+    /// Move a session to `to`. The source shard records the move and its
     /// leader finishes it once the running turn ends (see
     /// `Node::maybe_move`); this waits until the session answers from `to`.
-    pub async fn move_session(&self, session: SessionId, to: CellId) -> Result<Value, ApiError> {
+    pub async fn move_session(&self, session: SessionId, to: ShardId) -> Result<Value, ApiError> {
         let from = self.locate(session).await?;
         if from == to {
-            return Ok(json!({ "moved": false, "cell": to }));
+            return Ok(json!({ "moved": false, "shard": to }));
         }
         let started = Instant::now();
         match self
@@ -791,16 +812,16 @@ impl Gateway {
             .await?
         {
             Response::Ok => {}
-            Response::Moved { cell } if cell == to => {}
+            Response::Moved { shard } if shard == to => {}
             other => return Err((StatusCode::CONFLICT, format!("{other:?}"))),
         }
         loop {
             let view: Lookup<SessionView> = self
-                .call(from, &format!("/cell/sessions/{session}"), None)
+                .call(from, &format!("/shard/sessions/{session}"), None)
                 .await?;
             match view {
-                Lookup::Moved { cell } => {
-                    self.cache.lock().insert(session, cell);
+                Lookup::Moved { shard } => {
+                    self.cache.lock().insert(session, shard);
                     break;
                 }
                 Lookup::Missing => return Err((StatusCode::NOT_FOUND, "session left".into())),
@@ -830,17 +851,17 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
             "/v1/sessions/{session}/messages/{message}/cancel",
             post(cancel),
         )
-        .route("/v1/cells", get(cells))
+        .route("/v1/shards", get(shards))
         .route("/v1/tools", get(tools))
         .route("/v1/metrics/targets", get(targets))
-        .route("/v1/cells/{cell}", axum::routing::delete(retire_cell))
+        .route("/v1/shards/{shard}", axum::routing::delete(retire_shard))
         .route(
-            "/v1/cells/{cell}/drain",
-            post(drain_cell).delete(undrain_cell),
+            "/v1/shards/{shard}/drain",
+            post(drain_shard).delete(undrain_shard),
         )
-        .route("/v1/cells/{cell}/nodes", post(add_node))
+        .route("/v1/shards/{shard}/nodes", post(add_node))
         .route(
-            "/v1/cells/{cell}/nodes/{node}",
+            "/v1/shards/{shard}/nodes/{node}",
             axum::routing::delete(remove_node),
         )
         .merge(crate::gateway_v1::routes())
@@ -920,9 +941,9 @@ async fn check_org_token(
     next.run(request).await
 }
 
-/// The largest request body the gateway takes (`CELL_MAX_REQUEST_MB`,
+/// The largest request body the gateway takes (`AGENTD_MAX_REQUEST_MB`,
 /// default 2 MB).
-/// How a control plane session joins its cell, beyond its agent.
+/// How a control plane session joins its shard, beyond its agent.
 #[derive(Debug, Clone, Default)]
 pub struct Joining {
     /// Its Memory mounts ([`crate::platform::Platform::memory`]).
@@ -933,10 +954,15 @@ pub struct Joining {
     /// A moved v1 session being imported: closed to messages until the
     /// control plane activates it (`state::Command::Importing`).
     pub importing: bool,
+    /// The session that started it, when it is a subagent
+    /// ([`crate::platform::Platform::origin`]).
+    pub subagent: Option<everruns_contracts::dataplane::SubagentOrigin>,
+    /// The person who owns it ([`crate::platform::Platform::owner`]).
+    pub owner: Option<String>,
 }
 
 pub(crate) fn max_request_bytes() -> usize {
-    std::env::var("CELL_MAX_REQUEST_MB")
+    std::env::var("AGENTD_MAX_REQUEST_MB")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(2)
@@ -985,7 +1011,7 @@ struct CreateBody {
     #[serde(default)]
     agent_ref: Option<String>,
     #[serde(default)]
-    cell: Option<CellId>,
+    shard: Option<ShardId>,
     #[serde(default)]
     id: Option<SessionId>,
     /// The tenant the session's spend is billed to (see `allowance`).
@@ -1049,7 +1075,7 @@ async fn create(
         StatusCode::CREATED,
         Json(
             gateway
-                .create(definition, body.cell, body.id, tenant)
+                .create(definition, body.shard, body.id, tenant)
                 .await?,
         ),
     ))
@@ -1062,9 +1088,9 @@ async fn session(
     let id = parse(&session)?;
     let gw = gateway.clone();
     let view = gateway
-        .with_cell(id, |cell| {
+        .with_shard(id, |shard| {
             let gw = gw.clone();
-            async move { gw.call(cell, &format!("/cell/sessions/{id}"), None).await }
+            async move { gw.call(shard, &format!("/shard/sessions/{id}"), None).await }
         })
         .await?;
     Ok(Json(view))
@@ -1073,8 +1099,8 @@ async fn session(
 /// `GET /v1/tools`: the tools nodes offer, ready to copy into an agent
 /// definition's `tools`. Every node of a fleet runs the same build.
 async fn tools(State(gateway): State<Arc<Gateway>>) -> Result<Json<Value>, ApiError> {
-    let directory = gateway.directory_cell()?;
-    Ok(Json(gateway.call(directory, "/cell/tools", None).await?))
+    let directory = gateway.directory_shard()?;
+    Ok(Json(gateway.call(directory, "/shard/tools", None).await?))
 }
 
 /// `GET /v1/sessions/{id}/agent`: the agent definition the session runs.
@@ -1085,10 +1111,10 @@ async fn agent(
     let id = parse(&session)?;
     let gw = gateway.clone();
     let definition = gateway
-        .with_cell(id, |cell| {
+        .with_shard(id, |shard| {
             let gw = gw.clone();
             async move {
-                gw.call(cell, &format!("/cell/sessions/{id}/agent"), None)
+                gw.call(shard, &format!("/shard/sessions/{id}/agent"), None)
                     .await
             }
         })
@@ -1102,97 +1128,97 @@ async fn move_session(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let session = parse(&session)?;
-    let to = body["cell"]
+    let to = body["shard"]
         .as_u64()
-        .ok_or((StatusCode::BAD_REQUEST, "cell required".to_string()))? as CellId;
+        .ok_or((StatusCode::BAD_REQUEST, "shard required".to_string()))? as ShardId;
     Ok(Json(gateway.move_session(session, to).await?))
 }
 
-/// `POST /v1/cells/{cell}/nodes {"node": 4, "addr": "host:port"}`: add a
-/// started node (run with `--join`) to a running cell.
+/// `POST /v1/shards/{shard}/nodes {"node": 4, "addr": "host:port"}`: add a
+/// started node (run with `--join`) to a running shard.
 async fn add_node(
     State(gateway): State<Arc<Gateway>>,
-    Path(cell): Path<CellId>,
+    Path(shard): Path<ShardId>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(
-        gateway.call(cell, "/cell/members", Some(&body)).await?,
+        gateway.call(shard, "/shard/members", Some(&body)).await?,
     ))
 }
 
-/// `POST /v1/cells/{cell}/drain`: stop placing new sessions in `cell` and
+/// `POST /v1/shards/{shard}/drain`: stop placing new sessions in `shard` and
 /// let the rebalancer move its sessions, running turns included, to the
-/// other cells. Returns the cell's load; drained when `sessions` is 0.
-async fn drain_cell(
+/// other shards. Returns the shard's load; drained when `sessions` is 0.
+async fn drain_shard(
     State(gateway): State<Arc<Gateway>>,
-    Path(cell): Path<CellId>,
+    Path(shard): Path<ShardId>,
 ) -> Result<Json<Value>, ApiError> {
-    gateway.set_draining(cell, true).await
+    gateway.set_draining(shard, true).await
 }
 
-/// `DELETE /v1/cells/{cell}/drain`: take the cell back into placement.
-async fn undrain_cell(
+/// `DELETE /v1/shards/{shard}/drain`: take the shard back into placement.
+async fn undrain_shard(
     State(gateway): State<Arc<Gateway>>,
-    Path(cell): Path<CellId>,
+    Path(shard): Path<ShardId>,
 ) -> Result<Json<Value>, ApiError> {
-    gateway.set_draining(cell, false).await
+    gateway.set_draining(shard, false).await
 }
 
-/// `DELETE /v1/cells/{cell}`: retire a drained cell. Refused (409) while
+/// `DELETE /v1/shards/{shard}`: retire a drained shard. Refused (409) while
 /// it still holds sessions. Afterwards gateways stop routing to it, the
 /// scraper stops scraping it, and its nodes can be shut down.
-async fn retire_cell(
+async fn retire_shard(
     State(gateway): State<Arc<Gateway>>,
-    Path(cell): Path<CellId>,
+    Path(shard): Path<ShardId>,
 ) -> Result<Json<Value>, ApiError> {
-    let directory = gateway.directory_cell()?;
-    let load: crate::api::CellLoad = gateway.call(cell, "/cell/load", None).await?;
-    let shards = gateway
+    let directory = gateway.directory_shard()?;
+    let load: crate::api::ShardLoad = gateway.call(shard, "/shard/load", None).await?;
+    let slots = gateway
         .registry
         .lock()
-        .shards
+        .slots
         .values()
-        .filter(|c| **c == cell)
+        .filter(|c| **c == shard)
         .count();
-    if shards > 0 {
+    if slots > 0 {
         return Err((
             StatusCode::CONFLICT,
-            format!("cell {cell} still holds {shards} directory shards; drain it first"),
+            format!("shard {shard} still holds {slots} directory slots; drain it first"),
         ));
     }
     if load.sessions > 0 {
         return Err((
             StatusCode::CONFLICT,
             format!(
-                "cell {cell} still holds {} sessions; drain it first",
+                "shard {shard} still holds {} sessions; drain it first",
                 load.sessions
             ),
         ));
     }
     match gateway
-        .propose(directory, &Command::RetireCell { cell })
+        .propose(directory, &Command::RetireShard { shard })
         .await?
     {
         Response::Ok | Response::Duplicate => {
             gateway.refresh_registry().await;
-            Ok(Json(json!({ "cell": cell, "retired": true })))
+            Ok(Json(json!({ "shard": shard, "retired": true })))
         }
         other => Err((StatusCode::CONFLICT, format!("{other:?}"))),
     }
 }
 
-/// `DELETE /v1/cells/{cell}/nodes/{node}`: take a node out of a cell.
+/// `DELETE /v1/shards/{shard}/nodes/{node}`: take a node out of a shard.
 async fn remove_node(
     State(gateway): State<Arc<Gateway>>,
-    Path((cell, node)): Path<(CellId, crate::types::NodeId)>,
+    Path((shard, node)): Path<(ShardId, crate::types::NodeId)>,
 ) -> Result<Json<Value>, ApiError> {
-    let nodes = gateway.nodes(cell)?;
+    let nodes = gateway.nodes(shard)?;
     let mut last = String::new();
     for _ in 0..50 {
         for addr in &nodes {
             match gateway
                 .http
-                .delete(format!("http://{addr}/cell/members/{node}"))
+                .delete(format!("http://{addr}/shard/members/{node}"))
                 .timeout(Duration::from_secs(30))
                 .send()
                 .await
@@ -1210,15 +1236,15 @@ async fn remove_node(
 }
 
 /// Prometheus HTTP service discovery (`http_sd_configs`): every node of
-/// every cell, labelled, so a scraper follows the fleet as nodes and cells
+/// every shard, labelled, so a scraper follows the fleet as nodes and shards
 /// come and go.
 async fn targets(State(gateway): State<Arc<Gateway>>) -> Result<Json<Value>, ApiError> {
-    // No target labels: every series already carries `cell` (and per-node
-    // ones `node`), and a `node` label on a cell's leader-only series would
+    // No target labels: every series already carries `shard` (and per-node
+    // ones `node`), and a `node` label on a shard's leader-only series would
     // split it at every leader change.
     let groups: Vec<Value> = gateway
         .topology()?
-        .cells
+        .shards
         .values()
         .flat_map(|nodes| nodes.values())
         .map(|addr| json!({ "targets": [addr], "labels": {} }))
@@ -1226,13 +1252,13 @@ async fn targets(State(gateway): State<Arc<Gateway>>) -> Result<Json<Value>, Api
     Ok(Json(json!(groups)))
 }
 
-async fn cells(State(gateway): State<Arc<Gateway>>) -> Result<Json<Value>, ApiError> {
+async fn shards(State(gateway): State<Arc<Gateway>>) -> Result<Json<Value>, ApiError> {
     let topology = gateway.topology()?;
     let mut out = BTreeMap::new();
-    for (cell, nodes) in &topology.cells {
+    for (shard, nodes) in &topology.shards {
         let mut stats = Vec::new();
         for addr in nodes.values() {
-            let url = format!("http://{addr}/cell/stats");
+            let url = format!("http://{addr}/shard/stats");
             let value: Option<Stats> = match gateway
                 .http
                 .get(url)
@@ -1245,7 +1271,7 @@ async fn cells(State(gateway): State<Arc<Gateway>>) -> Result<Json<Value>, ApiEr
             };
             stats.push(json!({ "addr": addr, "stats": value }));
         }
-        out.insert(cell.to_string(), stats);
+        out.insert(shard.to_string(), stats);
     }
     Ok(Json(json!(out)))
 }
@@ -1269,12 +1295,12 @@ async fn wait(
     let turns = query.turns;
     let gw = gateway.clone();
     let view = gateway
-        .with_cell(id, |cell| {
+        .with_shard(id, |shard| {
             let gw = gw.clone();
             async move {
                 gw.call_within(
-                    cell,
-                    &format!("/cell/sessions/{id}/wait?turns={turns}&timeout_ms={timeout}"),
+                    shard,
+                    &format!("/shard/sessions/{id}/wait?turns={turns}&timeout_ms={timeout}"),
                     None,
                     Duration::from_millis(timeout) + Duration::from_secs(5),
                 )

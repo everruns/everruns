@@ -261,6 +261,10 @@ hosted store keeps:
   no activity for an hour, provider cleanup failed) are computed in the fleet
   query, so they filter and page like any other column.
 
+An idle running row shows **Last recorded running**. Organization admins can
+check the provider's current state in the detail drawer. The fleet list reads
+stored records and makes no provider requests.
+
 In-process targets (virtual filesystem, host) have no provider resource and
 are hidden unless `include_in_process` is set. The fleet is read-only;
 pause, resume and delete go through the Session's Sandbox endpoint.
@@ -304,9 +308,12 @@ access tokens, and none of them is copied. Error text is scrubbed again. Its
 most useful fields are provider-side auto-stop and last activity, which explain
 a provider stopping a Sandbox before the Everruns idle limit.
 
-Data plane v2 sessions are managed by their cell, not by the control plane's
-idle timer and sweep. Diagnosis reads their work and Sandbox state through the
-cell gateway (`sandbox` read) and says so in a `data_plane.lifecycle` finding.
+Data plane v2 sessions keep managed Sandbox state in their shard. The control
+plane's idle sweep uses the activity timestamp from the shard's session summary
+and records the outcome for that activity and Sandbox generation. It retries
+a failed pause after five minutes. Diagnosis uses the current shard's provider
+resource ID for the primary Sandbox and reads work through the shard gateway
+(`sandbox` read).
 
 ### Orphaned sandbox scan
 

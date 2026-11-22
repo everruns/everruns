@@ -10,12 +10,12 @@ mod support;
 use std::sync::Arc;
 use std::time::Duration;
 
-use everruns_cell::dp::{ConfigAck, ConfigUpdate};
-use everruns_cell::edge::Edge;
-use everruns_cell::gateway::Gateway;
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell::org_token::OrgTokens;
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd::dp::{ConfigAck, ConfigUpdate};
+use everruns_agentd::edge::Edge;
+use everruns_agentd::gateway::Gateway;
+use everruns_agentd::node_control::ControlPlane;
+use everruns_agentd::org_token::OrgTokens;
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use support::Fleet;
@@ -40,7 +40,7 @@ async fn setup() -> Setup {
     link.jwks_url = Some(cp.jwks_url());
     let mut fleet = Fleet::start_with_cp(Some(link)).await;
     fleet.executor(1);
-    let mut package = everruns_cell_testkit::definition("echo").unwrap();
+    let mut package = everruns_agentd_testkit::definition("echo").unwrap();
     package["name"] = json!("helper");
     let update = ConfigUpdate {
         epoch: 1,
@@ -264,7 +264,7 @@ async fn no_token_reaches_another_orgs_session() {
         s.cp.signer
             .token(ORG, "dp-local", "sessions:write", -10)
             .unwrap();
-    let forged = everruns_cell_testkit::signer::Signer::new("cp-key-1")
+    let forged = everruns_agentd_testkit::signer::Signer::new("cp-key-1")
         .unwrap()
         .token(ORG, "dp-local", "admin", 600)
         .unwrap();
@@ -348,14 +348,14 @@ async fn with_the_control_plane_down_a_session_keeps_working() {
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
 }
 
-/// The load driver against a joined fleet (`cell-drive load
+/// The load driver against a joined fleet (`agentd-drive load
 /// --control-plane`): it signs in as the org with an API key, and one
 /// token serves the whole run.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_load_driver_signs_in_as_an_org_of_the_control_plane() {
     let s = setup().await;
     let drive = |join: bool| {
-        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_cell-drive"));
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_agentd-drive"));
         command.args([
             "load",
             "--gateways",

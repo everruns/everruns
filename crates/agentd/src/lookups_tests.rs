@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use everruns_contracts::dataplane::Connection;
-use everruns_contracts::host_calls::HostCallAnswer;
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::McpServerActsAs;
@@ -12,31 +11,14 @@ use serde_json::{Value, json};
 use super::connections;
 use crate::providers::OrgMaterial;
 
-/// An org's material whose lookups answer from a script and are recorded.
+/// An org's material: what the control plane pushed, and no control plane
+/// server (a standalone shard, or one whose create brought none).
+#[derive(Default)]
 struct Material {
-    reaches: bool,
-    answer: Mutex<Option<anyhow::Result<HostCallAnswer>>>,
-    asked: Mutex<Vec<(String, String, Value)>>,
     /// What the control plane pushed: settings and secrets, by id.
     pushed: Mutex<std::collections::HashMap<String, Value>>,
     secrets: Mutex<std::collections::HashMap<String, Vec<u8>>>,
-    /// The host calls the session's agent declares; `None` for unknown.
-    declared: Mutex<Option<std::collections::BTreeSet<&'static str>>>,
-    undeclared: Mutex<Vec<String>>,
-}
-
-impl Material {
-    fn new(reaches: bool, answer: anyhow::Result<HostCallAnswer>) -> Arc<Self> {
-        Arc::new(Self {
-            reaches,
-            answer: Mutex::new(Some(answer)),
-            asked: Mutex::new(Vec::new()),
-            pushed: Mutex::default(),
-            secrets: Mutex::default(),
-            declared: Mutex::default(),
-            undeclared: Mutex::default(),
-        })
-    }
+    owner: Mutex<Option<String>>,
 }
 
 #[async_trait::async_trait]
@@ -76,34 +58,8 @@ impl OrgMaterial for Material {
             }))
     }
 
-    fn looks_up(&self) -> bool {
-        self.reaches
-    }
-
-    fn declared_host_calls(
-        &self,
-        _session: SessionId,
-    ) -> Option<std::collections::BTreeSet<&'static str>> {
-        self.declared.lock().clone()
-    }
-
-    fn undeclared_host_call(&self, call: &str) {
-        self.undeclared.lock().push(call.to_owned());
-    }
-
-    async fn lookup(
-        &self,
-        org: &str,
-        command: &str,
-        params: Value,
-    ) -> anyhow::Result<HostCallAnswer> {
-        self.asked
-            .lock()
-            .push((org.to_owned(), command.to_owned(), params));
-        self.answer
-            .lock()
-            .take()
-            .unwrap_or_else(|| anyhow::bail!("asked twice"))
+    fn owner(&self, _session: SessionId) -> Option<String> {
+        self.owner.lock().clone()
     }
 }
 
@@ -136,68 +92,8 @@ fn resolver(material: &Arc<Material>, session: SessionId) -> Arc<dyn UserConnect
 }
 
 #[tokio::test]
-async fn a_connection_token_is_looked_up_for_the_session_as_its_org() {
-    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("gh-token"))));
-    let session = SessionId::new();
-    let token = resolver(&material, session)
-        .get_connection_token(session, "github")
-        .await
-        .unwrap();
-    assert_eq!(token.as_deref(), Some("gh-token"));
-    let asked = material.asked.lock();
-    assert_eq!(asked.len(), 1);
-    assert_eq!(asked[0].0, "org-a");
-    assert_eq!(asked[0].1, "worker_get_connection_token");
-    assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
-    assert_eq!(asked[0].2["provider"], json!("github"));
-}
-
-/// A host call the session's capabilities do not declare is counted, and
-/// still made while the declarations are checked against the live fleet;
-/// a declared one, or one every turn makes, is not counted.
-#[tokio::test]
-async fn an_undeclared_host_call_is_counted() {
-    let session = SessionId::new();
-    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("gh-token"))));
-    *material.declared.lock() = Some(Default::default());
-    let token = resolver(&material, session)
-        .get_connection_token(session, "github")
-        .await
-        .unwrap();
-    assert_eq!(token.as_deref(), Some("gh-token"));
-    assert_eq!(*material.undeclared.lock(), ["connection_token"]);
-
-    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("gh-token"))));
-    *material.declared.lock() = Some(
-        [everruns_contracts::host_calls::CONNECTION_TOKEN]
-            .into_iter()
-            .collect(),
-    );
-    resolver(&material, session)
-        .get_connection_token(session, "github")
-        .await
-        .unwrap();
-    assert!(material.undeclared.lock().is_empty());
-
-    let material = Material::new(true, Ok(HostCallAnswer::Value(json!({}))));
-    *material.declared.lock() = Some(Default::default());
-    let lookups = super::org_lookups(
-        Some(&(Arc::downgrade(&(material.clone() as Arc<dyn OrgMaterial>)))),
-        session,
-    )
-    .unwrap();
-    use everruns_internal_protocol::commands::InternalCommandTransport as _;
-    lookups
-        .execute_internal_command("worker_get_tool_approval_policy", json!({}))
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(material.undeclared.lock().is_empty(), "every turn asks it");
-}
-
-#[tokio::test]
 async fn sandbox_keys_and_mcp_grants_stay_on_the_data_plane() {
-    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("never"))));
+    let material = Arc::new(Material::default());
     let session = SessionId::new();
     let resolver = resolver(&material, session);
     let credential = SessionSandboxCredential::default();
@@ -223,39 +119,14 @@ async fn sandbox_keys_and_mcp_grants_stay_on_the_data_plane() {
             .unwrap(),
         None
     );
-    assert!(material.asked.lock().is_empty());
 }
 
+/// Without the control plane's credentials server (a standalone shard),
+/// the tools get what a host without org settings gives: no connections,
+/// no search settings, no approval policy beyond the agent's own.
 #[tokio::test]
-async fn a_refusal_and_an_unreachable_control_plane_fail_the_lookup() {
-    let refused = Material::new(
-        true,
-        Ok(HostCallAnswer::Error {
-            kind: 3,
-            message: "Session not found".into(),
-        }),
-    );
-    let session = SessionId::new();
-    let error = resolver(&refused, session)
-        .get_connection_token(session, "github")
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("Session not found"), "{error}");
-
-    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
-    let error = resolver(&down, session)
-        .get_tool_approval_policy(session)
-        .await
-        .unwrap_err();
-    assert!(
-        error.to_string().contains("could not be reached"),
-        "{error}"
-    );
-}
-
-#[tokio::test]
-async fn a_cell_without_a_control_plane_answers_as_a_host_without_org_settings() {
-    let material = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
+async fn a_shard_without_a_control_plane_answers_as_a_host_without_org_settings() {
+    let material = Arc::new(Material::default());
     let session = SessionId::new();
     let resolver = resolver(&material, session);
     assert_eq!(
@@ -272,248 +143,70 @@ async fn a_cell_without_a_control_plane_answers_as_a_host_without_org_settings()
             .unwrap()
             .is_none()
     );
-    assert!(material.asked.lock().is_empty());
-}
-
-/// The Poppy client `attach` installs for `session`, when it installs one.
-fn poppy(
-    material: &Arc<Material>,
-    session: SessionId,
-) -> Option<Arc<dyn everruns_capabilities::capabilities::PoppyInvoker>> {
-    let material: Arc<dyn OrgMaterial> = material.clone();
-    let backends = super::attach(
-        everruns_core::host::HostBackends::in_memory(),
-        Arc::new(Keys),
-        Some(&Arc::downgrade(&material)),
-        session,
-    );
-    let factory = backends.tool_context_extensions_factory?;
-    factory(0, session)
-        .get::<everruns_capabilities::capabilities::PoppyInvokerExt>()
-        .map(|ext| ext.0.clone())
-}
-
-#[tokio::test]
-async fn a_poppy_call_runs_in_the_control_plane_for_the_session() {
-    let material = Material::new(true, Ok(HostCallAnswer::Value(json!({ "sent": true }))));
-    let session = SessionId::new();
-    let call: everruns_capabilities::capabilities::PoppyCall =
-        serde_json::from_value(json!({ "action": "discover", "company": "acme.example" })).unwrap();
-    let answer = poppy(&material, session)
-        .expect("installed")
-        .invoke(call)
-        .await
-        .unwrap();
-    assert_eq!(answer, json!({ "sent": true }));
-    let asked = material.asked.lock();
-    assert_eq!(asked[0].0, "org-a");
-    assert_eq!(asked[0].1, "worker_poppy_call");
-    assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
-    assert_eq!(asked[0].2["call"]["action"], json!("discover"));
-    assert_eq!(asked[0].2["call"]["company"], json!("acme.example"));
-}
-
-fn slack(
-    material: &Arc<Material>,
-    session: SessionId,
-) -> Option<Arc<dyn everruns_contracts::slack_action::SlackActionInvoker>> {
-    let material: Arc<dyn OrgMaterial> = material.clone();
-    let backends = super::attach(
-        everruns_core::host::HostBackends::in_memory(),
-        Arc::new(Keys),
-        Some(&Arc::downgrade(&material)),
-        session,
-    );
-    let factory = backends.tool_context_extensions_factory?;
-    let extensions = factory(0, session);
-    // Posts bind to the turn's input event, which lives in the cell: the
-    // channel host delivers them, not a conversation sender.
     assert!(
-        extensions
-            .get::<everruns_contracts::runtime::conversation::ConversationSenderExt>()
+        resolver
+            .get_tool_approval_policy(session)
+            .await
+            .unwrap()
             .is_none()
     );
-    extensions
-        .get::<everruns_contracts::slack_action::SlackActionInvokerExt>()
-        .map(|ext| ext.0.clone())
 }
 
+/// Anything but the four credential lookups is refused before it leaves
+/// the executor.
 #[tokio::test]
-async fn a_slack_action_runs_as_the_sessions_endpoint_and_keeps_its_error() {
-    use everruns_contracts::slack_action::{SlackAction, SlackActionError, SlackActionOutcome};
-    let react = || SlackAction::AddReaction {
-        channel: "C1".into(),
-        timestamp: "1.2".into(),
-        name: "eyes".into(),
-    };
-    let session = SessionId::new();
-    let done = Material::new(
-        true,
-        Ok(HostCallAnswer::Value(json!({
-            "outcome": { "outcome": "reaction_added", "already_reacted": false }
-        }))),
-    );
-    let outcome = slack(&done, session)
-        .expect("installed")
-        .invoke(react())
-        .await;
-    assert_eq!(
-        outcome,
-        Ok(SlackActionOutcome::ReactionAdded {
-            already_reacted: false
-        })
-    );
-    {
-        let asked = done.asked.lock();
-        assert_eq!(asked[0].1, everruns_contracts::host_calls::SLACK_ACTION);
-        assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
-        assert_eq!(asked[0].2["action"]["action"], json!("add_reaction"));
-    }
-
-    // The control plane's refusal is the model's to act on, intact.
-    let refused = Material::new(
-        true,
-        Ok(HostCallAnswer::Value(
-            json!({ "error": SlackActionError::NoSlackSession }),
-        )),
-    );
-    let error = slack(&refused, session).unwrap().invoke(react()).await;
-    assert_eq!(error, Err(SlackActionError::NoSlackSession));
-
-    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
-    let error = slack(&down, session).unwrap().invoke(react()).await;
-    assert!(
-        matches!(error, Err(SlackActionError::Transient(_))),
-        "{error:?}"
-    );
-
-    let standalone = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
-    assert!(slack(&standalone, session).is_none());
-}
-
-#[tokio::test]
-async fn a_company_refusal_reaches_the_model_and_anything_else_is_unavailable() {
-    let call = || -> everruns_capabilities::capabilities::PoppyCall {
-        serde_json::from_value(json!({ "action": "discover", "company": "acme.example" })).unwrap()
-    };
-    let session = SessionId::new();
-    let refused = Material::new(
-        true,
-        Ok(HostCallAnswer::Error {
-            kind: everruns_internal_protocol::proto::command_error::Kind::BadRequest as i32,
-            message: "acme.example has no poppy.json".into(),
-        }),
-    );
-    let error = poppy(&refused, session)
-        .unwrap()
-        .invoke(call())
-        .await
-        .unwrap_err();
-    assert_eq!(error, "acme.example has no poppy.json");
-
-    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
-    let error = poppy(&down, session)
-        .unwrap()
-        .invoke(call())
-        .await
-        .unwrap_err();
-    assert_eq!(error, "Poppy is unavailable right now.");
-
-    let standalone = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
-    assert!(poppy(&standalone, session).is_none());
-}
-
-#[tokio::test]
-async fn an_orgs_egress_grants_come_from_the_control_plane_as_that_org() {
-    let org_id = everruns_contracts::runtime::organization::org_public_id_from_internal(42);
-    let org: everruns_contracts::typed_id::OrgId = org_id.parse().unwrap();
-    let material = Material::new(
-        true,
-        Ok(HostCallAnswer::Value(
-            json!({ "patterns": ["api.acme.example"] }),
-        )),
-    );
+async fn only_credential_lookups_cross_to_the_control_plane() {
+    use everruns_internal_protocol::commands::InternalCommandTransport as _;
+    let material = Arc::new(Material::default());
     let weak: Arc<dyn OrgMaterial> = material.clone();
-    let grant = super::org_grant(Some(Arc::downgrade(&weak)), &org)
-        .await
-        .unwrap();
-    let extension = grant.extension.expect("granted");
-    assert!(extension.is_url_allowed("https://api.acme.example/v1"));
-    {
-        let asked = material.asked.lock();
-        assert_eq!(asked[0].0, org_id);
-        assert_eq!(asked[0].1, "worker_get_org_egress_allowlist");
-    }
-
-    // No control plane: nothing granted. A failed lookup is an error, which
-    // the egress boundary enforces as no grant.
-    assert!(super::org_grant(None, &org).await.unwrap().is_empty());
-    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
-    let weak: Arc<dyn OrgMaterial> = down.clone();
-    assert!(
-        super::org_grant(Some(Arc::downgrade(&weak)), &org)
+    let lookups = super::org_lookups(Some(&Arc::downgrade(&weak)), SessionId::new()).unwrap();
+    for command in [
+        "worker_knowledge",
+        "worker_poppy_call",
+        "worker_get_tool_approval_policy",
+        "worker_get_sandbox_connection_token",
+        "agents_delete",
+    ] {
+        let refused = lookups
+            .execute_internal_command(command, json!({}))
             .await
-            .is_err()
-    );
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            refused.kind,
+            everruns_internal_protocol::proto::command_error::Kind::Forbidden as i32,
+            "{command}"
+        );
+    }
 }
 
-#[tokio::test]
-async fn a_platform_call_names_its_turn_and_never_a_person() {
-    let material = Material::new(true, Ok(HostCallAnswer::Value(json!("3 agents"))));
-    let session = SessionId::new();
-    let weak: Arc<dyn OrgMaterial> = material.clone();
-    let lookups = super::org_lookups(Some(&Arc::downgrade(&weak)), session).unwrap();
-    let calls = crate::platform_calls::PlatformCalls::new(lookups, session, None);
-
-    // Outside a turn there is no person to act as.
-    let error = calls
-        .call("discover", json!({ "query": "agents" }))
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("within a turn"), "{error}");
-    assert!(material.asked.lock().is_empty());
-
-    let input = everruns_contracts::typed_id::MessageId::new();
-    let output = calls
-        .bound(input)
-        .call("discover", json!({ "query": "agents" }))
-        .await
-        .unwrap();
-    assert_eq!(output, "3 agents");
-    let asked = material.asked.lock();
-    assert_eq!(asked[0].1, "platform_command_surface");
-    assert_eq!(asked[0].2["session_id"], json!(session.to_string()));
-    assert_eq!(asked[0].2["input_message_id"], json!(input.to_string()));
-    assert!(asked[0].2.get("acting_user").is_none());
-}
-
-/// The org's settings and search keys come from its pushed config, so a
-/// tool reads them while the control plane is down; the session owner's
-/// own approval settings are still asked, and without an answer the turn
-/// runs with none.
+/// The org's settings, search keys and each member's own approval settings
+/// come from its pushed config, so a tool reads them while the control
+/// plane is down.
 #[tokio::test]
 async fn pushed_org_settings_are_read_without_asking_the_control_plane() {
     use everruns_contracts::dataplane::{
-        TOOL_APPROVAL_SETTING, WEB_SEARCH_SETTING, web_search_key_secret,
+        TOOL_APPROVAL_SETTING, WEB_SEARCH_SETTING, personal_approval_setting, web_search_key_secret,
     };
-    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
+    let material = Arc::new(Material::default());
     let account = uuid::Uuid::new_v4();
-    down.pushed.lock().insert(
+    material.pushed.lock().insert(
         WEB_SEARCH_SETTING.into(),
         serde_json::to_value(
             everruns_contracts::runtime::web_search::WebSearchOrgSettings::default(),
         )
         .unwrap(),
     );
-    down.pushed.lock().insert(
+    material.pushed.lock().insert(
         TOOL_APPROVAL_SETTING.into(),
         json!({ "allowed_modes": ["normal"] }),
     );
-    down.secrets
+    material
+        .secrets
         .lock()
         .insert(web_search_key_secret(account), b"bs-key".to_vec());
     let session = SessionId::new();
-    let resolver = resolver(&down, session);
+    let resolver = resolver(&material, session);
 
     let settings = resolver.get_web_search_settings(session).await.unwrap();
     assert!(settings.is_some());
@@ -522,16 +215,15 @@ async fn pushed_org_settings_are_read_without_asking_the_control_plane() {
         .await
         .unwrap();
     assert_eq!(key.as_deref(), Some("bs-key"));
-    // Not one of the org's search accounts: none, and nothing asked.
+    // Not one of the org's search accounts: none.
     let other = resolver
         .get_web_search_account_key(session, uuid::Uuid::new_v4())
         .await
         .unwrap();
     assert_eq!(other, None);
-    assert!(down.asked.lock().is_empty());
 
-    // The org's policy from the config; the owner's settings could not be
-    // asked, so none.
+    // The org's policy; no owner, or an owner with nothing pushed: none of
+    // their own.
     let policy = resolver
         .get_tool_approval_policy(session)
         .await
@@ -539,26 +231,52 @@ async fn pushed_org_settings_are_read_without_asking_the_control_plane() {
         .unwrap();
     assert_eq!(policy.org.allowed_modes, vec!["normal".to_owned()]);
     assert_eq!(policy.personal, Default::default());
-    let asked = down.asked.lock();
-    assert_eq!(asked.len(), 1);
-    assert_eq!(asked[0].1, "worker_get_tool_approval_policy");
+    let owner = uuid::Uuid::new_v4().to_string();
+    *material.owner.lock() = Some(owner.clone());
+    let none_pushed = resolver
+        .get_tool_approval_policy(session)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(none_pushed.personal, Default::default());
+
+    // The owner's own settings, pushed for them.
+    let personal = everruns_contracts::tool_approval_policy::PersonalToolApproval {
+        default_mode: Some("normal".into()),
+        ..Default::default()
+    };
+    material.pushed.lock().insert(
+        personal_approval_setting(&owner),
+        serde_json::to_value(&personal).unwrap(),
+    );
+    let policy = resolver
+        .get_tool_approval_policy(session)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(policy.personal, personal.sanitized());
 }
 
 #[tokio::test]
-async fn pushed_egress_grants_are_enforced_without_asking() {
+async fn pushed_egress_grants_are_enforced_and_nothing_is_granted_without_them() {
     let org = everruns_contracts::typed_id::OrgId::new();
-    let down = Material::new(true, Err(anyhow::anyhow!("connection refused")));
-    down.pushed.lock().insert(
+    let material = Arc::new(Material::default());
+    let weak: Arc<dyn OrgMaterial> = material.clone();
+    // Not pushed yet, or no control plane: nothing granted.
+    assert!(
+        super::org_grant(Some(Arc::downgrade(&weak)), &org)
+            .await
+            .is_empty()
+    );
+    assert!(super::org_grant(None, &org).await.is_empty());
+    material.pushed.lock().insert(
         everruns_contracts::dataplane::EGRESS_SETTING.into(),
         json!({ "patterns": ["api.example.com"], "open": false }),
     );
-    let weak: Arc<dyn OrgMaterial> = down.clone();
-    let grant = super::org_grant(Some(Arc::downgrade(&weak)), &org)
-        .await
-        .unwrap();
+    let grant = super::org_grant(Some(Arc::downgrade(&weak)), &org).await;
     assert!(!grant.open);
-    assert!(grant.extension.is_some());
-    assert!(down.asked.lock().is_empty());
+    let extension = grant.extension.expect("granted");
+    assert!(extension.is_url_allowed("https://api.example.com/v1"));
 }
 
 mod credentials_server {
@@ -662,5 +380,161 @@ mod credentials_server {
             .unwrap_err();
         assert_eq!(refused.kind, 3);
         assert_eq!(refused.message, "no connection");
+    }
+
+    /// A per-turn MCP grant's token is asked for the session's open turn,
+    /// as its person; never kept.
+    #[tokio::test]
+    async fn an_mcp_grant_token_is_asked_for_the_open_turn() {
+        let fixture = Fixture::new(
+            CREDENTIALS,
+            URL,
+            &[(CREDENTIAL_TOOL, json!({ "ok": "mcp-t0k" }))],
+        );
+        let session = SessionId::new();
+        let open = SessionActor {
+            sub: "usr_1".into(),
+            turn: Some(MessageId::new().uuid().to_string()),
+        };
+        fixture.executor.open.lock().insert(session, open.clone());
+        let lookups = super::super::org_lookups(Some(&fixture.material), session).unwrap();
+        for _ in 0..2 {
+            let token = lookups
+                .open_turn_mcp_token(session, "my_notes", "mcp_oauth_notes", "user")
+                .await
+                .unwrap();
+            assert_eq!(token.as_deref(), Some("mcp-t0k"));
+        }
+        let asked = fixture.asked.lock();
+        assert_eq!(asked.len(), 2, "never kept");
+        let (_, arguments, act) = &asked[0];
+        assert_eq!(arguments["call"], "mcp_connection_token");
+        assert_eq!(
+            arguments["params"],
+            json!({ "server_prefix": "my_notes", "provider": "mcp_oauth_notes", "acts_as": "user" })
+        );
+        assert_eq!(act.as_ref(), Some(&open));
+    }
+}
+
+mod platform_commands_server {
+    //! What the control plane's platform commands server answers besides
+    //! the platform commands: the session's spend and its agent's saved
+    //! scripts.
+
+    use std::sync::Arc;
+
+    use everruns_contracts::runtime::capabilities::injected::{
+        PLATFORM_COMMAND_TOOL, PLATFORM_COMMANDS, SessionActor,
+    };
+    use everruns_contracts::runtime::saved_scripts::{SavedScript, SavedScriptStore};
+    use everruns_contracts::runtime::session_spend::SessionSpendReaderExt;
+    use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+    use serde_json::json;
+
+    use crate::controller_fixture::Fixture;
+
+    const URL: &str = "https://93.184.215.14/api/v1/injected/platform_commands/mcp";
+
+    #[tokio::test]
+    async fn a_sessions_spend_is_priced_by_the_control_plane_for_no_one() {
+        use everruns_contracts::runtime::session_spend::{SessionSpend, SpendBasis};
+        let spend = SessionSpend {
+            session_id: "session_1".into(),
+            total_usd: 0.25,
+            basis: SpendBasis::PriceList,
+            partial: false,
+            models: Default::default(),
+            background: Default::default(),
+            images: Default::default(),
+            sandboxes: Vec::new(),
+            subagents: Default::default(),
+            current_turn_usd: Some(0.01),
+            wasted_usd: 0.0,
+            not_included: Vec::new(),
+        };
+        let fixture = Fixture::new(
+            PLATFORM_COMMANDS,
+            URL,
+            &[(PLATFORM_COMMAND_TOOL, serde_json::to_value(&spend).unwrap())],
+        );
+        let session = SessionId::new();
+        fixture.executor.open.lock().insert(
+            session,
+            SessionActor {
+                sub: "usr_1".into(),
+                turn: None,
+            },
+        );
+        let backends = super::super::attach(
+            everruns_core::host::HostBackends::in_memory(),
+            Arc::new(super::Keys),
+            Some(&fixture.material),
+            session,
+        );
+        let extensions = backends.tool_context_extensions_factory.expect("spend")(0, session);
+        let reader = extensions
+            .get::<SessionSpendReaderExt>()
+            .expect("spend")
+            .0
+            .clone();
+        let turn = TurnId::new();
+        let read = reader.session_spend(session, Some(turn)).await.unwrap();
+        assert_eq!(read, Some(spend));
+        let asked = fixture.asked.lock();
+        let (tool, arguments, act) = &asked[0];
+        assert_eq!(tool, PLATFORM_COMMAND_TOOL);
+        assert_eq!(arguments["operation"], "spend");
+        assert_eq!(arguments["arguments"]["turn_id"], json!(turn.to_string()));
+        assert_eq!(*act, None, "acts for no one");
+    }
+
+    #[tokio::test]
+    async fn saved_scripts_list_for_no_one_and_save_as_the_turns_sender() {
+        let fixture = Fixture::new(
+            PLATFORM_COMMANDS,
+            URL,
+            &[(
+                PLATFORM_COMMAND_TOOL,
+                json!([{ "name": "deploy", "description": "d", "body": "echo hi" }]),
+            )],
+        );
+        let session = SessionId::new();
+        let input = MessageId::new();
+        fixture
+            .executor
+            .senders
+            .lock()
+            .insert(input, "usr_2".into());
+        let store = crate::saved_scripts::ShardSavedScripts::new(
+            fixture.material.clone(),
+            session,
+            URL.to_owned(),
+        );
+        let listed = store.list().await.unwrap();
+        assert_eq!(listed[0].name, "deploy");
+
+        let script = SavedScript {
+            name: "deploy".into(),
+            description: "d".into(),
+            input_schema: None,
+            body: "echo hi".into(),
+        };
+        // Unbound: refused before anything is sent.
+        assert!(store.save(script.clone()).await.is_err());
+        // The fixture answers a list for the save too, which is no script.
+        let bound = store.for_execution(input.uuid()).unwrap();
+        assert!(bound.save(script).await.is_err());
+
+        let asked = fixture.asked.lock();
+        assert_eq!(asked.len(), 2);
+        assert_eq!(asked[0].1["operation"], "scripts");
+        assert_eq!(asked[0].2, None);
+        assert_eq!(asked[1].1["operation"], "save_script");
+        assert_eq!(asked[1].1["arguments"]["name"], "deploy");
+        assert_eq!(
+            asked[1].2.as_ref().map(|act| act.sub.as_str()),
+            Some("usr_2")
+        );
     }
 }

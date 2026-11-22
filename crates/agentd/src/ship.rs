@@ -1,12 +1,12 @@
-//! Log shipping: the cell's loss window on quorum loss.
+//! Log shipping: the shard's loss window on quorum loss.
 //!
-//! Data plane v2 design, "Disaster recovery": a cell that loses quorum (two
+//! Data plane v2 design, "Disaster recovery": a shard that loses quorum (two
 //! zones, correlated disks) is rebuilt from its last archived snapshot plus
 //! the log its leader shipped to the object store since (`restore.rs`).
 //!
 //! Decisions:
 //! - The leader ships committed (applied) entries, an object per
-//!   [`SHIP_EVERY`] holding a contiguous index range of the cell's current
+//!   [`SHIP_EVERY`] holding a contiguous index range of the shard's current
 //!   incarnation (`restore_points.rs`). A range holds the same entries
 //!   whoever ships it, so a new leader that ships an overlapping range
 //!   again changes nothing, and restore takes each index once.
@@ -14,7 +14,7 @@
 //!   own log has everything after it unless a snapshot purged it, in which
 //!   case it ships from its first entry and restore starts from an archived
 //!   snapshot at or past the gap.
-//! - If shipping falls more than [`BEHIND_LIMIT`] behind, the cell stops
+//! - If shipping falls more than [`BEHIND_LIMIT`] behind, the shard stops
 //!   admitting new work ([`Shipper::behind`]) until it catches up, so the
 //!   loss window is a bound and not a hope.
 //! - Some writes are shipped before they are answered ([`ships_first`]):
@@ -22,7 +22,7 @@
 //!   create, and every step of a move. A rebuild then knows every call
 //!   that started (it reports a lost outcome as unknown instead of running
 //!   the call again), never loses a session someone was told exists, and
-//!   never finds a session in two cells. What a rebuild can lose is the
+//!   never finds a session in two shards. What a rebuild can lose is the
 //!   last [`SHIP_EVERY`] or so of turn progress, never an effect or an
 //!   identity. The cost is one object write on those paths only.
 //! - Shipping is one at a time per node: the loop and the writes that
@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 use openraft::RaftLogReader;
 use parking_lot::Mutex;
 
-use crate::state::{CellId, Command};
+use crate::state::{Command, ShardId};
 use crate::store::Store;
 use crate::types::Entry;
 use crate::wal::Wal;
@@ -47,10 +47,10 @@ pub const BEHIND_LIMIT: Duration = Duration::from_secs(5);
 /// Entries per shipped object, at most; a backlog ships in several.
 const MAX_ENTRIES: usize = 4096;
 
-/// Ships one cell's committed log from its leader.
+/// Ships one shard's committed log from its leader.
 pub struct Shipper {
     store: Store,
-    cell: CellId,
+    shard: ShardId,
     wal: Wal,
     state: Mutex<Progress>,
     busy: tokio::sync::Mutex<()>,
@@ -68,10 +68,10 @@ struct Progress {
 }
 
 impl Shipper {
-    pub fn new(store: Store, cell: CellId, wal: Wal) -> Self {
+    pub fn new(store: Store, shard: ShardId, wal: Wal) -> Self {
         Self {
             store,
-            cell,
+            shard,
             wal,
             state: Mutex::default(),
             busy: tokio::sync::Mutex::new(()),
@@ -133,7 +133,7 @@ impl Shipper {
             Some(shipped) => shipped,
             None => self
                 .store
-                .shipped(self.cell, inc)
+                .shipped(self.shard, inc)
                 .await?
                 .iter()
                 .map(|(_, last)| *last)
@@ -155,7 +155,7 @@ impl Shipper {
             let (first, last) = (first.log_id.index, last.log_id.index);
             if first != shipped + 1 {
                 tracing::warn!(
-                    cell = self.cell,
+                    shard = self.shard,
                     from = shipped + 1,
                     first,
                     "log before {first} was purged into a snapshot before it shipped"
@@ -163,7 +163,7 @@ impl Shipper {
             }
             let bytes = serde_json::to_vec(&entries)?;
             self.store
-                .put_log(self.cell, inc, first, last, bytes)
+                .put_log(self.shard, inc, first, last, bytes)
                 .await?;
             shipped = last;
         }

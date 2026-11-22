@@ -1,4 +1,4 @@
-//! A fake control plane serving `/dp/v1` to the cells (data plane v2 step
+//! A fake control plane serving `/dp/v1` to the shards (data plane v2 step
 //! 6, design.md "Levels", level 2): a ledger that grants spend allowances
 //! from each org's balance and takes settlements, a feed store, and knobs
 //! that break it the ways the failure suite needs (down, lost replies,
@@ -21,7 +21,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::{Json, Router};
-use everruns_cell::dp::{
+use everruns_agentd::dp::{
     AllowanceGrant, AllowanceRequest, ConfigAck, ConfigUpdate, FeedAck, FeedBatch, Record,
 };
 use parking_lot::Mutex;
@@ -61,19 +61,18 @@ struct Ledger {
     task_transitions: Vec<TaskTransitionSeen>,
     /// Secrets the data plane refreshed: (org, secret id, revision).
     refreshed: Vec<(String, String, u64)>,
-    /// Orgs whose lookups are answered: their data key and its id, and the
-    /// answer per command.
-    lookup_orgs: HashMap<String, (everruns_contracts::dataplane_seal::Key, String)>,
-    lookup_answers: HashMap<String, everruns_contracts::host_calls::HostCallAnswer>,
-    /// Lookups asked: `(org, command, params)`.
+    /// Subagents the shards started (`Record::Subagent`): (org, session,
+    /// origin).
+    subagents: Vec<(
+        String,
+        String,
+        everruns_contracts::dataplane::SubagentOrigin,
+    )>,
+    /// The answer per v1 command its injected servers run
+    /// (`fake_cp_injected.rs`).
+    lookup_answers: HashMap<String, Answer>,
+    /// Calls of its injected servers: `(org, command, params)`.
     lookups: Vec<(String, String, serde_json::Value)>,
-    /// Dreaming's calls (`worker_dreaming_state`), kept apart from
-    /// `lookups`: the executors' sweep asks on a timer, so mixing them in
-    /// would shift what other tests find at a given index.
-    dream_calls: Vec<(String, serde_json::Value)>,
-    /// Dreaming's state, kept as the control plane keeps it
-    /// (`worker_dreaming_state`): `(org, key)` → the row.
-    dreams: std::collections::BTreeMap<(String, String), serde_json::Value>,
     requests: usize,
     /// Feed records that arrived again under an id already stored.
     duplicates: usize,
@@ -87,7 +86,7 @@ struct Knobs {
     /// Requests to answer as lost, per channel: processed, then a 503.
     /// Decision: one count per channel, so a test that loses replies
     /// knows both the allowance and the feed path saw it, whichever the
-    /// cell happened to call first.
+    /// shard happened to call first.
     lose_allowance_replies: AtomicUsize,
     lose_feed_replies: AtomicUsize,
     grant_ttl_ms: Mutex<i64>,
@@ -101,12 +100,25 @@ struct Knobs {
     link_token: Mutex<Option<String>>,
 }
 
+/// What one of its injected servers' calls answers: a value, or a refusal
+/// with its `proto::command_error::Kind`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Answer {
+    Value(serde_json::Value),
+    Error { kind: i32, message: String },
+}
+
+#[path = "fake_cp_injected.rs"]
+mod injected;
+
 /// A running fake control plane.
 #[derive(Clone)]
 pub struct FakeCp {
     pub url: String,
     ledger: Arc<Mutex<Ledger>>,
     knobs: Arc<Knobs>,
+    /// Verifies the session tokens of the data plane it trusts.
+    verifier: Arc<Mutex<Option<Arc<everruns_core::mcp::session_token::SessionTokenVerifier>>>>,
     /// Signs org tokens; its key is served as the JWKS.
     pub signer: Arc<crate::signer::Signer>,
 }
@@ -118,6 +130,7 @@ impl FakeCp {
         let cp = Self {
             url: format!("http://{}", listener.local_addr()?),
             ledger: Default::default(),
+            verifier: Default::default(),
             knobs: Arc::new(Knobs {
                 down: AtomicBool::new(false),
                 lose_allowance_replies: AtomicUsize::new(0),
@@ -133,7 +146,7 @@ impl FakeCp {
         };
         let app = Router::new()
             .route("/dp/v1/tenants/{org}/allowances", post(allowance))
-            .route("/dp/v1/tenants/{org}/host-calls/{name}", post(host_call))
+            .route("/injected/{name}/mcp", post(injected::serve))
             .route("/dp/v1/feed", post(feed))
             .route("/.well-known/jwks.json", axum::routing::get(jwks))
             .route("/v1/auth/token", post(exchange))
@@ -163,7 +176,7 @@ impl FakeCp {
         *self.knobs.link_token.lock() = Some(token.to_owned());
     }
 
-    /// Where the cells find the keys of org tokens.
+    /// Where the shards find the keys of org tokens.
     pub fn jwks_url(&self) -> String {
         format!("{}/.well-known/jwks.json", self.url)
     }
@@ -208,7 +221,7 @@ impl FakeCp {
         let Some(token) = self.knobs.link_token.lock().clone() else {
             return Ok(());
         };
-        let sent = everruns_cell::org_token::bearer(headers);
+        let sent = everruns_agentd::org_token::bearer(headers);
         if sent == Some(token.as_str()) {
             Ok(())
         } else {
@@ -216,71 +229,20 @@ impl FakeCp {
         }
     }
 
-    /// Answer `org`'s lookups, sealed with its data key `key` (`key_id`).
-    pub fn answer_lookups(
-        &self,
-        org: &str,
-        key: everruns_contracts::dataplane_seal::Key,
-        key_id: &str,
-    ) {
-        self.ledger
-            .lock()
-            .lookup_orgs
-            .insert(org.to_owned(), (key, key_id.to_owned()));
-    }
-
-    /// Answer the lookup `command` with `answer` from now on (a command
-    /// with none is not found, as the control plane answers an unknown
-    /// session).
-    pub fn set_lookup(
-        &self,
-        command: &str,
-        answer: everruns_contracts::host_calls::HostCallAnswer,
-    ) {
+    /// Answer the v1 command `command` of its injected servers with
+    /// `answer` from now on (a command with none is not found, as the
+    /// control plane answers an unknown session).
+    pub fn set_lookup(&self, command: &str, answer: Answer) {
         self.ledger
             .lock()
             .lookup_answers
             .insert(command.to_owned(), answer);
     }
 
-    /// Dreaming's state row `key` of `org`, as the cells left it.
-    pub fn dream_state(&self, org: &str, key: &str) -> Option<serde_json::Value> {
-        self.ledger
-            .lock()
-            .dreams
-            .get(&(org.to_owned(), key.to_owned()))
-            .cloned()
-    }
-
-    /// Make dreaming's row `key` of `org` due now, as a dream its turn's
-    /// timer did not finish leaves it.
-    pub fn make_dream_due(&self, org: &str, key: &str) {
-        if let Some(row) = self
-            .ledger
-            .lock()
-            .dreams
-            .get_mut(&(org.to_owned(), key.to_owned()))
-        {
-            row["due_at"] = serde_json::json!(0);
-            // The job inside carries its own due time, which the runner reads.
-            if let Some(mut value) = row["value"]
-                .as_str()
-                .and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
-            {
-                value["job"]["due_at"] = serde_json::json!(0);
-                row["value"] = serde_json::json!(value.to_string());
-            }
-        }
-    }
-
-    /// Lookups asked so far: `(org, command, params)`.
+    /// Calls of its injected servers so far: `(org, command, params)`, the
+    /// session, person and turn from each call's token.
     pub fn lookups(&self) -> Vec<(String, String, serde_json::Value)> {
         self.ledger.lock().lookups.clone()
-    }
-
-    /// Dreaming's calls so far (`worker_dreaming_state`): `(org, params)`.
-    pub fn dream_calls(&self) -> Vec<(String, serde_json::Value)> {
-        self.ledger.lock().dream_calls.clone()
     }
 
     pub fn set_balance(&self, org: &str, micros: i64) {
@@ -348,13 +310,24 @@ impl FakeCp {
         self.ledger.lock().org_events.clone()
     }
 
-    /// The task transitions the cells put on the feed for webhooks, in
+    /// The task transitions the shards put on the feed for webhooks, in
     /// feed order.
     pub fn task_transitions(&self) -> Vec<TaskTransitionSeen> {
         self.ledger.lock().task_transitions.clone()
     }
 
-    /// The session events the cells tapped onto the feed, in feed order.
+    /// The subagents the shards put on the feed: (org, session, origin).
+    pub fn subagents(
+        &self,
+    ) -> Vec<(
+        String,
+        String,
+        everruns_contracts::dataplane::SubagentOrigin,
+    )> {
+        self.ledger.lock().subagents.clone()
+    }
+
+    /// The session events the shards tapped onto the feed, in feed order.
     pub fn tapped_events(&self) -> Vec<(String, String, serde_json::Value)> {
         self.ledger.lock().events.clone()
     }
@@ -385,7 +358,7 @@ impl FakeCp {
     }
 
     /// Push `update` for `org` to a data plane gateway, as the outbox
-    /// does: retried until the data plane answers (a directory cell that
+    /// does: retried until the data plane answers (a directory shard that
     /// is electing a leader answers 5xx for a moment), for up to 30 s.
     pub async fn push_config(
         &self,
@@ -490,119 +463,6 @@ async fn jwks(State(cp): State<FakeCp>) -> Reply<jsonwebtoken::jwk::JwkSet> {
         .jwks()
         .map(Json)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-}
-
-/// A host call, answered sealed for the org as the control plane answers
-/// it. Answers and the ledger are kept by the call's v1 command.
-async fn host_call(
-    State(cp): State<FakeCp>,
-    Path((org, name)): Path<(String, String)>,
-    headers: axum::http::HeaderMap,
-    Json(request): Json<everruns_contracts::host_calls::HostCallRequest>,
-) -> Reply<everruns_cell::dp::SealedSecret> {
-    use everruns_contracts::dataplane_seal as seal;
-    use everruns_contracts::host_calls::{HostCallAnswer, by_name, host_call_secret};
-    cp.admit(&headers)?;
-    if cp.knobs.down.load(Ordering::SeqCst) {
-        return Err(unavailable());
-    }
-    let call = by_name(&name).ok_or((StatusCode::NOT_FOUND, "not a host call".to_owned()))?;
-    let mut ledger = cp.ledger.lock();
-    let (key, key_id) = ledger.lookup_orgs.get(&org).cloned().ok_or((
-        StatusCode::NOT_FOUND,
-        format!("org {org} is not on a data plane"),
-    ))?;
-    if call.command == "worker_dreaming_state" {
-        ledger
-            .dream_calls
-            .push((org.clone(), request.params.clone()));
-    } else {
-        ledger
-            .lookups
-            .push((org.clone(), call.command.to_owned(), request.params.clone()));
-    }
-    let answer = match ledger.lookup_answers.get(call.command).cloned() {
-        Some(answer) => answer,
-        None if call.command == "worker_dreaming_state" => {
-            HostCallAnswer::Value(dreaming_state(&mut ledger.dreams, &org, &request.params))
-        }
-        // A subagent's record: a fresh session id, no Memory mounts.
-        None if call.command == everruns_contracts::host_calls::SUBAGENT_RECORD => {
-            HostCallAnswer::Value(serde_json::json!({
-                "session_id": everruns_contracts::typed_id::SessionId::new(),
-                "memory": [],
-            }))
-        }
-        // A push config's signing secret, kept (the ledger has it).
-        None if call.command == everruns_contracts::host_calls::TASK_PUSH_SECRET => {
-            HostCallAnswer::Value(serde_json::json!(true))
-        }
-        None => HostCallAnswer::Error {
-            kind: 3,
-            message: "Session not found".into(),
-        },
-    };
-    let plain = serde_json::to_vec(&answer)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    seal::seal(
-        &key,
-        &key_id,
-        &org,
-        &host_call_secret(&request.call),
-        0,
-        &plain,
-        seal::random_nonce(),
-    )
-    .map(Json)
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-}
-
-/// `worker_dreaming_state` as the control plane answers it: a row per org
-/// and key, changed by compare-exchange, and the org's due sessions.
-fn dreaming_state(
-    dreams: &mut std::collections::BTreeMap<(String, String), serde_json::Value>,
-    org: &str,
-    params: &serde_json::Value,
-) -> serde_json::Value {
-    let key = (
-        org.to_owned(),
-        params["key"].as_str().unwrap_or("").to_owned(),
-    );
-    match params["operation"].as_str() {
-        Some("get") => dreams.get(&key).cloned().unwrap_or(serde_json::Value::Null),
-        Some("cas") => {
-            let revision = dreams.get(&key).map(|row| row["revision"].clone());
-            let expected = params.get("expected").filter(|e| !e.is_null()).cloned();
-            if revision != expected {
-                return serde_json::json!(false);
-            }
-            let next = expected.and_then(|e| e.as_i64()).unwrap_or(0) + 1;
-            dreams.insert(
-                key,
-                serde_json::json!({
-                    "revision": next,
-                    "value": params["value"],
-                    "session_id": params["session_id"],
-                    "due_at": params["due_at"],
-                }),
-            );
-            serde_json::json!(true)
-        }
-        Some("due_org") => {
-            let now = params["now"].as_i64().unwrap_or(i64::MAX);
-            let due: Vec<_> = dreams
-                .iter()
-                .filter(|((o, _), row)| {
-                    o == org
-                        && !row["session_id"].is_null()
-                        && row["due_at"].as_i64().is_some_and(|at| at <= now)
-                })
-                .map(|(_, row)| serde_json::json!([0, row["session_id"]]))
-                .collect();
-            serde_json::json!(due)
-        }
-        _ => serde_json::Value::Null,
-    }
 }
 
 async fn allowance(
@@ -776,7 +636,15 @@ async fn feed(
                     task,
                     targets,
                 }),
-                Record::Health { .. } | Record::Unknown => {}
+                Record::Subagent { session_id, origin } => {
+                    ledger
+                        .subagents
+                        .push((record.org_id.clone(), session_id, origin));
+                }
+                Record::SessionResource { .. }
+                | Record::Lease { .. }
+                | Record::Health { .. }
+                | Record::Unknown => {}
             }
         }
     }

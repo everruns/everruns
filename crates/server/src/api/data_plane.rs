@@ -5,11 +5,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use everruns_contracts::dataplane::{
-    AllowanceGrant, AllowanceRequest, FeedAck, FeedBatch, LookupRequest, SealedSecret,
-    lookup_secret,
-};
-use everruns_contracts::host_calls::{self, HostCallRequest, host_call_secret};
+use everruns_contracts::dataplane::{AllowanceGrant, AllowanceRequest, FeedAck, FeedBatch};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -23,10 +19,6 @@ pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/dp/v1/feed", post(feed))
         .route("/dp/v1/tenants/{org}/allowances", post(allowances))
-        .route("/dp/v1/tenants/{org}/host-calls/{name}", post(host_call))
-        // The route host calls replaced, kept while cells of the release
-        // before roll over. Remove with the release after.
-        .route("/dp/v1/tenants/{org}/lookups", post(lookups))
         .route("/.well-known/jwks.json", get(jwks))
         .route("/v1/auth/token", post(token))
         .with_state(state)
@@ -125,115 +117,6 @@ async fn allowances(
         .map_err(internal)
 }
 
-/// One host call a tool on the org's data plane makes at call time,
-/// answered sealed (`domains/data_plane/host_calls.rs`).
-async fn host_call(
-    State(state): State<ApiState>,
-    Path((org, name)): Path<(String, String)>,
-    headers: HeaderMap,
-    Json(request): Json<HostCallRequest>,
-) -> Reply<SealedSecret> {
-    let call = host_calls::by_name(&name)
-        .ok_or((StatusCode::NOT_FOUND, format!("{name} is not a host call")))?;
-    answer_call(
-        &state,
-        &org,
-        &headers,
-        call,
-        request.params,
-        &host_call_secret(&request.call),
-    )
-    .await
-}
-
-/// A legacy lookup (`LookupRequest`): the host call its v1 command maps to.
-async fn lookups(
-    State(state): State<ApiState>,
-    Path(org): Path<String>,
-    headers: HeaderMap,
-    Json(request): Json<LookupRequest>,
-) -> Reply<SealedSecret> {
-    let call = host_calls::by_command(&request.command).ok_or((
-        StatusCode::FORBIDDEN,
-        format!("{} is not a data plane lookup", request.command),
-    ))?;
-    answer_call(
-        &state,
-        &org,
-        &headers,
-        call,
-        request.params,
-        &lookup_secret(&request.request),
-    )
-    .await
-}
-
-/// Run `call` for `org` as the org's internal caller, sealed as `secret_id`.
-async fn answer_call(
-    state: &ApiState,
-    org: &str,
-    headers: &HeaderMap,
-    call: &host_calls::HostCall,
-    params: Value,
-    secret_id: &str,
-) -> Reply<SealedSecret> {
-    let cp = control_plane(state)?;
-    require_link(&cp, headers)?;
-    let org_id = org_internal(org).ok_or((StatusCode::NOT_FOUND, format!("no org {org}")))?;
-    let row = cp.db.dp_org(org_id).await.map_err(internal)?.ok_or((
-        StatusCode::NOT_FOUND,
-        format!("org {org} is not on a data plane"),
-    ))?;
-    let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
-        &state.db,
-        org_id,
-        &crate::records::FeatureFlagPolicy::current(),
-    )
-    .await
-    .map_err(internal)?;
-    // A write runs once per call id (its receipt): a duplicate that still
-    // arrives gets the first run's sealed answer, or a refusal while the
-    // first has not finished, never a second run.
-    let write = call.effect == host_calls::Effect::Write;
-    if write {
-        use crate::storage::HostCallReceipt;
-        match cp
-            .db
-            .dp_take_host_call_receipt(secret_id, org_id, call.name)
-            .await
-            .map_err(internal)?
-        {
-            HostCallReceipt::New => {}
-            HostCallReceipt::Answered(sealed) => {
-                return serde_json::from_value(sealed).map(Json).map_err(internal);
-            }
-            HostCallReceipt::Unknown => {
-                return Err((
-                    StatusCode::CONFLICT,
-                    format!(
-                        "{} {secret_id} was already received and has not finished; its outcome is unknown",
-                        call.name
-                    ),
-                ));
-            }
-        }
-    }
-    let ctx = state.internal_ctx(org_id, flags);
-    let answer = dp_domain::host_calls::answer(&cp, &ctx, call, params)
-        .await
-        .map_err(internal)?;
-    let sealed =
-        dp_domain::host_calls::seal_answer(&cp, &row, secret_id, &answer).map_err(internal)?;
-    if write {
-        let stored = serde_json::to_value(&sealed).map_err(internal)?;
-        cp.db
-            .dp_answer_host_call_receipt(secret_id, &stored)
-            .await
-            .map_err(internal)?;
-    }
-    Ok(Json(sealed))
-}
-
 async fn jwks(State(state): State<ApiState>) -> Reply<Value> {
     let cp = control_plane(&state)?;
     dp_domain::tokens::jwks(&cp)
@@ -299,19 +182,20 @@ async fn token(
     })))
 }
 
-/// Host calls run in process for the injected capabilities this control
-/// plane serves (`injected/hosted.rs`): the same handler, caller and
-/// feature flags as [`answer_call`], for an org on a data plane only.
-pub struct InjectedHostCalls(pub ApiState);
+/// The calls of the injected servers this control plane serves
+/// (`injected/hosted.rs`, `domains/data_plane/calls.rs`), as the org's
+/// internal caller with the org's feature flags, for an org on a data
+/// plane only.
+pub struct InjectedCalls(pub ApiState);
 
 #[async_trait::async_trait]
-impl crate::injected::hosted::HostCallRunner for InjectedHostCalls {
+impl crate::injected::hosted::CallRunner for InjectedCalls {
     async fn answer(
         &self,
         org: everruns_contracts::typed_id::OrgId,
-        call: &'static host_calls::HostCall,
+        call: &'static dp_domain::calls::Call,
         params: Value,
-    ) -> anyhow::Result<host_calls::HostCallAnswer> {
+    ) -> anyhow::Result<dp_domain::calls::Answer> {
         let state = &self.0;
         let cp = control_plane(state).map_err(|(_, message)| anyhow::anyhow!(message))?;
         let org_id = everruns_core::organization::org_internal_id_from_public(org);
@@ -326,7 +210,7 @@ impl crate::injected::hosted::HostCallRunner for InjectedHostCalls {
         )
         .await?;
         let ctx = state.internal_ctx(org_id, flags);
-        dp_domain::host_calls::answer(&cp, &ctx, call, params).await
+        dp_domain::calls::answer(&cp, &ctx, call, params).await
     }
 }
 

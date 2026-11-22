@@ -2,9 +2,9 @@
 //! v2, step 11.5): its sessions and the session commands the control plane
 //! sends.
 
-use everruns_cell::dp::{ConfigAck, ConfigChange, ConfigUpdate};
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd::dp::{ConfigAck, ConfigChange, ConfigUpdate};
+use everruns_agentd::node_control::ControlPlane;
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use everruns_contracts::dataplane::TenantPolicy;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::typed_id::SessionId;
@@ -24,9 +24,15 @@ pub const DATA_KEY_ID: &str = "dk-1";
 pub async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
     let cp = FakeCp::start().await.unwrap();
     cp.set_balance(ORG, 1_000_000_000);
-    let mut fleet = Fleet::start_with_cp(Some(ControlPlane::new(cp.url.clone()))).await;
-    let base = fleet.base();
     let dp_key = seal::random_key();
+    let mut link = ControlPlane::new(cp.url.clone());
+    link.dp_key = Some(everruns_agentd::node_control::DpKey(dp_key));
+    let mut fleet = Fleet::start_with_cp(Some(link)).await;
+    // The data plane trusts its configured control plane's origin, as
+    // `agentd`'s command line does, so its injected servers on 127.0.0.1
+    // pass the private-address check.
+    everruns_core::mcp::trust_controller_origin(&cp.url);
+    let base = fleet.base();
     let wrapped =
         seal::wrap_data_key(&dp_key, ORG, DATA_KEY_ID, &DATA_KEY, seal::random_nonce()).unwrap();
     let (status, ack) = cp
@@ -39,7 +45,7 @@ pub async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
         .await
         .unwrap();
     assert_eq!(status, StatusCode::OK, "{ack}");
-    let mut package = everruns_cell_testkit::definition("echo").unwrap();
+    let mut package = everruns_agentd_testkit::definition("echo").unwrap();
     package["name"] = json!("helper");
     let policy = TenantPolicy {
         events: events.iter().map(|t| t.to_string()).collect(),
@@ -63,14 +69,16 @@ pub async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
         .unwrap();
     assert_eq!(ack, ConfigAck::Ok { applied_version: 1 });
     fleet.executor(1).set_dp_key(dp_key);
-    // Every cell's leader reads the org's tapped types with the tenants
+    // Its injected servers verify the session tokens the executor signs.
+    cp.trust_data_plane(&dp_key);
+    // Every shard's leader reads the org's tapped types with the tenants
     // view, once a poll.
-    tokio::time::sleep(everruns_cell::tenants::POLL * 2).await;
+    tokio::time::sleep(everruns_agentd::tenants::POLL * 2).await;
     (fleet, cp)
 }
 
 /// The executor [`org_fleet`] started.
-pub fn org_executor(fleet: &Fleet) -> std::sync::Arc<everruns_cell::executor::Executor> {
+pub fn org_executor(fleet: &Fleet) -> std::sync::Arc<everruns_agentd::executor::Executor> {
     fleet.executors[&1].0.clone()
 }
 
@@ -82,7 +90,7 @@ pub async fn session(fleet: &Fleet, cp: &FakeCp) -> String {
             &fleet.base(),
             Method::POST,
             &format!("/dp/v1/orgs/{ORG}/sessions"),
-            &json!({ "id": id, "agent_ref": "helper" }),
+            &json!({ "id": id, "agent_ref": "helper", "servers": cp.servers() }),
         )
         .await
         .unwrap();

@@ -333,7 +333,7 @@ export const defaultNavigationSections: NavigationSection[] = [
   { id: "chats", items: defaultChatsNavigation },
   { id: "overview", items: defaultOverviewNavigation },
   { label: "Build", items: defaultBuildNavigation },
-  { label: "Activity", items: defaultActivityNavigation },
+  { label: "Observability", items: defaultActivityNavigation },
   { label: "Blocks", items: defaultBlocksNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },

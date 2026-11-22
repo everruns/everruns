@@ -29,9 +29,15 @@ pub struct Target {
 }
 
 impl Target {
-    pub fn kubectl(&self) -> Command {
+    pub(super) fn cluster_kubectl(&self) -> Command {
         let mut cmd = Command::new(kubectl_program());
-        cmd.args(["--context", &self.context, "--namespace", &self.namespace]);
+        cmd.args(["--context", &self.context]);
+        cmd
+    }
+
+    pub fn kubectl(&self) -> Command {
+        let mut cmd = self.cluster_kubectl();
+        cmd.args(["--namespace", &self.namespace]);
         cmd
     }
 
@@ -425,28 +431,15 @@ pub fn cluster_checks(target: &Target, needs_volumes: bool, needs_keda: bool) ->
     });
 
     if needs_volumes {
-        let out = target
-            .kubectl()
-            .args(["get", "storageclass", "--output", "json"])
-            .output();
-        let default = out.ok().filter(|o| o.status.success()).and_then(|o| {
-            let v: Value = serde_json::from_slice(&o.stdout).ok()?;
-            v["items"].as_array()?.iter().find_map(|sc| {
-                let ann = &sc["metadata"]["annotations"];
-                let is_default = ann["storageclass.kubernetes.io/is-default-class"] == "true"
-                    || ann["storageclass.beta.kubernetes.io/is-default-class"] == "true";
-                is_default.then(|| sc["metadata"]["name"].as_str().unwrap_or("").to_string())
-            })
-        });
         checks.push(Check {
             name: "Storage",
-            outcome: match default {
-                Some(name) => Outcome::Ok(format!("default StorageClass {name}")),
-                None => Outcome::Warn(
-                    "no default StorageClass; the bundled PostgreSQL and NATS volumes may stay \
-                     Pending (set postgresql.storage.storageClass and nats.storage.storageClass)"
+            outcome: match super::storage::default_class(target) {
+                Ok(Some(name)) => Outcome::Ok(format!("default StorageClass {name}")),
+                Ok(None) => Outcome::Warn(
+                    "no default StorageClass; verify the installed volumes specify a class"
                         .to_string(),
                 ),
+                Err(error) => Outcome::Warn(error.to_string()),
             },
         });
     }

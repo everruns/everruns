@@ -301,10 +301,190 @@ pub fn helper_model_config_schema() -> (serde_json::Value, serde_json::Value) {
     (models, pick)
 }
 
+/// What an organization's helper models resolve against: its models, its
+/// presets and its job defaults. The control plane builds it from its
+/// tables for its own workers and pushes the same catalog to a data plane
+/// (`dataplane::HELPER_MODEL_SETTING`), so both planes resolve a helper key
+/// with [`resolve_helper_model`] and land on the same model.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HelperCatalog {
+    /// Every model of the organization.
+    #[serde(default)]
+    pub models: Vec<CatalogModel>,
+    /// Every preset (built-in first, in the order the console lists them,
+    /// then custom), with the model it assigns each job.
+    #[serde(default)]
+    pub presets: Vec<CatalogPreset>,
+    /// The organization default for each job (the Defaults tab), by job.
+    #[serde(default)]
+    pub defaults: std::collections::BTreeMap<String, String>,
+}
+
+/// One organization model in a [`HelperCatalog`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogModel {
+    /// The organization model id.
+    pub id: String,
+    /// Its provider's key (the provider's normalized name), as an agent
+    /// package's `model.provider` names it.
+    pub provider: String,
+    /// The provider's driver (`openai`, `gemini`, ...).
+    pub provider_type: String,
+    /// The provider's model name.
+    pub model: String,
+    /// Whether a turn can run on it (enabled, on a connected provider).
+    #[serde(default)]
+    pub usable: bool,
+}
+
+/// One preset in a [`HelperCatalog`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogPreset {
+    /// `automatic`, `provider:<driver>` or a custom preset's key.
+    pub id: String,
+    /// The driver of a provider preset; `None` for any other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_type: Option<String>,
+    /// The model id it assigns each job it sets, by job.
+    #[serde(default)]
+    pub jobs: std::collections::BTreeMap<String, String>,
+}
+
+impl HelperCatalog {
+    /// The model `id`, whether usable or not.
+    pub fn model(&self, id: &str) -> Option<&CatalogModel> {
+        self.models.iter().find(|model| model.id == id)
+    }
+
+    fn preset_job(&self, preset: &str, job: &str) -> Option<&str> {
+        self.presets
+            .iter()
+            .find(|candidate| candidate.id == preset)
+            .and_then(|preset| preset.jobs.get(job))
+            .map(String::as_str)
+    }
+}
+
+/// The model `target` resolves to in `catalog`: a job of the agent's own
+/// preset (`agent_preset`) else the organization default, a job of a named
+/// preset, a usable concrete model, or a job of the first provider preset
+/// whose driver is not `parent_provider_type`. `None` keeps the child on its
+/// ordinary model resolution. [`HelperModelTarget::Same`] is the caller's:
+/// each plane knows what its parent runs on.
+pub fn resolve_helper_model<'a>(
+    catalog: &'a HelperCatalog,
+    target: &HelperModelTarget,
+    agent_preset: Option<&str>,
+    parent_provider_type: Option<&str>,
+) -> Option<&'a CatalogModel> {
+    let job_ok = |job: &str| HELPER_JOBS.contains(&job);
+    let id = match target {
+        HelperModelTarget::Same => return None,
+        HelperModelTarget::Job { job } if job_ok(job) => agent_preset
+            .and_then(|preset| catalog.preset_job(preset, job))
+            .or_else(|| catalog.defaults.get(job).map(String::as_str))?,
+        HelperModelTarget::Preset { preset, job } if job_ok(job) => {
+            catalog.preset_job(preset, job)?
+        }
+        HelperModelTarget::Model { model_id } => {
+            return catalog.model(model_id).filter(|model| model.usable);
+        }
+        HelperModelTarget::OtherProvider { job } if job_ok(job) => catalog
+            .presets
+            .iter()
+            .filter(|preset| preset.provider_type.is_some())
+            .filter(|preset| preset.provider_type.as_deref() != parent_provider_type)
+            .find_map(|preset| preset.jobs.get(job.as_str()).or(preset.jobs.get("default")))?,
+        _ => return None,
+    };
+    catalog.model(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn catalog() -> HelperCatalog {
+        let model = |id: &str, provider_type: &str, usable: bool| CatalogModel {
+            id: id.into(),
+            provider: format!("{provider_type}-key"),
+            provider_type: provider_type.into(),
+            model: format!("{id}-name"),
+            usable,
+        };
+        let jobs = |pairs: &[(&str, &str)]| {
+            pairs
+                .iter()
+                .map(|(job, id)| (job.to_string(), id.to_string()))
+                .collect()
+        };
+        HelperCatalog {
+            models: vec![
+                model("m-openai", "openai", true),
+                model("m-gemini", "gemini", true),
+                model("m-off", "openai", false),
+            ],
+            presets: vec![
+                CatalogPreset {
+                    id: "provider:openai".into(),
+                    provider_type: Some("openai".into()),
+                    jobs: jobs(&[("default", "m-openai")]),
+                },
+                CatalogPreset {
+                    id: "provider:gemini".into(),
+                    provider_type: Some("gemini".into()),
+                    jobs: jobs(&[("default", "m-gemini"), ("small", "m-gemini")]),
+                },
+                CatalogPreset {
+                    id: "mine".into(),
+                    provider_type: None,
+                    jobs: jobs(&[("coding", "m-gemini")]),
+                },
+            ],
+            defaults: jobs(&[("coding", "m-openai"), ("small", "m-openai")]),
+        }
+    }
+
+    #[test]
+    fn a_helper_target_resolves_against_the_catalog() {
+        let catalog = catalog();
+        let id = |target: HelperModelTarget, preset: Option<&str>, parent: Option<&str>| {
+            resolve_helper_model(&catalog, &target, preset, parent).map(|m| m.id.clone())
+        };
+        let job = |job: &str| HelperModelTarget::Job { job: job.into() };
+        assert_eq!(
+            id(job("coding"), Some("mine"), None).as_deref(),
+            Some("m-gemini")
+        );
+        assert_eq!(
+            id(job("coding"), None, None).as_deref(),
+            Some("m-openai"),
+            "no agent preset: the org default"
+        );
+        assert_eq!(id(job("nope"), None, None), None);
+        let preset = HelperModelTarget::Preset {
+            preset: "provider:gemini".into(),
+            job: "small".into(),
+        };
+        assert_eq!(id(preset, None, None).as_deref(), Some("m-gemini"));
+        let model = |m: &str| HelperModelTarget::Model { model_id: m.into() };
+        assert_eq!(
+            id(model("m-gemini"), None, None).as_deref(),
+            Some("m-gemini")
+        );
+        assert_eq!(id(model("m-off"), None, None), None, "unusable");
+        let other = HelperModelTarget::OtherProvider {
+            job: "coding".into(),
+        };
+        assert_eq!(
+            id(other.clone(), None, Some("openai")).as_deref(),
+            Some("m-gemini"),
+            "another provider's preset, its default job"
+        );
+        assert_eq!(id(other, None, Some("gemini")).as_deref(), Some("m-openai"));
+        assert_eq!(id(HelperModelTarget::Same, None, None), None);
+    }
 
     #[test]
     fn missing_config_means_builtins_picked_by_the_agent() {

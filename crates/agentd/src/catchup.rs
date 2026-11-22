@@ -9,7 +9,7 @@
 //!   and 6,790 live sessions lost their first message;
 //! - streamed sessions it had not heard of, and failed those streams;
 //! - kept calling elections it could not win while it waited (term 244 by
-//!   the end). Each one moved the cell to a new term, unseated its leader
+//!   the end). Each one moved the shard to a new term, unseated its leader
 //!   and restarted the leader's replication to every follower.
 //!
 //! (It waited for good because its snapshot chunks were refused for their
@@ -18,14 +18,14 @@
 //! So while a follower is behind ([`BEHIND_AT`] entries or more short of
 //! the commit index its leader last sent), it does not call elections and
 //! answers no session request: `/health` and the session routes say 503 and
-//! 421, and the gateway and the cell's other members use another member.
+//! 421, and the gateway and the shard's other members use another member.
 //! It still votes and still takes the leader's entries. It counts as caught
 //! up again at [`CAUGHT_UP_AT`].
 //!
-//! Stepping aside never costs the cell a leader: a log that short of the
+//! Stepping aside never costs the shard a leader: a log that short of the
 //! commit index cannot win an election, so its candidacy only disturbs.
 //! When the leader has gone quiet for [`QUIET`], the node campaigns again
-//! whatever it last heard, so a cell whose other members all went away
+//! whatever it last heard, so a shard whose other members all went away
 //! still elects once they return.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -125,7 +125,7 @@ impl crate::node::Node {
             if let Some(behind) = self.catchup.update(leader, applied) {
                 self.raft.runtime_config().elect(!behind);
                 tracing::warn!(
-                    cell = self.cfg.cell,
+                    shard = self.cfg.shard,
                     node = self.cfg.node_id,
                     behind,
                     applied,
@@ -143,7 +143,7 @@ impl crate::node::Node {
 ///
 /// Decision: only the leader's "no such session" is an answer. A follower
 /// answers from its own copy, which lags the leader's (by milliseconds in a
-/// healthy cell, by minutes while it catches up), and the gateway took its
+/// healthy shard, by minutes while it catches up), and the gateway took its
 /// "not found" as final. A follower that has not seen the session says 421
 /// and the gateway asks the next member.
 pub async fn guard(
@@ -157,7 +157,7 @@ pub async fn guard(
     if path == "/health" && node.catchup.behind() {
         return (StatusCode::SERVICE_UNAVAILABLE, "catching up").into_response();
     }
-    if let Some(rest) = path.strip_prefix("/cell/sessions/") {
+    if let Some(rest) = path.strip_prefix("/shard/sessions/") {
         if node.catchup.behind() {
             return (
                 StatusCode::MISDIRECTED_REQUEST,

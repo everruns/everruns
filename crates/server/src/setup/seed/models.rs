@@ -7,7 +7,7 @@ use super::seed_ids;
 use uuid::Uuid;
 
 // New seed identities must not replace existing saved-model identities.
-const GPT_6_2_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000022f);
+const GPT_6_2_SOL: Uuid = crate::platform::PLATFORM_DEFAULT_MODEL_ID;
 const GPT_6_2_ASTRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000230);
 const GEMINI_4_HYDROGEN: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060c);
 const GEMINI_4_CARBON: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000060d);
@@ -122,7 +122,6 @@ pub(super) const SEED_MODELS: &[SeedModel] = &[
         is_favorite: false,
     },
     SeedModel {
-        // Platform default model (see `platform::PLATFORM_DEFAULT_MODEL_ID`).
         id: seed_ids::GPT_6_LUNA,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-6-luna",

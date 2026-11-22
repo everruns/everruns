@@ -2,7 +2,7 @@
 //!
 //! Decision: every session carries its agent's definition, and most
 //! sessions run one of a few agents. Identical definitions share one
-//! allocation (interned by their JSON), so a cell holds each agent once in
+//! allocation (interned by their JSON), so a shard holds each agent once in
 //! memory and once per snapshot, however many sessions run it.
 
 use std::collections::HashMap;

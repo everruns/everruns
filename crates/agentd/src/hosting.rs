@@ -1,10 +1,10 @@
-//! The cell as an Everruns Engine hosting profile.
+//! The shard as an Everruns Engine hosting profile.
 //!
 //! [`RaftHosting`] implements Engine's `SessionHosting`: every authority
 //! operation (create, admit, claim, renew, release, append, receipt, ...) is
 //! one Raft command, applied by `authority.rs` on every replica. Engine owns
 //! everything about the agent (turns, inbox semantics, recovery, waits,
-//! lifecycle hooks); the cell owns replication, placement and moves.
+//! lifecycle hooks); the shard owns replication, placement and moves.
 //!
 //! Reads come from this node's replica. A node that just wrote to a session
 //! (an admission, an append) first waits until its replica applied that
@@ -47,9 +47,9 @@ use crate::state::{Checkpoint, Command, Response, SessionState};
 use crate::user_mcp;
 
 /// `backends` with the session's SQL databases for the `sql_database`
-/// tools (`hosting_sqldb.rs`), on every cell, with or without a control
+/// tools (`hosting_sqldb.rs`), on every shard, with or without a control
 /// plane.
-fn attach_databases(mut backends: HostBackends, databases: sqldb::CellSqlDb) -> HostBackends {
+fn attach_databases(mut backends: HostBackends, databases: sqldb::ShardSqlDb) -> HostBackends {
     use everruns_contracts::session_sqldb::SessionSqlDbStoreExt;
     let store = Arc::new(SessionSqlDbStoreExt(Arc::new(databases)));
     let embedder = backends.tool_context_extensions_factory.take();
@@ -105,18 +105,18 @@ struct Inner {
     material: std::sync::OnceLock<Weak<dyn crate::providers::OrgMaterial>>,
 }
 
-/// Where hosting reaches its cell.
+/// Where hosting reaches its shard.
 ///
 /// Decision: one hosting implementation for both, so an executor outside
-/// the cell runs exactly the authority code a node runs (see `remote`).
+/// the shard runs exactly the authority code a node runs (see `remote`).
 enum Source {
-    /// A cell node: proposals through Raft, reads from its replica.
+    /// A shard node: proposals through Raft, reads from its replica.
     Node(Weak<Node>),
-    /// An executor: proposals over the cell's API, reads from its mirror.
+    /// An executor: proposals over the shard's API, reads from its mirror.
     Remote(Arc<crate::remote::Remote>),
 }
 
-/// Engine's session authority, backed by this node's cell.
+/// Engine's session authority, backed by this node's shard.
 #[derive(Clone)]
 pub struct RaftHosting {
     inner: Arc<Inner>,
@@ -124,7 +124,7 @@ pub struct RaftHosting {
 
 /// The org a session's turns run as: its tenant's internal id when the
 /// tenant is an org's public id (a control plane names tenants so), else
-/// 1, the one org of a standalone cell. Tools carry it to the egress
+/// 1, the one org of a standalone shard. Tools carry it to the egress
 /// boundary, which enforces that org's egress grants (`lookups.rs`).
 fn org_id(tenant: Option<&str>) -> i64 {
     tenant
@@ -157,7 +157,7 @@ impl RaftHosting {
         let _ = self.inner.gateway.set(gateway);
     }
 
-    /// Hosting for an executor outside the cell (see `remote`).
+    /// Hosting for an executor outside the shard (see `remote`).
     pub fn remote(remote: Arc<crate::remote::Remote>) -> Self {
         Self::with_source(Source::Remote(remote))
     }
@@ -246,7 +246,7 @@ impl Inner {
             Source::Node(node) => node
                 .upgrade()
                 .ok_or_else(|| AgentLoopError::store("node stopped")),
-            Source::Remote(_) => Err(AgentLoopError::store("an executor has no cell node")),
+            Source::Remote(_) => Err(AgentLoopError::store("an executor has no shard node")),
         }
     }
 
@@ -373,24 +373,24 @@ impl Port {
 }
 
 /// Why a session is not here, as an error a gateway can act on.
-fn missing(state: &crate::state::CellState, session: SessionId) -> AgentLoopError {
+fn missing(state: &crate::state::ShardState, session: SessionId) -> AgentLoopError {
     match state.forwarded.get(&session) {
-        Some(left) => AgentLoopError::store(format!("{MOVED}{}", left.cell)),
+        Some(left) => AgentLoopError::store(format!("{MOVED}{}", left.shard)),
         None => AgentLoopError::SessionNotFound(session),
     }
 }
 
 /// Prefix of the error a command gets for a session that moved away.
-pub const MOVED: &str = "cell: session moved to cell ";
+pub const MOVED: &str = "shard: session moved to shard ";
 /// The error a command gets for a session frozen for a move.
-pub const FROZEN: &str = "cell: session frozen for a move";
-/// Prefix of the error new work gets while its cell sheds load, followed by
+pub const FROZEN: &str = "shard: session frozen for a move";
+/// Prefix of the error new work gets while its shard sheds load, followed by
 /// the retry hint in milliseconds.
-pub const BUSY: &str = "cell: short of memory, retry after ms ";
+pub const BUSY: &str = "shard: short of memory, retry after ms ";
 
 fn refused(session: SessionId, response: Response) -> AgentLoopError {
     match response {
-        Response::Moved { cell } => AgentLoopError::store(format!("{MOVED}{cell}")),
+        Response::Moved { shard } => AgentLoopError::store(format!("{MOVED}{shard}")),
         Response::Frozen => AgentLoopError::store(FROZEN),
         Response::Busy { retry_after_ms } => {
             AgentLoopError::store(format!("{BUSY}{retry_after_ms}"))
@@ -428,7 +428,7 @@ fn status_of(s: &SessionState) -> Result<HostingStatus> {
 }
 
 /// Definitions travel with their sessions: a session is created with its
-/// agent's definition, which the cell replicates and interns by key
+/// agent's definition, which the shard replicates and interns by key
 /// (`state::definitions`). Publishing is a no-op for that reason; a lookup
 /// answers for the definition format this host reads.
 #[async_trait]
@@ -488,33 +488,18 @@ impl SessionHosting for RaftHosting {
             .await?;
         let backends = crate::capability_files::attach(backends, &definition);
         let material = self.inner.material.get();
-        let lookups = crate::lookups::org_lookups(material, session);
-        let backends = crate::memory::attach(backends, material, lookups.clone(), session, &memory);
-        // Decision (parity, step 10): a session's resources (fleet
-        // sandboxes, activated skills) and the leases of what its tools
-        // started at a provider stay in the control plane, as for a v1
-        // session: the console lists the resources, and the lease sweeper
-        // stops a sandbox a session left running. Without them a fleet
-        // tool fails its turn, and a provider sandbox is never reaped.
-        let mut backends = backends;
-        if let Some(lookups) = &lookups {
-            use everruns_internal_protocol::commands::{
-                CommandLeasedResourceStore, CommandSessionResourceRegistry,
-            };
-            backends.extensions.stores.session_resources = Some(std::sync::Arc::new(
-                CommandSessionResourceRegistry::new(lookups.clone()),
-            ));
-            backends.extensions.stores.leased_resources = Some(std::sync::Arc::new(
-                CommandLeasedResourceStore::new(lookups.clone()),
-            ));
-        }
+        let backends = crate::memory::attach(backends, material, session, &memory);
+        // The session's resources and leases (`session_records.rs`).
+        let backends = crate::session_records::attach(
+            backends,
+            crate::session_records::ShardRecords::new(Port(self.inner.clone()), session),
+        );
         // The person's own MCP servers and the session's MCP records (`user_mcp.rs`).
         let person_mcp = servers.get(user_mcp::SERVER).and_then(|url| {
             ControllerServer::for_session(material, session, user_mcp::SERVER, url)
         });
         let backends = user_mcp::attach(
             backends,
-            lookups,
             person_mcp,
             Port(self.inner.clone()),
             session,
@@ -727,12 +712,12 @@ struct Epoch {
     riding: parking_lot::Mutex<Vec<(String, Value)>>,
 }
 
-/// One epoch's writes to the cell, in order, a batch per round trip.
+/// One epoch's writes to the shard, in order, a batch per round trip.
 ///
 /// Decision: an Engine turn makes about 23 authority writes one after
 /// another (each event, the turn records, schedules, renewals, the
 /// release), and each waited for its own Raft commit: most of a turn's
-/// time on a cell. The epoch is its session's only writer, so most
+/// time on a shard. The epoch is its session's only writer, so most
 /// lifecycle events need not wait: the epoch predicts their sequence,
 /// returns at once, and sends them with whatever follows in one ordered
 /// `Chain`. Everything that needs its answer or must be durable first
@@ -1244,7 +1229,7 @@ impl Ports {
 /// session's log grow with the square of its length: in the llmsim mix these
 /// copies were two thirds of all bytes in memory, in the Raft log and in the
 /// object store. Nothing replays from them (resume folds the turn events),
-/// so the cell keeps the call's output, tools and metadata and drops the copy.
+/// so the shard keeps the call's output, tools and metadata and drops the copy.
 pub fn elide_prompt(request: &mut EventRequest) {
     if let everruns_core::events::EventData::LlmGeneration(data) = &mut request.data {
         data.messages = Vec::new();
@@ -1326,9 +1311,9 @@ impl SessionEpoch for Ports {
     fn live_deltas(&self) -> Option<Arc<dyn everruns::hosting::LiveDeltaSink>> {
         self.epoch.as_ref().map(|e| e.deltas.clone())
     }
-    // Decision: the cell implements Engine's step 1 shortcuts as the
+    // Decision: the shard implements Engine's step 1 shortcuts as the
     // in-memory authority does, because each one is a round trip to the
-    // cell an executor would otherwise wait for: input and cancels are
+    // shard an executor would otherwise wait for: input and cancels are
     // pushed (the turn does not renew to read its inbox), the claim's wake
     // time is not stored again, and receipts the next holder can recompute
     // ride on the next lease write.
@@ -1389,20 +1374,13 @@ impl SessionEpoch for Ports {
         backends.session_store = Arc::new(self.clone());
         backends.storage_store = Arc::new(self.clone());
         backends.compaction_checkpoint_store = Arc::new(self.clone());
-        // Decision (parity, step 10): dreaming's state (turn counters, the
-        // dream job, the daily budgets a Memory scope shares across
-        // sessions) stays in the control plane, as for a v1 session, so it
-        // outlives this process and a budget holds across sessions. Both
+        // Dreaming's state is the session's own (`session_records.rs`):
         // the turn that records it and a later sweep that runs the dream
         // (`Executor::dreams_loop`, through reader ports) use it.
-        let lookups = crate::lookups::org_lookups(self.inner.material.get(), self.session);
-        if let Some(lookups) = &lookups {
-            use everruns_internal_protocol::commands::dreaming::SessionCommandDreamingStore;
-            backends.dreaming_store = Arc::new(SessionCommandDreamingStore::new(
-                Arc::new(lookups.clone()),
-                self.session,
-            ));
-        }
+        backends.dreaming_store = Arc::new(crate::session_records::ShardRecords::new(
+            Port(self.inner.clone()),
+            self.session,
+        ));
         // An activation attaches the session's Memory from its caught-up
         // record (`prepare_activation`); reader ports, which a dream sweep
         // runs on, attach it from what this replica holds now.
@@ -1412,7 +1390,7 @@ impl SessionEpoch for Ports {
                 .peek(self.session, |s| SessionMemory::of(&s.platform))
         {
             let material = self.inner.material.get();
-            backends = crate::memory::attach(backends, material, lookups, self.session, &memory);
+            backends = crate::memory::attach(backends, material, self.session, &memory);
         }
         backends
     }

@@ -28,7 +28,7 @@
 // - Every failure to authenticate is the same 401, so the endpoint does not
 //   tell a caller which part of its token was wrong.
 // - Side by side with today's paths: serving a capability here does not take
-//   it off v1 workers or cells. Converting each one is a separate step.
+//   it off v1 workers or shards. Converting each one is a separate step.
 
 pub mod hosted;
 pub mod knowledge_base;
@@ -57,7 +57,7 @@ pub const JWKS_ENV: &str = "INJECTED_CAPABILITIES_JWKS";
 pub const ISSUERS_ENV: &str = "INJECTED_CAPABILITIES_ISSUERS";
 /// The base URL data planes reach this server at (API prefix included),
 /// when not the public one: a cluster service or `127.0.0.1`. Data planes
-/// trust it as their control plane (`CELL_CONTROL_PLANE`).
+/// trust it as their control plane (`AGENTD_CONTROL_PLANE`).
 pub const BASE_URL_ENV: &str = "INJECTED_CAPABILITIES_BASE_URL";
 
 /// The capabilities this server serves, and whom it trusts to call them.
@@ -65,8 +65,9 @@ pub struct InjectedCapabilities {
     base_url: String,
     verifier: Option<SessionTokenVerifier>,
     services: BTreeMap<String, Arc<dyn InjectedCapabilityService>>,
-    /// The host call handler hosted services run their tools' calls with.
-    host_calls: hosted::HostCalls,
+    /// The handler hosted services run their tools' calls with
+    /// (`data_plane::calls`).
+    calls: hosted::Calls,
 }
 
 impl InjectedCapabilities {
@@ -76,7 +77,7 @@ impl InjectedCapabilities {
             base_url: base_url.trim_end_matches('/').to_string(),
             verifier: verifier.filter(|v| !v.is_empty()),
             services: BTreeMap::new(),
-            host_calls: hosted::HostCalls::default(),
+            calls: hosted::Calls::default(),
         }
     }
 
@@ -90,10 +91,9 @@ impl InjectedCapabilities {
         &self.base_url
     }
 
-    /// Where hosted services' host calls go; bound once the API state
-    /// exists.
-    pub fn host_calls(&self) -> hosted::HostCalls {
-        self.host_calls.clone()
+    /// Where hosted services' calls go; bound once the API state exists.
+    pub fn calls(&self) -> hosted::Calls {
+        self.calls.clone()
     }
 
     pub fn register(mut self, service: Arc<dyn InjectedCapabilityService>) -> Self {
@@ -201,7 +201,7 @@ pub fn from_env(db: Arc<crate::storage::StorageBackend>, base_url: &str) -> Inje
         )),
     );
     let capabilities = InjectedCapabilities::new(base_url, verifier);
-    let calls = capabilities.host_calls();
+    let calls = capabilities.calls();
     capabilities
         .register(Arc::new(knowledge))
         .register(Arc::new(hosted::poppy::service(
@@ -257,7 +257,7 @@ fn ref_id(entry: &Value) -> Option<&str> {
 /// Decisions:
 /// - An injected capability named `N` takes the place of the hosted
 ///   capability with id `N`, in its position: the data plane then calls
-///   this server for it instead of running it or making host calls.
+///   this server for it instead of running it.
 /// - Every `injected:` ref gets the served definition as its config,
 ///   overwriting whatever an author wrote: the server URL and the
 ///   session-token auth mode only ever come from here. One this control

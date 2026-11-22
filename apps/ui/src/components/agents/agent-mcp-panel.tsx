@@ -1,6 +1,6 @@
 "use client";
 
-import { useUiTranslations } from "@/providers/locale-provider";
+import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import { useId, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, Link2, Plus, Trash2, Unplug, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ import {
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { AgentUserMcpGroup } from "@/components/agents/agent-user-mcp-group";
 import { ConnectErrorBanner } from "@/components/connections/connect-error-banner";
+import { formatShortDate } from "@/lib/formatting";
 import type { Agent, AgentMcpAttachment, McpServerActsAs, ScopedMcpServers } from "@/lib/api/types";
 function attachmentPrefix(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "_");
@@ -55,6 +56,27 @@ function identityLabel(actsAs: McpServerActsAs): string {
       return "Acts as: the user, or the agent when the user has not connected";
     default:
       return "No identity";
+  }
+}
+
+/** Why the agent's own sign-in cannot renew, or stopped working. */
+function signInReason(
+  ui: ReturnType<typeof useUiTranslations>,
+  reason: string | null | undefined,
+): string {
+  switch (reason) {
+    case "unbound":
+      return ui(
+        "It was signed in before Everruns could renew sign-ins on its own. Sign in again once and it renews from then on.",
+      );
+    case "settings_changed":
+      return ui("The server's sign-in settings changed since it was signed in.");
+    case "no_refresh_token":
+      return ui("The server gave no way to renew it.");
+    case "rejected":
+      return ui("The server keeps rejecting its token.");
+    default:
+      return ui("The server refused to renew it.");
   }
 }
 
@@ -108,6 +130,31 @@ function McpAttachmentRow({
   const revoke = useRevokeAgentMcpConnection(agentId);
   const connectHref = connectionHref(agentId, attachment);
   const isCapability = attachment.source === "capability";
+  const { displayLocale } = useLocale();
+  // The agent's own sign-in and what it can still do (grant_health.rs).
+  const signIn = attachment.sign_in;
+  const signInAgain = isCapability ? null : attachment.action === "ask_admin" ? (
+    <Badge variant="outline">{ui("Ask an admin")}</Badge>
+  ) : connectHref ? (
+    <LinkButton href={connectHref} size="sm">
+      <Link2 className="size-4" />
+      {ui("Sign in again")}
+    </LinkButton>
+  ) : null;
+  const revokeButton = attachment.can_revoke ? (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={revoke.isPending}
+      onClick={() => revoke.mutate(attachment.name)}
+    >
+      <Unplug className="size-4" />
+      {ui("Revoke")}
+    </Button>
+  ) : null;
+  const revokeError = revoke.error ? (
+    <span className="text-sm text-destructive">{errorMessage(revoke.error)}</span>
+  ) : null;
 
   return (
     <Card>
@@ -218,6 +265,25 @@ function McpAttachmentRow({
               {ui("View catalog")}
             </LinkButton>
           </div>
+        ) : attachment.state === "reconnect_required" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="border-destructive/35 bg-destructive/14 text-destructive">
+              <AlertTriangle />
+              {ui("Sign-in stopped working")}
+            </Badge>
+            {signInAgain}
+            {revokeButton}
+            <p className="basis-full text-xs text-destructive">
+              {signIn?.since
+                ? ui("Since {value0} the agent has no {value1} tools.", {
+                    value0: formatShortDate(signIn.since, displayLocale),
+                    value1: attachment.name,
+                  })
+                : ui("The agent has no {value0} tools.", { value0: attachment.name })}{" "}
+              {signInReason(ui, signIn?.reason)}
+            </p>
+            {revokeError}
+          </div>
         ) : attachment.state === "connection_missing" ? (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">{ui("Connection required.")}</span>
@@ -232,42 +298,53 @@ function McpAttachmentRow({
           </div>
         ) : attachment.connected_as ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="success">
-              {ui("Connected as")} {attachment.connected_as}
-            </Badge>
-            {!isCapability &&
-              (attachment.action === "connect" || attachment.action === "authorize") &&
-              connectHref && (
-                // `user_or_service` with one of its two logins in place: the
-                // caller can still add their own account (which then takes
-                // precedence), or a manager the agent's fallback login.
-                <LinkButton href={connectHref} variant="outline" size="sm">
-                  <Link2 className="size-4" />
-                  {attachment.action === "authorize"
-                    ? ui("Authorize the agent")
-                    : ui("Connect your account")}
-                </LinkButton>
-              )}
-            {attachment.can_revoke ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={revoke.isPending}
-                onClick={() => revoke.mutate(attachment.name)}
-              >
-                <Unplug className="size-4" />
-                {ui("Revoke")}
-              </Button>
-            ) : !isCapability &&
-              !attachment.service_connection_provider &&
-              // Not revocable here means the agent's login is the one in use
-              // and only an admin may change it.
-              (attachment.acts_as === "service" || attachment.acts_as === "user_or_service") ? (
-              <Badge variant="outline">{ui("Ask an admin")}</Badge>
-            ) : null}
-            {revoke.error && (
-              <span className="text-sm text-destructive">{errorMessage(revoke.error)}</span>
+            {signIn?.state === "expires_soon" && signIn.expires_at ? (
+              <Badge className="border-warning/30 bg-warning/12 text-warning">
+                {ui("Connected as")} {attachment.connected_as} ·{" "}
+                {ui("stops {value0}", {
+                  value0: formatShortDate(signIn.expires_at, displayLocale),
+                })}
+              </Badge>
+            ) : (
+              <Badge variant="success">
+                {ui("Connected as")} {attachment.connected_as}
+              </Badge>
             )}
+            {signIn?.state === "expires_soon"
+              ? signInAgain
+              : !isCapability &&
+                (attachment.action === "connect" || attachment.action === "authorize") &&
+                connectHref && (
+                  // `user_or_service` with one of its two logins in place: the
+                  // caller can still add their own account (which then takes
+                  // precedence), or a manager the agent's fallback login.
+                  <LinkButton href={connectHref} variant="outline" size="sm">
+                    <Link2 className="size-4" />
+                    {attachment.action === "authorize"
+                      ? ui("Authorize the agent")
+                      : ui("Connect your account")}
+                  </LinkButton>
+                )}
+            {attachment.can_revoke
+              ? revokeButton
+              : !isCapability &&
+                !attachment.service_connection_provider &&
+                // Not revocable here means the agent's login is the one in use
+                // and only an admin may change it.
+                (attachment.acts_as === "service" || attachment.acts_as === "user_or_service") &&
+                signIn?.state !== "expires_soon" && (
+                  <Badge variant="outline">{ui("Ask an admin")}</Badge>
+                )}
+            {signIn?.state === "expires_soon" ? (
+              <p className="basis-full text-xs text-muted-foreground">
+                {signInReason(ui, signIn.reason)}
+              </p>
+            ) : signIn?.state === "working" ? (
+              <p className="basis-full text-xs text-muted-foreground">
+                {ui("Renews automatically.")}
+              </p>
+            ) : null}
+            {revokeError}
           </div>
         ) : (
           <Badge variant="success">{ui("Ready")}</Badge>

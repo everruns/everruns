@@ -249,6 +249,20 @@ export const messages: Readonly<Record<string, string>> = {
   "Connected as": "Підключено як",
   "connection on the agent's service account": "підключення на обліковому записі служби агента",
   "Connection required.": "Потрібне підключення.",
+  "Sign-in stopped working": "Вхід перестав працювати",
+  "Since {value0} the agent has no {value1} tools.":
+    "З {value0} агент не має інструментів {value1}.",
+  "The agent has no {value0} tools.": "Агент не має інструментів {value0}.",
+  "stops {value0}": "діє до {value0}",
+  "Renews automatically.": "Оновлюється автоматично.",
+  "It was signed in before Everruns could renew sign-ins on its own. Sign in again once and it renews from then on.":
+    "Вхід виконано ще до того, як Everruns навчився сам оновлювати входи. Увійдіть знову один раз, і далі він оновлюватиметься сам.",
+  "The server's sign-in settings changed since it was signed in.":
+    "Налаштування входу сервера змінилися після входу.",
+  "The server gave no way to renew it.": "Сервер не надав способу його оновити.",
+  "The server keeps rejecting its token.": "Сервер постійно відхиляє його токен.",
+  "The server refused to renew it.": "Сервер відмовився його оновити.",
+  "Sign in again": "Увійти знову",
   "Connects in settings only": "Підключається лише в налаштуваннях",
   "Connects to": "Підключається до",
   "Consumers sign in separately from the console. Your configured approvals and spending limits apply.":

@@ -270,6 +270,14 @@ impl Command for CheckHealthIssue {
                 background_work::recheck(&ctx.db, &row).await?;
                 true
             }
+            None if row.code == super::mcp_grants::MCP_SIGN_IN => {
+                if let Some(encryption) = ctx.encryption.as_ref() {
+                    super::mcp_grants::sweep(&ctx.db, encryption)
+                        .await
+                        .map_err(CommandError::internal)?;
+                }
+                true
+            }
             None if row.code == active_turns::ACTIVE_TURN_LIMIT => {
                 active_turns::recheck(&ctx.db, ctx.org_id(), OrgCaps::from_env()).await?;
                 true

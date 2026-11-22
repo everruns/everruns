@@ -141,7 +141,7 @@ pub fn build(current: &Value, answers: &Answers) -> Value {
         set(&mut v, &["image", "tag"], json!(tag));
     }
     if let Some(plane) = answers.data_plane {
-        // Decision: a release that ran v2 keeps its cell when it goes back
+        // Decision: a release that ran v2 keeps its shard when it goes back
         // to v1, since its organizations' sessions live there. A release with
         // no recorded choice ran the chart's default, v2.
         let installed = !current.is_null();
@@ -199,17 +199,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn data_plane_choice_is_recorded_and_v1_keeps_a_cell_that_ran() {
+    fn data_plane_choice_is_recorded_and_v1_keeps_a_shard_that_ran() {
         use DataPlaneChoice::{V1, V2};
         let with = |plane| Answers {
             data_plane: Some(plane),
             ..Default::default()
         };
-        // A new release records the choice; v1 from the start runs no cell.
+        // A new release records the choice; v1 from the start runs no shard.
         let v = build(&Value::Null, &with(V1));
         assert_eq!(v["dataPlane"]["version"], "v1");
         assert!(v["dataPlane"].get("keepRunning").is_none());
-        // A release that ran the default (v2) keeps its cell on v1.
+        // A release that ran the default (v2) keeps its shard on v1.
         let v = build(&json!({"auth": {"mode": "admin"}}), &with(V1));
         assert_eq!(v["dataPlane"]["keepRunning"], true);
         let v = build(&json!({"dataPlane": {"version": "v2"}}), &with(V1));

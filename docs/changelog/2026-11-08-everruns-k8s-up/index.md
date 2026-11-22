@@ -29,3 +29,9 @@ Running it again repairs the install and keeps every value set before,
 chart version and dumps a bundled database first. Secrets stay in the cluster,
 never on your machine. Without a public URL, `everruns k8s port-forward` keeps
 it reachable on `localhost:9300`.
+
+## Update 2026-11-21
+
+`k8s up` checks volume storage before installing. It uses the cluster default
+or provisions storage on verified local clusters. On a Mac, create an Apple
+Container cluster with `everruns k8s cluster create --provider apple`.

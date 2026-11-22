@@ -1,9 +1,9 @@
-//! A session's tasks on a cell (data plane v2 step 11.4): the subagents,
+//! A session's tasks on a shard (data plane v2 step 11.4): the subagents,
 //! threads and background work it started, with their message channels.
-//! They live in the owning session's cell state, next to its schedules.
+//! They live in the owning session's shard state, next to its schedules.
 //!
 //! Decisions:
-//! - Every write is a [`Command::Platform`] on the owner's cell, built in
+//! - Every write is a [`Command::Platform`] on the owner's shard, built in
 //!   full by the proposer (ids and times travel in the command), and goes
 //!   through the shared `apply_task_update` invariants, as on every host.
 //! - A transition that wakes the owner (per the task's wake policy: a
@@ -13,20 +13,19 @@
 //! - Tasks are kept as JSON with their raw spec: `SessionTask`'s own
 //!   serializer redacts webhook secrets, which would lose them in the log.
 //! - Push configs (parity, Phase B) live here too, beside the task they
-//!   watch, without their signing secrets: the node that adds one hands
-//!   its secret to the control plane (the `task_push_secret` host call,
-//!   keyed by the config's id) before the config is written, and the
-//!   control plane, which delivers the webhooks, signs with it. Replicated
-//!   state and the feed never hold an API-made secret. A secret given at
-//!   spawn (`spec.push_configs`) is the agent's own tool input, already in
-//!   the session's log, and travels as given.
+//!   watch. An API-made signing secret is sealed with the org's data key by
+//!   the edge that takes it (`gateway_v1::seal_push_secret`), so replicated
+//!   state and the feed hold ciphertext only, and the control plane, which
+//!   delivers the webhooks, opens it to sign. A secret given at spawn
+//!   (`spec.push_configs`) is the agent's own tool input, already in the
+//!   session's log, and travels as given.
 //! - A transition a webhook may want goes on the feed
 //!   (`Record::TaskTransition`) from the state machine, with the targets
 //!   that ask for it, and the control plane delivers it: every terminal
 //!   state (the org's task webhooks fire on those), and waiting for input
 //!   or an outbound message only when a push config names it. The feed is
 //!   the channel the control plane drains once per position, so a leader
-//!   change neither loses nor repeats a delivery; a cell has no outbound
+//!   change neither loses nor repeats a delivery; a shard has no outbound
 //!   webhook path of its own.
 
 use std::sync::Arc;
@@ -91,8 +90,8 @@ pub const MAX_PUSH_CONFIGS: usize = 20;
 pub const EVENT_FILTERS: &[&str] = &["terminal", "awaiting_input", "message"];
 
 /// A push config made through the API. Its signing secret, when it has
-/// one, is kept in the control plane, which delivers the webhooks
-/// (`task_push_secret`): replicated state holds no secret.
+/// one, is kept sealed for the control plane, which delivers the webhooks:
+/// replicated state holds no plain secret.
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct PushConfig {
     /// `tpc_` and 32 hex digits.
@@ -100,6 +99,10 @@ pub struct PushConfig {
     pub url: String,
     #[serde(default)]
     pub has_secret: bool,
+    /// Its signing secret, sealed with the org's data key by the edge that
+    /// took it (`PushTarget::sealed`); never shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed_secret: Option<everruns_contracts::dataplane::SealedSecret>,
     pub event_filter: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -163,11 +166,14 @@ fn targets(
     let mut out: Vec<PushTarget> = stored
         .iter()
         .filter(|c| c.event_filter.iter().any(|f| f == event))
+        // A config whose secret was held by the control plane before
+        // secrets travelled sealed has none here: never sent unsigned.
+        .filter(|c| !c.has_secret || c.sealed_secret.is_some())
         .map(|c| PushTarget {
             label: c.id.clone(),
             url: c.url.clone(),
             secret: None,
-            secret_held: c.has_secret,
+            sealed: c.sealed_secret.clone(),
         })
         .collect();
     for entry in task
@@ -192,7 +198,7 @@ fn targets(
                     .get("secret")
                     .and_then(Value::as_str)
                     .map(str::to_owned),
-                secret_held: false,
+                sealed: None,
             });
         }
     }
@@ -579,12 +585,12 @@ pub fn api_op(write: ApiWrite, kind: &str) -> std::result::Result<TaskOp, String
     })
 }
 
-/// The session tasks of an activation, in the owning sessions' cell state.
-pub(crate) struct CellTasks {
+/// The session tasks of an activation, in the owning sessions' shard state.
+pub(crate) struct ShardTasks {
     port: Port,
 }
 
-impl CellTasks {
+impl ShardTasks {
     pub(crate) fn new(port: Port) -> Self {
         Self { port }
     }
@@ -614,7 +620,7 @@ impl CellTasks {
 }
 
 #[async_trait]
-impl SessionTaskRegistry for CellTasks {
+impl SessionTaskRegistry for ShardTasks {
     async fn create(&self, input: CreateSessionTask) -> Result<SessionTask> {
         let session = input.session_id;
         let task = new_session_task(input, Utc::now());

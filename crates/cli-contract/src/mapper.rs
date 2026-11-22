@@ -68,6 +68,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "The most recent health check for an agent.",
     ),
     (
+        "agents mcp",
+        "MCP servers the agent can call, whether each sign-in works, and revoking one.",
+    ),
+    (
         "agents scripts",
         "Saved shell scripts an agent owns and can run as tools.",
     ),
@@ -470,6 +474,10 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
     (
         "sessions trace turns events",
         "Raw events recorded for one turn of a trace.",
+    ),
+    (
+        "sessions trace turns input",
+        "The original input recorded for a trace turn.",
     ),
     (
         "sessions trace turns steps",

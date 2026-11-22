@@ -1,7 +1,8 @@
-//! A tool's call-time lookups on the data plane (data plane v2, step
-//! 11.6b): an executor asks through its directory cell, the cell passes the
-//! request to the control plane over the link, and the answer comes back
-//! sealed with the org's data key for the executor to open.
+//! A tool's call-time lookups on the data plane: what crosses to the
+//! control plane goes to its injected servers (`credentials`,
+//! `platform_commands`, `person_mcp`, `memory_files`) with a session token
+//! the executor signs, naming the session's org and the person whose turn
+//! it is; org settings are read from the config the control plane pushed.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -9,16 +10,19 @@ mod support;
 
 use std::sync::Arc;
 
-use everruns_cell::providers::OrgMaterial;
-use everruns_contracts::host_calls::HostCallAnswer;
+use everruns_agentd::providers::OrgMaterial;
+use everruns_agentd_testkit::fake_cp::Answer;
 const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
+const MEMORY_FILE: &str = "memory_file";
+const USER_MCP_SERVERS: &str = "user_mcp_servers";
+const MCP_TOKEN: &str = "worker_get_mcp_connection_token";
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::connection_services::UserConnectionResolver;
 use serde_json::json;
-use support::org::{DATA_KEY, DATA_KEY_ID, ORG, org_executor, org_fleet, session};
+use support::org::{ORG, org_executor, org_fleet, session};
 
-/// The sandbox keys a cell resolves itself: none here.
+/// The sandbox keys a shard resolves itself: none here.
 struct NoKeys;
 
 #[async_trait::async_trait]
@@ -41,13 +45,16 @@ impl UserConnectionResolver for NoKeys {
     }
 }
 
+/// A tool's connection lookup goes to the control plane's credentials
+/// server as the session's org, acting as no one outside a turn and as the
+/// sender of the turn it is bound to; org settings come from the pushed
+/// config and never cross; sandbox keys and MCP grants stay here.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     cp.set_lookup(
         "worker_get_connection_token",
-        HostCallAnswer::Value(json!("gh-token-1")),
+        Answer::Value(json!("gh-token-1")),
     );
 
     // A turn on the executor, which then knows the session's org.
@@ -57,8 +64,11 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     let id: SessionId = session.parse().unwrap();
 
     let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
-    let resolver =
-        everruns_cell::lookups::connections(Arc::new(NoKeys), Some(&Arc::downgrade(&material)), id);
+    let resolver = everruns_agentd::lookups::connections(
+        Arc::new(NoKeys),
+        Some(&Arc::downgrade(&material)),
+        id,
+    );
     let token = resolver.get_connection_token(id, "github").await.unwrap();
     assert_eq!(token.as_deref(), Some("gh-token-1"));
     let asked = cp.lookups();
@@ -71,8 +81,23 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     assert_eq!(asked[0].2["acting_user"], serde_json::Value::Null);
 
     // The control plane's refusal is the tool's failure, never a default.
-    let error = resolver.get_web_search_settings(id).await.unwrap_err();
-    assert!(error.to_string().contains("Session not found"), "{error}");
+    cp.set_lookup(
+        "worker_get_connection_token",
+        Answer::Error {
+            kind: 2,
+            message: "not yours".into(),
+        },
+    );
+    let error = resolver
+        .get_connection_token(id, "linear")
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("not yours"), "{error}");
+    assert_eq!(cp.lookups().len(), 2);
+
+    // Org settings are the pushed config's: none pushed, none asked for.
+    resolver.get_web_search_settings(id).await.unwrap();
+    assert_eq!(cp.lookups().len(), 2);
 
     // Sandbox keys and MCP grants stay with the data plane.
     assert_eq!(
@@ -92,36 +117,34 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     );
     assert_eq!(cp.lookups().len(), 2);
 
-    // The org's knowledge, for the `knowledge` tools, the same way.
+    // Bound to a person's turn, the lookup names them and their message,
+    // from the session's own record, so the control plane resolves their
+    // connection, not the session owner's. A message nobody is recorded
+    // for (the first, sent without a verified sender) names no one.
+    let person = uuid::Uuid::new_v4().to_string();
+    let theirs = MessageId::new();
+    say_as(&fleet, &session, theirs, &person, "ping").await;
+    fleet.turns(&session, 2).await;
     cp.set_lookup(
-        "worker_knowledge",
-        HostCallAnswer::Value(json!({ "results": [], "warnings": ["empty"], "truncated": false })),
+        "worker_get_connection_token",
+        Answer::Value(json!("their-token")),
     );
-    let backends = everruns_cell::lookups::attach(
-        everruns_core::host::HostBackends::in_memory(),
-        Arc::new(NoKeys),
-        Some(&Arc::downgrade(&material)),
-        id,
-    );
-    let factory = backends
-        .tool_context_extensions_factory
-        .expect("knowledge installed");
-    let knowledge = factory(0, id)
-        .get::<everruns_contracts::knowledge::KnowledgeRuntimeExt>()
-        .expect("the knowledge runtime");
-    let query: everruns_contracts::knowledge::KnowledgeQuery =
-        serde_json::from_value(json!({ "query": "refunds" })).unwrap();
-    let found = knowledge.0.search(id, query).await.unwrap();
-    assert_eq!(found.warnings, vec!["empty".to_owned()]);
+    let token = resolver
+        .for_execution(theirs.uuid())
+        .expect("bound to the turn")
+        .get_connection_token(id, "linear")
+        .await
+        .unwrap();
+    assert_eq!(token.as_deref(), Some("their-token"));
     let asked = cp.lookups();
-    assert_eq!(asked.len(), 3, "{asked:?}");
-    assert_eq!(asked[2].1, "worker_knowledge");
-    assert_eq!(asked[2].2["operation"], json!("search"));
-    assert_eq!(asked[2].2["query"]["query"], json!("refunds"));
+    let (_, command, params) = asked.last().unwrap();
+    assert_eq!(command, "worker_get_connection_token");
+    assert_eq!(params["input_message_id"], json!(theirs.uuid().to_string()));
+    assert_eq!(params["acting_user"], json!(person));
 
     // A session the executor does not know is no org's: nothing is asked.
     let stranger = SessionId::new();
-    let resolver = everruns_cell::lookups::connections(
+    let resolver = everruns_agentd::lookups::connections(
         Arc::new(NoKeys),
         Some(&Arc::downgrade(&material)),
         stranger,
@@ -139,17 +162,12 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
 /// Admit `text` as `id` on `session` with `sender`, as a trusted admission
 /// path does (the gateway from a verified org token, or the control plane),
 /// on whichever node holds the session.
-async fn send_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &str) {
-    say_as(fleet, session, id, sender, "list my agents").await;
-}
-
-/// [`send_as`], saying `text`.
 async fn say_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &str, text: &str) {
     let mut replies = Vec::new();
     for base in fleet.bases() {
         let reply = fleet
             .http
-            .post(format!("{base}/cell/sessions/{session}/messages"))
+            .post(format!("{base}/shard/sessions/{session}/messages"))
             .json(&json!({ "text": text, "id": id, "sender": sender }))
             .send()
             .await
@@ -165,149 +183,6 @@ async fn say_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &s
     panic!("no node took the message: {replies:?}");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
-    let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
-    cp.set_lookup(
-        PLATFORM_COMMAND_SURFACE,
-        HostCallAnswer::Value(json!("3 agents")),
-    );
-    let session = session(&fleet, &cp).await;
-    fleet.say(&session, "ping").await;
-    fleet.turns(&session, 1).await;
-
-    let person = uuid::Uuid::new_v4().to_string();
-    let theirs = MessageId::new();
-    send_as(&fleet, &session, theirs, &person).await;
-    fleet.turns(&session, 2).await;
-
-    // The executor asks with a person of its own choosing: the cell that
-    // forwards the call replaces it with the one who sent the message.
-    let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
-    let ask = |message: MessageId| {
-        json!({
-            "session_id": session,
-            "input_message_id": message,
-            "operation": "discover",
-            "arguments": { "query": "agents" },
-            "acting_user": "someone-else",
-        })
-    };
-    let answer = material
-        .lookup(ORG, PLATFORM_COMMAND_SURFACE, ask(theirs))
-        .await
-        .unwrap();
-    assert_eq!(answer, HostCallAnswer::Value(json!("3 agents")));
-    let asked = cp.lookups();
-    assert_eq!(asked[0].1, PLATFORM_COMMAND_SURFACE);
-    assert_eq!(asked[0].2["acting_user"], json!(person));
-    assert_eq!(asked[0].2["operation"], json!("discover"));
-
-    // A message no one is recorded for (the first, sent without a verified
-    // token) acts as no one.
-    let first = MessageId::new();
-    material
-        .lookup(ORG, PLATFORM_COMMAND_SURFACE, ask(first))
-        .await
-        .unwrap();
-    assert_eq!(cp.lookups()[1].2["acting_user"], serde_json::Value::Null);
-
-    // A connection lookup of the person's turn names them too (the
-    // resolver names the message as a bare UUID), so the control plane
-    // resolves their connection, not the session owner's.
-    cp.set_lookup(
-        "worker_get_connection_token",
-        HostCallAnswer::Value(json!("their-token")),
-    );
-    let id: SessionId = session.parse().unwrap();
-    let resolver =
-        everruns_cell::lookups::connections(Arc::new(NoKeys), Some(&Arc::downgrade(&material)), id)
-            .for_execution(theirs.uuid())
-            .expect("bound to the turn");
-    let token = resolver.get_connection_token(id, "linear").await.unwrap();
-    assert_eq!(token.as_deref(), Some("their-token"));
-    let asked = cp.lookups();
-    assert_eq!(asked[2].1, "worker_get_connection_token");
-    assert_eq!(asked[2].2["input_message_id"], json!(theirs.uuid()));
-    assert_eq!(asked[2].2["acting_user"], json!(person));
-}
-
-/// An MCP server acting as the turn's person asks for its token by session
-/// (data plane v2 parity gap 8): the session's cell names the turn it has
-/// open and the person who sent it, whatever the executor says; with no
-/// turn open the call names no one.
-#[tokio::test(flavor = "multi_thread")]
-async fn an_mcp_token_for_the_open_turn_acts_as_its_sender() {
-    const MCP_TOKEN: &str = everruns_cell::mcp::MCP_CONNECTION_COMMAND;
-    let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
-    cp.set_lookup(MCP_TOKEN, HostCallAnswer::Value(json!("their-mcp-token")));
-
-    // A session whose turn parks on a person's approval, so it stays open.
-    let session = SessionId::new().to_string();
-    let (status, created) = cp
-        .call(
-            &fleet.base(),
-            reqwest::Method::POST,
-            &format!("/dp/v1/orgs/{ORG}/sessions"),
-            &json!({
-                "id": session,
-                "agent_ref": "helper",
-                "definition": everruns_cell_testkit::definition("approve").unwrap(),
-            }),
-        )
-        .await
-        .unwrap();
-    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
-    let person = uuid::Uuid::new_v4().to_string();
-    let theirs = MessageId::new();
-    send_as(&fleet, &session, theirs, &person).await;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while !fleet
-        .events(&session)
-        .await
-        .iter()
-        .any(|e| e["type"] == "tool.call_requested")
-    {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the turn never parked"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-
-    let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
-    let ask = |session: &str| {
-        json!({
-            "session_id": session,
-            "server_prefix": "notes",
-            "provider": "mcp_oauth_notes",
-            "acts_as": "user",
-            "input_message_id": everruns_contracts::host_calls::OPEN_TURN,
-            "acting_user": "someone-else",
-        })
-    };
-    let answer = material
-        .lookup(ORG, MCP_TOKEN, ask(&session))
-        .await
-        .unwrap();
-    assert_eq!(answer, HostCallAnswer::Value(json!("their-mcp-token")));
-    let asked = cp.lookups();
-    let (_, command, params) = asked.last().unwrap();
-    assert_eq!(command, MCP_TOKEN);
-    assert_eq!(params["input_message_id"], json!(theirs.uuid()));
-    assert_eq!(params["acting_user"], json!(person));
-
-    // A session with no turn open: no message, no one.
-    let idle = support::org::session(&fleet, &cp).await;
-    material.lookup(ORG, MCP_TOKEN, ask(&idle)).await.unwrap();
-    let asked = cp.lookups();
-    let (_, _, params) = asked.last().unwrap();
-    assert_eq!(params["input_message_id"], serde_json::Value::Null);
-    assert_eq!(params["acting_user"], serde_json::Value::Null);
-}
-
 /// The shell's `everruns` command (data plane v2 parity gap 7): an agent
 /// with a shell and the `platform` capability runs `everruns ...` in its
 /// shell, and the line goes to the control plane's catalog as the
@@ -315,21 +190,17 @@ async fn an_mcp_token_for_the_open_turn_acts_as_its_sender() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_shells_everruns_command_runs_the_catalog_as_the_turns_person() {
     let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
-    cp.set_lookup(
-        PLATFORM_COMMAND_SURFACE,
-        HostCallAnswer::Value(json!("3 agents")),
-    );
+    cp.set_lookup(PLATFORM_COMMAND_SURFACE, Answer::Value(json!("3 agents")));
 
     let session = SessionId::new().to_string();
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("files").unwrap();
     definition["capabilities"] = json!([{ "ref": "bashkit_shell" }, { "ref": "platform" }]);
     let (status, created) = cp
         .call(
             &fleet.base(),
             reqwest::Method::POST,
             &format!("/dp/v1/orgs/{ORG}/sessions"),
-            &json!({ "id": session, "agent_ref": "shell", "definition": definition }),
+            &json!({ "id": session, "agent_ref": "shell", "definition": definition, "servers": cp.servers() }),
         )
         .await
         .unwrap();
@@ -351,7 +222,7 @@ async fn the_shells_everruns_command_runs_the_catalog_as_the_turns_person() {
         params["arguments"]["commands"],
         json!("everruns agents list")
     );
-    assert_eq!(params["input_message_id"], json!(theirs.to_string()));
+    assert_eq!(params["input_message_id"], json!(theirs.uuid().to_string()));
     assert_eq!(params["acting_user"], json!(person));
 
     // The catalog's answer is the shell's output.
@@ -368,12 +239,10 @@ async fn the_shells_everruns_command_runs_the_catalog_as_the_turns_person() {
 /// session without Memory never calls.
 #[tokio::test(flavor = "multi_thread")]
 async fn memory_files_are_read_from_the_control_plane() {
-    const MEMORY_FILE: &str = everruns_contracts::host_calls::MEMORY_FILE;
     let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     cp.set_lookup(
         MEMORY_FILE,
-        HostCallAnswer::Value(json!({ "ok": {
+        Answer::Value(json!({ "ok": {
             "id": uuid::Uuid::new_v4(),
             "session_id": uuid::Uuid::new_v4(),
             "path": "/memory/user/notes.md",
@@ -392,8 +261,9 @@ async fn memory_files_are_read_from_the_control_plane() {
         json!({
             "id": session,
             "agent_ref": "files",
-            "definition": everruns_cell_testkit::definition("files").unwrap(),
+            "definition": everruns_agentd_testkit::definition("files").unwrap(),
             "memory": memory,
+            "servers": cp.servers(),
         })
     };
     let session = SessionId::new().to_string();
@@ -482,23 +352,20 @@ async fn memory_files_are_read_from_the_control_plane() {
     assert_eq!(before, after);
 }
 
-/// The person's own MCP servers (`user_mcp`, Console Chat on cells): a turn
+/// The person's own MCP servers (`user_mcp`, Console Chat on shards): a turn
 /// a person sent asks the control plane for their servers once, as that
 /// person, and the agent calls them with the person's key; a server that
 /// signs in as the person gets the person's token per use. A turn nobody
 /// sent never asks.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_persons_own_mcp_servers_join_their_turns() {
-    use everruns_cell_testkit::stub_mcp;
-    const USER_MCP_SERVERS: &str = everruns_contracts::host_calls::USER_MCP_SERVERS;
-    const MCP_TOKEN: &str = everruns_cell::mcp::MCP_CONNECTION_COMMAND;
+    use everruns_agentd_testkit::stub_mcp;
     let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     let authorizations = || stub_mcp::AUTHORIZATIONS.lock().unwrap().clone();
     let create = |session: &str| {
-        let mut definition = everruns_cell_testkit::definition("files").unwrap();
+        let mut definition = everruns_agentd_testkit::definition("files").unwrap();
         definition["capabilities"] = json!([{ "ref": "user_mcp" }]);
-        json!({ "id": session, "agent_ref": "chat", "definition": definition })
+        json!({ "id": session, "agent_ref": "chat", "definition": definition, "servers": cp.servers() })
     };
     let asked_for = |command: &str| {
         cp.lookups()
@@ -511,7 +378,7 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
     // A server with the person's own key.
     cp.set_lookup(
         USER_MCP_SERVERS,
-        HostCallAnswer::Value(json!({ "ok": {
+        Answer::Value(json!({ "ok": {
             "notes": { "url": stub_mcp::URL, "headers": { "Authorization": "Bearer person-key" } },
         }})),
     );
@@ -561,7 +428,7 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
     // A server that signs in as the person: its token per use, as them.
     cp.set_lookup(
         USER_MCP_SERVERS,
-        HostCallAnswer::Value(json!({ "ok": {
+        Answer::Value(json!({ "ok": {
             "notes": {
                 "url": stub_mcp::URL,
                 "auth_mode": "oauth",
@@ -570,7 +437,7 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
             },
         }})),
     );
-    cp.set_lookup(MCP_TOKEN, HostCallAnswer::Value(json!("their-mcp-token")));
+    cp.set_lookup(MCP_TOKEN, Answer::Value(json!("their-mcp-token")));
     let second = MessageId::new();
     say_as(&fleet, &session, second, &person, "mcp oolong").await;
     fleet.turns(&session, 2).await;
@@ -596,7 +463,7 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
     for base in fleet.bases() {
         let reply = fleet
             .http
-            .post(format!("{base}/cell/sessions/{session}/messages"))
+            .post(format!("{base}/shard/sessions/{session}/messages"))
             .json(&json!({ "text": "mcp jasmine", "id": MessageId::new() }))
             .send()
             .await
@@ -619,10 +486,8 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
 /// person when nobody sent it; a session without one never asks.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_sessions_own_mcp_servers_join_its_turns() {
-    use everruns_cell_testkit::stub_mcp;
-    const USER_MCP_SERVERS: &str = everruns_contracts::host_calls::USER_MCP_SERVERS;
+    use everruns_agentd_testkit::stub_mcp;
     let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     let asked = || {
         cp.lookups()
             .into_iter()
@@ -632,19 +497,19 @@ async fn a_sessions_own_mcp_servers_join_its_turns() {
     };
     cp.set_lookup(
         USER_MCP_SERVERS,
-        HostCallAnswer::Value(json!({ "ok": {
+        Answer::Value(json!({ "ok": {
             "notes": { "url": stub_mcp::URL, "headers": { "Authorization": "Bearer chat-key" } },
         }})),
     );
     // An agent without `user_mcp`.
     let session = SessionId::new().to_string();
-    let definition = everruns_cell_testkit::definition("files").unwrap();
+    let definition = everruns_agentd_testkit::definition("files").unwrap();
     let (status, created) = cp
         .call(
             &fleet.base(),
             reqwest::Method::POST,
             &format!("/dp/v1/orgs/{ORG}/sessions"),
-            &json!({ "id": session, "agent_ref": "files", "definition": definition }),
+            &json!({ "id": session, "agent_ref": "files", "definition": definition, "servers": cp.servers() }),
         )
         .await
         .unwrap();
@@ -695,7 +560,7 @@ async fn a_sessions_own_mcp_servers_join_its_turns() {
     assert_eq!(asked[0]["session_id"], json!(session));
     assert_eq!(asked[0]["session_servers"], json!(true));
     // Not a `user_mcp` agent: the person's servers are not asked for.
-    assert!(asked[0].get("input_message_id").is_none(), "{:?}", asked[0]);
+    assert_eq!(asked[0]["person"], json!(false), "{:?}", asked[0]);
     assert!(
         events.iter().any(
             |e| e["type"] == "tool.completed" && e.to_string().contains("stub found green tea")
@@ -711,13 +576,12 @@ async fn a_sessions_own_mcp_servers_join_its_turns() {
 }
 
 /// A tool the client runs (the console's page tools, Console Chat on
-/// cells): the session's definition declares it, the turn parks on its
+/// shards): the session's definition declares it, the turn parks on its
 /// call until the browser answers, and the answer reaches the model.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_client_side_tool_parks_until_the_client_answers() {
     let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("files").unwrap();
     definition["tools"] = json!([{
         "type": "client_side",
         "name": "read_page",
@@ -769,7 +633,7 @@ async fn a_client_side_tool_parks_until_the_client_answers() {
     for base in fleet.bases() {
         let reply = fleet
             .http
-            .post(format!("{base}/cell/sessions/{session}/tool-results"))
+            .post(format!("{base}/shard/sessions/{session}/tool-results"))
             .json(&answer)
             .send()
             .await
@@ -791,71 +655,17 @@ async fn a_client_side_tool_parks_until_the_client_answers() {
     assert!(replied, "the answer never reached the model: {events:#?}");
 }
 
-/// A session's resources and leases stay in the control plane (parity,
-/// step 10): a fleet tool lists them there, as the session's org, and the
-/// turn finishes with the answer.
+/// Dreaming's state is the session's own, kept in its shard: a turn records
+/// itself and leaves its dream owed there, and once it is due it runs
+/// against the session's Memory on the control plane's files server.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_sessions_resources_are_kept_by_the_control_plane() {
+async fn a_sessions_dream_is_kept_in_its_shard_and_reaches_its_memory() {
     let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
-    cp.set_lookup(
-        "worker_list_session_resources",
-        HostCallAnswer::Value(json!([{
-            "session_id": SessionId::new().to_string(),
-            "resource_id": "sandbox_build",
-            "kind": "sandbox",
-            "display_name": "Build box",
-            "status": "active",
-            "metadata": { "role": "resource", "provider": "daytona" },
-            "created_at": "2026-11-19T00:00:00Z",
-            "updated_at": "2026-11-19T00:00:00Z",
-        }])),
-    );
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
-    definition["capabilities"] = json!([{ "ref": "sandbox_fleet" }]);
-    let session = SessionId::new().to_string();
-    let (status, created) = cp
-        .call(
-            &fleet.base(),
-            reqwest::Method::POST,
-            &format!("/dp/v1/orgs/{ORG}/sessions"),
-            &json!({ "id": session, "agent_ref": "fleet", "definition": definition }),
-        )
-        .await
-        .unwrap();
-    assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
-    fleet.say(&session, "call sandbox_list").await;
-    fleet.turns(&session, 1).await;
-
-    let asked = cp.lookups();
-    let listed = asked
-        .iter()
-        .find(|(_, name, _)| name == "worker_list_session_resources")
-        .unwrap_or_else(|| panic!("no list asked: {asked:?}"));
-    assert_eq!(listed.0, ORG);
-    assert_eq!(listed.2["session_id"], json!(session));
-    let events = fleet.events(&session).await;
-    let answered = events
-        .iter()
-        .filter(|e| e["type"] == "tool.completed")
-        .any(|e| e.to_string().contains("Build box"));
-    assert!(answered, "the list never reached the turn: {events:#?}");
-}
-
-/// Dreaming's state stays in the control plane, as for a v1 session: a
-/// turn records itself and leaves its dream owed there, and the executor's
-/// sweep runs a dream the control plane reports due (parity, step 10).
-#[tokio::test(flavor = "multi_thread")]
-async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
-    const MEMORY_FILE: &str = everruns_contracts::host_calls::MEMORY_FILE;
-    let (fleet, cp) = org_fleet(&[]).await;
-    cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
-    cp.set_lookup(MEMORY_FILE, HostCallAnswer::Value(json!({ "ok": true })));
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
-    // The turn's own timer waits an hour: only the sweep can run it here.
+    cp.set_lookup(MEMORY_FILE, Answer::Value(json!({ "ok": true })));
+    let mut definition = everruns_agentd_testkit::definition("files").unwrap();
     definition["capabilities"] = json!([{ "ref": "dreaming", "config": {
         "destinations": [{ "mount": "/memory/user", "path": "/notes.md" }],
-        "trigger": { "mode": "idle", "idle_after_seconds": 3600, "min_new_turns": 1 },
+        "trigger": { "mode": "idle", "idle_after_seconds": 1, "min_new_turns": 1 },
     }}]);
     let session = SessionId::new().to_string();
     let (status, created) = cp
@@ -868,6 +678,7 @@ async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
                 "agent_ref": "dreamer",
                 "definition": definition,
                 "memory": ["/memory/user"],
+                "servers": cp.servers(),
             }),
         )
         .await
@@ -876,67 +687,18 @@ async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
     fleet.say(&session, "I drink green tea every morning").await;
     fleet.turns(&session, 1).await;
 
-    let job = format!("session:{session}");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    let owed = loop {
-        if let Some(row) = cp.dream_state(ORG, &job)
-            && !row["due_at"].is_null()
-        {
-            break row;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the turn left no dream owed in the control plane: {:?}",
-            cp.dream_calls()
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    };
-    assert_eq!(owed["session_id"], json!(session));
-    assert!(
-        cp.dream_state(ORG, &format!("turns:{session}")).is_some(),
-        "the turn was not counted in the control plane"
-    );
-
-    // Due now: the sweep finds it in the org's due dreams, claims it and
-    // runs it against the session's Memory (whose answer here fails it, so
-    // it is put off for a retry).
-    cp.make_dream_due(ORG, &job);
-    let attempts = |row: &serde_json::Value| {
-        row["value"]
-            .as_str()
-            .and_then(|v| serde_json::from_str::<serde_json::Value>(v).ok())
-            .and_then(|v| v["job"]["attempts"].as_i64())
-            .unwrap_or(0)
-    };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
-        let row = cp.dream_state(ORG, &job).unwrap();
-        // The fenced claim increments attempts and sets due_at before the
-        // runner reads Memory. Observe that effect, not just its admission.
-        let memory_reached = cp
-            .lookups()
-            .iter()
-            .any(|(_, name, params)| name == MEMORY_FILE && params["session_id"] == json!(session));
-        if attempts(&row) >= 1 && row["due_at"].as_i64() > Some(0) && memory_reached {
+        let asked = cp.lookups();
+        if asked.iter().any(|(org, name, params)| {
+            org == ORG && name == MEMORY_FILE && params["session_id"] == json!(session)
+        }) {
             break;
         }
         assert!(
             std::time::Instant::now() < deadline,
-            "the due dream never ran: {row}"
+            "the dream never reached the session's Memory: {asked:?}"
         );
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    assert!(
-        cp.dream_calls()
-            .iter()
-            .any(|(org, params)| org == ORG && params["operation"] == "due_org"),
-        "the sweep never asked for the org's due dreams"
-    );
-    let asked = cp.lookups();
-    assert!(
-        asked
-            .iter()
-            .any(|(_, name, params)| name == MEMORY_FILE && params["session_id"] == json!(session)),
-        "the dream never reached the session's Memory: {asked:?}"
-    );
 }

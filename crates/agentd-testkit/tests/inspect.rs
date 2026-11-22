@@ -1,22 +1,22 @@
-//! The cell inspector against a live fleet: where a session is and what it
-//! is doing, and a cell with a node down.
+//! The shard inspector against a live fleet: where a session is and what it
+//! is doing, and a shard with a node down.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 mod support;
 
-use everruns_cell::inspect::{Inspector, render_cells, render_session};
+use everruns_agentd::inspect::{Inspector, render_session, render_shards};
 use support::Fleet;
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_inspector_finds_a_session_and_reports_every_cell() {
+async fn the_inspector_finds_a_session_and_reports_every_shard() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     let session = fleet.create_in("chat", 1).await;
     fleet.say(&session, "hello").await;
     fleet.turns(&session, 1).await;
 
-    // The SLO gauges the dashboard charts: the cell that ran the turn
+    // The SLO gauges the dashboard charts: the shard that ran the turn
     // reports its one-minute p99.
     let leader = fleet.leader(1).await;
     let addr = fleet
@@ -39,11 +39,11 @@ async fn the_inspector_finds_a_session_and_reports_every_cell() {
             .and_then(|v| v.parse().ok())
             .unwrap_or_else(|| panic!("no {name} in\n{metrics}"))
     };
-    assert!(gauge("cell_slo_turn_p99_seconds") > 0.0);
+    assert!(gauge("agentd_shard_slo_turn_p99_seconds") > 0.0);
     for name in [
-        "cell_slo_ship_lag_p99_seconds",
-        "cell_slo_ship_first_p99_seconds",
-        "cell_slo_admit_p99_seconds",
+        "agentd_shard_slo_ship_lag_p99_seconds",
+        "agentd_shard_slo_ship_first_p99_seconds",
+        "agentd_shard_slo_admit_p99_seconds",
     ] {
         assert!(gauge(name) >= 0.0);
     }
@@ -51,13 +51,13 @@ async fn the_inspector_finds_a_session_and_reports_every_cell() {
     let inspector = Inspector::new(fleet.topology().read().unwrap()).unwrap();
     let id = everruns::SessionId::parse(&session).unwrap();
     let placed = inspector.placed(id).await.expect("the directory places it");
-    assert_eq!(placed.cell, 1);
-    let report = inspector.session(1, id).await.expect("cell 1 holds it");
-    assert_eq!(report.cell, 1);
+    assert_eq!(placed.shard, 1);
+    let report = inspector.session(1, id).await.expect("shard 1 holds it");
+    assert_eq!(report.shard, 1);
     assert!(report.turns_completed >= 1, "{report:?}");
     assert!(!report.tail.is_empty());
     let text = render_session(id, Some(placed), Some(&report));
-    assert!(text.contains("directory: cell 1"), "{text}");
+    assert!(text.contains("directory: shard 1"), "{text}");
     assert!(text.contains("turn.completed"), "{text}");
     // A finished session owes nothing and nobody holds it: the scheduling
     // state that tells a lost turn from a waiting one.
@@ -65,61 +65,61 @@ async fn the_inspector_finds_a_session_and_reports_every_cell() {
     assert!(report.work.fence >= 1, "{report:?}");
     assert!(text.contains("owed false"), "{text}");
 
-    // The directory spreads its shards over the cells: every session is
-    // found wherever its shard lives (a load run showed sessions whose
-    // shard sat in cell 1 as unknown).
+    // The directory spreads its slots over the shards: every session is
+    // found wherever its slot lives (a load run showed sessions whose
+    // slot sat in shard 1 as unknown).
     let addr = fleet.addrs(0)[0].1.clone();
     fleet
-        .until("directory shards reach cell 1", || {
+        .until("directory slots reach shard 1", || {
             let addr = addr.clone();
             async move {
                 let registry: serde_json::Value =
-                    reqwest::get(format!("http://{addr}/cell/registry"))
+                    reqwest::get(format!("http://{addr}/shard/registry"))
                         .await
                         .unwrap()
                         .json()
                         .await
                         .unwrap();
-                registry["shards"].as_object().is_some_and(|s| s.len() > 64)
+                registry["slots"].as_object().is_some_and(|s| s.len() > 64)
             }
         })
         .await;
     for n in 0..8 {
-        let cell = n % 2;
-        let other = fleet.create_in("chat", cell).await;
+        let shard = n % 2;
+        let other = fleet.create_in("chat", shard).await;
         let id = everruns::SessionId::parse(&other).unwrap();
         let placed = inspector.placed(id).await;
-        assert_eq!(placed.map(|p| p.cell), Some(cell), "{other}");
+        assert_eq!(placed.map(|p| p.shard), Some(shard), "{other}");
     }
 
     let reports = inspector.reports().await;
     assert_eq!(reports.keys().copied().collect::<Vec<_>>(), vec![0, 1]);
-    let text = render_cells(&reports);
+    let text = render_shards(&reports);
     assert!(!text.contains("leader NONE"), "{text}");
     assert!(!text.contains("NO ANSWER"), "{text}");
 
-    // A follower of cell 0 goes: the cell still has a leader, and the
+    // A follower of shard 0 goes: the shard still has a leader, and the
     // inspector names the node that does not answer.
     let leader = fleet.leader(0).await;
     let follower = (1..=3).find(|n| *n != leader).unwrap();
     fleet.kill_node(0, follower);
-    let text = render_cells(&inspector.reports().await);
+    let text = render_shards(&inspector.reports().await);
     assert!(
         text.contains(&format!("node {follower}: NO ANSWER")),
         "{text}"
     );
-    assert!(text.contains("cell 0: leader"), "{text}");
-    assert!(!text.contains("cell 0: leader NONE"), "{text}");
+    assert!(text.contains("shard 0: leader"), "{text}");
+    assert!(!text.contains("shard 0: leader NONE"), "{text}");
     fleet.check();
 }
 
 #[test]
 fn a_session_mid_move_is_listed_with_the_directory_view() {
-    use everruns_cell::inspect::{CellReport, MoveView, render_moves};
-    use everruns_cell::state::{Placed, Placement};
+    use everruns_agentd::inspect::{MoveView, ShardReport, render_moves};
+    use everruns_agentd::state::{Placed, Placement};
     let session = everruns::SessionId::new();
-    let report = CellReport {
-        cell: 0,
+    let report = ShardReport {
+        shard: 0,
         node: 1,
         leader: Some(1),
         incarnation: 1,
@@ -147,7 +147,7 @@ fn a_session_mid_move_is_listed_with_the_directory_view() {
     let placed = [(
         session,
         Some(Placed {
-            cell: 0,
+            shard: 0,
             generation: 4,
         }),
     )]
@@ -155,8 +155,8 @@ fn a_session_mid_move_is_listed_with_the_directory_view() {
     .collect();
     let text = render_moves(&reports, &placed);
     assert!(
-        text.contains("Frozen at generation 4, to 1; directory says cell 0 at generation 4"),
+        text.contains("Frozen at generation 4, to 1; directory says shard 0 at generation 4"),
         "{text}"
     );
-    assert!(render_cells(&reports).contains("DRAINING"));
+    assert!(render_shards(&reports).contains("DRAINING"));
 }

@@ -1,5 +1,5 @@
 //! The person's own MCP servers for a v2 session (`user_mcp.rs`), on a real
-//! database: a cell's calls reach the list of the person whose turn it is,
+//! database: a shard's calls reach the list of the person whose turn it is,
 //! resolved into what an executor runs, and nobody else's.
 
 use super::*;
@@ -75,7 +75,7 @@ async fn chat_turn(cp: &ControlPlane) -> (SessionId, uuid::Uuid) {
 }
 
 #[tokio::test]
-async fn a_cell_gets_the_turns_persons_own_servers_and_their_list() {
+async fn a_shard_gets_the_turns_persons_own_servers_and_their_list() {
     let (cp, _, _) = control_plane().await;
     let (session, message) = chat_turn(&cp).await;
     let ctx = internal_ctx(&cp, ORG);
@@ -125,7 +125,7 @@ async fn a_cell_gets_the_turns_persons_own_servers_and_their_list() {
         "{listed}"
     );
 
-    // "This chat only" reaches the session's storage (its cell's, for a
+    // "This chat only" reaches the session's storage (its shard's, for a
     // session there), with the v1 checks: no longer refused outright.
     let mut chat_only = turn.clone();
     chat_only["call"] = json!({

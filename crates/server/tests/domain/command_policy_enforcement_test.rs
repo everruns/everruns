@@ -832,6 +832,9 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // github_apps table, never the agents row; same ground as a credential.
     "connect_agent_github",
     "disconnect_agent_github",
+    // Revokes a sign-in on a connection (the caller's or the agent identity's),
+    // never the agents row; the attachment configuration stays as it is.
+    "revoke_agent_mcp_connection",
     // Choosing the org-linked Everruns App writes the same identity connection.
     "use_agent_everruns_app",
     // Operational probe. Runs the agent to report health; changes no definition.

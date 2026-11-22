@@ -47,8 +47,10 @@ enum OAuthScope {
 }
 mod dp_grants;
 mod github;
+pub mod grant_health;
 pub use dp_grants::DataPlaneGrant;
 pub(crate) use github::GitHubIdentityKind;
+pub use grant_health::GrantHealth;
 
 const REFRESH_LOCK_MAX_CAPACITY: u64 = 10_000;
 const REFRESH_LOCK_IDLE_TTL: StdDuration = StdDuration::from_secs(10 * 60);
@@ -629,6 +631,11 @@ impl DbConnectionResolver {
         if !self.authorize_connection(scope, &row, None).await? {
             return Ok(None);
         }
+        // A grant marked as needing sign-in produces nothing until someone
+        // signs in again; the provider is not asked again (grant_health.rs).
+        if grant_health::reconnect_mark(&row).is_some() {
+            return Ok(None);
+        }
 
         let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
             return Ok(None);
@@ -654,6 +661,9 @@ impl DbConnectionResolver {
         else {
             return Ok(None);
         };
+        if grant_health::reconnect_mark(&row).is_some() {
+            return Ok(None);
+        }
         let Some(access_token_encrypted) = row.access_token_encrypted.as_deref() else {
             return Ok(None);
         };
@@ -664,6 +674,13 @@ impl DbConnectionResolver {
             return self
                 .decrypt(access_token_encrypted, "OAuth access token")
                 .map(Some);
+        }
+        // Expired, and its refresh token cannot be used: no refresh token, a
+        // legacy unbound one, or one bound to settings that changed since.
+        // Never guess an audience; mark it so people are told (grant_health.rs).
+        if let Some(reason) = self.unrenewable_reason(scope, server_id, &row).await? {
+            self.mark_reconnect_required(&row, reason).await;
+            return Ok(None);
         }
         let Some(refresh_token_encrypted) = row.refresh_token_encrypted.as_deref() else {
             return Ok(None);
@@ -684,16 +701,11 @@ impl DbConnectionResolver {
         let token = match self.exchange_refresh(config, &grant).await {
             Ok(token) => token,
             Err(OAuthRefreshError::InvalidGrant) => {
-                self.db
-                    .revoke_runtime_connection_if_unchanged(row.id, access_token_encrypted)
-                    .await
-                    .map_err(|e| {
-                        AgentLoopError::store(format!(
-                            "Failed to revoke invalid identity OAuth grant: {e}"
-                        ))
-                    })?;
+                self.mark_reconnect_required(&row, grant_health::reason::REFUSED)
+                    .await;
                 return Ok(None);
             }
+            // Transient: the next use tries again.
             Err(OAuthRefreshError::Failed(_)) => return Ok(None),
         };
         if let Some(rotated) = &token.refresh_token {
@@ -1237,6 +1249,15 @@ impl UserConnectionResolver for DbConnectionResolver {
             return Ok(());
         }
 
+        // A first rejection forces a refresh on the next use when the grant
+        // can be renewed; a second one soon after (the refresh did not help),
+        // or one the grant cannot recover from, marks it as needing sign-in.
+        // The row is kept either way (grant_health.rs).
+        let force_refresh = !grant_health::rejected_recently(&row, Utc::now())
+            && self
+                .unrenewable_reason(OAuthScope::Session(session_id), server_id, &row)
+                .await?
+                .is_none();
         self.db
             .invalidate_mcp_service_connection_if_access_token_matches(
                 row.virtual_user_id,
@@ -1245,6 +1266,7 @@ impl UserConnectionResolver for DbConnectionResolver {
                 session.org_id,
                 server_id,
                 agent_id.uuid(),
+                force_refresh,
             )
             .await
             .map_err(|e| {

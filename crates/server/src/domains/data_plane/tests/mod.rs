@@ -1,5 +1,5 @@
 //! The control plane's side of /dp/v1 on a real database, against a stub
-//! data plane that answers config the way a cell does.
+//! data plane that answers config the way a shard does.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -37,11 +37,11 @@ struct Seen {
     messages: Vec<(String, String, Value)>,
     /// Other session commands: (session, command, body).
     commands: Vec<(String, String, Value)>,
-    /// A session's files as its cell's `snapshot` answers them.
+    /// A session's files as its shard's `snapshot` answers them.
     files: std::collections::HashMap<String, Vec<Value>>,
-    /// Refuse a `snapshot` as too large, as a cell does past its limit.
+    /// Refuse a `snapshot` as too large, as a shard does past its limit.
     snapshot_refused: bool,
-    /// A session's SQL databases on its cell: (name, SQLite file).
+    /// A session's SQL databases on its shard: (name, SQLite file).
     databases: std::collections::HashMap<String, Vec<(String, Vec<u8>)>>,
 }
 
@@ -100,7 +100,7 @@ async fn stub() -> (String, Stub) {
         seen.lock().messages.push((org, session, body.clone()));
         Json(json!({ "id": body["id"], "status": "accepted" }))
     }
-    /// A session command, answered as a cell answers it.
+    /// A session command, answered as a shard answers it.
     async fn command(
         State(seen): State<Stub>,
         Path((_org, session, command)): Path<(String, String, String)>,
@@ -163,7 +163,7 @@ async fn stub() -> (String, Stub) {
     (url, seen)
 }
 
-/// A cell's `sqldb` session command over the stub's databases.
+/// A shard's `sqldb` session command over the stub's databases.
 fn sqldb(seen: &mut Seen, session: &str, op: &str, body: &Value) -> Value {
     use base64::Engine as _;
     let databases = seen.databases.entry(session.to_owned()).or_default();
@@ -284,9 +284,16 @@ async fn a_v1_org_has_no_data_plane() {
 }
 
 /// What a newly enabled org's full snapshot holds: its policy, then the
-/// org settings it was enabled with (web search, tool approval, egress).
-fn snapshot_kinds() -> [&'static str; 4] {
-    ["Policy", "Connection", "Connection", "Connection"]
+/// org settings it was enabled with (web search, tool approval, egress,
+/// helper model catalog).
+fn snapshot_kinds() -> [&'static str; 5] {
+    [
+        "Policy",
+        "Connection",
+        "Connection",
+        "Connection",
+        "Connection",
+    ]
 }
 
 #[tokio::test]
@@ -449,7 +456,7 @@ async fn the_feed_is_stored_once_through_retries_and_a_replay() {
     let budgets = BudgetService::new(cp.db.clone());
     let batch = |incarnation: u64, records: Vec<FeedRecord>| FeedBatch {
         data_plane: "dp-1".into(),
-        source: "cell-0".into(),
+        source: "shard-0".into(),
         incarnation,
         records,
     };
@@ -527,7 +534,7 @@ async fn org_policy(cp: &ControlPlane, limit_usd: f64) {
 fn ask(id: &str, want: i64, settlements: Vec<GrantSettlement>) -> AllowanceRequest {
     AllowanceRequest {
         request_id: id.into(),
-        cell: "cell-0".into(),
+        shard: "shard-0".into(),
         incarnation: 1,
         want_micros: want,
         settlements,
@@ -553,7 +560,7 @@ async fn a_retried_request_gets_the_same_grant_and_a_suspended_org_none() {
     assert_eq!(refused.reason.as_deref(), Some("suspended"));
 }
 
-/// The gate's money check: cells asking at once, retrying, settling late
+/// The gate's money check: shards asking at once, retrying, settling late
 /// and in any order never get more than the org's policy allows.
 #[tokio::test]
 async fn allowances_never_overspend_under_concurrency_and_retries() {
@@ -562,7 +569,7 @@ async fn allowances_never_overspend_under_concurrency_and_retries() {
     let cap = 1_000_000;
     let budgets = BudgetService::new(cp.db.clone());
     let mut tasks = tokio::task::JoinSet::new();
-    for cell in 0..8 {
+    for shard in 0..8 {
         let cp = cp.clone();
         tasks.spawn(async move {
             let mut grants: Vec<(String, i64, i64)> = Vec::new(); // (id, granted, used)
@@ -578,7 +585,7 @@ async fn allowances_never_overspend_under_concurrency_and_retries() {
                         closed: i % 2 == 0,
                     })
                     .collect();
-                let request = ask(&format!("c{cell}-{n}"), 150_000, settlements);
+                let request = ask(&format!("c{shard}-{n}"), 150_000, settlements);
                 let grant = allowances::answer(&cp, ORG, &request).await.unwrap();
                 // A lost reply: the retry must be the same grant.
                 let retry = allowances::answer(&cp, ORG, &request).await.unwrap();
@@ -599,7 +606,7 @@ async fn allowances_never_overspend_under_concurrency_and_retries() {
     while let Some(grants) = tasks.join_next().await {
         all.extend(grants.unwrap());
     }
-    // Whatever the cells could spend: every grant whole (open grants could
+    // Whatever the shards could spend: every grant whole (open grants could
     // still be spent), never above the cap.
     let ledger = cp.db.dp_grants(ORG).await.unwrap();
     let exposure: i64 = ledger
@@ -618,7 +625,7 @@ async fn allowances_never_overspend_under_concurrency_and_retries() {
     for (i, (_, _, used)) in all.iter().enumerate() {
         let batch = FeedBatch {
             data_plane: "dp-1".into(),
-            source: "cell-x".into(),
+            source: "shard-x".into(),
             incarnation: 1,
             records: vec![record(i as u64 + 1, usage(&format!("u{i}"), *used))],
         };
@@ -1085,8 +1092,8 @@ async fn an_orgs_agents_are_in_its_data_planes_catalog() {
     assert!(live.iter().all(|item| item.item_id != key), "{live:?}");
 }
 
+mod calls;
 mod event_tap;
-mod host_calls;
 mod mcp;
 mod memory;
 mod moves;

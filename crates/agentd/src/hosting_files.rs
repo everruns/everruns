@@ -1,6 +1,6 @@
-//! A session's workspace over the cell, as Engine's Environment: the
+//! A session's workspace over the shard, as Engine's Environment: the
 //! [`SessionFileSystem`] its file tools and shell use, reading the
-//! replica (or an executor's mirror) and committing through the cell. The
+//! replica (or an executor's mirror) and committing through the shard. The
 //! rules a commit follows are in `files.rs`. Split from `hosting.rs` for
 //! size.
 //!
@@ -36,16 +36,16 @@ use everruns_core::session_files::SessionFileSystem;
 
 use crate::files::{Change, Content, Entry, INLINE_MAX};
 
-const BACKEND_ID: &str = "everruns.cell.workspace.v1";
+const BACKEND_ID: &str = "everruns.shard.workspace.v1";
 /// Grep limits, as Everruns' own stores apply them.
 const GREP_FILE_MAX: usize = 512 * 1024;
 const GREP_TOTAL_MAX: usize = 5 * 1024 * 1024;
 const PATTERN_MAX: usize = 1_000;
 
-/// The cell's workspaces as Engine Environments: one head per session,
+/// The shard's workspaces as Engine Environments: one head per session,
 /// named by the session.
 #[derive(Clone)]
-pub struct CellFiles {
+pub struct ShardFiles {
     inner: Arc<Inner>,
     /// Whether writes commit under the epoch this hosting holds. The
     /// console's file API (`api_files.rs`) writes unfenced, as the gateway:
@@ -55,10 +55,10 @@ pub struct CellFiles {
 }
 
 impl RaftHosting {
-    /// Sessions' workspaces in this hosting's cell, as Engine's definition
+    /// Sessions' workspaces in this hosting's shard, as Engine's definition
     /// Environment.
-    pub fn files(&self) -> CellFiles {
-        CellFiles {
+    pub fn files(&self) -> ShardFiles {
+        ShardFiles {
             inner: self.inner.clone(),
             fenced: true,
         }
@@ -66,8 +66,8 @@ impl RaftHosting {
 
     /// Sessions' workspaces as the console's file API writes them:
     /// unfenced, like any gateway write.
-    pub fn workspace_api(&self) -> CellFiles {
-        CellFiles {
+    pub fn workspace_api(&self) -> ShardFiles {
+        ShardFiles {
             inner: self.inner.clone(),
             fenced: false,
         }
@@ -120,7 +120,7 @@ fn root(session: SessionId) -> SessionFile {
     }
 }
 
-impl CellFiles {
+impl ShardFiles {
     fn store(&self) -> Result<crate::store::Store> {
         match &self.inner.source {
             Source::Node(_) => Ok(self.inner.node()?.shared.store.clone()),
@@ -347,7 +347,7 @@ fn regex_of(pattern: &str) -> Result<regex::Regex> {
 }
 
 #[async_trait]
-impl SessionFileSystem for CellFiles {
+impl SessionFileSystem for ShardFiles {
     fn is_mount_resolver(&self) -> bool {
         false
     }
@@ -586,12 +586,12 @@ fn backend_id() -> WorkspaceBackendId {
 ///
 /// Decision: Engine's file tools key a workspace's files by the workspace's
 /// id, so each session is its own workspace; one shared workspace for the
-/// cell would put every session's files under one key.
+/// shard would put every session's files under one key.
 fn workspace_of(session: uuid::Uuid) -> WorkspaceId {
     WorkspaceId::from_uuid(session)
 }
 
-impl CellFiles {
+impl ShardFiles {
     fn descriptor(session: uuid::Uuid) -> WorkspaceDescriptor {
         WorkspaceDescriptor {
             id: workspace_of(session),
@@ -630,7 +630,7 @@ impl CellFiles {
 }
 
 #[async_trait]
-impl WorkspaceBackend for CellFiles {
+impl WorkspaceBackend for ShardFiles {
     fn id(&self) -> WorkspaceBackendId {
         backend_id()
     }
@@ -659,7 +659,7 @@ impl WorkspaceBackend for CellFiles {
         let session = workspace.id.uuid();
         if request.base.is_some() || request.name != session.to_string() {
             return Err(WorkspaceError::InvalidRequest(
-                "a cell workspace has one head, named by its session, with no base".into(),
+                "a shard workspace has one head, named by its session, with no base".into(),
             ));
         }
         self.resource(WorkspaceBinding {
@@ -708,20 +708,20 @@ impl WorkspaceBackend for CellFiles {
     async fn archive(&self, binding: &WorkspaceBinding) -> std::result::Result<(), WorkspaceError> {
         Self::check(binding)?;
         Err(WorkspaceError::InvalidRequest(
-            "a cell workspace lives as long as its session".into(),
+            "a shard workspace lives as long as its session".into(),
         ))
     }
 
     async fn destroy(&self, binding: &WorkspaceBinding) -> std::result::Result<(), WorkspaceError> {
         Self::check(binding)?;
         Err(WorkspaceError::InvalidRequest(
-            "a cell workspace lives as long as its session".into(),
+            "a shard workspace lives as long as its session".into(),
         ))
     }
 }
 
 #[async_trait]
-impl EnvironmentFactory for CellFiles {
+impl EnvironmentFactory for ShardFiles {
     async fn open(&self, session: SessionId) -> Result<Environment> {
         let workspace_error = |error: WorkspaceError| AgentLoopError::store(error.to_string());
         let backend: Arc<dyn WorkspaceBackend> = Arc::new(self.clone());

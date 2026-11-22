@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/react";
 import {
   WorkspaceEvents,
   connectWorkspace,
@@ -130,15 +131,18 @@ it("hands exact binary bytes to the host and surfaces a rejected save", async ()
       "résumé.bin",
       new Blob([new Uint8Array([0, 255, 128, 65])], { type: "application/octet-stream" }),
     );
-    // FileReader completes asynchronously before the host request is emitted.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const message = send.mock.calls.at(-1)![0];
-    expect(message).toMatchObject({
-      type: "everruns:download",
-      filename: "résumé.bin",
-      mimeType: "application/octet-stream",
-      blob: "AP+AQQ==",
+    await waitFor(() => {
+      expect(send).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: "everruns:download",
+          filename: "résumé.bin",
+          mimeType: "application/octet-stream",
+          blob: "AP+AQQ==",
+        }),
+        "*",
+      );
     });
+    const message = send.mock.calls.at(-1)![0];
     window.dispatchEvent(
       new MessageEvent("message", {
         source: window.parent,

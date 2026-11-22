@@ -16,6 +16,14 @@ jest.mock("@/lib/api/client", () => ({
   api: { get: jest.fn(), post: jest.fn() },
 }));
 
+let mockCanInspectSandbox = true;
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({
+    currentOrg: { public_id: "org_1" },
+    hasRole: () => mockCanInspectSandbox,
+  }),
+}));
+
 const mockedGet = api.get as jest.Mock;
 const mockedPost = api.post as jest.Mock;
 
@@ -55,6 +63,7 @@ function withClient(node: React.ReactNode) {
 }
 
 afterEach(() => {
+  mockCanInspectSandbox = true;
   mockedGet.mockReset();
   mockedPost.mockReset();
 });
@@ -224,6 +233,28 @@ describe("SandboxDetailDrawer", () => {
   function detail(overrides: Partial<SandboxFleetDetail> = {}): SandboxFleetDetail {
     return { ...item(), incarnations: [], history: [], ...overrides };
   }
+
+  it("labels idle state as recorded and checks the provider only on request", async () => {
+    mockedGet.mockImplementation(async (path) => ({
+      data: path.endsWith("/provider")
+        ? { exists: true, state: "stopped", checked_at: "2026-11-21T12:00:00Z" }
+        : detail({ attention: ["idle_running"] }),
+    }));
+    render(withClient(<SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />));
+    expect(await screen.findByText("Last recorded running")).toBeInTheDocument();
+    expect(mockedGet).not.toHaveBeenCalledWith("/v1/sandboxes/sandbox_1/provider");
+    fireEvent.click(screen.getByRole("button", { name: "Check provider status" }));
+    expect(await screen.findByText("stopped")).toBeInTheDocument();
+    expect(mockedGet).toHaveBeenCalledWith("/v1/sandboxes/sandbox_1/provider");
+  });
+
+  it("hides the provider check for regular organization members", async () => {
+    mockCanInspectSandbox = false;
+    mockedGet.mockResolvedValue({ data: detail({ attention: ["idle_running"] }) });
+    render(withClient(<SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />));
+    expect(await screen.findByText("Last recorded running")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check provider status" })).toBeNull();
+  });
 
   it("asks before deleting and sends the action to the Session", async () => {
     mockedGet.mockResolvedValue({ data: detail() });

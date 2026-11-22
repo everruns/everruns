@@ -1,27 +1,27 @@
 ---
 type: Specification
-title: "Data plane v2: cells"
-description: "Cell-native execution for 75 000 agents: one control plane, today's workers as data plane v1, and Raft cells with S3 as data plane v2."
+title: "Data plane v2: shards"
+description: "Shard-native execution for 75 000 agents: one control plane, today's workers as data plane v1, and Raft shards with S3 as data plane v2."
 tags:
   - execution
   - data-plane-v2
-  - cells
+  - shards
   - scale
 ---
 
-# Everruns data plane v2: cells
+# Everruns data plane v2: shards
 
 Status: approved 2026-11-09; implementation in progress, step by step (see "Implementation plan").
 
 Goal: run 75 000 agents on Everruns. Backward compatibility is not a
-constraint. The cell architecture comes from `everruns/funout` (`0a0c0ec`: cells as Everruns Engine hosting profiles).
+constraint. The shard architecture comes from `everruns/funout` (`0a0c0ec`: shards as Everruns Engine hosting profiles).
 
 ## Summary
 
 Everruns splits into one **control plane** for management and two **data
 planes** for running agents. The control plane (server + RDS) owns orgs,
 users, agents, secrets, connections and billing. Data plane v1 is today's
-server-and-workers execution. Data plane v2 is new: cells that hold sessions
+server-and-workers execution. Data plane v2 is new: shards that hold sessions
 in Raft-replicated memory, run turns on their own executors and keep history
 in S3. Each org runs on one data plane. Clients manage through the control
 plane and send session traffic straight to their org's data plane, so a v2
@@ -36,7 +36,7 @@ turn never touches the server or RDS.
 ## Why this shape
 
 An earlier version of this plan kept one shared data path and replaced only
-RDS's session log with cells. It could not reach 75k: every turn still made
+RDS's session log with shards. It could not reach 75k: every turn still made
 gRPC calls to the server for agents, secrets, usage, budgets, files and MCP
 tokens, most of them RDS reads, and NATS and the server stayed on every
 turn. Most of the work also went into making old and new paths coexist.
@@ -45,13 +45,13 @@ Splitting by data plane fixes both:
 
 - **Nothing central on the turn path.** A v2 turn gets its agent
   definition and sealed secrets from caches the data plane keeps current,
-  checks spend against its cell's local allowance, writes only the cell's
-  Raft log, and streams to the client from the cell's gateway.
+  checks spend against its shard's local allowance, writes only the shard's
+  Raft log, and streams to the client from the shard's gateway.
 - **Little coexistence work.** v2 orgs never reach the server's session
-  features (sessions, messages, events, trace, files), so those need no cell
+  features (sessions, messages, events, trace, files), so those need no shard
   path. The server gains a small contract with data planes, nothing more.
-- **Capacity grows by adding cells.** Each cell is independent; nothing on a
-  turn's path crosses cells.
+- **Capacity grows by adding shards.** Each shard is independent; nothing on a
+  turn's path crosses shards.
 
 ## Control plane
 
@@ -59,17 +59,17 @@ Owns everything about *what* runs, never the running of it:
 
 - orgs, users, auth, agents, harnesses, capabilities settings, secrets,
   connections, providers, billing;
-- the org setting `data_plane = v1 | v2` (cells inside a data plane are the data plane's business);
+- the org setting `data_plane = v1 | v2` (shards inside a data plane are the data plane's business);
 - the UI and CLI management API, unchanged.
 
 ### Contract with data planes
 
 | Direction | What | How |
 | --- | --- | --- |
-| Control → data | Full agent definitions (revisions), tenant secrets and connections, tenant policy and limits; spend allowances on request | Pushed on every edit from an RDS outbox, retried until acknowledged; stored in the data plane registry, not in any particular cell |
+| Control → data | Full agent definitions (revisions), tenant secrets and connections, tenant policy and limits; spend allowances on request | Pushed on every edit from an RDS outbox, retried until acknowledged; stored in the data plane registry, not in any particular shard |
 | Control → client | A short-lived signed org token naming the org's data plane | Issued at sign-in or API key exchange; the edge router and gateways verify it with the control plane's public keys (JWKS), no call back |
 | Data → control | Usage and cost, session summaries for lists and search, health | Batched feed, async; drives billing roll-ups and the org overview |
-| Control → data | Admin: enable, suspend, export or delete an org's data (cells, drains and moves stay internal to the data plane) | Data plane admin API |
+| Control → data | Admin: enable, suspend, export or delete an org's data (shards, drains and moves stay internal to the data plane) | Data plane admin API |
 
 Full schema and rules: [cp-dp-protocol.md](cp-dp-protocol.md).
 
@@ -79,11 +79,11 @@ server.
 
 ## Data plane v2
 
-![Inside data plane v2](diagram-dp-cell.svg)
+![Inside data plane v2](diagram-dp-shard.svg)
 
-### Cells
+### Shards
 
-A cell is three nodes (one per zone) running one Raft group, ported from
+A shard is three nodes (one per zone) running one Raft group, ported from
 funout:
 
 - **State in memory, replicated.** Sessions (journal and Engine authority state: binding, admitted input,
@@ -92,7 +92,7 @@ funout:
   volumes, schedules). Times and ids travel in commands, so every replica applies the
   same state.
 - **The Raft WAL is the only hot write,** group-committed across sessions
-  (append commit p50 1.4 ms in funout on one VM; on a three-zone cell with
+  (append commit p50 1.4 ms in funout on one VM; on a three-zone shard with
   EBS it will be several times that, which is why waited round trips per
   turn are a budget).
 - **History in S3**: immutable segments with messages-only companions,
@@ -103,26 +103,26 @@ funout:
 
 ### Placement: sessions, not orgs
 
-Nothing ties an org to a cell. The unit of placement is the **session**
+Nothing ties an org to a shard. The unit of placement is the **session**
 (plus a few other small units: a shared volume such as org Memories, a
 schedule), as in funout:
 
-- **Any cell hosts sessions of any org.** Thousands of small orgs share a
-  cell; a large org's sessions spread over many cells. A new session goes
-  to the less loaded of two random cells (with a mild preference for cells
+- **Any shard hosts sessions of any org.** Thousands of small orgs share a
+  shard; a large org's sessions spread over many shards. A new session goes
+  to the less loaded of two random shards (with a mild preference for shards
   already running the org's agents, for warm caches). An org policy can
-  pin an org to a dedicated pool of cells, for isolation or noisy orgs.
-- **Units move freely.** A move freezes the unit in its source cell, hands
+  pin an org to a dedicated pool of shards, for isolation or noisy orgs.
+- **Units move freely.** A move freezes the unit in its source shard, hands
   back the running epoch at the next step boundary, installs the unit's
   metadata in the target, repoints the directory and leaves a forward.
   History is already in S3 and does not move, so a move costs metadata
-  only. The rebalancer uses this for hot cells; draining uses it to empty a
-  cell.
+  only. The rebalancer uses this for hot shards; draining uses it to empty a
+  shard.
 - **Every placement has a generation.** Each unit carries a placement
   generation that only grows, and each move has a transfer id. Import,
   activation, directory updates, forwards and cleanup all name the
-  generation they belong to, and a cell or the directory rejects anything
-  older than what it has seen. Cells keep a tombstone with the last
+  generation they belong to, and a shard or the directory rejects anything
+  older than what it has seen. Shards keep a tombstone with the last
   generation of every unit that left them, so a delayed import from an old
   move (A → B arriving after B → C) is refused rather than revived. The
   destination holds the imported unit **prepared** (not runnable) and
@@ -135,15 +135,15 @@ schedule), as in funout:
   never be activated and is dropped by generation. Freeze waits for the
   session's pending event batch to commit or fail before it takes the
   image, so no half-written step travels. funout's moves at
-  `8ce744b` lack these checks (`Import` accepts any unit the cell doesn't
+  `8ce744b` lack these checks (`Import` accepts any unit the shard doesn't
   hold, `Place` overwrites without a version, `Forward` doesn't name its
   move), so the port adds them, and the move model in "Formal models" is
   written first.
 - **The registry** is a small replicated group (sharded by id as it grows)
-  that holds what is per data plane rather than per cell: the directory
-  (unit → cell), each agent's current revision, tenants (data key, secrets, policy) and the change stream. It changes only
+  that holds what is per data plane rather than per shard: the directory
+  (unit → shard), each agent's current revision, tenants (data key, secrets, policy) and the change stream. It changes only
   when a unit is created or moved, an agent is edited or tenant policy
-  changes, so its write rate stays low. Gateways and cells cache it; it is
+  changes, so its write rate stays low. Gateways and shards cache it; it is
   not on the per-step path.
 - **The data plane knows agents, not org configuration.** It has no notion
   of harnesses, org defaults, members or capability settings. The control
@@ -158,7 +158,7 @@ schedule), as in funout:
     key, its secret and connection-token store, its spend allowances and
     its operational limits.
   - Every change goes onto one data-plane-wide **change stream** ("agent
-    A is now at revision R", "tenant T policy changed"); every cell and
+    A is now at revision R", "tenant T policy changed"); every shard and
     executor subscribes to all of it and drops what it cached. Edits are
     rare, so broadcasting everything costs nothing and nobody tracks who
     hosts what. Sequence numbers detect gaps; a gap drops the whole cache.
@@ -192,7 +192,7 @@ schedule), as in funout:
   sessions continue.
 - **Budgets stay in the control plane, enforced with allowances.** The
   control plane's ledger and usage policies (notify, ask to continue,
-  stop) remain the single source of truth. A cell that runs a tenant's
+  stop) remain the single source of truth. A shard that runs a tenant's
   turn holds a small **spend allowance** for that tenant, granted by the
   control plane; it spends from it locally (no call per turn) and asks for
   more when it runs low, reporting what it used. The control plane sizes
@@ -200,26 +200,26 @@ schedule), as in funout:
   product guarantee is a **strict cap on authorized spend**:
   - Every grant has an id and is reserved in the ledger when issued.
   - Before each chargeable operation (a model call, a sandbox lease, a
-    paid tool) the cell reserves that operation's maximum cost from the
+    paid tool) the shard reserves that operation's maximum cost from the
     allowance (for a model call: prompt plus `max_tokens` at the model's
     price) and settles the actual cost after it. A turn never starts a
     call its allowance can't cover.
-  - The cell reports usage per grant. A grant is closed only by the cell's
+  - The shard reports usage per grant. A grant is closed only by the shard's
     final settlement for it, never by time: an expired grant stops being
     spendable at once, but its reserved amount returns to the balance only
-    when the settlement arrives. If a cell is lost, its open grants count
+    when the settlement arrives. If a shard is lost, its open grants count
     as fully spent until disaster recovery reconciles them.
   - So the sum of grants can never exceed the balance. Actual cost can pass
     a reservation only when a provider bills more than the declared
     maximum, and that difference is reported as an overrun.
-  If the control plane is down, cells keep running until their allowances
+  If the control plane is down, shards keep running until their allowances
   are spent, then new turns wait rather than fail. Policy actions such as
   "ask to continue" come back as tenant policy changes on the change
   stream. Operational limits (concurrent sessions, rate limits) are only
-  safety nets: plain per-cell caps from the tenant policy, no coordination.
+  safety nets: plain per-shard caps from the tenant policy, no coordination.
 - **Org-wide lists** (the Sessions page) are served by the control plane
   from the session summaries it receives on the feed, so they may lag a
-  second or two; nothing fans out over cells and nothing is written to the
+  second or two; nothing fans out over shards and nothing is written to the
   registry per turn. Search over content uses the query service.
 
 ### Upgrading code
@@ -228,66 +228,66 @@ Moves are what make every upgrade safe:
 
 - **Executors** are stateless: a rolling deploy hands epochs back at step
   boundaries and other executors resume (no moves at all).
-- **Cell nodes, compatible change** (the common case; cell state follows
+- **Shard nodes, compatible change** (the common case; shard state follows
   the same additive rules as the session protocol): rolling restart one
   replica at a time; Raft keeps quorum, sessions keep running.
-- **Cell nodes, breaking change or a risky release:** blue/green cells.
-  Start cells on the new release, mark old cells draining, the rebalancer
-  moves their units over at a controlled rate, and empty old cells are
+- **Shard nodes, breaking change or a risky release:** blue/green shards.
+  Start shards on the new release, mark old shards draining, the rebalancer
+  moves their units over at a controlled rate, and empty old shards are
   retired. Mixed releases coexist, so the directory and move protocol
   stay compatible across adjacent releases (checked in CI).
-- The same drain handles cell replacement, zone evacuation and shrinking
+- The same drain handles shard replacement, zone evacuation and shrinking
   the fleet.
 
 What the canary upgrade qualification (2026-11-20) showed, and what holds
 until mixed releases are checked in CI:
 
-- **The control plane and cells upgrade as a matched pair, with v2 writes
+- **The control plane and shards upgrade as a matched pair, with v2 writes
   paused.** Neither order works on its own: a newer control plane refuses
-  an older cell's host calls it no longer serves, and a newer cell needs
+  an older shard's host calls it no longer serves, and a newer shard needs
   host calls an older control plane lacks.
 - **With the edge down**, requests fall back to the control plane. For a v2
-  session it answers from the session's cell or with 503, never from the
+  session it answers from the session's shard or with 503, never from the
   v1 store (the session database API, `session_databases/plane.rs`, was
   the last path that read the v1 store).
 - **Rollback is a restore, not an image swap.** An older control plane
-  refuses newer migrations, and an older cell cannot read newer Raft
+  refuses newer migrations, and an older shard cannot read newer Raft
   records. Restore the pre-upgrade restore point with writes paused
   ([Disaster recovery](#disaster-recovery)); never start older binaries on
-  upgraded volumes. A cell refuses to open a log holding an intact record
+  upgraded volumes. A shard refuses to open a log holding an intact record
   it cannot decode (`wal.rs`) rather than cutting it off as a torn tail,
-  so from this release on an older cell stops instead of truncating
+  so from this release on an older shard stops instead of truncating
   acknowledged writes.
 - Data plane v2 has no production data yet (2026-11-21): a release that
-  changes cell state rebuilds the test fleets instead of migrating them, so
+  changes shard state rebuilds the test fleets instead of migrating them, so
   v2 sessions' SQL databases left in the control plane's store before
-  cells held them (everruns#5537) are not imported.
+  shards held them (everruns#5537) are not imported.
 
 ### Gateways
 
-Every cell node serves the `/v1` session API (create session, send message,
+Every shard node serves the `/v1` session API (create session, send message,
 read events, SSE, cancel, approvals, tool results) with the same shapes as
 today. Clients never call a gateway directly: one public API
 (`api.everruns.com/v1`, one token) sits behind a stateless **edge router**
 that verifies the org token, sends `/v1/sessions/*` of v2 orgs to the
-session's cell and everything else (and v1 sessions) to the control plane. The
-UI, CLI and SDKs keep one URL, a session move between cells is invisible to
+session's shard and everything else (and v1 sessions) to the control plane. The
+UI, CLI and SDKs keep one URL, a session move between shards is invisible to
 them, and the control plane stays off the message path. Streaming is
 described under "Live streaming" below. No NATS. Org-wide session lists come from the control plane (feed summaries).
 
 ### Executors
 
 Executors are **one shared pool per data plane** (stateless pods, KEDA on
-running plus waiting turns across all cells), not a pool per cell: sessions
-of any org are spread over every cell, so per-cell pools would fragment
+running plus waiting turns across all shards), not a pool per shard: sessions
+of any org are spread over every shard, so per-shard pools would fragment
 capacity. Executors pull work with **credits**: an executor splits its free slots
-among the cells it talks to and never offers the same slot twice (a cell
+among the shards it talks to and never offers the same slot twice (a shard
 holding an unused credit returns it after a short timeout, and the
 executor re-offers it elsewhere; a credit whose executor hung up is
-dropped at once, so affinity never waits on an executor that is gone). A cell's leader hands out an activation
+dropped at once, so affinity never waits on an executor that is gone). A shard's leader hands out an activation
 only against a credit, so an executor can't be oversubscribed, and each
-cell has a **per-cell cap** on running turns so one hot cell can't take
-the whole pool. Dispatch has **soft affinity**: a cell offers a
+shard has a **per-shard cap** on running turns so one hot shard can't take
+the whole pool. Dispatch has **soft affinity**: a shard offers a
 session's activation first to the executor that ran it last, if that
 executor has a credit, and otherwise to any. Affinity alone doesn't keep a
 session warm, because Engine rebuilds its stored view per epoch, so each
@@ -295,19 +295,19 @@ executor keeps a bounded cache of immutable context (history segments,
 checkpoints) across activations, and Engine's per-session handles on an
 executor sit behind an LRU so an executor doesn't slowly accumulate every
 session it ever touched. The bench measures cache misses and S3 reads per
-warm turn rather than assuming zero. **Each cell is an Everruns Engine hosting
-profile**, as funout now does: the cell implements Engine's
+warm turn rather than assuming zero. **Each shard is an Everruns Engine hosting
+profile**, as funout now does: the shard implements Engine's
 `SessionHosting` SPI (admission, journal, receipts, execution epochs and the
 wakeup obligation in one consistency domain, every operation a Raft
 command, Engine's shared command reducer running inside apply), and an
 executor runs `Engine::activate`. Turn logic, steering, durable waits,
 cancel, approvals, tool results and recovery are Everruns' own code; the
-cell owns only replication, placement, moves, unloading and S3. Everruns'
-hosting conformance suite runs against a cell.
+shard owns only replication, placement, moves, unloading and S3. Everruns'
+hosting conformance suite runs against a shard.
 
 What the executor adds is the **platform host**: hydrating agents from
 definitions, an `EnvironmentFactory` that reopens the session's workspace
-from the cell (see [fs.md](fs.md)), secrets unwrapped with the org's KMS
+from the shard (see [fs.md](fs.md)), secrets unwrapped with the org's KMS
 data key, and usage written with the epoch's entries.
 
 **Fewer waited writes, without weakening durability.** As first ported to
@@ -341,7 +341,7 @@ boundary instead:
 
 The bench counts **waited authority round trips per turn**, per phase and
 per model or tool call, with a target of 5 or fewer for a chat turn. On a
-three-zone cell each wait is an executor-to-leader hop plus a quorum
+three-zone shard each wait is an executor-to-leader hop plus a quorum
 fsync, so this count times that latency is the turn-overhead floor. The
 target is per workload, never a reason to drop a required barrier.
 
@@ -349,7 +349,7 @@ target is per workload, never a reason to drop a required barrier.
 agent fully (instructions, model, capabilities, MCP servers, sealed secret
 references) and pushes the definition into the data plane as a numbered
 revision stored in S3; every revision a session or trace refers to is
-kept. A session points at its agent. When a **new turn** starts, the cell
+kept. A session points at its agent. When a **new turn** starts, the shard
 resolves the pointer to the current definition (cached); the turn record
 keeps `(agent_revision, protocol_major)`, and every later activation of
 that unfinished turn (after a crash, hand-off or move) hydrates that
@@ -395,12 +395,12 @@ in the journal) and **token deltas** (live typing, never stored). Engine's
 listeners carry committed events only, so funout lost deltas when it moved
 to Engine hosting; v2 adds them back with a small Engine hook (plan step 1).
 
-- **One stream node per session.** Within the session's cell, one of the
+- **One stream node per session.** Within the session's shard, one of the
   three nodes serves all of that session's live streams, chosen by
-  rendezvous hashing of the session id over the cell's **committed
+  rendezvous hashing of the session id over the shard's **committed
   membership view** (the Raft configuration plus a view generation, not
   each component's own idea of who is alive). The edge router caches
-  session → cell (from the directory) and computes the node itself, so an
+  session → shard (from the directory) and computes the node itself, so an
   SSE request takes one hop; every watcher of a session lands on the same
   node. Edge and executor send the view generation they hashed with; a
   node that isn't the owner in the current view redirects with the new
@@ -408,7 +408,7 @@ to Engine hosting; v2 adds them back with a small Engine hook (plan step 1).
 - **Committed events** come from that node's own replica as it applies
   them, so no extra copy is made.
 - **Deltas go straight from the executor to the stream node** (same hash,
-  no lookup), over the connection the executor already holds to the cell,
+  no lookup), over the connection the executor already holds to the shard,
   and never touch Raft or disk. The node drops them when the session has
   no watchers, so an unwatched turn costs nothing.
 - **Fencing:** deltas carry `(turn, step, attempt, seq)`, where the
@@ -433,10 +433,10 @@ to Engine hosting; v2 adds them back with a small Engine hook (plan step 1).
   on different membership views, reconnect to a lagging follower, and a
   move during the replay-to-live handoff.
 - **Load:** deltas are the heaviest live traffic (tens of thousands of
-  small messages per second per cell at full load); they are batched per
+  small messages per second per shard at full load); they are batched per
   session every ~50 ms and the stress bench has a budget for them.
 
-Executors are separate from the cell's three state nodes on purpose: in
+Executors are separate from the shard's three state nodes on purpose: in
 funout, turns on the same nodes delayed Raft heartbeats until a node cap of
 256 turns was needed. Separate pods keep consensus stable and let turn
 capacity scale in seconds.
@@ -451,62 +451,62 @@ capacity scale in seconds.
 | --- | --- | --- |
 | Agent, harness, capabilities | gRPC → server → RDS | Full agent definition handed over with the activation (cached by agent and revision) |
 | Secrets, provider keys | gRPC, decrypted by server | Tenant secret store holds them sealed; executor decrypts with the org's KMS-wrapped data key |
-| Budget check, usage | RDS ledger | Control plane ledger; cells enforce locally from spend allowances it grants |
-| Session log | RDS `events` | Cell Raft log + S3 |
-| Files | Session file storage via server | Workspace tree: root and recent changes in the cell, contents in S3 by hash ([fs.md](fs.md)) |
-| Sandboxes, MCP, web tools | Executor calls provider; records via server | Executor calls provider; records in cell state |
+| Budget check, usage | RDS ledger | Control plane ledger; shards enforce locally from spend allowances it grants |
+| Session log | RDS `events` | Shard Raft log + S3 |
+| Files | Session file storage via server | Workspace tree: root and recent changes in the shard, contents in S3 by hash ([fs.md](fs.md)) |
+| Sandboxes, MCP, web tools | Executor calls provider; records via server | Executor calls provider; records in shard state |
 | OAuth tokens (MCP, connections) | Server refreshes | Tenant secret store; the data plane refreshes and reports the new token on the feed |
-| Schedules, triggers | Durable scheduler in RDS | Timers in cell state; inbound webhooks go through the edge router to the data plane |
-| Streaming | NATS | Cell gateway |
+| Schedules, triggers | Durable scheduler in RDS | Timers in shard state; inbound webhooks go through the edge router to the data plane |
+| Streaming | NATS | Shard gateway |
 
 ### Where things live
 
 | Thing | Source of truth | Copy or cache | On a turn's path |
 | --- | --- | --- | --- |
 | Agent, harness, capability config | Control plane RDS (edited via UI, CLI, API) | Full agent definitions by revision in S3; current revision in the registry; executor cache | Cached definition only |
-| Org secrets, provider keys, OAuth tokens | Control plane RDS, encrypted | Tenant secret store in the registry, sealed with a per-org data key (envelope encryption, key wrapped by KMS) | Executor unwraps the data key via KMS (cached) and decrypts in memory; cell nodes never see plaintext |
-| Session secrets (set during a session) | Cell state, sealed with the same org data key | | Yes, local |
-| Session log | Cell Raft log, then S3 segments | | Yes, local |
-| Session files (workspace) | Root and recent changes in cell state; tree nodes and contents in S3 by hash ([fs.md](fs.md)) | Executor cache, data plane chunk cache | A commit is a Raft entry; large contents go through the chunk cache to S3 |
-| Session SQL database | Index in cell state; each database one SQLite file in S3 by hash (`blobs/{sha256}`), a new file per write | Executor working copy | A write is a blob put plus a Raft entry; reads run on the warm copy |
-| Org Memories (shared, mountable) | A shared volume: a placeable unit on some cell (movable like a session), tree in S3 | Read-only mounts read S3 directly; writes go to the cell hosting the volume | Reads local to S3; writes one hop to the volume's cell |
+| Org secrets, provider keys, OAuth tokens | Control plane RDS, encrypted | Tenant secret store in the registry, sealed with a per-org data key (envelope encryption, key wrapped by KMS) | Executor unwraps the data key via KMS (cached) and decrypts in memory; shard nodes never see plaintext |
+| Session secrets (set during a session) | Shard state, sealed with the same org data key | | Yes, local |
+| Session log | Shard Raft log, then S3 segments | | Yes, local |
+| Session files (workspace) | Root and recent changes in shard state; tree nodes and contents in S3 by hash ([fs.md](fs.md)) | Executor cache, data plane chunk cache | A commit is a Raft entry; large contents go through the chunk cache to S3 |
+| Session SQL database | Index in shard state; each database one SQLite file in S3 by hash (`blobs/{sha256}`), a new file per write | Executor working copy | A write is a blob put plus a Raft entry; reads run on the warm copy |
+| Org Memories (shared, mountable) | A shared volume: a placeable unit on some shard (movable like a session), tree in S3 | Read-only mounts read S3 directly; writes go to the shard hosting the volume | Reads local to S3; writes one hop to the volume's shard |
 | Traces (one session) | The session log itself; full model prompts stored as S3 objects referenced from `llm.generation` | | No; read by the gateway on demand |
-| Traces (across sessions: costs, monitoring, reporting) | Analytical copy in S3 written by the cell's segment writer (the trace-store format: "an analytical copy, never a journal") | Catalog entries as Raft commands in the writing cell | No |
-| Usage, budgets | Control plane ledger and usage policies | Spend allowance per tenant in the cell; usage feed back | Yes, local (allowance) |
-| Egress | Policy (allowlists, caps, kill switch) in the tenant policy | | Every outbound call of executors and sandboxes goes through the data plane's egress proxy pool; the cell signs a per-turn proxy token the proxy verifies locally; egress usage joins the turn's usage counters |
+| Traces (across sessions: costs, monitoring, reporting) | Analytical copy in S3 written by the shard's segment writer (the trace-store format: "an analytical copy, never a journal") | Catalog entries as Raft commands in the writing shard | No |
+| Usage, budgets | Control plane ledger and usage policies | Spend allowance per tenant in the shard; usage feed back | Yes, local (allowance) |
+| Egress | Policy (allowlists, caps, kill switch) in the tenant policy | | Every outbound call of executors and sandboxes goes through the data plane's egress proxy pool; the shard signs a per-turn proxy token the proxy verifies locally; egress usage joins the turn's usage counters |
 
 #### Trace and session search in v2
 
 This follows the separate trace and session search proposal (DataFusion +
 Parquet for structured search and aggregation, Tantivy for word and phrase
 search, S3 for immutable indexes and payloads, an async exporter publishing
-through a catalog). In v2 its PostgreSQL part maps onto the cell:
+through a catalog). In v2 its PostgreSQL part maps onto the shard:
 
 | PostgreSQL role in that proposal | v2 |
 | --- | --- |
-| Live execution, session metadata | Cell state |
+| Live execution, session metadata | Shard state |
 | Permissions | Org token from the control plane; queries are scoped to one org |
-| Deletion visibility | Tombstones in cell state, applied before counts and pagination |
-| Catalog (atomic publication) | Catalog entries as Raft commands in the cell that wrote them: an index is visible once its entry commits |
+| Deletion visibility | Tombstones in shard state, applied before counts and pagination |
+| Catalog (atomic publication) | Catalog entries as Raft commands in the shard that wrote them: an index is visible once its entry commits |
 
-- **Exporter:** the cell's segment writer, which already writes immutable
+- **Exporter:** the shard's segment writer, which already writes immutable
   history segments, also builds Parquet files and Tantivy segments for the
   same events, off the turn path, and commits their catalog entry.
 - **Query service:** stateless pods in the data plane (DataFusion + Tantivy
   readers with local caches), scoped by org token, reading a consistent
-  catalog snapshot from each cell in the org's **catalog lineage** and
+  catalog snapshot from each shard in the org's **catalog lineage** and
   fanning out.
 - **Catalog lineage is not placement.** Indexes stay where they were
   written even after every session of the org has moved away. The
-  registry records, once per org and cell, that the cell holds index
+  registry records, once per org and shard, that the shard holds index
   entries for the org (a rare write), and queries use that list, not
-  current session placement. Draining a cell hands its catalog entries to
-  another cell before retirement, and deletion tombstones apply to every
+  current session placement. Draining a shard hands its catalog entries to
+  another shard before retirement, and deletion tombstones apply to every
   historical segment and to cached query plans. Test: index on A, move all
   the org's sessions to B, retire A, then query and delete through B.
   This must hold before search or analytics are enabled for v2 orgs.
 - **Freshness:** results report how far the index lags; the unindexed tail
-  can be merged from cell memory when a query needs it.
+  can be merged from shard memory when a query needs it.
 
 Today, by comparison: config, secrets, session files metadata, Memories and
 traces all live in RDS (file bytes already in S3), and the egress proxy is
@@ -517,25 +517,25 @@ one shared service with its own limits store.
 ![S3 layout](diagram-s3.svg)
 
 One bucket per data plane and region, `s3://everruns-dp2-{env}-{region}/`.
-S3 holds bytes; the cell holds the truth about which bytes matter.
+S3 holds bytes; the shard holds the truth about which bytes matter.
 
 **Keys** (org first, so export, deletion and per-org encryption context
 work by prefix, and random org ids spread load across S3 partitions):
 
 | Key | What | Written by | Read by |
 | --- | --- | --- | --- |
-| `orgs/{org}/sessions/{session}/log/{from}-{to}.seg` | Session history: one object per flush, with events, messages and prompts sections and a footer index. Compaction writes larger replacement segments (funout's tiered compaction, messages-only companions) | Cell leader (segment writer) | Executors (range read of the messages section from the newest checkpoint), gateway (history pages, trace view, full prompts) |
+| `orgs/{org}/sessions/{session}/log/{from}-{to}.seg` | Session history: one object per flush, with events, messages and prompts sections and a footer index. Compaction writes larger replacement segments (funout's tiered compaction, messages-only companions) | Shard leader (segment writer) | Executors (range read of the messages section from the newest checkpoint), gateway (history pages, trace view, full prompts) |
 | `orgs/{org}/blobs/{sha256}` | File, attachment, image and memory bytes, content-addressed, so fork and copy share them | Executors, gateway uploads | Executors (local cache), gateway downloads |
-| `orgs/{org}/index/parquet/{cell}/{date}/{seq}.parquet`, `orgs/{org}/index/tantivy/{cell}/{segment}/` | Trace and session search indexes | Cell leader (exporter) | Query service |
-| `orgs/{org}/exports/{export}.tar.zst` | Org export, used to move an org between data planes or for a download | Control plane admin job | Control plane, importing cell |
-| `cells/{cell}/snapshots/{raft_index}.snap` | Raft snapshots, last three kept | Cell leader | Replicas that fall far behind, recovery |
+| `orgs/{org}/index/parquet/{shard}/{date}/{seq}.parquet`, `orgs/{org}/index/tantivy/{shard}/{segment}/` | Trace and session search indexes | Shard leader (exporter) | Query service |
+| `orgs/{org}/exports/{export}.tar.zst` | Org export, used to move an org between data planes or for a download | Control plane admin job | Control plane, importing shard |
+| `shards/{shard}/snapshots/{raft_index}.snap` | Raft snapshots, last three kept | Shard leader | Replicas that fall far behind, recovery |
 
 **Rules**
 
 - **Write once.** Every PUT is conditional (`If-None-Match: *`); a retry
   finds the same key. Nothing is overwritten, so readers never see a torn or
   changed object and caches never go stale.
-- **Cell state is the index.** Which segments cover a session, which blobs a
+- **Shard state is the index.** Which segments cover a session, which blobs a
   manifest points to, which index files are published: all Raft state. S3 is
   never listed on a hot path. An object without a committed reference is
   invisible and is cleaned up by the sweeper.
@@ -545,16 +545,16 @@ work by prefix, and random org ids spread load across S3 partitions):
   deleted only after no supported restore point refers to them (see
   "Disaster recovery"), since they are copies. History older than
   30 days moves to Intelligent-Tiering.
-- **Soft delete.** Deleting a session or org writes a tombstone in cell
+- **Soft delete.** Deleting a session or org writes a tombstone in shard
   state; reads and counts respect it at once. Original bytes are removed only
   by an explicit org deletion job, never by retention, matching the rule that
   records are never purged.
 - **No blob garbage collection.** Blobs are shared across the org's
-  sessions while reference counts would live in separate cells, so local
+  sessions while reference counts would live in separate shards, so local
   absence of references proves nothing. Blobs are removed only by the
   explicit org deletion job, which matches the data rule that records are
   never purged. If storage cost ever needs it, a global mark-and-sweep over
-  every cell and restore point is a separate design.
+  every shard and restore point is a separate design.
 
 **Cost and load, estimated.** At 1 250 turns/s with one flush per turn, about
 1 250 segment PUTs/s plus blob PUTs from file writes. S3 handles 3 500 PUTs/s
@@ -578,20 +578,20 @@ v2 starts small and grows; a feature missing in v2 is hidden for v2 orgs.
 
 ## Scale estimate for 75 000 agents
 
-From funout `0a0c0ec` on one 4-vCPU VM (three replicas of one cell),
+From funout `0a0c0ec` on one 4-vCPU VM (three replicas of one shard),
 under Engine hosting, with simulated chat agents: about **115 turns/s per
-cell, flat** over 40 sessions × 5 000 turns (p50 100 to 130 ms, 390 to
+shard, flat** over 40 sessions × 5 000 turns (p50 100 to 130 ms, 390 to
 470 MB RSS per node). The pre-Engine driver did 131/s (and 75 000
-sessions on 2 cells at 251 turns/s), so Engine hosting is about 12% and
+sessions on 2 shards at 251 turns/s), so Engine hosting is about 12% and
 40 ms p50 behind. Not yet measured under Engine: the 75k-session run, CPU
 per turn, and memory for Engine's per-session handle.
 
 If each of 75 000 agents takes a turn a minute, that is ~1 250 turns/s.
-At 115 turns/s that is 11 cells **at saturation** (98% utilization, no
+At 115 turns/s that is 11 shards **at saturation** (98% utilization, no
 room for a lost node, platform work or backlog), so it is a lower bound,
-not the estimate: with headroom for one cell's worth of failure and 70%
-target utilization, plan on about 16 cells (48 state pods) until step 0
-measures cells on separate machines per replica. Executors are sized by
+not the estimate: with headroom for one shard's worth of failure and 70%
+target utilization, plan on about 16 shards (48 state pods) until step 0
+measures shards on separate machines per replica. Executors are sized by
 concurrent turns (at ~2 MiB per running turn, 7 500 running turns need
 ~15 GB across the pool). Platform turns cost more CPU than funout's sim
 agent; the stress bench (plan steps 0 and 6) measures the real numbers.
@@ -605,7 +605,7 @@ assumptions:
 | Average turn takes ~6 s | ~7 500 running turns, ~15 GB of executor memory |
 | Average turn takes 30 s | ~37 500 running turns, ~73 GB of executor memory |
 | One history PUT per turn | ~108 million PUTs a day before blobs, indexes, replication and compaction |
-| Workspace deltas near the 64 KiB cap | ~4.9 GB of cell state, ~14.7 GB across three replicas |
+| Workspace deltas near the 64 KiB cap | ~4.9 GB of shard state, ~14.7 GB across three replicas |
 | Commit latency from one VM | Says nothing about three-zone network and EBS latency |
 
 The 115 turns/s result relies on funout's background-append pipeline,
@@ -624,15 +624,15 @@ crates/agentd/          everruns-agentd: Raft state machine, WAL, S3 store, dire
                         moves, rebalancer, gateway (/v1), node binary
   benches/  tests/  scripts/   (fleet, chaos, soak, scale, many_sessions,
                                 big_context, prove_*, ported from funout)
-crates/cell-executor/   executor binary: Engine + platform host (agent hydration,
+crates/shard-executor/   executor binary: Engine + platform host (agent hydration,
                         environment factory, usage), no turn logic of its own
 crates/agentd-testkit/  unpublished: sim executor, load and check tool
 crates/server           data_plane module: org setting, agent resolution + config outbox,
                         tokens, allowances, feed ingest
 ```
 
-`cell-executor` is separate because it links the platform runtime (heavy),
-while the cell nodes stay small. Deleting v2 later means removing three
+`shard-executor` is separate because it links the platform runtime (heavy),
+while the shard nodes stay small. Deleting v2 later means removing three
 crates and one server module; deleting v1 means removing workers and the
 server's session domains.
 
@@ -645,12 +645,12 @@ Testing is a deliverable of every phase, not a later phase. funout's habit stays
 | Real thing | Simulator |
 | --- | --- |
 | Model providers | llmsim with the prod mix (Luna, Sol, Muse, long tool calls), controllable latency, errors and stream cuts |
-| Executor (cells-alone level) | Sim executor: Engine-shaped activations without platform code |
+| Executor (shards-alone level) | Sim executor: Engine-shaped activations without platform code |
 | S3 | In-process object store, or local SeaweedFS for conditional PUTs and range reads; fault mode (slow, 5xx, throttling) |
 | KMS | Local key service with the same wrap/unwrap API |
 | Control plane | Fake that serves `/dp/v1` (config changes, allowances, feed sink, JWKS) from files, with a "down" switch |
 | Disk | fsync delay shim (`LD_PRELOAD`, as in the stress bench) to model EBS latency |
-| Network | Fault layer in the cell transport: drop, delay, partition one node or a whole zone |
+| Network | Fault layer in the shard transport: drop, delay, partition one node or a whole zone |
 | Sandboxes, MCP, web | Test tools with known side effects, so "ran exactly once" is checkable |
 
 ### Invariants checked after every run
@@ -660,24 +660,24 @@ Testing is a deliverable of every phase, not a later phase. funout's habit stays
 - Each logical tool operation (by its operation id and idempotency key) had at most one external effect, also across moves, restores and lost acknowledgements.
 - Every provider call attempt was recorded before dispatch and has exactly one settlement or an explicit unresolved state; no usage is lost when input arrives mid-step.
 - No listener, stream or feed saw an event that was not committed.
-- No placement generation ever went backwards in a cell or in the directory.
+- No placement generation ever went backwards in a shard or in the directory.
 - Feed records and grant settlements reached the control plane exactly once by id, and authorized spend never passed the balance.
 - No committed file write was lost, and forks are independent.
-- Every session is in exactly one cell, and the directory agrees.
+- Every session is in exactly one shard, and the directory agrees.
 - After an upgrade, no session was suspended for build or protocol reasons.
 
 ### Levels
 
-1. **Cells alone, sim executor.** Fleet, chaos (`kill -9` of leaders and followers), partitions, soak, scale (75 000 sessions on one machine, as funout proved), large messages, long sessions (200 000 turns), moves, rebalance, scale in and out, blue/green drain.
-2. **Cells + real executor** (Engine plus platform host), with llmsim, the fake control plane and file-based agent definitions. The same chaos and invariants, plus Everruns' hosting conformance suite against a 3-node cell.
-3. **Full v2 locally.** Real control plane, edge router, cells, executors and UI via `start-all` with a v2 data plane. Covers e2e tests through the UI and API, CP-down (sessions keep running, turns wait once allowances run out), config changes during turns, and token expiry.
-4. **Upgrade tests.** A mixed-release fleet built from the previous release tag: rolling executor deploy mid-turn, rolling cell restart, blue/green cell drain, and replay of stored journals from every supported protocol major. Pass means zero suspended sessions and all invariants green.
+1. **Shards alone, sim executor.** Fleet, chaos (`kill -9` of leaders and followers), partitions, soak, scale (75 000 sessions on one machine, as funout proved), large messages, long sessions (200 000 turns), moves, rebalance, scale in and out, blue/green drain.
+2. **Shards + real executor** (Engine plus platform host), with llmsim, the fake control plane and file-based agent definitions. The same chaos and invariants, plus Everruns' hosting conformance suite against a 3-node shard.
+3. **Full v2 locally.** Real control plane, edge router, shards, executors and UI via `start-all` with a v2 data plane. Covers e2e tests through the UI and API, CP-down (sessions keep running, turns wait once allowances run out), config changes during turns, and token expiry.
+4. **Upgrade tests.** A mixed-release fleet built from the previous release tag: rolling executor deploy mid-turn, rolling shard restart, blue/green shard drain, and replay of stored journals from every supported protocol major. Pass means zero suspended sessions and all invariants green.
 
 ### Stress bench with budgets
 
 `just stress-v2` extends today's `scripts/stress`:
 - It runs levels 1 and 2 at fixed loads (100, 1 000, 10 000 and 75 000 agents) and a sweep runner for tuning knobs (batch size, writes in flight, executor slots, segment size).
-- It reports cost per turn against a written budget, like the 8k budgets: CPU per turn (cell, executor), fsyncs and WAL bytes per turn, S3 PUTs and GETs per turn, memory per idle and per active session, Raft commit latency, and platform overhead per model call (p50 and p99).
+- It reports cost per turn against a written budget, like the 8k budgets: CPU per turn (shard, executor), fsyncs and WAL bytes per turn, S3 PUTs and GETs per turn, memory per idle and per active session, Raft commit latency, and platform overhead per model call (p50 and p99).
 - Each budget has a "fits 75k" line. A change that regresses a budget fails the bench, the same gate the 8k program used.
 - The **long-session gate** is part of it: 200 000 turns, with throughput and per-turn latency flat as sessions grow. This closes the Engine hosting regression first.
 
@@ -685,7 +685,7 @@ Testing is a deliverable of every phase, not a later phase. funout's habit stays
 
 | When | What |
 | --- | --- |
-| Every PR touching `crates/agentd*`, hosting or the executor | Unit and state-machine property tests, hosting conformance on a cell, a 2-minute chaos run with invariants, protocol contract tests (`/dp/v1` schemas, unknown-field tolerance) |
+| Every PR touching `crates/agentd*`, hosting or the executor | Unit and state-machine property tests, hosting conformance on a shard, a 2-minute chaos run with invariants, protocol contract tests (`/dp/v1` schemas, unknown-field tolerance) |
 | Nightly | Soak (1 h chaos), 75k scale, long-session gate, upgrade tests against the last release, stress bench with budgets; results posted with a trend |
 | Weekly | Large-org and many-small-org placement runs, zone loss |
 | Before each prod ramp step | The same stress profile against EKS with llmsim; prod is only the final check, never the discovery tool |
@@ -694,7 +694,7 @@ There are no `#[ignore]` tests: what can't run on every PR runs nightly or weekl
 
 ### Formal models and deterministic simulation
 
-Running many cells finds the bugs that are common. The dangerous ones sit at a few known interleavings: a leader change in the middle of a group commit, an epoch expiring while its holder's write is in flight, a move racing a hand-off, a snapshot installed during segment compaction. Three tools target those directly. funout has none of them today.
+Running many shards finds the bugs that are common. The dangerous ones sit at a few known interleavings: a leader change in the middle of a group commit, an epoch expiring while its holder's write is in flight, a move racing a hand-off, a snapshot installed during segment compaction. Three tools target those directly. funout has none of them today.
 
 1. **Formal models of our protocols (TLA+, checked with TLC or Apalache).** Raft itself is openraft's, so the models cover what we build on top of it:
    - epochs and fencing;
@@ -704,16 +704,16 @@ Running many cells finds the bugs that are common. The dangerous ones sit at a f
    - spend allowances;
    - the config change stream.
 
-   The safety properties are the same invariants as above: one writer per session, never two owners during a move, no lost commit, a bounded overspend. Small models (3 nodes, 2 cells, 3 sessions) explore every interleaving and find the protocol bugs before code exists. Each model is written in the same phase as the protocol it covers.
-2. **Deterministic simulation of the real cell code** (FoundationDB style; madsim or turmoil):
-   - The cell runs under a seeded scheduler with simulated network, disk (fsync latency, torn tail writes, full disk) and clock.
+   The safety properties are the same invariants as above: one writer per session, never two owners during a move, no lost commit, a bounded overspend. Small models (3 nodes, 2 shards, 3 sessions) explore every interleaving and find the protocol bugs before code exists. Each model is written in the same phase as the protocol it covers.
+2. **Deterministic simulation of the real shard code** (FoundationDB style; madsim or turmoil):
+   - The shard runs under a seeded scheduler with simulated network, disk (fsync latency, torn tail writes, full disk) and clock.
    - Load is logical rather than wall-clock, so a seed runs millions of commands (heavy multi-session load, long sessions, oversized entries split into pieces) in seconds of CPU.
    - Code marks **points of interest** with `buggify!` hooks: before and after fsync, between Raft apply and segment flush, mid-move, at epoch expiry, around the snapshot install. The simulator fires faults and reorderings preferentially at those points.
    - A failing seed replays exactly, and becomes a regression test.
    - The point list is derived from the models: every model action that interleaves with another becomes a hook.
 3. **Trace checking.** Simulation runs emit protocol events that are checked against the TLA+ model's transitions, so the code can't quietly drift from the spec.
 
-**Finding where load hurts:** a simple queueing model of the leader (group-commit batch size, writes in flight, apply cost, flush cost) predicts saturation points: batch-size cliffs, the 64 KiB entry cap, queue growth on long sessions. The simulator and the stress bench then aim straight at those points, instead of searching blindly with more cells.
+**Finding where load hurts:** a simple queueing model of the leader (group-commit batch size, writes in flight, apply cost, flush cost) predicts saturation points: batch-size cliffs, the 64 KiB entry cap, queue growth on long sessions. The simulator and the stress bench then aim straight at those points, instead of searching blindly with more shards.
 
 **CI:**
 - Every PR: model checks and about 10 000 simulation seeds.
@@ -729,19 +729,19 @@ small stated loss window from anything worse, and a point-in-time restore.
 | Failure | What happens | Data lost |
 | --- | --- | --- |
 | One node or one zone | Raft elects a new leader on the surviving quorum; the replaced node catches up from a snapshot and the log | None |
-| A cell loses quorum (two zones, correlated disks) | The cell is rebuilt from its last snapshot plus the shipped log in S3, on new nodes, as a new incarnation | Entries not yet shipped: target under 2 s, enforced by backpressure; never a started side effect |
+| A shard loses quorum (two zones, correlated disks) | The shard is rebuilt from its last snapshot plus the shipped log in S3, on new nodes, as a new incarnation | Entries not yet shipped: target under 2 s, enforced by backpressure; never a started side effect |
 | Registry shard loses quorum | Same rebuild. Session creates and every move step ship before they are answered, so no directory entry falls in the window | Same window; no directory entry |
 | S3 bucket damage or a bad delete | Object versioning; deletes are tombstones first (data rule: nothing is purged by accident) | None |
 | Region loss | Restore in a second region from the replicated bucket and multi-region KMS keys | Replication lag: S3 Replication Time Control commits to 99.99% of objects within 15 minutes, so the regional target is 15 minutes, not seconds |
-| Bad release corrupts state | Point-in-time restore of the affected cell, or of one org's sessions, to before the release | Turns after the chosen point |
+| Bad release corrupts state | Point-in-time restore of the affected shard, or of one org's sessions, to before the release | Turns after the chosen point |
 
 How:
 
-- **Log shipping.** Each cell leader writes its committed Raft batches to
+- **Log shipping.** Each shard leader writes its committed Raft batches to
   S3 continuously (an object per second or per few MB, whichever comes
   first). This is the same data the segments already hold, just shipped
   sooner, so the loss window on quorum loss is the shipping interval, not
-  the segment interval. If shipping falls more than 5 s behind, the cell
+  the segment interval. If shipping falls more than 5 s behind, the shard
   stops admitting new turns until it catches up, so the 2 s target is a
   bound and not a hope.
 - **Ship before an external effect.** A lost log tail must not turn into a
@@ -753,14 +753,14 @@ How:
   is the same as before. Operations whose outcome was lost are reported
   to the agent as "outcome unknown", as on a crash today; they are not
   rerun automatically.
-- **Incarnations.** A rebuilt cell gets a new incarnation number. Feed
+- **Incarnations.** A rebuilt shard gets a new incarnation number. Feed
   record ids, executor epochs and moves carry it, so nothing from the lost
   incarnation (a late feed batch, a stale executor, an old move message)
   is accepted after the rebuild.
-- **Snapshots.** Cells and registry shards snapshot to S3 on a schedule
+- **Snapshots.** Shards and registry shards snapshot to S3 on a schedule
   (and before every blue/green drain). Restore = latest snapshot before the
   target time + shipped log up to it.
-- **Point-in-time restore**, for a whole cell or scoped to one org (each
+- **Point-in-time restore**, for a whole shard or scoped to one org (each
   of the org's sessions taken back in place, on a new history branch; see
   "Step 9 progress").
 - **Retention follows restore points.** A restore point (snapshot plus
@@ -789,19 +789,19 @@ How:
 - **Restoring one org** also restores its shared volumes, schedules and
   connection tokens to the same point, and closes its grants: allowances
   are reissued from the control plane ledger, never from the restored
-  cell.
-- **Drills.** The weekly tier kills a cell's quorum in the bench and
+  shard.
+- **Drills.** The weekly tier kills a shard's quorum in the bench and
   restores it, checking the stated loss window and the invariants. A
   quarterly drill restores a copy of production into a second region.
 - **Bench budget:** log-shipping lag p99 under 2 s at 75k agents, and
-  rebuild of a full cell under 10 minutes.
+  rebuild of a full shard under 10 minutes.
 
 ## Deployment and rollout
 
 - Data plane v2 is a new deployment: its own namespace (or cluster) with
-  cell StatefulSets (PVCs, zone spread), one shared executor Deployment with KEDA, and
+  shard StatefulSets (PVCs, zone spread), one shared executor Deployment with KEDA, and
   an S3 bucket. The control plane stays the existing one.
-- Cells are static at first (`cells: N` in Helm); a new cell registers
+- Shards are static at first (`shards: N` in Helm); a new shard registers
   itself and takes new sessions. No operator until manual scaling hurts.
 - Orgs opt in with the org setting: the Load Testing org first, then
   Alice's. New orgs can default to v2 once stage 1 is solid.
@@ -811,7 +811,7 @@ How:
 ## Implementation plan
 
 One ordered plan that includes the platform-on-Engine work
-([platform-on-engine.md](platform-on-engine.md)), because the cells need it
+([platform-on-engine.md](platform-on-engine.md)), because the shards need it
 before they can run platform features. The rule for every step: **build
 enough to run it, run it under the bench, and only move on when the step's
 gate holds.** A gate is a number in `just stress-v2` (or the v1 `just
@@ -824,17 +824,17 @@ stress` bench) checked in CI, so a later step can't silently undo it.
 | 2 | **Trusted host extensions** (composition, authorities, stores, resolvers). | Per-model-call overhead at 100 agents unchanged versus step 0 | 1 |
 | 3 | **Agent definitions as data.** One definition format, built by the control plane, hydrated and cached by the Engine. | Hydration cost per activation (cold and warm) within budget | 1 |
 | 4 | **Workers on the Engine** (PostgreSQL `SessionHosting`, still actors). Platform e2e and hosting conformance against PostgreSQL. `WorkerRuntimeHost` removed. It inherits step 1's batched commits, which on PostgreSQL is the difference between passing and failing the 8k budgets. | The 8k budgets of today's bench not regressed | 1, 2, 3 |
-| 5 | **`crates/agentd` + `crates/agentd-testkit`.** Port funout `0a0c0ec` with Engine hosting, adding placement generations; registry, session placement, moves, spend allowances, log shipping. TLA+ models and the deterministic simulation harness. | Cells alone: 75k simulated agents, long session flat, chaos invariants, DST seeds clean | 1 (can start in parallel with 2 to 4) |
-| 6 | **One thin, complete cell deployment.** Three state nodes, separate executors on credits, real Engine, a minimal agent definition, admission, cancel, recovery, streaming, a minimal durable workspace, and the CP protocol exercised early. Then the failure qualification: repeated moves with delayed old messages, lost acknowledgements, CP rollback, delayed feed, expired grants, stale executors, restore after an external effect. Stage-1 features come after this passes. | Level 2 and the failure suite green; overhead per turn and per-cell leader CPU within budget | 2, 3, 5 |
+| 5 | **`crates/agentd` + `crates/agentd-testkit`.** Port funout `0a0c0ec` with Engine hosting, adding placement generations; registry, session placement, moves, spend allowances, log shipping. TLA+ models and the deterministic simulation harness. | Shards alone: 75k simulated agents, long session flat, chaos invariants, DST seeds clean | 1 (can start in parallel with 2 to 4) |
+| 6 | **One thin, complete shard deployment.** Three state nodes, separate executors on credits, real Engine, a minimal agent definition, admission, cancel, recovery, streaming, a minimal durable workspace, and the CP protocol exercised early. Then the failure qualification: repeated moves with delayed old messages, lost acknowledgements, CP rollback, delayed feed, expired grants, stale executors, restore after an external effect. Stage-1 features come after this passes. | Level 2 and the failure suite green; overhead per turn and per-shard leader CPU within budget | 2, 3, 5 |
 | 7 | **Control-plane contract** ([cp-dp-protocol.md](cp-dp-protocol.md)): outbox, org tokens, allowances, feed, v1 as the trivial implementation. | Config propagation p99 under 1 s; feed lag within budget; allowances never overspend in chaos | 5 |
 | 8 | **Gateway, edge router, live streaming, local full v2** (`start-all` with a v2 data plane, real UI end to end). | Level 3: the whole stack locally, SSE first-delta latency and edge hop within budget | 6, 7 |
-| 9 | **Disaster recovery:** log shipping, snapshots, point-in-time restore, restore drill in the weekly tier. | Loss window under 2 s; cell rebuild under 10 min | 5 |
-| 10 | **Prove on EKS + operations.** Load Testing org, ramp to 75k agents with the llmsim mix and production-shaped conditions: cross-zone latency, realistic turn durations (including 30 s averages), cold caches, long histories, heavy streaming, S3 throttling, loss of a node and of a fraction of executors. Cell inspector CLI ("where is session X and what is it doing"), per-cell SLO dashboards, runbooks for leader loss, a stuck move and a drain. | 75k agents at the stated cost per agent and turn overhead, with spare capacity and recovery backlog measured, not just peak | 8, 9 |
+| 9 | **Disaster recovery:** log shipping, snapshots, point-in-time restore, restore drill in the weekly tier. | Loss window under 2 s; shard rebuild under 10 min | 5 |
+| 10 | **Prove on EKS + operations.** Load Testing org, ramp to 75k agents with the llmsim mix and production-shaped conditions: cross-zone latency, realistic turn durations (including 30 s averages), cold caches, long histories, heavy streaming, S3 throttling, loss of a node and of a fraction of executors. Shard inspector CLI ("where is session X and what is it doing"), per-shard SLO dashboards, runbooks for leader loss, a stuck move and a drain. | 75k agents at the stated cost per agent and turn overhead, with spare capacity and recovery backlog measured, not just peak | 8, 9 |
 | 11 | **Stages 2 and 3 features, then the v1 → v2 org move** (session import format, cutover of in-flight turns). Before the first production v2 org: bucket protection (versioning, object lock, replication, multi-region KMS) and a cross-region restore drill, moved here from step 10. | Each feature lands with its own bench line | 10 |
 
 ### Step 0 measurements (2026-11-09)
 
-- **funout `0a0c0ec`**, one 3-node cell on a 4-core container, 40 chat
+- **funout `0a0c0ec`**, one 3-node shard on a 4-core container, 40 chat
   sessions x 5 000 turns, 0.2 s think: 120 turns/s, p50 per turn flat
   across the run (91 to 113 ms per tenth; one tenth at 171 ms overlapped a
   local compile), about 400 MB resident per node.
@@ -901,7 +901,7 @@ the in-memory authority ran out of memory. What it took:
   74 turns/s became 666 on 4 x 1 000.
 - No per-turn read scans the session: receipts are scanned by key range,
   and a typed read examines a bounded run of other events per page.
-- The bench authority keeps `llm.generation` without its prompt, as a cell
+- The bench authority keeps `llm.generation` without its prompt, as a shard
   keeps prompts in S3 (`--keep-prompts` keeps them): 230 KB retained per
   turn became 33 KB. No turn reads a prompt back.
 
@@ -951,7 +951,7 @@ resume: 1.3 KB per idle session, gated at 2 KB. Never dropped: a session
 with an open handle, a volatile session, and live controls held by a turn
 or carrying live MCP edits. Most of what is left is the default in-memory
 workspace's per-session Environment. The in-memory authority holds 37 KB
-per session; a cell keeps that on disk and in S3, not in the executor.
+per session; a shard keeps that on disk and in S3, not in the executor.
 
 ### Step 2 measurements (2026-11-09)
 
@@ -982,7 +982,7 @@ hosted turn before any model call
 agent key, a revision, and the portable agent package as JSON, the format
 `AgentPackage` already reads and writes. The authority keeps every
 revision (`AgentDefinitions::publish_definition`, memory and SQLite
-authorities; a cell keeps them in S3 and its registry). Publishing makes a
+authorities; a shard keeps them in S3 and its registry). Publishing makes a
 revision the agent's current one; a revision is immutable, and different
 content under a published revision fails. A session bound to a defined
 agent moves to the current revision in the claim that starts its next
@@ -1015,9 +1015,9 @@ authority.
 
 Steps 4 and 5 to 9 run in parallel once 2 and 3 land. Step 4 is gated on
 its own and v2's first proof does not wait for it: both paths already share
-the turn driver, so cells need the host bundle (step 2), not a finished
+the turn driver, so shards need the host bundle (step 2), not a finished
 worker replacement. Step 4 is still worth doing: it puts today's production
-on the same execution path as cells and as Framework apps, and the 8k bench
+on the same execution path as shards and as Framework apps, and the 8k bench
 guards it.
 
 Sandbox file sync (`everruns-fs`) and anything beyond conservative
@@ -1025,7 +1025,7 @@ retention stay out of the first proof; the workspace starts with the
 executor path only.
 
 If step 1's gate can't be met, the plan stops there and we decide between
-fixing the Engine further or keeping funout's own turn driver inside cells
+fixing the Engine further or keeping funout's own turn driver inside shards
 (losing the shared-code benefit). That decision is made on measured
 numbers, not before.
 
@@ -1071,15 +1071,15 @@ and live deltas never left the worker (chat showed no typing).
 ### Step 5 progress (2026-11-10)
 
 funout `0a0c0ec` is ported into `crates/agentd` and `crates/agentd-testkit`
-against today's Engine: the cell is an `AgentDefinitions` and
+against today's Engine: the shard is an `AgentDefinitions` and
 `SessionHosting` profile, definitions travel with their sessions, and the
-fleet scripts (`scripts/cell/`) and a real-model example
-(`examples/cell-assistant`) came along. The storage proof came first, as
+fleet scripts (`scripts/agentd/`) and a real-model example
+(`examples/agentd-assistant`) came along. The storage proof came first, as
 the storage decision below requires. What it checks and what it found:
 
-- **Kill run** (`scripts/cell/chaos.py --cells 2 --sessions 300 --moves
+- **Kill run** (`scripts/agentd/chaos.py --shards 2 --sessions 300 --moves
   100`): `kill -9` of nodes, leaders included, while sessions run 3 to 5
-  tool turns and move live between cells; then every session's log is
+  tool turns and move live between shards; then every session's log is
   checked. The first run failed 6 of 300 sessions: three node kills inside
   one turn tripped the Engine's poison guard, which counted holder deaths
   even when every lease moved the turn on. The guard now counts deaths
@@ -1095,7 +1095,7 @@ the storage decision below requires. What it checks and what it found:
   finishes it. A tear before the active segment now refuses to open rather
   than hand Raft a log with a hole. The log and the state machine also pass
   openraft's own storage suite.
-- **Cell simulation** (`crates/agentd/tests/raft_simulation.rs`): three real
+- **Shard simulation** (`crates/agentd/tests/raft_simulation.rs`): three real
   nodes (log, state machine, openraft) over an in-memory network that
   drops, delays and partitions messages, with nodes killed and restarted
   from disk and snapshots every 40 entries. 12 seeds per run, about 400
@@ -1109,7 +1109,7 @@ the storage decision below requires. What it checks and what it found:
   `state_moves_tests.rs`): moves now follow the `Moves` model. A session's
   copy carries a generation that only grows; an imported copy is prepared
   and runs nothing until the directory commits its generation over the
-  previous one (a compare-and-swap that is the ownership transfer); a cell
+  previous one (a compare-and-swap that is the ownership transfer); a shard
   keeps a tombstone of the last generation that left it, so a late import
   can't revive a stale copy; a forward drops only the copy it took the
   image from; an abandoned move takes the session back two generations up,
@@ -1119,29 +1119,29 @@ the storage decision below requires. What it checks and what it found:
   entries to the object store every second, a new leader resumes after
   the highest shipped index, and new sessions and input wait (callers see
   a frozen session and retry) while shipping is more than 5 s behind.
-  Restore rebuilds a cell from the newest archived snapshot plus the
+  Restore rebuilds a shard from the newest archived snapshot plus the
   shipped log after it, and refuses a log with a hole. Only the leader
   copies its snapshots to the store (its current one as it starts
   leading, so a log gap its snapshot purged is covered), one upload at a
   time with only the newest waiting: in EKS run 43827766384 every
   replica's copy went out, the upload used up the NAT's burst, and S3
-  timeouts stopped shipping in every cell at once.
-  The cell simulation
+  timeouts stopped shipping in every shard at once.
+  The shard simulation
   now ships while the faults run, then loses every node at once and
   restores from the store: on all 12 seeds every acknowledged write the
   shipper had reached is in the rebuilt state. Still to come with plan
-  step 9: incarnations for a rebuilt cell, shipping before an at-most-once
+  step 9: incarnations for a rebuilt shard, shipping before an at-most-once
   tool runs, and retention tied to restore points.
 - **Epochs and fencing model** (`Epochs` in [models.md](models.md)): the
-  cell authority's claim, append, progress and release rules, with
+  shard authority's claim, append, progress and release rules, with
   executors restarting under the same name, late and duplicated messages,
   and a proposer clock that can move back. It holds the journal to one
   writer and the poison guard to "seal after exactly K deaths without
   progress". Three bug configurations keep failing: fencing by holder name,
   the guard before the fix, and progress reports accepted from any epoch.
 - **Spend allowances** (`crates/agentd/src/allowance.rs`, the `Grants`
-  model): grants per tenant live in replicated cell state, so every
-  replica and a new leader agree on what was spent. The cell plugs into
+  model): grants per tenant live in replicated shard state, so every
+  replica and a new leader agree on what was spent. The shard plugs into
   the budget gate Engine already has (the host's budget authority), with
   no platform ids in the agent model: before each provider call it
   reserves the grant's per-call maximum, a call that doesn't fit never
@@ -1149,19 +1149,19 @@ the storage decision below requires. What it checks and what it found:
   event settles the reservation at its real cost (anything above counts
   as an overrun). A reservation left open by an executor that died counts
   as spent at its maximum when the next epoch claims the session. Grants
-  come in through the cell API for now (`/cell/tenants/{tenant}/grants`);
+  come in through the shard API for now (`/shard/tenants/{tenant}/grants`);
   the control plane endpoint and a per-model maximum (price times prompt
-  and `max_tokens`) are plan step 7. An end-to-end test runs a real cell
+  and `max_tokens`) are plan step 7. An end-to-end test runs a real shard
   node: a tenant that can't cover one call gets no model call, one that
   can runs the whole turn, and the ledger closes every reservation. Three
   holes are closed: a session that moves out closes its leaving copy's
-  open reservation at its maximum; a metered session in a cell with no
+  open reservation at its maximum; a metered session in a shard with no
   grant for its tenant is exhausted, not unmetered; and a budget check the
-  cell can't answer (after retrying through a leader change for about
+  shard can't answer (after retrying through a leader change for about
   5 s) stops the call, because Engine's gate lets a call run when the
   check errors.
 - **Protocol simulation** (`crates/agentd/tests/protocol_simulation.rs`):
-  three cells and a directory as real `CellState`s, with executors,
+  three shards and a directory as real `ShardState`s, with executors,
   clients, a rebalancer and move drivers that run the node's own move
   rules (now pure functions in `crates/agentd/src/moves.rs`). One network
   delays, reorders, duplicates and drops every command and reply;
@@ -1170,7 +1170,7 @@ the storage decision below requires. What it checks and what it found:
   of 40 seeds runs twice and must end the same. It checks the models'
   invariants at every step (one live copy, the one the directory names;
   writes only from growing epochs; reservations only for sessions the
-  cell holds, never over the grant) and, after the faults stop, that every
+  shard holds, never over the grant) and, after the faults stop, that every
   acknowledged write survived. About 3 300 moves per run. It found three
   move bugs the kill runs had missed, each fixed with a rule in
   `state.rs` and a failing check when the rule is taken out: a late freeze
@@ -1181,10 +1181,10 @@ the storage decision below requires. What it checks and what it found:
   be lost. A move now ends the epoch through the log (`Revoke`) before it
   copies the session, never retargets, and thaws only the freeze it names.
 
-- **Follower catch-up** (`scripts/cell/prove_follower_catchup.py`): the
-  first 75 000-session run (2 cells, 3 nodes each, one 15 GB machine)
+- **Follower catch-up** (`scripts/agentd/prove_follower_catchup.py`): the
+  first 75 000-session run (2 shards, 3 nodes each, one 15 GB machine)
   created every session in about 20 s and ran about 210 turns/s, until
-  the machine ran out of memory and killed one cell's leader. That cell
+  the machine ran out of memory and killed one shard's leader. That shard
   never committed again: its other follower was behind the purged log,
   so it could only catch up by snapshot (about 150 MB), each chunk sent
   as JSON took longer than the 0.4 to 0.8 s election timeout, and the
@@ -1192,8 +1192,8 @@ the storage decision below requires. What it checks and what it found:
   2 900 terms in 1.5 hours). Snapshot chunks now travel as raw bytes in
   16 MiB pieces and elections wait 1 to 2 s. The script makes the case on
   purpose: it pauses one follower until the leader's log has moved past
-  it, resumes it, and kills the other follower; the cell must catch up
-  and complete a turn. With 42 000 sessions in the cell (what each cell
+  it, resumes it, and kills the other follower; the shard must catch up
+  and complete a turn. With 42 000 sessions in the shard (what each shard
   held in the 75 000 run) the old transport never elected a leader in
   180 s; the new one caught up in 9.9 s and completed a turn at 10 s.
   With 20 000 sessions both pass (9.5 s old, 7.4 s new), so the test runs
@@ -1201,8 +1201,8 @@ the storage decision below requires. What it checks and what it found:
   Writing it found one more: a gateway try could outlast the whole call,
   so a member that accepts connections but never answers blocked every
   request. Each try now gets at most 10 s of a 45 s call.
-- **75 000 sessions** (`scripts/cell/many_sessions.py --concurrency
-  1000`; 2 cells of 3 nodes, all six on one machine with 14 GB for
+- **75 000 sessions** (`scripts/agentd/many_sessions.py --concurrency
+  1000`; 2 shards of 3 nodes, all six on one machine with 14 GB for
   everything, a simulated model with 50 ms per step): 75 000 sessions of
   the tool-calling `worker` agent, 2 turns each, 150 000 turns in 16
   minutes at 240 turns/s, 0 errors. Turn p50 4.0 s and p99 11.2 s with
@@ -1212,9 +1212,9 @@ the storage decision below requires. What it checks and what it found:
   135 steps ran again, each under its own durable start). Node memory:
   median 1.1 GB, p90 1.5 GB, one sample at 3.1 GB during a snapshot;
   1.2 to 1.6 GB at the end. The run before this one put two nodes out of
-  memory, and measuring one cell at 37 000 sessions showed two causes,
+  memory, and measuring one shard at 37 000 sessions showed two causes,
   both fixed: the snapshot trigger counted the log tail kept for lagging
-  followers, which alone passed it, so a node copied the whole cell
+  followers, which alone passed it, so a node copied the whole shard
   (about 110 MB) every few seconds even when idle; and that tail (2 048
   entries, kept parsed in memory at about four times their encoded size)
   held about 500 MB per node. The trigger now counts only the log since
@@ -1225,8 +1225,8 @@ the storage decision below requires. What it checks and what it found:
   JSON document, which also dropped three more copies of it from every
   build. Serving the kept tail from the segment files instead of memory
   is a follow-up.
-- **Long sessions** (`scripts/cell/scale.py --cells 1 --sessions 40
-  --turns 5000 --agent chat --concurrency 40`, one cell of 3 nodes on the
+- **Long sessions** (`scripts/agentd/scale.py --shards 1 --sessions 40
+  --turns 5000 --agent chat --concurrency 40`, one shard of 3 nodes on the
   same machine): 200 000 turns at 204 turns/s, 0 errors. Median turn by
   tenth of each session's turns: 151 ms in the first tenth (empty
   history), then 180, 196, 179, 176, 176, 176, 171, 176 and 173 ms, so
@@ -1242,12 +1242,12 @@ layer above it.
 
 ### Step 6 progress (2026-11-11)
 
-One cell now runs as the plan's thin deployment: three state nodes, and
+One shard now runs as the plan's thin deployment: three state nodes, and
 executors as their own processes that pull turns on credits
-(`cell-testnode executor`, `crates/agentd/src/remote.rs`). An executor keeps
-a mirror of the sessions it runs, catches it up with deltas from the cell,
+(`agentd-testnode executor`, `crates/agentd/src/remote.rs`). An executor keeps
+a mirror of the sessions it runs, catches it up with deltas from the shard,
 and sends every write as a fenced proposal; the nodes run no Engine when
-executors serve them (`CELL_EXECUTOR_CAP`). What it covers and what it
+executors serve them (`AGENTD_EXECUTOR_CAP`). What it covers and what it
 found:
 
 - **Hosting conformance through an executor's link**
@@ -1256,12 +1256,12 @@ found:
   process. A view that carried no definition looked like a partial view and
   was ignored, so the mirror never caught up; a delta now says when it is
   whole.
-- **Durable workspace.** Each session is its own workspace in the cell's
+- **Durable workspace.** Each session is its own workspace in the shard's
   file store (`hosting_files.rs`), because Engine keys files by workspace
   id: one shared workspace made every session's files look foreign. The
   host grants the workspace read and write; the default policy is read only.
-- **Fleet and chaos with executors** (`scripts/cell/fleet.py up
-  --executors N`, `chaos.py --executors 2 --executor-kills 10`): 2 cells,
+- **Fleet and chaos with executors** (`scripts/agentd/fleet.py up
+  --executors N`, `chaos.py --executors 2 --executor-kills 10`): 2 shards,
   200 sessions of 3 tool turns, 8 node kills (one of a leader), 10
   executor kills and 17 live moves; every session's log checks out, and
   each of 2 080 tool runs has its durable `tool.started` (2 093: a killed
@@ -1269,10 +1269,10 @@ found:
 - **The control plane protocol, early** (`dp.rs`, `control.rs`,
   `node_control.rs`, `gateway_dp.rs`; a fake control plane in
   `crates/agentd-testkit/src/fake_cp.rs` with a ledger, feed dedup and
-  fault knobs). Agents arrive as config in the directory cell's Raft, by
+  fault knobs). Agents arrive as config in the directory shard's Raft, by
   the protocol's ordering rules; a session copies its revision when it is
   created, so a new revision or a removal never changes a running one.
-  Each cell's leader asks for allowances with request ids that a new
+  Each shard's leader asks for allowances with request ids that a new
   leader repeats, commits the answer, and settles expired grants; a turn
   with no answer yet waits, a refused one ends exhausted. Feed records are
   made at apply from committed events, numbered by Raft index and position,
@@ -1286,31 +1286,31 @@ found:
   closed and replaced; a feed backed up across a leader change arrives
   once; a stale executor's writes and live deltas are fenced out after
   another took the turn; the messages of earlier moves, delivered late,
-  change nothing; and a whole cell killed after a tool's external effect
+  change nothing; and a whole shard killed after a tool's external effect
   finishes the turn with no tool run twice. The moves case found a bug: an
-  executor kept a session's applied index from the cell it moved away
+  executor kept a session's applied index from the shard it moved away
   from, so after moving back its views looked late and the turn stalled.
-  A session that changes cells now drops its mirror.
+  A session that changes shards now drops its mirror.
 
-- **Bench** (`scripts/cell/bench.py`, one cell of 3 nodes and 2
+- **Bench** (`scripts/agentd/bench.py`, one shard of 3 nodes and 2
   executors, all on one 4-core machine, simulated model with no think
   time, 200 sessions x 10 turns): the chat agent runs 380 turns/s, p50
   433 ms and p99 986 ms with 200 turns in flight. The leader spends
   **2.75 ms of CPU per turn** against a budget of 8.7 (one core at the
-  115 turns/s a cell must hold), so about 0.2 of a core at the "fits 75k"
-  line of 78 turns/s per cell over 16 cells; each follower 0.8 ms and the
-  executors 5.4 ms. The same turns on Engine alone (`cell-baseline`, its
-  in-memory authority in one process) cost 1.5 ms, so the cell's overhead
+  115 turns/s a shard must hold), so about 0.2 of a core at the "fits 75k"
+  line of 78 turns/s per shard over 16 shards; each follower 0.8 ms and the
+  executors 5.4 ms. The same turns on Engine alone (`agentd-baseline`, its
+  in-memory authority in one process) cost 1.5 ms, so the shard's overhead
   is about 8 ms of CPU per turn across five processes. Raft takes 0.35
   entries and fsyncs per turn: group commit carries about three turns per
-  entry. A turn waits for **5.0 round trips** to the cell (claim, renew,
+  entry. A turn waits for **5.0 round trips** to the shard (claim, renew,
   the turn's opening batch, its closing batch, release), the budget, and
   Engine's own count on its in-memory authority; a new session adds 2 once.
   The tool-calling `worker` agent (four model steps a turn) runs 210
   turns/s at 4.6 ms of leader CPU and 9.0 waited round trips per turn.
 
   The first run waited 11.3 round trips per chat turn at 290 turns/s with
-  p99 4 s: the cell had none of Engine's step 1 shortcuts, which are
+  p99 4 s: the shard had none of Engine's step 1 shortcuts, which are
   optional in the hosting interface. Now, as the in-memory authority does,
   input and cancels are pushed to the running epoch (it no longer renews
   to read its inbox; a poke fires only when the inbox, a cancel or a
@@ -1326,7 +1326,7 @@ found:
   writes, about 9 reads per chat turn; waiting for other writers' changes
   only would cut most of them, and with them part of the leader's CPU.
 
-The step 6 gate holds: Level 2 (cells with real executors, llmsim, the
+The step 6 gate holds: Level 2 (shards with real executors, llmsim, the
 fake control plane and test definitions, hosting conformance through an
 executor's link) and the failure suite are green, and per-turn overhead
 and leader CPU are within budget. Stage-1 features can start.
@@ -1334,7 +1334,7 @@ and leader CPU are within budget. Stage-1 features can start.
 ### Step 7 progress (2026-11-11)
 
 The server is now the control plane for orgs on a v2 data plane, and the
-cells serve the rest of [cp-dp-protocol.md](cp-dp-protocol.md). v1 is the
+shards serve the rest of [cp-dp-protocol.md](cp-dp-protocol.md). v1 is the
 trivial implementation: an org with no data plane row gets no config,
 grants or feed, and nothing changes for it. What it covers:
 
@@ -1355,7 +1355,7 @@ grants or feed, and nothing changes for it. What it covers:
   connection tokens are sealed under the data key with AES-256-GCM. The
   associated data names org, item and revision, so a value can't be moved
   to another org or replayed as another revision. Only executors unseal;
-  the cell stores and moves ciphertext.
+  the shard stores and moves ciphertext.
 - **Control plane epoch and restore.** `everruns-dataplane diff <org>` asks
   the data plane what it holds that the restored database doesn't know.
   `bump-epoch` then makes every data plane take a full snapshot; updates
@@ -1364,7 +1364,7 @@ grants or feed, and nothing changes for it. What it covers:
   the budget service (`source_type` `data_plane`), which posts the cost
   and debits the org's usage policies. Session summaries are kept by
   version, and org events are stored. Each source's stored position makes
-  a retried batch cost nothing. Cells archive the feed to the object store
+  a retried batch cost nothing. Shards archive the feed to the object store
   before they drop acknowledged records, so `POST /dp/v1/feed/replay` can
   resend it.
 - **Grant ledger** (`allowances.rs`). A grant is reserved when issued.
@@ -1373,10 +1373,10 @@ grants or feed, and nothing changes for it. What it covers:
   usage policies still allow before their first stop (or ask) step, and
   usage already charged through the feed counts once, not twice. Answers
   are idempotent by request id, and a suspended org is granted nothing.
-- **Org tokens** (`tokens.rs`, cell `org_token.rs`). EdDSA JWTs that live
+- **Org tokens** (`tokens.rs`, shard `org_token.rs`). EdDSA JWTs that live
   10 minutes, issued at `POST /v1/auth/token` to members of an org on a data
   plane; the signing key is generated on first use and published at
-  `/.well-known/jwks.json`. With `CELL_JWKS_URL` set, a gateway requires
+  `/.well-known/jwks.json`. With `AGENTD_JWKS_URL` set, a gateway requires
   them: `sessions:write` creates and drives the org's own sessions, another
   org's session answers as missing, and everything else needs `admin`.
 - **Org admin and the link.** Enable, suspend and resume, export, delete
@@ -1390,22 +1390,22 @@ Gate:
   control plane's database to the data plane, against the 1 s budget
   (`config_reaches_the_data_plane_in_under_a_second`, 40 edits through
   `NOTIFY`).
-- **Feed lag:** p50 117 ms, p99 199 ms from a record's commit in a cell
+- **Feed lag:** p50 117 ms, p99 199 ms from a record's commit in a shard
   to the control plane, against the 2 s budget. This is a small sample:
-  one fleet of 2 cells and a few turns, with the leader shipping the feed
+  one fleet of 2 shards and a few turns, with the leader shipping the feed
   every 200 ms (`agents_come_from_config_and_turns_bill_the_org`).
-- **Allowances never overspend:** 8 cells ask at once, 12 requests each,
+- **Allowances never overspend:** 8 shards ask at once, 12 requests each,
   against a $1 policy. Every request is sent twice, as if its reply were
-  lost, and each one settles the cell's earlier grants, closing half of
+  lost, and each one settles the shard's earlier grants, closing half of
   them. What could be spent (closed grants' use plus open grants whole)
   stays under the cap, and still does after the feed charges the spend
   (`allowances_never_overspend_under_concurrency_and_retries`).
-- **Conformance and the failure suite:** green on the cell side against
+- **Conformance and the failure suite:** green on the shard side against
   the fake control plane, which now also checks link and org tokens,
   secrets, suspension, export and replay (`crates/agentd-testkit/tests/org_admin.rs`).
   The server side is tested on a real database against a stub data plane
   (`domains/data_plane/tests.rs`). Both sides use the same wire types. A
-  cell fleet driven by the real server, not the fake, comes with step 8's
+  shard fleet driven by the real server, not the fake, comes with step 8's
   local full v2 stack.
 
 Decisions for now: the link uses a bearer token per data plane, and the
@@ -1416,9 +1416,9 @@ v2 sessions show in the console from step 8.
 
 A v2 org's sessions now run on its data plane end to end: the console and
 the CLI keep one URL, the control plane keeps every session's record, and
-the cells run the turns. Decisions (approved 2026-11-12):
+the shards run the turns. Decisions (approved 2026-11-12):
 
-- **The edge is a mode of the cell binary** (`serve edge`, `crates/agentd/src/edge.rs`).
+- **The edge is a mode of the shard binary** (`serve edge`, `crates/agentd/src/edge.rs`).
   The proxy in front sends `/v1/sessions` and below to it. The edge sends
   a session's record calls (get, list, create, title, archive, and what
   the record answers: resolved model, participants, slash commands, run
@@ -1437,7 +1437,7 @@ the cells run the turns. Decisions (approved 2026-11-12):
   come. Messages to such a session never reach the platform's workers.
   Feed summaries keep the record's status and last turn current.
 - **Stage 1 is chat.** Session files, MCP servers, sandboxes and per-session
-  overrides answered 501 with the feature's name on a cell, the control
+  overrides answered 501 with the feature's name on a shard, the control
   plane refused a v2 session that asked for them, and the console hid
   them for a v2 org (since replaced: per-session overrides run as the
   session's own declaration, "Parity, Phase B" below) (`data_plane` in the org's feature flags). The `/fs`
@@ -1448,7 +1448,7 @@ the cells run the turns. Decisions (approved 2026-11-12):
 - **Tools that need a person's approval** park the turn (the Engine's
   durable approver), and `POST /v1/sessions/{id}/tool-approvals` resumes it.
   An agent's `tool_approval` capability ("ask before acting") is served on
-  cells with the same durable approver, registered only for an agent that
+  shards with the same durable approver, registered only for an agent that
   names it: a host's own `tool_approval` would otherwise stand in for the
   gate of tools marked for approval, and the Framework now refuses to build
   such an agent rather than let those tools run unasked.
@@ -1463,7 +1463,7 @@ the cells run the turns. Decisions (approved 2026-11-12):
 - **Live streaming:** an epoch's deltas go to the session's stream node,
   which relays them to every watcher; a stream subscribes before its
   response goes out, so a client that has the response misses nothing.
-- **Local full v2:** `DATA_PLANE=v2 just start-all` adds one cell of three
+- **Local full v2:** `DATA_PLANE=v2 just start-all` adds one shard of three
   nodes, one executor and the edge next to the usual stack, and
   `just dp-enable <org>` moves an org onto it
   (`scripts/lib/data-plane-local.sh`). Since the self-hosted default
@@ -1496,8 +1496,8 @@ Gate, measured:
   with streaming, cancel, the session list, control plane down, token
   expiry. It found eight bugs the fake control plane hid: provider names
   compared by case (the control plane says "LlmSim"), the local topology
-  without its directory cell, `dp-enable` failing when Doppler supplies the
-  secrets key, tools needing approval refused on cells, a cancelled turn
+  without its directory shard, `dp-enable` failing when Doppler supplies the
+  secrets key, tools needing approval refused on shards, a cancelled turn
   listed as completed, the token leeway above, the CLI's chat refused
   (it sends commands, not `/v1` calls), and the console's own Chat sent
   to the data plane, which could not run it, so it never opened.
@@ -1509,7 +1509,7 @@ Gate, measured:
   approval card resuming the turn and running the tool. It found two more:
   the chat box stayed disabled because the edge sent the session's
   resolved-model lookup to the data plane, which answers 501, and an agent
-  with "ask before acting" could not start a session on a cell at all.
+  with "ask before acting" could not start a session on a shard at all.
 - **A real model:** an agent on Muse Spark 1.3 Contributor through an
   org's own OpenRouter provider answered through the edge with streaming
   (first token 3.5 s, all of it OpenRouter's). The key went to the data
@@ -1525,28 +1525,28 @@ user loads); it is the console's, not the data plane's.
 
 ### Step 9 progress (2026-11-12)
 
-A cell can be rebuilt from the object store alone, as of its newest state
+A shard can be rebuilt from the object store alone, as of its newest state
 or a moment before it, and one org can be taken back to a moment without
 touching any other. Decisions (approved 2026-11-12, all as recommended):
 
-1. **Both restores.** `restore` rebuilds a whole cell, latest or point in
+1. **Both restores.** `restore` rebuilds a whole shard, latest or point in
    time (`crates/agentd/src/restore.rs`); `restore-org` takes one org's
    sessions back to a moment where they live now. Both are modes of the
-   cell binary (`cli.rs`).
+   shard binary (`cli.rs`).
 2. **Ship first only what must not be lost** (`ship::ships_first`): a
    `tool.started` of a tool not safe to repeat (AtMostOnce or
    unclassified), a session create, and every move and placement step.
    Such a write is answered only once the log through it is in the store.
    Everything else waits for the next shipping round (1 s).
-3. **The restore window is 7 days** (`CELL_RESTORE_WINDOW_HOURS`).
+3. **The restore window is 7 days** (`AGENTD_RESTORE_WINDOW_HOURS`).
    Snapshot copies are thinned to the newest three, the first of each hour
    inside the window and the newest before it; shipped log and replaced
    segments stay as long as a kept snapshot may need them
-   (`restore_points.rs`). Cell leaders take a snapshot at least every 15
+   (`restore_points.rs`). Shard leaders take a snapshot at least every 15
    minutes and as a drain starts, and collect hourly.
-4. **The drill is a weekly CI job** (`.github/workflows/cell-drill.yml`,
-   `scripts/cell/drill.py`): two cells on one runner, the local file
-   object store, every node of one cell killed under load.
+4. **The drill is a weekly CI job** (`.github/workflows/agentd-drill.yml`,
+   `scripts/agentd/drill.py`): two shards on one runner, the local file
+   object store, every node of one shard killed under load.
 5. **Bucket protection** (versioning, object lock, replication,
    multi-region keys) comes with the production deployment in step 10.
 6. **Control plane rollback leftovers are reported, then kept or dropped
@@ -1559,7 +1559,7 @@ touching any other. Decisions (approved 2026-11-12, all as recommended):
 
 How a rebuild works, and what it found:
 
-- **Incarnations.** A rebuilt cell claims a new incarnation number in the
+- **Incarnations.** A rebuilt shard claims a new incarnation number in the
   store (claimed once, so two rebuilds never share one); its shipped log
   and feed carry it, and the control plane keys its feed cursor by it. A
   late batch from a lost incarnation (a node still running somewhere) is
@@ -1577,8 +1577,8 @@ How a rebuild works, and what it found:
   of the earlier branch still reads what it saw, and the control plane's
   session summary version (branch time over sequence) never goes back.
   An executor's copy of a session whose branch changed is fetched whole
-  again. The first design keyed segments by the cell's incarnation, which
-  breaks as soon as a restored session moves to a cell of another
+  again. The first design keyed segments by the shard's incarnation, which
+  breaks as soon as a restored session moves to a shard of another
   incarnation number.
 - **Placing steps without a time.** A point-in-time restore stops at the
   first command proposed after the point, by the proposer's clock. Move
@@ -1601,23 +1601,23 @@ How a rebuild works, and what it found:
   restored: they come from the control plane.
 
 Tests, all against real fleets (`crates/agentd-testkit/tests/recovery.rs`):
-every node of a cell killed while a tool not safe to repeat is running,
+every node of a shard killed while a tool not safe to repeat is running,
 rebuilt from the store: the tool ran once, the turn finished, the
-incarnation is 2, the session's next epoch is past the gap; a whole cell
+incarnation is 2, the session's next epoch is past the gap; a whole shard
 taken back to a moment between two turns: only the first remains and the
 session carries on; and one org of two taken back: the other org's
 session is untouched, and the restored one carries on with one dense
 history, its executor dropping what it remembered past the point.
 
-Gate numbers, from `scripts/cell/drill.py` at full size on one 16 GB
-machine (2 cells of 3 nodes, local file object store, simulated model;
-75 000 sessions, 37 534 in the lost cell, 3 000 of them sent a second
-message just before every node of that cell was killed):
+Gate numbers, from `scripts/agentd/drill.py` at full size on one 16 GB
+machine (2 shards of 3 nodes, local file object store, simulated model;
+75 000 sessions, 37 534 in the lost shard, 3 000 of them sent a second
+message just before every node of that shard was killed):
 
 | Bar | Result |
 | --- | --- |
 | Shipping lag p99 under 2 s at 75k | at most 1.5 s (p50 the same bucket) |
-| Rebuild of a full cell under 10 min | 3.7 s (snapshot plus 1 650 log entries) |
+| Rebuild of a full shard under 10 min | 3.7 s (snapshot plus 1 650 log entries) |
 | Ship-first cost under 100 ms per tool call | p50 at most 10 ms, p99 at most 100 ms (258 647 writes) |
 | No tool runs twice | 6 187 started, 6 182 ran: 5 outcomes lost are reported unknown, none ran again |
 | Nothing acknowledged and shipped is lost | every session finished; dense sequences, every message completed once |
@@ -1640,41 +1640,41 @@ production-shaped run found before it got there. Decisions (user,
 2026-11-12): run it, no plan round; the EKS load gets its own NodePool,
 capped at 48 vCPU and scaled to zero after a run.
 
-1. **Inspector.** `cell-testnode inspect cells | session <id> | moves`
-   answers "where is session X and what is it doing" and how each cell
-   keeps up, read only (`inspect.rs`). It asks the cell that holds the
-   session's directory shard, since the directory spreads its shards over
-   the cells.
+1. **Inspector.** `agentd-testnode inspect shards | session <id> | moves`
+   answers "where is session X and what is it doing" and how each shard
+   keeps up, read only (`inspect.rs`). It asks the shard that holds the
+   session's directory slot, since the directory spreads its slots over
+   the shards.
 2. **SLO gauges.** Each node reports one-minute p99s as gauges
-   (`cell_slo_turn_p99_seconds`, `_admit_`, `_ship_lag_`, `_ship_first_`;
+   (`agentd_shard_slo_turn_p99_seconds`, `_admit_`, `_ship_lag_`, `_ship_first_`;
    `prom::Window`), so a scraper that keeps only gauges charts the
    budgets. Vector ships them to CloudWatch for the SaaS dashboard.
 3. **Runbooks** for a lost leader, a stuck move and a drain:
    [operations.md](operations.md).
-4. **Production-shaped load, locally.** `cell-drive load --stream <share>`
+4. **Production-shaped load, locally.** `agentd-drive load --stream <share>`
    holds SSE open for a share of the sessions next to their turns;
-   `CELL_STORE_THROTTLE_MS` makes every object store call wait, as a
+   `AGENTD_STORE_THROTTLE_MS` makes every object store call wait, as a
    throttled S3 does. Node and executor ids default to the pod ordinal, so
-   a StatefulSet needs no per-pod configuration; `docker/Dockerfile.cell`
-   and `cell-image.yml` build the image.
+   a StatefulSet needs no per-pod configuration; `docker/Dockerfile.agentd`
+   and `agentd-image.yml` build the image.
 5. **The EKS run** lives in the SaaS repository (its
    `knowledge/operations/dataplane-load.md`): the NodePool, a bucket with
    a 14-day expiry, Pod Identity roles, the dashboard, and a workflow that
-   renders the fleet, ramps the drivers, kills a cell node and a quarter
+   renders the fleet, ramps the drivers, kills a shard node and a quarter
    of the executors after the ramp, samples the inspector every 20 s, and
    tears everything down.
 
-What the local production-shaped run found (two cells of three nodes, two
+What the local production-shaped run found (two shards of three nodes, two
 executors, 500 llmsim sessions of the mix, half of them streaming, 50 ms
 before every store call):
 
 | Found | Cause | Fix |
 | --- | --- | --- |
-| Sessions stalled for good after the balancer moved them | The executor that last ran a session kept waiting for its writes at their position in the old cell's log | Positions are per cell: a session that comes back from another cell starts with none (`Executor::run`, `executors.rs` test) |
+| Sessions stalled for good after the balancer moved them | The executor that last ran a session kept waiting for its writes at their position in the old shard's log | Positions are per shard: a session that comes back from another shard starts with none (`Executor::run`, `executors.rs` test) |
 | About 55 of 500 sessions held a claim and never moved again, with the slow store | `object_store`'s throttle wrapper panics on a local file read; the panic killed the activation task, and its slot and claim stayed held | Our own wrapper (`store_throttle.rs`), and an activation runs in its own task, so a panic ends it as an error and frees its slot (`Executor::run`) |
-| The inspector called a session unknown | It asked only the directory cell, not the cell holding the session's shard | Ask the shard's cell (`inspect.rs` test) |
+| The inspector called a session unknown | It asked only the directory shard, not the shard holding the session's slot | Ask the slot's shard (`inspect.rs` test) |
 | (while chasing the above) An input that reaches an executor's mirror in the reply to its own write is not reported by the watch | The watch waits for changes after the mirror | Every refresh of the mirror announces itself, as a node's applied changes do (`Remote::absorb`, unit test) |
-| An executor never exited on SIGTERM once its cells were gone | Its drain waited for turns that could not hand off | The drain waits at most 60 s; the turn resumes elsewhere when its claim expires |
+| An executor never exited on SIGTERM once its shards were gone | Its drain waited for turns that could not hand off | The drain waits at most 60 s; the turn resumes elsewhere when its claim expires |
 
 After the fixes the same run finishes: 500 sessions, 1 500 turns, no
 errors; 250 sessions streamed 66 465 events with no stream error;
@@ -1687,14 +1687,14 @@ measures.
 ### Step 10 on EKS (2026-11-16)
 
 Runs of the SaaS `Data plane load` workflow: 72 000 agents, ten turns
-each, on a 48 vCPU NodePool, with a cell node and a quarter of the
+each, on a 48 vCPU NodePool, with a shard node and a quarter of the
 executors killed after the ramp ("chaos").
 
 | Run | Result | Cause | Fix |
 | --- | --- | --- | --- |
-| 8 | Three healthy nodes killed out of memory | Raft shared the API's listener and threads on a saturated host; heartbeats timed out, elections stormed and whole cells stopped committing for about 20 min while requests piled up | Raft on its own listener and threads, slower heartbeat and election timeouts, a leader that cannot commit for 5 s sheds (#5440) |
+| 8 | Three healthy nodes killed out of memory | Raft shared the API's listener and threads on a saturated host; heartbeats timed out, elections stormed and whole shards stopped committing for about 20 min while requests piled up | Raft on its own listener and threads, slower heartbeat and election timeouts, a leader that cannot commit for 5 s sheds (#5440) |
 | 9 | 6 790 errors | The killed follower never caught up: the Raft router kept axum's 2 MB body limit, which refused 16 MB snapshot chunks, and its stale state answered "not found" | Body limit lifted; a follower far behind steps aside and refuses session requests until it catches up (`catchup.rs`, #5447) |
-| 10 | 31 399 errors | Every replica uploaded its own snapshot copies through a NAT instance whose burst ran out; S3 writes timed out in every cell at once and ship lag refused all work | Only the leader uploads snapshot copies (#5448); S3 through a VPC endpoint (SaaS) |
+| 10 | 31 399 errors | Every replica uploaded its own snapshot copies through a NAT instance whose burst ran out; S3 writes timed out in every shard at once and ship lag refused all work | Only the leader uploads snapshot copies (#5448); S3 through a VPC endpoint (SaaS) |
 | 11 | 720 770 turns, **0 errors**, 208 turns/s, ship lag max 2.7 s | The killed node was still killed out of memory five times while it rejoined | Below |
 | 12, overload | 716 700 turns, **0 errors**, 190 turns/s; bursts of 30 000 new agents, 2 KB messages, up to 46 563 inputs queued | No restarts; 1 893 requests refused for memory, all retried and done; none after the last burst while the queue drained | None needed |
 | 13, with the rejoin fix | 720 990 turns, **0 errors**, 202 turns/s | No out-of-memory kills; the killed node was back ~70 s after the kill and caught up 2 min later at 2.7 GB | None needed |
@@ -1711,9 +1711,9 @@ fsync (`Wal::save_committed`), so openraft re-applies the log at startup
 reached the disk. The same repro then peaks the restarted follower at
 2.1 GB, under the leader's 2.3 GB, and it catches up in 9 s.
 
-Load runs also sample every cell, executor and driver pod's CPU and
-memory, and its machine's, with `cell-testnode usage` (`container.rs`),
-since the cluster runs no metrics server. Run 13: cells 12.5 cores
+Load runs also sample every shard, executor and driver pod's CPU and
+memory, and its machine's, with `agentd-testnode usage` (`container.rs`),
+since the cluster runs no metrics server. Run 13: shards 12.5 cores
 average (18.4 peak), executors 18.5 (27.2), drivers 0.6; the 48 vCPU
 machine 69% average, 96% peak, 118 of 189 GB used at peak.
 
@@ -1733,14 +1733,14 @@ and subagents, 11.5 Slack and channels, observers and evals, trace and
 analytics export, 11.6 a full test org on a v2 data plane next to
 production, 11.7 75k with the feature mix and the decision brief.
 
-**11.1 Session files.** The console's file API runs on the cell
+**11.1 Session files.** The console's file API runs on the shard
 ([fs.md](fs.md), "API and UI"): `/v1/workspaces/{id}/fs` and the older
 `/v1/sessions/{id}/fs` routes on the gateway, one operation each on the
-session's cell, linearizable reads through a read index, create, move and
+session's shard, linearizable reads through a read index, create, move and
 copy that refuse an existing target inside the commit, starter files with
 the control plane's create, and the console's Files tab shown for a v2
 org (values, schedules and the sandbox panel stay hidden until their
-steps). Bench (`scripts/cell/files_bench.py`, one 3-node cell, calls
+steps). Bench (`scripts/agentd/files_bench.py`, one 3-node shard, calls
 through a rotating node so follower reads pay the read barrier):
 
 | Call, 16 at a time | 1 KiB p50 / p99 | 16 KiB | 64 KiB | 1 MiB |
@@ -1768,13 +1768,13 @@ header into an org secret (`mcp:<BINDING>`, the binding named for the
 agent key, server and header) and the header into its `${BINDING}`
 placeholder, and a server that acts as the agent's service identity into
 an `mcp_oauth:<grant>` connection whose token secret is the grant as a
-self-contained OAuth token set. On the cell (`crates/agentd/src/mcp.rs`)
+self-contained OAuth token set. On the shard (`crates/agentd/src/mcp.rs`)
 the placeholders and the connection leave the definition before the agent
 is built, so nodes never open a secret; per call the executor that runs
 the turn fills them for the calling session's org (a session it does not
 know gets nothing). A token within a minute of expiry is refreshed by one
 executor at a time: it leases the secret for the revision it read in the
-directory cell's replicated state (`crates/agentd/src/secrets.rs`, 30 s
+directory shard's replicated state (`crates/agentd/src/secrets.rs`, 30 s
 lease), writes the new token set as the next revision, and the feed takes
 it to the control plane, which stores it on the platform's grant (only
 over the access token it handed over, so a grant the person authorized
@@ -1785,7 +1785,7 @@ capability servers and session-level server overrides; they go with 11.6.
 
 What a call pays for its credentials (`crates/agentd-testkit/tests/mcp.rs`,
 a header binding and a grant together, on a fleet executor): opened from
-the directory cell 3.6 / 4.1 ms p50 / p99, kept 7 / 21 µs, against a gate
+the directory shard 3.6 / 4.1 ms p50 / p99, kept 7 / 21 µs, against a gate
 of 20 ms p99. The same test shows the lease across two executors: the
 second is refused while the first holds it, only the holder's write is
 stored, the other executor reads the new revision, and the control
@@ -1795,7 +1795,7 @@ plane's feed gets it. Every call's overhead is also on each executor's
 
 **11.3 Sandboxes.** A session's managed sandbox (Daytona, E2B, boxd,
 Modal, Kubernetes) runs from the data plane in sync mode: the session's
-workspace in the cell stays the source of truth and the sandbox is a
+workspace in the shard stays the source of truth and the sandbox is a
 disposable copy of it. The control plane pins the sandbox at create, as
 in v1, and sends the resolved `session_sandbox` entry with the session
 (`crates/server/src/domains/data_plane/sandboxes.rs`); the provider key
@@ -1835,8 +1835,8 @@ stop, the fleet view), idle pause, the desktop and mount mode; they go
 with 11.6.
 
 **11.4 Schedules, triggers, detached calls and subagents.** A session's
-schedules live in its cell state (`crates/agentd/src/platform.rs`), built in
-full by the proposer so every replica applies the same one. The cell leader
+schedules live in its shard state (`crates/agentd/src/platform.rs`), built in
+full by the proposer so every replica applies the same one. The shard leader
 fires due ones on its tick in batches of 256 (`FireSchedule` carries the
 time it was due, so a retry or the old leader's late fire does nothing),
 and the occurrence enters the session as an admission with an id derived
@@ -1854,12 +1854,12 @@ expires (30 s) another executor resumes the turn. Input that arrives
 meanwhile waits and joins the resumed turn, as on v1. Subagents
 (`crates/agentd/src/subagents.rs`) are sessions of the parent's own agent,
 created and driven through the gateway's own calls, so the child lands
-wherever the gateway places it; the parent's tasks live in its cell state
+wherever the gateway places it; the parent's tasks live in its shard state
 (`tasks.rs`) and a finished background child's wake is admitted in the
 same command that settles its task.
 
 What it costs (`crates/agentd-testkit/tests/schedules.rs`, `detached.rs`,
-`subagents.rs`, debug build, 2 cells): 10 000 one-shot schedules on 2000
+`subagents.rs`, debug build, 2 shards): 10 000 one-shot schedules on 2000
 sessions fire with lag p50 113 ms and max 121 ms (gate 1 s). With the
 leader killed just before they are due, the new leader took 4.97 s to be
 elected and they fired 4.86 s late: a crash-driven leader change costs the
@@ -1867,9 +1867,9 @@ election, which openraft 0.9 cannot shorten by transferring leadership;
 the gate holds for the steady case only, and the decision brief carries
 the trade (shorter election timeouts, or a planned transfer on a newer
 openraft). A detached call's turn resumes 5.2 s after its executor dies
-(2 s records in the test). A subagent placed on the other cell answers its
-parent in 2.1 s. On `/metrics`: `cell_schedules_fired_total` and
-`cell_schedule_fire_lag_seconds`. Still on the platform after 11.4: the
+(2 s records in the test). A subagent placed on the other shard answers its
+parent in 2.1 s. On `/metrics`: `agentd_shard_schedules_fired_total` and
+`agentd_shard_schedule_fire_lag_seconds`. Still on the platform after 11.4: the
 org-wide schedule cap and schedule budgets (11.6), a subagent running
 another agent of the org, blueprints and forks, saved-script triggers,
 cancelling or answering a task from the API, and push configs.
@@ -1888,9 +1888,9 @@ Attachments and reactions wait for the 11.6 sweep. Observers and trace
 exports need session events the control plane no longer has,
 so the org's policy names the types it uses (`TenantPolicy::events`,
 computed by `crates/server/src/domains/data_plane/event_tap.rs` and set
-again when an observer or trace destination changes; the directory cell
-hands the list to every cell on the tenants poll, so a change reaches a
-cell within one poll, about 2 s), the cell copies
+again when an observer or trace destination changes; the directory shard
+hands the list to every shard on the tenants poll, so a change reaches a
+shard within one poll, about 2 s), the shard copies
 those committed events onto the feed (`crates/agentd/src/tap.rs`, payloads
 over 512 KiB left out and named), and feed ingest hands each to the same
 listeners v1 runs, once, by feed position. Reports were removed
@@ -1899,9 +1899,9 @@ opt-in per org (`everruns-dataplane warehouse <org> on`): every event goes
 onto the feed and the control plane writes gzipped
 NDJSON per org, hour and batch under `warehouse/{org}/date=/hour=/` in its
 object storage before storing the batch, so an event lands at least once
-and readers dedupe on its id. Gate check (`cell-testkit/tests/integrations.rs`,
-debug build, two cells, 200 channel sessions, ten at a time, the directory
-cell's leader killed between rounds): reply p50 334 ms, p99 721 ms (gate
+and readers dedupe on its id. Gate check (`shard-testkit/tests/integrations.rs`,
+debug build, two shards, 200 channel sessions, ten at a time, the directory
+shard's leader killed between rounds): reply p50 334 ms, p99 721 ms (gate
 5 s); tapped event to the control plane p99 468 ms (gate 2 min); all 400
 turns reached the listeners exactly once across the election (5.9 s).
 
@@ -1910,7 +1910,7 @@ plane keeps serving the session features its own tables answer for a v1
 session (the Trace view, reactions, ratings, question answers, the context
 meter, export) for a v2 session too, with the same code: one implementation
 per feature keeps validation, attribution and policy in one place. It
-reads the session's events from the cell through the gateway's
+reads the session's events from the shard through the gateway's
 `GET /dp/v1/orgs/{org}/sessions/{id}/{read}` (`crates/agentd/src/gateway_reads.rs`:
 `trace` folds the committed events with `everruns_core::session_trace`, the
 fold the control plane's own index uses; `events` selects a sequence range by
@@ -1918,12 +1918,12 @@ type or message id, public form, at most 1000; `log` pages the whole log for
 an export) through `SessionPlane`
 (`crates/server/src/domains/data_plane/session_plane.rs`), and sends an
 outcome back as a session command: `tool-results` for a question set's
-answers, `record` for a person's reaction, which the cell journals only for
+answers, `record` for a person's reaction, which the shard journals only for
 the event types it lets the control plane write (`platform::RECORDABLE`).
-The edge sends these calls to the control plane (`edge.rs` `RECORD`). A cell
+The edge sends these calls to the control plane (`edge.rs` `RECORD`). A shard
 keeps no trace index: rows are recomputed on each read, which costs nothing
 for an idle session. The session's own `/v1` events take the console's
-search filters and summary in the cell (`q` is a case-insensitive substring
+search filters and summary in the shard (`q` is a case-insensitive substring
 over the event's data, the control plane's in-memory fallback). Known
 differences on v2: a subagent's child session in the trace is found from
 the call's result; a reaction left for the agent's next turn reaches it only
@@ -1933,7 +1933,7 @@ with a message the control plane admits.
 feature reads a session's events through `domains::sessions::events`
 (`crates/server/src/domains/sessions/events.rs`), which takes the arguments
 of `StorageBackend::list_events` or `list_events_advanced` and answers the
-same rows from the table for a v1 session or from the cell for a v2 one, the
+same rows from the table for a v1 session or from the shard for a v2 one, the
 table's quirks included. Before it, evals, health checks, A2A and AG-UI
 channels, the MCP endpoint, observers, Poppy and run summaries read only the
 table and saw a v2 session as empty. The waits for a turn to end (send and
@@ -1942,7 +1942,7 @@ fails CI on a direct table read outside the v1 runtime it allowlists, so a
 new feature works on both planes by default.
 
 **11.6 continued: the session's storage and the actions on it.** A v2
-session's values and secrets stay in its authority on the cell, where its
+session's values and secrets stay in its authority on the shard, where its
 agent's tools read them. The control plane keeps the Storage API (keys,
 secrets, the approval mode switch, which is a reserved key) for both planes
 with one code path, policy and validation: it reads them with the `storage`
@@ -1952,18 +1952,18 @@ read and changes them with the `storage` session command
 sealed with the org's data key, bound to the session and the name
 (`dataplane_seal::seal_session_secret`): the control plane seals what a
 person stores, an executor seals what the agent stores and opens what it
-reads, and a cell node, the log and its shipped copies hold ciphertext only;
+reads, and a shard node, the log and its shipped copies hold ciphertext only;
 the node refuses a secret that does not arrive sealed for its session. With
-storage in place, the control plane also answers on the cell: secret
+storage in place, the control plane also answers on the shard: secret
 answers and MCP form questions (the answer is parked in the session's
 storage and the person's words follow as their message, since the model
 never made the engine's synthetic call), an MCP server's sign-in link
 consent, a fork (the parent's conversation up to the cut seeds the child,
 which is created on the same data plane, and its values and secrets are
 copied, each secret opened and sealed again for the child), and the whole
-run view (turns from the cell's trace rows). A standalone cell (no control
+run view (turns from the shard's trace rows). A standalone shard (no control
 plane, so no data plane key) keeps session secrets as written: nothing
-seals them there. Known differences on v2: a cell keeps no timestamps for
+seals them there. Known differences on v2: a shard keeps no timestamps for
 values and secrets; a fork carries messages with their text and media but
 not tool calls, and its parent's files (copied since 2026-11-20) but not
 its databases, as on v1; bound secrets are refused.
@@ -1972,19 +1972,19 @@ its databases, as on v1; bound secrets are refused.
 on the control plane. A message that refers to one (`image_file`, `file`)
 goes through the control plane: the edge looks at the body of a v2
 session's `POST messages` and passes such a message there, while text keeps
-going straight to the cell. The control plane copies each upload into the
-session's files on the cell at the path a v1 session uses
+going straight to the shard. The control plane copies each upload into the
+session's files on the shard at the path a v1 session uses
 (`/attachments/<id>/<name>`, read-only, a zip unpacked next to it), then
 admits the message with its parts (`crates/server/src/domains/data_plane/attachments.rs`).
 Channels (Slack) do the same before they send. An inline image sent to the
-cell is written to the session's files by the gateway and referred to by id,
+shard is written to the session's files by the gateway and referred to by id,
 so the bytes stay out of the log (`crates/agentd/src/gateway_input.rs`). The
 executor reads an attachment's bytes back from the session's files, so a
-cell never asks the control plane for them during a turn, and a node refuses
+shard never asks the control plane for them during a turn, and a node refuses
 a message naming an attachment its session does not hold. The Work tab:
-task cancel and a person's message to a task are cell commands with the
-control plane's rules; the work report is computed on the cell from the
-turn's events with the same reducer; a cell leases no resources, so the
+task cancel and a person's message to a task are shard commands with the
+control plane's rules; the work report is computed on the shard from the
+turn's events with the same reducer; a shard leases no resources, so the
 resources list is empty. Not served on v2 yet: task push-notification
 configs (no delivery on the data plane; the test org uses none).
 
@@ -1992,7 +1992,7 @@ configs (no delivery on the data plane; the test org uses none).
 resuming and deleting a v2 session's sandbox is the control plane's, with
 the v1 lifecycle code: it pinned the sandbox and holds the provider
 account, and it starts from the state the agent's sandbox keeps on the
-cell as a sealed session secret, which it reads, opens and writes back
+shard as a sealed session secret, which it reads, opens and writes back
 sealed (`crates/server/src/domains/session_sandbox/plane.rs`). The
 executor's next sandbox call reads that state, so a paused sandbox resumes
 and a deleted one is replaced and restored from the workspace. Idle pause
@@ -2000,22 +2000,22 @@ is the control plane's sweep: it pauses the sandbox of a v2 session whose
 last turn, from the turn summaries the data plane feeds back, ended longer
 ago than the sandbox's idle limit, once per idle spell
 (`crates/server/src/background/sandbox_idle_sweep.rs`). At 75k sessions a
-cell-owned idle timer may replace it; that is for the decision brief. A
-schedule's spend cap is kept with the schedule on the cell:
+shard-owned idle timer may replace it; that is for the decision brief. A
+schedule's spend cap is kept with the schedule on the shard:
 what its latest run's model calls cost is added as their events commit,
 from the same cost the allowance settles, and the schedule stops with
 `budget_exhausted` when the cap is reached (`crates/agentd/src/platform.rs`).
 
-**11.6b: which capabilities a cell runs (2026-11-17).** A test names every
+**11.6b: which capabilities a shard runs (2026-11-17).** A test names every
 capability in the hosted catalog (`docs/api/capability-catalog.json`) on
-an agent, builds it on the cell's host and runs a turn on a fleet
+an agent, builds it on the shard's host and runs a turn on a fleet
 (`crates/agentd-testkit/tests/capabilities.rs`). The outcome per capability
 is checked into `crates/agentd-testkit/tests/capability_matrix.json`, so a
-capability the cell starts or stops serving shows up as a diff. The
-first run found 40 of 102: the cell's host had only the Framework's
+capability the shard starts or stops serving shows up as a diff. The
+first run found 40 of 102: the shard's host had only the Framework's
 runtime catalog and the platform capabilities it implements (approvals,
 sandbox, schedules, subagents), not the hosted catalog the v1 worker
-registers. The cell's host now registers that catalog, with the worker's
+registers. The shard's host now registers that catalog, with the worker's
 features, for the capabilities an agent names
 (`crates/agentd/src/host.rs`, `hosted_capabilities`), and 96 of 102 build
 and complete a turn. The rest: `container_sandbox`, `docker_container` and
@@ -2023,13 +2023,13 @@ and complete a turn. The rest: `container_sandbox`, `docker_container` and
 worker; `dreaming` and `sandbox_desktop` need their config (and the
 control plane replaces `sandbox_desktop` with the pinned sandbox);
 `sandbox_fleet` fails its turn. A turn on the simulated model calls no
-tool, so "runs" means the capability builds and activates in a cell turn.
+tool, so "runs" means the capability builds and activates in a shard turn.
 What its tools need at call time (an org's keys, the control plane's
 stores such as knowledge, memory, the platform API) is the live check's
-(11.6c); a tool whose store a cell lacks answers with an error, as on a
+(11.6c); a tool whose store a shard lacks answers with an error, as on a
 v1 host without it.
 
-**Parity, Phase A: host calls (2026-11-19).** The lookups below became
+**Parity, Phase A: host calls (2026-11-19).** Superseded on 2026-11-22: the host-call path is gone (see "Native vs injected" below). The lookups below became
 host calls, the one way a data plane asks its control plane anything at
 call time. Each call is declared once in `everruns_contracts::host_calls`
 with who it acts as (the org, the person who sent the turn, or a channel
@@ -2038,14 +2038,14 @@ what it is planned to become: four are org values known before the call
 (policy, settings, web search keys, egress grants) that move to pushed
 state, the SQL databases move into the runtime, and the rest stay host
 calls. The path is
-fixed (executor, directory cell, `POST /dp/v1/tenants/{org}/host-calls/{name}`,
+fixed (executor, directory shard, `POST /dp/v1/tenants/{org}/host-calls/{name}`,
 one dispatcher in `crates/server/src/domains/data_plane/host_calls.rs`);
-the cell stamps the acting person, holds each org to 64 calls in flight,
+the shard stamps the acting person, holds each org to 64 calls in flight,
 and stops calling a control plane that stopped answering for 10 s
 (`crates/agentd/src/host_calls.rs`). Reads retry once, writes never.
 Both sides count each call by name and outcome. Two guards keep it the
 only path: the registry's printed copy (`host_calls_registry.txt`) must
-change with it, and `scripts/lib/check-cell-control-plane-calls.sh` fails
+change with it, and `scripts/lib/check-agentd-control-plane-calls.sh` fails
 on a control plane call outside the link and host call modules.
 
 **Parity, Phase A: credentials act as the turn's person (2026-11-19).**
@@ -2053,10 +2053,10 @@ On v1 the control plane records each turn's invocation (who sent the
 message, their runtime identity, the responding agent) when the message
 comes through its API, and every credential check reads it: which
 person's connection a GitHub tool uses, whether the agent's service
-identity applies. A v2 session's messages reach the cell without the
+identity applies. A v2 session's messages reach the shard without the
 control plane, so those checks found no invocation and a connection
-token, a GitHub token or a service key came back empty on a cell. The
-three calls now act as the person (`ActsAs::Person`): the cell stamps
+token, a GitHub token or a service key came back empty on a shard. The
+three calls now act as the person (`ActsAs::Person`): the shard stamps
 who sent the turn's message from its own record, and the control plane
 records the turn's invocation from it before the lookup, with the v1
 checks (an active member, an active agent), once per turn and only for
@@ -2075,8 +2075,8 @@ setting is an `org_setting` connection whose settings are the value, and
 each search key a secret sealed with the org's data key
 (`crates/server/src/domains/data_plane/org_settings.rs`). They sync
 whole when one of them changes and when the org is put on a data plane,
-and a sync never fails the change that caused it. A cell reads them from
-its directory cell (`crates/agentd/src/lookups.rs`), so web search and
+and a sync never fails the change that caused it. A shard reads them from
+its directory shard (`crates/agentd/src/lookups.rs`), so web search and
 egress keep working while the control plane is down. A setting that has
 not arrived is asked as before, which covers orgs placed before this
 change until their next settings change. The session owner's own
@@ -2089,21 +2089,21 @@ control plane reaches a v2 session only through a declared session command
 or read (`POST`/`GET /dp/v1/orgs/{org}/sessions/{id}/{name}`), named by
 constant on both sides, and every public session route
 (`/v1/sessions/{id}/{segment}`) declares the plane that serves it for a v2
-session: the cell, the control plane's record, or a known gap
+session: the shard, the control plane's record, or a known gap
 (`crates/contracts/src/session_commands.rs`, printed to
 `session_commands_registry.txt`). The edge routes by that table. A server
 test fails on a session route in the API document that declares no plane;
-a cell test sends every route of a cell segment to the cell's router and
+a shard test sends every route of a shard segment to the shard's router and
 fails when one answers "not available yet" without being a declared gap,
 or when a declared gap is served, so closing a gap updates the table in
 the same change. A session route the server serves outside the API
 document (`commands`, `environment`) is declared by hand.
 
-**Parity, Phase A: the parity gate (2026-11-19).** Each capability
+**Parity, Phase A: the parity gate (2026-11-19).** Superseded on 2026-11-22: the host-call path is gone (see "Native vs injected" below). Each capability
 declares the host calls its tools make (`Capability::host_calls`); two
 calls are the turn's own and need no declaration (`host_calls::TURN_CALLS`:
 the approval policy and the egress grants). The capability matrix
-(`cell-testkit/tests/capabilities.rs`) runs on a fleet with no control
+(`shard-testkit/tests/capabilities.rs`) runs on a fleet with no control
 plane, so "runs" means it runs without one, and lists beside each
 capability the host calls it may still make; a name that is not a declared
 host call fails it. An executor counts a session's host call its agent's
@@ -2132,13 +2132,13 @@ under the session's own key, never shared with the agent's.
 
 **Parity, Phase B: the agent catalog (2026-11-19).** Tools that hand work
 to another agent (coordination, handoff, teams, subagents) name it by the
-platform's agent id. A cell knew only the agents a session had run, so
+platform's agent id. A shard knew only the agents a session had run, so
 most of them failed. Every agent of a v2 org now has its own key
 published (the agent on its own harness), whose revision carries the
 agent's card: the platform's ids for it and its harness, and the
 definitions the tools read, MCP credentials redacted
-(`crates/server/src/domains/data_plane/catalog.rs`). The cell's directory
-answers tools from the cards (`/cell/orgs/{org}/catalog/...`). Decisions:
+(`crates/server/src/domains/data_plane/catalog.rs`). The shard's directory
+answers tools from the cards (`/shard/orgs/{org}/catalog/...`). Decisions:
 platform ids appear only on cards, so Engine records stay id-free; a card
 is never run, a session runs its key's package. A session records the
 agent key it runs (`Platform.agent_ref`), so a child of the parent's own
@@ -2152,15 +2152,15 @@ step 9.
 `everruns` command (2026-11-19).** An MCP server whose OAuth grant acts as
 the person who sent the turn (`actsAs: user`, or `user_or_service` with
 the person first, as on v1), or a preset backed by an org connection,
-reached a cell with no credential, so its calls went out unauthenticated.
+reached a shard with no credential, so its calls went out unauthenticated.
 Its token now comes from the control plane on each call, through the
 `mcp_connection_token` host call. The call names the session and "the
-open turn"; the session's cell fills in the turn's input message and the
+open turn"; the session's shard fills in the turn's input message and the
 person who sent it (THREAT[TM-AGENT-017]), and the control plane checks
 the server is attached and refreshes the grant, as for a v1 worker's
 call. The token is never kept on the data plane. A service grant still
 goes over as a sealed connection the data plane refreshes. The shell's
-`everruns` builtin is installed on a cell as on a worker: it forwards the
+`everruns` builtin is installed on a shard as on a worker: it forwards the
 line to the `platform` capability's `execute` tool, which runs the
 command catalog as the turn's person.
 
@@ -2169,21 +2169,21 @@ session had no Memory (`/memory/agent`, `/memory/user`, `/memory/shared`,
 `/team`, `/room`) and none of the files its capabilities bring, so an
 agent told to read `/workspace/docs` or keep notes in `/memory/user`
 found nothing. Memory stays in the control plane: it is shared across
-sessions, people and agents of the org, so no one session's cell can own
+sessions, people and agents of the org, so no one session's shard can own
 it. The control plane resolves a session's mounts from its record, as for
-a v1 session, and sends them with the create; the cell mounts only those,
+a v1 session, and sends them with the create; the shard mounts only those,
 and each file operation is one `memory_file` host call, served only
 inside the session's own mounts (THREAT[TM-TENANT]). Nothing is cached, so
 a read sees what another session wrote a moment ago; a subagent's child
 has no Memory, and there is no content search over it yet (a shell's
 `grep` reads the files). A capability's virtual tree (the product docs)
-is mounted read-only from the cell's memory, built once and shared by
+is mounted read-only from the shard's memory, built once and shared by
 every session; its inline files are written with the create, only where
 absent, as v1 copies them (`crates/agentd/src/memory.rs`,
 `crates/agentd/src/capability_files.rs`,
 `crates/server/src/domains/data_plane/memory.rs`).
 
-**Parity, Phase B: Console Chat on cells (2026-11-19).** The console's
+**Parity, Phase B: Console Chat on shards (2026-11-19).** The console's
 own Chat now runs on a v2 org's data plane like any agent, and is in its
 catalog. Its page tools are tools the browser runs: a package declares
 them and the Framework binds nothing for them, so the turn parks on the
@@ -2194,17 +2194,17 @@ across every chat: the manage tools' store is one host call
 (`user_mcp_servers`), resolved into what an executor runs (a catalog
 server's address, a key as a literal header, a sign-in kept as its OAuth
 provider whose token is `mcp_connection_token` per use). Both act as the
-person the session's cell recorded for the turn, never as one the
+person the session's shard recorded for the turn, never as one the
 executor names. The servers join the turn through the runtime's
 `TurnMcpServers` hook, never the session record, so a record written back
 cannot keep a person's key; a turn nobody sent (a channel message, a
 schedule run) never asks. "Add to this chat only" waits for session MCP
-records on cells (step 9). The Chat's model is the one the org set when
+records on shards (step 9). The Chat's model is the one the org set when
 its definition was last published; a change reaches new chats with the
 next republish, within the ten-minute sweep (`crates/agentd/src/user_mcp.rs`,
 `crates/server/src/domains/data_plane/user_mcp.rs`).
 
-**Parity, Phase B: a session's SQL databases live in its cell
+**Parity, Phase B: a session's SQL databases live in its shard
 (2026-11-19).** Decision 2A: session state belongs with the session, so
 the `session_sql_db` host call is gone. Each database is one SQLite file in
 the object store, named by its SHA-256 like any other blob; the session's
@@ -2217,40 +2217,40 @@ brought to the index before each call, with the executor, authorizer and
 limits every host shares (`everruns::database`); the index also holds the
 database count and the session's total size. Executors commit under their
 epoch, the Databases API (`/v1/sessions/{id}/databases`, now served by the
-cell) unfenced as the gateway (`crates/agentd/src/sqldb.rs`,
+shard) unfenced as the gateway (`crates/agentd/src/sqldb.rs`,
 `crates/agentd/src/hosting_sqldb.rs`). Not carried yet: a fork's copy of the
 parent's databases.
 
 **Parity, Phase B: Changes, git, chat MCP servers and task push configs
 (2026-11-19).** Four session routes answered "not available yet" on v2.
-Three are now served by the control plane against the session's cell, as
+Three are now served by the control plane against the session's shard, as
 the sandbox's lifecycle and storage are: the Changes tab
 (`/repositories`) reads the repositories in the sandbox the control plane
-pinned, after its state on the cell says it runs (a page view never starts
+pinned, after its state on the shard says it runs (a page view never starts
 one); `/git` keeps a session's commits in the control plane's history
-tables for both planes, and a commit takes the workspace from the cell in
+tables for both planes, and a commit takes the workspace from the shard in
 one snapshot (the `fs` command's `snapshot`, at most 64 MiB); and
 `/mcp-servers` lists and removes the chat-only MCP records in the session's
-storage on its cell. Task push configs are the cell's: they live beside the
+storage on its shard. Task push configs are the shard's: they live beside the
 task, since the control plane's table refers to its own task rows; their
 signing secrets do not (see the review fixes below). A transition a webhook may want goes on the feed
 (`Record::TaskTransition`) from the state machine, with the push configs
 that ask for it, and the control plane delivers it as it does a v1 task's,
 the org's task webhooks included (`data_plane/task_webhooks.rs`).
 Decision: delivery goes through the feed, the channel the control plane
-drains once per position, rather than from a cell, which has no outbound
+drains once per position, rather than from a shard, which has no outbound
 webhook path; it stays best-effort, as on v1. The session's own MCP records (a server
-added to this chat only, an ARD MCP target) then joined cell turns
+added to this chat only, an ARD MCP target) then joined shard turns
 (2026-11-20): a turn of a session with a record asks the control plane, in
 the same `user_mcp_servers` call that brings the person's servers, and the
-control plane reads the records from the cell, never from the call, and
+control plane reads the records from the shard, never from the call, and
 resolves them as it does the person's. As on v1 they join any agent's
 turns and win a name clash with the person's server, so the call and the
 per-use token join the calls any turn may make (`TURN_CALLS`).
 
 **Parity, Phase B: the capabilities left (step 10, 2026-11-19).** A
 capability a deployment turns on by flag (Docker, the container sandbox,
-paid Parallel) registers on a cell from the same catalog and grade as on a
+paid Parallel) registers on a shard from the same catalog and grade as on a
 v1 worker, so it builds and runs once the operator turns it on for both
 planes; the capability matrix records it so turned on. A session's
 resources (fleet sandboxes, activated skills) and the leases of what its
@@ -2258,13 +2258,13 @@ tools started at a provider (a sandbox, a browser) stay in the control
 plane, reached by the v1 worker's own commands as host calls
 (`session_resource_*`, `leased_resource_*`): the console lists the
 resources, and the lease sweeper stops a provider sandbox a session left
-running. Before this a fleet tool failed its turn on a cell, and a cell
+running. Before this a fleet tool failed its turn on a shard, and a shard
 never leased the provider sandboxes it started, so none would have been
-reaped. A cell with no control plane has neither, as on a Framework host.
+reaped. A shard with no control plane has neither, as on a Framework host.
 Phase C must move the lease sweeper off the v1 worker before workers
 retire.
 
-**Parity, Phase B: dreaming (step 10, 2026-11-19).** Before this a cell
+**Parity, Phase B: dreaming (step 10, 2026-11-19).** Before this a shard
 kept dreaming's state (turn counters, the dream job, the daily budget a
 Memory scope shares) in process memory: a dream lived only as long as
 its turn's timer and its executor, and budgets reset per session. The
@@ -2275,7 +2275,7 @@ session as an Engine session's store is (`crates/agentd/src/hosting.rs`,
 its dream from its own timer; for one that timer did not finish, each
 executor sweeps the orgs whose sessions it mirrors and asks the control
 plane for that org's due dreams (`due_org`, `crates/agentd/src/executor.rs`).
-The control plane answers a cell for its own org only, and a v1 worker's
+The control plane answers a shard for its own org only, and a v1 worker's
 discovery skips every session the data plane runs, so no dream runs on
 both planes. Reader ports carry the session's Memory so a swept dream can
 write it.
@@ -2290,37 +2290,37 @@ together:
   duplicate that still arrives gets the first run's sealed answer, or a
   refusal while the first has not finished. Receipts expire after a day,
   since a call is retried within seconds.
-- An org settings change cannot leave the old policy on the cells. A
+- An org settings change cannot leave the old policy on the shards. A
   trigger on the settings' tables counts each change in the change's own
   transaction (`dp_orgs.settings_rev`), and the dispatcher syncs every org
   whose count is ahead of the last sync, so a sync that failed right after
   revoking open egress is retried, never lost
   (`data_plane/org_settings.rs`).
-- A push config's signing secret never enters a cell's replicated state.
-  The cell that takes the config hands the secret to the control plane
+- A push config's signing secret never enters a shard's replicated state.
+  The shard that takes the config hands the secret to the control plane
   (the `task_push_secret` host call, run once per config id), which keeps
   it encrypted with the server's secrets key (`dp_task_push_secrets`); the
   config says only that it has one, and the control plane fills the secret
   in when it delivers (`data_plane/task_webhooks.rs`). A session with no
   control plane refuses a secret.
-- A subagent a cell starts gets a session record under its parent, as on
-  v1: the cell asks first (the `subagent_record` host call), runs the child
+- A subagent a shard starts gets a session record under its parent, as on
+  v1: the shard asks first (the `subagent_record` host call), runs the child
   under the record's id, and creates it with the Memory mounts resolved
   from that record (`data_plane/subagents.rs`), so the console lists it
   and its Memory, connections and calls resolve as its parent's do.
 
 **Phase C: moving a running v1 session (2026-11-20).** Decision 4A: a v1
 session of an org on a data plane is moved, not left on the workers. It
-keeps its id, record and history and runs on a cell from then on
+keeps its id, record and history and runs on a shard from then on
 (`data_plane/moves.rs`, `everruns-dataplane move <org> [<session>]`, which
 without a session moves every v1 session of the org). The move switches
 first: one transaction records it (`dp_session_moves`) and marks the
 session as the data plane's, so no message reaches the workers again; the
 control plane refuses its messages ("moving, send again") until the import
-is done, and so does the cell: the session is created there closed to
-messages (`importing`, marked in the cell's state before the create, so it
+is done, and so does the shard: the session is created there closed to
+messages (`importing`, marked in the shard's state before the create, so it
 holds from the session's first moment), since the edge sends plain
-messages straight to the cell once it finds the session there. The move's
+messages straight to the shard once it finds the session there. The move's
 last step opens it (`activate`), after everything below is in. Only a session with no turn running or waiting is switched, and a
 turn that started just before the switch is waited out; a turn waiting on
 tool results is not moved, since its call would be left without an answer.
@@ -2328,36 +2328,36 @@ The import carries what a fork carries, and the session's databases: the convers
 messages that fit one seed call, text and media only), the values and the
 secrets (sealed again for the session), and the workspace's files (one
 call each when large; the data plane's session commands take a file as
-big as a cell holds), and the SQL databases, each whole (v1 keeps a
+big as a shard holds), and the SQL databases, each whole (v1 keeps a
 database as its pages, which in order are its SQLite file; both planes
 hold the same limits, so a database that does not go stops the move
-rather than stay behind). A bound secret stays behind, since a cell has no
+rather than stay behind). A bound secret stays behind, since a shard has no
 egress binding yet. The v1 log stays in the control plane's `events`, and
 the move records where it ends and what stayed behind. Every step is
 retry-safe, so a move that stopped midway is run again and continues.
 
-**11.6b: lookups at call time (2026-11-18).** The org answers a tool
+**11.6b: lookups at call time (2026-11-18).** Superseded on 2026-11-22: the host-call path is gone (see "Native vs injected" below). The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
 keys, the tool approval policy) reach a v1 worker as internal commands.
-A cell runs the same commands with the same client
+A shard runs the same commands with the same client
 (`everruns_internal_protocol::commands`, moved out of the worker so both
-share it): the executor asks its directory cell, the cell forwards the
+share it): the executor asks its directory shard, the shard forwards the
 request to the control plane over the link (`POST
 /dp/v1/tenants/{org}/lookups`), and the control plane runs the command
 as the org's internal caller and seals the answer with the org's data
-key under the request's own id, so the cell in between passes on
+key under the request's own id, so the shard in between passes on
 ciphertext (`crates/agentd/src/lookups.rs`,
 `crates/server/src/domains/data_plane/host_calls.rs`). Only those six
 commands go over: sandbox keys and MCP credentials are already sealed
-org secrets on the data plane, and a cell leases nothing to clean up. A
-standalone cell, with no control plane, keeps the answers of a host
+org secrets on the data plane, and a shard leases nothing to clean up. A
+standalone shard, with no control plane, keeps the answers of a host
 without org settings; a lookup that cannot reach the control plane fails
 the tool call rather than falling back to a default. The `knowledge`
 tools (search and browse the org's collections an agent attaches) go the
 same way, with the v1 worker's knowledge client. Automatic knowledge
-context stays off on a cell: the control plane records each retrieval
-against the turn's input message, which lives in the cell. Poppy calls
+context stays off on a shard: the control plane records each retrieval
+against the turn's input message, which lives in the shard. Poppy calls
 go over too: the session owner's company accounts, keys and conversations
 stay in the control plane, as on v1. So do the org's egress grants (open
 egress, allowlist extension): a session's turns run as its tenant's org,
@@ -2368,10 +2368,10 @@ grants nothing.
 Platform Chat's tools (`platform_discover`, `platform_query`,
 `platform_execute`) go over the same channel, but run as a person, not
 the org: the call names only the session and the turn's input message,
-the forwarding cell asks the session's cell who sent that message and
+the forwarding shard asks the session's shard who sent that message and
 sets the person, and the control plane re-derives the `platform`
 capability and the person's membership and current role, as for a v1
-worker's call. The session's cell records a sender only from a trusted
+worker's call. The session's shard records a sender only from a trusted
 admission path (the gateway, from a verified org token's subject; the
 control plane, for a message a person sent through it); a schedule's run
 or a task wake acts as the last person who wrote, as v1 copies the
@@ -2381,14 +2381,14 @@ forwards to the same tool (Phase B). The `slack` tools' actions (react, update,
 upload, look up a user) go over too, run by the control plane as the bot
 of the endpoint the session came through, so the bot token stays there.
 The conversation sender a v1 worker installs with them is left out: a
-post binds to the turn's input event, which lives in the cell, and the
+post binds to the turn's input event, which lives in the shard, and the
 channel host already delivers the turn's messages from the session's
-stream. Cells embed the product docs, so a platform agent finds them at
+stream. Shards embed the product docs, so a platform agent finds them at
 `/docs` as on a worker. A session's SQL databases (the `sql_database`
-tools) first stayed in the control plane's store; they moved into the cell
+tools) first stayed in the control plane's store; they moved into the shard
 in Phase B (below).
 
-**11.7 The feature mix for the 75k run (2026-11-18).** `cell-drive load
+**11.7 The feature mix for the 75k run (2026-11-18).** `agentd-drive load
 --agent mix` gives one session in two a chat agent (the llmsim mix the
 step 10 runs used) and the rest a platform feature, by repetition over
 twenty sessions: session files (three in twenty write a note on odd turns
@@ -2408,29 +2408,29 @@ on) ran 71,762 agents and 717,620 turns with 0 errors at 216 turns/s,
 about $3e-05 per agent-hour; every feature's turns completed (files 35,940,
 schedules, subagents and MCP 23,960 each, sandboxes 11,980), and turn p50
 was 90 s against 138 s for chat alone, all of it queueing. It missed the
-no-out-of-memory gate: the mix holds about 0.5 GB more per cell node (9.1 to
+no-out-of-memory gate: the mix holds about 0.5 GB more per shard node (9.1 to
 9.4 GB before chaos; subagent sessions add 9% more sessions), and after
-chaos killed a node of cell 1 its slow commits drew the executor pool in
-(2,600 to 17,000 running turns, the other cells steady at 2,700). Its other
-two nodes went past 12 GiB three times. A cell short of memory now starts
+chaos killed a node of shard 1 its slow commits drew the executor pool in
+(2,600 to 17,000 running turns, the other shards steady at 2,700). Its other
+two nodes went past 12 GiB three times. A shard short of memory now starts
 no turns past `--pressure-turns` (1024): queued input waits, see
 `pressure.rs`.
 
 With that fix (saas run 44383590806) the mix ran 72,421 agents with 0
-errors, but one node of cell 1 was still killed: its memory rose from 9.2
+errors, but one node of shard 1 was still killed: its memory rose from 9.2
 to 12 GB below the 85% gate. Per-node samples of the next run show why:
-every node of a cell jumps by 2 to 3 GB at the same moment, when the log
+every node of a shard jumps by 2 to 3 GB at the same moment, when the log
 reaches its longest (about 1.1 GB) and all three build a snapshot at the
-same index. `build_snapshot` clones the cell state and encodes it to JSON
+same index. `build_snapshot` clones the shard state and encodes it to JSON
 in memory, so the copy, the encoding and the full log coexist for a few
 seconds; the memory budget does not count the first two. Run 44396952768
 gave the nodes 14Gi with the same 9 GiB budget (executors 4608Mi, which
 peak at 3.5 GiB, so the fleet still fits one 48 vCPU node) and **passed the
 11.7 gate**: 72,301 agents, 723,010 turns, 0 errors, no restarts, 220
-turns/s, turn p50 84 s (queueing), $3e-05 per agent-hour, cells 11.0
+turns/s, turn p50 84 s (queueing), $3e-05 per agent-hour, shards 11.0
 cores and executors 16.0 cores on average, peak node 13.2 GB. Left for
 the finalization work: encode a snapshot without a full copy of the
-state, and stagger the nodes' snapshots; after chaos the cell that lost
+state, and stagger the nodes' snapshots; after chaos the shard that lost
 a node still draws 16,000 running turns against 2,700 elsewhere.
 
 ### Corrections after the architecture review (2026-11-09)
@@ -2448,7 +2448,7 @@ which runs against the memory and SQLite authorities.
   or a hydrator whose Harness differed from the package's, suspended the
   agent's sessions as unavailable configuration. Now every defined agent's
   sessions run in one Engine-owned Environment
-  (`EngineBuilder::definition_environment`; a cell installs its filesystem
+  (`EngineBuilder::definition_environment`; a shard installs its filesystem
   there) and bind no Harness: the revision names it. The workspace also used
   to belong to the hydrated Agent value, so a session got a new, empty one
   on every revision and every cache eviction.
@@ -2486,7 +2486,7 @@ service bundles into the one the platform host fills. Checked and dropped:
 moving the Engine out of the facade crate. The worker and the server
 already depend on the facade, so step 4 needs no crate move.
 
-### Cell storage: alternatives (2026-11-09)
+### Shard storage: alternatives (2026-11-09)
 
 The design takes funout's storage as given: an in-memory state machine
 replicated by Raft (`openraft` pinned to 0.9, the maintenance line; 0.10
@@ -2510,8 +2510,8 @@ session authority actually needs:
 
 | Option | Atomic step | Commit, three zones | Failover | What we own | Self-hosted |
 | --- | --- | --- | --- | --- | --- |
-| A. Own Raft and log (funout, the plan) | Yes, by construction | 1.4 ms on one VM; a few ms expected across zones | About a second | The storage engine: log, snapshots, membership, upgrades, and proving them | Three stateful pods per cell |
-| B. PostgreSQL per cell | Yes, a transaction | A few ms with a synchronous standby, group commit built in | Typically 20 to 35 s on a managed Multi-AZ cluster | A schema and a `SessionHosting` profile; SQLite already is one | Everyone already runs it |
+| A. Own Raft and log (funout, the plan) | Yes, by construction | 1.4 ms on one VM; a few ms expected across zones | About a second | The storage engine: log, snapshots, membership, upgrades, and proving them | Three stateful pods per shard |
+| B. PostgreSQL per shard | Yes, a transaction | A few ms with a synchronous standby, group commit built in | Typically 20 to 35 s on a managed Multi-AZ cluster | A schema and a `SessionHosting` profile; SQLite already is one | Everyone already runs it |
 | C. One writer on object storage (conditional writes, batched) | Yes, one object per group commit | Single-digit ms only on S3 Express One Zone, which is one zone; standard S3 is tens of ms | Seconds: any node takes over by winning a conditional write | A log format and a fencing rule, no replicas and no disks | Depends on the object store's conditional writes and latency |
 | D. An existing replicated store (FoundationDB, TiKV) | Yes | A few ms | Seconds | Nothing in storage; a second database to operate, with limits to design around (FoundationDB: 10 MB and 5 s per transaction, 100 KB per value) | Heavy |
 
@@ -2522,25 +2522,25 @@ multi-key transaction).
 
 What this says:
 
-- **The choice sits behind one interface.** A cell is an Engine
+- **The choice sits behind one interface.** A shard is an Engine
   `SessionHosting` profile. Steps 4 (workers on the Engine) and the
-  control plane protocol do not depend on which option stores a cell.
+  control plane protocol do not depend on which option stores a shard.
 - **A is the fastest and the one with the most unproven correctness.** C
   and D do not beat it on anything this workload needs: C trades zones for
   latency, D trades our storage engine for someone else's operations.
 - **B looks simpler and is not.** PostgreSQL does not replicate itself, so
-  every cell would need a managed cluster or an operator. Capacity then
+  every shard would need a managed cluster or an operator. Capacity then
   moves in whole database clusters that take many minutes to create and
   are billed idle, and failover takes tens of seconds. It also keeps a
-  database at the center of each cell, which cells exist to remove.
+  database at the center of each shard, which shards exist to remove.
 
-**Decision (2026-11-09): A, own Raft storage, stays.** The point of cells
-is to be fast and to scale by adding cells, with no central database, and
+**Decision (2026-11-09): A, own Raft storage, stays.** The point of shards
+is to be fast and to scale by adding shards, with no central database, and
 none of the alternatives keeps that. What the comparison changes is the
-order of the cell port (step 5): the proof of the storage engine comes
+order of the shard port (step 5): the proof of the storage engine comes
 first. The formal models, the deterministic simulation and the kill and
 partition tests listed under Testing are its first deliverables, before
-any feature work on cells.
+any feature work on shards.
 
 ## Limits and risks
 
@@ -2574,7 +2574,7 @@ any feature work on cells.
 - **The registry is a new shared component.** It is off the per-step
   path, but it is on the session-creation and org-config path, so it is
   replicated, sharded by id and cached everywhere.
-- **Cross-cell features** (agents using agents, shared volumes) are the
+- **Cross-shard features** (agents using agents, shared volumes) are the
   norm, not the exception, so every hand-off between units is idempotent,
   as funout's already are.
 
@@ -2598,13 +2598,13 @@ Self-review, 2026-11-09, after a day of design changes. Other reviewers (people 
 - `scripts/stress/` (bench and 8k budgets).
 
 **Decisions the user has already made.** Challenge one only with new evidence:
-- Build cell-native from the ground. Target 75 000 agents. No backward compatibility; a new deployment is fine.
-- One control plane (server + RDS), data plane v1 (today's workers) and data plane v2 (cells + S3).
+- Build shard-native from the ground. Target 75 000 agents. No backward compatibility; a new deployment is fine.
+- One control plane (server + RDS), data plane v1 (today's workers) and data plane v2 (shards + S3).
 - One public API. The edge router routes by org token, and the control plane is off the message path.
-- Crates live under `crates/` named `cell*`. funout's isolated testability is kept.
-- Cells are Engine hosting profiles. Workers move onto the Engine too, staying actors.
+- Crates live under `crates/` named `shard*`. funout's isolated testability is kept.
+- Shards are Engine hosting profiles. Workers move onto the Engine too, staying actors.
 - The data plane knows full agent definitions, not org configuration. Changes reach it as a broadcast stream. There is no agent registry or resolver.
-- Placement is per session. Any cell hosts any org, and sessions move freely, also for upgrades.
+- Placement is per session. Any shard hosts any org, and sessions move freely, also for upgrades.
 - Supported rolling upgrades never suspend sessions. The session protocol is versioned with major/minor rules.
 - Budgets live in the control plane, enforced with spend allowances. Concurrency and rate limits are only safety nets.
 - Control plane ↔ data plane traffic is HTTPS + JSON.
@@ -2615,9 +2615,9 @@ Self-review, 2026-11-09, after a day of design changes. Other reviewers (people 
 
 ### Strengths
 
-- **Nothing central on the turn path:** a turn touches its cell, the executor's caches and S3.
+- **Nothing central on the turn path:** a turn touches its shard, the executor's caches and S3.
 - **Stateless executors and per-session placement** make deploys, drains and rebalancing one mechanism.
-- **One turn implementation for everything:** Engine hosting is shared by Framework apps, v1 workers and v2 cells.
+- **One turn implementation for everything:** Engine hosting is shared by Framework apps, v1 workers and v2 shards.
 - **The data plane is mostly business-agnostic:** agent definitions in, usage out.
 - **A strong testing story inherited from funout,** extended with budgets, models and simulation.
 
@@ -2628,15 +2628,15 @@ Ordered by severity. Each has a proposed resolution; the ones marked *open* need
 1. **Engine hosting performance is unproven at our scale.** *Accepted: build and measure.*
    - funout's long-session run fell from 131 turns/s flat to 46.7/s, dropping to 25/s, under Engine hosting.
    - The Engine also keeps a handle per session in memory, which hasn't been measured at 75k.
-   - The scale estimate above uses pre-Engine numbers (251 turns/s on 2 cells), so it's optimistic until re-measured.
-   - Resolution (user, 2026-11-09): build enough to run, then measure, with a bench gate on every step. Step 0 of the plan measures Engine hosting today; step 1 must make it flat before cells depend on it.
+   - The scale estimate above uses pre-Engine numbers (251 turns/s on 2 shards), so it's optimistic until re-measured.
+   - Resolution (user, 2026-11-09): build enough to run, then measure, with a bench gate on every step. Step 0 of the plan measures Engine hosting today; step 1 must make it flat before shards depend on it.
    - Update (funout `0a0c0ec`, review round 3): now 115.5 turns/s flat; see items 23 to 25.
 2. **Disaster recovery is not designed.** *Accepted; see "Disaster recovery".*
-   - Quorum loss in a cell (two zones, or correlated disk loss) loses whatever was not yet in S3. There's no backup story for the registry, and no answer to "restore the data plane to a point in time", which RDS gives us today. The user rejected JetStream for exactly this reason.
+   - Quorum loss in a shard (two zones, or correlated disk loss) loses whatever was not yet in S3. There's no backup story for the registry, and no answer to "restore the data plane to a point in time", which RDS gives us today. The user rejected JetStream for exactly this reason.
    - Proposed:
      - S3 versioning plus cross-region replication.
-     - Registry and cell snapshots to S3 on a schedule.
-     - A recovery procedure that rebuilds a cell from its last snapshot plus segments, with the window of loss stated (unflushed tail, target under a few seconds).
+     - Registry and shard snapshots to S3 on a schedule.
+     - A recovery procedure that rebuilds a shard from its last snapshot plus segments, with the window of loss stated (unflushed tail, target under a few seconds).
      - A tested restore drill in the weekly tier.
 3. **The registry risks becoming the new RDS.** *Accepted (user, 2026-11-09): summary index dropped; lists come from the control plane's feed copy.*
    - It holds the directory, agent revisions, tenants and secrets, the change stream and the session summary index.
@@ -2644,25 +2644,25 @@ Ordered by severity. Each has a proposed resolution; the ones marked *open* need
    - Applied: dropped the summary index from the registry. Org-wide lists and search come from the query service (Parquet index) or the control plane's copy from the feed. The registry keeps only the directory, revisions, tenants and the change stream: low write rate, sharded by id, cached.
 4. **Platform-on-Engine is a prerequisite of stage 1, not a later program.** *Accepted; plans merged into "Implementation plan".*
    - The Engine hard-codes egress, utility LLM and decisions, and stage 1 needs platform egress.
-   - So the trusted host extension bundle (platform-on-engine step 2) must land before phase 3 here, and the two plans should be one sequence: Engine hooks → host extensions → definitions as data → cells phase 3 in parallel with workers on the Engine.
+   - So the trusted host extension bundle (platform-on-engine step 2) must land before phase 3 here, and the two plans should be one sequence: Engine hooks → host extensions → definitions as data → shards phase 3 in parallel with workers on the Engine.
    - Proposed: merge the plans into one ordered list.
-5. **Per-cell executor pools fragment capacity.** *Accepted: one shared pool with a per-cell cap (see "Executors").*
-   - With sessions spread over any cell, a pool per cell means N KEDA scalers and idle headroom in each.
-   - A shared executor pool per data plane, with cells dispatching to it, is simpler and packs better. Raft isolation is kept, because executors stay separate from cell nodes.
-   - Decided: shared, with a per-cell cap.
+5. **Per-shard executor pools fragment capacity.** *Accepted: one shared pool with a per-shard cap (see "Executors").*
+   - With sessions spread over any shard, a pool per shard means N KEDA scalers and idle headroom in each.
+   - A shared executor pool per data plane, with shards dispatching to it, is simpler and packs better. Raft isolation is kept, because executors stay separate from shard nodes.
+   - Decided: shared, with a per-shard cap.
 6. **The live token stream has no routing design.** *Accepted; see "Live streaming".*
-   - Deltas go from the executor to "the gateway that serves the session's SSE", but a client's SSE can land on any gateway node of any cell.
-   - Proposed: the executor publishes deltas to the session's cell, and every replica of that cell fans them out to its local SSE subscribers. The edge sends a session's SSE to a node of that session's cell (directory lookup, cached). This also needs the Engine delta hook (plan step 1). Superseded by the stream-node design in "Live streaming".
-7. **Request routing adds a hop.** *Accepted.* Edge → any cell gateway → directory → session's cell. Proposed: the edge caches session → cell from the directory (invalidated by moves through the forward response), so the common case is one hop.
+   - Deltas go from the executor to "the gateway that serves the session's SSE", but a client's SSE can land on any gateway node of any shard.
+   - Proposed: the executor publishes deltas to the session's shard, and every replica of that shard fans them out to its local SSE subscribers. The edge sends a session's SSE to a node of that session's shard (directory lookup, cached). This also needs the Engine delta hook (plan step 1). Superseded by the stream-node design in "Live streaming".
+7. **Request routing adds a hop.** *Accepted.* Edge → any shard gateway → directory → session's shard. Proposed: the edge caches session → shard from the directory (invalidated by moves through the forward response), so the common case is one hop.
 8. **Raft write amplification from files.** *Accepted.* File commits add about 2 000 Raft entries/s, and inline file contents up to 16 KiB grow the WAL and snapshots. Proposed: measure in the stress bench, and lower the inline threshold if the fsync or WAL budget is hit.
 9. **Multi-tenant executors see many tenants' secrets.** *Accepted.* This is the same exposure as today's workers, but worth stating. Each executor holds unwrapped org data keys for tenants it ran recently. Proposed: short data-key cache lifetime, keys never written to disk, sandbox tools isolated as today, and a security review before real orgs move (already listed).
-10. **Operations and debugging are thin.** *Accepted; plan step 10.* There are no runbooks, dashboards or "where is session X and what is it doing" tool. Proposed: a deliverable of the EKS proof step with a cell inspector CLI, per-cell SLO dashboards, and runbooks for leader loss, a stuck move and a drain.
+10. **Operations and debugging are thin.** *Accepted; plan step 10.* There are no runbooks, dashboards or "where is session X and what is it doing" tool. Proposed: a deliverable of the EKS proof step with a shard inspector CLI, per-shard SLO dashboards, and runbooks for leader loss, a stuck move and a drain.
 11. **The org move between data planes (v1 → v2) is only sketched.** *Accepted; plan step 11.* Export and import are named, but session import format and cutover of in-flight turns are not. They're needed before any real org moves; it's fine to defer past the EKS proof.
 12. **Doc drift (fixed in this pass):**
     - stale "config snapshot" wording in the Why, turn-needs and where-things-live tables;
     - files described as a per-session prefix instead of the workspace tree;
     - the trace catalog said RDS;
-    - the admin contract mentioned cell drains;
+    - the admin contract mentioned shard drains;
     - phase 0 and phase 2 wording.
 
 ### Second round: yolop and grok (2026-11-09)
@@ -2680,13 +2680,13 @@ asked for all of it to be fixed; what changed:
 14. **Feed dedup by `(source, Raft index)` drops records** (grok; funout
     batches many commands into one entry). *Fixed:* record id is
     `(source, incarnation, index, ordinal)`, session summaries carry a
-    monotonic `session_version` that survives moves, cells keep unacked
+    monotonic `session_version` that survives moves, shards keep unacked
     records through retirement, and the feed stays in the shipped log for
     30 days for control plane replay ([cp-dp-protocol.md](cp-dp-protocol.md)).
 15. **Allowances could double-spend; "hard cap" was ambiguous** (grok).
     *Fixed:* strict cap on authorized spend; grant ids reserved in the
     ledger, per-call reservation of maximum cost, settlement per grant,
-    expiry stops spending but doesn't release money, lost cells' grants
+    expiry stops spending but doesn't release money, lost shards' grants
     count as spent until reconciled (Placement, budgets).
 16. **Resumed turns could pick up a newer agent; skipping unknown events is
     unsafe** (grok). *Fixed:* a turn retains its revision across crash,
@@ -2712,16 +2712,16 @@ asked for all of it to be fixed; what changed:
 20. **Capacity is a hypothesis; the shared pool can oversubscribe**
     (grok, yolop). *Fixed:* sensitivity table in the scale estimate,
     production-shaped EKS gate, executor credits instead of advertising the
-    same slots to every cell (Executors).
+    same slots to every shard (Executors).
 21. **Gates before the full build** (yolop: Engine re-measure, fencing
     proof under leader loss and stale replay, ops tooling with the EKS
     proof, v1 → v2 import format; grok: protocols first, measure the
-    Engine path, one thin complete cell, failure qualification,
+    Engine path, one thin complete shard, failure qualification,
     production-shaped capacity, worker migration gated separately).
     *Fixed:* all are steps or gates in the plan (steps 0, 1, 6, 10, 11);
     the step 1 gate is now a numeric tolerance rather than "flat".
 22. **Per-message placement lookup as a hotspot; trace and search
-    consistency** (yolop). *Accepted:* the edge caches session → cell and
+    consistency** (yolop). *Accepted:* the edge caches session → shard and
     corrects on the forward response (finding 7); search freshness is
     reported per query (Trace and session search).
 
@@ -2749,7 +2749,7 @@ asked for all of it to be fixed; what changed:
     grok). *Fixed:* the turn retains `(agent_revision, protocol_major)`; a
     resumed activation hydrates it; native tools declare a compatibility
     identity. No executor pinning.
-28. **11 cells is saturation, not an estimate** (funout author, grok).
+28. **11 shards is saturation, not an estimate** (funout author, grok).
     *Fixed:* 11 is the lower bound; plan on about 16 with failure headroom
     at 70% utilization until step 0 measures.
 29. **Executor warmth needs affinity and a bound** (funout author, grok).
@@ -2774,10 +2774,10 @@ asked for all of it to be fixed; what changed:
 | Date | Reviewer | Findings | Status |
 | --- | --- | --- | --- |
 | 2026-11-09 | design author (self) | 1-12 above | 12 fixed; 1-11 accepted by the user and applied |
-| 2026-11-09 | yolop (independent review) | Conditional go: sharding/split/fencing/allowances sound; 4 gates before full build — (1) Engine-hosted perf re-measure for 75k math, (2) fencing+idempotency proof under leader-loss/stale-replay in cell-testkit, (3) inspector CLI/dashboards/runbooks with EKS proof, (4) v1→v2 import + in-flight cutover defined. Details in thread. | Applied (20, 21, 22) |
+| 2026-11-09 | yolop (independent review) | Conditional go: sharding/split/fencing/allowances sound; 4 gates before full build — (1) Engine-hosted perf re-measure for 75k math, (2) fencing+idempotency proof under leader-loss/stale-replay in shard-testkit, (3) inspector CLI/dashboards/runbooks with EKS proof, (4) v1→v2 import + in-flight cutover defined. Details in thread. | Applied (20, 21, 22) |
 | 2026-11-09 | grok (independent review) | Conditional go: move generations, feed record ids, grant accounting, turn revision retention, recovery consistency, workspace versions, execution authority, capacity assumptions, slot reservation; gates in a revised order | Applied (13-21) |
-| 2026-11-09 | claude-everruns (funout author, from `0a0c0ec`) | Go for steps 0, 1, 5. (1) Long-session numbers stale: Engine hosting now 115.5/s flat vs 131 pre-Engine. (2) Fixes live in the funout adapter (write pipeline 23→11 waited writes/turn; `session.started` read); move them into Engine before PostgreSQL hosting; add "waited round trips per turn" budget, target ≤5. (3) Background usage events lost and model call re-run when input admitted mid-step; add an invariant of one usage record per provider call. (4) Constant build id disables the retained guard; retain `(agent_revision, protocol_major)` per turn. (5) ~115 turns/s per cell → ~11 cells, not 5–8; executor affinity and an LRU for Engine's per-session cache. Confirms grok's move-generation and feed-identity findings. Details in thread. | Applied (23-29, 32) |
-| 2026-11-09 | grok (follow-up) | (8) live deltas need attempt fencing and one membership view; (9) search catalogs must outlive placement; (10) speculative appends through a crash-durable EventLog; refinements on provider attempts, compatibility identity, 11 cells as saturation | Applied (25-31) |
+| 2026-11-09 | claude-everruns (funout author, from `0a0c0ec`) | Go for steps 0, 1, 5. (1) Long-session numbers stale: Engine hosting now 115.5/s flat vs 131 pre-Engine. (2) Fixes live in the funout adapter (write pipeline 23→11 waited writes/turn; `session.started` read); move them into Engine before PostgreSQL hosting; add "waited round trips per turn" budget, target ≤5. (3) Background usage events lost and model call re-run when input admitted mid-step; add an invariant of one usage record per provider call. (4) Constant build id disables the retained guard; retain `(agent_revision, protocol_major)` per turn. (5) ~115 turns/s per shard → ~11 shards, not 5–8; executor affinity and an LRU for Engine's per-session cache. Confirms grok's move-generation and feed-identity findings. Details in thread. | Applied (23-29, 32) |
+| 2026-11-09 | grok (follow-up) | (8) live deltas need attempt fencing and one membership view; (9) search catalogs must outlive placement; (10) speculative appends through a crash-durable EventLog; refinements on provider attempts, compatibility identity, 11 shards as saturation | Applied (25-31) |
 
 ## Self-hosted default (after the full v2 decision)
 
@@ -2791,38 +2791,81 @@ does it the same way:
   creation (`domains/data_plane/default_plane.rs`). Orgs with v1 sessions
   stay on the workers: moving history is the org-moves step of
   finalization. `EVERRUNS_DATA_PLANE=v1` turns placement off.
-- **One cell.** Docker Compose runs one node, one executor and the edge;
+- **One shard.** Docker Compose runs one node, one executor and the edge;
   the Helm chart runs 1 (or 3/5) nodes; local dev runs three. A fleet of
-  cells stays the hosted service's shape.
-- **Production binary.** `everruns-cell` (StandardHost plus the `llmsim`
+  shards stays the hosted service's shape.
+- **Production binary.** `agentd` (StandardHost plus the `llmsim`
   driver the worker also registers) is published as
-  `ghcr.io/everruns/everruns-cell` with every release; `cell-testnode`
+  `ghcr.io/everruns/agentd` with every release; `agentd-testnode`
   stays the test and load-run host.
-- **Switching back keeps the cell.** An install that ran v2 and switches to
-  v1 keeps its cell running (`DATA_PLANE_REPLICAS`, `dataPlane.keepRunning`):
+- **Switching back keeps the shard.** An install that ran v2 and switches to
+  v1 keeps its shard running (`DATA_PLANE_REPLICAS`, `dataPlane.keepRunning`):
   its v2 orgs' sessions live there.
 - **Smokes follow the images.** The Compose, `docker up`, Helm and `k8s up`
-  smokes run a turn and check where it ran: v2 when the tag has a cell
+  smokes run a turn and check where it ran: v2 when the tag has a shard
   image, v1 for older tags (`scripts/lib/smoke-turn.sh`).
 
 **Parity, remaining gaps (2026-11-20).** `POST messages?wait=true` is
-answered on the cell (`gateway_wait.rs`): the message is admitted as
+answered on the shard (`gateway_wait.rs`): the message is admitted as
 without `wait`, then the call follows the session's events until the turn
 that carries the message ends, and answers with the control plane's
 shape (`200` completed or failed, `202` on timeout). The turn is found by
-the message's own `input.message`, since a cell steers a running turn
+the message's own `input.message`, since a shard steers a running turn
 with it; a cancelled turn ends the wait as failed. A fork of a v2 session
 gets its parent's files, from one `snapshot` of them or file by file past
 a snapshot's limit (`moves::copy_files`). A trigger that runs a saved
-script runs it on the cell: the trigger's message carries the script run,
-and the shell's `tools scripts` reads and saves the agent's scripts through
-the `agent_scripts` and `agent_script_save` host calls (a save acts as the
-turn's management user, under `manage_scripts`, as on v1). A voice call
+script runs it on the shard: the trigger's message carries the script run,
+and the shell's `tools scripts` reads and saves the agent's scripts on
+the control plane's `platform_commands` server (a save acts as the turn's
+management user, under `manage_scripts`, as on v1). A voice call
 stays on the control plane, which holds the provider connection: its
-traces are recorded on the cell (`voice.*` are `RECORDABLE`), its
-utterances are admitted there, its barge-in cancels the cell's turn, and
-it speaks the turns it follows on the cell's event stream. An
-`input_audio` part is not a gap: v1 refuses it too. Still open: a cell
+traces are recorded on the shard (`voice.*` are `RECORDABLE`), its
+utterances are admitted there, its barge-in cancels the shard's turn, and
+it speaks the turns it follows on the shard's event stream. An
+`input_audio` part is not a gap: v1 refuses it too. Still open: a shard
 keeps no created or updated time for a storage key or secret, so the
 Storage tab shows none (`session_storage/plane.rs`); keeping one needs the
 time carried in the write, so every replica applies the same one.
+
+**Native vs injected: the host-call path is gone (2026-11-22).** A shard
+runs native capabilities only; what a hosted capability needs from the
+control plane at call time it reaches the way any MCP server is reached.
+The host-call path (its registry, dispatcher route, per-org limits,
+breaker, parity gate and undeclared-call counter) is deleted, and with it
+the legacy lookup route. What each former call became:
+
+- **Shard state.** A session's resources and leases, its dreaming state,
+  its subagents (`Record::Subagent` on the feed for the control plane's
+  session record) and its SQL databases are the session's own, kept in
+  its shard (`crates/agentd/src/session_records.rs`). A push config's
+  signing secret is sealed with the org's data key by the edge that takes
+  it, so the shard holds ciphertext only.
+- **Pushed config, and nothing else.** Org settings (web search defaults,
+  accounts and keys, the tool approval policy with each member's own
+  approval settings, egress grants) are read only from the org's pushed
+  config. Not pushed yet means none: web search has no org defaults, a
+  turn runs with the agent's own approval config (which only asks more),
+  and egress grants nothing extra.
+- **Injected servers.** The control plane's servers a session's create
+  names (`injected::CONTROLLER_SERVERS`): `credentials` for connection,
+  MCP grant, GitHub and service-key lookups; `platform_commands` for the
+  catalog, the session's spend and its agent's saved scripts;
+  `person_mcp` for the person's MCP servers; `memory_files` for Memory.
+  Each call carries a session token the executor signs, naming the
+  session's org and, from the session's own record, the person who sent
+  the turn it acts for (THREAT[TM-AGENT-017]); the control plane runs the
+  v1 worker command behind it
+  (`crates/server/src/domains/data_plane/calls.rs`). Knowledge, Poppy and
+  Slack actions are hosted capabilities injected the same way.
+
+A shard with no control plane (standalone agentd) gets no injected
+servers, so those lookups answer "none" and the tools that need them
+report it, rather than failing the turn. The control plane keeps the old
+host-call receipts table, never purged; nothing writes it.
+`scripts/lib/check-agentd-control-plane-calls.sh` still fails on a
+control plane request outside the link module. The capability matrix
+(`agentd-testkit/tests/capabilities.rs`) no longer lists host calls; with
+a session's resources in its shard, `sandbox_fleet` finishes its turn
+too, so every capability in the hosted catalog builds and completes a
+turn on a shard with no control plane (feature-flagged ones turned on,
+as an operator would).

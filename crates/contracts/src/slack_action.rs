@@ -153,8 +153,8 @@ pub enum SlackActionOutcome {
 
 /// Why an action did not happen.
 ///
-/// Serializable so a data plane's lookup can carry it back intact
-/// (`everruns_contracts::host_calls::SLACK_ACTION`).
+/// Serializable so the control plane's Slack server can carry it back
+/// intact.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, Serialize, Deserialize)]
 #[serde(tag = "error", content = "detail", rename_all = "snake_case")]
 pub enum SlackActionError {

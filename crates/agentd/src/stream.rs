@@ -2,7 +2,7 @@
 //!
 //! Decisions:
 //! - The stream node of a session is chosen by rendezvous hashing of the
-//!   session id over the cell's committed membership view: the Raft
+//!   session id over the shard's committed membership view: the Raft
 //!   configuration, and its log index as the view's generation. The edge
 //!   and the executors compute it themselves from a cached view (no
 //!   lookup), and send the generation they hashed with; a node that sees
@@ -48,7 +48,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::api::Lookup;
 use crate::node::{Node, now_ms};
-use crate::state::{CellId, Change};
+use crate::state::{Change, ShardId};
 use crate::types::NodeId;
 
 /// How long a stream stays open before it cycles.
@@ -62,7 +62,7 @@ const WATCHER_DELTAS: usize = 1024;
 /// replication round after the executor starts publishing under it.
 const EPOCH_LAG: Duration = Duration::from_millis(500);
 
-/// A cell's committed membership, as the stream hash reads it.
+/// A shard's committed membership, as the stream hash reads it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct View {
     /// The log index of the membership: changes when membership changes.
@@ -115,7 +115,7 @@ pub struct LiveItem {
     pub event: Event,
 }
 
-/// `POST /cell/exec/live`: an epoch's deltas for the session's owner.
+/// `POST /shard/exec/live`: an epoch's deltas for the session's owner.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveBatch {
     pub session: SessionId,
@@ -238,7 +238,7 @@ fn ends_turn(event: &Event) -> bool {
 }
 
 impl Node {
-    /// This cell's view, as Raft last committed it.
+    /// This shard's view, as Raft last committed it.
     pub fn stream_view(&self) -> View {
         let metrics = self.raft.metrics().borrow().clone();
         let generation = metrics
@@ -359,12 +359,12 @@ fn redirect(redirect: Redirect) -> Response {
     (StatusCode::CONFLICT, Json(redirect)).into_response()
 }
 
-/// `/cell/view`, `/cell/exec/live` and the session stream on a node.
+/// `/shard/view`, `/shard/exec/live` and the session stream on a node.
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/cell/view", get(view))
-        .route("/cell/exec/live", post(live))
-        .route("/cell/sessions/{session}/sse", get(sse))
+        .route("/shard/view", get(view))
+        .route("/shard/exec/live", post(live))
+        .route("/shard/sessions/{session}/sse", get(sse))
         .with_state(node)
 }
 
@@ -463,8 +463,8 @@ async fn cursor_of(
         {
             return Ok(seq);
         }
-        if let Lookup::Moved { cell } = lookup_placement(node, session) {
-            return Err((StatusCode::GONE, format!("moved to cell {cell}")));
+        if let Lookup::Moved { shard } = lookup_placement(node, session) {
+            return Err((StatusCode::GONE, format!("moved to shard {shard}")));
         }
         match tokio::time::timeout_at(deadline, changes.recv()).await {
             Err(_) => {
@@ -483,7 +483,7 @@ fn lookup_placement(node: &Node, session: SessionId) -> Lookup<()> {
     if state.sessions.contains_key(&session) {
         Lookup::Here(())
     } else if let Some(left) = state.forwarded.get(&session) {
-        Lookup::Moved { cell: left.cell }
+        Lookup::Moved { shard: left.shard }
     } else {
         Lookup::Missing
     }
@@ -664,11 +664,11 @@ async fn follow(
     }
 }
 
-/// End the stream with `moved` if the session left this cell.
+/// End the stream with `moved` if the session left this shard.
 async fn moved(node: &Node, session: SessionId, tx: &mpsc::Sender<SseEvent>) -> bool {
     match lookup_placement(node, session) {
-        Lookup::Moved { cell } => {
-            let _ = tx.send(moved_event(cell)).await;
+        Lookup::Moved { shard } => {
+            let _ = tx.send(moved_event(shard)).await;
             true
         }
         Lookup::Missing => true,
@@ -676,59 +676,59 @@ async fn moved(node: &Node, session: SessionId, tx: &mpsc::Sender<SseEvent>) -> 
     }
 }
 
-pub fn moved_event(cell: CellId) -> SseEvent {
+pub fn moved_event(shard: ShardId) -> SseEvent {
     SseEvent::default()
         .event("moved")
-        .data(json!({ "cell": cell, "retry_ms": 0 }).to_string())
+        .data(json!({ "shard": shard, "retry_ms": 0 }).to_string())
         .retry(Duration::from_millis(0))
 }
 
 /// Where an epoch's deltas go: the session's stream node, found from a
-/// cached view of its cell.
+/// cached view of its shard.
 #[derive(Default)]
 pub struct Deliver {
-    views: Mutex<HashMap<CellId, (tokio::time::Instant, View)>>,
+    views: Mutex<HashMap<ShardId, (tokio::time::Instant, View)>>,
 }
 
 /// How long a cached view is trusted before it is read again.
 const VIEW_FOR: Duration = Duration::from_secs(5);
 
 impl Deliver {
-    /// `cell`'s view, from the cache unless `refresh`; read from any of
-    /// `seeds` (the cell's members) otherwise.
+    /// `shard`'s view, from the cache unless `refresh`; read from any of
+    /// `seeds` (the shard's members) otherwise.
     pub async fn view(
         &self,
         http: &reqwest::Client,
-        cell: CellId,
+        shard: ShardId,
         seeds: &[String],
         refresh: bool,
     ) -> Option<View> {
         if !refresh
-            && let Some((at, view)) = self.views.lock().get(&cell)
+            && let Some((at, view)) = self.views.lock().get(&shard)
             && at.elapsed() < VIEW_FOR
         {
             return Some(view.clone());
         }
         for addr in seeds {
             if let Ok(reply) = http
-                .get(format!("http://{addr}/cell/view"))
+                .get(format!("http://{addr}/shard/view"))
                 .timeout(Duration::from_secs(2))
                 .send()
                 .await
                 && reply.status().is_success()
                 && let Ok(view) = reply.json::<View>().await
             {
-                self.learn(cell, view.clone());
+                self.learn(shard, view.clone());
                 return Some(view);
             }
         }
-        self.views.lock().get(&cell).map(|(_, v)| v.clone())
+        self.views.lock().get(&shard).map(|(_, v)| v.clone())
     }
 
-    pub fn learn(&self, cell: CellId, view: View) {
+    pub fn learn(&self, shard: ShardId, view: View) {
         self.views
             .lock()
-            .insert(cell, (tokio::time::Instant::now(), view));
+            .insert(shard, (tokio::time::Instant::now(), view));
     }
 
     /// Send `batch` to its stream node. Best effort: a batch nobody takes
@@ -737,13 +737,13 @@ impl Deliver {
     pub async fn send(
         &self,
         http: &reqwest::Client,
-        cell: CellId,
+        shard: ShardId,
         seeds: &[String],
         mut batch: LiveBatch,
     ) -> bool {
         for _ in 0..3 {
             // A redirect taught the cache the newer view.
-            let Some(view) = self.view(http, cell, seeds, false).await else {
+            let Some(view) = self.view(http, shard, seeds, false).await else {
                 return false;
             };
             batch.view = view.generation;
@@ -758,7 +758,7 @@ impl Deliver {
                 let addr = targets[i].clone();
                 i += 1;
                 let sent = http
-                    .post(format!("http://{addr}/cell/exec/live"))
+                    .post(format!("http://{addr}/shard/exec/live"))
                     .json(&batch)
                     .timeout(Duration::from_secs(2))
                     .send()
@@ -770,7 +770,7 @@ impl Deliver {
                             return false;
                         };
                         let same = r.view.generation == view.generation;
-                        self.learn(cell, r.view);
+                        self.learn(shard, r.view);
                         if same && !r.owner.is_empty() && r.owner != addr {
                             // Same view, another owner by that node's
                             // liveness: try the one it names next.

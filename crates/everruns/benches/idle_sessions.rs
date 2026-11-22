@@ -1,7 +1,7 @@
 //! Idle-session memory: what does Engine keep for a session between turns?
 //!
 //! Data plane v2 (`knowledge/execution/data-plane-v2/`) gates plan step 1 on
-//! memory per idle session: a cell's executor runs turns for many more
+//! memory per idle session: a shard's executor runs turns for many more
 //! sessions than are active at once, so whatever Engine keeps for a session
 //! after its turn ends is multiplied by every session the process has seen.
 //!
@@ -10,7 +10,7 @@
 //! Engine is dropped, which splits it into:
 //! - Engine-held bytes per idle session (gone with the Engine): the budget;
 //! - authority-held bytes per session (the in-memory authority's log and
-//!   records, which a cell keeps on disk and in S3, not in the executor).
+//!   records, which a shard keeps on disk and in S3, not in the executor).
 //!
 //! Decisions:
 //! - A counting global allocator, not RSS: RSS keeps freed pages and moves in
@@ -34,7 +34,7 @@ use everruns::{Agent, Engine, LlmSimConfig, Model, SessionId};
 
 /// Engine-held bytes per idle session the gate allows (see the design's
 /// "Step 1 measurements"). funout keeps ~20 KB of metadata per idle session
-/// on a cell node; the executor side should be a small fraction of that.
+/// on a shard node; the executor side should be a small fraction of that.
 const ENGINE_BYTES_PER_IDLE_SESSION: f64 = 2_048.0;
 
 /// Sessions running their turn at once.

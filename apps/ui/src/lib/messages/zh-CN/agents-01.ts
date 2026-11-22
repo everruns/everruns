@@ -235,6 +235,20 @@ export const messages: Readonly<Record<string, string>> = {
   "Connected as": "连接为",
   "connection on the agent's service account": "智能体服务帐户上的连接",
   "Connection required.": "需要连接。",
+  "Sign-in stopped working": "登录已失效",
+  "Since {value0} the agent has no {value1} tools.":
+    "自 {value0} 起，该智能体没有 {value1} 的工具。",
+  "The agent has no {value0} tools.": "该智能体没有 {value0} 的工具。",
+  "stops {value0}": "{value0} 到期",
+  "Renews automatically.": "会自动续期。",
+  "It was signed in before Everruns could renew sign-ins on its own. Sign in again once and it renews from then on.":
+    "此登录早于 Everruns 能自行续期登录之前。重新登录一次，之后会自动续期。",
+  "The server's sign-in settings changed since it was signed in.":
+    "自登录以来，服务器的登录设置已更改。",
+  "The server gave no way to renew it.": "服务器未提供续期方式。",
+  "The server keeps rejecting its token.": "服务器一直拒绝其令牌。",
+  "The server refused to renew it.": "服务器拒绝续期。",
+  "Sign in again": "重新登录",
   "Connects in settings only": "仅在设置中连接",
   "Connects to": "连接至",
   "Consumers sign in separately from the console. Your configured approvals and spending limits apply.":

@@ -1,6 +1,6 @@
 //! Detached tool calls on the data plane (data plane v2, step 11.4): a long
 //! call leaves its turn, the turn parks and frees its executor, and the
-//! session's cell keeps the call's record. The call's result resumes the
+//! session's shard keeps the call's record. The call's result resumes the
 //! turn; an executor that dies mid-call stops renewing the record, and the
 //! turn resumes on another executor once it expires.
 //!
@@ -22,9 +22,9 @@ fn knobs() {
     ONCE.call_once(|| {
         // SAFETY: set once, before this binary starts any fleet thread.
         unsafe {
-            std::env::set_var("CELL_WORK_MS", "3000");
-            std::env::set_var("CELL_TOOL_DETACH_AFTER_MS", "200");
-            std::env::set_var("CELL_TOOL_DETACH_TTL_MS", "2000");
+            std::env::set_var("AGENTD_WORK_MS", "3000");
+            std::env::set_var("AGENTD_TOOL_DETACH_AFTER_MS", "200");
+            std::env::set_var("AGENTD_TOOL_DETACH_TTL_MS", "2000");
         }
     });
 }

@@ -19,7 +19,6 @@ pub struct ResourceLimitsConfig {
     pub max_members_per_org: i64,
     pub max_personal_access_tokens_per_user: i64,
     pub max_harnesses_per_org: i64,
-    pub max_agents_per_org: i64,
     /// Max active (enabled) session schedules per org. Enforced worker-side in
     /// the schedule tools from `RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG`,
     /// because session schedules are created on the worker rather than via a
@@ -35,7 +34,6 @@ impl Default for ResourceLimitsConfig {
             max_members_per_org: 50,
             max_personal_access_tokens_per_user: 25,
             max_harnesses_per_org: 50,
-            max_agents_per_org: 500,
             max_session_schedules_per_org:
                 everruns_core::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG,
         }
@@ -52,7 +50,6 @@ impl ResourceLimitsConfig {
                 25,
             ),
             max_harnesses_per_org: env_or("RESOURCE_LIMIT_MAX_HARNESSES_PER_ORG", 50),
-            max_agents_per_org: env_or("RESOURCE_LIMIT_MAX_AGENTS_PER_ORG", 500),
             max_session_schedules_per_org: env_or(
                 "RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG",
                 everruns_core::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG,

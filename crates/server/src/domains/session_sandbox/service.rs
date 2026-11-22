@@ -345,8 +345,8 @@ impl SessionSandboxService {
     }
 
     /// [`Self::tool_context`] for a session on a data plane: its storage is
-    /// the session's cell (`plane.rs`), and no hosted state store or
-    /// resource lease is installed, since the cell keeps the sandbox's state.
+    /// the session's shard (`plane.rs`), and no hosted state store or
+    /// resource lease is installed, since the shard keeps the sandbox's state.
     pub(crate) async fn plane_tool_context(
         &self,
         session_id: SessionId,

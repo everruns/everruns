@@ -19,7 +19,7 @@ pub use crate::storage::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrig
 pub struct AgentTriggerRun {
     /// Durable execution identifier.
     pub id: String,
-    /// Current durable execution status.
+    /// Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding.
     pub status: String,
     /// Time the execution was scheduled.
     pub scheduled_at: DateTime<Utc>,

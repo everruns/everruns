@@ -14,6 +14,7 @@ function receipt(overrides: Partial<SavedPageChange> = {}): SavedPageChange {
     revision: 2,
     stale: false,
     pending: false,
+    by: "page",
     fields: [
       { field: "display_name", from: "Sol", to: "Sol (fast)" },
       { field: "enabled", from: false, to: true },
@@ -94,6 +95,7 @@ const selection = (...members: [string, boolean][]): SavedPageChange => ({
   revision: 0,
   stale: false,
   pending: false,
+  by: "page",
   members: members.map(([label, after], index) => ({
     id: `m${index}`,
     label,

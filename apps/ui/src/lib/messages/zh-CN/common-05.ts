@@ -136,6 +136,7 @@ export const messages: Readonly<Record<string, string>> = {
   "New folder": "新建文件夹",
   "New Memory": "新记忆",
   "New password": "新密码",
+  "New private Platform Chat": "新建私密平台聊天",
   "New Playground chat": "新游乐场聊天",
   "New registrations are currently disabled on this deployment.": "当前在此部署中禁用新注册。",
   "New Sandbox Template": "新沙箱模板",

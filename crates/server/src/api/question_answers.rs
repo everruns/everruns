@@ -241,7 +241,7 @@ pub(crate) async fn resolve_question_answers_with_source(
         // Chat session is currently waiting, let alone mutate or resume it.
         return Err(ResolveError::NoPendingQuestions);
     }
-    // A v2 session's question and its parked turn are in its cell.
+    // A v2 session's question and its parked turn are in its shard.
     if let Some(storage) = crate::domains::session_storage::plane::PlaneStorage::on(
         state.db,
         caller.org_id,
@@ -437,11 +437,11 @@ pub(crate) async fn resolve_question_answers_with_source(
 }
 
 /// [`resolve_question_answers_with_source`] for a session on a data plane
-/// (step 11.6): the question set comes from the cell's events, is checked
+/// (step 11.6): the question set comes from the shard's events, is checked
 /// here as for any session, and its result goes back as the parked call's
-/// tool result, which the cell records and resumes the turn with. The cell
+/// tool result, which the shard records and resumes the turn with. The shard
 /// refuses a call that is no longer pending, so the first answer wins. An
-/// MCP server's form answer is parked in the session's storage on its cell
+/// MCP server's form answer is parked in the session's storage on its shard
 /// for the retried call, and what the person said follows as their message.
 async fn resolve_on_data_plane(
     storage: &crate::domains::session_storage::plane::PlaneStorage,
@@ -476,7 +476,7 @@ async fn resolve_on_data_plane(
         Vec::new()
     };
     // The client stores a secret answer's value first, sealed into the
-    // session's storage on its cell, and only then answers the card.
+    // session's storage on its shard, and only then answers the card.
     if answers.iter().any(|answer| answer.secret_ref.is_some()) {
         let names = storage.listed().await.map_err(stored)?.secrets;
         for question in &pending.questions {
@@ -530,7 +530,7 @@ async fn resolve_on_data_plane(
             }
             Ok(result)
         }
-        // The cell refuses a call that is not pending any more.
+        // The shard refuses a call that is not pending any more.
         Err(error)
             if error
                 .downcast_ref::<reqwest::Error>()

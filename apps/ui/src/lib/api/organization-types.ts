@@ -20,6 +20,8 @@ export interface Organization {
   system_decisions: SystemDecisionsSource;
   /** Sessions the organization may create per UTC calendar month. */
   monthly_session_limit?: number;
+  /** Agents the organization may create per UTC calendar month. */
+  monthly_agent_limit?: number;
   created_at: string;
   updated_at: string;
   /**
@@ -47,6 +49,8 @@ export interface UpdateOrganizationRequest {
   system_decisions?: SystemDecisionsSource;
   /** Admin only. Accepts 1 to 100,000. */
   monthly_session_limit?: number;
+  /** Admin only. Accepts 1 to 100,000. */
+  monthly_agent_limit?: number;
 }
 
 export type SystemDecisionsSource = "deployment" | "organization";

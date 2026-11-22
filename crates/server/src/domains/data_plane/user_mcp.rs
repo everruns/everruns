@@ -3,23 +3,23 @@
 //!
 //! Decisions:
 //! - The person's server list stays in the control plane: it is theirs
-//!   across every chat and agent of the org, so no session's cell owns it.
-//!   A cell reaches it with two host calls, both acting as the turn's
-//!   person ([`USER_MCP_STORE`], [`USER_MCP_SERVERS`]). As for every such
-//!   call, the person is the one the session's cell recorded for the open
-//!   turn, and the dispatcher records the turn's invocation first
-//!   (`host_calls::record_turn`); the call itself names no one
+//!   across every chat and agent of the org, so no session's shard owns it.
+//!   A shard reaches it with two calls of the person's MCP server, both
+//!   acting as the turn's person ([`USER_MCP_STORE`], [`USER_MCP_SERVERS`]).
+//!   The person is the one the session's shard recorded for the open turn
+//!   (the token's `act`), and the dispatcher records the turn's invocation
+//!   first (`calls::record_turn`); the call itself names no one
 //!   (THREAT[TM-AGENT-017]).
 //! - The manage tools run the v1 worker's own store
 //!   (`invoke_user_mcp_store_for_session`), with its checks: the agent must
 //!   have `user_mcp` with `manage` on, and the turn a single person.
 //! - "Add to this chat only" keeps a server in the session's storage, which
-//!   for a v2 session lives in its cell: the store reads and writes it there
+//!   for a v2 session lives in its shard: the store reads and writes it there
 //!   (`session_servers::session_store`).
 //! - The session's own MCP records (chat-only servers and ARD MCP targets,
 //!   `everruns_core::session_mcp_servers`) join the same answer when the
-//!   cell says the session has any (`session_servers: true`). They are read
-//!   from the cell here, never taken from the call, so an executor cannot
+//!   shard says the session has any (`session_servers: true`). They are read
+//!   from the shard here, never taken from the call, so an executor cannot
 //!   name a server the session does not have. As on v1, where they fold into
 //!   the session's own `mcpServers`, a record wins a name clash with the
 //!   person's server, and they need no person: an unattended turn gets them
@@ -35,7 +35,7 @@
 //! - A server that does not resolve (a preset archived meanwhile) is left
 //!   out, as on v1 one bad entry never takes the turn's tools down.
 
-use everruns_contracts::host_calls::{USER_MCP_SERVERS, USER_MCP_STORE};
+use crate::domains::data_plane::calls::{USER_MCP_SERVERS, USER_MCP_STORE};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::mcp::{UserMcpStoreCall, UserMcpStoreError};
 use everruns_core::{McpServerActsAs, McpServerAuthMode, ScopedMcpServers};
@@ -56,7 +56,7 @@ use crate::domains::mcp_servers::user_manage::{
 use crate::domains::session_storage::plane::PlaneStorage;
 
 /// The session and the turn's input message a call names (the session's
-/// cell has put the open turn's message in place of `"open"`).
+/// shard has put the open turn's message in place of `"open"`).
 fn turn(params: &Value) -> Result<(SessionId, Option<Uuid>), String> {
     let session = params["session_id"]
         .as_str()
@@ -157,7 +157,7 @@ async fn person_layer(
     .await)
 }
 
-/// The session's own MCP records, read from its cell (none for a session
+/// The session's own MCP records, read from its shard (none for a session
 /// of another org, or not on a data plane).
 async fn session_records(ctx: &Ctx, session: SessionId) -> ScopedMcpServers {
     let store = match PlaneStorage::of(ctx, session).await {

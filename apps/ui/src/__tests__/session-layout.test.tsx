@@ -348,8 +348,8 @@ describe("SessionLayout", () => {
     // The group is derived from the sidebar section that owns /sessions, and is
     // a label rather than a link — there is no group index page to point at.
     const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(within(breadcrumb).getByText("Activity")).toBeInTheDocument();
-    expect(within(breadcrumb).queryByRole("link", { name: "Activity" })).toBeNull();
+    expect(within(breadcrumb).getByText("Observability")).toBeInTheDocument();
+    expect(within(breadcrumb).queryByRole("link", { name: "Observability" })).toBeNull();
   });
 
   it("shows error state when session is not found", async () => {

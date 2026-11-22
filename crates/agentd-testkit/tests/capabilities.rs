@@ -1,30 +1,27 @@
-//! Which of the hosted capabilities a cell runs (data plane v2, step
+//! Which of the hosted capabilities a shard runs (data plane v2, step
 //! 11.6b).
 //!
 //! Every capability in the hosted catalog (`docs/api/capability-catalog.json`,
 //! generated from the server's registry) is named, with its default config,
-//! by an agent on the cell's host. The agent either builds and completes a
-//! turn on a fleet, or is refused with the reason the cell gives. The
+//! by an agent on the shard's host. The agent either builds and completes a
+//! turn on a fleet, or is refused with the reason the shard gives. The
 //! outcome per capability is kept in `capability_matrix.json` next to this
-//! file, and the test fails when the cell's behavior changes from it.
+//! file, and the test fails when the shard's behavior changes from it.
 //!
 //! Decisions:
-//! - The matrix is checked, not hand-kept: a capability the cell starts or
+//! - The matrix is checked, not hand-kept: a capability the shard starts or
 //!   stops serving shows up here as a diff. Regenerate it with
-//!   `UPDATE_CAPABILITY_MATRIX=1 cargo test -p everruns-cell-testkit --test
+//!   `UPDATE_CAPABILITY_MATRIX=1 cargo test -p agentd-testkit --test
 //!   capabilities`; the variable only rewrites the file, the test always runs.
 //! - A turn runs on a simulated model that answers without calling a tool,
-//!   so "runs" means the capability builds and activates in a cell turn.
+//!   so "runs" means the capability builds and activates in a shard turn.
 //!   Calling each tool is the live check's (11.6c).
 //! - The fleet has no control plane, so "runs" also means it runs with
-//!   none (parity, Phase A): what a capability's tools still ask a control
-//!   plane at call time is listed beside it under `host_calls`, from its
-//!   declaration (`Capability::host_calls`, with the capabilities it
-//!   depends on), and every name there must be a declared host call.
-//!   `sandbox_fleet` is the one that cannot finish a turn with none: its
-//!   sandboxes are the session's resources, which only a control plane
-//!   keeps, so it fails here as on a Framework host, and `lookups.rs`
-//!   covers it against one (parity, step 10).
+//!   none: a shard keeps the session's own records (resources, leases,
+//!   dreaming state, subagents) itself, reads org settings from pushed
+//!   config, and reaches the control plane at call time only through the
+//!   injected servers a session's create names, which a session made here
+//!   has none of.
 //! - A capability a deployment turns on by flag (`FEATURE_<NAME>`: Docker,
 //!   the container sandbox, paid Parallel) is turned on here, as an
 //!   operator would for both planes; one with required settings gets the
@@ -38,7 +35,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use everruns_cell::Host;
+use everruns_agentd::Host;
 use serde_json::{Value, json};
 use support::Fleet;
 
@@ -61,7 +58,7 @@ fn catalog() -> Vec<String> {
 
 /// Turn on every capability a deployment can enable by flag, as an
 /// operator would for both planes (`FEATURE_<NAME>`), so the matrix records
-/// what a cell does with each, not what this deployment's grade hides.
+/// what a shard does with each, not what this deployment's grade hides.
 fn deployment_flags() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -90,7 +87,7 @@ fn config_for(id: &str) -> Option<Value> {
 }
 
 fn agent_with(id: &str) -> Value {
-    let mut definition = everruns_cell_testkit::definition("echo").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("echo").unwrap();
     definition["name"] = json!(format!("with-{}", id.replace('_', "-")));
     definition["capabilities"] = json!([match config_for(id) {
         Some(config) => json!({ "ref": id, "config": config }),
@@ -133,26 +130,15 @@ async fn one_turn(fleet: &Fleet, definition: &Value) -> Option<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_cell_runs_the_capabilities_its_matrix_records() {
+async fn the_shard_runs_the_capabilities_its_matrix_records() {
     deployment_flags();
-    let host = everruns_cell_testkit::host();
+    let host = everruns_agentd_testkit::host();
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
 
     let mut found = BTreeMap::new();
-    let mut host_calls = BTreeMap::new();
     for id in catalog() {
         let definition = agent_with(&id);
-        let declared = everruns_cell::host::declared_host_calls(&definition);
-        for name in &declared {
-            assert!(
-                everruns_contracts::host_calls::by_name(name).is_some(),
-                "{id} declares {name}, which is not a host call"
-            );
-        }
-        if !declared.is_empty() {
-            host_calls.insert(id.clone(), declared);
-        }
         let outcome = match host.agent(&definition) {
             Err(error) => format!("refused: {}", reason(&error)),
             Ok(_) => match one_turn(&fleet, &definition).await {
@@ -163,9 +149,8 @@ async fn the_cell_runs_the_capabilities_its_matrix_records() {
         found.insert(id, outcome);
     }
     let found = json!({
-        "_comment": "Generated by crates/cell-testkit/tests/capabilities.rs. Do not edit by hand.",
+        "_comment": "Generated by crates/shard-testkit/tests/capabilities.rs. Do not edit by hand.",
         "capabilities": found,
-        "host_calls": host_calls,
     });
 
     let path = matrix_path();
@@ -181,13 +166,7 @@ async fn the_cell_runs_the_capabilities_its_matrix_records() {
     assert_eq!(
         recorded["capabilities"],
         found["capabilities"],
-        "the cell's capabilities changed; regenerate {} with UPDATE_CAPABILITY_MATRIX=1",
-        path.display()
-    );
-    assert_eq!(
-        recorded["host_calls"],
-        found["host_calls"],
-        "the capabilities' host calls changed; regenerate {} with UPDATE_CAPABILITY_MATRIX=1",
+        "the shard's capabilities changed; regenerate {} with UPDATE_CAPABILITY_MATRIX=1",
         path.display()
     );
 }

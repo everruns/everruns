@@ -70,8 +70,8 @@ async fn a_v2_tasks_transitions_reach_its_webhooks_once() {
         })
         .await
         .unwrap();
-    // The config's secret was handed over when it was added; the record
-    // only says it has one.
+    // The config's secret travels sealed with the org's data key, as the
+    // edge that took it sealed it.
     let now = chrono::Utc::now();
     cp.db
         .dp_upsert_session_summary(crate::storage::DpSessionSummary {
@@ -89,29 +89,36 @@ async fn a_v2_tasks_transitions_reach_its_webhooks_once() {
         })
         .await
         .unwrap();
-    let keep = |org: i64, session: &str| {
-        let cp = cp.clone();
-        let params = json!({ "session_id": session, "config_id": "tpc_a", "secret": "k" });
-        async move { crate::domains::data_plane::task_webhooks::keep_secret(&cp, org, &params).await }
+    let row = cp.db.dp_org(ORG).await.unwrap().unwrap();
+    let key = cp.data_key(&row).unwrap();
+    let sealed_for = |config: &str| {
+        everruns_contracts::dataplane_seal::seal(
+            &key,
+            &row.data_key_id,
+            &org_public(ORG),
+            &everruns_contracts::dataplane_seal::push_secret_id(SESSION, config),
+            0,
+            b"k",
+            everruns_contracts::dataplane_seal::random_nonce(),
+        )
+        .unwrap()
     };
-    keep(ORG, SESSION).await.unwrap();
-    // Another org cannot put a secret on the session.
-    assert!(keep(3, SESSION).await.is_err());
     let push = PushTarget {
         label: "tpc_a".into(),
         url: "https://hooks.example.test/push".into(),
         secret: None,
-        secret_held: true,
+        sealed: Some(sealed_for("tpc_a")),
     };
-    // A held secret that was never handed over is not sent unsigned.
+    // A secret sealed for another config does not open here, and the
+    // target is not sent unsigned.
     let lost = PushTarget {
         label: "tpc_lost".into(),
         url: "https://hooks.example.test/lost".into(),
         secret: None,
-        secret_held: true,
+        sealed: Some(sealed_for("tpc_a")),
     };
     let budgets = BudgetService::new(cp.db.clone());
-    let source = format!("cell-tasks-{}", uuid::Uuid::new_v4().simple());
+    let source = format!("shard-tasks-{}", uuid::Uuid::new_v4().simple());
     let batch = FeedBatch {
         source: source.clone(),
         data_plane: "dp-1".into(),

@@ -1,5 +1,5 @@
 //! A session's managed sandbox on the data plane (data plane v2, step
-//! 11.3): the session's workspace in the cell stays the source of truth.
+//! 11.3): the session's workspace in the shard stays the source of truth.
 //! Before a sandbox call the sandbox catches up with it, after a mutating
 //! call it takes what the sandbox changed; a lost sandbox, another
 //! executor or a killed one all come back to the same files, with one
@@ -11,7 +11,7 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use everruns_cell_testkit::local_sandbox;
+use everruns_agentd_testkit::local_sandbox;
 use serde_json::{Value, json};
 use support::{Fleet, answers};
 
@@ -202,7 +202,7 @@ async fn a_call_cut_off_with_its_executor_leaves_one_sandbox_and_the_workspace()
 /// A session with the local provider taking `latency_ms` per call and
 /// `create_ms` more to create.
 async fn create_with(fleet: &Fleet, latency_ms: u64, create_ms: u64) -> String {
-    let mut definition = everruns_cell_testkit::definition("sandbox").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("sandbox").unwrap();
     definition["capabilities"] = json!([local_sandbox::capability(latency_ms, create_ms)]);
     let created = fleet
         .post("/v1/sessions", json!({ "agent": definition }))
@@ -280,12 +280,12 @@ async fn sandbox_start_and_unchanged_sync_costs() {
         file(&fleet, &session, "/src/f1000.txt").await.as_deref(),
         Some("1000\n")
     );
-    let push = |e: &everruns_cell::executor::Executor| {
+    let push = |e: &everruns_agentd::executor::Executor| {
         e.sandboxes
             .sync
             .total(&[("direction", "push"), ("kind", "skip")])
     };
-    let pull = |e: &everruns_cell::executor::Executor| {
+    let pull = |e: &everruns_agentd::executor::Executor| {
         e.sandboxes
             .sync
             .total(&[("direction", "pull"), ("kind", "unchanged")])

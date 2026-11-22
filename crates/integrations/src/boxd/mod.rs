@@ -181,16 +181,6 @@ impl Capability for BoxdCapability {
         BOXD_PROVIDER
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        // A sandbox or browser it starts is leased in the control plane,
-        // whose sweeper stops it when the session leaves it running.
-        &[
-            everruns_contracts::host_calls::CONNECTION_TOKEN,
-            everruns_contracts::host_calls::LEASED_RESOURCE_UPSERT,
-            everruns_contracts::host_calls::LEASED_RESOURCE_RELEASE,
-        ]
-    }
-
     fn name(&self) -> &str {
         "boxd"
     }

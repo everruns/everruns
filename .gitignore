@@ -58,5 +58,5 @@ __pycache__/
 # Local Workers development state
 /.wrangler/
 
-# Local cell fleets (scripts/cell/fleet.py)
-/.cell/
+# Local shard fleets (scripts/agentd/fleet.py)
+/.shard/

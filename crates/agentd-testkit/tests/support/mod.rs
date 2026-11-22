@@ -1,4 +1,4 @@
-//! A local fleet for integration tests: cells of nodes and executors,
+//! A local fleet for integration tests: shards of nodes and executors,
 //! each in its own runtime so a test can kill it outright, optionally
 //! reporting to a fake control plane.
 
@@ -11,11 +11,11 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use everruns_cell::cluster::{Topology, TopologySource};
-use everruns_cell::executor::{Executor, ExecutorConfig};
-use everruns_cell::node::{ExecutorMode, NodeConfig};
-use everruns_cell::remote::EXECUTOR_IDS;
-use everruns_cell::store::Store;
+use everruns_agentd::cluster::{Topology, TopologySource};
+use everruns_agentd::executor::{Executor, ExecutorConfig};
+use everruns_agentd::node::{ExecutorMode, NodeConfig};
+use everruns_agentd::remote::EXECUTOR_IDS;
+use everruns_agentd::store::Store;
 use serde_json::{Value, json};
 use tokio::net::{TcpListener, TcpSocket};
 use tokio::runtime::Runtime;
@@ -40,7 +40,7 @@ fn shareable() -> TcpSocket {
 /// by binding `:0` and dropping it (what this harness did before) raced:
 /// two nodes of a fleet could draw the same port, or a killed node's port
 /// could go elsewhere before its restart, and the node that lost sat out
-/// the whole test while the fleet waited on it ("cell 1 elected no
+/// the whole test while the fleet waited on it ("shard 1 elected no
 /// leader").
 fn reserve() -> TcpSocket {
     let socket = shareable();
@@ -96,7 +96,7 @@ pub fn runtime() -> Runtime {
 pub struct Fleet {
     dir: tempfile::TempDir,
     topology: TopologySource,
-    /// (cell, node) -> its address and runtime (None once killed).
+    /// (shard, node) -> its address and runtime (None once killed).
     nodes: BTreeMap<(u32, u64), (String, Option<Runtime>)>,
     executors: BTreeMap<u64, (Arc<Executor>, Option<Runtime>)>,
     pub http: reqwest::Client,
@@ -125,20 +125,21 @@ impl Drop for Fleet {
 }
 
 impl Fleet {
-    /// Cell 0 of three nodes and cell 1 of one, both handing turns to
+    /// Shard 0 of three nodes and shard 1 of one, both handing turns to
     /// executors; no executor yet.
     pub async fn start() -> Self {
         Self::start_with(None).await
     }
 
-    /// [`start`](Self::start), the cells reporting to `control_plane`.
+    /// [`start`](Self::start), the shards reporting to `control_plane`.
     pub async fn start_with(control_plane: Option<String>) -> Self {
-        Self::start_with_cp(control_plane.map(everruns_cell::node_control::ControlPlane::new)).await
+        Self::start_with_cp(control_plane.map(everruns_agentd::node_control::ControlPlane::new))
+            .await
     }
 
-    /// [`start`](Self::start), the cells linked to `control_plane` as given.
+    /// [`start`](Self::start), the shards linked to `control_plane` as given.
     pub async fn start_with_cp(
-        control_plane: Option<everruns_cell::node_control::ControlPlane>,
+        control_plane: Option<everruns_agentd::node_control::ControlPlane>,
     ) -> Self {
         Self::start_opts(control_plane, 0).await
     }
@@ -150,25 +151,25 @@ impl Fleet {
     }
 
     async fn start_opts(
-        control_plane: Option<everruns_cell::node_control::ControlPlane>,
+        control_plane: Option<everruns_agentd::node_control::ControlPlane>,
         raft_port_offset: u16,
     ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut topology = Topology {
-            directory_cell: 0,
-            cells: BTreeMap::new(),
+            directory_shard: 0,
+            shards: BTreeMap::new(),
         };
         let mut ports = BTreeMap::new();
         let mut raft_ports = Vec::new();
-        for (cell, size) in [(0u32, 3u64), (1, 1)] {
+        for (shard, size) in [(0u32, 3u64), (1, 1)] {
             let mut members = BTreeMap::new();
             for node in 1..=size {
                 let (port, raft) = reserve_with(raft_port_offset);
                 members.insert(node, port.local_addr().unwrap().to_string());
-                ports.insert((cell, node), port);
+                ports.insert((shard, node), port);
                 raft_ports.extend(raft);
             }
-            topology.cells.insert(cell, members);
+            topology.shards.insert(shard, members);
         }
         let path = dir.path().join("topology.json");
         std::fs::write(&path, serde_json::to_vec(&topology).unwrap()).unwrap();
@@ -184,13 +185,13 @@ impl Fleet {
             failed: Arc::default(),
             dir,
         };
-        for (cell, members) in &topology.cells {
+        for (shard, members) in &topology.shards {
             for (node, addr) in members {
                 let cfg = NodeConfig {
-                    cell: *cell,
+                    shard: *shard,
                     node_id: *node,
                     members: members.clone(),
-                    data_dir: fleet.dir.path().join(format!("node-{cell}-{node}")),
+                    data_dir: fleet.dir.path().join(format!("node-{shard}-{node}")),
                     store: fleet.store(),
                     memory_budget: 1 << 30,
                     // Every node shares the test process: measure against
@@ -206,38 +207,38 @@ impl Fleet {
                     executors: ExecutorMode::Pull { max_running: 64 },
                     control_plane: control_plane.clone(),
                 };
-                fleet.configs.insert((*cell, *node), cfg);
-                fleet.nodes.insert((*cell, *node), (addr.clone(), None));
-                fleet.start_node(*cell, *node);
+                fleet.configs.insert((*shard, *node), cfg);
+                fleet.nodes.insert((*shard, *node), (addr.clone(), None));
+                fleet.start_node(*shard, *node);
             }
         }
-        for cell in [0, 1] {
-            fleet.leader(cell).await;
+        for shard in [0, 1] {
+            fleet.leader(shard).await;
         }
         fleet
     }
 
     /// (Re)start a node from its data directory, on its reserved port.
-    pub fn start_node(&mut self, cell: u32, node: u64) {
-        let cfg = self.configs[&(cell, node)].clone();
-        let (addr, slot) = self.nodes.get_mut(&(cell, node)).unwrap();
+    pub fn start_node(&mut self, shard: u32, node: u64) {
+        let cfg = self.configs[&(shard, node)].clone();
+        let (addr, slot) = self.nodes.get_mut(&(shard, node)).unwrap();
         let listen: SocketAddr = addr.parse().unwrap();
         let rt = runtime();
         let listener = {
             let _runtime = rt.enter();
             listen_on(listen)
         };
-        let host = Arc::new(everruns_cell_testkit::host());
+        let host = Arc::new(everruns_agentd_testkit::host());
         let topology = self.topology.clone();
         let failed = self.failed.clone();
         rt.spawn(async move {
             let served =
-                everruns_cell::cli::serve_node_on(cfg, host, topology, listener, false).await;
+                everruns_agentd::cli::serve_node_on(cfg, host, topology, listener, false).await;
             if let Err(error) = served {
                 failed
                     .lock()
                     .unwrap()
-                    .push(format!("node {cell}/{node} on {listen}: {error:#}"));
+                    .push(format!("node {shard}/{node} on {listen}: {error:#}"));
             }
         });
         *slot = Some(rt);
@@ -250,18 +251,18 @@ impl Fleet {
         assert!(failed.is_empty(), "the fleet lost nodes: {failed:?}");
     }
 
-    /// `POST /cell/propose` on `cell`, any member; the cell's response.
-    pub async fn propose(&self, cell: u32, command: Value) -> Value {
+    /// `POST /shard/propose` on `shard`, any member; the shard's response.
+    pub async fn propose(&self, shard: u32, command: Value) -> Value {
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             self.check();
             for ((c, _), (addr, rt)) in &self.nodes {
-                if *c != cell || rt.is_none() {
+                if *c != shard || rt.is_none() {
                     continue;
                 }
                 if let Ok(response) = self
                     .http
-                    .post(format!("http://{addr}/cell/propose"))
+                    .post(format!("http://{addr}/shard/propose"))
                     .json(&command)
                     .send()
                     .await
@@ -273,18 +274,18 @@ impl Fleet {
             }
             assert!(
                 Instant::now() < deadline,
-                "no member of cell {cell} took {command}"
+                "no member of shard {shard} took {command}"
             );
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 
-    /// `/cell/stats` of `cell`'s leader.
-    pub async fn stats(&self, cell: u32) -> Value {
-        let leader = self.leader(cell).await;
-        let (addr, _) = &self.nodes[&(cell, leader)];
+    /// `/shard/stats` of `shard`'s leader.
+    pub async fn stats(&self, shard: u32) -> Value {
+        let leader = self.leader(shard).await;
+        let (addr, _) = &self.nodes[&(shard, leader)];
         self.http
-            .get(format!("http://{addr}/cell/stats"))
+            .get(format!("http://{addr}/shard/stats"))
             .send()
             .await
             .unwrap()
@@ -334,7 +335,7 @@ impl Fleet {
         };
         let executor = {
             let _guard = rt.enter();
-            let executor = Executor::start(cfg, Arc::new(everruns_cell_testkit::host())).unwrap();
+            let executor = Executor::start(cfg, Arc::new(everruns_agentd_testkit::host())).unwrap();
             executor.spawn();
             executor
         };
@@ -350,17 +351,17 @@ impl Fleet {
     }
 
     /// Restart a node with its memory pressure measured against `bytes`.
-    pub fn restart_with_memory_limit(&mut self, cell: u32, node: u64, bytes: u64) {
-        self.restart_with(cell, node, |cfg| cfg.memory_limit = bytes);
+    pub fn restart_with_memory_limit(&mut self, shard: u32, node: u64, bytes: u64) {
+        self.restart_with(shard, node, |cfg| cfg.memory_limit = bytes);
     }
 
     /// Restart a node with its configuration changed by `change`.
-    pub fn restart_with(&mut self, cell: u32, node: u64, change: impl FnOnce(&mut NodeConfig)) {
-        self.kill_node(cell, node);
-        if let Some(cfg) = self.configs.get_mut(&(cell, node)) {
+    pub fn restart_with(&mut self, shard: u32, node: u64, change: impl FnOnce(&mut NodeConfig)) {
+        self.kill_node(shard, node);
+        if let Some(cfg) = self.configs.get_mut(&(shard, node)) {
             change(cfg);
         }
-        self.start_node(cell, node);
+        self.start_node(shard, node);
     }
 
     /// POST without retrying: the status, the `Retry-After` header and the
@@ -383,51 +384,52 @@ impl Fleet {
         (status, retry, body)
     }
 
-    pub fn kill_node(&mut self, cell: u32, node: u64) {
+    pub fn kill_node(&mut self, shard: u32, node: u64) {
         if let Some(rt) = self
             .nodes
-            .get_mut(&(cell, node))
+            .get_mut(&(shard, node))
             .and_then(|(_, rt)| rt.take())
         {
             rt.shutdown_background();
         }
     }
 
-    /// Lose every node of `cell`, disks and all, then rebuild it from the
+    /// Lose every node of `shard`, disks and all, then rebuild it from the
     /// object store as of `at_ms` (its newest without one) on new nodes at
     /// the same addresses, and wait for a leader.
     pub async fn rebuild(
         &mut self,
-        cell: u32,
+        shard: u32,
         at_ms: Option<i64>,
-    ) -> everruns_cell::restore::Rebuilt {
+    ) -> everruns_agentd::restore::Rebuilt {
         let nodes: Vec<u64> = self
             .configs
             .keys()
-            .filter(|(c, _)| *c == cell)
+            .filter(|(c, _)| *c == shard)
             .map(|(_, n)| *n)
             .collect();
         for node in &nodes {
-            self.kill_node(cell, *node);
+            self.kill_node(shard, *node);
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
         let (mut members, mut local) = (BTreeMap::new(), BTreeMap::new());
         for node in &nodes {
-            let dir = self.configs[&(cell, *node)].data_dir.clone();
+            let dir = self.configs[&(shard, *node)].data_dir.clone();
             if dir.exists() {
                 let lost = dir.with_extension(format!("lost-{}", now_ms()));
                 std::fs::rename(&dir, lost).unwrap();
             }
-            members.insert(*node, self.nodes[&(cell, *node)].0.clone());
+            members.insert(*node, self.nodes[&(shard, *node)].0.clone());
             local.insert(*node, dir);
         }
-        let rebuilt = everruns_cell::restore::rebuild(&self.store(), cell, &members, &local, at_ms)
-            .await
-            .unwrap();
+        let rebuilt =
+            everruns_agentd::restore::rebuild(&self.store(), shard, &members, &local, at_ms)
+                .await
+                .unwrap();
         for node in &nodes {
-            self.start_node(cell, *node);
+            self.start_node(shard, *node);
         }
-        self.leader(cell).await;
+        self.leader(shard).await;
         rebuilt
     }
 
@@ -436,11 +438,11 @@ impl Fleet {
         self.topology.clone()
     }
 
-    /// `cell`'s live nodes: (node id, address).
-    pub fn addrs(&self, cell: u32) -> Vec<(u64, String)> {
+    /// `shard`'s live nodes: (node id, address).
+    pub fn addrs(&self, shard: u32) -> Vec<(u64, String)> {
         self.nodes
             .iter()
-            .filter(|((c, _), (_, rt))| *c == cell && rt.is_some())
+            .filter(|((c, _), (_, rt))| *c == shard && rt.is_some())
             .map(|((_, node), (addr, _))| (*node, addr.clone()))
             .collect()
     }
@@ -454,7 +456,7 @@ impl Fleet {
             .collect()
     }
 
-    /// A live node's base URL; its gateway reaches every cell.
+    /// A live node's base URL; its gateway reaches every shard.
     pub fn base(&self) -> String {
         let (addr, _) = self
             .nodes
@@ -464,18 +466,18 @@ impl Fleet {
         format!("http://{addr}")
     }
 
-    /// The node id leading `cell`, once it has one.
-    pub async fn leader(&self, cell: u32) -> u64 {
+    /// The node id leading `shard`, once it has one.
+    pub async fn leader(&self, shard: u32) -> u64 {
         let deadline = Instant::now() + Duration::from_secs(20);
         while Instant::now() < deadline {
             self.check();
             for ((c, node), (addr, rt)) in &self.nodes {
-                if *c != cell || rt.is_none() {
+                if *c != shard || rt.is_none() {
                     continue;
                 }
                 if let Ok(response) = self
                     .http
-                    .get(format!("http://{addr}/cell/stats"))
+                    .get(format!("http://{addr}/shard/stats"))
                     .send()
                     .await
                     && let Ok(stats) = response.json::<Value>().await
@@ -486,7 +488,7 @@ impl Fleet {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        panic!("cell {cell} elected no leader");
+        panic!("shard {shard} elected no leader");
     }
 
     pub async fn post(&self, path: &str, body: Value) -> Value {
@@ -523,17 +525,20 @@ impl Fleet {
     }
 
     pub async fn create(&self, agent: &str) -> String {
-        let definition = everruns_cell_testkit::definition(agent).unwrap();
+        let definition = everruns_agentd_testkit::definition(agent).unwrap();
         let created = self
             .post("/v1/sessions", json!({ "agent": definition }))
             .await;
         created["id"].as_str().unwrap().to_string()
     }
 
-    pub async fn create_in(&self, agent: &str, cell: u32) -> String {
-        let definition = everruns_cell_testkit::definition(agent).unwrap();
+    pub async fn create_in(&self, agent: &str, shard: u32) -> String {
+        let definition = everruns_agentd_testkit::definition(agent).unwrap();
         let created = self
-            .post("/v1/sessions", json!({ "agent": definition, "cell": cell }))
+            .post(
+                "/v1/sessions",
+                json!({ "agent": definition, "shard": shard }),
+            )
             .await;
         created["id"].as_str().unwrap().to_string()
     }
@@ -586,7 +591,7 @@ impl Fleet {
     /// Wait until an executor holds `session`; its epoch (`node`, `fence`).
     ///
     /// Decision: take every field of the epoch from one view. The gateway
-    /// spreads reads over the cell's members and each answers from its own
+    /// spreads reads over the shard's members and each answers from its own
     /// applied state, so a second GET can reach a follower that has not
     /// applied the claim the first one saw, and find no epoch at all.
     pub async fn holder(&self, session: &str) -> Value {

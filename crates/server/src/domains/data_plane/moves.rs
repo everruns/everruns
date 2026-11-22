@@ -1,15 +1,15 @@
 //! Moving a running v1 session onto its org's data plane (data plane v2,
 //! Phase C, decision 4A): the session keeps its id, record and history, and
-//! from then on runs on a cell.
+//! from then on runs on a shard.
 //!
 //! Decisions:
 //! - Switch first, then import. The move marks the session as the data
 //!   plane's ([`MOVING`]) in the same transaction that records the move, so
 //!   from that moment no message reaches the platform's workers; the
 //!   control plane refuses its messages ("moving, send again") until the
-//!   import is done. The cell does too: the session is created there
+//!   import is done. The shard does too: the session is created there
 //!   closed to messages (`importing`), so one the edge routes straight to
-//!   the cell is refused alike, and only the move's last step opens it
+//!   the shard is refused alike, and only the move's last step opens it
 //!   ([`session_commands::ACTIVATE`]), after everything below is in. Only a session with no turn running or waiting is
 //!   switched, and the move then waits out a turn that started just before
 //!   the switch. A turn waiting on tool results is not moved: its call would
@@ -23,10 +23,10 @@
 //!   plane's `events`, never deleted; the move records where it ends
 //!   (`dp_session_moves.from_sequence`).
 //! - Bounded: the newest messages that fit one seed call
-//!   ([`SEED_BYTES`], [`SEED_MESSAGES`]); a file larger than a cell holds
+//!   ([`SEED_BYTES`], [`SEED_MESSAGES`]); a file larger than a shard holds
 //!   stays behind. What stayed behind is in the move's report, never
 //!   silently dropped.
-//! - A bound secret stays behind: a cell has no egress binding yet, and
+//! - A bound secret stays behind: a shard has no egress binding yet, and
 //!   copying it unbound would widen where it may be sent.
 //! - Resumable: every step is retry-safe (the create, a seed only while the
 //!   session is empty, files written only where absent, storage set to the
@@ -59,7 +59,7 @@ pub const SEED_BYTES: usize = 1 << 20;
 pub const SEED_MESSAGES: usize = 4_000;
 /// Files sent in one call, base64 encoded, before a call is sent.
 const FILES_BATCH_BYTES: usize = 1 << 20;
-/// The largest file a cell holds (`crates/agentd/src/api_files.rs`).
+/// The largest file a shard holds (`crates/agentd/src/api_files.rs`).
 const FILE_MAX: i64 = 32 * 1024 * 1024;
 
 /// What a move carried and what stayed behind.
@@ -76,7 +76,7 @@ pub struct MoveReport {
     /// What stayed behind, and why.
     pub left_behind: Vec<String>,
     /// The conversation was not seeded: the session already held history
-    /// on its cell (a message reached it first).
+    /// on its shard (a message reached it first).
     pub seed_refused: bool,
 }
 
@@ -205,7 +205,7 @@ pub async fn move_session(
     storage(cp, &org, &plane, session, &mut report).await?;
     files(cp, &plane, &row, &mut report).await?;
     databases(cp, &plane, session, &mut report).await?;
-    // Imported: the cell takes its messages from now on.
+    // Imported: the shard takes its messages from now on.
     plane
         .command(&session_commands::ACTIVATE, &json!({}))
         .await?;
@@ -252,7 +252,7 @@ async fn seed(
     report: &mut MoveReport,
 ) -> anyhow::Result<Option<i32>> {
     // The v1 table itself, not the events port: the session is already
-    // switched, so the port would answer from its (still empty) cell.
+    // switched, so the port would answer from its (still empty) shard.
     let rows = cp
         .db
         .list_events(session, None, None, &[], &[], None, None)
@@ -292,7 +292,7 @@ async fn seed(
             )
             .await?;
         // False when the session already held history: a retried move, or
-        // a message that reached the cell first.
+        // a message that reached the shard first.
         report.seed_refused = reply["seeded"] == false;
     }
     Ok(from_sequence)
@@ -338,7 +338,7 @@ async fn storage(
         };
         if row.binding.is_some() {
             report.left_behind.push(format!(
-                "bound secret {}: a cell has no egress binding yet",
+                "bound secret {}: a shard has no egress binding yet",
                 row.name
             ));
             continue;
@@ -376,7 +376,7 @@ async fn files(
     for info in listed.into_iter().filter(|info| !info.is_directory) {
         if info.size_bytes > FILE_MAX {
             report.left_behind.push(format!(
-                "file {} ({} bytes): larger than a cell holds",
+                "file {} ({} bytes): larger than a shard holds",
                 info.path, info.size_bytes
             ));
             continue;
@@ -444,7 +444,7 @@ async fn databases(
     Ok(())
 }
 
-/// Files written into a session on its cell, in `seed` calls of about a
+/// Files written into a session on its shard, in `seed` calls of about a
 /// megabyte each (a larger file goes alone). A move and a fork share it.
 pub(crate) struct FileSeeder<'a> {
     plane: &'a SessionPlane,

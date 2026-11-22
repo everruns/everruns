@@ -1515,7 +1515,7 @@ OpenAI Chat Completions does not discard unrelated provider services. See the
 
 The current balanced and flagship recommendations are `gpt-6.2-sol` and
 `gpt-6.2-astra` on verified Responses surfaces. Explicit predecessor IDs remain
-valid, and budget/default election remains `gpt-6-luna`. GPT-6.2 rejects `none`
+valid, and budget-oriented workloads may still choose `gpt-6-luna`. GPT-6.2 rejects `none`
 and `minimal` reasoning, Flex, and sampling controls. Function tools require
 Responses; do not redirect an agent workload to Chat Completions. Both models
 support append-only `configuration_update` effort changes and inline tool

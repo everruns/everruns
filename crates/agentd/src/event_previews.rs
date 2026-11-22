@@ -37,7 +37,7 @@ impl PreviewQuery {
 
 pub(crate) fn router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/cell/sessions/{session}/event-previews", get(previews))
+        .route("/shard/sessions/{session}/event-previews", get(previews))
         .with_state(node)
 }
 
@@ -109,13 +109,13 @@ pub(crate) async fn read(
     PreviewQuery { from, to, chars }.validate()?;
     let gw = gateway.clone();
     gateway
-        .with_cell(session, |cell| {
+        .with_shard(session, |shard| {
             let gw = gw.clone();
             async move {
                 gw.call::<Lookup<Vec<CompactionEvidenceExcerpt>>>(
-                    cell,
+                    shard,
                     &format!(
-                        "/cell/sessions/{session}/event-previews?from={from}&to={to}&chars={chars}"
+                        "/shard/sessions/{session}/event-previews?from={from}&to={to}&chars={chars}"
                     ),
                     None,
                 )

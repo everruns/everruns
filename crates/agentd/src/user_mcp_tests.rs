@@ -1,107 +1,6 @@
-use std::sync::{Arc, Weak};
-
-use everruns_capabilities::capabilities::UserMcpCallInvoker;
-use everruns_contracts::dataplane::Connection;
-use everruns_contracts::host_calls::{HostCallAnswer, OPEN_TURN, USER_MCP_STORE};
 use everruns_contracts::typed_id::{MessageId, SessionId};
-use everruns_core::mcp::{UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply};
-use parking_lot::Mutex;
-use serde_json::{Value, json};
 
 use crate::mcp::PerTurnGrant;
-use crate::providers::OrgMaterial;
-
-/// A control plane whose store answers `answer`; every call is recorded.
-struct ControlPlane {
-    answer: Value,
-    asked: Mutex<Vec<Value>>,
-}
-
-#[async_trait::async_trait]
-impl OrgMaterial for ControlPlane {
-    fn tenant(&self, _session: SessionId) -> Option<String> {
-        Some("org-a".into())
-    }
-
-    async fn connection(&self, _org: &str, _id: &str) -> anyhow::Result<Option<Connection>> {
-        Ok(None)
-    }
-
-    async fn secret(&self, _org: &str, _secret_id: &str) -> anyhow::Result<Vec<u8>> {
-        anyhow::bail!("no secrets")
-    }
-
-    fn looks_up(&self) -> bool {
-        true
-    }
-
-    fn declared_host_calls(
-        &self,
-        _session: SessionId,
-    ) -> Option<std::collections::BTreeSet<&'static str>> {
-        Some([USER_MCP_STORE].into())
-    }
-
-    async fn lookup(
-        &self,
-        _org: &str,
-        command: &str,
-        params: Value,
-    ) -> anyhow::Result<HostCallAnswer> {
-        assert_eq!(command, USER_MCP_STORE);
-        self.asked.lock().push(params);
-        Ok(HostCallAnswer::Value(self.answer.clone()))
-    }
-}
-
-fn store(cp: &Arc<ControlPlane>, session: SessionId) -> super::CellUserMcpStore {
-    let material: Arc<dyn OrgMaterial> = cp.clone();
-    let weak: Weak<dyn OrgMaterial> = Arc::downgrade(&material);
-    // Kept alive by the test's `cp`.
-    std::mem::forget(material);
-    super::CellUserMcpStore {
-        via: super::Via::HostCall(crate::lookups::org_lookups(Some(&weak), session).unwrap()),
-        session,
-    }
-}
-
-#[tokio::test]
-async fn the_manage_tools_reach_the_persons_list_for_the_open_turn() {
-    let cp = Arc::new(ControlPlane {
-        answer: json!({ "ok": { "reply": "removed", "removed": true } }),
-        asked: Mutex::default(),
-    });
-    let session = SessionId::new();
-    let reply = store(&cp, session)
-        .invoke(
-            None,
-            UserMcpStoreCall::Remove {
-                name: "notes".into(),
-            },
-        )
-        .await
-        .unwrap();
-    assert_eq!(reply, UserMcpStoreReply::Removed { removed: true });
-    let asked = cp.asked.lock()[0].clone();
-    assert_eq!(asked["session_id"], json!(session.to_string()));
-    // The session's cell names the turn and its person, not the executor.
-    assert_eq!(asked["input_message_id"], json!(OPEN_TURN));
-    assert_eq!(asked["call"]["op"], json!("remove"));
-    assert_eq!(asked["call"]["name"], json!("notes"));
-}
-
-#[tokio::test]
-async fn a_refusal_keeps_its_kind() {
-    let cp = Arc::new(ControlPlane {
-        answer: json!({ "error": { "kind": "unavailable", "message": "not yours" } }),
-        asked: Mutex::default(),
-    });
-    let error = store(&cp, SessionId::new())
-        .invoke(None, UserMcpStoreCall::List)
-        .await
-        .unwrap_err();
-    assert_eq!(error, UserMcpStoreError::Unavailable("not yours".into()));
-}
 
 #[test]
 fn a_persons_grant_serves_only_their_server_at_its_address() {
@@ -173,11 +72,8 @@ mod person_server {
         let server =
             ControllerServer::for_session(Some(&fixture.material), session, PERSON_MCP, URL)
                 .unwrap();
-        let via = super::super::Via::Server(server);
-
-        let store = super::super::CellUserMcpStore {
-            via: via.clone(),
-            session,
+        let store = super::super::ShardUserMcpStore {
+            via: server.clone(),
         };
         let reply = store
             .invoke(
@@ -200,18 +96,40 @@ mod person_server {
             assert_eq!(act.as_ref(), Some(&actor));
         }
 
-        let answer = via
-            .answer(
-                everruns_contracts::host_calls::USER_MCP_SERVERS,
-                json!({}),
-                PERSON_MCP_SERVERS_TOOL,
-                json!({ "person": true, "session_servers": false }),
-            )
-            .await
-            .unwrap();
+        let answer = super::super::answer(
+            &server,
+            PERSON_MCP_SERVERS_TOOL,
+            json!({ "person": true, "session_servers": false }),
+        )
+        .await
+        .unwrap();
         assert_eq!(answer, json!({ "ok": {} }));
         let asked = fixture.asked.lock();
         assert_eq!(asked[1].0, PERSON_MCP_SERVERS_TOOL);
         assert_eq!(asked[1].1["person"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn a_refusal_keeps_its_kind() {
+        let fixture = Fixture::new(
+            PERSON_MCP,
+            URL,
+            &[(
+                PERSON_MCP_STORE_TOOL,
+                json!({ "error": { "kind": "unavailable", "message": "not yours" } }),
+            )],
+        );
+        let session = SessionId::new();
+        let server =
+            ControllerServer::for_session(Some(&fixture.material), session, PERSON_MCP, URL)
+                .unwrap();
+        let error = super::super::ShardUserMcpStore { via: server }
+            .invoke(None, UserMcpStoreCall::List)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error,
+            everruns_core::mcp::UserMcpStoreError::Unavailable("not yours".into())
+        );
     }
 }

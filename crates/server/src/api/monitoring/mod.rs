@@ -547,12 +547,12 @@ pub fn routes(state: AppState) -> Router {
             get(timeline::get_fleet_monitoring_timeline_window),
         )
         .route(
-            "/v1/durable/monitoring/cells",
-            get(timeline::get_fleet_monitoring_cells),
+            "/v1/durable/monitoring/shards",
+            get(timeline::get_fleet_monitoring_shards),
         )
         .route(
-            "/v1/durable/monitoring/cells/{cell}/detail",
-            get(cell_detail::get_fleet_monitoring_cell_detail),
+            "/v1/durable/monitoring/shards/{shard}/detail",
+            get(shard_detail::get_fleet_monitoring_shard_detail),
         )
         .route(
             "/v1/durable/monitoring/actors",
@@ -772,9 +772,9 @@ pub async fn get_fleet_monitoring_actor(
     actor_detail(&state, None, session).await
 }
 
-pub mod cell_detail;
+pub mod shard_detail;
 pub mod timeline;
-pub use cell_detail::{CellNodeDetail, CellNodePoint, MonitoringCellDetail};
+pub use shard_detail::{MonitoringShardDetail, ShardNodeDetail, ShardNodePoint};
 pub use timeline::*;
 
 #[cfg(test)]

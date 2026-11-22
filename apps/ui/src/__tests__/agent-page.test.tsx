@@ -443,7 +443,7 @@ describe("External agent", () => {
       "Sessions3",
     ]);
     const more = within(screen.getByRole("navigation", { name: "More settings" }));
-    expect(more.queryByRole("button", { name: /MCP servers/ })).not.toBeInTheDocument();
+    expect(more.queryByRole("button", { name: /^MCP/ })).not.toBeInTheDocument();
     expect(more.queryByRole("button", { name: /Sandbox/ })).not.toBeInTheDocument();
     expect(more.getByRole("button", { name: /Branding/ })).toBeInTheDocument();
     expect(
@@ -531,7 +531,7 @@ describe("AgentPage layout", () => {
     expect(screen.getByTestId("markdown")).toHaveTextContent("You are helpful");
     expect(screen.getByText("3 words · ~4 tokens")).toBeInTheDocument();
     const more = within(screen.getByRole("navigation", { name: "More settings" }));
-    expect(more.getByRole("button", { name: /MCP servers\s*2 attached/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /MCP\s*2 attached/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Credentials\s*None/ })).toBeInTheDocument();
     expect(
       more.getByRole("button", { name: /Service account\s*On first use/ }),
@@ -655,7 +655,7 @@ describe("AgentPage layout", () => {
   it("opens a More row in a side sheet", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /MCP servers/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^MCP\s/ }));
     expect(await screen.findByText("agent mcp")).toBeInTheDocument();
     expect(screen.getByText("Changes here save immediately.")).toBeInTheDocument();
   });

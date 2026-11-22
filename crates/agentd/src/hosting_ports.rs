@@ -1,5 +1,5 @@
 //! Engine's session record, session storage, compaction checkpoint and
-//! event log ports over the cell. Split from `hosting.rs` for size.
+//! event log ports over the shard. Split from `hosting.rs` for size.
 
 use super::*;
 
@@ -51,10 +51,10 @@ impl SessionMutator for Ports {
 
 /// Session secrets are kept sealed with the org's data key (design.md,
 /// "Session secrets"): an executor seals what the agent stores and opens
-/// what it reads, the control plane seals what a person stores, and cell
+/// what it reads, the control plane seals what a person stores, and shard
 /// nodes, the log and its shipped copies only ever hold ciphertext.
 ///
-/// A standalone cell (no control plane, so no `CELL_DP_KEY` and no org
+/// A standalone shard (no control plane, so no `AGENTD_DP_KEY` and no org
 /// data keys) keeps them as written, as before sealing: there is nothing
 /// to seal with, and its sandboxes keep their state in a session secret.
 impl Ports {

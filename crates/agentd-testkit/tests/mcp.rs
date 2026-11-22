@@ -12,12 +12,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use everruns::hosting::services::{McpAuthProvider, McpAuthRequest};
-use everruns_cell::dp::{ConfigAck, ConfigChange, ConfigUpdate};
-use everruns_cell::mcp::{Bindings, MCP_OAUTH, OrgMcp, mcp_binding_secret};
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell::providers::OrgMaterial;
-use everruns_cell::secrets::{SecretOp, SecretReply};
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd::dp::{ConfigAck, ConfigChange, ConfigUpdate};
+use everruns_agentd::mcp::{Bindings, MCP_OAUTH, OrgMcp, mcp_binding_secret};
+use everruns_agentd::node_control::ControlPlane;
+use everruns_agentd::providers::OrgMaterial;
+use everruns_agentd::secrets::{SecretOp, SecretReply};
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use everruns_contracts::dataplane::{Connection, RefreshOwner};
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::typed_id::SessionId;
@@ -102,7 +102,7 @@ async fn an_orgs_mcp_credentials_open_on_its_executors_and_one_refreshes_a_grant
         .unwrap()
     };
     let binding = mcp_binding_secret(BINDING);
-    let mut package = everruns_cell_testkit::definition("echo").unwrap();
+    let mut package = everruns_agentd_testkit::definition("echo").unwrap();
     package["name"] = json!("helper");
     let ack = cp
         .push_config(
@@ -169,7 +169,7 @@ async fn an_orgs_mcp_credentials_open_on_its_executors_and_one_refreshes_a_grant
         .unwrap();
     assert!(stranger.is_none());
 
-    // What a call pays for its credentials: opened from the directory cell
+    // What a call pays for its credentials: opened from the directory shard
     // (a fresh executor's first call), and kept (every later call).
     let material: Arc<dyn OrgMaterial> = e1.clone();
     let mut cold = Vec::new();
@@ -209,7 +209,7 @@ async fn an_orgs_mcp_credentials_open_on_its_executors_and_one_refreshes_a_grant
         pct(warm, 99),
     );
 
-    // One refresher at a time, across executors, through the directory cell.
+    // One refresher at a time, across executors, through the directory shard.
     let e2 = fleet.executor(2);
     e2.set_dp_key(dp_key);
     let lease = |holder: &str| SecretOp::Lease {

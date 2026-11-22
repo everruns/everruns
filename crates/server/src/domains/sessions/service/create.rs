@@ -853,7 +853,7 @@ impl SessionService {
             .get_session(org_id, source_session_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Source session"))?;
-        // A v2 source's history and storage are in its cell (`fork_plane`).
+        // A v2 source's history and storage are in its shard (`fork_plane`).
         if let Some(plane) =
             super::fork_plane::plane_of(&self.db, org_id, source_session_id).await?
         {

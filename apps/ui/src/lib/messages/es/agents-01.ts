@@ -249,6 +249,20 @@ export const messages: Readonly<Record<string, string>> = {
   "Connected as": "Conectado como",
   "connection on the agent's service account": "conexión en la cuenta de servicio del agente",
   "Connection required.": "Se requiere conexión.",
+  "Sign-in stopped working": "El inicio de sesión dejó de funcionar",
+  "Since {value0} the agent has no {value1} tools.":
+    "Desde el {value0} el agente no tiene herramientas de {value1}.",
+  "The agent has no {value0} tools.": "El agente no tiene herramientas de {value0}.",
+  "stops {value0}": "caduca el {value0}",
+  "Renews automatically.": "Se renueva automáticamente.",
+  "It was signed in before Everruns could renew sign-ins on its own. Sign in again once and it renews from then on.":
+    "Se inició sesión antes de que Everruns pudiera renovar los inicios de sesión por sí mismo. Inicia sesión de nuevo una vez y se renovará a partir de entonces.",
+  "The server's sign-in settings changed since it was signed in.":
+    "La configuración de inicio de sesión del servidor cambió desde que se inició sesión.",
+  "The server gave no way to renew it.": "El servidor no ofreció forma de renovarlo.",
+  "The server keeps rejecting its token.": "El servidor sigue rechazando su token.",
+  "The server refused to renew it.": "El servidor se negó a renovarlo.",
+  "Sign in again": "Volver a iniciar sesión",
   "Connects in settings only": "Se conecta solo en la configuración",
   "Connects to": "Se conecta a",
   "Consumers sign in separately from the console. Your configured approvals and spending limits apply.":

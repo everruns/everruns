@@ -2,13 +2,13 @@
 
 use super::*;
 use crate::authority::Holder;
-use crate::state::CellState;
+use crate::state::ShardState;
 
 const NOW: i64 = 1_000_000;
 
-fn held() -> (CellState, SessionId) {
+fn held() -> (ShardState, SessionId) {
     let session = SessionId::new();
-    let mut state = CellState::default();
+    let mut state = ShardState::default();
     let mut s = SessionState::default();
     s.authority.binding = Some(everruns::hosting::SessionBinding {
         framework: 1,
@@ -28,7 +28,7 @@ fn held() -> (CellState, SessionId) {
     (state, session)
 }
 
-fn call(state: &mut CellState, session: SessionId, op: CallOp, now_ms: i64) -> Response {
+fn call(state: &mut ShardState, session: SessionId, op: CallOp, now_ms: i64) -> Response {
     let mut changes = Vec::new();
     state.apply(
         Command::Platform {
@@ -41,7 +41,7 @@ fn call(state: &mut CellState, session: SessionId, op: CallOp, now_ms: i64) -> R
     )
 }
 
-fn detach(state: &mut CellState, session: SessionId, id: &str) {
+fn detach(state: &mut ShardState, session: SessionId, id: &str) {
     let op = CallOp::Detach {
         call: id.into(),
         turn: TurnId::new(),
@@ -55,13 +55,13 @@ fn detach(state: &mut CellState, session: SessionId, id: &str) {
 }
 
 /// The turn parks: its epoch is released and nothing else is owed.
-fn park(state: &mut CellState, session: SessionId) {
+fn park(state: &mut ShardState, session: SessionId) {
     let a = &mut state.sessions.get_mut(&session).unwrap().authority;
     a.holder = None;
     a.runnable = false;
 }
 
-fn authority(state: &CellState, session: SessionId) -> &Authority {
+fn authority(state: &ShardState, session: SessionId) -> &Authority {
     &state.sessions[&session].authority
 }
 

@@ -2,24 +2,24 @@
 //! v2 parity, Phase B): the `platform` capability's product documentation
 //! at `/workspace/docs`, a declarative capability's files, Daytona's and
 //! data knowledge's notes. A v1 worker's session has them from its create
-//! (`session_files::apply_capability_mounts` in the server); a cell's had
+//! (`session_files::apply_capability_mounts` in the server); a shard's had
 //! none, so an agent told to read `/workspace/docs` found nothing.
 //!
 //! Decisions:
 //! - A virtual tree (the product docs, hundreds of files) is mounted
-//!   read-only from the cell's memory at each activation, never copied:
+//!   read-only from the shard's memory at each activation, never copied:
 //!   the tree is built once per process and shared by every session, as the
 //!   server's `VirtualMountRegistry` serves it on v1.
 //! - Inline files and directories are starter files: written into the
 //!   session's workspace with the create, only where absent, read-only when
 //!   the capability says so, as v1 copies them. Small, and a writable one
 //!   is the session's to change.
-//! - Resolved from the session's own definition with the cell's capability
+//! - Resolved from the session's own definition with the shard's capability
 //!   registry and each capability's configuration, so a declarative
 //!   capability's files come from its definition.
 //! - A subagent's child gets the docs (its definition is its parent's agent)
 //!   but no inline files: the control plane's create seeds those, and a child
-//!   is created on the cell.
+//!   is created on the shard.
 
 use std::sync::Arc;
 
@@ -32,7 +32,7 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, Se
 use everruns_core::session_files::SessionFileSystem;
 use serde_json::Value;
 
-/// Largest file a grep reads, as the cell's workspace applies it.
+/// Largest file a grep reads, as the shard's workspace applies it.
 const GREP_FILE_MAX: usize = 512 * 1024;
 const PATTERN_MAX: usize = 1_000;
 

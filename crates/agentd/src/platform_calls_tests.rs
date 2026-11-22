@@ -162,17 +162,6 @@ impl OrgMaterial for Executor {
     fn mcp(&self) -> Option<Arc<OrgMcp>> {
         self.mcp.get().cloned()
     }
-    fn looks_up(&self) -> bool {
-        true
-    }
-    async fn lookup(
-        &self,
-        _: &str,
-        command: &str,
-        _: Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        panic!("platform command made host call {command}")
-    }
 }
 
 #[tokio::test]
@@ -205,9 +194,8 @@ async fn platform_commands_run_on_the_control_plane_as_the_turns_person() {
     mcp.bind(weak.clone());
     let _ = executor.mcp.set(mcp);
 
-    let lookups = crate::lookups::org_lookups(Some(&weak), session).unwrap();
     let server = ControllerServer::for_session(Some(&weak), session, PLATFORM_COMMANDS, URL);
-    let calls = super::PlatformCalls::new(lookups, session, server);
+    let calls = super::PlatformCalls::new(server);
 
     // Outside a turn: refused before anything is sent.
     assert!(calls.call("discover", json!({})).await.is_err());
@@ -224,4 +212,12 @@ async fn platform_commands_run_on_the_control_plane_as_the_turns_person() {
     *executor.sender.lock() = None;
     let error = turn.call("query", json!({})).await.unwrap_err();
     assert!(error.to_string().contains("no person to act as"), "{error}");
+
+    // No control plane server (a standalone shard): no platform commands.
+    let error = super::PlatformCalls::new(None)
+        .bound(MessageId::new())
+        .call("discover", json!({}))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("not available"), "{error}");
 }

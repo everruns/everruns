@@ -14,7 +14,7 @@ links:
 
 ![Session Trace tab with two turns, the step waterfall and the inspector open on a write_file call](./session-trace@2x.png)
 
-**In the UI:** a session now opens on **Trace**, which replaces the Transcript
+**In the [UI](/features/ui/#sessions):** a session now opens on **Trace**, which replaces the Transcript
 and Timeline tabs. A turn rail with a minimap leads to each turn's steps: model
 calls, tool calls, approvals, sub-agents and messages, with waterfall timing
 bars. The step inspector shows input, output, the full model request and raw
@@ -23,7 +23,11 @@ and `k` move between steps. The view, error filter and selected step live in
 the URL.
 
 **In code:** read the same data from `/v1/sessions/{id}/trace`, or with
-`everruns sessions trace get` and `everruns sessions trace turns list`.
+[`everruns sessions trace get`](/reference/cli/sessions/) and `everruns sessions trace turns list`.
 
-See [Web UI](/features/ui/#sessions), the [sessions CLI reference](/reference/cli/sessions/)
-and [#4481](https://github.com/everruns/everruns/pull/4481), [#4500](https://github.com/everruns/everruns/pull/4500), [#4503](https://github.com/everruns/everruns/pull/4503), [#4556](https://github.com/everruns/everruns/pull/4556).
+## Update 2026-11-20
+
+Open a message or the tools list straight from the step inspector. The model
+request opens in a near-full-screen modal with image previews and file downloads
+for attachments retained in the trace. **View full message** opens the
+original turn input in the sidebar.

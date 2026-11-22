@@ -1,8 +1,8 @@
 //! This container's CPU and memory, and its machine's, read from cgroup v2
-//! and `/proc` (`cell-testnode usage`).
+//! and `/proc` (`agentd-testnode usage`).
 //!
 //! Decisions:
-//! - Load runs need CPU and memory for every pod (cells, executors,
+//! - Load runs need CPU and memory for every pod (shards, executors,
 //!   drivers) and the machine, and the cluster runs no metrics-server. The
 //!   image has no shell, so the binary reads the files itself and a sampler
 //!   runs it with `kubectl exec` in each pod.

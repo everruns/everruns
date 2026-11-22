@@ -1,19 +1,19 @@
 //! A v2 session's storage (data plane v2, step 11.6).
 //!
 //! Decisions:
-//! - The values and secrets live on the session's cell, where its agent's
+//! - The values and secrets live on the session's shard, where its agent's
 //!   tools read them. The Storage API keeps its one code path, policy and
 //!   validation here for both planes; for a v2 session it reads them from
-//!   the cell (the `storage` read) and changes them with the `storage`
+//!   the shard (the `storage` read) and changes them with the `storage`
 //!   session command.
 //! - THREAT[TM-TENANT]: a person's secret is sealed here with the org's
 //!   data key, bound to the session and its name, before it leaves the
-//!   control plane; the cell refuses anything else and never returns a
+//!   control plane; the shard refuses anything else and never returns a
 //!   secret's value.
-//! - A cell keeps when each key and secret was first set and last changed
-//!   (`stamps`); one set before cells kept them shows empty times.
+//! - A shard keeps when each key and secret was first set and last changed
+//!   (`stamps`); one set before shards kept them shows empty times.
 //! - Bound secrets (a secret the platform puts on requests to one URL) are
-//!   refused on a v2 session for now: the cell has no egress binding yet.
+//!   refused on a v2 session for now: the shard has no egress binding yet.
 
 use everruns_contracts::session_commands;
 use std::collections::BTreeMap;
@@ -26,7 +26,7 @@ use crate::domains::common::*;
 use crate::domains::data_plane::session_plane::SessionPlane;
 use crate::domains::data_plane::{ControlPlane, org_public};
 
-/// A v2 session's storage as its cell lists it.
+/// A v2 session's storage as its shard lists it.
 #[derive(Debug, Default, Deserialize)]
 pub struct Listed {
     #[serde(default)]
@@ -34,7 +34,7 @@ pub struct Listed {
     #[serde(default)]
     pub secrets: Vec<String>,
     /// When each was first set and last changed, keyed `value:<key>` and
-    /// `secret:<name>`; absent for ones set before cells kept times.
+    /// `secret:<name>`; absent for ones set before shards kept times.
     #[serde(default)]
     pub stamps: BTreeMap<String, Stamp>,
 }
@@ -49,7 +49,7 @@ pub struct Stamp {
 }
 
 impl Listed {
-    /// A value's times, empty when the cell has none.
+    /// A value's times, empty when the shard has none.
     pub fn value_stamp(&self, key: &str) -> Stamp {
         self.stamps
             .get(&format!("value:{key}"))
@@ -57,7 +57,7 @@ impl Listed {
             .unwrap_or_default()
     }
 
-    /// A secret's times, empty when the cell has none.
+    /// A secret's times, empty when the shard has none.
     pub fn secret_stamp(&self, name: &str) -> Stamp {
         self.stamps
             .get(&format!("secret:{name}"))
@@ -143,7 +143,7 @@ impl PlaneStorage {
 
     /// The session's secrets, opened: what a fork copies, and the
     /// sandbox's state (`domains/session_sandbox/plane.rs`). Only the
-    /// control plane holds the org's data key; the cell hands them over
+    /// control plane holds the org's data key; the shard hands them over
     /// sealed.
     pub async fn secrets(&self) -> Result<BTreeMap<String, String>, CommandError> {
         #[derive(Deserialize)]

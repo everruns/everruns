@@ -6,7 +6,7 @@
 //!   tab (`GET /v1/sessions/{id}/cost`): each model call's provider-reported
 //!   cost where there is one, else its price-table estimate, split into
 //!   categories by [`split_call`]. The pure functions here build it from rows
-//!   any host can produce (the control plane's tables, a cell's log), so a
+//!   any host can produce (the control plane's tables, a shard's log), so a
 //!   v1 session and a v2 session report alike.
 //! - Only the session's own spend and its subagents'. Never org totals,
 //!   other sessions, budget limits, credits, markup, the org's price list or
@@ -531,7 +531,7 @@ pub fn spend_call(
 }
 
 /// Spend inputs from a session's committed events, for a host that keeps
-/// the log itself (a cell, an embedded host). Children are left to the
+/// the log itself (a shard, an embedded host). Children are left to the
 /// caller.
 pub fn spend_inputs(events: &[crate::runtime::events::Event]) -> SpendInputs {
     use crate::runtime::events::EventData;

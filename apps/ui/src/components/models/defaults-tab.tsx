@@ -57,7 +57,7 @@ const imageSchema = z.strictObject({ image_model_id: z.string() });
 
 export const PLATFORM_IMAGE_DEFAULT_LABEL = "Platform default · GPT Image 2.6 Flare";
 
-export const PLATFORM_DEFAULT_LABEL = "Platform default · GPT-6 Luna";
+export const PLATFORM_DEFAULT_LABEL = "Platform default · GPT-6.2 Sol";
 
 /** Picker value for an unset research model, which resolves automatically. */
 const AUTOMATIC = "automatic";
@@ -362,7 +362,7 @@ export function DefaultsTab({
                   })
                 : void run(() => updateOrg.mutateAsync({ default_model_id: value || null }))
             }
-            placeholder={PLATFORM_DEFAULT_LABEL}
+            placeholder={ui(PLATFORM_DEFAULT_LABEL)}
             searchPlaceholder="Search chat models…"
             disabled={busy}
           />

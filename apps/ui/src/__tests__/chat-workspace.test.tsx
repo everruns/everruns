@@ -60,6 +60,7 @@ let mockTasks: SessionTask[] = INITIAL_TASKS;
 let mockSessions: Record<string, Partial<Session>> = {};
 let mockPath = "/chats";
 let mockTaskId: string | null = null;
+let mockMainChatError: Error | null = null;
 let mockAgentReference: string | null = null;
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -80,7 +81,13 @@ jest.mock("next/link", () => ({
   ),
 }));
 jest.mock("@/hooks/use-platform-chat-thread", () => ({
-  usePlatformChatThread: () => ({ thread: { id: "permanent", agent_id: "agent_platform" } }),
+  usePlatformChatThread: () => ({
+    thread: mockMainChatError ? undefined : { id: "permanent", agent_id: "agent_platform" },
+    error: mockMainChatError,
+  }),
+}));
+jest.mock("@/hooks/use-agents", () => ({
+  useAgent: (id: string | undefined) => ({ data: id ? { id: "agent_platform" } : undefined }),
 }));
 jest.mock("@/hooks/use-sessions", () => ({
   useSession: (id: string) => ({
@@ -138,6 +145,7 @@ beforeEach(() => {
   mockTaskSubscription.mockClear();
   mockPath = "/chats";
   mockTaskId = null;
+  mockMainChatError = null;
   mockAgentReference = null;
   mockPublishedView = null;
   mockViewQuery.mockClear();
@@ -146,6 +154,18 @@ beforeEach(() => {
     configurable: true,
     value: () => ({ matches: false, addEventListener: jest.fn(), removeEventListener: jest.fn() }),
   });
+});
+
+it("opens a side-chat draft and its conversation despite a failed Main chat lookup", () => {
+  mockMainChatError = new Error("Session not found");
+  mockPath = "/chats/new";
+  const { rerender } = render(<ChatWorkspace />);
+  expect(screen.getByText("New side chat draft")).toBeInTheDocument();
+
+  mockPath = "/chats/side_new";
+  rerender(<ChatWorkspace />);
+  expect(screen.getByTestId("conversation-side_new")).toBeInTheDocument();
+  expect(mockTaskSubscription).toHaveBeenCalledWith("side_new");
 });
 
 it("opens an Agent view reference and switches to the searchable threads section", async () => {

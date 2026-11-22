@@ -1,7 +1,7 @@
-//! The cell's replicated state machine.
+//! The shard's replicated state machine.
 //!
 //! Every replica applies the same committed [`Command`]s in the same order and
-//! must reach the same [`CellState`]. So nothing here reads a clock, draws a
+//! must reach the same [`ShardState`]. So nothing here reads a clock, draws a
 //! random number or does I/O: time, ids and finalized event envelopes travel
 //! inside the command, chosen once by whoever proposed it.
 //!
@@ -19,10 +19,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::NodeId;
 
-/// Identifies one cell (one Raft group) in the fleet.
-pub type CellId = u32;
+/// Identifies one shard (one Raft group) in the fleet.
+pub type ShardId = u32;
 
-/// A replicated change to the cell.
+/// A replicated change to the shard.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 #[expect(
@@ -78,19 +78,19 @@ pub enum Command {
         #[serde(default)]
         closed: Vec<String>,
     },
-    /// A control plane config update for `org` (directory cell).
+    /// A control plane config update for `org` (directory shard).
     Config {
         org: String,
         update: crate::dp::ConfigUpdate,
         now_ms: i64,
     },
-    /// A control plane admin command for `org` (directory cell).
+    /// A control plane admin command for `org` (directory shard).
     Admin {
         org: String,
         command: crate::control::AdminCommand,
         now_ms: i64,
     },
-    /// An executor leasing or refreshing `org`'s secret (directory cell,
+    /// An executor leasing or refreshing `org`'s secret (directory shard,
     /// `secrets.rs`).
     Secret {
         org: String,
@@ -196,8 +196,8 @@ pub enum Command {
         now_ms: i64,
         seed: EventId,
     },
-    /// Directory: `session` lives in `cell` at placement `generation`. Only
-    /// the directory cell applies it.
+    /// Directory: `session` lives in `shard` at placement `generation`. Only
+    /// the directory shard applies it.
     ///
     /// It commits only over the entry at generation `previous` (0: none),
     /// a compare-and-swap that is a move's ownership transfer: a late or
@@ -205,36 +205,36 @@ pub enum Command {
     /// (`Moves` model in `tests/models/data-plane-v2/`). A failed swap
     /// answers [`Response::Placement`] with the entry as it is. A new
     /// session's first placement (`previous` 0) is refused by a draining
-    /// cell.
+    /// shard.
     Place {
         session: SessionId,
-        cell: CellId,
+        shard: ShardId,
         generation: u64,
         previous: u64,
     },
     /// Directory: read `session`'s entry through the log, so the answer
     /// ([`Response::Placement`]) is current, not a replica's lagging view.
     Locate { session: SessionId },
-    /// Record `cell`'s current members in the registry (directory cell).
+    /// Record `shard`'s current members in the registry (directory shard).
     /// A list, not a map: integer map keys do not survive serde's
     /// internally tagged enums.
-    RegisterCell {
-        cell: CellId,
+    RegisterShard {
+        shard: ShardId,
         members: Vec<(NodeId, String)>,
     },
-    /// Directory: start (or stop) draining `cell`. New sessions are not
-    /// placed in a draining cell, and the rebalancer moves its sessions out.
-    DrainCell { cell: CellId, drain: bool },
-    /// Directory: drop a drained, empty `cell` from the registry for good.
+    /// Directory: start (or stop) draining `shard`. New sessions are not
+    /// placed in a draining shard, and the rebalancer moves its sessions out.
+    DrainShard { shard: ShardId, drain: bool },
+    /// Directory: drop a drained, empty `shard` from the registry for good.
     /// Its nodes can then be shut down; it can never register again.
-    RetireCell { cell: CellId },
+    RetireShard { shard: ShardId },
     /// Stop starting turns and accepting input, ahead of a move to `to`.
-    /// The cell's leader finishes the move once the session is idle, so a
+    /// The shard's leader finishes the move once the session is idle, so a
     /// move survives the death of whoever asked for it.
     Freeze {
         session: SessionId,
         #[serde(default)]
-        to: Option<CellId>,
+        to: Option<ShardId>,
     },
     /// A move is about to copy the frozen `session`: end its epoch, so no
     /// write lands in the leaving copy after the copy is taken. Refused
@@ -271,46 +271,46 @@ pub enum Command {
         #[serde(default)]
         generation: Option<u64>,
         #[serde(default)]
-        to: Option<CellId>,
+        to: Option<ShardId>,
     },
-    /// Install a session moved from another cell, prepared: it runs nothing
-    /// until `Activate`. Only a generation newer than any copy this cell
+    /// Install a session moved from another shard, prepared: it runs nothing
+    /// until `Activate`. Only a generation newer than any copy this shard
     /// holds or has seen leave is taken.
     Import {
         session: SessionId,
         image: Box<SessionState>,
     },
-    /// The directory committed this cell's prepared copy at `generation`:
+    /// The directory committed this shard's prepared copy at `generation`:
     /// it may run now.
     Activate { session: SessionId, generation: u64 },
-    /// The session now lives in `cell` at `generation`; drop the leaving
+    /// The session now lives in `shard` at `generation`; drop the leaving
     /// copy it was taken from (`generation - 1`) and redirect callers.
     Forward {
         session: SessionId,
-        cell: CellId,
+        shard: ShardId,
         generation: u64,
     },
     /// Drop a prepared copy the directory never committed: it placed the
-    /// session in `cell` at `generation` or later.
+    /// session in `shard` at `generation` or later.
     Drop {
         session: SessionId,
-        cell: CellId,
+        shard: ShardId,
         generation: u64,
     },
-    /// Directory: shard `shard`'s entries now live in cell `to`.
-    AssignShard { shard: u16, to: CellId },
-    /// Stop taking directory writes for `shard`: it is being handed to
-    /// `to`, and a `Place` for it is answered with `Moved { cell: to }`.
-    SealShard { shard: u16, to: CellId },
-    /// Take directory entries handed over from another cell. Of an entry
-    /// this cell already has, the higher generation stays.
+    /// Directory: slot `slot`'s entries now live in shard `to`.
+    AssignSlot { slot: u16, to: ShardId },
+    /// Stop taking directory writes for `slot`: it is being handed to
+    /// `to`, and a `Place` for it is answered with `Moved { shard: to }`.
+    SealSlot { slot: u16, to: ShardId },
+    /// Take directory entries handed over from another shard. Of an entry
+    /// this shard already has, the higher generation stays.
     Adopt {
-        shard: u16,
+        slot: u16,
         entries: Vec<(SessionId, Placed)>,
     },
-    /// Forget a sealed shard's entries once its new owner serves them.
-    DropShard { shard: u16 },
-    /// The cell's leader stored the session's events `seg` in the object
+    /// Forget a sealed slot's entries once its new owner serves them.
+    DropSlot { slot: u16 },
+    /// The shard's leader stored the session's events `seg` in the object
     /// store. Every replica adds it to the session's segment list.
     Stored {
         session: SessionId,
@@ -410,11 +410,11 @@ pub enum Response {
     },
     /// The session is frozen for a move; retry shortly.
     Frozen,
-    /// The session moved to another cell.
+    /// The session moved to another shard.
     Moved {
-        cell: CellId,
+        shard: ShardId,
     },
-    /// The cell is short of memory and takes no new work now; retry after
+    /// The shard is short of memory and takes no new work now; retry after
     /// this long (see `pressure.rs`). Never applied: the leader answers it
     /// before proposing.
     Busy {
@@ -434,7 +434,7 @@ pub enum Response {
     },
 }
 
-/// Lifecycle of a session within this cell.
+/// Lifecycle of a session within this shard.
 ///
 /// Decision: an imported copy and a departing copy are different states.
 /// When they were one ("frozen"), a late duplicate activation could wake a
@@ -445,24 +445,24 @@ pub enum Response {
 pub enum Placement {
     #[default]
     Live,
-    /// Leaving for another cell: no new turns or input.
+    /// Leaving for another shard: no new turns or input.
     Frozen,
     /// Imported, waiting for the directory to commit its generation.
     Prepared,
 }
 
-/// A directory entry: the session's cell and placement generation.
+/// A directory entry: the session's shard and placement generation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Placed {
-    pub cell: CellId,
+    pub shard: ShardId,
     pub generation: u64,
 }
 
-/// A session that left this cell: where it went, and the highest
+/// A session that left this shard: where it went, and the highest
 /// generation that left (its tombstone: an import at or below it is late).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Left {
-    pub cell: CellId,
+    pub shard: ShardId,
     pub generation: u64,
 }
 
@@ -479,7 +479,7 @@ pub struct SessionState {
     /// [`definitions`]), and a snapshot stores each definition once.
     #[serde(default, with = "definitions")]
     pub definition: std::sync::Arc<serde_json::Value>,
-    /// In a snapshot: the key of `definition` in [`CellState::definitions`].
+    /// In a snapshot: the key of `definition` in [`ShardState::definitions`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub definition_ref: Option<String>,
     pub created_ms: i64,
@@ -490,11 +490,11 @@ pub struct SessionState {
     pub offloaded: i32,
     /// The session's segments in the object store, contiguous from
     /// sequence 1. Replicated: only the leader writes segments, and records
-    /// each with a `Stored` command, so the cell keeps one copy.
+    /// each with a `Stored` command, so the shard keeps one copy.
     #[serde(default)]
     pub segments: Vec<crate::store::SegRef>,
     pub events: Vec<Event>,
-    /// What Engine's hosting contract asks the cell to own for the session:
+    /// What Engine's hosting contract asks the shard to own for the session:
     /// binding, admission, epoch, receipts, values (see `authority`).
     #[serde(default)]
     pub authority: crate::authority::Authority,
@@ -506,9 +506,9 @@ pub struct SessionState {
     /// the next one, an abandoned move the one after.
     #[serde(default)]
     pub generation: u64,
-    /// The cell this session is being moved to, while frozen for a move.
+    /// The shard this session is being moved to, while frozen for a move.
     #[serde(default)]
-    pub moving_to: Option<CellId>,
+    pub moving_to: Option<ShardId>,
     /// Sequence of the latest `turn.started` event (0: none yet). A turn
     /// resumes from the log after it, so an executor reads every event from
     /// here on and only the messages before (see `Shared::context`).
@@ -549,47 +549,47 @@ pub fn new_branch(now_ms: i64) -> u64 {
     ((now_ms.max(0) / 1000) as u64) << 32 | u64::from(rand::random::<u32>().max(1))
 }
 
-/// Everything a cell replicates.
+/// Everything a shard replicates.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CellState {
+pub struct ShardState {
     pub last_applied: Option<LogId<NodeId>>,
     pub membership: StoredMembership<NodeId, BasicNode>,
-    /// Which life of the cell this is: 0 until its first restore, then the
+    /// Which life of the shard this is: 0 until its first restore, then the
     /// number the restore claimed (`restore.rs`). Feed records, segment
     /// names and the shipped log carry it, so nothing a lost incarnation
     /// wrote is mistaken for this one's.
     #[serde(default)]
     pub incarnation: u64,
-    /// The newest command time applied: the cell's clock, which a
+    /// The newest command time applied: the shard's clock, which a
     /// point-in-time restore stops at. Replicated, so every replica agrees.
     #[serde(default)]
     pub clock_ms: i64,
     pub sessions: HashMap<SessionId, SessionState>,
-    /// Sessions this cell handed to another cell, or dropped a stale copy
+    /// Sessions this shard handed to another shard, or dropped a stale copy
     /// of. A copy that comes back removes its entry: that copy's
     /// generation is above it.
     pub forwarded: HashMap<SessionId, Left>,
-    /// Directory entries; populated only in the directory cell.
+    /// Directory entries; populated only in the directory shard.
     pub directory: HashMap<SessionId, Placed>,
-    /// Cell registry: each cell's members as its leader last reported them.
-    /// Populated only in the directory cell; gateways read the fleet's
-    /// topology from it, so a cell joins by registering.
+    /// Shard registry: each shard's members as its leader last reported them.
+    /// Populated only in the directory shard; gateways read the fleet's
+    /// topology from it, so a shard joins by registering.
     #[serde(default)]
-    pub cells: std::collections::BTreeMap<CellId, std::collections::BTreeMap<NodeId, String>>,
-    /// Cells being emptied ahead of retirement (directory cell only).
+    pub shards: std::collections::BTreeMap<ShardId, std::collections::BTreeMap<NodeId, String>>,
+    /// Shards being emptied ahead of retirement (directory shard only).
     #[serde(default)]
-    pub draining: std::collections::BTreeSet<CellId>,
-    /// Cells taken out of the fleet (directory cell only). Kept so that a
-    /// retired cell's nodes, still running, cannot register it again.
+    pub draining: std::collections::BTreeSet<ShardId>,
+    /// Shards taken out of the fleet (directory shard only). Kept so that a
+    /// retired shard's nodes, still running, cannot register it again.
     #[serde(default)]
-    pub retired: std::collections::BTreeSet<CellId>,
-    /// Which cell holds each directory shard's entries (directory cell
-    /// only). A shard not listed lives in the directory cell.
+    pub retired: std::collections::BTreeSet<ShardId>,
+    /// Which shard holds each directory slot's entries (directory shard
+    /// only). A slot not listed lives in the directory shard.
     #[serde(default)]
-    pub shards: std::collections::BTreeMap<u16, CellId>,
-    /// Shards this cell handed to another cell, and to which.
+    pub slots: std::collections::BTreeMap<u16, ShardId>,
+    /// Slots this shard handed to another shard, and to which.
     #[serde(default)]
-    pub sealed: std::collections::BTreeMap<u16, CellId>,
+    pub sealed: std::collections::BTreeMap<u16, ShardId>,
     /// In a snapshot only: each agent definition once, by key; sessions
     /// point at theirs with `definition_ref`. Empty in memory.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -597,7 +597,7 @@ pub struct CellState {
     /// Spend allowances, per tenant.
     #[serde(default)]
     pub allowances: crate::allowance::Allowances,
-    /// Each org's control plane config (directory cell only).
+    /// Each org's control plane config (directory shard only).
     #[serde(default)]
     pub orgs: crate::control::Orgs,
     /// Feed records the control plane has not acknowledged yet.
@@ -616,7 +616,7 @@ pub struct CellState {
     pub turns_finished: Vec<u64>,
 }
 
-impl CellState {
+impl ShardState {
     /// Before serializing a snapshot: keep each definition once.
     pub fn share_definitions(&mut self) {
         for s in self.sessions.values_mut() {
@@ -649,26 +649,26 @@ impl CellState {
     }
 }
 
-/// Directory shards. A session's directory entry lives in the cell that
-/// holds its shard.
+/// Directory slots. A session's directory entry lives in the shard that
+/// holds its slot.
 ///
-/// Decision: one directory cell holding every session's entry would cap the
+/// Decision: one directory shard holding every session's entry would cap the
 /// fleet at what one Raft group can store and write. The entries are split
-/// into a fixed number of shards by session id, and the directory cell
-/// keeps only which cell holds each shard (a small table gateways cache).
-/// Shards move between cells as cells join and leave (see
-/// `Node::rebalance_shards`).
-pub const SHARDS: u16 = 256;
+/// into a fixed number of slots by session id, and the directory shard
+/// keeps only which shard holds each slot (a small table gateways cache).
+/// Slots move between shards as shards join and leave (see
+/// `Node::rebalance_slots`).
+pub const SLOTS: u16 = 256;
 
-/// The directory shard of `session`: FNV-1a of its id.
-pub fn shard_of(session: SessionId) -> u16 {
+/// The directory slot of `session`: FNV-1a of its id.
+pub fn slot_of(session: SessionId) -> u16 {
     let hash = session
         .to_string()
         .bytes()
         .fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
             (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
         });
-    (hash % u64::from(SHARDS)) as u16
+    (hash % u64::from(SLOTS)) as u16
 }
 
 #[path = "state_definitions.rs"]
@@ -691,8 +691,8 @@ impl Change {
     }
 }
 
-impl CellState {
-    /// [`CellState::apply`] without the event tap (`tap.rs`): nested
+impl ShardState {
+    /// [`ShardState::apply`] without the event tap (`tap.rs`): nested
     /// commands come through here so the tap sees each change once.
     fn apply_command(&mut self, command: Command, changes: &mut Vec<Change>) -> Response {
         if let Some(at) = command.time()
@@ -701,19 +701,19 @@ impl CellState {
             self.clock_ms = at;
         }
         match command {
-            Command::AssignShard { shard, to } => {
-                if self.shards.insert(shard, to) == Some(to) {
+            Command::AssignSlot { slot, to } => {
+                if self.slots.insert(slot, to) == Some(to) {
                     return Response::Duplicate;
                 }
                 Response::Ok
             }
-            Command::SealShard { shard, to } => {
-                self.sealed.insert(shard, to);
+            Command::SealSlot { slot, to } => {
+                self.sealed.insert(slot, to);
                 Response::Ok
             }
-            Command::Adopt { shard, entries } => {
-                // The shard is back here (or here for the first time).
-                self.sealed.remove(&shard);
+            Command::Adopt { slot, entries } => {
+                // The slot is back here (or here for the first time).
+                self.sealed.remove(&slot);
                 for (session, placed) in entries {
                     let entry = self.directory.entry(session).or_insert(placed);
                     if placed.generation > entry.generation {
@@ -722,10 +722,10 @@ impl CellState {
                 }
                 Response::Ok
             }
-            Command::DropShard { shard } => {
-                if self.sealed.contains_key(&shard) {
+            Command::DropSlot { slot } => {
+                if self.sealed.contains_key(&slot) {
                     self.directory
-                        .retain(|session, _| shard_of(*session) != shard);
+                        .retain(|session, _| slot_of(*session) != slot);
                 }
                 Response::Ok
             }
@@ -816,7 +816,7 @@ impl CellState {
                 use everruns::hosting::spi::session_commands::SessionCommand;
                 let create = matches!(command, SessionCommand::Create { .. });
                 if let Some(left) = self.forwarded.get(&session) {
-                    return Response::Moved { cell: left.cell };
+                    return Response::Moved { shard: left.shard };
                 }
                 let fresh = create && !self.sessions.contains_key(&session);
                 if fresh {
@@ -1138,8 +1138,8 @@ impl CellState {
                 state.sqldb_commit(fence, op, change, now_ms)
             }
             Command::Locate { session } => {
-                if let Some(to) = self.sealed.get(&shard_of(session)) {
-                    return Response::Moved { cell: *to };
+                if let Some(to) = self.sealed.get(&slot_of(session)) {
+                    return Response::Moved { shard: *to };
                 }
                 Response::Placement {
                     current: self.directory.get(&session).copied(),
@@ -1147,14 +1147,14 @@ impl CellState {
             }
             Command::Place {
                 session,
-                cell,
+                shard,
                 generation,
                 previous,
             } => {
-                if let Some(to) = self.sealed.get(&shard_of(session)) {
-                    return Response::Moved { cell: *to };
+                if let Some(to) = self.sealed.get(&slot_of(session)) {
+                    return Response::Moved { shard: *to };
                 }
-                let placed = Placed { cell, generation };
+                let placed = Placed { shard, generation };
                 let current = self.directory.get(&session).copied();
                 if current == Some(placed) {
                     return Response::Duplicate;
@@ -1163,38 +1163,39 @@ impl CellState {
                     return Response::Placement { current };
                 }
                 // A gateway placing from a view a second old must not put a
-                // new session in a cell that is being emptied.
-                if previous == 0 && (self.draining.contains(&cell) || self.retired.contains(&cell))
+                // new session in a shard that is being emptied.
+                if previous == 0
+                    && (self.draining.contains(&shard) || self.retired.contains(&shard))
                 {
                     return Response::Rejected {
-                        reason: format!("cell {cell} is draining"),
+                        reason: format!("shard {shard} is draining"),
                     };
                 }
                 self.directory.insert(session, placed);
                 Response::Ok
             }
-            Command::RegisterCell { cell, members } => {
+            Command::RegisterShard { shard, members } => {
                 let members: std::collections::BTreeMap<NodeId, String> =
                     members.into_iter().collect();
-                if self.retired.contains(&cell) {
+                if self.retired.contains(&shard) {
                     return Response::Rejected {
-                        reason: format!("cell {cell} is retired"),
+                        reason: format!("shard {shard} is retired"),
                     };
                 }
-                if self.cells.get(&cell) == Some(&members) {
+                if self.shards.get(&shard) == Some(&members) {
                     return Response::Duplicate;
                 }
-                self.cells.insert(cell, members);
+                self.shards.insert(shard, members);
                 Response::Ok
             }
-            Command::DrainCell { cell, drain } => {
-                if self.retired.contains(&cell) || !self.cells.contains_key(&cell) {
+            Command::DrainShard { shard, drain } => {
+                if self.retired.contains(&shard) || !self.shards.contains_key(&shard) {
                     return Response::NotFound;
                 }
                 let changed = if drain {
-                    self.draining.insert(cell)
+                    self.draining.insert(shard)
                 } else {
-                    self.draining.remove(&cell)
+                    self.draining.remove(&shard)
                 };
                 if changed {
                     Response::Ok
@@ -1202,23 +1203,23 @@ impl CellState {
                     Response::Duplicate
                 }
             }
-            Command::RetireCell { cell } => {
-                if self.retired.contains(&cell) {
+            Command::RetireShard { shard } => {
+                if self.retired.contains(&shard) {
                     return Response::Duplicate;
                 }
-                if !self.draining.contains(&cell) {
+                if !self.draining.contains(&shard) {
                     return Response::Rejected {
-                        reason: format!("cell {cell} is not draining"),
+                        reason: format!("shard {shard} is not draining"),
                     };
                 }
-                // Decision: the directory does not know a cell's sessions,
-                // only the cell does; whoever retires it checks that it is
+                // Decision: the directory does not know a shard's sessions,
+                // only the shard does; whoever retires it checks that it is
                 // empty first (the gateway does). A placement still naming
                 // it is dropped here so lookups fail fast, not into a void.
-                self.directory.retain(|_, p| p.cell != cell);
-                self.draining.remove(&cell);
-                self.cells.remove(&cell);
-                self.retired.insert(cell);
+                self.directory.retain(|_, p| p.shard != shard);
+                self.draining.remove(&shard);
+                self.shards.remove(&shard);
+                self.retired.insert(shard);
                 Response::Ok
             }
             Command::Freeze { session, to } => {
@@ -1231,7 +1232,7 @@ impl CellState {
                 }
                 // A move already running is never retargeted: it may have
                 // committed in the directory already, and a late freeze
-                // back to this cell would thaw the leaving copy while the
+                // back to this shard would thaw the leaving copy while the
                 // target runs the session (two owners; found by the
                 // protocol simulation). It finishes, or is abandoned
                 // through the directory.
@@ -1361,7 +1362,7 @@ impl CellState {
             }
             Command::Forward {
                 session,
-                cell,
+                shard,
                 generation,
             } => {
                 match self.sessions.get(&session) {
@@ -1388,7 +1389,7 @@ impl CellState {
                 self.forwarded.insert(
                     session,
                     Left {
-                        cell,
+                        shard,
                         generation: generation - 1,
                     },
                 );
@@ -1397,7 +1398,7 @@ impl CellState {
             }
             Command::Drop {
                 session,
-                cell,
+                shard,
                 generation,
             } => {
                 match self.sessions.get(&session) {
@@ -1419,7 +1420,7 @@ impl CellState {
                     self.forwarded.insert(
                         session,
                         Left {
-                            cell,
+                            shard,
                             generation: s.generation,
                         },
                     );
@@ -1471,7 +1472,7 @@ impl CellState {
 
     pub(crate) fn missing(&self, session: SessionId) -> Response {
         match self.forwarded.get(&session) {
-            Some(left) => Response::Moved { cell: left.cell },
+            Some(left) => Response::Moved { shard: left.shard },
             None => Response::NotFound,
         }
     }

@@ -85,10 +85,6 @@ impl Capability for PlatformCapability {
         PLATFORM_CAPABILITY_ID
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[everruns_contracts::host_calls::PLATFORM_COMMAND]
-    }
-
     fn name(&self) -> &str {
         "Platform"
     }

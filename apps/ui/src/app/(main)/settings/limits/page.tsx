@@ -3,7 +3,7 @@
 import { useUiTranslations } from "@/providers/locale-provider";
 import { Gauge } from "lucide-react";
 import { BackgroundLimitsSettings } from "@/components/organizations/background-limits-settings";
-import { MonthlySessionLimitSettings } from "@/components/organizations/monthly-session-limit-settings";
+import { MonthlyCreationLimitSettings } from "@/components/organizations/monthly-creation-limit-settings";
 import { SelfHealingSettings } from "@/components/organizations/self-healing-settings";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle } from "@/hooks";
@@ -26,10 +26,35 @@ export default function LimitsSettingsPage() {
       </div>
       {/* A new organization gets a fresh form; pending edits never cross tenants. */}
       {organization.monthly_session_limit !== undefined && (
-        <MonthlySessionLimitSettings
+        <MonthlyCreationLimitSettings
           key={`${organization.id}-session-limit`}
+          field="monthly_session_limit"
           limit={organization.monthly_session_limit}
           canManage={canManage}
+          copy={{
+            title: ui("Session creation"),
+            label: ui("Monthly session limit"),
+            hint: ui(
+              "The limit resets on the first day of each month at midnight UTC. Archived and deleted sessions still count for the month they were created.",
+            ),
+            saveError: ui("Could not save the session limit."),
+          }}
+        />
+      )}
+      {organization.monthly_agent_limit !== undefined && (
+        <MonthlyCreationLimitSettings
+          key={`${organization.id}-agent-limit`}
+          field="monthly_agent_limit"
+          limit={organization.monthly_agent_limit}
+          canManage={canManage}
+          copy={{
+            title: ui("Agent creation"),
+            label: ui("Monthly agent limit"),
+            hint: ui(
+              "The limit resets on the first day of each month at midnight UTC. Archived and deleted agents still count for the month they were created. Built-in agents never count.",
+            ),
+            saveError: ui("Could not save the agent limit."),
+          }}
         />
       )}
       <BackgroundLimitsSettings

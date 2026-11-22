@@ -16,7 +16,7 @@ const KEY: Key = [7u8; 32];
 const GRANT: &str = "mcp_oauth:grant-1";
 const TOKEN_URL: &str = "https://auth.example/token";
 
-/// The directory cell and the org's sealed secrets, in memory: what every
+/// The directory shard and the org's sealed secrets, in memory: what every
 /// executor reads and leases through.
 #[derive(Default)]
 struct Directory {
@@ -24,8 +24,6 @@ struct Directory {
     sessions: parking_lot::Mutex<HashMap<SessionId, String>>,
     /// Who opened each session's turn.
     senders: parking_lot::Mutex<HashMap<SessionId, String>>,
-    /// Host calls made: (org, command, params).
-    lookups: parking_lot::Mutex<Vec<(String, String, serde_json::Value)>>,
 }
 
 impl Directory {
@@ -107,22 +105,6 @@ impl OrgMaterial for Directory {
             data_key: KEY,
             data_key_id: "dk".into(),
         }))
-    }
-
-    async fn lookup(
-        &self,
-        org: &str,
-        command: &str,
-        params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        let n = {
-            let mut lookups = self.lookups.lock();
-            lookups.push((org.into(), command.into(), params));
-            lookups.len()
-        };
-        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
-            serde_json::json!(format!("person-token-{n}")),
-        ))
     }
 
     async fn secret_op(&self, org: &str, op: SecretOp) -> anyhow::Result<SecretReply> {
@@ -263,8 +245,9 @@ fn placeholders_leave_the_definition_and_literal_headers_stay() {
 }
 
 /// A server that acts as the turn's person keeps its provider out of the
-/// definition, and its token is asked of the control plane for the
-/// session's open turn on every use, never kept: the next turn may be
+/// definition, and its token is asked of the control plane's credentials
+/// server for the session's open turn on every use
+/// (`lookups::open_turn_mcp_token`), never kept: the next turn may be
 /// another person's.
 #[tokio::test]
 async fn a_person_acting_server_asks_for_the_open_turns_token_each_time() {
@@ -293,34 +276,17 @@ async fn a_person_acting_server_asks_for_the_open_turns_token_each_time() {
     // A server acting as no one is left as it is.
     assert!(!bindings.per_turn.contains_key("plain"));
 
+    // Without the control plane's credentials server: no token, and the
+    // server's call is unauthorized, which tells the person to connect.
     let directory = Arc::new(Directory::default());
     let session = SessionId::new();
     directory.sessions.lock().insert(session, ORG.into());
     let auth = executor(&directory, Arc::new(TokenEndpoint::default())).for_agent(bindings);
-    for n in 1..=2 {
-        let credential = auth
-            .authorization(&request("My Notes", session))
+    assert!(
+        auth.authorization(&request("My Notes", session))
             .await
             .unwrap()
-            .unwrap();
-        assert_eq!(
-            credential.authorization,
-            Some(format!("Bearer person-token-{n}"))
-        );
-    }
-    let lookups = directory.lookups.lock();
-    assert_eq!(lookups.len(), 2, "never kept");
-    let (org, command, params) = &lookups[0];
-    assert_eq!(org, ORG);
-    assert_eq!(command, MCP_CONNECTION_COMMAND);
-    assert_eq!(params["session_id"], session.to_string());
-    assert_eq!(params["server_prefix"], "my_notes");
-    assert_eq!(params["provider"], "mcp_oauth_notes");
-    assert_eq!(params["acts_as"], "user");
-    assert_eq!(params["input_message_id"], OPEN_TURN);
-    assert_eq!(
-        everruns_contracts::host_calls::by_command(command).map(|c| c.name),
-        Some(everruns_contracts::host_calls::MCP_CONNECTION_TOKEN)
+            .is_none()
     );
 }
 
@@ -426,32 +392,6 @@ async fn a_fresh_grant_is_used_without_a_refresh_and_a_missing_one_gives_nothing
         .await
         .unwrap();
     assert!(missing.is_none());
-}
-
-/// A server acting as the turn's person declares the host call it asks
-/// per call, so the parity gate does not count it as undeclared; a pushed
-/// service grant (an `mcp_oauth:` connection) asks nothing.
-#[test]
-fn a_person_acting_server_declares_its_token_host_call() {
-    let definition = |provider: &str| {
-        serde_json::json!({
-            "name": "notes",
-            "instructions": "Take notes.",
-            "model": { "provider": "llmsim", "model": "echo" },
-            "mcpServers": {
-                "notes": {
-                    "url": "https://notes.example/mcp",
-                    "auth_mode": "oauth",
-                    "oauth_provider_id": provider,
-                    "actsAs": "user",
-                }
-            },
-        })
-    };
-    let token = everruns_contracts::host_calls::MCP_CONNECTION_TOKEN;
-    assert!(crate::host::declared_host_calls(&definition("mcp_oauth_notes")).contains(token));
-    let pushed = format!("{MCP_OAUTH}:grant-1");
-    assert!(!crate::host::declared_host_calls(&definition(&pushed)).contains(token));
 }
 
 #[tokio::test]

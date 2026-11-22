@@ -402,11 +402,23 @@ async fn max_output_tokens_is_validated_stored_and_cleared() {
     assert_eq!(cleared.max_output_tokens, None);
 }
 
+async fn set_monthly_agent_limit(db: &StorageBackend, ctx: &Ctx, limit: i32) {
+    db.patch_organization_settings(
+        ctx.org_id(),
+        crate::storage::UpdateOrganizationSettings {
+            monthly_agent_limit: Some(limit),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
-async fn agent_creation_rejected_at_limit_and_allowed_below() {
+async fn agent_creation_rejected_at_monthly_limit_and_allowed_below() {
     let db = Arc::new(StorageBackend::test_database());
-    let mut ctx = ctx_with_role(db, OrgRole::Owner).await;
-    ctx.resource_limits.max_agents_per_org = 2;
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
+    set_monthly_agent_limit(&db, &ctx, 2).await;
 
     CreateAgent(basic_agent_request("a1"))
         .execute(&ctx)
@@ -420,29 +432,21 @@ async fn agent_creation_rejected_at_limit_and_allowed_below() {
     let err = CreateAgent(basic_agent_request("a3"))
         .execute(&ctx)
         .await
-        .expect_err("third agent exceeds the cap");
+        .expect_err("third agent exceeds the monthly limit");
     assert_eq!(err.status().as_u16(), 409);
-    assert!(err.message().contains("Agent limit reached"));
+    assert!(err.message().contains("Monthly agent limit reached"));
 }
 
 #[tokio::test]
-async fn soft_deleted_agents_do_not_count_toward_limit() {
+async fn deleted_agents_still_count_for_their_month() {
     let db = Arc::new(StorageBackend::test_database());
-    let mut ctx = ctx_with_role(db, OrgRole::Owner).await;
-    ctx.resource_limits.max_agents_per_org = 1;
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
+    set_monthly_agent_limit(&db, &ctx, 1).await;
 
     let a1 = CreateAgent(basic_agent_request("a1"))
         .execute(&ctx)
         .await
         .expect("first agent below limit");
-
-    let err = CreateAgent(basic_agent_request("a2"))
-        .execute(&ctx)
-        .await
-        .expect_err("second agent exceeds the cap");
-    assert_eq!(err.status().as_u16(), 409);
-
-    // Archive then mark deleted; a deleted row must not count toward the cap.
     DeleteAgent {
         id: a1.public_id.to_string(),
     }
@@ -456,10 +460,11 @@ async fn soft_deleted_agents_do_not_count_toward_limit() {
     .await
     .expect("mark a1 deleted");
 
-    CreateAgent(basic_agent_request("a2"))
+    let err = CreateAgent(basic_agent_request("a2"))
         .execute(&ctx)
         .await
-        .expect("creation allowed once the deleted agent is excluded");
+        .expect_err("deleting cannot restore the month's quota");
+    assert_eq!(err.status().as_u16(), 409);
 }
 
 #[tokio::test]
@@ -771,16 +776,25 @@ async fn built_in_agent_can_be_copied() {
 #[tokio::test]
 async fn built_in_agents_do_not_count_toward_limit() {
     let db = Arc::new(StorageBackend::test_database());
-    let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
-    ctx.resource_limits.max_agents_per_org = 1;
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
+    set_monthly_agent_limit(&db, &ctx, 1).await;
 
-    seed_built_in_agent(&db, &ctx, "managed-test").await;
+    // Inserted as built-in directly (as the platform does), never as a user agent.
+    let harness = create_test_harness(&db, "built-in-quota").await;
+    db.ensure_platform_chat_agent_id(DEFAULT_ORG_ID, harness)
+        .await
+        .expect("insert built-in agent");
 
     // The built-in must not consume the cap, so a user agent still fits.
     CreateAgent(basic_agent_request("mine"))
         .execute(&ctx)
         .await
         .expect("built-in agent must not consume the org quota");
+    let err = CreateAgent(basic_agent_request("second"))
+        .execute(&ctx)
+        .await
+        .expect_err("the user agent used the month's only slot");
+    assert_eq!(err.status().as_u16(), 409);
 }
 
 mod branding_slack_tests;

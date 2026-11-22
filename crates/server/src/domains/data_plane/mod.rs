@@ -21,7 +21,7 @@
 //!   the data plane's key (`EVERRUNS_DP_KEY`, a local key until step 10
 //!   moves it to KMS).
 //! - The link carries a bearer token both ways (`EVERRUNS_DP_TOKEN`, the
-//!   cells' `CELL_DP_TOKEN`) until step 10 replaces it with mTLS.
+//!   shards' `AGENTD_DP_TOKEN`) until step 10 replaces it with mTLS.
 //! - Money: the grant ledger (`allowances`) reserves spend against the
 //!   org's usage policies when it grants and releases it only through a
 //!   closed settlement, so a data plane can never spend more than a policy
@@ -39,11 +39,11 @@ use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 pub mod agent_scripts;
 pub mod allowances;
 pub mod attachments;
+pub mod calls;
 pub mod catalog;
 pub mod default_plane;
 pub mod event_tap;
 pub mod feed;
-pub mod host_calls;
 pub mod mcp;
 pub mod memory;
 pub mod moves;
@@ -52,6 +52,7 @@ pub mod outbox;
 pub mod providers;
 pub mod sandboxes;
 pub mod session_plane;
+pub mod session_records;
 pub mod sessions;
 pub mod subagents;
 pub mod task_webhooks;
@@ -192,6 +193,9 @@ pub struct NewSession<'a> {
     /// A moved v1 session being imported: closed to messages until it is
     /// activated (`moves.rs`).
     pub importing: bool,
+    /// The person who owns it (`resolved_owner_user_id`): whose own tool
+    /// approval settings its turns take (`org_settings.rs`).
+    pub owner: Option<uuid::Uuid>,
 }
 
 /// A data plane as the control plane talks to it. The v1 answer
@@ -221,7 +225,7 @@ pub trait DataPlane: Send + Sync {
     /// (`messages`: an agent trigger's run, a channel's message, where a
     /// retry with the same message id admits once; `cancel-turn`; `seed`, a
     /// channel's prior conversation; see [`everruns_contracts::session_commands`]).
-    /// The cell's answer.
+    /// The shard's answer.
     async fn session_command(
         &self,
         org: &str,
@@ -403,6 +407,9 @@ impl DataPlane for HttpDataPlane {
         if session.importing {
             body["importing"] = serde_json::json!(true);
         }
+        if let Some(owner) = session.owner {
+            body["owner"] = serde_json::json!(owner);
+        }
         self.request(reqwest::Method::POST, url)
             .json(&body)
             .send()
@@ -572,7 +579,7 @@ pub async fn enable_org(
         .await?;
     event_tap::sync(&cp.db, org_id).await?;
     providers::sync(cp, org_id).await?;
-    // Until its settings arrive the cell asks the control plane, so a
+    // Until its settings arrive the shard asks the control plane, so a
     // setting that does not sync never keeps the org off its data plane.
     if let Err(error) = org_settings::sync(cp, org_id).await {
         tracing::warn!(org_id, %error, "the data plane's org settings were not synced");
