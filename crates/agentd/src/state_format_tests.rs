@@ -70,7 +70,9 @@ fn stored_commands_keep_their_names() {
 fn stored_shard_state_keeps_its_names() {
     let session: SessionId = serde_json::from_value(serde_json::json!(SESSION)).unwrap();
     let mut state = ShardState::default();
-    state.shards.insert(1, [(1, "10.0.0.1:7000".to_string())].into());
+    state
+        .shards
+        .insert(1, [(1, "10.0.0.1:7000".to_string())].into());
     state.draining.insert(2);
     state.retired.insert(3);
     state.slots.insert(17, 1);
