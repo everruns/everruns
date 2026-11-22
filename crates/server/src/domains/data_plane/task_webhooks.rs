@@ -1,6 +1,6 @@
 //! Webhooks of a v2 session's tasks (data plane v2 parity, Phase B).
 //!
-//! A v2 task lives in its session's cell, with its push configs. The cell
+//! A v2 task lives in its session's shard, with its push configs. The shard
 //! puts a transition a webhook may want on the feed
 //! (`Record::TaskTransition`, `crates/agentd/src/tasks.rs`), with the push
 //! configs that ask for it, and this delivers it the way a v1 task's is
@@ -17,7 +17,7 @@
 //! - The record names the targets; the control plane adds only the org's
 //!   own webhooks, which it keeps, and the signing secrets of push configs
 //!   made through the API: the node that adds one hands its secret over
-//!   ([`keep_secret`], the `task_push_secret` host call) and the cell keeps
+//!   ([`keep_secret`], the `task_push_secret` host call) and the shard keeps
 //!   only that it has one, so no such secret is in replicated state or on
 //!   the feed. A target whose secret cannot be found here is sent unsigned
 //!   no more than v1 would: it is skipped, and logged.

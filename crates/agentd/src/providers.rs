@@ -10,7 +10,7 @@
 //! - A turn's provider comes from its session's org, never from another
 //!   org's connection under the same name.
 //! - Opened material is kept in memory for [`KEEP`], so a turn's steps do
-//!   not go back to the directory cell, and a key rotation reaches running
+//!   not go back to the directory shard, and a key rotation reaches running
 //!   sessions within that time. It is never written anywhere.
 //! - A lookup without a session (the Engine checks, when it builds an
 //!   agent, that something serves its provider) answers a provider with no
@@ -81,14 +81,14 @@ pub trait OrgMaterial: Send + Sync {
         let _ = (org, secret_id);
         anyhow::bail!("this node does not open org secrets")
     }
-    /// Whether session secrets are sealed here: false on a standalone cell,
+    /// Whether session secrets are sealed here: false on a standalone shard,
     /// which has no data plane key because no control plane wraps keys.
     fn seals(&self) -> bool {
         false
     }
     /// `org`'s data key, unwrapped, with its id: what session secrets are
     /// sealed with (`hosting_ports.rs`); `None` where nothing seals them (a
-    /// standalone cell).
+    /// standalone shard).
     async fn data_key(
         &self,
         org: &str,
@@ -96,7 +96,7 @@ pub trait OrgMaterial: Send + Sync {
         let _ = org;
         anyhow::bail!("this node does not open session secrets")
     }
-    /// Lease or write one of `org`'s secrets in the directory cell
+    /// Lease or write one of `org`'s secrets in the directory shard
     /// (`secrets.rs`).
     async fn secret_op(
         &self,
@@ -136,7 +136,7 @@ pub trait OrgMaterial: Send + Sync {
     /// The data plane's key, which session tokens for injected
     /// capabilities are signed with a key derived from
     /// ([`session_token_pkcs8`](everruns_contracts::dataplane_seal::session_token_pkcs8));
-    /// `None` where no control plane wraps keys (a standalone cell).
+    /// `None` where no control plane wraps keys (a standalone shard).
     fn data_plane_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
         None
     }
@@ -146,7 +146,7 @@ pub trait OrgMaterial: Send + Sync {
         None
     }
     /// Whether [`lookup`](Self::lookup) reaches a control plane: false on
-    /// a standalone cell, whose tools then get the defaults a host without
+    /// a standalone shard, whose tools then get the defaults a host without
     /// org settings gives.
     fn looks_up(&self) -> bool {
         false
@@ -198,7 +198,7 @@ impl OrgProviders {
         everruns_drivers::register_drivers(&mut drivers);
         // Decision: the worker's deterministic LlmSim driver too, so an org's
         // LlmSim provider (a self-hosted install's keyless first agent, the
-        // Compose smoke test) answers on a cell as it does on a worker.
+        // Compose smoke test) answers on a shard as it does on a worker.
         everruns_llmsim::register_driver(&mut drivers);
         HostProviders::shared(self.clone(), drivers)
     }

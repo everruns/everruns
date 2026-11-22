@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MonitoringCellsView, nodeRows } from "@/components/monitoring/cells";
-import { getMonitoringCellDetail, getMonitoringCells } from "@/lib/api/monitoring";
-import type { MonitoringCell } from "@/lib/api/types";
+import { MonitoringShardsView, nodeRows } from "@/components/monitoring/shards";
+import { getMonitoringShardDetail, getMonitoringShards } from "@/lib/api/monitoring";
+import type { MonitoringShard } from "@/lib/api/types";
 
 global.ResizeObserver = class {
   observe() {}
@@ -11,12 +11,12 @@ global.ResizeObserver = class {
 };
 
 jest.mock("@/lib/api/monitoring", () => ({
-  getMonitoringCells: jest.fn(),
-  getMonitoringCellDetail: jest.fn(),
+  getMonitoringShards: jest.fn(),
+  getMonitoringShardDetail: jest.fn(),
 }));
 
 const unavailable = {
-  cell: "cell-a",
+  shard: "shard-a",
   available: false,
   reason: "No detail store is configured (MONITORING_DETAIL).",
   source: null,
@@ -27,12 +27,12 @@ const unavailable = {
 };
 
 beforeEach(() => {
-  jest.mocked(getMonitoringCellDetail).mockResolvedValue(unavailable);
+  jest.mocked(getMonitoringShardDetail).mockResolvedValue(unavailable);
 });
 
-function cell(name: string, extra: Partial<MonitoringCell> = {}): MonitoringCell {
+function shard(name: string, extra: Partial<MonitoringShard> = {}): MonitoringShard {
   return {
-    cell: name,
+    shard: name,
     data_plane: "dp-1",
     reported_at: "2026-11-15T19:59:00Z",
     silent: false,
@@ -59,57 +59,60 @@ function renderView() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MonitoringCellsView />
+      <MonitoringShardsView />
     </QueryClientProvider>,
   );
 }
 
-describe("MonitoringCellsView", () => {
-  it("lists cells with their load and flags silent cells and missing nodes", async () => {
-    jest.mocked(getMonitoringCells).mockResolvedValue({
+describe("MonitoringShardsView", () => {
+  it("lists shards with their load and flags silent shards and missing nodes", async () => {
+    jest.mocked(getMonitoringShards).mockResolvedValue({
       generated_at: "2026-11-15T20:00:00Z",
       from: "2026-11-15T14:00:00Z",
       to: "2026-11-15T20:00:00Z",
       bucket_seconds: 60,
-      cells: [cell("cell-a"), cell("cell-b", { silent: true, nodes_answering: 2, running: 20 })],
+      shards: [
+        shard("shard-a"),
+        shard("shard-b", { silent: true, nodes_answering: 2, running: 20 }),
+      ],
     });
     renderView();
-    expect(await screen.findByRole("button", { name: "cell-a" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "shard-a" })).toBeInTheDocument();
     expect(screen.getByText("silent")).toBeInTheDocument();
     expect(screen.getByText("2/3")).toBeInTheDocument();
     expect(screen.getAllByText("75%").length).toBeGreaterThan(0);
-    expect(screen.getByText("2 cells")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "cell-b" }));
-    expect(screen.getByRole("heading", { name: "cell-b" })).toBeInTheDocument();
-    expect(getMonitoringCells).toHaveBeenCalledWith("6h");
+    expect(screen.getByText("2 shards")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "shard-b" }));
+    expect(screen.getByRole("heading", { name: "shard-b" })).toBeInTheDocument();
+    expect(getMonitoringShards).toHaveBeenCalledWith("6h");
   });
 
   it("explains an empty fleet", async () => {
-    jest.mocked(getMonitoringCells).mockResolvedValue({
+    jest.mocked(getMonitoringShards).mockResolvedValue({
       generated_at: "2026-11-15T20:00:00Z",
       from: "2026-11-15T14:00:00Z",
       to: "2026-11-15T20:00:00Z",
       bucket_seconds: 60,
-      cells: [],
+      shards: [],
     });
     renderView();
-    expect(await screen.findByText("No cells have reported")).toBeInTheDocument();
+    expect(await screen.findByText("No shards have reported")).toBeInTheDocument();
   });
 
-  it("says why a cell has no 10-second detail, and shows it by node when it does", async () => {
-    jest.mocked(getMonitoringCells).mockResolvedValue({
+  it("says why a shard has no 10-second detail, and shows it by node when it does", async () => {
+    jest.mocked(getMonitoringShards).mockResolvedValue({
       generated_at: "2026-11-15T20:00:00Z",
       from: "2026-11-15T14:00:00Z",
       to: "2026-11-15T20:00:00Z",
       bucket_seconds: 60,
-      cells: [cell("cell-a")],
+      shards: [shard("shard-a")],
     });
     const view = renderView();
-    expect(await screen.findByTestId("cell-detail-unavailable")).toHaveTextContent(
+    expect(await screen.findByTestId("shard-detail-unavailable")).toHaveTextContent(
       "MONITORING_DETAIL",
     );
     view.unmount();
-    jest.mocked(getMonitoringCellDetail).mockResolvedValue({
+    jest.mocked(getMonitoringShardDetail).mockResolvedValue({
       ...unavailable,
       available: true,
       reason: null,
@@ -126,7 +129,7 @@ describe("MonitoringCellsView", () => {
     });
     renderView();
     expect(await screen.findByText(/from http:\/\/victoriametrics:8428/)).toBeInTheDocument();
-    expect(getMonitoringCellDetail).toHaveBeenCalledWith("cell-a");
+    expect(getMonitoringShardDetail).toHaveBeenCalledWith("shard-a");
   });
 });
 

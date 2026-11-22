@@ -1,6 +1,6 @@
 [package]
 name = "everruns-agentd-testkit"
-description = "Test-only cell node binary (simulated models) and the chaos and load drivers."
+description = "Test-only shard node binary (simulated models) and the chaos and load drivers."
 publish = false
 version.workspace = true
 edition.workspace = true
@@ -8,12 +8,6 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 homepage.workspace = true
-
-# Old crate name kept until the follow-up identifier rename (see agentd's
-# Cargo.toml).
-[lib]
-name = "everruns_cell_testkit"
-path = "src/lib.rs"
 
 [lints]
 workspace = true
@@ -49,13 +43,13 @@ tar.workspace = true
 zstd.workspace = true
 
 [[bin]]
-name = "cell-testnode"
+name = "agentd-testnode"
 path = "src/bin/testnode.rs"
 
 [[bin]]
-name = "cell-drive"
+name = "agentd-drive"
 path = "src/bin/drive.rs"
 
 [[bin]]
-name = "cell-baseline"
+name = "agentd-baseline"
 path = "src/bin/baseline.rs"

@@ -5,7 +5,7 @@
 # Steps mirror the guide: generate secrets, write .env, pull, up, sign in,
 # create a personal access token, create an agent, start a session, send a
 # message, wait for the turn to complete, and check which data plane ran it
-# (v2, cells, by default; v1 for image tags published before the cell image). The agent runs on LlmSim so no
+# (v2, shards, by default; v1 for image tags published before the agentd image). The agent runs on LlmSim so no
 # LLM API key is needed. Startup no longer creates provider rows for built-in
 # drivers (only connected providers are listed), so the smoke connects LlmSim
 # through the API and enables an `llmsim-default` model under it; images that
@@ -37,7 +37,7 @@ step() { printf '\n==> %s\n' "$*"; }
 fail() {
   echo "::error title=Compose smoke::$*" >&2
   docker compose ps -a >&2 || true
-  docker compose logs --tail 80 server worker-1 cell executor edge >&2 || true
+  docker compose logs --tail 80 server worker-1 agentd executor edge >&2 || true
   exit 1
 }
 cleanup() {

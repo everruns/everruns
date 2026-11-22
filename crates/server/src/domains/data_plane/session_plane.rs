@@ -4,7 +4,7 @@
 //! Decision: the control plane keeps serving the session API features a
 //! v1 session's tables answer (the Trace view, question answers, ...)
 //! for a v2 session too, with the same code, reading the session's events
-//! from its cell and sending the outcome back as a session command. One
+//! from its shard and sending the outcome back as a session command. One
 //! implementation per feature keeps validation, attribution and policy in
 //! one place for both planes.
 
@@ -17,7 +17,7 @@ use serde_json::Value;
 use super::{ControlPlane, DataPlane, for_org, org_public};
 use crate::storage::StorageBackend;
 
-/// Events one `log` page holds (the cell's bound).
+/// Events one `log` page holds (the shard's bound).
 const LOG_PAGE: usize = 1_000;
 /// Events an export reads at most.
 pub const MAX_LOG: usize = 200_000;
@@ -67,7 +67,7 @@ impl SessionPlane {
         self.select(from, to, types, &[], last).await
     }
 
-    /// Bounded source excerpts, projected on the cell before transport.
+    /// Bounded source excerpts, projected on the shard before transport.
     pub async fn event_previews(
         &self,
         from: i32,
@@ -150,7 +150,7 @@ impl SessionPlane {
         self.command(&session_commands::MESSAGES, &body).await
     }
 
-    /// A session command on the session (`tool-results`, ...): the cell's
+    /// A session command on the session (`tool-results`, ...): the shard's
     /// answer.
     pub async fn command(
         &self,
@@ -229,7 +229,7 @@ mod tests {
 
     /// Every session route the API serves says which plane serves it for a
     /// v2 session, so the edge never sends a new one to the wrong plane
-    /// (the cell checks its side: what it declares, it serves).
+    /// (the shard checks its side: what it declares, it serves).
     #[test]
     fn every_session_route_declares_its_plane() {
         use everruns_contracts::session_commands::SESSION_ROUTES;

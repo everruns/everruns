@@ -10,7 +10,7 @@
 
 mod support;
 
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use everruns_contracts::typed_id::{EventId, SessionId};
 use everruns_core::{EventContext, EventData, EventRequest, MessageReactionData};
 use reqwest::{Method, StatusCode};

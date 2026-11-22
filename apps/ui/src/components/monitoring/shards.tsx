@@ -1,9 +1,9 @@
 "use client";
 
-// Monitoring → Cells (platform only): data plane v2 cells as their one-minute
+// Monitoring → Shards (platform only): data plane v2 shards as their one-minute
 // reports show them (knowledge/operations/monitoring.md). The table is the
-// newest report per cell, at most a minute old; a cell silent for three
-// minutes is flagged. Selecting a cell shows its history over the range.
+// newest report per shard, at most a minute old; a shard silent for three
+// minutes is flagged. Selecting a shard shows its history over the range.
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -20,11 +20,11 @@ import {
 import { TimeSeriesChart, type TimeSeries } from "@/components/charts/time-series-chart";
 import { useLocale, useUiTranslations } from "@/providers/locale-provider";
 import {
-  getMonitoringCellDetail,
-  getMonitoringCells,
+  getMonitoringShardDetail,
+  getMonitoringShards,
   type TimelineRange,
 } from "@/lib/api/monitoring";
-import type { MonitoringCell, MonitoringCellDetail, MonitoringCells } from "@/lib/api/types";
+import type { MonitoringShard, MonitoringShardDetail, MonitoringShards } from "@/lib/api/types";
 import { number } from "./model";
 import { axisFormatter, bucketLabel, timelineColors as C } from "./timeline-model";
 
@@ -39,20 +39,20 @@ function bytes(v: number): string {
   return `${number(Math.round(v / 1024 ** 2))} MiB`;
 }
 
-export function MonitoringCellsView() {
+export function MonitoringShardsView() {
   const ui = useUiTranslations();
   const [range, setRange] = useState<TimelineRange>("6h");
   const [selected, setSelected] = useState<string | null>(null);
-  const cells = useQuery({
-    queryKey: ["monitoring-cells", range],
-    queryFn: () => getMonitoringCells(range),
+  const shards = useQuery({
+    queryKey: ["monitoring-shards", range],
+    queryFn: () => getMonitoringShards(range),
     refetchInterval: 30_000,
     retry: false,
   });
-  const data = cells.data;
-  const cell = data?.cells.find((c) => c.cell === selected) ?? data?.cells[0] ?? null;
+  const data = shards.data;
+  const shard = data?.shards.find((c) => c.shard === selected) ?? data?.shards[0] ?? null;
   return (
-    <div className="space-y-4" data-testid="monitoring-cells">
+    <div className="space-y-4" data-testid="monitoring-shards">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex" role="group" aria-label={ui("Time range")}>
           {RANGES.map((r) => (
@@ -69,51 +69,51 @@ export function MonitoringCellsView() {
           ))}
         </div>
         <span className="text-xs text-muted-foreground">
-          {ui("Each cell reports once a minute")}
+          {ui("Each shard reports once a minute")}
         </span>
       </div>
       {!data ? (
-        cells.error ? (
+        shards.error ? (
           <EmptyState
             icon={<AlertTriangle />}
-            title={ui("Cells could not load")}
+            title={ui("Shards could not load")}
             description={ui("Refresh when the service is available.")}
-            action={<Button onClick={() => cells.refetch()}>{ui("Retry")}</Button>}
+            action={<Button onClick={() => shards.refetch()}>{ui("Retry")}</Button>}
           />
         ) : (
           <Skeleton className="h-[400px]" />
         )
-      ) : data.cells.length === 0 ? (
+      ) : data.shards.length === 0 ? (
         <EmptyState
           icon={<Boxes />}
-          title={ui("No cells have reported")}
+          title={ui("No shards have reported")}
           description={ui(
-            "Cells appear here once a data plane v2 cell sends its first minute report. Workers are on the Timeline and Workers tabs.",
+            "Shards appear here once a data plane v2 shard sends its first minute report. Workers are on the Timeline and Workers tabs.",
           )}
         />
       ) : (
         <PageColumns>
           <PageMain>
-            <CellTable data={data} selected={cell?.cell ?? null} onSelect={setSelected} />
+            <ShardTable data={data} selected={shard?.shard ?? null} onSelect={setSelected} />
           </PageMain>
-          <PageRail>{cell && <CellDetail data={data} cell={cell} />}</PageRail>
+          <PageRail>{shard && <ShardDetail data={data} shard={shard} />}</PageRail>
         </PageColumns>
       )}
     </div>
   );
 }
 
-function CellTable({
+function ShardTable({
   data,
   selected,
   onSelect,
 }: {
-  data: MonitoringCells;
+  data: MonitoringShards;
   selected: string | null;
-  onSelect: (cell: string) => void;
+  onSelect: (shard: string) => void;
 }) {
   const ui = useUiTranslations();
-  const totals = data.cells.reduce(
+  const totals = data.shards.reduce(
     (a, c) => ({
       nodes: a.nodes + c.nodes,
       sessions: a.sessions + c.sessions,
@@ -129,7 +129,7 @@ function CellTable({
       <table className="w-full text-xs">
         <thead className="border-b">
           <tr>
-            <th className={head}>{ui("Cell")}</th>
+            <th className={head}>{ui("Shard")}</th>
             <th className={`${head} text-right`}>{ui("Nodes")}</th>
             <th className={`${head} text-right`}>{ui("Sessions")}</th>
             <th className={`${head} text-right`}>{ui("Running")}</th>
@@ -141,24 +141,24 @@ function CellTable({
           </tr>
         </thead>
         <tbody>
-          {data.cells.map((c) => {
+          {data.shards.map((c) => {
             const cpu = percent(c.cpu_cores, c.cpu_limit_cores);
             const mem = percent(c.memory_bytes, c.memory_limit_bytes);
             const short = c.nodes_answering < c.nodes;
             return (
               <tr
-                key={c.cell}
-                className={`cursor-pointer border-b last:border-b-0 hover:bg-muted/50 ${selected === c.cell ? "bg-muted" : ""}`}
-                onClick={() => onSelect(c.cell)}
-                aria-selected={selected === c.cell}
+                key={c.shard}
+                className={`cursor-pointer border-b last:border-b-0 hover:bg-muted/50 ${selected === c.shard ? "bg-muted" : ""}`}
+                onClick={() => onSelect(c.shard)}
+                aria-selected={selected === c.shard}
               >
                 <td className="px-3 py-2">
                   <button
                     type="button"
                     className="font-mono text-[11px] underline-offset-4 hover:underline"
-                    onClick={() => onSelect(c.cell)}
+                    onClick={() => onSelect(c.shard)}
                   >
-                    {c.cell}
+                    {c.shard}
                   </button>
                   {c.silent && (
                     <span className="ml-2 text-[10px] text-destructive">{ui("silent")}</span>
@@ -180,7 +180,7 @@ function CellTable({
                 </td>
                 <td className={num}>{`${number(c.admit_p99_ms)} ms`}</td>
                 <td className="px-3 py-2">
-                  <Spark cell={c} />
+                  <Spark shard={c} />
                 </td>
               </tr>
             );
@@ -189,7 +189,7 @@ function CellTable({
         <tfoot className="border-t">
           <tr className="font-semibold">
             <td className="px-3 py-2">
-              {ui("{value0} cells", { value0: number(data.cells.length) })}
+              {ui("{value0} shards", { value0: number(data.shards.length) })}
             </td>
             <td className={num}>{number(totals.nodes)}</td>
             <td className={num}>{number(totals.sessions)}</td>
@@ -202,9 +202,9 @@ function CellTable({
   );
 }
 
-/** Running turns per bucket, scaled to the cell's own peak. */
-function Spark({ cell }: { cell: MonitoringCell }) {
-  const values = cell.buckets.map((b) => b.running_peak ?? 0);
+/** Running turns per bucket, scaled to the shard's own peak. */
+function Spark({ shard }: { shard: MonitoringShard }) {
+  const values = shard.buckets.map((b) => b.running_peak ?? 0);
   const max = Math.max(1, ...values);
   if (values.length < 2) return null;
   const points = values
@@ -212,17 +212,17 @@ function Spark({ cell }: { cell: MonitoringCell }) {
     .join(" ");
   return (
     <svg viewBox="0 0 100 20" preserveAspectRatio="none" className="h-5 w-28" aria-hidden>
-      <polyline points={points} fill="none" stroke={C.cells} strokeWidth={1.5} />
+      <polyline points={points} fill="none" stroke={C.shards} strokeWidth={1.5} />
     </svg>
   );
 }
 
-function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCell }) {
+function ShardDetail({ data, shard }: { data: MonitoringShards; shard: MonitoringShard }) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
   const rows = useMemo(
     () =>
-      cell.buckets.map((b) => ({
+      shard.buckets.map((b) => ({
         t: Date.parse(b.start),
         sessions: b.sessions_peak ?? null,
         running: b.running_peak ?? null,
@@ -234,7 +234,7 @@ function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCel
         elections: b.elections,
         moves: b.moves,
       })),
-    [cell.buckets],
+    [shard.buckets],
   );
   const common = {
     rows,
@@ -243,7 +243,7 @@ function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCel
     formatTooltipTime: bucketLabel(displayLocale, data.bucket_seconds),
   };
   const load: TimeSeries[] = [
-    { key: "running", label: ui("Running"), color: C.cells, kind: "area" },
+    { key: "running", label: ui("Running"), color: C.shards, kind: "area" },
     { key: "queued", label: ui("Waiting"), color: C.wait, kind: "line" },
   ];
   const resources: TimeSeries[] = [
@@ -254,28 +254,28 @@ function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCel
     { key: "completed", label: ui("Completed"), color: C.completed, kind: "bar", stack: "t" },
     { key: "failed", label: ui("Failed"), color: C.failed, kind: "bar", stack: "t" },
   ];
-  const elections = cell.buckets.reduce((a, b) => a + b.elections, 0);
-  const moves = cell.buckets.reduce((a, b) => a + b.moves, 0);
+  const elections = shard.buckets.reduce((a, b) => a + b.elections, 0);
+  const moves = shard.buckets.reduce((a, b) => a + b.moves, 0);
   const time = new Intl.DateTimeFormat(displayLocale, { hour: "numeric", minute: "2-digit" });
   return (
     <>
-      <RailSection label={ui("Cell")}>
-        <h2 className="font-mono text-sm font-semibold">{cell.cell}</h2>
+      <RailSection label={ui("Shard")}>
+        <h2 className="font-mono text-sm font-semibold">{shard.shard}</h2>
         <dl className="mt-3 space-y-2 text-xs">
-          <Row label={ui("Data plane")} value={cell.data_plane} />
+          <Row label={ui("Data plane")} value={shard.data_plane} />
           <Row
             label={ui("Last report")}
-            value={time.format(new Date(cell.reported_at))}
-            warn={cell.silent}
+            value={time.format(new Date(shard.reported_at))}
+            warn={shard.silent}
           />
-          <Row label={ui("Leader")} value={cell.leader ?? "—"} />
+          <Row label={ui("Leader")} value={shard.leader ?? "—"} />
           <Row
             label={ui("Nodes answering")}
-            value={`${cell.nodes_answering}/${cell.nodes}`}
-            warn={cell.nodes_answering < cell.nodes}
+            value={`${shard.nodes_answering}/${shard.nodes}`}
+            warn={shard.nodes_answering < shard.nodes}
           />
-          <Row label={ui("Turns on a retry")} value={number(cell.resumed)} />
-          <Row label={ui("Log shipping p99")} value={`${number(cell.ship_lag_p99_ms)} ms`} />
+          <Row label={ui("Turns on a retry")} value={number(shard.resumed)} />
+          <Row label={ui("Log shipping p99")} value={`${number(shard.ship_lag_p99_ms)} ms`} />
           <Row label={ui("Leader changes, range")} value={number(elections)} warn={elections > 0} />
           <Row label={ui("Sessions moved, range")} value={number(moves)} />
         </dl>
@@ -286,7 +286,7 @@ function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCel
           series={load}
           height={90}
           formatY={(v) => number(v)}
-          ariaLabel={ui("Cell load over time")}
+          ariaLabel={ui("Shard load over time")}
         />
       </RailSection>
       <RailSection label={ui("Fullest node")}>
@@ -295,7 +295,7 @@ function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCel
           series={resources}
           height={90}
           formatY={(v) => `${number(v)}%`}
-          ariaLabel={ui("Cell CPU and memory over time")}
+          ariaLabel={ui("Shard CPU and memory over time")}
         />
       </RailSection>
       <RailSection label={ui("Turns")}>
@@ -303,18 +303,18 @@ function CellDetail({ data, cell }: { data: MonitoringCells; cell: MonitoringCel
           {...common}
           series={turns}
           height={80}
-          ariaLabel={ui("Cell turns over time")}
+          ariaLabel={ui("Shard turns over time")}
         />
       </RailSection>
-      <NodeDetail cell={cell.cell} />
+      <NodeDetail shard={shard.shard} />
     </>
   );
 }
 
 /** Per-node rows for one measure, keyed `n<node>` so each node is a series. */
 export function nodeRows(
-  detail: MonitoringCellDetail,
-  pick: (p: MonitoringCellDetail["nodes"][number]["points"][number]) => number | null | undefined,
+  detail: MonitoringShardDetail,
+  pick: (p: MonitoringShardDetail["nodes"][number]["points"][number]) => number | null | undefined,
 ) {
   type Row = Record<string, number | null> & { t: number };
   const rows = new Map<number, Row>();
@@ -329,15 +329,15 @@ export function nodeRows(
   return [...rows.values()].sort((a, b) => a.t - b.t);
 }
 
-const NODE_COLORS = [C.cells, C.cpu, C.memory, C.agents, C.working, C.servers];
+const NODE_COLORS = [C.shards, C.cpu, C.memory, C.agents, C.working, C.servers];
 
 /** The last hour every 10 seconds, by node, when a detail store is configured. */
-function NodeDetail({ cell }: { cell: string }) {
+function NodeDetail({ shard }: { shard: string }) {
   const ui = useUiTranslations();
   const { displayLocale } = useLocale();
   const detail = useQuery({
-    queryKey: ["monitoring-cell-detail", cell],
-    queryFn: () => getMonitoringCellDetail(cell),
+    queryKey: ["monitoring-shard-detail", shard],
+    queryFn: () => getMonitoringShardDetail(shard),
     refetchInterval: 10_000,
     retry: false,
   });
@@ -346,7 +346,7 @@ function NodeDetail({ cell }: { cell: string }) {
   if (!data.available)
     return (
       <RailSection label={ui("Last hour, by node")}>
-        <p className="text-xs text-muted-foreground" data-testid="cell-detail-unavailable">
+        <p className="text-xs text-muted-foreground" data-testid="shard-detail-unavailable">
           {data.reason ?? ui("No 10-second detail.")}
         </p>
       </RailSection>

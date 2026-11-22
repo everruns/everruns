@@ -1,11 +1,11 @@
 //! A session's schedules on the data plane (data plane v2, step 11.4): they
-//! live in the session's cell state and the cell's leader fires them. The
+//! live in the session's shard state and the shard's leader fires them. The
 //! agent's own `create_schedule` tool and the console's schedule API reach
 //! them, an occurrence arrives once whoever leads, and the bench holds the
 //! step's gate: 10 000 schedules fire within 1 s of their time.
 //!
 //! The bench prints its numbers for the step's record (`cargo test -p
-//! everruns-cell-testkit --test schedules -- --nocapture`).
+//! agentd-testkit --test schedules -- --nocapture`).
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -14,8 +14,8 @@ mod support;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use everruns_cell::platform::Op;
-use everruns_cell::state::Command;
+use everruns_agentd::platform::Op;
+use everruns_agentd::state::Command;
 use everruns_contracts::typed_id::{EventId, SessionId};
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -160,7 +160,7 @@ async fn plant(fleet: &Fleet, sessions: &[String], due_ms: i64) {
         .map(|session| async move {
             let id = SessionId::parse(&session).unwrap();
             for _ in 0..5 {
-                let schedule = everruns_cell::platform_store::build(
+                let schedule = everruns_agentd::platform_store::build(
                     id,
                     "tick".into(),
                     None,
@@ -177,14 +177,14 @@ async fn plant(fleet: &Fleet, sessions: &[String], due_ms: i64) {
                     now_ms: now_ms(),
                     seed: EventId::new(),
                 };
-                // The session's cell, following a move (cells balance load)
+                // The session's shard, following a move (shards balance load)
                 // and waiting out one in flight.
                 let command = serde_json::to_value(command).unwrap();
-                let mut cell = 0;
+                let mut shard = 0;
                 let response = loop {
-                    let response = fleet.propose(cell, command.clone()).await;
-                    match response["cell"].as_u64() {
-                        Some(to) if response["result"] == "moved" => cell = to as u32,
+                    let response = fleet.propose(shard, command.clone()).await;
+                    match response["shard"].as_u64() {
+                        Some(to) if response["result"] == "moved" => shard = to as u32,
                         _ if response["result"] == "frozen" => {
                             tokio::time::sleep(Duration::from_millis(50)).await;
                         }

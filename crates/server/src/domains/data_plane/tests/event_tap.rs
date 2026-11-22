@@ -130,7 +130,7 @@ async fn an_org_asks_for_what_it_uses_and_its_events_are_scored_once() {
     let counting = Arc::new(Counting::default());
     let budgets = BudgetService::new(cp.db.clone());
     let event = turn_completed(session);
-    let source = format!("cell-tap-{}", uuid::Uuid::new_v4().simple());
+    let source = format!("shard-tap-{}", uuid::Uuid::new_v4().simple());
     let batch = FeedBatch {
         source: source.clone(),
         data_plane: "dp-1".into(),
@@ -193,7 +193,7 @@ async fn a_warehouse_org_gets_every_event_in_hourly_files() {
     row.harness_id = Some(harness(&cp.db, ORG).await);
     let session = cp.db.create_session(row).await.unwrap().id;
     let event = turn_completed(session);
-    let source = format!("cell-wh-{}", uuid::Uuid::new_v4().simple());
+    let source = format!("shard-wh-{}", uuid::Uuid::new_v4().simple());
     let batch = FeedBatch {
         source: source.clone(),
         data_plane: "dp-1".into(),

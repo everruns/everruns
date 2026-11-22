@@ -7,19 +7,19 @@
 //! policy, the org's knowledge collections, a Poppy call, a Slack action.
 //! On a v1 worker they reach the control plane through internal
 //! commands; here the same resolver ([`CommandConnectionResolver`]) runs the
-//! same commands over the link: executor, directory cell, control plane
+//! same commands over the link: executor, directory shard, control plane
 //! as host calls (`everruns_contracts::host_calls`,
 //! `POST /dp/v1/tenants/{org}/host-calls/{name}`). The answer comes back
-//! sealed with the org's data key, so the cell that forwards it holds
+//! sealed with the org's data key, so the shard that forwards it holds
 //! ciphertext only.
 //!
 //! Decisions:
 //! - Only the commands a host call declares go over; the rest stay with
 //!   the data plane: sandbox keys are sealed org secrets the control plane
 //!   wrote when it pinned the sandbox (`sandbox.rs`), MCP credentials are
-//!   the org's MCP secrets (`mcp.rs`), and a cell leases nothing to clean
+//!   the org's MCP secrets (`mcp.rs`), and a shard leases nothing to clean
 //!   up. Anything else is refused here, before it leaves the executor.
-//! - A standalone cell has no control plane: its tools get what a host
+//! - A standalone shard has no control plane: its tools get what a host
 //!   without org settings gives (no connections, default settings), as they
 //!   did before lookups.
 //! - The org's own settings (web search settings and account keys, the
@@ -221,8 +221,8 @@ impl OrgLookups {
     }
 
     /// The org setting `id` the control plane pushed with the org's config
-    /// (`dataplane::ORG_SETTING`), read from the directory cell; `None`
-    /// before it arrives or when the directory cell cannot be read, and
+    /// (`dataplane::ORG_SETTING`), read from the directory shard; `None`
+    /// before it arrives or when the directory shard cannot be read, and
     /// the caller then asks the control plane as before.
     async fn setting<T: serde::de::DeserializeOwned>(&self, id: &str) -> Option<T> {
         let material = self.material.upgrade()?;
@@ -304,7 +304,7 @@ fn with_lookups(
     lookups: Option<OrgLookups>,
 ) -> Arc<dyn UserConnectionResolver> {
     match lookups {
-        Some(lookups) => Arc::new(CellConnections {
+        Some(lookups) => Arc::new(ShardConnections {
             keys,
             lookups: Arc::new(CommandConnectionResolver::new(lookups.clone())),
             pushed: lookups,
@@ -318,11 +318,11 @@ fn with_lookups(
 /// knowledge for the `knowledge` tools (`KnowledgeRuntimeExt`), the
 /// session's Poppy client (`PoppyInvokerExt`) and its Slack actions
 /// (`SlackActionInvokerExt`), as a v1 worker installs them. Its SQL
-/// databases are the cell's own (`hosting_sqldb.rs`).
+/// databases are the shard's own (`hosting_sqldb.rs`).
 ///
 /// Decision: automatic knowledge context (evidence added to a turn's input)
-/// stays off on a cell: the control plane records each retrieval against
-/// the turn's input message, which on the data plane lives in the cell, so
+/// stays off on a shard: the control plane records each retrieval against
+/// the turn's input message, which on the data plane lives in the shard, so
 /// it answers none. The tools search and browse the same collections.
 pub fn attach(
     mut backends: HostBackends,
@@ -340,7 +340,7 @@ pub fn attach(
         let knowledge = Arc::new(knowledge);
         // `get_session_info`'s spend: the control plane prices it (price
         // tables, the org's rates, sandbox spans), reading the model calls
-        // from this cell's log.
+        // from this shard's log.
         let spend = Arc::new(SessionSpendReaderExt(Arc::new(
             CommandSessionSpendReader::new(lookups.clone()),
         )));
@@ -352,17 +352,17 @@ pub fn attach(
                 .unwrap_or_default();
             extensions.insert(knowledge.clone());
             extensions.insert(spend.clone());
-            extensions.insert(Arc::new(PoppyInvokerExt(Arc::new(CellPoppy {
+            extensions.insert(Arc::new(PoppyInvokerExt(Arc::new(ShardPoppy {
                 lookups: lookups.clone(),
                 session,
             }))));
             // The `slack` tools' actions, as the session's own endpoint bot.
             // Decision: not the conversation sender a v1 worker installs with
             // them: a post binds to the turn's input event, which on the data
-            // plane lives in the cell, so the channel host delivers the
+            // plane lives in the shard, so the channel host delivers the
             // turn's messages from the session's stream instead.
             extensions.insert(Arc::new(SlackActionInvokerExt(Arc::new(
-                CellSlackActions {
+                ShardSlackActions {
                     lookups: lookups.clone(),
                     session,
                 },
@@ -373,7 +373,7 @@ pub fn attach(
     backends
 }
 
-/// Executors of this process, for [`CellOrgEgress`].
+/// Executors of this process, for [`ShardOrgEgress`].
 static EXECUTORS: parking_lot::Mutex<Vec<Weak<dyn OrgMaterial>>> =
     parking_lot::Mutex::new(Vec::new());
 
@@ -389,15 +389,15 @@ pub fn serve_org_egress(material: Weak<dyn OrgMaterial>) {
     executors.push(material);
     drop(executors);
     INSTALLED.call_once(|| {
-        everruns_core::host::install_runtime_org_egress_allowlist(Arc::new(CellOrgEgress));
+        everruns_core::host::install_runtime_org_egress_allowlist(Arc::new(ShardOrgEgress));
     });
 }
 
 /// An org's egress grants from the control plane (`serve_org_egress`).
-struct CellOrgEgress;
+struct ShardOrgEgress;
 
 #[async_trait]
-impl OrgEgressAllowlist for CellOrgEgress {
+impl OrgEgressAllowlist for ShardOrgEgress {
     async fn grant(&self, org_id: &OrgId) -> std::result::Result<OrgEgressGrant, String> {
         let reaching = EXECUTORS.lock().iter().find_map(|weak| {
             let material = weak.upgrade()?;
@@ -409,7 +409,7 @@ impl OrgEgressAllowlist for CellOrgEgress {
 
 /// `org_id`'s egress grants: from the org's pushed config
 /// (`dataplane::EGRESS_SETTING`), else from `material`'s control plane;
-/// nothing granted without one (a standalone cell has no org settings).
+/// nothing granted without one (a standalone shard has no org settings).
 async fn org_grant(
     material: Option<Weak<dyn OrgMaterial>>,
     org_id: &OrgId,
@@ -446,13 +446,13 @@ struct Enforced {
 /// The Poppy client of one session: the session owner's keys and Session
 /// Tokens stay in the control plane (`worker_poppy_call`), only the call and
 /// its answer cross. Same answers as the v1 worker's `CommandPoppyInvoker`.
-struct CellPoppy {
+struct ShardPoppy {
     lookups: OrgLookups,
     session: SessionId,
 }
 
 #[async_trait]
-impl PoppyInvoker for CellPoppy {
+impl PoppyInvoker for ShardPoppy {
     async fn invoke(&self, call: PoppyCall) -> std::result::Result<Value, String> {
         let params = json!({ "session_id": self.session.to_string(), "call": call });
         match self
@@ -480,13 +480,13 @@ impl PoppyInvoker for CellPoppy {
 /// token stays there. Same answers as the v1 worker's
 /// `GrpcSlackActionInvoker`: a refusal comes back as the action's error, a
 /// lookup that fails is transient.
-struct CellSlackActions {
+struct ShardSlackActions {
     lookups: OrgLookups,
     session: SessionId,
 }
 
 #[async_trait]
-impl SlackActionInvoker for CellSlackActions {
+impl SlackActionInvoker for ShardSlackActions {
     async fn invoke(
         &self,
         action: SlackAction,
@@ -509,18 +509,18 @@ impl SlackActionInvoker for CellSlackActions {
     }
 }
 
-/// Sandbox keys from the cell, the org's settings and search keys from its
+/// Sandbox keys from the shard, the org's settings and search keys from its
 /// pushed config (`org_settings.rs` on the control plane), every other
 /// lookup from the control plane. A setting not pushed yet is asked as
 /// before.
-struct CellConnections {
+struct ShardConnections {
     keys: Arc<dyn UserConnectionResolver>,
     lookups: Arc<dyn UserConnectionResolver>,
     pushed: OrgLookups,
 }
 
 #[async_trait]
-impl UserConnectionResolver for CellConnections {
+impl UserConnectionResolver for ShardConnections {
     fn for_execution(&self, input_message_id: Uuid) -> Option<Arc<dyn UserConnectionResolver>> {
         let lookups = self.lookups.for_execution(input_message_id)?;
         Some(Arc::new(Self {

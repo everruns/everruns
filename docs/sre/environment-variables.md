@@ -28,11 +28,11 @@ a working default; each row links to the section that documents it.
 | [`EVERRUNS_EGRESS_*`](#outbound-egress) | API and workers | No | Tenant traffic may reach any public host, directly from the deployment's address. |
 | [`EGRESS_PROXY_*`](#tenant-egress-proxy) | `everruns-egress-proxy` | Only when running the proxy | No proxy. |
 | [`KUBERNETES_SANDBOX_*`](#isolated-sandboxes) | API and workers | Only for Isolated sandboxes | The Isolated sandbox target is off. |
-| [`EVERRUNS_DP_TOKEN`, `EVERRUNS_DP_KEY`, `EVERRUNS_DEFAULT_DATA_PLANE_URL`, `EVERRUNS_DATA_PLANE`](#data-plane-v2) | API (the token and key also on cells, as `CELL_DP_*`) | For data plane v2 (the Compose, Helm and local default) | New organizations run on the workers (v1). |
+| [`EVERRUNS_DP_TOKEN`, `EVERRUNS_DP_KEY`, `EVERRUNS_DEFAULT_DATA_PLANE_URL`, `EVERRUNS_DATA_PLANE`](#data-plane-v2) | API (the token and key also on shards, as `AGENTD_DP_*`) | For data plane v2 (the Compose, Helm and local default) | New organizations run on the workers (v1). |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration), [`SERVER_SHUTDOWN_*`](#server-shutdown) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits, a 5 s linger and 20 s drain on shutdown. |
 | [`EVENT_GROUP_COMMIT`](#throughput-tuning), [`SESSION_ACTOR_STICKY_GRACE_MS`](#throughput-tuning) | API | No | Event writes share commits over 4 lanes, a session waits 300 ms for the worker that ran its last turn. |
-| [`MONITORING_DETAIL`](#monitoring-detail), [`MONITORING_DETAIL_URL`](#monitoring-detail) | API | No | Monitoring keeps its one-minute history in PostgreSQL, without 10-second cell detail. |
+| [`MONITORING_DETAIL`](#monitoring-detail), [`MONITORING_DETAIL_URL`](#monitoring-detail) | API | No | Monitoring keeps its one-minute history in PostgreSQL, without 10-second shard detail. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
 
 
@@ -672,9 +672,9 @@ set these; the Compose guide's `.env` needs the first two.
 
 | Variable | Value |
 |---|---|
-| `EVERRUNS_DP_TOKEN` | Bearer token the data plane and the API use with each other. Cells get the same value as `CELL_DP_TOKEN`. Generate with `openssl rand -hex 32`. |
-| `EVERRUNS_DP_KEY` | 32 random bytes in base64 that wrap each organization's data key. Cells get the same value as `CELL_DP_KEY`. Generate with `openssl rand -base64 32`. Keep it: a new key cannot open what the old one wrapped. |
-| `EVERRUNS_DEFAULT_DATA_PLANE_URL` | The data plane's gateway: a node of its directory cell, or a Service over its ready nodes, such as `http://cell:7000`. Any node forwards to the cell that holds an organization or session, so one address covers every cell. The API registers it and puts every organization that has never had a session on it. |
+| `EVERRUNS_DP_TOKEN` | Bearer token the data plane and the API use with each other. Shards get the same value as `AGENTD_DP_TOKEN`. Generate with `openssl rand -hex 32`. |
+| `EVERRUNS_DP_KEY` | 32 random bytes in base64 that wrap each organization's data key. Shards get the same value as `AGENTD_DP_KEY`. Generate with `openssl rand -base64 32`. Keep it: a new key cannot open what the old one wrapped. |
+| `EVERRUNS_DEFAULT_DATA_PLANE_URL` | The data plane's gateway: a node of its directory shard, or a Service over its ready nodes, such as `http://shard:7000`. Any node forwards to the shard that holds an organization or session, so one address covers every shard. The API registers it and puts every organization that has never had a session on it. |
 | `EVERRUNS_DEFAULT_DATA_PLANE` | That data plane's id. Default `local`. |
 | `EVERRUNS_DEFAULT_DATA_PLANE_SINCE` | Optional RFC 3339 time: place only organizations created at or after it, so ones that signed up earlier and never ran an agent stay on v1. A value that does not parse turns the default data plane off. |
 | `EVERRUNS_DATA_PLANE` | `v1` turns placement off: new organizations run on the workers. |
@@ -1147,8 +1147,8 @@ EVERRUNS_TRACE_CONVENTIONS=openinference
 ## Monitoring detail
 
 Monitoring records one-minute history in PostgreSQL with no setup. These two
-variables add optional 10-second, per-node detail for data plane v2 cells, read
-from a Prometheus-compatible store that scrapes the cells' `/metrics`.
+variables add optional 10-second, per-node detail for data plane v2 shards, read
+from a Prometheus-compatible store that scrapes the shards' `/metrics`.
 
 | Variable | Value |
 |---|---|

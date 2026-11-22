@@ -1,6 +1,6 @@
 //! Agents using agents on the data plane (data plane v2, step 11.4): a
 //! session's subagents run as sessions of their own, placed by the gateway
-//! on whichever cell takes them, and its tasks live in its own cell state
+//! on whichever shard takes them, and its tasks live in its own shard state
 //! (`tasks.rs`).
 //!
 //! Decisions:
@@ -27,7 +27,7 @@
 //!   outlives the activation). Anything else reads as missing.
 //! - The child is created and driven through the gateway's own calls, from
 //!   a node (its gateway) or an executor (one it keeps), so a child on
-//!   another cell is the same as one on this cell.
+//!   another shard is the same as one on this shard.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,7 +51,7 @@ use everruns_contracts::runtime::saved_scripts::SavedScripts;
 use crate::api::{Lookup, SessionView};
 use crate::gateway::Gateway;
 use crate::hosting::Port;
-use crate::tasks::CellTasks;
+use crate::tasks::ShardTasks;
 
 /// How long a child's turn may run before `wait_for_idle` gives up on its
 /// own (the tool passes its own limit too).
@@ -60,7 +60,7 @@ const LONGEST_WAIT: Duration = Duration::from_secs(30 * 60);
 /// Give `session`'s activation its task registry and, when the gateway is
 /// reachable, the platform store its subagents run through.
 pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Port) -> HostBackends {
-    let backends = backends.with_session_task_registry(Arc::new(CellTasks::new(port.clone())));
+    let backends = backends.with_session_task_registry(Arc::new(ShardTasks::new(port.clone())));
     let Some(gateway) = port.gateway() else {
         return backends;
     };
@@ -91,13 +91,13 @@ pub(crate) async fn attach(session: SessionId, backends: HostBackends, port: Por
     // and decided by the control plane, which reads the agent's shell
     // settings and the turn's person.
     let scripts = lookups.clone().map(|lookups| SavedScripts {
-        store: Arc::new(crate::saved_scripts::CellSavedScripts::new(
+        store: Arc::new(crate::saved_scripts::ShardSavedScripts::new(
             lookups, session,
         )),
         can_save: true,
     });
     let bind = calls.is_some();
-    let store: Arc<dyn PlatformStore> = Arc::new(CellPlatformStore {
+    let store: Arc<dyn PlatformStore> = Arc::new(ShardPlatformStore {
         parent: session,
         port,
         gateway,
@@ -139,8 +139,8 @@ fn unsupported(op: &str) -> AgentLoopError {
     ))
 }
 
-/// The platform store of one parent session on a cell.
-struct CellPlatformStore {
+/// The platform store of one parent session on a shard.
+struct ShardPlatformStore {
     parent: SessionId,
     port: Port,
     gateway: Arc<Gateway>,
@@ -152,7 +152,7 @@ struct CellPlatformStore {
     lookups: Option<crate::lookups::OrgLookups>,
 }
 
-impl CellPlatformStore {
+impl ShardPlatformStore {
     /// Whether `child` is one of the parent's: made here, or linked from
     /// one of its tasks.
     async fn owns(&self, child: SessionId) -> Result<bool> {
@@ -181,13 +181,13 @@ impl CellPlatformStore {
     async fn view(&self, session: SessionId) -> Result<SessionView> {
         let gateway = self.gateway.clone();
         self.gateway
-            .with_cell(session, move |cell| {
+            .with_shard(session, move |shard| {
                 let gateway = gateway.clone();
                 async move {
                     gateway
                         .call::<Lookup<SessionView>>(
-                            cell,
-                            &format!("/cell/sessions/{session}"),
+                            shard,
+                            &format!("/shard/sessions/{session}"),
                             None,
                         )
                         .await
@@ -200,13 +200,13 @@ impl CellPlatformStore {
     async fn events(&self, session: SessionId) -> Result<Vec<Event>> {
         let gateway = self.gateway.clone();
         self.gateway
-            .with_cell(session, move |cell| {
+            .with_shard(session, move |shard| {
                 let gateway = gateway.clone();
                 async move {
                     gateway
                         .call::<Lookup<Vec<Event>>>(
-                            cell,
-                            &format!("/cell/sessions/{session}/events?after=0"),
+                            shard,
+                            &format!("/shard/sessions/{session}/events?after=0"),
                             None,
                         )
                         .await
@@ -232,7 +232,7 @@ fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T>
     serde_json::from_value(value).map_err(|error| AgentLoopError::store(error.to_string()))
 }
 
-impl CellPlatformStore {
+impl ShardPlatformStore {
     async fn parent(&self) -> Result<Parent> {
         let (definition, org, agent_ref, record) = self
             .port
@@ -295,7 +295,7 @@ impl CellPlatformStore {
     /// parent's own for `same` (the session's model rides in its
     /// definition), else what the control plane resolves the key to
     /// (host call `helper_model`). `None` keeps the child's agent model,
-    /// also on a cell without a control plane.
+    /// also on a shard without a control plane.
     async fn helper_model(
         &self,
         parent: &Parent,
@@ -378,7 +378,7 @@ fn outcome(events: &[Event]) -> Option<&'static str> {
     status
 }
 
-impl CellPlatformStore {
+impl ShardPlatformStore {
     async fn platform(&self, operation: &str, arguments: serde_json::Value) -> Result<String> {
         match &self.calls {
             Some(calls) => calls.call(operation, arguments).await,
@@ -388,7 +388,7 @@ impl CellPlatformStore {
 }
 
 #[async_trait]
-impl PlatformStore for CellPlatformStore {
+impl PlatformStore for ShardPlatformStore {
     fn for_execution(&self, input_message_id: uuid::Uuid) -> Option<Arc<dyn PlatformStore>> {
         let calls = self.calls.as_ref()?;
         Some(Arc::new(Self {
@@ -506,7 +506,7 @@ impl PlatformStore for CellPlatformStore {
         }
         // Decision: a child gets a session record on the control plane
         // first (`subagent_record`), as a v1 subagent has, and runs under the
-        // id that record has, with the Memory mounts resolved from it. A cell
+        // id that record has, with the Memory mounts resolved from it. A shard
         // with no control plane (standalone) starts it without one.
         let (id, memory, servers) = match (&self.calls, &parent.org) {
             (Some(calls), Some(_)) => {

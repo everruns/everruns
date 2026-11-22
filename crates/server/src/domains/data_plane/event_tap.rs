@@ -3,7 +3,7 @@
 //! A v2 org's session events live on its data plane. Observers and
 //! trace exports work from events, so the org's policy names the
 //! types they need (`TenantPolicy::events`), the data plane copies those
-//! onto the feed (`cell/src/tap.rs`), and feed ingest hands each one here.
+//! onto the feed (`shard/src/tap.rs`), and feed ingest hands each one here.
 //!
 //! Decisions:
 //! - The policy asks only for what the org uses: observer types while it

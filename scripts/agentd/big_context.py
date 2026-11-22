@@ -2,9 +2,9 @@
 """Large inputs: user messages and tool results of growing size.
 
 Sends one message of each size to a fresh session (agent `chat`), or runs
-one turn per session whose tool returns `CELL_BLOB_KB` (agent `blob`),
+one turn per session whose tool returns `AGENTD_BLOB_KB` (agent `blob`),
 then a small follow-up turn, and reports what happened. Needs a running
-fleet (`scripts/cell/fleet.py up`).
+fleet (`scripts/agentd/fleet.py up`).
 """
 import argparse, json, subprocess, time, urllib.request, urllib.error
 
@@ -23,7 +23,7 @@ def call(method, path, body=None, timeout=120):
         return 599, str(e)[:200]
 
 def agent(name):
-    out = subprocess.check_output(["target/release/cell-drive", "agent", name])
+    out = subprocess.check_output(["target/release/agentd-drive", "agent", name])
     return json.loads(out)
 
 def turn(sid, text, n, wait_s):

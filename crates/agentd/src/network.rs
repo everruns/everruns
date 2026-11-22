@@ -1,4 +1,4 @@
-//! Raft RPC between the nodes of a cell, over HTTP: JSON bodies, except a
+//! Raft RPC between the nodes of a shard, over HTTP: JSON bodies, except a
 //! snapshot chunk's bytes, which travel raw (see [`SnapshotChunk`]).
 
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub const SNAPSHOT_HEADER: &str = "x-raft-snapshot";
 /// follower that fell behind the leader's purged log can only catch up by
 /// snapshot, and while one chunk is slower than the election timeout it
 /// calls an election, cancels the transfer and starts over: a 75 000
-/// session cell (a 150 MB snapshot) never recovered from losing a node.
+/// session shard (a 150 MB snapshot) never recovered from losing a node.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SnapshotChunk {
     pub vote: openraft::Vote<NodeId>,
@@ -232,7 +232,7 @@ const RAFT_THREADS: usize = 2;
 /// interval to take an append, and two seconds at most to answer a vote.
 /// In EKS run 43774871232, on a 48-vCPU host running flat out, those
 /// requests waited in the same queues as tens of thousands of client
-/// requests and missed their deadlines: three cells stopped committing for
+/// requests and missed their deadlines: three shards stopped committing for
 /// about 20 minutes each, with elections every few seconds, while client
 /// requests piled up until nodes ran out of memory. Raft's own threads and
 /// listener answer in milliseconds whatever the client load, and the
@@ -252,7 +252,7 @@ impl Isolation {
             .then(|| {
                 tokio::runtime::Builder::new_multi_thread()
                     .worker_threads(RAFT_THREADS)
-                    .thread_name("cell-raft")
+                    .thread_name("shard-raft")
                     .enable_all()
                     .build()
             })
@@ -317,7 +317,7 @@ pub fn router(raft: Raft, catchup: Arc<CatchUp>) -> axum::Router {
         // layer that lifted it, so a follower that fell behind could never
         // take a snapshot again: it stayed 25 000 entries behind for 70
         // minutes in EKS run 43803384547 (`prove_rejoin_under_load.py`).
-        // The cell's network is trusted.
+        // The shard's network is trusted.
         .layer(axum::extract::DefaultBodyLimit::disable())
         .with_state((raft, catchup))
 }
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn raft_listens_at_an_offset_from_the_node_port() {
-        assert_eq!(raft_addr("cell0-1.cell0:7000", 1), "cell0-1.cell0:7001");
+        assert_eq!(raft_addr("shard0-1.shard0:7000", 1), "shard0-1.shard0:7001");
         assert_eq!(raft_addr("127.0.0.1:7101", 1000), "127.0.0.1:8101");
         assert_eq!(raft_addr("127.0.0.1:7101", 0), "127.0.0.1:7101");
         assert_eq!(raft_addr("no-port", 5), "no-port");

@@ -4,7 +4,7 @@
 //! sends it as a secret with a `RefreshOwner::DataPlane` connection; an
 //! executor that finds the token near its expiry renews it at the token
 //! endpoint and writes the new set back here, sealed again, as the next
-//! revision. The directory cell keeps it, every executor reads it from
+//! revision. The directory shard keeps it, every executor reads it from
 //! there, and the feed carries it to the control plane (`SecretRefreshed`).
 //!
 //! Decisions:
@@ -21,7 +21,7 @@
 //!   revision rule in `Orgs::apply`), so a slow full snapshot cannot bring
 //!   back a token whose refresh token was already spent.
 //! - The lease lives in replicated state, with the proposer's clock: every
-//!   node of the directory cell agrees who holds it.
+//!   node of the directory shard agrees who holds it.
 
 use serde::{Deserialize, Serialize};
 
@@ -39,7 +39,7 @@ pub struct Lease {
     pub until_ms: i64,
 }
 
-/// What an executor asks of the directory cell for one of an org's secrets.
+/// What an executor asks of the directory shard for one of an org's secrets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum SecretOp {
@@ -56,7 +56,7 @@ pub enum SecretOp {
     },
 }
 
-/// The directory cell's answer.
+/// The directory shard's answer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum SecretReply {

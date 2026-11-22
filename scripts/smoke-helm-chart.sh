@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the Helm chart on the cluster in the current kube context (CI uses a
 # kind cluster), wait until it is healthy, sign in through the proxy, and check
-# that an agent turn runs on the data plane the images support (v2, cells,
+# that an agent turn runs on the data plane the images support (v2, shards,
 # by default), and that an upgrade and a reinstall keep the generated secrets.
 #
 # Usage: scripts/smoke-helm-chart.sh   (needs helm, kubectl and curl)
@@ -25,7 +25,7 @@ fail() {
   echo "::error title=helm chart smoke::$*" >&2
   kubectl -n "$NS" get pods -o wide >&2 || true
   kubectl -n "$NS" logs "deploy/$REL-everruns-server" --tail 80 >&2 || true
-  kubectl -n "$NS" logs "statefulset/$REL-everruns-cell" --tail 40 >&2 || true
+  kubectl -n "$NS" logs "statefulset/$REL-agentd" --tail 40 >&2 || true
   exit 1
 }
 pf_pid=""
@@ -53,7 +53,7 @@ wait_ready() {
       || fail "$deploy did not become ready"
   done
   if [ "$DATA_PLANE" = v2 ]; then
-    for workload in statefulset/$REL-everruns-cell statefulset/$REL-everruns-executor deploy/$REL-everruns-edge; do
+    for workload in statefulset/$REL-agentd statefulset/$REL-everruns-executor deploy/$REL-everruns-edge; do
       kubectl -n "$NS" rollout status "$workload" --timeout 600s || fail "$workload did not become ready"
     done
   fi

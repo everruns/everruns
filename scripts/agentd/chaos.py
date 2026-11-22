@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 """Chaos run: kill -9 random nodes while sessions run multi-step turns.
 
-  chaos.py --cells 1 --sessions 300 --turns 3 --kills 15
-  chaos.py --cells 2 --sessions 300 --turns 3 --kills 15 --moves 100
-  chaos.py --cells 2 --executors 3 --executor-kills 10   # turns on executors
+  chaos.py --shards 1 --sessions 300 --turns 3 --kills 15
+  chaos.py --shards 2 --sessions 300 --turns 3 --kills 15 --moves 100
+  chaos.py --shards 2 --executors 3 --executor-kills 10   # turns on executors
 
-One node per cell is down at a time (a 3-node cell keeps its quorum). With
---moves, sessions are also moved live between cells while they run. After
+One node per shard is down at a time (a 3-node shard keeps its quorum). With
+--moves, sessions are also moved live between shards while they run. After
 the load finishes, every session's log is checked: all accepted messages
 completed with no client resend, sequences are dense, and the work tool never
 ran more times than it has durable `tool.started` events.
 
-With --executors, turns run on executors outside the cells, and
+With --executors, turns run on executors outside the shards, and
 --executor-kills kills -9 a random executor that many times (it restarts
 after a pause): its turns resume on another executor from the journal.
 """
 import argparse, json, os, random, subprocess, sys, threading, time, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
-DRIVE = os.environ.get("CELL_DRIVE_BIN", os.path.join(ROOT, "target", "release", "cell-drive"))
+DRIVE = os.environ.get("AGENTD_DRIVE_BIN", os.path.join(ROOT, "target", "release", "agentd-drive"))
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--cells", type=int, default=1)
+    p.add_argument("--shards", type=int, default=1)
     p.add_argument("--sessions", type=int, default=300)
     p.add_argument("--turns", type=int, default=3)
     p.add_argument("--kills", type=int, default=15)
@@ -37,17 +37,17 @@ def main():
     p.add_argument("--executor-kills", type=int, default=0)
     a = p.parse_args()
 
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
     ledger = os.path.join(fleet.STATE, "ledger.txt")
     os.makedirs(fleet.STATE, exist_ok=True)
-    os.environ["CELL_LEDGER"] = ledger
-    os.environ["CELL_WORK_MS"] = a.work_ms
-    fleet.up(a.cells, 3, 7100, a.executors)
+    os.environ["AGENTD_LEDGER"] = ledger
+    os.environ["AGENTD_WORK_MS"] = a.work_ms
+    fleet.up(a.shards, 3, 7100, a.executors)
     time.sleep(1)
 
-    gateways = ",".join(f"http://{fleet.addr(c, n)}" for c in range(a.cells) for n in (1, 2, 3))
+    gateways = ",".join(f"http://{fleet.addr(c, n)}" for c in range(a.shards) for n in (1, 2, 3))
     sessions_file = os.path.join(fleet.STATE, "sessions.txt")
     load_out = os.path.join(fleet.STATE, "load.json")
     load = subprocess.Popen(
@@ -62,14 +62,14 @@ def main():
         for _ in range(a.kills):
             if load.poll() is not None:
                 return
-            cell = random.randrange(a.cells)
+            shard = random.randrange(a.shards)
             node = random.choice((1, 2, 3))
-            was_leader = fleet.leader(cell) == node
-            fleet.kill(cell, node)
-            kills.append({"cell": cell, "node": node, "leader": was_leader, "t": time.time()})
-            print(f"kill -9 cell {cell} node {node} (leader={was_leader})", file=sys.stderr, flush=True)
+            was_leader = fleet.leader(shard) == node
+            fleet.kill(shard, node)
+            kills.append({"shard": shard, "node": node, "leader": was_leader, "t": time.time()})
+            print(f"kill -9 shard {shard} node {node} (leader={was_leader})", file=sys.stderr, flush=True)
             time.sleep(random.uniform(0.5, 2.0))
-            fleet.start(cell, node)
+            fleet.start(shard, node)
             time.sleep(random.uniform(1.0, 2.5))
 
     executor_kills = []
@@ -93,9 +93,9 @@ def main():
         # A move is idempotent step by step, so a gateway dying mid-move is
         # retried through another one.
         for _ in range(50):
-            cell = random.randrange(a.cells)
-            url = f"http://{fleet.addr(cell, random.choice((1, 2, 3)))}/v1/sessions/{session}/move"
-            req = urllib.request.Request(url, data=json.dumps({"cell": to}).encode(), method="POST",
+            shard = random.randrange(a.shards)
+            url = f"http://{fleet.addr(shard, random.choice((1, 2, 3)))}/v1/sessions/{session}/move"
+            req = urllib.request.Request(url, data=json.dumps({"shard": to}).encode(), method="POST",
                                          headers={"content-type": "application/json"})
             try:
                 with urllib.request.urlopen(req, timeout=120) as r:
@@ -113,7 +113,7 @@ def main():
             if load.poll() is not None:
                 return
             session = random.choice(ids)
-            to = random.randrange(a.cells)
+            to = random.randrange(a.shards)
             result = move_one(session, to)
             if result and result.get("moved"):
                 moves.append(result)
@@ -121,7 +121,7 @@ def main():
     threads = [threading.Thread(target=chaos)]
     if a.executors and a.executor_kills:
         threads.append(threading.Thread(target=executor_chaos))
-    if a.moves and a.cells > 1:
+    if a.moves and a.shards > 1:
         threads += [threading.Thread(target=mover) for _ in range(4)]
     for t in threads:
         t.start()
@@ -129,10 +129,10 @@ def main():
     while load.poll() is None:
         time.sleep(5)
         done = 0
-        for cell in range(a.cells):
+        for shard in range(a.shards):
             for node in (1, 2, 3):
                 try:
-                    done += fleet.stats(cell, node)["turns_completed"]
+                    done += fleet.stats(shard, node)["turns_completed"]
                     break
                 except Exception:
                     pass

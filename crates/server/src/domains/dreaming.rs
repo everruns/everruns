@@ -149,7 +149,7 @@ impl Command for WorkerDreamingState {
                 Ok(serde_json::json!(ids))
             }
             "due_org" => {
-                // The org's due dreams on the data plane: its cells run them
+                // The org's due dreams on the data plane: its shards run them
                 // (the host call `dreaming_state`), asking for their own org only.
                 let rows=sqlx::query(concat!("SELECT d.session_id FROM dreaming_state d WHERE d.org_id=$1 AND d.due_at<=$2 AND d.session_id IS NOT NULL AND ", on_data_plane!(), " ORDER BY d.due_at LIMIT $3")).bind(org).bind(self.now.unwrap_or_else(||chrono::Utc::now().timestamp())).bind(i64::from(self.limit.unwrap_or(32).min(100))).fetch_all(pool).await.map_err(|error| CommandError::internal(error.into()))?;
                 let ids: Vec<(i64, SessionId)> = rows
@@ -348,9 +348,9 @@ mod tests {
                 .map(|(_, id)| id)
                 .collect()
         };
-        // The org's cells see its data plane session, and only that.
-        let on_cells = ids(run(&c, json!({"operation":"due_org","now":10})).await);
-        assert_eq!(on_cells, vec![v2]);
+        // The org's shards see its data plane session, and only that.
+        let on_shards = ids(run(&c, json!({"operation":"due_org","now":10})).await);
+        assert_eq!(on_shards, vec![v2]);
         // A worker never sees it, whatever else it finds.
         let on_workers = ids(run(&c, json!({"operation":"due","now":10})).await);
         assert!(!on_workers.contains(&v2), "{on_workers:?}");

@@ -2,9 +2,9 @@
 //! v2, step 11.5): its sessions and the session commands the control plane
 //! sends.
 
-use everruns_cell::dp::{ConfigAck, ConfigChange, ConfigUpdate};
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd::dp::{ConfigAck, ConfigChange, ConfigUpdate};
+use everruns_agentd::node_control::ControlPlane;
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use everruns_contracts::dataplane::TenantPolicy;
 use everruns_contracts::dataplane_seal as seal;
 use everruns_contracts::typed_id::SessionId;
@@ -39,7 +39,7 @@ pub async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
         .await
         .unwrap();
     assert_eq!(status, StatusCode::OK, "{ack}");
-    let mut package = everruns_cell_testkit::definition("echo").unwrap();
+    let mut package = everruns_agentd_testkit::definition("echo").unwrap();
     package["name"] = json!("helper");
     let policy = TenantPolicy {
         events: events.iter().map(|t| t.to_string()).collect(),
@@ -63,14 +63,14 @@ pub async fn org_fleet(events: &[&str]) -> (Fleet, FakeCp) {
         .unwrap();
     assert_eq!(ack, ConfigAck::Ok { applied_version: 1 });
     fleet.executor(1).set_dp_key(dp_key);
-    // Every cell's leader reads the org's tapped types with the tenants
+    // Every shard's leader reads the org's tapped types with the tenants
     // view, once a poll.
-    tokio::time::sleep(everruns_cell::tenants::POLL * 2).await;
+    tokio::time::sleep(everruns_agentd::tenants::POLL * 2).await;
     (fleet, cp)
 }
 
 /// The executor [`org_fleet`] started.
-pub fn org_executor(fleet: &Fleet) -> std::sync::Arc<everruns_cell::executor::Executor> {
+pub fn org_executor(fleet: &Fleet) -> std::sync::Arc<everruns_agentd::executor::Executor> {
     fleet.executors[&1].0.clone()
 }
 

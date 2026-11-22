@@ -292,7 +292,7 @@ async fn drive(
 }
 
 /// A session's events as `(type, data)`, from now: its live delivery, or
-/// for a session on a data plane its cell's stream, followed across the data
+/// for a session on a data plane its shard's stream, followed across the data
 /// plane cycling the connection.
 async fn session_events(
     state: &AppState,

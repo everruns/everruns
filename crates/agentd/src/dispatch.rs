@@ -2,11 +2,11 @@
 //! v2 step 6, design.md "Executors").
 //!
 //! Decisions:
-//! - Executors are a pool shared by every cell. An executor offers each
-//!   cell some of its free slots as **credits** in a long poll
-//!   (`/cell/exec/pull`); the cell's leader hands out an activation only
+//! - Executors are a pool shared by every shard. An executor offers each
+//!   shard some of its free slots as **credits** in a long poll
+//!   (`/shard/exec/pull`); the shard's leader hands out an activation only
 //!   against a credit, so an executor is never oversubscribed. Credits the
-//!   cell can't use within the poll go back with an empty reply, and the
+//!   shard can't use within the poll go back with an empty reply, and the
 //!   executor offers them elsewhere.
 //! - **Soft affinity**: a session goes first to the executor that ran it
 //!   last, while that executor has a credit here, because its mirror and

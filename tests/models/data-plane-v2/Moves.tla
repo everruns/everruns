@@ -1,10 +1,10 @@
 ---------------------------- MODULE Moves ----------------------------
 (***************************************************************************)
-(* Moving one placeable unit (a session) between cells.                     *)
+(* Moving one placeable unit (a session) between shards.                     *)
 (*                                                                          *)
 (* Data plane v2 design: every placement has a generation that only grows. *)
 (* Import, directory update, activation, forward and cleanup all name the   *)
-(* generation they belong to; a cell keeps a tombstone with the last        *)
+(* generation they belong to; a shard keeps a tombstone with the last        *)
 (* generation of every unit that left it. The destination holds the unit    *)
 (* prepared (not runnable) until the directory commits the new generation, *)
 (* and only a prepared copy can be activated: a late duplicate "activate"  *)
@@ -15,31 +15,31 @@
 (* late and any number of times: delay and duplication come for free.       *)
 (*                                                                          *)
 (* With Fenced = FALSE the model behaves like funout at 8ce744b (Import     *)
-(* accepts any unit the cell doesn't hold and makes it live, Place          *)
+(* accepts any unit the shard doesn't hold and makes it live, Place          *)
 (* overwrites, Forward is unconditional); TLC then finds a delayed import   *)
 (* reviving a stale copy.                                                   *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Cells, MaxGen, Fenced
+CONSTANTS Shards, MaxGen, Fenced
 
 VARIABLES
-    st,     \* st[c]: the unit's copy in cell c: "none", "prepared" (imported,
+    st,     \* st[c]: the unit's copy in shard c: "none", "prepared" (imported,
             \* not yet allowed to run), "live", or "leaving" (frozen source)
-    gen,    \* gen[c]: generation of the copy cell c holds (0 = none)
-    tomb,   \* tomb[c]: highest generation that left cell c
-    dir,    \* directory: [gen |-> g, cell |-> c]
+    gen,    \* gen[c]: generation of the copy shard c holds (0 = none)
+    tomb,   \* tomb[c]: highest generation that left shard c
+    dir,    \* directory: [gen |-> g, shard |-> c]
     net     \* messages ever sent
 
 vars == <<st, gen, tomb, dir, net>>
 
-First == CHOOSE c \in Cells : TRUE
+First == CHOOSE c \in Shards : TRUE
 
 Init ==
-    /\ st = [c \in Cells |-> IF c = First THEN "live" ELSE "none"]
-    /\ gen = [c \in Cells |-> IF c = First THEN 1 ELSE 0]
-    /\ tomb = [c \in Cells |-> 0]
-    /\ dir = [gen |-> 1, cell |-> First]
+    /\ st = [c \in Shards |-> IF c = First THEN "live" ELSE "none"]
+    /\ gen = [c \in Shards |-> IF c = First THEN 1 ELSE 0]
+    /\ tomb = [c \in Shards |-> 0]
+    /\ dir = [gen |-> 1, shard |-> First]
     /\ net = {}
 
 Send(m) == net' = net \cup {m}
@@ -65,7 +65,7 @@ RecvImport(m) ==
             /\ gen' = [gen EXCEPT ![c] = m.g]
             /\ Send([type |-> "place", g |-> m.g, to |-> c, from |-> m.from])
             /\ UNCHANGED <<tomb, dir>>
-       ELSE \* funout 8ce744b: accept when the cell doesn't hold the unit,
+       ELSE \* funout 8ce744b: accept when the shard doesn't hold the unit,
             \* drop any forward and make the image live.
             /\ st[c] = "none"
             /\ st' = [st EXCEPT ![c] = "live"]
@@ -78,7 +78,7 @@ RecvImport(m) ==
 RecvPlace(m) ==
     /\ m \in net /\ m.type = "place"
     /\ IF Fenced THEN dir.gen = m.g - 1 ELSE TRUE
-    /\ dir' = [gen |-> m.g, cell |-> m.to]
+    /\ dir' = [gen |-> m.g, shard |-> m.to]
     /\ net' = net \cup {[type |-> "forward", g |-> m.g, at |-> m.from, to |-> m.to],
                         [type |-> "activate", g |-> m.g, to |-> m.to]}
     /\ UNCHANGED <<st, gen, tomb>>
@@ -109,9 +109,9 @@ RecvForward(m) ==
 AbortMove(src) ==
     /\ Fenced
     /\ st[src] = "leaving"
-    /\ dir.cell = src /\ dir.gen = gen[src]
+    /\ dir.shard = src /\ dir.gen = gen[src]
     /\ gen[src] + 2 <= MaxGen
-    /\ dir' = [gen |-> gen[src] + 2, cell |-> src]
+    /\ dir' = [gen |-> gen[src] + 2, shard |-> src]
     /\ gen' = [gen EXCEPT ![src] = gen[src] + 2]
     /\ st' = [st EXCEPT ![src] = "live"]
     /\ UNCHANGED <<tomb, net>>
@@ -120,28 +120,28 @@ AbortMove(src) ==
 DropStale(c) ==
     /\ Fenced
     /\ st[c] = "prepared"
-    /\ dir.gen >= gen[c] /\ dir.cell # c
+    /\ dir.gen >= gen[c] /\ dir.shard # c
     /\ st' = [st EXCEPT ![c] = "none"]
     /\ tomb' = [tomb EXCEPT ![c] = IF gen[c] > tomb[c] THEN gen[c] ELSE tomb[c]]
     /\ gen' = [gen EXCEPT ![c] = 0]
     /\ UNCHANGED <<dir, net>>
 
 Next ==
-    \/ \E s, d \in Cells : StartMove(s, d)
-    \/ \E c \in Cells : AbortMove(c) \/ DropStale(c)
+    \/ \E s, d \in Shards : StartMove(s, d)
+    \/ \E c \in Shards : AbortMove(c) \/ DropStale(c)
     \/ \E m \in net : RecvImport(m) \/ RecvPlace(m) \/ RecvActivate(m) \/ RecvForward(m)
 
 Spec == Init /\ [][Next]_vars
 
 TypeOK ==
-    /\ st \in [Cells -> {"none", "prepared", "live", "leaving"}]
-    /\ dir.cell \in Cells
+    /\ st \in [Shards -> {"none", "prepared", "live", "leaving"}]
+    /\ dir.shard \in Shards
 
-\* At most one cell may run the unit; several inactive copies are allowed.
-OneExecutableOwner == Cardinality({c \in Cells : st[c] = "live"}) <= 1
+\* At most one shard may run the unit; several inactive copies are allowed.
+OneExecutableOwner == Cardinality({c \in Shards : st[c] = "live"}) <= 1
 
 \* A live copy is the one the directory points at, at the directory's generation.
-LiveIsPlaced == \A c \in Cells : st[c] = "live" => (dir.cell = c /\ dir.gen = gen[c])
+LiveIsPlaced == \A c \in Shards : st[c] = "live" => (dir.shard = c /\ dir.gen = gen[c])
 
 \* The directory's generation never goes backwards.
 DirMonotonic == [][dir'.gen >= dir.gen]_vars

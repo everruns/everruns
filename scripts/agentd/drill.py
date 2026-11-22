@@ -1,40 +1,40 @@
 #!/usr/bin/env python3
-"""Disaster recovery drill: lose every node of a cell under load, rebuild it
+"""Disaster recovery drill: lose every node of a shard under load, rebuild it
 from the object store, and check that nothing ran twice and every session
 carries on (data plane v2 step 9, design.md "Disaster recovery").
 
-  drill.py                                  # 75 000 sessions, 2 cells
+  drill.py                                  # 75 000 sessions, 2 shards
   drill.py --sessions 2000 --inflight 300   # the weekly CI size
 
-1. A fresh fleet (3 nodes per cell) runs `--sessions` `worker` sessions
-   through one turn each. The cells' shipping lag and ship-first cost come
+1. A fresh fleet (3 nodes per shard) runs `--sessions` `worker` sessions
+   through one turn each. The shards' shipping lag and ship-first cost come
    from their leaders' /metrics after this load.
 2. `--inflight` sessions get a second message, and while those turns run
-   every node of cell 0 (the directory cell, about half the sessions) is
+   every node of shard 0 (the directory shard, about half the sessions) is
    killed with SIGKILL, and its data directories set aside as lost.
-3. `cell-testnode restore` rebuilds cell 0 from the store into empty data
+3. `agentd-testnode restore` rebuilds shard 0 from the store into empty data
    directories (timed), its nodes start again, and the drill times how long
-   until cell 0 has a leader.
+   until shard 0 has a leader.
 4. A second message the rebuild lost (admitted inside the loss window, at
    most about two seconds before the kill) is sent again; the drill counts
-   these. Then every session must finish: `cell-drive check` with the work
+   these. Then every session must finish: `agentd-drive check` with the work
    tool's ledger (each message completed once, sequences dense, no tool ran
    more often than it has a durable `tool.started`).
 
-Writes .cell/drill.json. Fails on a failed check, a rebuild slower than
+Writes .shard/drill.json. Fails on a failed check, a rebuild slower than
 `--max-rebuild-s`, or a shipping lag p99 over `--max-ship-lag-s`.
 """
 import argparse, concurrent.futures, json, os, shutil, signal, subprocess, sys, time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
-DRIVE = os.path.join(ROOT, "target/release/cell-drive")
+DRIVE = os.path.join(ROOT, "target/release/agentd-drive")
 
 p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-p.add_argument("--cells", type=int, default=2)
+p.add_argument("--shards", type=int, default=2)
 p.add_argument("--sessions", type=int, default=75000)
 p.add_argument("--inflight", type=int, default=3000)
 p.add_argument("--concurrency", type=int, default=1000)
@@ -56,12 +56,12 @@ def post(url, body, timeout=10):
         return json.load(r)
 
 
-def histogram(cell, name):
-    """Cumulative bucket counts of `name` summed over a cell's nodes."""
+def histogram(shard, name):
+    """Cumulative bucket counts of `name` summed over a shard's nodes."""
     buckets = {}
-    for node in fleet.nodes_of(cell):
+    for node in fleet.nodes_of(shard):
         try:
-            text = urllib.request.urlopen(f"http://{fleet.addr(cell, node)}/metrics", timeout=5).read().decode()
+            text = urllib.request.urlopen(f"http://{fleet.addr(shard, node)}/metrics", timeout=5).read().decode()
         except Exception:
             continue
         for line in text.splitlines():
@@ -86,25 +86,25 @@ def quantile(buckets, q):
 
 def summary(name):
     merged = {}
-    for c in range(a.cells):
+    for c in range(a.shards):
         for bound, count in histogram(c, name):
             merged[bound] = merged.get(bound, 0) + count
     b = sorted(merged.items())
     return {"count": int(b[-1][1]) if b else 0, "p50": quantile(b, 0.5), "p99": quantile(b, 0.99)}
 
 
-subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
 time.sleep(0.5)
 shutil.rmtree(fleet.STATE, ignore_errors=True)
 os.makedirs(fleet.STATE)
 ledger = os.path.join(fleet.STATE, "ledger.txt")
-os.environ.update({"CELL_LEDGER": ledger, "CELL_MEMORY_BUDGET_MB": "128", "CELL_WORK_MS": "50"})
-fleet.up(a.cells, 3, 7100)
+os.environ.update({"AGENTD_LEDGER": ledger, "AGENTD_MEMORY_BUDGET_MB": "128", "AGENTD_WORK_MS": "50"})
+fleet.up(a.shards, 3, 7100)
 time.sleep(1)
 t0 = time.time()
-all_gws = [f"http://{fleet.addr(c, n)}" for c in range(a.cells) for n in (1, 2, 3)]
-# Second messages go through the cells that stay up.
-safe_gws = [f"http://{fleet.addr(c, n)}" for c in range(1, a.cells) for n in (1, 2, 3)] or all_gws
+all_gws = [f"http://{fleet.addr(c, n)}" for c in range(a.shards) for n in (1, 2, 3)]
+# Second messages go through the shards that stay up.
+safe_gws = [f"http://{fleet.addr(c, n)}" for c in range(1, a.shards) for n in (1, 2, 3)] or all_gws
 sf = os.path.join(fleet.STATE, "sessions.txt")
 
 # 1. Load.
@@ -112,15 +112,15 @@ out = subprocess.run([DRIVE, "load", "--gateways", ",".join(all_gws), "--agent",
                       "--sessions", str(a.sessions), "--turns", "1", "--concurrency", str(a.concurrency),
                       "--sessions-file", sf, "--persistent"], capture_output=True, text=True)
 load = json.loads(out.stdout)
-load.pop("cells", None)
-ship_lag = summary("cell_ship_lag_seconds")
-ship_first = summary("cell_ship_first_duration_seconds")
+load.pop("shards", None)
+ship_lag = summary("agentd_shard_ship_lag_seconds")
+ship_first = summary("agentd_shard_ship_first_duration_seconds")
 print(json.dumps({"load": {k: load.get(k) for k in ("sessions", "turns_completed", "errors", "turns_per_sec")},
                   "ship_lag": ship_lag, "ship_first": ship_first}), flush=True)
 ids = [l for l in open(sf).read().splitlines() if l]
 second = ids[: a.inflight]
 
-# 2. Second messages in flight, then lose cell 0.
+# 2. Second messages in flight, then lose shard 0.
 sent = {}
 
 
@@ -149,7 +149,7 @@ for n in (1, 2, 3):
 # 3. Rebuild from the store, start, wait for a leader.
 store = "file://" + os.path.join(fleet.STATE, "store")
 started = time.time()
-rebuilt = subprocess.run([fleet.binary(), "restore", "--topology", fleet.TOPO, "--cell", "0", "--store", store]
+rebuilt = subprocess.run([fleet.binary(), "restore", "--topology", fleet.TOPO, "--shard", "0", "--store", store]
                          + [f"--node={n}={os.path.join(fleet.STATE, 'data', f'c0n{n}')}" for n in (1, 2, 3)],
                          capture_output=True, text=True)
 rebuild_s = time.time() - started
@@ -160,7 +160,7 @@ for n in (1, 2, 3):
     fleet.start(0, n)
 while fleet.leader(0) is None:
     if time.time() - started > a.max_rebuild_s:
-        sys.exit("cell 0 elected no leader after the rebuild")
+        sys.exit("shard 0 elected no leader after the rebuild")
     time.sleep(0.2)
 back_s = time.time() - killed_at
 for f in futures:
@@ -196,7 +196,7 @@ for name, path, turns in (("second", sf2, 2), ("first", sf1, 1)):
     checks[name] = {k: c.get(k) for k in ("ok", "failed_sessions", "totals", "failures", "err")}
 
 res = {
-    "sessions": a.sessions, "cells": a.cells, "inflight": a.inflight,
+    "sessions": a.sessions, "shards": a.shards, "inflight": a.inflight,
     "load": {k: load.get(k) for k in ("turns_completed", "errors", "turns_per_sec", "turn")},
     "ship_lag_s": ship_lag, "ship_first_s": ship_first,
     "rebuilt": report, "rebuild_s": round(rebuild_s, 1), "kill_to_leader_s": round(back_s, 1),
@@ -204,7 +204,7 @@ res = {
 }
 json.dump(res, open(os.path.join(fleet.STATE, "drill.json"), "w"), indent=1)
 print(json.dumps(res, indent=1))
-subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
 ok = all(c.get("ok") for c in checks.values()) and load.get("errors") == 0
 ok &= rebuild_s <= a.max_rebuild_s
 ok &= ship_lag["p99"] is None or ship_lag["p99"] <= a.max_ship_lag_s

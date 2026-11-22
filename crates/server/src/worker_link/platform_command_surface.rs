@@ -463,10 +463,10 @@ fn sanitize_script_error(message: &str) -> String {
 }
 
 /// A platform tool's call from a data plane (Platform Chat), run on the
-/// command catalog as the person its forwarding cell names.
+/// command catalog as the person its forwarding shard names.
 ///
 /// THREAT[TM-AGENT-017]: the executor that runs the turn names only the
-/// session and its input message; `acting_user` is set by the cell that
+/// session and its input message; `acting_user` is set by the shard that
 /// forwards the call, from the session's own record of who sent that
 /// message (`everruns-agentd` `senders.rs`). Here, as for a v1 worker's
 /// call, the session must be the org's and resolve the `platform`

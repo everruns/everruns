@@ -1,5 +1,5 @@
 //! A tool's call-time lookups on the data plane (data plane v2, step
-//! 11.6b): an executor asks through its directory cell, the cell passes the
+//! 11.6b): an executor asks through its directory shard, the shard passes the
 //! request to the control plane over the link, and the answer comes back
 //! sealed with the org's data key for the executor to open.
 
@@ -9,7 +9,7 @@ mod support;
 
 use std::sync::Arc;
 
-use everruns_cell::providers::OrgMaterial;
+use everruns_agentd::providers::OrgMaterial;
 use everruns_contracts::host_calls::HostCallAnswer;
 const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
 use everruns_contracts::session_sandbox::SessionSandboxCredential;
@@ -18,7 +18,7 @@ use everruns_core::connection_services::UserConnectionResolver;
 use serde_json::json;
 use support::org::{DATA_KEY, DATA_KEY_ID, ORG, org_executor, org_fleet, session};
 
-/// The sandbox keys a cell resolves itself: none here.
+/// The sandbox keys a shard resolves itself: none here.
 struct NoKeys;
 
 #[async_trait::async_trait]
@@ -57,8 +57,11 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
     let id: SessionId = session.parse().unwrap();
 
     let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
-    let resolver =
-        everruns_cell::lookups::connections(Arc::new(NoKeys), Some(&Arc::downgrade(&material)), id);
+    let resolver = everruns_agentd::lookups::connections(
+        Arc::new(NoKeys),
+        Some(&Arc::downgrade(&material)),
+        id,
+    );
     let token = resolver.get_connection_token(id, "github").await.unwrap();
     assert_eq!(token.as_deref(), Some("gh-token-1"));
     let asked = cp.lookups();
@@ -97,7 +100,7 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
         "worker_knowledge",
         HostCallAnswer::Value(json!({ "results": [], "warnings": ["empty"], "truncated": false })),
     );
-    let backends = everruns_cell::lookups::attach(
+    let backends = everruns_agentd::lookups::attach(
         everruns_core::host::HostBackends::in_memory(),
         Arc::new(NoKeys),
         Some(&Arc::downgrade(&material)),
@@ -121,7 +124,7 @@ async fn a_tools_lookup_reaches_the_control_plane_and_comes_back_for_its_org() {
 
     // A session the executor does not know is no org's: nothing is asked.
     let stranger = SessionId::new();
-    let resolver = everruns_cell::lookups::connections(
+    let resolver = everruns_agentd::lookups::connections(
         Arc::new(NoKeys),
         Some(&Arc::downgrade(&material)),
         stranger,
@@ -149,7 +152,7 @@ async fn say_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &s
     for base in fleet.bases() {
         let reply = fleet
             .http
-            .post(format!("{base}/cell/sessions/{session}/messages"))
+            .post(format!("{base}/shard/sessions/{session}/messages"))
             .json(&json!({ "text": text, "id": id, "sender": sender }))
             .send()
             .await
@@ -166,7 +169,7 @@ async fn say_as(fleet: &support::Fleet, session: &str, id: MessageId, sender: &s
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
+async fn a_platform_call_acts_as_the_person_the_sessions_shard_names() {
     let (fleet, cp) = org_fleet(&[]).await;
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     cp.set_lookup(
@@ -182,7 +185,7 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
     send_as(&fleet, &session, theirs, &person).await;
     fleet.turns(&session, 2).await;
 
-    // The executor asks with a person of its own choosing: the cell that
+    // The executor asks with a person of its own choosing: the shard that
     // forwards the call replaces it with the one who sent the message.
     let material: Arc<dyn OrgMaterial> = org_executor(&fleet);
     let ask = |message: MessageId| {
@@ -221,10 +224,13 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
         HostCallAnswer::Value(json!("their-token")),
     );
     let id: SessionId = session.parse().unwrap();
-    let resolver =
-        everruns_cell::lookups::connections(Arc::new(NoKeys), Some(&Arc::downgrade(&material)), id)
-            .for_execution(theirs.uuid())
-            .expect("bound to the turn");
+    let resolver = everruns_agentd::lookups::connections(
+        Arc::new(NoKeys),
+        Some(&Arc::downgrade(&material)),
+        id,
+    )
+    .for_execution(theirs.uuid())
+    .expect("bound to the turn");
     let token = resolver.get_connection_token(id, "linear").await.unwrap();
     assert_eq!(token.as_deref(), Some("their-token"));
     let asked = cp.lookups();
@@ -234,12 +240,12 @@ async fn a_platform_call_acts_as_the_person_the_sessions_cell_names() {
 }
 
 /// An MCP server acting as the turn's person asks for its token by session
-/// (data plane v2 parity gap 8): the session's cell names the turn it has
+/// (data plane v2 parity gap 8): the session's shard names the turn it has
 /// open and the person who sent it, whatever the executor says; with no
 /// turn open the call names no one.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_mcp_token_for_the_open_turn_acts_as_its_sender() {
-    const MCP_TOKEN: &str = everruns_cell::mcp::MCP_CONNECTION_COMMAND;
+    const MCP_TOKEN: &str = everruns_agentd::mcp::MCP_CONNECTION_COMMAND;
     let (fleet, cp) = org_fleet(&[]).await;
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     cp.set_lookup(MCP_TOKEN, HostCallAnswer::Value(json!("their-mcp-token")));
@@ -254,7 +260,7 @@ async fn an_mcp_token_for_the_open_turn_acts_as_its_sender() {
             &json!({
                 "id": session,
                 "agent_ref": "helper",
-                "definition": everruns_cell_testkit::definition("approve").unwrap(),
+                "definition": everruns_agentd_testkit::definition("approve").unwrap(),
             }),
         )
         .await
@@ -322,7 +328,7 @@ async fn the_shells_everruns_command_runs_the_catalog_as_the_turns_person() {
     );
 
     let session = SessionId::new().to_string();
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("files").unwrap();
     definition["capabilities"] = json!([{ "ref": "bashkit_shell" }, { "ref": "platform" }]);
     let (status, created) = cp
         .call(
@@ -392,7 +398,7 @@ async fn memory_files_are_read_from_the_control_plane() {
         json!({
             "id": session,
             "agent_ref": "files",
-            "definition": everruns_cell_testkit::definition("files").unwrap(),
+            "definition": everruns_agentd_testkit::definition("files").unwrap(),
             "memory": memory,
         })
     };
@@ -482,21 +488,21 @@ async fn memory_files_are_read_from_the_control_plane() {
     assert_eq!(before, after);
 }
 
-/// The person's own MCP servers (`user_mcp`, Console Chat on cells): a turn
+/// The person's own MCP servers (`user_mcp`, Console Chat on shards): a turn
 /// a person sent asks the control plane for their servers once, as that
 /// person, and the agent calls them with the person's key; a server that
 /// signs in as the person gets the person's token per use. A turn nobody
 /// sent never asks.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_persons_own_mcp_servers_join_their_turns() {
-    use everruns_cell_testkit::stub_mcp;
+    use everruns_agentd_testkit::stub_mcp;
     const USER_MCP_SERVERS: &str = everruns_contracts::host_calls::USER_MCP_SERVERS;
-    const MCP_TOKEN: &str = everruns_cell::mcp::MCP_CONNECTION_COMMAND;
+    const MCP_TOKEN: &str = everruns_agentd::mcp::MCP_CONNECTION_COMMAND;
     let (fleet, cp) = org_fleet(&[]).await;
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     let authorizations = || stub_mcp::AUTHORIZATIONS.lock().unwrap().clone();
     let create = |session: &str| {
-        let mut definition = everruns_cell_testkit::definition("files").unwrap();
+        let mut definition = everruns_agentd_testkit::definition("files").unwrap();
         definition["capabilities"] = json!([{ "ref": "user_mcp" }]);
         json!({ "id": session, "agent_ref": "chat", "definition": definition })
     };
@@ -596,7 +602,7 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
     for base in fleet.bases() {
         let reply = fleet
             .http
-            .post(format!("{base}/cell/sessions/{session}/messages"))
+            .post(format!("{base}/shard/sessions/{session}/messages"))
             .json(&json!({ "text": "mcp jasmine", "id": MessageId::new() }))
             .send()
             .await
@@ -619,7 +625,7 @@ async fn a_persons_own_mcp_servers_join_their_turns() {
 /// person when nobody sent it; a session without one never asks.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_sessions_own_mcp_servers_join_its_turns() {
-    use everruns_cell_testkit::stub_mcp;
+    use everruns_agentd_testkit::stub_mcp;
     const USER_MCP_SERVERS: &str = everruns_contracts::host_calls::USER_MCP_SERVERS;
     let (fleet, cp) = org_fleet(&[]).await;
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
@@ -638,7 +644,7 @@ async fn a_sessions_own_mcp_servers_join_its_turns() {
     );
     // An agent without `user_mcp`.
     let session = SessionId::new().to_string();
-    let definition = everruns_cell_testkit::definition("files").unwrap();
+    let definition = everruns_agentd_testkit::definition("files").unwrap();
     let (status, created) = cp
         .call(
             &fleet.base(),
@@ -711,13 +717,13 @@ async fn a_sessions_own_mcp_servers_join_its_turns() {
 }
 
 /// A tool the client runs (the console's page tools, Console Chat on
-/// cells): the session's definition declares it, the turn parks on its
+/// shards): the session's definition declares it, the turn parks on its
 /// call until the browser answers, and the answer reaches the model.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_client_side_tool_parks_until_the_client_answers() {
     let (fleet, cp) = org_fleet(&[]).await;
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("files").unwrap();
     definition["tools"] = json!([{
         "type": "client_side",
         "name": "read_page",
@@ -769,7 +775,7 @@ async fn a_client_side_tool_parks_until_the_client_answers() {
     for base in fleet.bases() {
         let reply = fleet
             .http
-            .post(format!("{base}/cell/sessions/{session}/tool-results"))
+            .post(format!("{base}/shard/sessions/{session}/tool-results"))
             .json(&answer)
             .send()
             .await
@@ -811,7 +817,7 @@ async fn a_sessions_resources_are_kept_by_the_control_plane() {
             "updated_at": "2026-11-19T00:00:00Z",
         }])),
     );
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("files").unwrap();
     definition["capabilities"] = json!([{ "ref": "sandbox_fleet" }]);
     let session = SessionId::new().to_string();
     let (status, created) = cp
@@ -851,7 +857,7 @@ async fn a_sessions_dreams_are_kept_and_found_by_the_control_plane() {
     let (fleet, cp) = org_fleet(&[]).await;
     cp.answer_lookups(ORG, DATA_KEY, DATA_KEY_ID);
     cp.set_lookup(MEMORY_FILE, HostCallAnswer::Value(json!({ "ok": true })));
-    let mut definition = everruns_cell_testkit::definition("files").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("files").unwrap();
     // The turn's own timer waits an hour: only the sweep can run it here.
     definition["capabilities"] = json!([{ "ref": "dreaming", "config": {
         "destinations": [{ "mount": "/memory/user", "path": "/notes.md" }],

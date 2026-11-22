@@ -1,14 +1,14 @@
 //! Forking a session that runs on a data plane (data plane v2, step 11.6).
 //!
 //! Decisions:
-//! - The parent's history is in its cell, so the fork reads it from there
+//! - The parent's history is in its shard, so the fork reads it from there
 //!   (the `log` read) and seeds the child, which runs on the same org's
 //!   data plane, with the conversation up to the cut: the people's and the
 //!   agent's messages with their text and media. Tool calls and their
 //!   results stay behind: a seeded call without its result would be
 //!   refused by a model provider.
 //! - The parent's values and secrets are copied into the child's storage on
-//!   its cell; a secret is opened with the org's data key and sealed again
+//!   its shard; a secret is opened with the org's data key and sealed again
 //!   for the child, and the sandbox's state stays with the parent. Its
 //!   files are copied as v1 copies a workspace: every file, from one
 //!   `snapshot` of the parent's files, or file by file when the workspace

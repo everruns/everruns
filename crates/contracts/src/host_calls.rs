@@ -2,7 +2,7 @@
 //! call time (data plane v2 parity, Phase A).
 //!
 //! Decisions:
-//! - A cell is an agent runtime that runs without a control plane. Its
+//! - A shard is an agent runtime that runs without a control plane. Its
 //!   traffic with one is of four kinds: runtime (inside the data plane),
 //!   desired state (pushed before it is needed), reports (the feed), and
 //!   host calls. Only a host call asks at call time, and only when the
@@ -25,12 +25,12 @@
 //!   now. A connection token or a service key stays a call: which one
 //!   applies depends on the turn's person and responder, and the control
 //!   plane refreshes OAuth grants.
-//! - The path is fixed: executor, the session's directory cell, then
+//! - The path is fixed: executor, the session's directory shard, then
 //!   `POST /dp/v1/tenants/{org}/host-calls/{name}` with the link token. The
-//!   cell stamps what it verified (the acting person) and limits each org's
+//!   shard stamps what it verified (the acting person) and limits each org's
 //!   calls in flight; the control plane runs the call's one handler and
 //!   seals the answer with the org's data key under [`host_call_secret`],
-//!   so the cells between hold ciphertext only and an answer cannot stand
+//!   so the shards between hold ciphertext only and an answer cannot stand
 //!   in for another call's.
 //! - Reads are retried once on a transport failure; writes never are.
 
@@ -43,7 +43,7 @@ use serde_json::Value;
 pub enum ActsAs {
     /// The org's internal caller, with the org's feature flags.
     Org,
-    /// The person who sent the turn's input message, as the session's cell
+    /// The person who sent the turn's input message, as the session's shard
     /// recorded them, re-checked against current membership and role. The
     /// control plane records the turn's invocation from it, as v1 does when
     /// the message comes through its API, so its credential checks run
@@ -116,7 +116,7 @@ impl HostCall {
 /// The host call that runs a platform tool's call (discover, query,
 /// execute, run) on the control plane's command catalog, as the person who
 /// sent the turn's input message. Its params name the session and the input
-/// message; the cell sets `acting_user` from the session's own record.
+/// message; the shard sets `acting_user` from the session's own record.
 pub const PLATFORM_COMMAND: &str = "platform_command";
 /// The host call that performs a Slack action (post, react, update,
 /// upload, look up a user) as the bot of the session's Slack endpoint. Its
@@ -146,7 +146,7 @@ pub const USER_MCP_STORE: &str = "user_mcp_store";
 /// `input_message_id: "open"`; the answer is `{"ok": servers}`, empty when
 /// the turn has no single person. With `session_servers: true` the answer
 /// also holds the session's own MCP records, which the control plane reads
-/// from the session's cell; then `input_message_id` may be left out.
+/// from the session's shard; then `input_message_id` may be left out.
 pub const USER_MCP_SERVERS: &str = "user_mcp_servers";
 /// Register (or update) one of a session's resources: a fleet sandbox, an
 /// activated skill. A session's resources stay in the control plane, which
@@ -180,7 +180,7 @@ pub const HELPER_MODEL: &str = "helper_model";
 /// counters, the dream job, daily budgets), and the org's due dreams.
 pub const DREAMING_STATE: &str = "dreaming_state";
 /// Keep a task push config's signing secret in the control plane, which
-/// delivers the webhooks: the cell keeps only that the config has one.
+/// delivers the webhooks: the shard keeps only that the config has one.
 pub const TASK_PUSH_SECRET: &str = "task_push_secret";
 /// Record a subagent the data plane started as a session of the control
 /// plane (its parent's owner, agent and org), so the calls that read a
@@ -224,13 +224,13 @@ pub const CONNECTION_TOKEN: &str = "connection_token";
 /// The token of an MCP server that acts as the turn's person (`user`, or
 /// `user_or_service` falling back to the agent's grant), or of a
 /// connection-backed preset; refreshed in the control plane. Declared by
-/// the agent's own MCP servers rather than a capability: the cell asks only
+/// the agent's own MCP servers rather than a capability: the shard asks only
 /// for a server its definition names this way. Its params name the session
-/// and `input_message_id: "open"`, which the session's cell replaces with
+/// and `input_message_id: "open"`, which the session's shard replaces with
 /// the input message of the turn it has open ([`OPEN_TURN`]).
 pub const MCP_CONNECTION_TOKEN: &str = "mcp_connection_token";
-/// An `input_message_id` that asks the session's cell for the turn it has
-/// open: an MCP server's credential is asked for by session, and the cell,
+/// An `input_message_id` that asks the session's shard for the turn it has
+/// open: an MCP server's credential is asked for by session, and the shard,
 /// not the executor, knows whose turn is running.
 pub const OPEN_TURN: &str = "open";
 /// A GitHub token minted for one use.
@@ -522,7 +522,7 @@ pub struct HostCallRequest {
 
 /// What a host call answered. Its JSON travels as a sealed secret named
 /// [`host_call_secret`] (revision 0) under the org's data key, because
-/// most answers are credentials and the cells between pass them on
+/// most answers are credentials and the shards between pass them on
 /// unopened.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]

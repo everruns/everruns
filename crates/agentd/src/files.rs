@@ -1,4 +1,4 @@
-//! A session's workspace in the cell (data plane v2 step 6, "a minimal
+//! A session's workspace in the shard (data plane v2 step 6, "a minimal
 //! durable workspace"; design in `knowledge/execution/data-plane-v2/fs.md`).
 //!
 //! Decisions:
@@ -10,7 +10,7 @@
 //!   entry); larger contents go to the object store by SHA-256 first
 //!   (`blobs/{sha256}`, idempotent) and the commit carries the reference.
 //!   Blobs are never deleted here (fs.md, "Deleting bytes").
-//! - A commit names an operation id the writer chose; the cell keeps the
+//! - A commit names an operation id the writer chose; the shard keeps the
 //!   reply of recent commits by id, so a retry after a lost acknowledgement
 //!   gets the original result instead of a second change.
 //! - Writers are fenced: an executor commits under the epoch it holds, and

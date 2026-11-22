@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: Platform sessions on the Everruns Engine
-description: What it takes to run every platform feature under Engine hosting, so workers and cells share one execution path.
+description: What it takes to run every platform feature under Engine hosting, so workers and shards share one execution path.
 tags:
   - execution
   - data-plane-v2
@@ -39,7 +39,7 @@ Several adapter slots have no field in any of the three.
 | Service | Gap | How it closes |
 | --- | --- | --- |
 | Model providers, drivers | wiring | `HostServices` providers |
-| Workspace files | wiring | `EnvironmentFactory` (in v2, the cell workspace tree from [fs.md](fs.md)) |
+| Workspace files | wiring | `EnvironmentFactory` (in v2, the shard workspace tree from [fs.md](fs.md)) |
 | Memories | wiring | `HostBackends.memory_mounts` |
 | Compaction checkpoints | none | `HostBackends.compaction_checkpoint_store` |
 | Approvals, client tools, questions | wiring | Shared reducer. The platform's extra wait kinds (tool approval, URL elicitation) go into the `waits_on_person` predicate |
@@ -47,7 +47,7 @@ Several adapter slots have no field in any of the three.
 | Channels (Slack and others) | wiring | Ingress stays outside the Engine. Outbound tools come through `tool_context_extensions_factory` |
 | Platform tools (catalog CLI, saved scripts, SQL DB, Poppy, user MCP) | wiring + small | `tool_context_extensions_factory` also needs the session's resolved capabilities, not just org and session. User MCP also needs the turn's **execution context** (verified input author, participants, allowed grants), which travels with the admitted input; see "Execution context" in design.md |
 | Tool augmentation, reactions, tracing, observers | wiring | Existing `HostBackends` fields, `host_listener` |
-| Live events and token deltas | wiring | The hosting profile's event log publishes cross-process (in v2: cell SSE plus the delta channel) |
+| Live events and token deltas | wiring | The hosting profile's event log publishes cross-process (in v2: shard SSE plus the delta channel) |
 | Subagents and teams | wiring + missing slots | Delegate factory exists. **Session creation authority** and **spawn store** have no slot |
 | Sandboxes | missing slots | **Leased resources**, **durable tool results**, **session resource registry** |
 | MCP servers, OAuth | served (`HostMcp`, hosted MCP resolver) | the platform lists and calls the turn's servers; the Engine agent carries none |
@@ -63,11 +63,11 @@ Several adapter slots have no field in any of the three.
 Two Engine rules also stand in the way:
 
 1. **Capability ids can't collide.** Host capabilities may not reuse a Framework capability id (a threat-model rule in `hosting/services.rs`). The platform's own versions of built-ins (filesystem, web fetch) therefore collide.
-2. **Wasm limits.** These matter for the Durable Object targets but not for workers or cells.
+2. **Wasm limits.** These matter for the Durable Object targets but not for workers or shards.
 
 ## Proposal: one platform host bundle, then the platform itself moves onto the Engine
 
-This needs solving regardless of cells. Once it's done, v1 workers and v2 cells run the same code and differ only in where session state lives (PostgreSQL or cell). The `WorkerRuntimeHost` path is then deleted.
+This needs solving regardless of shards. Once it's done, v1 workers and v2 shards run the same code and differ only in where session state lives (PostgreSQL or shard). The `WorkerRuntimeHost` path is then deleted.
 
 1. **Engine hooks** (from branch `claude/project-thread-lnfjd8`, plus session protocol versioning from design.md step 0):
    - Activations carry the agent definition; the Engine hydrates it (cached by agent and revision). An unfinished turn keeps its retained `(agent_revision, protocol_major)` across crash, hand-off and move; only a new turn gets the current one. Native tools and hydration declare a compatibility identity, so an executor serves an old revision only if it still supports it. The session binding pins agent identity and protocol major, not a behavior version. No registry or resolver.
@@ -82,7 +82,7 @@ This needs solving regardless of cells. Once it's done, v1 workers and v2 cells 
    - **Resolvers and hooks:** hosted MCP, knowledge auto-context, tool detacher, wait predicate.
 
    `InProcessRuntime` forwards each one to the existing `RuntimeHostAdapter` method. The traits already exist, so this is plumbing. The capability collision rule gets one trusted-only exception: a platform host may **replace** a built-in by id, and must declare that it does. Framework apps keep the rule as it is.
-3. **Agent definitions as data.** One definition format (agent, harness, capabilities including platform ones, MCP servers, connections, sealed secrets), built from stored config by the control plane and kept by the authority: the cell in v2, PostgreSQL in v1. Hydration into an Engine `Agent` reuses the agent-package mapping (`AgentBuilder::package`). Today's per-turn database read becomes "hand over the session's current definition with the activation"; an edit applies at the next turn.
+3. **Agent definitions as data.** One definition format (agent, harness, capabilities including platform ones, MCP servers, connections, sealed secrets), built from stored config by the control plane and kept by the authority: the shard in v2, PostgreSQL in v1. Hydration into an Engine `Agent` reuses the agent-package mapping (`AgentBuilder::package`). Today's per-turn database read becomes "hand over the session's current definition with the activation"; an edit applies at the next turn.
 4. **Workers run the Engine.**
    - Add a PostgreSQL `SessionHosting` over today's `session_actors` and `events` tables. It uses the same reducer the server already runs under its row lock.
    - Workers call `Engine::activate` and supply the bundle from their gRPC adapters.
@@ -90,7 +90,7 @@ This needs solving regardless of cells. Once it's done, v1 workers and v2 cells 
    - Remove `WorkerRuntimeHost`, so there is one platform execution path.
 
    This is the largest step. It is done when every platform feature runs through the Engine in production.
-5. **Cells reuse all of it.** The cell's `SessionHosting` and cell-local adapters supply the same bundle. Data plane v2 then gets every platform feature without per-feature work, and stages 2 and 3 in design.md shrink to the feature-specific state that has to live in the cell: sandbox records, schedules, detached calls.
+5. **Shards reuse all of it.** The shard's `SessionHosting` and shard-local adapters supply the same bundle. Data plane v2 then gets every platform feature without per-feature work, and stages 2 and 3 in design.md shrink to the feature-specific state that has to live in the shard: sandbox records, schedules, detached calls.
 
 ## Step 4 as built
 
@@ -112,7 +112,7 @@ First-use key creation reads the winning key in a fresh statement after a confli
 - **Subagents and turn tools.** Subagents, session tasks, schedules, connections and shell hooks come from the worker host as well. The platform's turn tools (a child session's report tools, a thread's worker tools) look up the parent session and its tasks, so they read the platform's session and file stores, never the Engine's, which holds only the running session's id-free record.
 - **Cost.** A batch of the Engine's committed events is one fenced write that answers with every stored event, as the worker's own turns write. The epoch keeps the session's journal tail (512 events): a read pinned to a snapshot it holds costs no round trip, any other read one small read of what follows its head. An epoch remembers the receipts it read, present or absent, since it is their only writer while its lease holds.
 - **MCP.** The platform serves an Engine turn's MCP servers through the trusted `HostMcp` slot, and the Engine agent is hydrated without the declaration's servers, so it never connects to one itself and their `${BINDING}` placeholders never need a value on the Engine. Per turn the worker asks the control plane for the turn's tools by its input (the turn context without history or model), the list a worker turn gets: the agent's and harness's servers, the session's, and the sender's own when they are the only person in it. Calls run through the worker host's executor (platform credentials, OAuth grants, elicitation consent, egress guard), bound to the input as every turn binds it.
-- **Who a turn acts for.** On PostgreSQL the platform resolves it from the input's id, which is the platform message id on the Engine too: the sender's MCP servers above, and the connection, MCP and payment resolvers each tool call binds to its input. The admitted `InputContext` (design.md, "Execution context") replaces that lookup only where the cell has no PostgreSQL to ask (step 5).
+- **Who a turn acts for.** On PostgreSQL the platform resolves it from the input's id, which is the platform message id on the Engine too: the sender's MCP servers above, and the connection, MCP and payment resolvers each tool call binds to its input. The admitted `InputContext` (design.md, "Execution context") replaces that lookup only where the shard has no PostgreSQL to ask (step 5).
 
 ## Size and order (estimate)
 
@@ -124,7 +124,7 @@ These steps are now part of the single ordered plan, with a bench gate per step,
 | 2. Host extensions | medium (many slots, each a forwarder plus a test) | 1 |
 | 3. Agent definitions as data | medium | 1 |
 | 4. Workers on the Engine (PostgreSQL hosting) | large | 1, 2, 3 |
-| 5. Cells | covered by design.md plan steps 5 and 6 | 2, 3 (not 4) |
+| 5. Shards | covered by design.md plan steps 5 and 6 | 2, 3 (not 4) |
 
 Steps 4 and 5 can run in parallel once 2 and 3 land.
 

@@ -1,5 +1,5 @@
 //! A v2 session's Memory (`memory.rs`), on a real database: the create
-//! names the session's mounts, and a cell's `memory_file` call reads and
+//! names the session's mounts, and a shard's `memory_file` call reads and
 //! writes the shared Memory only inside them.
 
 use super::*;
@@ -46,7 +46,7 @@ async fn session_with_user_memory(cp: &ControlPlane) -> everruns_contracts::type
 }
 
 #[tokio::test]
-async fn a_cell_reaches_only_its_sessions_own_memory() {
+async fn a_shard_reaches_only_its_sessions_own_memory() {
     let (cp, _, _) = control_plane().await;
     let session = session_with_user_memory(&cp).await;
     assert_eq!(
@@ -105,7 +105,7 @@ async fn a_cell_reaches_only_its_sessions_own_memory() {
     assert_eq!(missing, json!({ "ok": null }));
 
     // THREAT[TM-TENANT]: nothing outside the session's own mounts, whatever
-    // the cell names: not its workspace, not a Memory it has none of.
+    // the shard names: not its workspace, not a Memory it has none of.
     for path in [
         "/workspace/notes.md",
         "/memory/agent/x.md",
@@ -133,7 +133,7 @@ async fn a_cell_reaches_only_its_sessions_own_memory() {
         "{unknown}"
     );
 
-    // A session with no Memory has no mounts, so its cell never calls.
+    // A session with no Memory has no mounts, so its shard never calls.
     let plain = cp
         .db
         .create_session(crate::storage::test_database::test_session_row(ORG))

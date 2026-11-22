@@ -1,14 +1,14 @@
-//! The cell's side of host calls (`everruns_contracts::host_calls`): the
+//! The shard's side of host calls (`everruns_contracts::host_calls`): the
 //! one path from a tool on an executor to the control plane at call time.
 //!
 //! Decisions:
 //! - An executor never calls the control plane. It sends a host call to the
-//!   session's directory cell (`/cell/orgs/{org}/host-calls/{name}`), which
+//!   session's directory shard (`/shard/orgs/{org}/host-calls/{name}`), which
 //!   passes it on over the link
 //!   (`POST /dp/v1/tenants/{org}/host-calls/{name}`). The answer comes back
 //!   sealed with the org's data key and goes to the executor unopened.
 //! - Only a declared call goes; anything else is refused here.
-//! - The cell stamps what it verified: a call that acts as a person gets
+//! - The shard stamps what it verified: a call that acts as a person gets
 //!   `acting_user` from the session's own record of who sent the turn's
 //!   input message (`senders.rs`), whatever the executor put there
 //!   (THREAT[TM-AGENT-017]).
@@ -18,7 +18,7 @@
 //!   calls fail at once for [`OPEN_FOR`] instead of piling onto a control
 //!   plane that is struggling. Its refusals (an answer) do not count.
 //! - Each call is counted by name and outcome, with its round trip
-//!   (`cell_host_calls_total`, `cell_host_call_duration_seconds`).
+//!   (`agentd_shard_host_calls_total`, `agentd_shard_host_call_duration_seconds`).
 //! - THREAT[TM-TENANT]: the control plane runs the call as the path org and
 //!   checks that the session is that org's.
 
@@ -83,9 +83,9 @@ impl Limits {
     }
 }
 
-/// `POST /cell/orgs/{org}/host-calls/{name}`: an executor's host call for
+/// `POST /shard/orgs/{org}/host-calls/{name}`: an executor's host call for
 /// `org`, passed on to the control plane.
-pub(crate) async fn cell_host_call(
+pub(crate) async fn shard_host_call(
     State(node): State<Arc<Node>>,
     Path((org, name)): Path<(String, String)>,
     Json(mut request): Json<HostCallRequest>,
@@ -137,7 +137,7 @@ async fn pass_on(
 ) -> Result<SealedSecret, ApiError> {
     let cp = node.cfg.control_plane.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
-        "this cell has no control plane".to_owned(),
+        "this shard has no control plane".to_owned(),
     ))?;
     let limits = &node.host_call_limits;
     if limits.open(Instant::now()) {
@@ -236,7 +236,7 @@ pub(crate) async fn act_as_sender(
         .ok_or_else(|| bad("its session"))?;
     let gateway = node.gateway.get().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
-        "this cell has no gateway".to_owned(),
+        "this shard has no gateway".to_owned(),
     ))?;
     let found = gateway
         .session_command(

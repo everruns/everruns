@@ -7,7 +7,7 @@
 //! Decisions:
 //! - A message is admitted on the data plane with its metadata (the
 //!   platform's thread and channel ids) and its sender, under a fresh id.
-//!   The cell answers whether it started a turn or steered the running one,
+//!   The shard answers whether it started a turn or steered the running one,
 //!   which is what the host needs to know whether this message owes a reply.
 //! - A picture or file a channel received is an upload; it is copied into
 //!   the session's files on the data plane before the message is sent with

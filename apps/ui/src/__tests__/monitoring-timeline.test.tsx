@@ -59,7 +59,7 @@ function bucket(start: string, extra: Partial<TimelineBucket> = {}): TimelineBuc
     agents_working_avg: 3,
     agents_working_peak: 4,
     servers: null,
-    cells: null,
+    shards: null,
     ...extra,
   };
 }
@@ -100,8 +100,8 @@ function timeline(): MonitoringTimeline {
       longest_wait_at: "2026-11-01T05:02:00Z",
       cost_usd: 0.75,
       seconds_above_90: null,
-      cells_peak_running: null,
-      cells_elections: null,
+      shards_peak_running: null,
+      shards_elections: null,
     },
     previous: {
       peak_active: 20,
@@ -115,8 +115,8 @@ function timeline(): MonitoringTimeline {
       longest_wait_at: null,
       cost_usd: 1,
       seconds_above_90: null,
-      cells_peak_running: null,
-      cells_elections: null,
+      shards_peak_running: null,
+      shards_elections: null,
     },
     markers: [{ at: "2026-11-01T05:01:30Z", kind: "deploy", label: "0.50.1" }],
     open_sessions_now: 42,
@@ -149,8 +149,8 @@ describe("timeline model", () => {
     expect(t.phases.find((p) => p.key === "model")?.share).toBeCloseTo(0.5);
   });
 
-  it("stacks cells beside workers and filters by execution path", () => {
-    const cells = {
+  it("stacks shards beside workers and filters by execution path", () => {
+    const shards = {
       reporting: 2,
       sessions_avg: 50,
       sessions_peak: 60,
@@ -170,10 +170,10 @@ describe("timeline model", () => {
       cpu_peak_pct: 40,
       memory_peak_pct: 70,
     };
-    const buckets = [bucket("2026-11-01T05:00:00Z", { cells })];
+    const buckets = [bucket("2026-11-01T05:00:00Z", { shards })];
     expect(timelineRows(buckets, "all")[0]).toMatchObject({
       model: 5,
-      on_cells: 8,
+      on_shards: 8,
       peak: 22,
       completed: 56,
       failed: 3,
@@ -181,13 +181,13 @@ describe("timeline model", () => {
       nodes: 6,
       memory: 70,
     });
-    expect(timelineRows(buckets, "cells")[0]).toMatchObject({
+    expect(timelineRows(buckets, "shards")[0]).toMatchObject({
       model: 0,
-      on_cells: 8,
+      on_shards: 8,
       completed: 20,
     });
     expect(timelineRows(buckets, "workers")[0]).toMatchObject({
-      on_cells: 0,
+      on_shards: 0,
       completed: 36,
     });
   });
@@ -210,7 +210,7 @@ describe("MonitoringTimelineView", () => {
     });
   });
 
-  function renderView(path?: "workers" | "cells") {
+  function renderView(path?: "workers" | "shards") {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -245,11 +245,11 @@ describe("MonitoringTimelineView", () => {
     );
   });
 
-  it("an organization on cells counts its cells and drops the worker wait", async () => {
-    renderView("cells");
+  it("an organization on shards counts its shards and drops the worker wait", async () => {
+    renderView("shards");
     const kpis = await screen.findByTestId("timeline-kpis");
-    expect(kpis).toHaveTextContent("on cells");
-    expect(kpis).toHaveTextContent("Most waiting on cells");
+    expect(kpis).toHaveTextContent("on shards");
+    expect(kpis).toHaveTextContent("Most waiting on shards");
     expect(kpis).not.toHaveTextContent("Longest wait for a worker");
     expect(screen.queryByRole("group", { name: "Execution path" })).not.toBeInTheDocument();
   });

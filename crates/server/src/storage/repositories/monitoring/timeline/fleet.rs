@@ -1,6 +1,6 @@
 //! Fleet history for Monitoring → Timeline: what the 10-second sampler
 //! cannot see (open sessions and agents in total, server replicas) and what
-//! data plane v2 cells report through the feed (`monitoring_cell_minutes`
+//! data plane v2 shards report through the feed (`monitoring_shard_minutes`
 //! and the `dp_*` columns of `monitoring_minutes`).
 //!
 //! Decisions:
@@ -9,11 +9,11 @@
 //!   platform row. An idle organization gets no row; the reader carries the
 //!   last known value forward instead, so history costs nothing for
 //!   organizations that do nothing.
-//! - A cell's minute report is applied once: the first report stored for a
-//!   (cell, minute) wins, because a new leader may send the same minute
+//! - A shard's minute report is applied once: the first report stored for a
+//!   (shard, minute) wins, because a new leader may send the same minute
 //!   again. Its population is added to the platform row and to the rows of
-//!   organizations with sessions on the cell.
-//! - Turn and spend counters from cells are added per feed batch, after its
+//!   organizations with sessions on the shard.
+//! - Turn and spend counters from shards are added per feed batch, after its
 //!   records are stored, and never recomputed: the closing job reads v1
 //!   tables only. A batch delivered twice after a failed acknowledgement can
 //!   count twice; monitoring accepts that rather than a lookup per record.
@@ -28,10 +28,10 @@ use std::collections::BTreeMap;
 /// (matches the doctor's live window).
 const SERVER_LIVE_SECS: i64 = 90;
 
-/// One cell's minute report, as stored.
+/// One shard's minute report, as stored.
 #[derive(Debug, Clone, Default)]
-pub struct CellMinuteReport {
-    pub cell: String,
+pub struct ShardMinuteReport {
+    pub shard: String,
     pub data_plane: String,
     pub minute: DateTime<Utc>,
     pub leader: String,
@@ -53,9 +53,9 @@ pub struct CellMinuteReport {
     pub orgs: Vec<(i64, i64, i64, i64, i64)>,
 }
 
-/// Turn and model counters from cell feed records for one minute.
+/// Turn and model counters from shard feed records for one minute.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct CellCounters {
+pub struct ShardCounters {
     pub turns_completed: i32,
     pub turns_failed: i32,
     pub turns_cancelled: i32,
@@ -65,12 +65,12 @@ pub struct CellCounters {
     pub cost_usd: f64,
 }
 
-impl CellCounters {
+impl ShardCounters {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
     }
 
-    pub fn add(&mut self, other: &CellCounters) {
+    pub fn add(&mut self, other: &ShardCounters) {
         self.turns_completed += other.turns_completed;
         self.turns_failed += other.turns_failed;
         self.turns_cancelled += other.turns_cancelled;
@@ -82,24 +82,24 @@ impl CellCounters {
 }
 
 /// Counters of one feed batch: per (organization, minute), and per minute
-/// for the cell that sent it.
+/// for the shard that sent it.
 #[derive(Debug, Clone, Default)]
-pub struct CellBatchCounters {
-    pub orgs: BTreeMap<(i64, DateTime<Utc>), CellCounters>,
+pub struct ShardBatchCounters {
+    pub orgs: BTreeMap<(i64, DateTime<Utc>), ShardCounters>,
 }
 
-impl CellBatchCounters {
-    pub fn entry(&mut self, org: i64, at: DateTime<Utc>) -> &mut CellCounters {
+impl ShardBatchCounters {
+    pub fn entry(&mut self, org: i64, at: DateTime<Utc>) -> &mut ShardCounters {
         self.orgs.entry((org, timeline_minute(at))).or_default()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.orgs.values().all(CellCounters::is_empty)
+        self.orgs.values().all(ShardCounters::is_empty)
     }
 
-    /// Per-minute totals across organizations (platform row and cell row).
-    pub fn minutes(&self) -> BTreeMap<DateTime<Utc>, CellCounters> {
-        let mut out: BTreeMap<DateTime<Utc>, CellCounters> = BTreeMap::new();
+    /// Per-minute totals across organizations (platform row and shard row).
+    pub fn minutes(&self) -> BTreeMap<DateTime<Utc>, ShardCounters> {
+        let mut out: BTreeMap<DateTime<Utc>, ShardCounters> = BTreeMap::new();
         for ((_, minute), c) in &self.orgs {
             out.entry(*minute).or_default().add(c);
         }
@@ -134,11 +134,11 @@ pub struct TimelineFleetRow {
     pub dp_cost_usd: f64,
 }
 
-/// Cell-wide columns of one bucket, across all cells (platform scope).
+/// Shard-wide columns of one bucket, across all shards (platform scope).
 #[derive(Debug, Clone, FromRow)]
-pub struct TimelineCellsRow {
+pub struct TimelineShardsRow {
     pub bucket: DateTime<Utc>,
-    pub cells: i64,
+    pub shards: i64,
     pub nodes: i64,
     pub nodes_answering: i64,
     /// Highest node memory use as a share of its limit, 0..1.
@@ -152,10 +152,10 @@ pub struct TimelineCellsRow {
     pub resumed_peak: i64,
 }
 
-/// One cell over one bucket.
+/// One shard over one bucket.
 #[derive(Debug, Clone, FromRow)]
-pub struct TimelineCellBucketRow {
-    pub cell: String,
+pub struct TimelineShardBucketRow {
+    pub shard: String,
     pub bucket: DateTime<Utc>,
     pub reports: i64,
     pub nodes: Option<i32>,
@@ -176,10 +176,10 @@ pub struct TimelineCellBucketRow {
     pub turns_cancelled: i64,
 }
 
-/// A cell's newest stored report.
+/// A shard's newest stored report.
 #[derive(Debug, Clone, FromRow)]
-pub struct CellLatestRow {
-    pub cell: String,
+pub struct ShardLatestRow {
+    pub shard: String,
     pub data_plane: String,
     pub minute: DateTime<Utc>,
     pub leader: Option<String>,
@@ -198,18 +198,18 @@ pub struct CellLatestRow {
     pub raft_term: Option<i64>,
 }
 
-// Per cell and minute, with term and forwarded differences from the cell's
+// Per shard and minute, with term and forwarded differences from the shard's
 // previous reported minute. Rows from a little before $1 seed the first
 // difference; callers filter to [$1, $2).
-macro_rules! cell_minutes {
+macro_rules! shard_minutes {
     () => {
         r#"
     SELECT c.*,
         GREATEST(0, COALESCE(c.raft_term - LAG(c.raft_term) OVER w, 0)) AS elections,
         GREATEST(0, COALESCE(c.forwarded - LAG(c.forwarded) OVER w, 0)) AS moves
-    FROM monitoring_cell_minutes c
+    FROM monitoring_shard_minutes c
     WHERE c.minute >= $1 - interval '15 minutes' AND c.minute < $2 AND c.reported
-    WINDOW w AS (PARTITION BY c.cell ORDER BY c.minute)
+    WINDOW w AS (PARTITION BY c.shard ORDER BY c.minute)
 "#
     };
 }
@@ -249,18 +249,18 @@ impl Database {
         Ok(())
     }
 
-    /// Store a cell's minute report. Returns false when the minute was
+    /// Store a shard's minute report. Returns false when the minute was
     /// already reported (a repeat from a new leader), which changes nothing.
-    pub async fn monitoring_record_cell_report(&self, r: &CellMinuteReport) -> Result<bool> {
+    pub async fn monitoring_record_shard_report(&self, r: &ShardMinuteReport) -> Result<bool> {
         let minute = timeline_minute(r.minute);
         let mut tx = self.pool.begin().await?;
         let first: Option<String> = sqlx::query_scalar(
-            r#"INSERT INTO monitoring_cell_minutes AS c (cell, minute, data_plane, reported, leader,
+            r#"INSERT INTO monitoring_shard_minutes AS c (shard, minute, data_plane, reported, leader,
                 nodes, nodes_answering, sessions, running, queued, resumed, rss_peak_bytes,
                 memory_limit_bytes, cpu_peak_cores, cpu_limit_cores, admit_p99_ms, ship_lag_p99_ms,
                 raft_term, forwarded)
             VALUES ($1, $2, $3, TRUE, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-            ON CONFLICT (cell, minute) DO UPDATE SET data_plane = EXCLUDED.data_plane, reported = TRUE,
+            ON CONFLICT (shard, minute) DO UPDATE SET data_plane = EXCLUDED.data_plane, reported = TRUE,
                 leader = EXCLUDED.leader, nodes = EXCLUDED.nodes,
                 nodes_answering = EXCLUDED.nodes_answering, sessions = EXCLUDED.sessions,
                 running = EXCLUDED.running, queued = EXCLUDED.queued, resumed = EXCLUDED.resumed,
@@ -270,9 +270,9 @@ impl Database {
                 admit_p99_ms = EXCLUDED.admit_p99_ms, ship_lag_p99_ms = EXCLUDED.ship_lag_p99_ms,
                 raft_term = EXCLUDED.raft_term, forwarded = EXCLUDED.forwarded
             WHERE NOT c.reported
-            RETURNING cell"#,
+            RETURNING shard"#,
         )
-        .bind(&r.cell)
+        .bind(&r.shard)
         .bind(minute)
         .bind(&r.data_plane)
         .bind(&r.leader)
@@ -333,26 +333,26 @@ impl Database {
     }
 
     /// Add one feed batch's counters to its organizations, the platform, and
-    /// the cell that sent it.
-    pub async fn monitoring_add_cell_counters(
+    /// the shard that sent it.
+    pub async fn monitoring_add_shard_counters(
         &self,
-        cell: &str,
+        shard: &str,
         data_plane: &str,
-        counters: &CellBatchCounters,
+        counters: &ShardBatchCounters,
     ) -> Result<()> {
         if counters.is_empty() {
             return Ok(());
         }
         let minutes = counters.minutes();
-        let mut rows: Vec<(i64, DateTime<Utc>, CellCounters)> = counters
+        let mut rows: Vec<(i64, DateTime<Utc>, ShardCounters)> = counters
             .orgs
             .iter()
             .filter(|(_, c)| !c.is_empty())
             .map(|((org, minute), c)| (*org, *minute, *c))
             .collect();
         rows.extend(minutes.iter().map(|(m, c)| (PLATFORM_ORG, *m, *c)));
-        let ints = |f: fn(&CellCounters) -> i32| rows.iter().map(|r| f(&r.2)).collect::<Vec<_>>();
-        let longs = |f: fn(&CellCounters) -> i64| rows.iter().map(|r| f(&r.2)).collect::<Vec<_>>();
+        let ints = |f: fn(&ShardCounters) -> i32| rows.iter().map(|r| f(&r.2)).collect::<Vec<_>>();
+        let longs = |f: fn(&ShardCounters) -> i64| rows.iter().map(|r| f(&r.2)).collect::<Vec<_>>();
         let mut tx = self.pool.begin().await?;
         sqlx::query(
             r#"INSERT INTO monitoring_minutes AS m (org_id, minute, dp_turns_completed, dp_turns_failed,
@@ -379,28 +379,28 @@ impl Database {
         .bind(rows.iter().map(|r| r.2.cost_usd).collect::<Vec<_>>())
         .execute(&mut *tx)
         .await?;
-        let cell_minutes: Vec<(&DateTime<Utc>, &CellCounters)> = minutes
+        let shard_minutes: Vec<(&DateTime<Utc>, &ShardCounters)> = minutes
             .iter()
             .filter(|(_, c)| c.turns_completed + c.turns_failed + c.turns_cancelled > 0)
             .collect();
-        if !cell_minutes.is_empty() {
+        if !shard_minutes.is_empty() {
             sqlx::query(
-                r#"INSERT INTO monitoring_cell_minutes AS c (cell, minute, data_plane, turns_completed,
+                r#"INSERT INTO monitoring_shard_minutes AS c (shard, minute, data_plane, turns_completed,
                     turns_failed, turns_cancelled)
                 SELECT $1, u.minute, $2, u.completed, u.failed, u.cancelled
                 FROM UNNEST($3::timestamptz[], $4::integer[], $5::integer[], $6::integer[])
                     AS u(minute, completed, failed, cancelled)
-                ON CONFLICT (cell, minute) DO UPDATE SET
+                ON CONFLICT (shard, minute) DO UPDATE SET
                     turns_completed = c.turns_completed + EXCLUDED.turns_completed,
                     turns_failed = c.turns_failed + EXCLUDED.turns_failed,
                     turns_cancelled = c.turns_cancelled + EXCLUDED.turns_cancelled"#,
             )
-            .bind(cell)
+            .bind(shard)
             .bind(data_plane)
-            .bind(cell_minutes.iter().map(|m| *m.0).collect::<Vec<_>>())
-            .bind(cell_minutes.iter().map(|m| m.1.turns_completed).collect::<Vec<_>>())
-            .bind(cell_minutes.iter().map(|m| m.1.turns_failed).collect::<Vec<_>>())
-            .bind(cell_minutes.iter().map(|m| m.1.turns_cancelled).collect::<Vec<_>>())
+            .bind(shard_minutes.iter().map(|m| *m.0).collect::<Vec<_>>())
+            .bind(shard_minutes.iter().map(|m| m.1.turns_completed).collect::<Vec<_>>())
+            .bind(shard_minutes.iter().map(|m| m.1.turns_failed).collect::<Vec<_>>())
+            .bind(shard_minutes.iter().map(|m| m.1.turns_cancelled).collect::<Vec<_>>())
             .execute(&mut *tx)
             .await?;
         }
@@ -470,18 +470,18 @@ impl Database {
         .unwrap_or((None, None)))
     }
 
-    /// Cells, their nodes and the fullest node, per bucket (platform).
-    pub async fn timeline_cells_buckets(
+    /// Shards, their nodes and the fullest node, per bucket (platform).
+    pub async fn timeline_shards_buckets(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
         bucket_secs: i64,
-    ) -> Result<Vec<TimelineCellsRow>> {
+    ) -> Result<Vec<TimelineShardsRow>> {
         let sql = concat!(
             r#"WITH c AS ("#,
-            cell_minutes!(),
+            shard_minutes!(),
             r#"), per_minute AS (
-                SELECT minute, COUNT(*) AS cells, SUM(nodes)::bigint AS nodes,
+                SELECT minute, COUNT(*) AS shards, SUM(nodes)::bigint AS nodes,
                     SUM(nodes_answering)::bigint AS nodes_answering,
                     MAX(rss_peak_bytes::float8 / NULLIF(memory_limit_bytes, 0)) AS memory_peak,
                     MAX(cpu_peak_cores::float8 / NULLIF(cpu_limit_cores, 0)) AS cpu_peak,
@@ -491,7 +491,7 @@ impl Database {
                 FROM c WHERE minute >= $1 GROUP BY minute
             )
             SELECT to_timestamp(floor(extract(epoch FROM minute) / $3) * $3) AS bucket,
-                MAX(cells)::bigint AS cells, MAX(nodes)::bigint AS nodes,
+                MAX(shards)::bigint AS shards, MAX(nodes)::bigint AS nodes,
                 MIN(nodes_answering)::bigint AS nodes_answering,
                 MAX(memory_peak) AS memory_peak, MAX(cpu_peak) AS cpu_peak,
                 MAX(admit_p99_ms) AS admit_p99_ms, MAX(ship_lag_p99_ms) AS ship_lag_p99_ms,
@@ -508,27 +508,27 @@ impl Database {
             .await?)
     }
 
-    /// Every cell's history over the range, per bucket.
-    pub async fn timeline_cell_buckets(
+    /// Every shard's history over the range, per bucket.
+    pub async fn timeline_shard_buckets(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
         bucket_secs: i64,
-    ) -> Result<Vec<TimelineCellBucketRow>> {
+    ) -> Result<Vec<TimelineShardBucketRow>> {
         let sql = concat!(
             r#"WITH r AS ("#,
-            cell_minutes!(),
+            shard_minutes!(),
             r#"), t AS (
-                SELECT cell, minute, turns_completed, turns_failed, turns_cancelled
-                FROM monitoring_cell_minutes WHERE minute >= $1 AND minute < $2
+                SELECT shard, minute, turns_completed, turns_failed, turns_cancelled
+                FROM monitoring_shard_minutes WHERE minute >= $1 AND minute < $2
             ), j AS (
-                SELECT t.cell, t.minute, t.turns_completed, t.turns_failed, t.turns_cancelled,
+                SELECT t.shard, t.minute, t.turns_completed, t.turns_failed, t.turns_cancelled,
                     r.nodes, r.nodes_answering, r.sessions, r.running, r.queued, r.rss_peak_bytes,
                     r.memory_limit_bytes, r.cpu_peak_cores, r.cpu_limit_cores, r.admit_p99_ms,
-                    r.ship_lag_p99_ms, r.elections, r.moves, r.cell IS NOT NULL AS reported
-                FROM t LEFT JOIN r ON r.cell = t.cell AND r.minute = t.minute
+                    r.ship_lag_p99_ms, r.elections, r.moves, r.shard IS NOT NULL AS reported
+                FROM t LEFT JOIN r ON r.shard = t.shard AND r.minute = t.minute
             )
-            SELECT cell, to_timestamp(floor(extract(epoch FROM minute) / $3) * $3) AS bucket,
+            SELECT shard, to_timestamp(floor(extract(epoch FROM minute) / $3) * $3) AS bucket,
                 COUNT(*) FILTER (WHERE reported) AS reports,
                 MAX(nodes) AS nodes, MIN(nodes_answering) AS nodes_answering,
                 MAX(sessions) AS sessions_peak, MAX(running) AS running_peak,
@@ -564,30 +564,30 @@ impl Database {
         .await?)
     }
 
-    /// Each cell's newest report from the last week.
-    pub async fn monitoring_cells_latest(&self) -> Result<Vec<CellLatestRow>> {
+    /// Each shard's newest report from the last week.
+    pub async fn monitoring_shards_latest(&self) -> Result<Vec<ShardLatestRow>> {
         Ok(sqlx::query_as(
-            r#"SELECT DISTINCT ON (cell) cell, data_plane, minute, leader, nodes, nodes_answering,
+            r#"SELECT DISTINCT ON (shard) shard, data_plane, minute, leader, nodes, nodes_answering,
                 sessions, running, queued, resumed, rss_peak_bytes, memory_limit_bytes,
                 cpu_peak_cores, cpu_limit_cores, admit_p99_ms, ship_lag_p99_ms, raft_term
-            FROM monitoring_cell_minutes WHERE reported AND minute > now() - interval '7 days'
-            ORDER BY cell, minute DESC"#,
+            FROM monitoring_shard_minutes WHERE reported AND minute > now() - interval '7 days'
+            ORDER BY shard, minute DESC"#,
         )
         .fetch_all(&self.pool)
         .await?)
     }
 
-    /// Leader changes of cells inside the range, as timeline markers.
-    pub async fn timeline_cell_markers(
+    /// Leader changes of shards inside the range, as timeline markers.
+    pub async fn timeline_shard_markers(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> Result<Vec<super::TimelineMarkerRow>> {
         let sql = concat!(
             r#"WITH c AS ("#,
-            cell_minutes!(),
+            shard_minutes!(),
             r#")
-            SELECT minute AS at, 'leader_change' AS kind, cell AS label FROM c
+            SELECT minute AS at, 'leader_change' AS kind, shard AS label FROM c
             WHERE minute >= $1 AND elections > 0 ORDER BY minute LIMIT 200"#
         );
         Ok(sqlx::query_as(sql)

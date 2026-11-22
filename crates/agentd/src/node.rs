@@ -1,5 +1,5 @@
-//! One node of a cell: a Raft replica, an Everruns Engine executor, and
-//! (while it leads) the cell's dispatcher.
+//! One node of a shard: a Raft replica, an Everruns Engine executor, and
+//! (while it leads) the shard's dispatcher.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ use crate::host::Host;
 use crate::metrics::Metrics;
 use crate::network::Network;
 use crate::sm::{Shared, StateMachine};
-use crate::state::{CellId, Change, Command, Placed, Response};
+use crate::state::{Change, Command, Placed, Response, ShardId};
 use crate::types::{NodeId, Raft};
 use crate::wal::Wal;
 
@@ -30,9 +30,9 @@ const PREPARED_GRACE: Duration = Duration::from_secs(2);
 /// How a node is started.
 #[derive(Debug, Clone)]
 pub struct NodeConfig {
-    pub cell: CellId,
+    pub shard: ShardId,
     pub node_id: NodeId,
-    /// Every member of the cell, this node included: id -> `host:port`.
+    /// Every member of the shard, this node included: id -> `host:port`.
     pub members: BTreeMap<NodeId, String>,
     pub data_dir: PathBuf,
     /// Session history segments and snapshot copies.
@@ -43,7 +43,7 @@ pub struct NodeConfig {
     /// container's limit, see `pressure::limit_bytes`).
     pub memory_limit: u64,
     /// Serve Raft on this node's port plus this, on Raft's own threads (0:
-    /// on the node's listener and threads). Every member of a cell must use
+    /// on the node's listener and threads). Every member of a shard must use
     /// the same offset. See `network::Isolation`.
     pub raft_port_offset: u16,
     /// Also unload sessions idle this long (`None`: only under pressure).
@@ -53,29 +53,29 @@ pub struct NodeConfig {
     /// Turns one node runs at once. A session whose turn would exceed it
     /// waits, queued, until a slot frees.
     pub max_turns_per_node: usize,
-    /// Turns the cell runs at once while it is short of memory (Full or
+    /// Turns the shard runs at once while it is short of memory (Full or
     /// worse, see `pressure.rs`); queued work waits until memory frees.
     pub pressure_turns: usize,
     /// Entries between snapshots.
     pub snapshot_every: u64,
     /// Entries kept behind each snapshot. A follower further behind than
-    /// this catches up by snapshot (a copy of the whole cell).
+    /// this catches up by snapshot (a copy of the whole shard).
     pub keep_log: u64,
-    /// Who runs the cell's turns.
+    /// Who runs the shard's turns.
     pub executors: ExecutorMode,
-    /// The control plane this cell reports to and asks for allowances
-    /// (`None`: grants come through the cell API).
+    /// The control plane this shard reports to and asks for allowances
+    /// (`None`: grants come through the shard API).
     pub control_plane: Option<crate::node_control::ControlPlane>,
 }
 
-/// Who runs a cell's turns.
+/// Who runs a shard's turns.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ExecutorMode {
-    /// Each node runs turns itself (cells alone, plan step 5).
+    /// Each node runs turns itself (shards alone, plan step 5).
     #[default]
     InNode,
-    /// Executors outside the cell pull turns with credits (step 6); at most
-    /// `max_running` turns run in the cell at once (the per-cell cap).
+    /// Executors outside the shard pull turns with credits (step 6); at most
+    /// `max_running` turns run in the shard at once (the per-shard cap).
     Pull { max_running: usize },
 }
 
@@ -101,7 +101,7 @@ fn turn_runtime() -> &'static tokio::runtime::Handle {
     RUNTIME
         .get_or_init(|| {
             tokio::runtime::Builder::new_multi_thread()
-                .thread_name("cell-turn")
+                .thread_name("shard-turn")
                 .enable_all()
                 .build()
                 .expect("turn runtime")
@@ -111,11 +111,11 @@ fn turn_runtime() -> &'static tokio::runtime::Handle {
 
 /// The Everruns Engine a node or an executor runs sessions with.
 ///
-/// Decision: the Engine builds agents from definitions the cell keeps, not a
+/// Decision: the Engine builds agents from definitions the shard keeps, not a
 /// fixed registry: a build is (definition key, definition format), and a
-/// definition is whatever a client sent. The cell replicates the definition
+/// definition is whatever a client sent. The shard replicates the definition
 /// with the session, so any node or executor, of any deploy, can rebuild it
-/// (see `hosting::BUILD_ID`). Sessions' workspaces live in the cell
+/// (see `hosting::BUILD_ID`). Sessions' workspaces live in the shard
 /// (`hosting::files`).
 pub fn engine(
     hosting: crate::hosting::RaftHosting,
@@ -164,25 +164,25 @@ pub struct Node {
     /// Sessions the dispatcher asked an executor to activate, and when;
     /// cleared once the session's claim shows.
     dispatched: Mutex<HashMap<SessionId, Instant>>,
-    /// Engine's session authority, backed by this cell.
+    /// Engine's session authority, backed by this shard.
     pub hosting: crate::hosting::RaftHosting,
     /// The Everruns Engine this node runs sessions with.
     pub engine: everruns::Engine,
     /// Running turns per executor, recounted at most every 100 ms.
     load: Mutex<Option<(Instant, BTreeMap<NodeId, usize>)>>,
     batcher: crate::batch::Batcher,
-    /// Reaches other cells, for finishing moves.
+    /// Reaches other shards, for finishing moves.
     pub gateway: std::sync::OnceLock<Arc<crate::gateway::Gateway>>,
     /// Sessions whose move this leader is finishing.
     moving: Mutex<HashSet<SessionId>>,
     /// Ships the committed log to the object store while this node leads.
     pub(crate) shipper: crate::ship::Shipper,
-    /// The cell's members (voters and learners) as Raft last committed
+    /// The shard's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
-    /// Credits from executors outside the cell (`ExecutorMode::Pull`).
+    /// Credits from executors outside the shard (`ExecutorMode::Pull`).
     pub dispatch: crate::dispatch::Dispatch,
-    /// How close the cell's nodes are to their memory limits.
+    /// How close the shard's nodes are to their memory limits.
     pub pressure: crate::pressure::Pressure,
     /// Whether this follower is far behind its leader (`catchup.rs`).
     pub catchup: Arc<crate::catchup::CatchUp>,
@@ -196,23 +196,23 @@ pub struct Node {
 impl Node {
     /// Open storage, start Raft and the background loops.
     pub async fn start(cfg: NodeConfig, host: Arc<dyn Host>) -> anyhow::Result<Arc<Self>> {
-        let shared = Shared::new(cfg.store.clone(), cfg.cell);
+        let shared = Shared::new(cfg.store.clone(), cfg.shard);
         let wal = Wal::open(cfg.data_dir.join("wal"))?;
         let (shared_store, ship_wal) = (cfg.store.clone(), wal.clone());
         let sm = StateMachine::open(cfg.data_dir.join("snapshots"), shared.clone())?;
         let config = Config {
-            cluster_name: format!("cell-{}", cfg.cell),
+            cluster_name: format!("shard-{}", cfg.shard),
             // Decision: elections wait 1.5 to 3 s. At 0.4 to 0.8 s a
             // follower on a loaded host, catching up by snapshot, timed out
             // between chunks, called an election and cancelled its own
             // catch-up, over and over (75k-session run). Failover takes a
-            // second or two longer; a cell that can't heal costs far more.
+            // second or two longer; a shard that can't heal costs far more.
             //
             // Decision: heartbeats every 300 ms, not 150. openraft gives
             // every append one heartbeat interval, and an append that misses
             // it is retried from the same entry: at 150 ms, followers on a
             // host running flat out missed it again and again and their
-            // cells stopped committing (EKS run 43774871232). New entries do
+            // shards stopped committing (EKS run 43774871232). New entries do
             // not wait for a heartbeat, so this costs no commit latency.
             heartbeat_interval: 300,
             election_timeout_min: 1_500,
@@ -227,7 +227,7 @@ impl Node {
             // Decision: keep 256 entries by default, not 2048. The kept
             // entries stay parsed in memory, about four times their encoded
             // size, and at full load entries average about 60 KB: 2048 of
-            // them held about 500 MB per node. At 37 000 sessions per cell
+            // them held about 500 MB per node. At 37 000 sessions per shard
             // that tail took nodes from about 1.2 GB to 1.8 GB idle and
             // from 1.6 GB to 2.6 GB at peak, for the same throughput, and
             // it is what pushed six nodes past one machine's memory in the
@@ -285,7 +285,7 @@ impl Node {
                 load: Mutex::default(),
                 gateway: std::sync::OnceLock::new(),
                 moving: Mutex::default(),
-                shipper: crate::ship::Shipper::new(shared_store, cfg.cell, ship_wal),
+                shipper: crate::ship::Shipper::new(shared_store, cfg.shard, ship_wal),
                 members: parking_lot::RwLock::new(cfg.members.clone()),
                 dispatch: Default::default(),
                 control: Default::default(),
@@ -315,7 +315,7 @@ impl Node {
         Ok(node)
     }
 
-    /// Form the cell if it has never been initialized. Every member calls
+    /// Form the shard if it has never been initialized. Every member calls
     /// this with the same membership, which Raft allows.
     pub async fn bootstrap(&self) -> anyhow::Result<()> {
         if self.raft.is_initialized().await? {
@@ -348,16 +348,16 @@ impl Node {
         tokio::spawn(self.clone().restore_points_loop());
     }
 
-    /// On the directory cell's leader: move work from the busiest cell to
+    /// On the directory shard's leader: move work from the busiest shard to
     /// the least busy one, a few sessions at a time.
     ///
     /// Decision: placement alone cannot balance. A session placed today may
-    /// run a turn for days, and a cell added later starts empty while the
+    /// run a turn for days, and a shard added later starts empty while the
     /// old ones keep every long turn they hold. So running turns move too:
-    /// the source cell parks a turn at its next step boundary and the
+    /// the source shard parks a turn at its next step boundary and the
     /// target resumes it from the log (see `maybe_move`). Moves are bounded
     /// per round and by the source's moves in flight, and need a clear gap
-    /// (4 turns, and a fifth of the busiest cell's work),
+    /// (4 turns, and a fifth of the busiest shard's work),
     /// so the fleet does not churn sessions back and forth.
     async fn rebalance_loop(self: Arc<Self>) {
         let mut tick = tokio::time::interval(Duration::from_secs(5));
@@ -366,37 +366,37 @@ impl Node {
             let Some(gateway) = self.gateway.get() else {
                 continue;
             };
-            if !self.is_leader() || gateway.directory_cell().ok() != Some(self.cfg.cell) {
+            if !self.is_leader() || gateway.directory_shard().ok() != Some(self.cfg.shard) {
                 continue;
             }
             let all = gateway.loads();
             let draining = gateway.draining();
-            // Turn slots the cell's work costs, rounded up (see `CellLoad::work`).
-            let work = |l: &crate::api::CellLoad| l.work().ceil() as u64;
-            // Cells that take sessions; draining ones only give.
-            let loads: BTreeMap<CellId, crate::api::CellLoad> = all
+            // Turn slots the shard's work costs, rounded up (see `ShardLoad::work`).
+            let work = |l: &crate::api::ShardLoad| l.work().ceil() as u64;
+            // Shards that take sessions; draining ones only give.
+            let loads: BTreeMap<ShardId, crate::api::ShardLoad> = all
                 .iter()
-                .filter(|(cell, _)| !draining.contains(cell))
-                .map(|(cell, load)| (*cell, *load))
+                .filter(|(shard, _)| !draining.contains(shard))
+                .map(|(shard, load)| (*shard, *load))
                 .collect();
-            let mut plan: Vec<(&str, CellId, CellId, u64)> = Vec::new();
-            // Draining cells empty out first, busy and idle sessions alike,
-            // spread over the cells that take sessions, least loaded first.
-            let mut targets: Vec<(CellId, f64)> = loads
+            let mut plan: Vec<(&str, ShardId, ShardId, u64)> = Vec::new();
+            // Draining shards empty out first, busy and idle sessions alike,
+            // spread over the shards that take sessions, least loaded first.
+            let mut targets: Vec<(ShardId, f64)> = loads
                 .iter()
                 .filter(|(_, l)| !l.closed)
                 .map(|(c, l)| (*c, l.score()))
                 .collect();
             targets.sort_by(|a, b| a.1.total_cmp(&b.1));
-            // A cell short of memory (`pressure.rs`) moves idle sessions to
-            // the least loaded cell that is not.
+            // A shard short of memory (`pressure.rs`) moves idle sessions to
+            // the least loaded shard that is not.
             if let Some((cold, _)) = targets.first() {
-                for (&cell, load) in loads.iter().filter(|(_, l)| l.closed && l.sessions > 0) {
-                    plan.push(("idle", cell, *cold, 32u64.saturating_sub(load.moving)));
+                for (&shard, load) in loads.iter().filter(|(_, l)| l.closed && l.sessions > 0) {
+                    plan.push(("idle", shard, *cold, 32u64.saturating_sub(load.moving)));
                 }
             }
             if !targets.is_empty() {
-                for (&cell, load) in all
+                for (&shard, load) in all
                     .iter()
                     .filter(|(c, l)| draining.contains(c) && l.sessions > 0)
                 {
@@ -408,8 +408,8 @@ impl Node {
                     let k = targets.len() as u64;
                     for (i, (target, _)) in targets.iter().enumerate() {
                         let share = |n: u64| n / k + u64::from((i as u64) < n % k);
-                        plan.push(("drain", cell, *target, share(busy)));
-                        plan.push(("drain-idle", cell, *target, share(idle)));
+                        plan.push(("drain", shard, *target, share(busy)));
+                        plan.push(("drain-idle", shard, *target, share(idle)));
                     }
                 }
             }
@@ -418,13 +418,13 @@ impl Node {
             if let (true, Some((&hot, hot_load)), Some((&cold, cold_load))) =
                 (loads.len() >= 2 && plan.is_empty(), hottest, coldest)
             {
-                // A session still moving out counts as the cold cell's
+                // A session still moving out counts as the cold shard's
                 // already, or every round would move the same gap again.
                 let gap = work(hot_load)
                     .saturating_sub(work(cold_load))
                     .saturating_sub(2 * hot_load.moving);
                 if hot != cold && gap >= 4.max(work(hot_load) / 5) {
-                    // Moves in flight out of one cell: 8, or a quarter of
+                    // Moves in flight out of one shard: 8, or a quarter of
                     // its work when that is more (each waits up to a step
                     // to park).
                     let cap = 8.max(work(hot_load) / 4);
@@ -453,74 +453,74 @@ impl Node {
                     self.start_moves(gateway, kind, from, to, n).await;
                 }
             }
-            let takers: Vec<CellId> = loads.keys().copied().collect();
-            self.rebalance_shards(gateway, &takers, &draining).await;
+            let takers: Vec<ShardId> = loads.keys().copied().collect();
+            self.rebalance_slots(gateway, &takers, &draining).await;
         }
     }
 
-    /// Directory leader: spread the directory's shards evenly over the
-    /// cells that take sessions, and empty draining cells of theirs. A few
-    /// shards per round; each hand-over seals the shard in its old cell,
+    /// Directory leader: spread the directory's slots evenly over the
+    /// shards that take sessions, and empty draining shards of theirs. A few
+    /// slots per round; each hand-over seals the slot in its old shard,
     /// copies its entries to the new one, then reassigns it here.
-    async fn rebalance_shards(
+    async fn rebalance_slots(
         &self,
         gateway: &crate::gateway::Gateway,
-        takers: &[CellId],
-        draining: &std::collections::BTreeSet<CellId>,
+        takers: &[ShardId],
+        draining: &std::collections::BTreeSet<ShardId>,
     ) {
         if takers.is_empty() {
             return;
         }
-        let directory = self.cfg.cell;
-        let assigned = self.shared.state.read().shards.clone();
-        let owner = |shard: u16| assigned.get(&shard).copied().unwrap_or(directory);
-        let mut held: BTreeMap<CellId, Vec<u16>> = takers.iter().map(|c| (*c, vec![])).collect();
+        let directory = self.cfg.shard;
+        let assigned = self.shared.state.read().slots.clone();
+        let owner = |slot: u16| assigned.get(&slot).copied().unwrap_or(directory);
+        let mut held: BTreeMap<ShardId, Vec<u16>> = takers.iter().map(|c| (*c, vec![])).collect();
         let mut leaving = Vec::new();
-        for shard in 0..crate::state::SHARDS {
-            let cell = owner(shard);
-            match held.get_mut(&cell) {
-                Some(shards) if !draining.contains(&cell) => shards.push(shard),
-                _ => leaving.push(shard),
+        for slot in 0..crate::state::SLOTS {
+            let shard = owner(slot);
+            match held.get_mut(&shard) {
+                Some(slots) if !draining.contains(&shard) => slots.push(slot),
+                _ => leaving.push(slot),
             }
         }
         let mut moves = Vec::new();
         for _ in 0..32 {
             // `takers` is not empty, so `held` never is.
-            let Some((&small, small_shards)) = held.iter().min_by_key(|(_, s)| s.len()) else {
+            let Some((&small, small_slots)) = held.iter().min_by_key(|(_, s)| s.len()) else {
                 break;
             };
-            let small_len = small_shards.len();
-            let shard = match leaving.pop() {
-                Some(shard) => shard,
+            let small_len = small_slots.len();
+            let slot = match leaving.pop() {
+                Some(slot) => slot,
                 None => {
-                    let Some((&big, shards)) = held.iter().max_by_key(|(_, s)| s.len()) else {
+                    let Some((&big, slots)) = held.iter().max_by_key(|(_, s)| s.len()) else {
                         break;
                     };
-                    if shards.len() <= small_len + 1 {
+                    if slots.len() <= small_len + 1 {
                         break;
                     }
-                    let Some(shard) = held.get_mut(&big).and_then(Vec::pop) else {
+                    let Some(slot) = held.get_mut(&big).and_then(Vec::pop) else {
                         break;
                     };
-                    shard
+                    slot
                 }
             };
-            if let Some(shards) = held.get_mut(&small) {
-                shards.push(shard);
+            if let Some(slots) = held.get_mut(&small) {
+                slots.push(slot);
             }
-            moves.push((shard, owner(shard), small));
+            moves.push((slot, owner(slot), small));
         }
-        for (shard, from, to) in moves {
-            let path = format!("/cell/shards/{shard}/handoff?to={to}");
+        for (slot, from, to) in moves {
+            let path = format!("/shard/slots/{slot}/handoff?to={to}");
             let copied: Result<usize, _> = gateway
                 .call(from, &path, Some(&serde_json::json!({})))
                 .await;
             if let Err((_, error)) = copied {
-                tracing::debug!(shard, from, to, %error, "shard hand-over failed");
+                tracing::debug!(slot, from, to, %error, "slot hand-over failed");
                 return;
             }
-            if let Err(error) = self.propose(Command::AssignShard { shard, to }).await {
-                tracing::debug!(shard, %error, "shard assignment failed");
+            if let Err(error) = self.propose(Command::AssignSlot { slot, to }).await {
+                tracing::debug!(slot, %error, "slot assignment failed");
                 return;
             }
             // Gateways learn the new owner within a registry refresh; until
@@ -529,10 +529,10 @@ impl Node {
             if let Some(gw) = self.gateway.get().cloned() {
                 tokio::spawn(async move {
                     tokio::time::sleep(Duration::from_secs(10)).await;
-                    let _ = gw.propose(from, &Command::DropShard { shard }).await;
+                    let _ = gw.propose(from, &Command::DropSlot { slot }).await;
                 });
             }
-            tracing::info!(shard, from, to, "directory shard moved");
+            tracing::info!(slot, from, to, "directory slot moved");
         }
         gateway.refresh_registry().await;
     }
@@ -543,8 +543,8 @@ impl Node {
         &self,
         gateway: &crate::gateway::Gateway,
         kind: &str,
-        from: CellId,
-        to: CellId,
+        from: ShardId,
+        to: ShardId,
         n: u64,
     ) {
         let which = if kind.ends_with("idle") {
@@ -576,9 +576,9 @@ impl Node {
         }
     }
 
-    /// While this node leads, keep the cell's entry in the directory's cell
-    /// registry equal to its Raft membership: that is how a new cell joins
-    /// the fleet and how gateways learn a cell's nodes changed.
+    /// While this node leads, keep the shard's entry in the directory's shard
+    /// registry equal to its Raft membership: that is how a new shard joins
+    /// the fleet and how gateways learn a shard's nodes changed.
     async fn register_loop(self: Arc<Self>) {
         let mut registered: Option<BTreeMap<NodeId, String>> = None;
         let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -595,19 +595,19 @@ impl Node {
             if registered.as_ref() == Some(&members) {
                 continue;
             }
-            let Ok(directory) = gateway.directory_cell() else {
+            let Ok(directory) = gateway.directory_shard() else {
                 continue;
             };
-            let command = Command::RegisterCell {
-                cell: self.cfg.cell,
+            let command = Command::RegisterShard {
+                shard: self.cfg.shard,
                 members: members.clone().into_iter().collect(),
             };
             match gateway.propose(directory, &command).await {
                 Ok(_) => {
-                    tracing::info!(cell = self.cfg.cell, ?members, "cell registered");
+                    tracing::info!(shard = self.cfg.shard, ?members, "shard registered");
                     registered = Some(members);
                 }
-                Err((_, error)) => tracing::debug!(%error, "cell registration failed"),
+                Err((_, error)) => tracing::debug!(%error, "shard registration failed"),
             }
         }
     }
@@ -620,7 +620,7 @@ impl Node {
     /// they are, so replicas may differ in what they hold resident and still
     /// apply every command identically. Writing segments is not: the leader
     /// writes them and records each with `Stored`, so a replica drops only
-    /// events the cell's one copy in the store already holds.
+    /// events the shard's one copy in the store already holds.
     async fn unload_loop(self: Arc<Self>) {
         let mut tick = tokio::time::interval(Duration::from_millis(500));
         let mut last_snapshot = Instant::now();
@@ -639,12 +639,12 @@ impl Node {
             // Only the entries after the last snapshot count. The purge
             // keeps `keep_log` entries behind it for lagging followers, and
             // with large entries those alone passed the quarter: the node
-            // then snapshotted the whole cell every few seconds while idle
+            // then snapshotted the whole shard every few seconds while idle
             // (13 times in 3 minutes at 37 000 sessions, two at the same
             // index), which is what filled memory and disk in the
             // 75 000-session run.
             //
-            // A snapshot copies the whole cell state, so with many sessions
+            // A snapshot copies the whole shard state, so with many sessions
             // it is not cheap: wait at least ten times as long as the last
             // one took, or snapshots alone would eat the node.
             let cost = Duration::from_millis(
@@ -751,7 +751,7 @@ impl Node {
         });
     }
 
-    /// Decision: the cell's membership lives in Raft, not in the topology
+    /// Decision: the shard's membership lives in Raft, not in the topology
     /// file. The file seeds the first membership; nodes join and leave with
     /// membership changes (`add_member`, `remove_member`), and every replica
     /// learns the result from the log.
@@ -775,7 +775,7 @@ impl Node {
         }
     }
 
-    /// Add `id` at `addr` to this cell: catch it up as a learner, then make
+    /// Add `id` at `addr` to this shard: catch it up as a learner, then make
     /// it a voter. Run on the leader.
     pub async fn add_member(&self, id: NodeId, addr: String) -> anyhow::Result<()> {
         self.raft
@@ -799,7 +799,7 @@ impl Node {
         Ok(())
     }
 
-    /// Remove `id` from this cell. Its turns move once it stops answering.
+    /// Remove `id` from this shard. Its turns move once it stops answering.
     /// Run on the leader.
     pub async fn remove_member(&self, id: NodeId) -> anyhow::Result<()> {
         let voters: BTreeSet<NodeId> = self
@@ -812,7 +812,7 @@ impl Node {
             .filter(|v| *v != id)
             .collect();
         if voters.is_empty() {
-            anyhow::bail!("a cell keeps at least one voter");
+            anyhow::bail!("a shard keeps at least one voter");
         }
         self.raft
             .change_membership(voters, false)
@@ -826,7 +826,7 @@ impl Node {
         self.raft.metrics().borrow().current_leader
     }
 
-    /// The address of this cell's leader, as this node knows it.
+    /// The address of this shard's leader, as this node knows it.
     pub fn leader_addr(&self) -> Option<String> {
         self.leader().and_then(|id| self.member_addr(id))
     }
@@ -843,7 +843,7 @@ impl Node {
     /// reason (message ids, event ids, claims).
     pub async fn propose(&self, command: Command) -> anyhow::Result<(Response, u64)> {
         let started = Instant::now();
-        if std::env::var_os("CELL_PROF").is_some() {
+        if std::env::var_os("AGENTD_PROF").is_some() {
             static KINDS: std::sync::LazyLock<parking_lot::Mutex<(Instant, HashMap<String, u64>)>> =
                 std::sync::LazyLock::new(|| {
                     parking_lot::Mutex::new((Instant::now(), HashMap::new()))
@@ -885,7 +885,7 @@ impl Node {
                 k.0 = Instant::now();
                 let mut v: Vec<_> = k.1.drain().collect();
                 v.sort_by_key(|v| std::cmp::Reverse(v.1));
-                tracing::info!(target: "everruns_cell::prof", ?v, "proposals");
+                tracing::info!(target: "everruns_agentd::prof", ?v, "proposals");
             }
         }
         let deadline = started + Duration::from_secs(15);
@@ -911,7 +911,7 @@ impl Node {
                         crate::prof::add("forward", t, 1);
                         r
                     }
-                    None => Err(anyhow::anyhow!("no leader for cell {}", self.cfg.cell)),
+                    None => Err(anyhow::anyhow!("no leader for shard {}", self.cfg.shard)),
                 }
             };
             match attempt {
@@ -931,7 +931,7 @@ impl Node {
     async fn forward(&self, addr: &str, command: &Command) -> anyhow::Result<(Response, u64)> {
         let reply: Proposed = self
             .http
-            .post(format!("http://{addr}/cell/propose"))
+            .post(format!("http://{addr}/shard/propose"))
             .json(command)
             .timeout(Duration::from_secs(10))
             .send()
@@ -969,7 +969,7 @@ impl Node {
                 match activated {
                     Ok(()) => {
                         // Handed back for a move (the session is frozen or
-                        // already gone): the turn continues in its new cell.
+                        // already gone): the turn continues in its new shard.
                         let _ = node.hosting.caught_up(session).await;
                         let moved =
                             node.shared
@@ -1051,13 +1051,13 @@ impl Node {
     }
 
     /// Finish the move of a frozen session whose epoch is gone: install it
-    /// in the target cell, repoint the directory, forward from here. Every
+    /// in the target shard, repoint the directory, forward from here. Every
     /// step is idempotent, so a new leader simply runs the move again.
     ///
     /// Decision: a running turn does not hold a move up until it ends (a
     /// turn may run for days). Freezing raises the epoch's hand-off flag;
     /// Engine's driver hands the epoch back at its next step boundary
-    /// (`SessionActorStore::hand_off_actor`) and the target cell resumes the
+    /// (`SessionActorStore::hand_off_actor`) and the target shard resumes the
     /// open turn from the journal. An epoch whose holder stopped answering
     /// expires, and the move goes ahead without it.
     fn maybe_move(self: &Arc<Self>, session: SessionId) {
@@ -1103,16 +1103,16 @@ impl Node {
     /// target activates its copy, and the source forwards. A target that
     /// refuses the copy abandons the move: the directory takes the session
     /// back here at `g + 2`, above anything the move may have installed.
-    async fn finish_move(&self, session: SessionId, to: CellId) -> anyhow::Result<()> {
-        if to == self.cfg.cell {
-            self.propose(crate::moves::unfreeze(self.cfg.cell, session))
+    async fn finish_move(&self, session: SessionId, to: ShardId) -> anyhow::Result<()> {
+        if to == self.cfg.shard {
+            self.propose(crate::moves::unfreeze(self.cfg.shard, session))
                 .await?;
             return Ok(());
         }
         let gateway = self
             .gateway
             .get()
-            .ok_or_else(|| anyhow::anyhow!("no gateway to reach cell {to}"))?;
+            .ok_or_else(|| anyhow::anyhow!("no gateway to reach shard {to}"))?;
         // End the epoch through the log first, so nothing writes to the
         // leaving copy after it is taken (see `Command::Revoke`).
         match self
@@ -1148,10 +1148,10 @@ impl Node {
         if let Response::Rejected { reason } = &imported {
             tracing::warn!(%session, to, %reason, "target refused the session; abandoning the move");
         }
-        let proposed = crate::moves::after_import(self.cfg.cell, to, leaving, &imported)
+        let proposed = crate::moves::after_import(self.cfg.shard, to, leaving, &imported)
             .map_err(anyhow::Error::msg)?;
         let placed = gateway
-            .place_entry(session, proposed.cell, proposed.generation, leaving)
+            .place_entry(session, proposed.shard, proposed.generation, leaving)
             .await
             .map_err(|(status, error)| anyhow::anyhow!("place: {status} {error}"))?;
         let current =
@@ -1160,35 +1160,35 @@ impl Node {
     }
 
     /// Finish the move the directory committed: `current` is the entry
-    /// above `leaving`, this cell's departing copy.
+    /// above `leaving`, this shard's departing copy.
     async fn settle_move(
         &self,
         session: SessionId,
         leaving: u64,
         current: Placed,
     ) -> anyhow::Result<()> {
-        for (cell, command) in crate::moves::settle(self.cfg.cell, session, leaving, current) {
-            let response = if cell == self.cfg.cell {
+        for (shard, command) in crate::moves::settle(self.cfg.shard, session, leaving, current) {
+            let response = if shard == self.cfg.shard {
                 self.propose(command).await?.0
             } else {
                 let gateway = self
                     .gateway
                     .get()
-                    .ok_or_else(|| anyhow::anyhow!("no gateway to reach cell {cell}"))?;
+                    .ok_or_else(|| anyhow::anyhow!("no gateway to reach shard {shard}"))?;
                 gateway
-                    .propose(cell, &command)
+                    .propose(shard, &command)
                     .await
                     .map_err(|(status, error)| anyhow::anyhow!("{status} {error}"))?
             };
             if !crate::moves::step_done(&response) {
-                anyhow::bail!("move step refused by cell {cell}: {response:?}");
+                anyhow::bail!("move step refused by shard {shard}: {response:?}");
             }
         }
-        if current.cell == self.cfg.cell {
+        if current.shard == self.cfg.shard {
             tracing::info!(%session, "move abandoned; session stays");
             return Ok(());
         }
-        tracing::info!(%session, to = current.cell, "session moved");
+        tracing::info!(%session, to = current.shard, "session moved");
         Ok(())
     }
 
@@ -1228,7 +1228,7 @@ impl Node {
             .await
             .map_err(|(status, error)| anyhow::anyhow!("locate: {status} {error}"))?;
         let Some(command) =
-            crate::moves::settle_prepared(self.cfg.cell, session, generation, current)
+            crate::moves::settle_prepared(self.cfg.shard, session, generation, current)
         else {
             return Ok(());
         };
@@ -1281,8 +1281,8 @@ impl Node {
                 return;
             }
             if let ExecutorMode::Pull { max_running } = self.cfg.executors {
-                // Decision: the per-cell cap counts every unexpired epoch,
-                // so one hot cell can't take the whole executor pool.
+                // Decision: the per-shard cap counts every unexpired epoch,
+                // so one hot shard can't take the whole executor pool.
                 if self.running_turns(&state) >= max_running {
                     self.dispatch.queue(session);
                     return;
@@ -1297,11 +1297,11 @@ impl Node {
                 }
                 return;
             }
-            // Decision: a cell starts no more turns than its nodes have
+            // Decision: a shard starts no more turns than its nodes have
             // slots for. Past that, CPU contention delays Raft heartbeats
-            // and lease renewals, leaders change and turns rerun: the cell
+            // and lease renewals, leaders change and turns rerun: the shard
             // slows down more the more it is asked. Owed work waits instead
-            // (and counts toward the cell's load, so placement and the
+            // (and counts toward the shard's load, so placement and the
             // rebalancer steer work elsewhere).
             let Some(executor) =
                 self.pick_executor(&state, None, Some(self.cfg.max_turns_per_node))
@@ -1322,7 +1322,7 @@ impl Node {
         tokio::spawn(async move {
             let sent = node
                 .http
-                .post(format!("http://{addr}/cell/activate/{session}"))
+                .post(format!("http://{addr}/shard/activate/{session}"))
                 .timeout(Duration::from_secs(2))
                 .send()
                 .await;
@@ -1338,7 +1338,7 @@ impl Node {
     /// With `limit`, `None` when every live member already runs that many.
     fn pick_executor(
         &self,
-        state: &crate::state::CellState,
+        state: &crate::state::ShardState,
         avoid: Option<NodeId>,
         limit: Option<usize>,
     ) -> Option<NodeId> {
@@ -1369,7 +1369,7 @@ impl Node {
     /// turn start (which made starts O(sessions) under the state lock).
     fn counted(
         &self,
-        state: &crate::state::CellState,
+        state: &crate::state::ShardState,
     ) -> parking_lot::MutexGuard<'_, Option<(Instant, BTreeMap<NodeId, usize>)>> {
         let mut cache = self.load.lock();
         if cache
@@ -1390,8 +1390,8 @@ impl Node {
         cache
     }
 
-    /// Turns running in the cell (every unexpired epoch), as last counted.
-    pub fn running_turns(&self, state: &crate::state::CellState) -> usize {
+    /// Turns running in the shard (every unexpired epoch), as last counted.
+    pub fn running_turns(&self, state: &crate::state::ShardState) -> usize {
         self.counted(state)
             .as_ref()
             .map_or(0, |(_, counts)| counts.values().sum())

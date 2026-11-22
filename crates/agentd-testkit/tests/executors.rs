@@ -1,14 +1,14 @@
-//! A thin, complete cell deployment (data plane v2 step 6): a three-node
-//! cell and a one-node cell whose turns run on executors outside them, each
+//! A thin, complete shard deployment (data plane v2 step 6): a three-node
+//! shard and a one-node shard whose turns run on executors outside them, each
 //! node and executor in its own runtime so a test can kill it outright.
 //!
 //! What it shows: turns run on executors, never on the nodes; a cancel
 //! reaches a turn on an executor; a killed executor's turn finishes on
-//! another; a turn survives its cell's leader dying; live deltas reach SSE
+//! another; a turn survives its shard's leader dying; live deltas reach SSE
 //! from an executor; the workspace survives executors and a move; an
-//! executor runs a session again after it moved cells; a cell short of
-//! memory sheds new work while admitted turns finish; a cell with Raft on
-//! its own listener and threads fails over like any other; a cell that
+//! executor runs a session again after it moved shards; a shard short of
+//! memory sheds new work while admitted turns finish; a shard with Raft on
+//! its own listener and threads fails over like any other; a shard that
 //! stops committing sheds new work and takes it again once it commits; only
 //! the leader says a session is missing; Raft's own listener takes large
 //! snapshot chunks.
@@ -19,7 +19,7 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use everruns_cell::remote::EXECUTOR_IDS;
+use everruns_agentd::remote::EXECUTOR_IDS;
 use serde_json::json;
 use support::{Fleet, answers, pulled, types};
 
@@ -81,7 +81,7 @@ async fn a_killed_executors_turn_finishes_on_another() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_turn_survives_its_cells_leader_dying() {
+async fn a_turn_survives_its_shards_leader_dying() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     let session = fleet.create_in("slow", 0).await;
@@ -98,7 +98,7 @@ async fn a_turn_survives_its_cells_leader_dying() {
 }
 
 /// The same, with Raft on each node's own listener and threads: killing
-/// the leader's node stops its Raft too, and the cell elects another.
+/// the leader's node stops its Raft too, and the shard elects another.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_turn_survives_its_leader_dying_with_raft_on_its_own_threads() {
     let mut fleet = Fleet::start_isolated().await;
@@ -120,7 +120,7 @@ async fn a_turn_survives_its_leader_dying_with_raft_on_its_own_threads() {
 /// with 429 and a retry hint instead of holding every request to its
 /// deadline, and takes input again once its followers are back.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cell_that_stops_committing_sheds_new_work_until_it_commits() {
+async fn a_shard_that_stops_committing_sheds_new_work_until_it_commits() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     let session = fleet.create_in("worker", 0).await;
@@ -161,7 +161,7 @@ async fn a_cell_that_stops_committing_sheds_new_work_until_it_commits() {
     assert!(
         metrics
             .lines()
-            .any(|l| l.starts_with("cell_commit_stalled{") && l.ends_with(" 1")),
+            .any(|l| l.starts_with("agentd_shard_commit_stalled{") && l.ends_with(" 1")),
         "the leader reports the stall"
     );
     for node in followers {
@@ -179,7 +179,7 @@ async fn a_cell_that_stops_committing_sheds_new_work_until_it_commits() {
 async fn raft_on_its_own_listener_takes_large_snapshot_chunks() {
     let fleet = Fleet::start_isolated().await;
     let (_, addr) = fleet.addrs(0).into_iter().next().unwrap();
-    let raft = everruns_cell::network::raft_addr(&addr, 1);
+    let raft = everruns_agentd::network::raft_addr(&addr, 1);
     let response = fleet
         .http
         .post(format!("http://{raft}/raft/snapshot"))
@@ -204,7 +204,7 @@ async fn only_the_leader_says_a_session_is_missing() {
     for (node, addr) in fleet.addrs(0) {
         let response = fleet
             .http
-            .get(format!("http://{addr}/cell/sessions/{unknown}"))
+            .get(format!("http://{addr}/shard/sessions/{unknown}"))
             .send()
             .await
             .unwrap();
@@ -264,13 +264,13 @@ async fn the_workspace_survives_executors_and_a_move() {
         .await;
     fleet.turns(&session, 2).await;
 
-    // Another executor, in another cell.
+    // Another executor, in another shard.
     fleet.kill_executor(1);
     fleet.executor(2);
     let moved = fleet
         .post(
             &format!("/v1/sessions/{session}/move"),
-            json!({ "cell": 1 }),
+            json!({ "shard": 1 }),
         )
         .await;
     assert_eq!(moved["to"], 1, "{moved}");
@@ -291,14 +291,14 @@ async fn the_workspace_survives_executors_and_a_move() {
 }
 
 /// The balancer moves a session that last ran here: the next turn runs
-/// here again at once. Log positions are per cell, so what this executor
-/// waited for in the old cell means nothing in the new one (a load run
-/// found turns waiting for cell 0's position in cell 1's log).
+/// here again at once. Log positions are per shard, so what this executor
+/// waited for in the old shard means nothing in the new one (a load run
+/// found turns waiting for shard 0's position in shard 1's log).
 #[tokio::test(flavor = "multi_thread")]
-async fn an_executor_runs_a_session_again_after_it_moved_cells() {
+async fn an_executor_runs_a_session_again_after_it_moved_shards() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
-    // Put cell 0's log well ahead of cell 1's.
+    // Put shard 0's log well ahead of shard 1's.
     for _ in 0..10 {
         let other = fleet.create_in("chat", 0).await;
         fleet.say(&other, "hello").await;
@@ -312,12 +312,15 @@ async fn an_executor_runs_a_session_again_after_it_moved_cells() {
     let moved = fleet
         .post(
             &format!("/v1/sessions/{session}/move"),
-            json!({ "cell": 1 }),
+            json!({ "shard": 1 }),
         )
         .await;
     assert_eq!(moved["to"], 1, "{moved}");
     let behind = fleet.stats(1).await["applied"].as_u64().unwrap();
-    assert!(ahead > behind + 30, "cell 0 at {ahead}, cell 1 at {behind}");
+    assert!(
+        ahead > behind + 30,
+        "shard 0 at {ahead}, shard 1 at {behind}"
+    );
     let started = Instant::now();
     fleet.say(&session, "again").await;
     fleet.turns(&session, 2).await;
@@ -387,17 +390,17 @@ async fn approved(agent: &str, tool: &str) {
     assert_eq!(answers(&events), vec!["Changed, as approved.".to_string()]);
 }
 
-/// A cell whose node is near its memory limit refuses new input and new
+/// A shard whose node is near its memory limit refuses new input and new
 /// sessions with 429 and a retry hint, lets the turn it already admitted
 /// finish, gets no new sessions from the gateway, and takes work again once
 /// memory frees.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cell_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
+async fn a_shard_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     let session = fleet.create_in("slow", 1).await;
     fleet.say(&session, "go").await;
-    // Cell 1's only node now measures itself against 1 MiB: shedding.
+    // Shard 1's only node now measures itself against 1 MiB: shedding.
     fleet.restart_with_memory_limit(1, 1, 1 << 20);
     fleet.leader(1).await;
     let say = |text: &str| json!({ "text": text });
@@ -419,23 +422,23 @@ async fn a_cell_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
     // The turn admitted before still finishes, and nothing else ran.
     fleet.turns(&session, 1).await;
     // New sessions: the gateway places them elsewhere, and one asked for
-    // in cell 1 is refused.
-    let definition = everruns_cell_testkit::definition("worker").unwrap();
+    // in shard 1 is refused.
+    let definition = everruns_agentd_testkit::definition("worker").unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let created = fleet
             .post("/v1/sessions", json!({ "agent": definition }))
             .await;
-        if created["cell"] == 0 {
+        if created["shard"] == 0 {
             break;
         }
         assert!(
             Instant::now() < deadline,
-            "still placed in cell 1: {created}"
+            "still placed in shard 1: {created}"
         );
     }
     let (status, _, body) = fleet
-        .post_once("/v1/sessions", json!({ "agent": definition, "cell": 1 }))
+        .post_once("/v1/sessions", json!({ "agent": definition, "shard": 1 }))
         .await;
     assert_eq!(status, 429, "{body}");
     let metrics = reqwest::get(format!("http://{}/metrics", fleet.addrs(1)[0].1))
@@ -446,23 +449,23 @@ async fn a_cell_short_of_memory_sheds_new_work_and_finishes_admitted_turns() {
         .unwrap();
     let level = metrics
         .lines()
-        .find(|l| l.starts_with("cell_overload_level{"))
+        .find(|l| l.starts_with("agentd_shard_overload_level{"))
         .unwrap_or_default();
     assert!(level.ends_with(" 2"), "shedding: {level}");
-    // Memory frees: the cell takes work again.
+    // Memory frees: the shard takes work again.
     fleet.restart_with_memory_limit(1, 1, 1 << 40);
     fleet.leader(1).await;
     fleet.say(&session, "again").await;
     fleet.turns(&session, 2).await;
 }
 
-/// A cell short of memory starts no turns past its `pressure_turns` floor,
+/// A shard short of memory starts no turns past its `pressure_turns` floor,
 /// even for input it admitted before: an executor pool would otherwise pile
 /// into it (EKS run 44355318472). The input waits and runs once memory frees.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cell_short_of_memory_starts_no_queued_turns_past_its_floor() {
+async fn a_shard_short_of_memory_starts_no_queued_turns_past_its_floor() {
     let mut fleet = Fleet::start().await;
-    // No executor yet: the admitted input waits in cell 1.
+    // No executor yet: the admitted input waits in shard 1.
     let session = fleet.create_in("worker", 1).await;
     fleet.say(&session, "go").await;
     fleet.restart_with(1, 1, |cfg| {
@@ -475,7 +478,7 @@ async fn a_cell_short_of_memory_starts_no_queued_turns_past_its_floor() {
     let events = fleet.events(&session).await;
     assert!(
         !events.iter().any(|e| e["type"] == "turn.started"),
-        "no turn starts while the cell is short of memory: {:?}",
+        "no turn starts while the shard is short of memory: {:?}",
         types(&events)
     );
     fleet.restart_with(1, 1, |cfg| cfg.memory_limit = 1 << 40);

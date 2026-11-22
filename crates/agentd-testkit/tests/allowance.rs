@@ -1,6 +1,6 @@
-//! Spend allowances end to end on a one-node cell: a metered session runs
+//! Spend allowances end to end on a one-node shard: a metered session runs
 //! only the provider calls its tenant's grant covers, through the Engine's
-//! own budget gate, and the cell's ledger shows every reservation closed.
+//! own budget gate, and the shard's ledger shows every reservation closed.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -8,18 +8,18 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use everruns_cell::cluster::{Topology, TopologySource};
-use everruns_cell::node::NodeConfig;
-use everruns_cell::store::Store;
+use everruns_agentd::cluster::{Topology, TopologySource};
+use everruns_agentd::node::NodeConfig;
+use everruns_agentd::store::Store;
 use serde_json::{Value, json};
 
-struct Cell {
+struct Shard {
     base: String,
     http: reqwest::Client,
     _dir: tempfile::TempDir,
 }
 
-impl Cell {
+impl Shard {
     async fn start() -> Self {
         let dir = tempfile::tempdir().unwrap();
         // Bound before the topology names it, and kept: a port picked and
@@ -28,13 +28,13 @@ impl Cell {
         let addr = listener.local_addr().unwrap().to_string();
         let members = BTreeMap::from([(1, addr.clone())]);
         let topology = Topology {
-            directory_cell: 0,
-            cells: BTreeMap::from([(0, members.clone())]),
+            directory_shard: 0,
+            shards: BTreeMap::from([(0, members.clone())]),
         };
         let path = dir.path().join("topology.json");
         std::fs::write(&path, serde_json::to_vec(&topology).unwrap()).unwrap();
         let cfg = NodeConfig {
-            cell: 0,
+            shard: 0,
             node_id: 1,
             members,
             data_dir: dir.path().join("node"),
@@ -51,32 +51,32 @@ impl Cell {
             executors: Default::default(),
             control_plane: None,
         };
-        let host = Arc::new(everruns_cell_testkit::host());
+        let host = Arc::new(everruns_agentd_testkit::host());
         let served = tokio::spawn(async move {
-            everruns_cell::cli::serve_node_on(cfg, host, TopologySource { path }, listener, false)
+            everruns_agentd::cli::serve_node_on(cfg, host, TopologySource { path }, listener, false)
                 .await
         });
-        let cell = Self {
+        let shard = Self {
             base: format!("http://{addr}"),
             http: reqwest::Client::builder().no_proxy().build().unwrap(),
             _dir: dir,
         };
         for _ in 0..200 {
             if served.is_finished() {
-                panic!("the cell stopped: {:?}", served.await);
+                panic!("the shard stopped: {:?}", served.await);
             }
-            if cell
+            if shard
                 .http
-                .get(cell.url("/v1/cells"))
+                .get(shard.url("/v1/shards"))
                 .send()
                 .await
                 .is_ok_and(|r| r.status().is_success())
             {
-                return cell;
+                return shard;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        panic!("the cell never came up");
+        panic!("the shard never came up");
     }
 
     fn url(&self, path: &str) -> String {
@@ -108,7 +108,7 @@ impl Cell {
 
     /// Run one turn of a new `worker` session billed to `tenant`; its events.
     async fn turn(&self, tenant: &str) -> Vec<Value> {
-        let definition = everruns_cell_testkit::definition("worker").unwrap();
+        let definition = everruns_agentd_testkit::definition("worker").unwrap();
         let created = self
             .post(
                 "/v1/sessions",
@@ -136,23 +136,24 @@ fn types(events: &[Value]) -> Vec<&str> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_turn_runs_only_the_calls_its_allowance_covers() {
-    let cell = Cell::start().await;
+    let shard = Shard::start().await;
     let far = 4_000_000_000_000i64;
     // "poor" cannot cover one call; "rich" covers many.
     for (tenant, granted) in [("poor", 50), ("rich", 1_000_000)] {
-        cell.post(
-            &format!("/cell/tenants/{tenant}/grants"),
-            json!({
-                "grant_id": format!("{tenant}-1"),
-                "granted_micros": granted,
-                "per_call_micros": 100,
-                "spend_until_ms": far,
-            }),
-        )
-        .await;
+        shard
+            .post(
+                &format!("/shard/tenants/{tenant}/grants"),
+                json!({
+                    "grant_id": format!("{tenant}-1"),
+                    "granted_micros": granted,
+                    "per_call_micros": 100,
+                    "spend_until_ms": far,
+                }),
+            )
+            .await;
     }
 
-    let poor = cell.turn("poor").await;
+    let poor = shard.turn("poor").await;
     let kinds = types(&poor);
     assert!(kinds.contains(&"budget.exhausted"), "{kinds:?}");
     assert!(
@@ -161,7 +162,7 @@ async fn a_turn_runs_only_the_calls_its_allowance_covers() {
     );
     assert!(kinds.contains(&"turn.failed"), "{kinds:?}");
 
-    let rich = cell.turn("rich").await;
+    let rich = shard.turn("rich").await;
     let kinds = types(&rich);
     let calls = kinds.iter().filter(|k| **k == "llm.generation").count();
     assert!(
@@ -170,7 +171,7 @@ async fn a_turn_runs_only_the_calls_its_allowance_covers() {
     );
     assert!(kinds.contains(&"turn.completed"), "{kinds:?}");
 
-    let ledger = cell.get("/cell/allowances").await;
+    let ledger = shard.get("/shard/allowances").await;
     for tenant in ["poor", "rich"] {
         assert_eq!(
             ledger["tenants"][tenant]["reserved"],

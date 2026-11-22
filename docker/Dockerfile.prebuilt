@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 #
 # Runtime images assembled from pre-built binaries. This is the Dockerfile
-# behind every published everruns-server, -worker, -cell and -admin image.
+# behind every published everruns-server, -worker, -admin and agentd image.
 #
 # Expects the binaries in the build context under ./bin/<TARGETARCH>/, where
 # TARGETARCH is amd64 or arm64, so a single multi-platform build picks the
@@ -62,16 +62,16 @@ CMD ["/app/everruns-worker"]
 
 # ============================================================================
 # Data plane v2 runtime (distroless): one binary, three roles chosen by the
-# first argument: `node` (a cell's Raft node, gateway on 7000), `executor`
+# first argument: `node` (a shard's Raft node, gateway on 7000), `executor`
 # (runs turns, 7001) and `edge` (routes session calls, 7100).
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS cell
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:9dac0a79194e45a7da0158a9c6da57b217585af0786db3845d1f0ec1a0dd182f AS shard
 
 ARG TARGETARCH
 
 WORKDIR /app
 
-COPY --chmod=0755 bin/${TARGETARCH}/everruns-cell /app/everruns-cell
+COPY --chmod=0755 bin/${TARGETARCH}/agentd /app/agentd
 
 EXPOSE 7000
 EXPOSE 7001
@@ -79,7 +79,7 @@ EXPOSE 7100
 
 ENV RUST_LOG=info,openraft=warn
 
-ENTRYPOINT ["/app/everruns-cell"]
+ENTRYPOINT ["/app/agentd"]
 
 # ============================================================================
 # Admin runtime (migrations, key rotation). See docs/sre/admin-container.md.

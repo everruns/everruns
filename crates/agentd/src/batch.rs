@@ -38,7 +38,7 @@ const IN_FLIGHT: usize = 2;
 /// (`Command::Part`). Escaped inside a piece it can grow to about twice
 /// this, which still fits one entry of [`MAX_BATCH_BYTES`].
 ///
-/// Decision: a single 32 MB message as one entry wedged its cell for good:
+/// Decision: a single 32 MB message as one entry wedged its shard for good:
 /// each AppendEntries timed out after 100 ms and was resent, forever.
 const PART_BYTES: usize = 32 * 1024;
 

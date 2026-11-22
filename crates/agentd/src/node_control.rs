@@ -1,5 +1,5 @@
 //! The leader's link to the control plane (cp-dp-protocol.md): it delivers
-//! the cell's feed and asks for its tenants' spend allowances.
+//! the shard's feed and asks for its tenants' spend allowances.
 //!
 //! Decisions:
 //! - Everything the loop sends comes from committed state and every answer
@@ -14,9 +14,9 @@
 //!   /dp/v1/feed/replay`). An archive that fails keeps the records in
 //!   state; they are sent again and the control plane deduplicates them.
 //! - Both directions of the link carry the data plane's token (`Authorization:
-//!   Bearer`, `CELL_DP_TOKEN`) when one is set; mTLS replaces it with the
+//!   Bearer`, `AGENTD_DP_TOKEN`) when one is set; mTLS replaces it with the
 //!   EKS deployment (step 10).
-//! - Once a minute the leader measures its members (`GET /cell/usage`) and
+//! - Once a minute the leader measures its members (`GET /shard/usage`) and
 //!   commits a `Report`; applying it counts the population from state and
 //!   queues the `Health` feed record, so a report survives a leader change
 //!   like any other record. It rides the feed rather than a side channel:
@@ -37,9 +37,9 @@ use parking_lot::Mutex;
 use crate::control::NodeReport;
 use crate::dp::{AllowanceGrant, AllowanceRequest, FeedAck, FeedBatch};
 use crate::node::{Node, now_ms};
-use crate::state::{CellState, Command, SessionState};
+use crate::state::{Command, SessionState, ShardState};
 
-/// Where a cell's control plane is, and what to ask it for.
+/// Where a shard's control plane is, and what to ask it for.
 #[derive(Debug, Clone)]
 pub struct ControlPlane {
     /// Base URL serving `/dp/v1`.
@@ -50,10 +50,10 @@ pub struct ControlPlane {
     pub want_micros: i64,
     /// The most one provider call may cost, when a grant does not say.
     pub per_call_micros: i64,
-    /// The link's shared secret (`CELL_DP_TOKEN`), sent as a bearer token
+    /// The link's shared secret (`AGENTD_DP_TOKEN`), sent as a bearer token
     /// and required on the data plane's `/dp/v1`.
     pub token: Option<String>,
-    /// Where the control plane's org token keys are (`CELL_JWKS_URL`);
+    /// Where the control plane's org token keys are (`AGENTD_JWKS_URL`);
     /// set, the gateway requires org tokens (`org_token`).
     pub jwks_url: Option<String>,
 }
@@ -62,14 +62,14 @@ impl ControlPlane {
     pub fn new(url: impl Into<String>) -> Self {
         Self {
             url: url.into(),
-            data_plane: std::env::var("CELL_DATA_PLANE")
+            data_plane: std::env::var("AGENTD_DATA_PLANE")
                 .ok()
                 .filter(|d| !d.is_empty())
                 .unwrap_or_else(|| "dp-local".into()),
             want_micros: 1_000_000,
             per_call_micros: 10_000,
             token: link_token(),
-            jwks_url: std::env::var("CELL_JWKS_URL")
+            jwks_url: std::env::var("AGENTD_JWKS_URL")
                 .ok()
                 .filter(|u| !u.is_empty()),
         }
@@ -85,9 +85,9 @@ impl ControlPlane {
     }
 }
 
-/// The link's shared secret, from `CELL_DP_TOKEN` (empty: none).
+/// The link's shared secret, from `AGENTD_DP_TOKEN` (empty: none).
 pub fn link_token() -> Option<String> {
-    std::env::var("CELL_DP_TOKEN")
+    std::env::var("AGENTD_DP_TOKEN")
         .ok()
         .filter(|t| !t.is_empty())
 }
@@ -134,7 +134,7 @@ pub struct ControlLink {
 
 impl Node {
     /// Whether `s` may start a turn as far as money goes.
-    pub(crate) fn allowance_ready(&self, state: &CellState, s: &SessionState, now: i64) -> bool {
+    pub(crate) fn allowance_ready(&self, state: &ShardState, s: &SessionState, now: i64) -> bool {
         if self.cfg.control_plane.is_none() {
             return true;
         }
@@ -187,7 +187,7 @@ impl Node {
         }
     }
 
-    /// Measure every member for `minute` and commit the cell's report
+    /// Measure every member for `minute` and commit the shard's report
     /// (`Command::Report`), which the feed carries to Monitoring. A member
     /// that does not answer in two seconds is counted as not answering.
     pub(crate) async fn report_minute(&self, minute: i64) -> anyhow::Result<()> {
@@ -199,7 +199,7 @@ impl Node {
             .map(|(_, addr)| {
                 let request = self
                     .http
-                    .get(format!("http://{addr}/cell/usage"))
+                    .get(format!("http://{addr}/shard/usage"))
                     .timeout(Duration::from_secs(2));
                 async move {
                     request
@@ -293,14 +293,14 @@ impl Node {
         Ok(())
     }
 
-    /// The cell's incarnation as a feed and grant number: 1 for a cell
+    /// The shard's incarnation as a feed and grant number: 1 for a shard
     /// never rebuilt, then the number its rebuild claimed (`restore.rs`).
     pub(crate) fn incarnation(&self) -> u64 {
         self.shared.state.read().incarnation.max(1)
     }
 
     pub(crate) fn source(&self) -> String {
-        format!("cell-{}", self.cfg.cell)
+        format!("shard-{}", self.cfg.shard)
     }
 
     /// Resend `source`'s archived feed from `from_index` (feed replay).
@@ -407,7 +407,7 @@ impl Node {
                 self.source(),
                 self.incarnation()
             ),
-            cell: self.source(),
+            shard: self.source(),
             incarnation: self.incarnation(),
             want_micros: if busy { cp.want_micros } else { 0 },
             settlements: settlements.clone(),

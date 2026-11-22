@@ -1,5 +1,5 @@
 [package]
-name = "everruns-cell-example-assistant"
+name = "everruns-agentd-example-assistant"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true

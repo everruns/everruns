@@ -88,8 +88,8 @@ pub(super) fn default_class(target: &Target) -> Result<Option<String>> {
 enum Volume {
     Postgres,
     Nats,
-    CellData,
-    CellStore,
+    ShardData,
+    ShardStore,
 }
 
 impl Volume {
@@ -97,8 +97,8 @@ impl Volume {
         match self {
             Self::Postgres => &["postgresql", "storage", "storageClass"],
             Self::Nats => &["nats", "storage", "storageClass"],
-            Self::CellData => &["dataPlane", "cell", "storage", "storageClass"],
-            Self::CellStore => &["dataPlane", "storeVolume", "storageClass"],
+            Self::ShardData => &["dataPlane", "shard", "storage", "storageClass"],
+            Self::ShardStore => &["dataPlane", "storeVolume", "storageClass"],
         }
     }
 }
@@ -123,11 +123,13 @@ fn chart_claims(manifest: &[u8]) -> Result<Vec<Claim>> {
                 Volume::Nats,
                 &resource["spec"]["volumeClaimTemplates"][0]["spec"],
             ),
-            (Some("StatefulSet"), Some("cell")) => (
-                Volume::CellData,
+            (Some("StatefulSet"), Some("shard")) => (
+                Volume::ShardData,
                 &resource["spec"]["volumeClaimTemplates"][0]["spec"],
             ),
-            (Some("PersistentVolumeClaim"), Some("cell")) => (Volume::CellStore, &resource["spec"]),
+            (Some("PersistentVolumeClaim"), Some("shard")) => {
+                (Volume::ShardStore, &resource["spec"])
+            }
             _ => continue,
         };
         if spec.is_null() {
@@ -373,11 +375,11 @@ metadata: {labels: {app.kubernetes.io/component: nats}}
 spec: {volumeClaimTemplates: [{spec: {accessModes: [ReadWriteOnce]}}]}
 ---
 kind: StatefulSet
-metadata: {labels: {app.kubernetes.io/component: cell}}
+metadata: {labels: {app.kubernetes.io/component: shard}}
 spec: {volumeClaimTemplates: [{spec: {accessModes: [ReadWriteOnce]}}]}
 ---
 kind: PersistentVolumeClaim
-metadata: {labels: {app.kubernetes.io/component: cell}}
+metadata: {labels: {app.kubernetes.io/component: shard}}
 spec: {accessModes: [ReadWriteMany], storageClassName: shared-nfs}
 "#;
         let claims = chart_claims(manifest).unwrap();
@@ -391,7 +393,7 @@ spec: {accessModes: [ReadWriteMany], storageClassName: shared-nfs}
             [
                 "postgresql.storage.storageClass=local-path",
                 "nats.storage.storageClass=local-path",
-                "dataPlane.cell.storage.storageClass=local-path",
+                "dataPlane.shard.storage.storageClass=local-path",
             ]
         );
         let shared = claims.last().unwrap();

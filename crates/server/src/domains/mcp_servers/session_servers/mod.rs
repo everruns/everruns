@@ -37,7 +37,7 @@ pub async fn fold_session_records(storage: &dyn SessionStorageStore, session: &m
 // attachments are left out: their `ard_attach:` record drives ARD's own
 // listing and cap, so removing only the session record here would split them.
 // Sign-in state is the viewer's, because a chat-only server signs in as
-// whoever is chatting. A v2 session's records are in its storage on its cell
+// whoever is chatting. A v2 session's records are in its storage on its shard
 // (data plane v2 parity, Phase B); the same commands read and remove them
 // there. Same authority as session storage: `SESSION_VIEW` to
 // list, `SESSION_MANAGE` to remove, and the session must belong to the
@@ -61,7 +61,7 @@ pub struct ChatMcpServer {
 }
 
 /// Where `session`'s MCP records are: the control plane's session storage,
-/// or, for a v2 session, its storage on its cell (data plane v2 parity,
+/// or, for a v2 session, its storage on its shard (data plane v2 parity,
 /// Phase B). Session MCP records are plain KV values; no secret is read or
 /// written.
 pub(crate) async fn session_store(

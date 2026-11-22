@@ -108,7 +108,7 @@ async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
         "worker_get_connection_token_for_connection",
         "session_storage_get",
         "agents_delete",
-        // A v2 session's SQL databases live in its cell (parity step 9).
+        // A v2 session's SQL databases live in its shard (parity step 9).
         "session_sql_db",
     ] {
         assert!(
@@ -119,7 +119,7 @@ async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
 }
 
 /// THREAT[TM-AGENT-017]: a platform call runs as the person the forwarding
-/// cell names, only while they are a member, and only for a session that
+/// shard names, only while they are a member, and only for a session that
 /// resolves `platform`; without a person it runs as no one.
 #[tokio::test]
 async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
@@ -265,9 +265,9 @@ async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
     );
 }
 
-/// A v2 session's messages reach its cell without the control plane, so a
+/// A v2 session's messages reach its shard without the control plane, so a
 /// call acting as the turn's person records the turn's invocation first,
-/// as v1 does when the message comes through its API: the person the cell
+/// as v1 does when the message comes through its API: the person the shard
 /// names with their default runtime identity, and the session's agent.
 /// The resolver's checks then run on it unchanged.
 #[tokio::test]

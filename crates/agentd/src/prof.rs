@@ -1,4 +1,4 @@
-//! Temporary latency accounting (CELL_PROF=1): total time and calls per name.
+//! Temporary latency accounting (AGENTD_PROF=1): total time and calls per name.
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
@@ -8,7 +8,7 @@ type Table = (Instant, HashMap<&'static str, (u64, u64)>);
 
 static TABLE: LazyLock<parking_lot::Mutex<Table>> =
     LazyLock::new(|| parking_lot::Mutex::new((Instant::now(), HashMap::new())));
-static ON: LazyLock<bool> = LazyLock::new(|| std::env::var_os("CELL_PROF").is_some());
+static ON: LazyLock<bool> = LazyLock::new(|| std::env::var_os("AGENTD_PROF").is_some());
 
 pub fn add(name: &'static str, started: Instant, n: u64) {
     if !*ON {
@@ -26,6 +26,6 @@ pub fn add(name: &'static str, started: Instant, n: u64) {
                 .map(|(k, (n, us))| (k, n, us / 1000, us.checked_div(n).unwrap_or(0)))
                 .collect();
         v.sort_by_key(|v| std::cmp::Reverse(v.2));
-        tracing::info!(target: "everruns_cell::prof", ?v, "latency (name, calls, total ms, avg us)");
+        tracing::info!(target: "everruns_agentd::prof", ?v, "latency (name, calls, total ms, avg us)");
     }
 }

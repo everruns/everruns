@@ -54,12 +54,12 @@ impl OrgMaterial for ControlPlane {
     }
 }
 
-fn store(cp: &Arc<ControlPlane>, session: SessionId) -> super::CellUserMcpStore {
+fn store(cp: &Arc<ControlPlane>, session: SessionId) -> super::ShardUserMcpStore {
     let material: Arc<dyn OrgMaterial> = cp.clone();
     let weak: Weak<dyn OrgMaterial> = Arc::downgrade(&material);
     // Kept alive by the test's `cp`.
     std::mem::forget(material);
-    super::CellUserMcpStore {
+    super::ShardUserMcpStore {
         via: super::Via::HostCall(crate::lookups::org_lookups(Some(&weak), session).unwrap()),
         session,
     }
@@ -84,7 +84,7 @@ async fn the_manage_tools_reach_the_persons_list_for_the_open_turn() {
     assert_eq!(reply, UserMcpStoreReply::Removed { removed: true });
     let asked = cp.asked.lock()[0].clone();
     assert_eq!(asked["session_id"], json!(session.to_string()));
-    // The session's cell names the turn and its person, not the executor.
+    // The session's shard names the turn and its person, not the executor.
     assert_eq!(asked["input_message_id"], json!(OPEN_TURN));
     assert_eq!(asked["call"]["op"], json!("remove"));
     assert_eq!(asked["call"]["name"], json!("notes"));
@@ -175,7 +175,7 @@ mod person_server {
                 .unwrap();
         let via = super::super::Via::Server(server);
 
-        let store = super::super::CellUserMcpStore {
+        let store = super::super::ShardUserMcpStore {
             via: via.clone(),
             session,
         };

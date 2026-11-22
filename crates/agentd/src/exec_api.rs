@@ -1,4 +1,4 @@
-//! The API a cell node serves to executors outside the cell (data plane v2
+//! The API a shard node serves to executors outside the shard (data plane v2
 //! step 6). The wire types and the reasons are in `remote.rs`.
 
 use std::sync::Arc;
@@ -23,9 +23,9 @@ const LINGER: Duration = Duration::from_millis(2);
 
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/cell/exec/propose", post(propose))
-        .route("/cell/exec/view", post(view))
-        .route("/cell/exec/pull", post(pull))
+        .route("/shard/exec/propose", post(propose))
+        .route("/shard/exec/view", post(view))
+        .route("/shard/exec/pull", post(pull))
         .with_state(node)
 }
 

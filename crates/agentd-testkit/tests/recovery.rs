@@ -1,6 +1,6 @@
 //! Step 9's disaster recovery against a live fleet (design.md, "Disaster
-//! recovery"): a cell that loses every node, disks and all, comes back
-//! from the object store alone, and a point-in-time restore takes a cell
+//! recovery"): a shard that loses every node, disks and all, comes back
+//! from the object store alone, and a point-in-time restore takes a shard
 //! back to a moment before later turns.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -9,7 +9,7 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use everruns_cell::restore::FENCE_GAP;
+use everruns_agentd::restore::FENCE_GAP;
 use serde_json::json;
 use support::{Fleet, now_ms, types};
 
@@ -23,8 +23,8 @@ fn ledger() -> &'static std::path::Path {
             // SAFETY-free in practice: set once, before any fleet starts,
             // and read only through the work tool.
             unsafe {
-                std::env::set_var("CELL_LEDGER", file.path());
-                std::env::set_var("CELL_WORK_MS", "2000");
+                std::env::set_var("AGENTD_LEDGER", file.path());
+                std::env::set_var("AGENTD_WORK_MS", "2000");
             }
             file
         })
@@ -78,7 +78,7 @@ async fn completed_events(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cell_that_loses_every_node_comes_back_from_the_store() {
+async fn a_shard_that_loses_every_node_comes_back_from_the_store() {
     let ledger = ledger();
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
@@ -86,7 +86,7 @@ async fn a_cell_that_loses_every_node_comes_back_from_the_store() {
     fleet.say(&session, "go").await;
     let lost_fence = fleet.fence(&session).await;
     // The tool is running (an effect that must not happen twice) when
-    // every node of the cell goes, disks included.
+    // every node of the shard goes, disks included.
     fleet
         .until("the tool started", || async {
             executions(ledger, &session) >= 1
@@ -133,12 +133,12 @@ async fn a_point_in_time_restore_drops_what_came_after() {
     let store = fleet.store();
     fleet
         .until("turn 2 shipped", || async {
-            everruns_cell::restore::state_at(&store, 1, None)
+            everruns_agentd::restore::state_at(&store, 1, None)
                 .await
                 .is_ok_and(|r| r.state.clock_ms > point)
         })
         .await;
-    // Nothing runs while the cell is taken back.
+    // Nothing runs while the shard is taken back.
     fleet.kill_executor(1);
     let rebuilt = fleet.rebuild(1, Some(point)).await;
     assert!(rebuilt.clock_ms <= point, "{rebuilt:?}");
@@ -163,16 +163,16 @@ async fn a_one_org_restore_takes_back_only_that_org() {
             "grant": { "granted_micros": 1_000_000_000_000i64, "per_call_micros": 1_000_000,
                        "spend_until_ms": far },
         });
-        // In every cell: the fleet spreads sessions, and without a control
-        // plane nothing grants a cell money when one arrives.
-        for cell in [0, 1] {
-            assert_eq!(fleet.propose(cell, grant.clone()).await["result"], "ok");
+        // In every shard: the fleet spreads sessions, and without a control
+        // plane nothing grants a shard money when one arrives.
+        for shard in [0, 1] {
+            assert_eq!(fleet.propose(shard, grant.clone()).await["result"], "ok");
         }
-        let definition = everruns_cell_testkit::definition("worker").unwrap();
+        let definition = everruns_agentd_testkit::definition("worker").unwrap();
         let created = fleet
             .post(
                 "/v1/sessions",
-                json!({ "agent": definition, "tenant": org, "cell": 1 }),
+                json!({ "agent": definition, "tenant": org, "shard": 1 }),
             )
             .await;
         sessions.push(created["id"].as_str().unwrap().to_string());
@@ -193,15 +193,16 @@ async fn a_one_org_restore_takes_back_only_that_org() {
     for session in &sessions {
         fleet.turns(session, 2).await;
     }
-    // Wait for both sessions' completed second turns in the store. A cell
+    // Wait for both sessions' completed second turns in the store. A shard
     // with neither session need not advance its clock past the restore point,
     // and an unrelated later command does not prove the turns were shipped.
     let store = fleet.store();
     fleet
         .until("turn 2 shipped", || async {
             let mut shipped = [false; 2];
-            for cell in [0, 1] {
-                if let Ok(restored) = everruns_cell::restore::state_at(&store, cell, None).await {
+            for shard in [0, 1] {
+                if let Ok(restored) = everruns_agentd::restore::state_at(&store, shard, None).await
+                {
                     for (i, session) in sessions.iter().enumerate() {
                         shipped[i] |= restored.state.sessions.iter().any(|(id, state)| {
                             id.to_string() == *session && state.turns_completed() == 2
@@ -213,9 +214,9 @@ async fn a_one_org_restore_takes_back_only_that_org() {
         })
         .await;
 
-    let gateway = everruns_cell::gateway::Gateway::new(fleet.topology());
+    let gateway = everruns_agentd::gateway::Gateway::new(fleet.topology());
     gateway.refresh_registry().await;
-    let report = everruns_cell::restore::restore_org(&store, &gateway, "restored", point)
+    let report = everruns_agentd::restore::restore_org(&store, &gateway, "restored", point)
         .await
         .unwrap();
     assert_eq!(
@@ -231,7 +232,7 @@ async fn a_one_org_restore_takes_back_only_that_org() {
         report.missing.is_empty() && report.refused.is_empty(),
         "{report:?}"
     );
-    // The restore is committed through each cell's log; a read served by a
+    // The restore is committed through each shard's log; a read served by a
     // node that has not applied it yet still shows turn 2. Wait for it.
     fleet
         .until("the restored session is back at the point", || async {

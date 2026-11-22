@@ -19,7 +19,7 @@
 //!   credential and refreshed before they expire; "this org is not on a
 //!   data plane" is cached for a minute. While the control plane is down a
 //!   cached token keeps working until it expires.
-//! - A cell never sees the caller's own credential: the edge replaces it
+//! - A shard never sees the caller's own credential: the edge replaces it
 //!   with the org token, and the gateway checks that token as it would from
 //!   any client (signature, data plane, the session's org).
 //! - A session the data plane does not know (made before its org moved) is
@@ -97,7 +97,7 @@ fn route(path: &str) -> Route {
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     match parts.as_slice() {
         // Which plane serves a session route is declared once, in the
-        // contracts' session route table; the server's API and the cell's
+        // contracts' session route table; the server's API and the shard's
         // gateway are both checked against it.
         ["v1", "sessions", _, "messages", _, call, ..]
             if session_commands::MESSAGE_RECORD_ROUTES.contains(call) =>
@@ -121,7 +121,7 @@ fn route(path: &str) -> Route {
 }
 
 impl Edge {
-    /// An edge over `gateway` (its topology names the cells), passing
+    /// An edge over `gateway` (its topology names the shards), passing
     /// control plane calls to `control_plane` and checking org tokens with
     /// `tokens`.
     pub fn new(gateway: Arc<Gateway>, control_plane: &str, tokens: Arc<OrgTokens>) -> Arc<Self> {
@@ -373,7 +373,7 @@ async fn handle(State(edge): State<Arc<Edge>>, request: Request) -> Response {
     }
     // A message that refers to uploads goes through the control plane,
     // which keeps them and copies them into the session's files first
-    // (`gateway_input.rs`); every other message goes straight to the cell.
+    // (`gateway_input.rs`); every other message goes straight to the shard.
     let request = if request.method() == Method::POST && is_messages(path) {
         let (parts, body) = request.into_parts();
         let Ok(bytes) = axum::body::to_bytes(body, crate::gateway::max_request_bytes()).await

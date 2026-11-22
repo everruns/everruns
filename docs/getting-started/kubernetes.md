@@ -75,7 +75,7 @@ when nothing else is in it. All commands:
 ## Local storage and Apple Container
 
 `k8s up` defaults to `--storage-class auto`. The CLI uses the cluster's
-default class for new PostgreSQL, NATS, cell data, and cell store volumes that
+default class for new PostgreSQL, NATS, shard data, and shard store volumes that
 need a class. Explicit storage classes in chart values take precedence.
 On a verified local kind, k3d, or Apple Container cluster without a default,
 the CLI offers to install Local Path Provisioner and waits for it to be ready.
@@ -124,7 +124,7 @@ backups or failover, so use it only for experiments.
 | Part | Notes |
 |---|---|
 | Server | `server.replicas` (default 1). It applies migrations when it starts. See [Run several servers](#run-several-servers). |
-| Data plane v2 | Where new organizations run agents (`dataPlane.version`, default `v2`): a cell (StatefulSet, `dataPlane.cell.nodes`, default 1), executors that run its turns (`dataPlane.executor.replicas`) and the edge router the proxy sends session calls to. See [Choose the data plane](#choose-the-data-plane). |
+| Data plane v2 | Where new organizations run agents (`dataPlane.version`, default `v2`): a shard (StatefulSet, `dataPlane.shard.nodes`, default 1), executors that run its turns (`dataPlane.executor.replicas`) and the edge router the proxy sends session calls to. See [Choose the data plane](#choose-the-data-plane). |
 | Workers | `worker.replicas` (default 1), or scaled by [KEDA](https://keda.sh) with `worker.autoscaling.enabled=true` on waiting and running work: background tasks and chat turns. |
 | UI | `ui.replicas` (default 1). |
 | Proxy | Caddy for installs without Ingress, with the same routes as the [Docker Compose](/getting-started/docker-compose/) setup. Service `everruns`, port 9300. See [Ingress routing](#ingress-routing). |
@@ -133,9 +133,9 @@ backups or failover, so use it only for experiments.
 
 ## Choose the data plane
 
-New organizations run their agents on data plane v2. The cell keeps each
+New organizations run their agents on data plane v2. The shard keeps each
 session and writes its history to an object store: storage.s3's bucket (under
-`cells/`) when [S3 is on](#keep-files-in-s3), else a volume the cell and the
+`shards/`) when [S3 is on](#keep-files-in-s3), else a volume the shard and the
 executors share. A ReadWriteOnce volume keeps them on one node, so on a cluster
 of several nodes use S3 or a ReadWriteMany `dataPlane.storeVolume.storageClass`.
 An organization that already has sessions keeps running them on the workers
@@ -146,14 +146,14 @@ they are.
 # Every organization on the workers (v1):
 helm upgrade everruns oci://ghcr.io/everruns/charts/everruns --reuse-values \
   --set dataPlane.version=v1
-# Three cell nodes, so the cell keeps running when one is lost:
+# Three shard nodes, so the shard keeps running when one is lost:
 helm upgrade everruns oci://ghcr.io/everruns/charts/everruns --reuse-values \
-  --set dataPlane.cell.nodes=3 --set storage.s3.enabled=true --set storage.s3.bucket=my-bucket
+  --set dataPlane.shard.nodes=3 --set storage.s3.enabled=true --set storage.s3.bucket=my-bucket
 ```
 
 `everruns k8s up --data-plane v1` does the first. Going back to v1 after an
 install ran v2 also needs `dataPlane.keepRunning=true` (the CLI sets it), since
-the v2 organizations' sessions live in the cell.
+the v2 organizations' sessions live in the shard.
 
 ## Expose it
 

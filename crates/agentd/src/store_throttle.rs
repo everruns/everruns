@@ -1,4 +1,4 @@
-//! `CELL_STORE_THROTTLE_MS`: an object store that waits before every call,
+//! `AGENTD_STORE_THROTTLE_MS`: an object store that waits before every call,
 //! as a throttled S3 makes its callers wait (step 10's load runs ask for it
 //! on top of real S3, and locally on the file store).
 //!

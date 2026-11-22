@@ -3,7 +3,7 @@
 
   files_bench.py [--sessions 20] [--rounds 30] [--concurrency 16]
 
-Starts one 3-node cell (`fleet.py`), creates `--sessions` sessions, then
+Starts one 3-node shard (`fleet.py`), creates `--sessions` sessions, then
 measures the console's file calls through the gateway of a rotating node
 (so follower reads, and their read barrier, are part of every number):
 upload (`PUT fs/_/upload`), read (`GET fs/{path}`), listing (`GET fs`) and
@@ -20,7 +20,7 @@ import argparse, hashlib, json, os, random, sys, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
 SIZES = [("1KiB", 1024), ("16KiB", 16 * 1024), ("64KiB", 64 * 1024), ("1MiB", 1024 * 1024)]

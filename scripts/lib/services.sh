@@ -416,7 +416,7 @@ case "$cmd" in
     configure_local_startup_auth
     echo "   🔐 Auth mode: $AUTH_MODE (shared by API, worker, UI proxy)"
     # Data plane v2 is the default, as in the Compose file and the Helm
-    # chart: new orgs run on the local cell. DATA_PLANE=v1 runs workers only.
+    # chart: new orgs run on the local shard. DATA_PLANE=v1 runs workers only.
     DATA_PLANE="${DATA_PLANE:-v2}"
     case "$DATA_PLANE" in
       v1|v2) ;;

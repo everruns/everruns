@@ -1,14 +1,14 @@
-//! `everruns-cell`: the data plane v2 binary self-hosted installs and
-//! production run. One binary, by subcommand: a cell `node`, an `executor`,
+//! `agentd`: the data plane v2 binary self-hosted installs and
+//! production run. One binary, by subcommand: a shard `node`, an `executor`,
 //! the `edge` router, and the restore tools (`cli.rs`). It serves no models
 //! or tools of its own: an org's providers come from the control plane, as
 //! sealed connections (`providers.rs`), and agents from their definitions.
 //!
-//! Decision: a separate binary from `cell-testnode`, which adds simulated
+//! Decision: a separate binary from `agentd-testnode`, which adds simulated
 //! models, test tools and a stub MCP egress for the test fleets and load
 //! runs; none of that belongs in an install.
 
-// Decision: jemalloc, as `cell-testnode` measured (its doc has the numbers):
+// Decision: jemalloc, as `agentd-testnode` measured (its doc has the numbers):
 // glibc malloc held three times the Raft leader's live heap and never gave
 // it back.
 #[global_allocator]
@@ -22,5 +22,5 @@ pub static malloc_conf: Option<&u8> =
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    everruns_cell::cli::run(everruns_cell::StandardHost::new()).await
+    everruns_agentd::cli::run(everruns_agentd::StandardHost::new()).await
 }

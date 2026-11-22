@@ -169,7 +169,7 @@ pub struct UpArgs {
     #[arg(long = "values", short = 'f', value_name = "FILE")]
     pub values: Vec<PathBuf>,
 
-    /// Where new organizations run agents: v2 (cells, the default) or v1
+    /// Where new organizations run agents: v2 (shards, the default) or v1
     /// (workers). Organizations that already have sessions stay where they are
     #[arg(long, value_enum)]
     pub data_plane: Option<docker::DataPlaneChoice>,
