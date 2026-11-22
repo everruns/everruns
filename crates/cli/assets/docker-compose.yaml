@@ -4,7 +4,7 @@
 # - PostgreSQL database
 # - Valkey (distributed rate limiting)
 # - Server (control plane): HTTP API + gRPC server
-# - Data plane v2 (the default): one cell node, one executor and the edge
+# - Data plane v2 (the default): one shard node, one executor and the edge
 #   router. New orgs' sessions run there; set EVERRUNS_DATA_PLANE=v1 and
 #   DATA_PLANE_REPLICAS=0 and DATA_PLANE_PULL_POLICY=never in .env to run every
 #   org on workers instead.
@@ -130,7 +130,7 @@ services:
       SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV: ${SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV:-false}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      # Optional 10-second cell detail in Monitoring, read from a Prometheus-compatible
+      # Optional 10-second shard detail in Monitoring, read from a Prometheus-compatible
       # store. With the `metrics` profile: MONITORING_DETAIL=prometheus and
       # MONITORING_DETAIL_URL=http://victoriametrics:8428. Minute history needs neither.
       MONITORING_DETAIL: ${MONITORING_DETAIL:-}
@@ -144,16 +144,16 @@ services:
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set when AUTH_MODE is admin/full}
       AUTH_ADMIN_EMAIL: ${AUTH_ADMIN_EMAIL:-}
       AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-}
-      # Data plane v2: new orgs' sessions run on the cell below. An org that
+      # Data plane v2: new orgs' sessions run on the shard below. An org that
       # already has sessions on workers stays there. EVERRUNS_DATA_PLANE=v1
       # turns this off.
       EVERRUNS_DATA_PLANE: ${EVERRUNS_DATA_PLANE:-v2}
       EVERRUNS_DEFAULT_DATA_PLANE: local
-      EVERRUNS_DEFAULT_DATA_PLANE_URL: http://cell:7000
+      EVERRUNS_DEFAULT_DATA_PLANE_URL: http://shard:7000
       EVERRUNS_DP_TOKEN: ${EVERRUNS_DP_TOKEN:-}
       EVERRUNS_DP_KEY: ${EVERRUNS_DP_KEY:-}
       # Where the data plane calls this server's injected capabilities and
-      # Memory: its CELL_CONTROL_PLANE, which it trusts.
+      # Memory: its AGENTD_CONTROL_PLANE, which it trusts.
       INJECTED_CAPABILITIES_BASE_URL: http://server:9000/api
     depends_on:
       postgres:
@@ -208,36 +208,36 @@ services:
     restart: unless-stopped
 
   # ==========================================================================
-  # Data plane v2: a cell of one node (sessions, Raft log, snapshots), an
+  # Data plane v2: a shard of one node (sessions, Raft log, snapshots), an
   # executor that runs their turns, and the edge router the proxy sends
   # session calls to. DATA_PLANE_REPLICAS=0 leaves them out (v1).
   #
-  # The cell's restore points go to the `cell_store` volume (file://), which
-  # the executor reads too; point CELL_STORE at s3://bucket/prefix to keep
+  # The shard's restore points go to the `shard_store` volume (file://), which
+  # the executor reads too; point AGENTD_STORE at s3://bucket/prefix to keep
   # them off this machine.
   # ==========================================================================
-  cell:
-    image: ghcr.io/everruns/everruns-cell:${EVERRUNS_TAG:-latest}
-    command: ["node", "--cell", "0", "--node", "1", "--data", "/data", "--listen", "0.0.0.0:7000"]
-    environment: &cell-env
-      CELL_TOPOLOGY: /etc/cell/topology.json
-      CELL_STORE: ${CELL_STORE:-file:///store}
-      CELL_DATA_PLANE: local
-      CELL_CONTROL_PLANE: http://server:9000/api
-      CELL_JWKS_URL: http://server:9000/api/.well-known/jwks.json
-      CELL_DP_TOKEN: ${EVERRUNS_DP_TOKEN:-}
-      CELL_DP_KEY: ${EVERRUNS_DP_KEY:-}
-      CELL_EXECUTOR_CAP: "256"
-      CELL_MEMORY_BUDGET_MB: ${CELL_MEMORY_BUDGET_MB:-1024}
-      CELL_UNLOAD_IDLE_SECS: "600"
+  shard:
+    image: ghcr.io/everruns/agentd:${EVERRUNS_TAG:-latest}
+    command: ["node", "--shard", "0", "--node", "1", "--data", "/data", "--listen", "0.0.0.0:7000"]
+    environment: &shard-env
+      AGENTD_TOPOLOGY: /etc/shard/topology.json
+      AGENTD_STORE: ${AGENTD_STORE:-file:///store}
+      AGENTD_DATA_PLANE: local
+      AGENTD_CONTROL_PLANE: http://server:9000/api
+      AGENTD_JWKS_URL: http://server:9000/api/.well-known/jwks.json
+      AGENTD_DP_TOKEN: ${EVERRUNS_DP_TOKEN:-}
+      AGENTD_DP_KEY: ${EVERRUNS_DP_KEY:-}
+      AGENTD_EXECUTOR_CAP: "256"
+      AGENTD_MEMORY_BUDGET_MB: ${AGENTD_MEMORY_BUDGET_MB:-1024}
+      AGENTD_UNLOAD_IDLE_SECS: "600"
       AWS_REGION: ${AWS_REGION:-us-east-1}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     configs:
-      - source: cell_topology
-        target: /etc/cell/topology.json
+      - source: shard_topology
+        target: /etc/shard/topology.json
     volumes:
-      - cell_data:/data
-      - cell_store:/store
+      - shard_data:/data
+      - shard_store:/store
     # v1 sets never, so no data plane image is pulled (older tags have none).
     pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
@@ -248,35 +248,35 @@ services:
     restart: unless-stopped
 
   executor:
-    image: ghcr.io/everruns/everruns-cell:${EVERRUNS_TAG:-latest}
+    image: ghcr.io/everruns/agentd:${EVERRUNS_TAG:-latest}
     command: ["executor", "--id", "4294967296", "--listen", "0.0.0.0:7001"]
-    environment: *cell-env
+    environment: *shard-env
     configs:
-      - source: cell_topology
-        target: /etc/cell/topology.json
+      - source: shard_topology
+        target: /etc/shard/topology.json
     volumes:
-      - cell_store:/store
+      - shard_store:/store
     # v1 sets never, so no data plane image is pulled (older tags have none).
     pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
       replicas: ${DATA_PLANE_REPLICAS:-1}
     depends_on:
-      - cell
+      - shard
     restart: unless-stopped
 
   edge:
-    image: ghcr.io/everruns/everruns-cell:${EVERRUNS_TAG:-latest}
+    image: ghcr.io/everruns/agentd:${EVERRUNS_TAG:-latest}
     command: ["edge", "--listen", "0.0.0.0:7100", "--control-plane", "http://server:9000", "--api-prefix", "/api"]
-    environment: *cell-env
+    environment: *shard-env
     configs:
-      - source: cell_topology
-        target: /etc/cell/topology.json
+      - source: shard_topology
+        target: /etc/shard/topology.json
     # v1 sets never, so no data plane image is pulled (older tags have none).
     pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
       replicas: ${DATA_PLANE_REPLICAS:-1}
     depends_on:
-      - cell
+      - shard
     restart: unless-stopped
 
   # ==========================================================================
@@ -416,7 +416,7 @@ configs:
       # SDK reconnects transparently (no retry budget cost).
       :9300 {
         # Session calls go to the data plane's edge router first: it serves a
-        # v2 org's sessions from the cell and passes everything else to the
+        # v2 org's sessions from the shard and passes everything else to the
         # API unchanged. With no edge (v1, DATA_PLANE_REPLICAS=0) they go
         # straight to the API. No compression: these are mostly SSE streams.
         @sessions path_regexp ^/api/v1/(sessions|commands|workspaces/[^/]+/fs(/|$))
@@ -494,10 +494,10 @@ configs:
         }
       }
 
-  # The data plane's layout: cell 0 (the directory cell) with one node.
-  cell_topology:
+  # The data plane's layout: shard 0 (the directory shard) with one node.
+  shard_topology:
     content: |
-      {"directory_cell": 0, "cells": {"0": {"1": "cell:7000"}}}
+      {"directory_shard": 0, "shards": {"0": {"1": "shard:7000"}}}
 
   prometheus_scrape_config:
     content: |
@@ -529,8 +529,8 @@ configs:
 
 volumes:
   postgres_data:
-  cell_data:
-  cell_store:
+  shard_data:
+  shard_store:
   valkey_data:
   nats_data:
   victoriametrics_data:

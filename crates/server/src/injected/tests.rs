@@ -380,7 +380,7 @@ async fn the_linked_data_planes_tokens_are_trusted_from_its_key_alone() {
         capability_id: "injected:knowledge_base".into(),
         audience: url,
     };
-    // What a cell's executor signs with (`mcp.rs` in everruns-agentd).
+    // What a shard's executor signs with (`mcp.rs` in everruns-agentd).
     let executor =
         SessionTokenSigner::from_pkcs8(SESSION_TOKEN_ISSUER, &session_token_pkcs8(&dp_key))
             .unwrap();

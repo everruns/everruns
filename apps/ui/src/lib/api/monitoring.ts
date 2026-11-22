@@ -5,8 +5,8 @@ import type {
   MonitoringActorDetail,
   MonitoringTimeline,
   MonitoringTimelineWindow,
-  MonitoringCells,
-  MonitoringCellDetail,
+  MonitoringShards,
+  MonitoringShardDetail,
 } from "./types";
 
 export type MonitoringScope = "organization" | "fleet";
@@ -67,17 +67,17 @@ export async function getMonitoringTimelineWindow(
   ).data;
 }
 
-/** Data plane v2 cells and their history (platform only). */
-export async function getMonitoringCells(range: TimelineRange): Promise<MonitoringCells> {
+/** Data plane v2 shards and their history (platform only). */
+export async function getMonitoringShards(range: TimelineRange): Promise<MonitoringShards> {
   const params = new URLSearchParams({ range });
-  return (await api.get<MonitoringCells>(`/v1/durable/monitoring/cells?${params}`)).data;
+  return (await api.get<MonitoringShards>(`/v1/durable/monitoring/shards?${params}`)).data;
 }
 
-/** One cell's last hour per node, every 10 seconds, from the optional detail store. */
-export async function getMonitoringCellDetail(cell: string): Promise<MonitoringCellDetail> {
+/** One shard's last hour per node, every 10 seconds, from the optional detail store. */
+export async function getMonitoringShardDetail(shard: string): Promise<MonitoringShardDetail> {
   return (
-    await api.get<MonitoringCellDetail>(
-      `/v1/durable/monitoring/cells/${encodeURIComponent(cell)}/detail`,
+    await api.get<MonitoringShardDetail>(
+      `/v1/durable/monitoring/shards/${encodeURIComponent(shard)}/detail`,
     )
   ).data;
 }

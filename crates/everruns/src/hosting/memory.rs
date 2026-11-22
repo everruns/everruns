@@ -88,7 +88,7 @@ pub struct MemoryHosting {
 
 /// How many operations an execution epoch asked of the authority.
 ///
-/// On a replicated authority (a data plane v2 cell) every one of these is a
+/// On a replicated authority (a data plane v2 shard) every one of these is a
 /// round trip to the leader, and every write also waits for a quorum, so
 /// writes per turn times that latency is the turn's overhead floor. Benches
 /// read it to hold that count down; it is diagnostic, not a contract.
@@ -184,9 +184,9 @@ impl MemoryHosting {
     /// Keep `llm.generation` events without the prompt they carry (its
     /// messages and captured request body); the rest of the event stays.
     ///
-    /// Decision: a data plane v2 cell keeps full prompts in S3 objects, off
+    /// Decision: a data plane v2 shard keeps full prompts in S3 objects, off
     /// the replicated authority, and no turn reads them back. This lets a
-    /// long run on this authority hold what a cell holds, so a 200 000-turn
+    /// long run on this authority hold what a shard holds, so a 200 000-turn
     /// bench fits in memory. Listeners see the event as stored. Applies to
     /// sessions created after the call.
     pub fn without_prompts(mut self) -> Self {

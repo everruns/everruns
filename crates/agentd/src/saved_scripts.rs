@@ -7,7 +7,7 @@
 //!   the session's agent, so a script lists or saves the scripts of the
 //!   agent whose turn it is.
 //! - A save is bound to the turn's input message
-//!   ([`SavedScriptStore::for_execution`]). The forwarding cell names the
+//!   ([`SavedScriptStore::for_execution`]). The forwarding shard names the
 //!   person who sent it (`host_calls::act_as_sender`), and the control
 //!   plane saves as that turn's management user under `AGENT_MANAGE`, and
 //!   only when the agent's shell lets it save scripts (THREAT[TM-TOOL-067]).
@@ -31,14 +31,14 @@ const UNBOUND_SAVE: &str =
 
 /// Saved scripts of one session's agent.
 #[derive(Clone)]
-pub(crate) struct CellSavedScripts {
+pub(crate) struct ShardSavedScripts {
     lookups: OrgLookups,
     session: SessionId,
     /// The turn a save is authorized as; `None` until bound.
     input: Option<uuid::Uuid>,
 }
 
-impl CellSavedScripts {
+impl ShardSavedScripts {
     pub(crate) fn new(lookups: OrgLookups, session: SessionId) -> Self {
         Self {
             lookups,
@@ -76,7 +76,7 @@ fn to_script(record: &Value) -> Option<SavedScript> {
 }
 
 #[async_trait]
-impl SavedScriptStore for CellSavedScripts {
+impl SavedScriptStore for ShardSavedScripts {
     async fn list(&self) -> Result<Vec<SavedScript>, String> {
         let listed = self
             .call(

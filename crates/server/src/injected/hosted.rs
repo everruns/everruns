@@ -6,7 +6,7 @@
 // Decisions:
 // - The tools are the capability's own, unchanged; only their context is
 //   this server's. A tool that asked the control plane through a host call
-//   on a cell gets the same handler here, in process
+//   on a shard gets the same handler here, in process
 //   (`data_plane::host_calls::answer`), as the org's internal caller with
 //   the org's feature flags: the same checks and failures, and nothing
 //   crosses the link.
@@ -166,7 +166,7 @@ impl InjectedCapabilityService for HostedService {
 }
 
 /// Poppy calls made here, with the session owner's keys and Session Tokens
-/// that never leave the control plane. Same answers as a cell's.
+/// that never leave the control plane. Same answers as a shard's.
 pub mod poppy {
     use super::*;
     use everruns_capabilities::capabilities::{
@@ -234,7 +234,7 @@ pub mod poppy {
 /// through (its token stays here). Slack's model view stays on the data
 /// plane (`SlackModelViewCapability`), added beside it by [`super::attach`].
 ///
-/// Decision: `slack_upload_file` reads the session's file from its cell
+/// Decision: `slack_upload_file` reads the session's file from its shard
 /// through the `fs` session command, until the `io.everruns/files`
 /// extension lets the server ask the data plane for it. The view is
 /// read-only: a Slack tool never writes the session's files.
@@ -282,8 +282,8 @@ pub mod slack {
         }
     }
 
-    /// The session's files on its cell, read-only.
-    struct CellFiles {
+    /// The session's files on its shard, read-only.
+    struct ShardFiles {
         db: Arc<crate::storage::StorageBackend>,
         org: OrgId,
     }
@@ -295,7 +295,7 @@ pub mod slack {
     }
 
     #[async_trait]
-    impl SessionFileSystem for CellFiles {
+    impl SessionFileSystem for ShardFiles {
         fn is_mount_resolver(&self) -> bool {
             false
         }
@@ -387,7 +387,7 @@ pub mod slack {
             base_url,
             configs,
             Arc::new(move |mut context: ToolContext, _, org, session| {
-                context.file_store = Some(Arc::new(CellFiles {
+                context.file_store = Some(Arc::new(ShardFiles {
                     db: db.clone(),
                     org,
                 }));
@@ -628,7 +628,7 @@ pub mod memory {
 /// `user_mcp` tools and turn servers, as the token's `act`.
 ///
 /// Decisions:
-/// - Two tools, one per answer the cell needs: the manage tools' store
+/// - Two tools, one per answer the shard needs: the manage tools' store
 ///   (`person_mcp_store`) and the servers the turn adds
 ///   (`person_mcp_servers`, the person's servers only when asked for).
 ///   Each runs the `user_mcp` handler a host call
@@ -690,7 +690,7 @@ pub mod person_mcp {
                     params["call"] = arguments.get("call").cloned().unwrap_or(Value::Null);
                 }
                 Kind::Servers => {
-                    // The person's servers only when the cell asks for them
+                    // The person's servers only when the shard asks for them
                     // (its agent uses them); the records need no person.
                     if arguments["person"].as_bool() != Some(true) {
                         params.as_object_mut().map(|p| p.remove("input_message_id"));
@@ -828,7 +828,7 @@ pub mod person_mcp {
 /// - One tool for the four lookups (`CREDENTIAL_CALLS`), each run by the
 ///   handler its host call runs, with the same params, except that the
 ///   session, the person and the turn's input message come from the token:
-///   the person whose message the cell's record says opened the turn the
+///   the person whose message the shard's record says opened the turn the
 ///   caller names (THREAT[TM-AGENT-017]). A token with no `act` looks up as
 ///   no one (the agent's own credentials).
 /// - Refusals keep their kind (`{"error": {"kind", "message"}}`): a

@@ -1,4 +1,4 @@
-//! The control plane ↔ data plane protocol, `/dp/v1`, as the cells speak
+//! The control plane ↔ data plane protocol, `/dp/v1`, as the shards speak
 //! it. The wire types are shared with the control plane in
 //! `everruns_contracts::dataplane`.
 

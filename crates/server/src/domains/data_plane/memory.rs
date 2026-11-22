@@ -5,18 +5,18 @@
 //! - Memory stays in the control plane. Its files are shared across
 //!   sessions, people and agents of the org (`/memory/shared` is read by
 //!   every Platform Chat thread, `/memory/agent` by every session of one
-//!   agent), so no one session's cell can own them. A cell reaches them
+//!   agent), so no one session's shard can own them. A shard reaches them
 //!   through one host call, [`MEMORY_FILE`].
 //! - The mounts a session has are resolved here from its record, as for a
 //!   v1 session (`session_files::memory_mounts`), and sent with the create
-//!   ([`mounts`]); the cell mounts only those, so a session without Memory
+//!   ([`mounts`]); the shard mounts only those, so a session without Memory
 //!   never calls.
 //! - A call names the session and a path; it is served only when the path
 //!   is inside one of that session's own mounts, resolved again from the
-//!   record. A cell cannot reach another session's Memory, nor the
-//!   session's workspace (which on v2 lives in the cell anyway).
+//!   record. A shard cannot reach another session's Memory, nor the
+//!   session's workspace (which on v2 lives in the shard anyway).
 //! - The answer carries the file service's own paths (`/memory/user/...`);
-//!   the cell maps them into its mount.
+//!   the shard maps them into its mount.
 //! - No content search over Memory yet: the file service searches a whole
 //!   workspace, not one mount. A shell's `grep` reads the files instead.
 
@@ -78,7 +78,7 @@ async fn run(ctx: &Ctx, params: &Value) -> Result<Value, String> {
     let router = MemoryMountRouter::new(ctx.db.clone());
     let mounts = router.mounts_for(session.uuid()).await;
     // THREAT[TM-TENANT]: only the session's own Memory, resolved from its
-    // record, whatever the cell names.
+    // record, whatever the shard names.
     if !mounts.iter().any(|mount| under(path, &mount.mount_path)) {
         return Err(format!("{path} is not in this session's Memory"));
     }

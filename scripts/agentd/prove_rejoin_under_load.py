@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""A follower killed under load rejoins without hurting its cell.
+"""A follower killed under load rejoins without hurting its shard.
 
   prove_rejoin_under_load.py [--rate 20] [--secs 150] [--down 90]
 
-Starts one cell with two executors, drives chat sessions at `--rate` new
+Starts one shard with two executors, drives chat sessions at `--rate` new
 sessions a second for `--secs` (each holding its stream one time in five),
 kills one follower 60 s in (clients use the other members' gateways) and starts it again `--down` seconds later, by
 when the leader has purged the entries the follower missed, so it catches
@@ -17,10 +17,10 @@ restart to the end (no elections), and the follower catches up.
 import argparse, json, os, signal, subprocess, sys, time, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
-DRIVE = os.environ.get("CELL_DRIVE_BIN", os.path.join(ROOT, "target", "release", "cell-drive"))
+DRIVE = os.environ.get("AGENTD_DRIVE_BIN", os.path.join(ROOT, "target", "release", "agentd-drive"))
 KILL_AT = 60
 
 
@@ -56,16 +56,16 @@ def main():
     p.add_argument("--think", type=float, default=10)
     a = p.parse_args()
 
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
-    os.environ["CELL_NODE_ARGS"] = "--snapshot-every 2000 --keep-log 256"
-    os.environ.setdefault("CELL_MEMORY_BUDGET_MB", "3000")
+    os.environ["AGENTD_NODE_ARGS"] = "--snapshot-every 2000 --keep-log 256"
+    os.environ.setdefault("AGENTD_MEMORY_BUDGET_MB", "3000")
     fleet.up(1, 3, 7100, 2)
     time.sleep(2)
     leader = fleet.leader(0)
     follower = next(n for n in (1, 2, 3) if n != leader)
-    # Clients reach the cell through the other members' gateways: the
+    # Clients reach the shard through the other members' gateways: the
     # follower's own gateway is down with it, which says nothing.
     gateways = ",".join(f"http://{fleet.addr(0, n)}" for n in (1, 2, 3) if n != follower)
     drive = subprocess.Popen(
@@ -87,15 +87,15 @@ def main():
             killed_at = t
             print(f"t={t}: killed follower {follower} (leader {leader})", flush=True)
         if killed_at is not None and restarted_at is None and t >= killed_at + a.down:
-            term_at_restart = metric(leader, "cell_raft_term")
+            term_at_restart = metric(leader, "agentd_shard_raft_term")
             fleet.start(0, follower)
             restarted_at = t
             print(f"t={t}: started follower {follower} again", flush=True)
         row = {"t": t}
         for n in (1, 2, 3):
-            row[n] = {"applied": metric(n, "cell_raft_applied_index"),
-                      "term": metric(n, "cell_raft_term"),
-                      "behind": metric(n, "cell_catching_up"), "rss": rss_mb(n)}
+            row[n] = {"applied": metric(n, "agentd_shard_raft_applied_index"),
+                      "term": metric(n, "agentd_shard_raft_term"),
+                      "behind": metric(n, "agentd_shard_catching_up"), "rss": rss_mb(n)}
         timeline.append(row)
         if restarted_at is not None and row[leader]["term"] is not None:
             terms_after.add(row[leader]["term"])
@@ -103,8 +103,8 @@ def main():
         print(json.dumps(row), flush=True)
         time.sleep(5)
     report = json.loads(drive.stdout.read() or "{}")
-    lead_applied = metric(leader, "cell_raft_applied_index") or 0
-    follower_applied = metric(follower, "cell_raft_applied_index") or 0
+    lead_applied = metric(leader, "agentd_shard_raft_applied_index") or 0
+    follower_applied = metric(follower, "agentd_shard_raft_applied_index") or 0
     result = {
         "sessions": report.get("sessions"),
         "turns_completed": report.get("turns_completed"),
@@ -134,4 +134,4 @@ if __name__ == "__main__":
     try:
         main()
     finally:
-        subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+        subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])

@@ -3,20 +3,20 @@
 //! v1 subagent has.
 //!
 //! Decisions:
-//! - A cell starts a subagent itself (`crates/agentd/src/subagents.rs`), but
+//! - A shard starts a subagent itself (`crates/agentd/src/subagents.rs`), but
 //!   asks here first: the record is made with the id the child then runs
 //!   under, so the calls that read a session's record (Memory mounts, a
 //!   connection acting as the turn's person, the console's lists) serve the
 //!   child as they serve its parent. The answer carries the child's id and
-//!   its Memory mounts, which the cell creates it with.
+//!   its Memory mounts, which the shard creates it with.
 //! - The child belongs to its parent: same org, same owner and identity,
 //!   source `subagent`, `parent_session_id` set. The parent must be one of
-//!   the org's sessions on its data plane, so a cell can record children
+//!   the org's sessions on its data plane, so a shard can record children
 //!   only for sessions it runs for that org.
 //! - The record is marked as the data plane's (`dp_session_summaries`)
-//!   before the cell creates the child, so nothing sends its messages to
+//!   before the shard creates the child, so nothing sends its messages to
 //!   the platform's workers.
-//! - A cell with no control plane (standalone) starts children without a
+//! - A shard with no control plane (standalone) starts children without a
 //!   record, as before.
 
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};

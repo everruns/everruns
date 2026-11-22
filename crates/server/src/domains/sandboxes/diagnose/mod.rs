@@ -15,7 +15,7 @@
 // - Provider answers are built field by field (`ProviderSandboxView`) and
 //   their free text is scrubbed here again, so a provider error that echoes
 //   a key is never returned.
-// - A v2 (data plane) session's sandbox lives in its cell: its state and the
+// - A v2 (data plane) session's sandbox lives in its shard: its state and the
 //   session's work are read from there (`session_read("sandbox")`), and the
 //   control plane's idle timer and sweep do not manage it, which diagnose
 //   reports as a fact.
@@ -217,7 +217,7 @@ pub struct SandboxSessionWork {
     pub claim_expires_at: Option<DateTime<Utc>>,
     pub attempts: Option<i32>,
     pub cancel_requested_at: Option<DateTime<Utc>>,
-    /// The session runs on a v2 data plane (a cell).
+    /// The session runs on a v2 data plane (a shard).
     pub data_plane: bool,
 }
 
@@ -249,9 +249,9 @@ pub struct SandboxDiagnosis {
     pub provider: Option<ProviderSandboxState>,
     /// Why the provider was not asked, or what went wrong asking it.
     pub provider_note: Option<String>,
-    /// The sandbox as its cell records it (v2 sessions).
+    /// The sandbox as its shard records it (v2 sessions).
     #[schema(value_type = Option<Object>)]
-    pub cell_sandbox: Option<serde_json::Value>,
+    pub shard_sandbox: Option<serde_json::Value>,
     /// Problems and warnings first.
     pub findings: Vec<SandboxFinding>,
     /// The latest recorded causes, oldest first.
@@ -390,7 +390,7 @@ pub fn findings(input: &DiagnosisInputs<'_>) -> Vec<SandboxFinding> {
                 "data_plane.lifecycle",
                 CheckStatus::Info,
                 "Runs on a v2 data plane",
-                "This session runs in a cell. The control plane's idle timer, idle sweep and retention sweep do not manage its sandbox; between turns it stops only by the provider's own idle stop.",
+                "This session runs in a shard. The control plane's idle timer, idle sweep and retention sweep do not manage its sandbox; between turns it stops only by the provider's own idle stop.",
             )
             .why("If the provider's own idle stop is off, the sandbox keeps running (and billing) after the session goes idle.")
             .fix("Check `auto_stop_minutes` in the provider section below; pause it by hand with `everruns sessions sandbox manage --action pause` if it is running unused."),
@@ -761,7 +761,7 @@ async fn provider_token(
         .ok_or_else(|| format!("No {provider} account is connected for this sandbox's credential."))
 }
 
-/// The session's work state, from the control plane (v1) or its cell (v2).
+/// The session's work state, from the control plane (v1) or its shard (v2).
 async fn session_work(
     ctx: &Ctx,
     session: Option<uuid::Uuid>,
@@ -778,13 +778,13 @@ async fn session_work(
             .session_read(&plane.org, id, &session_commands::SANDBOX, "")
             .await;
         let (work, sandbox) = match read {
-            Ok(value) => cell_work(&value),
+            Ok(value) => shard_work(&value),
             Err(error) => {
                 let mut work = SandboxSessionWork {
                     data_plane: true,
                     ..Default::default()
                 };
-                work.phase = Some(format!("unknown: the cell did not answer ({error})"));
+                work.phase = Some(format!("unknown: the shard did not answer ({error})"));
                 (work, None)
             }
         };
@@ -826,8 +826,8 @@ async fn session_work(
     (work, None)
 }
 
-/// A cell's `sandbox` read: `{ "work": {...}, "sandbox": {...} | null }`.
-fn cell_work(value: &serde_json::Value) -> (SandboxSessionWork, Option<serde_json::Value>) {
+/// A shard's `sandbox` read: `{ "work": {...}, "sandbox": {...} | null }`.
+fn shard_work(value: &serde_json::Value) -> (SandboxSessionWork, Option<serde_json::Value>) {
     let work = &value["work"];
     let ms = |v: &serde_json::Value| v.as_i64().and_then(DateTime::from_timestamp_millis);
     let running = work["turn_running"].as_bool();
@@ -950,7 +950,7 @@ impl Command for GetSandboxProviderState {
         let (row, inputs) = load_row(ctx, id).await?;
         let external_id = match row.external_id.clone() {
             Some(id) => Some(id),
-            None => cell_external_id(ctx, row.session_id).await,
+            None => shard_external_id(ctx, row.session_id).await,
         };
         ask_provider(ctx, &row, &inputs, external_id.as_deref())
             .await
@@ -958,8 +958,8 @@ impl Command for GetSandboxProviderState {
     }
 }
 
-/// The provider id a v2 session's cell recorded for its sandbox.
-async fn cell_external_id(ctx: &Ctx, session: Option<uuid::Uuid>) -> Option<String> {
+/// The provider id a v2 session's shard recorded for its sandbox.
+async fn shard_external_id(ctx: &Ctx, session: Option<uuid::Uuid>) -> Option<String> {
     let (_, sandbox) = session_work(ctx, session).await;
     sandbox?["external_id"].as_str().map(str::to_string)
 }
@@ -996,14 +996,14 @@ impl Command for DiagnoseSandbox {
         let id = parse_sandbox_id(&self.id)?;
         let (row, inputs) = load_row(ctx, id).await?;
         let now = Utc::now();
-        let (work, cell_sandbox) = session_work(ctx, row.session_id).await;
+        let (work, shard_sandbox) = session_work(ctx, row.session_id).await;
         let lifecycle = if work.data_plane {
             None
         } else {
             lifecycle_status(&inputs)
         };
         let external_id = row.external_id.clone().or_else(|| {
-            cell_sandbox.as_ref()?["external_id"]
+            shard_sandbox.as_ref()?["external_id"]
                 .as_str()
                 .map(str::to_string)
         });
@@ -1063,7 +1063,7 @@ impl Command for DiagnoseSandbox {
             work,
             provider,
             provider_note,
-            cell_sandbox,
+            shard_sandbox,
             findings: found,
             recent_events: events,
         })

@@ -4,9 +4,9 @@
 //! reads and commits go through the node's hosting (`hosting_files.rs`).
 //!
 //! Decisions:
-//! - Reads are linearizable. The gateway calls any member of the cell, and
+//! - Reads are linearizable. The gateway calls any member of the shard, and
 //!   a follower's replica may trail the leader, so a read first takes the
-//!   leader's read index (`/cell/read-index`, a quorum heartbeat) and waits
+//!   leader's read index (`/shard/read-index`, a quorum heartbeat) and waits
 //!   until this replica applied it. Without it an upload followed by a
 //!   listing could miss the upload.
 //! - Writes are unfenced, as every gateway write: a person's upload is not
@@ -14,7 +14,7 @@
 //! - A failure the caller made (a missing file, an existing target, a
 //!   read-only file) comes back as [`FsResult::Failed`] with the HTTP status
 //!   the control plane answers for it. Only the session's own whereabouts
-//!   (moved, frozen, missing, shedding) use the [`CellReply`] variants, so
+//!   (moved, frozen, missing, shedding) use the [`ShardReply`] variants, so
 //!   the gateway's retry loop never mistakes "file not found" for "session
 //!   not found".
 //! - Binary content travels base64, as the control plane's file API
@@ -36,9 +36,9 @@ use everruns_core::session_files::SessionFileSystem as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::api::{CellReply, reply_of};
+use crate::api::{ShardReply, reply_of};
 use crate::files::{Change, Entry};
-use crate::hosting::files::{CellFiles, info};
+use crate::hosting::files::{ShardFiles, info};
 use crate::node::Node;
 
 type ApiError = (StatusCode, String);
@@ -49,8 +49,8 @@ pub const FILE_MAX: usize = 32 * 1024 * 1024;
 
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/cell/read-index", get(read_index))
-        .route("/cell/sessions/{session}/fs", post(fs))
+        .route("/shard/read-index", get(read_index))
+        .route("/shard/sessions/{session}/fs", post(fs))
         .layer(axum::extract::DefaultBodyLimit::max(FILE_MAX * 2))
         .with_state(node)
 }
@@ -167,7 +167,7 @@ impl FsOp {
     }
 }
 
-/// What a workspace call came to, inside [`CellReply::Ok`].
+/// What a workspace call came to, inside [`ShardReply::Ok`].
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum FsResult {
@@ -206,9 +206,9 @@ pub(crate) async fn read_barrier(node: &Node) -> anyhow::Result<()> {
     } else {
         let leader = node
             .leader_addr()
-            .ok_or_else(|| anyhow::anyhow!("no leader for cell {}", node.cfg.cell))?;
+            .ok_or_else(|| anyhow::anyhow!("no leader for shard {}", node.cfg.shard))?;
         node.http
-            .get(format!("http://{leader}/cell/read-index"))
+            .get(format!("http://{leader}/shard/read-index"))
             .timeout(Duration::from_secs(5))
             .send()
             .await?
@@ -225,7 +225,7 @@ async fn fs(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(op): Json<FsOp>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = SessionId::parse(&session).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     if op.reads() {
         read_barrier(&node)
@@ -234,11 +234,11 @@ async fn fs(
     }
     let files = node.hosting.workspace_api();
     let reply = match run(&files, id, op).await {
-        Ok(result) => CellReply::Ok {
+        Ok(result) => ShardReply::Ok {
             value: serde_json::to_value(result).unwrap_or(Value::Null),
         },
         Err(error) => match outcome(error) {
-            Ok(result) => CellReply::Ok {
+            Ok(result) => ShardReply::Ok {
                 value: serde_json::to_value(result).unwrap_or(Value::Null),
             },
             Err(reply) => reply,
@@ -248,14 +248,14 @@ async fn fs(
 }
 
 /// An error as the caller's failure, or as where the session is.
-fn outcome(error: AgentLoopError) -> Result<FsResult, CellReply> {
+fn outcome(error: AgentLoopError) -> Result<FsResult, ShardReply> {
     match error {
-        AgentLoopError::SessionNotFound(_) => Err(CellReply::NotFound),
+        AgentLoopError::SessionNotFound(_) => Err(ShardReply::NotFound),
         AgentLoopError::ToolExecution(message) => Ok(failed(status_of(&message), message)),
         other => match reply_of(&other) {
-            CellReply::Refused { reason } => Ok(failed(StatusCode::SERVICE_UNAVAILABLE, reason)),
+            ShardReply::Refused { reason } => Ok(failed(StatusCode::SERVICE_UNAVAILABLE, reason)),
             // "not found" in a store error is not the session's absence.
-            CellReply::NotFound => Ok(failed(StatusCode::SERVICE_UNAVAILABLE, other.to_string())),
+            ShardReply::NotFound => Ok(failed(StatusCode::SERVICE_UNAVAILABLE, other.to_string())),
             reply => Err(reply),
         },
     }
@@ -293,7 +293,7 @@ fn decoded_size(content: &str, encoding: &str) -> Result<u64, FsResult> {
 }
 
 async fn put(
-    files: &CellFiles,
+    files: &ShardFiles,
     session: SessionId,
     change: impl FnOnce(crate::files::Content) -> Change,
     content: &str,
@@ -323,7 +323,7 @@ fn listing(
 }
 
 async fn run(
-    files: &CellFiles,
+    files: &ShardFiles,
     session: SessionId,
     op: FsOp,
 ) -> everruns_contracts::error::Result<FsResult> {

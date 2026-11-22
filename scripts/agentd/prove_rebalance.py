@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Balance long turns across cells, moving them mid-turn.
+"""Balance long turns across shards, moving them mid-turn.
 
   prove_rebalance.py [--sessions 120] [--turns 3] [--scale 0.6] [--kills 6]
 
-Starts one cell and runs long multi-step turns in it (the llmsim
+Starts one shard and runs long multi-step turns in it (the llmsim
 `long-tool` scenario: two bash calls of 25 s each, times --scale). While they
-run it adds a second cell. Nothing else is told to move: the rebalancer on
-the directory leader sees one busy cell and one empty cell and moves sessions,
+run it adds a second shard. Nothing else is told to move: the rebalancer on
+the directory leader sees one busy shard and one empty shard and moves sessions,
 running turns included. A moved turn parks at its next step boundary and the
-new cell resumes it from the log. A second load created after the new cell
+new shard resumes it from the log. A second load created after the new shard
 joined shows load-aware placement.
 
 Every session is then checked with the chaos invariants: each accepted
@@ -18,10 +18,10 @@ times than it has durable `tool.started` events (the ledger).
 import argparse, json, os, random, subprocess, sys, threading, time, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
-DRIVE = os.path.join(ROOT, "target", "release", "cell-drive")
+DRIVE = os.path.join(ROOT, "target", "release", "agentd-drive")
 
 
 def get(url, timeout=3):
@@ -29,10 +29,10 @@ def get(url, timeout=3):
         return r.read().decode()
 
 
-def cell_load(cell):
-    for node in fleet.nodes_of(cell):
+def shard_load(shard):
+    for node in fleet.nodes_of(shard):
         try:
-            return json.loads(get(f"http://{fleet.addr(cell, node)}/cell/load"))
+            return json.loads(get(f"http://{fleet.addr(shard, node)}/shard/load"))
         except Exception:
             pass
     return None
@@ -41,10 +41,10 @@ def cell_load(cell):
 def metric_sum(name, match=""):
     """Sum a counter over every node's /metrics."""
     total = 0.0
-    for cell in fleet.cells():
-        for node in fleet.nodes_of(cell):
+    for shard in fleet.shards():
+        for node in fleet.nodes_of(shard):
             try:
-                text = get(f"http://{fleet.addr(cell, node)}/metrics")
+                text = get(f"http://{fleet.addr(shard, node)}/metrics")
             except Exception:
                 continue
             for line in text.splitlines():
@@ -57,19 +57,19 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--sessions", type=int, default=120)
     p.add_argument("--turns", type=int, default=3)
-    p.add_argument("--scale", default="0.6", help="CELL_TOOL_SCALE: 1 = 25 s per bash call")
+    p.add_argument("--scale", default="0.6", help="AGENTD_TOOL_SCALE: 1 = 25 s per bash call")
     p.add_argument("--add-after", type=float, default=8.0)
     p.add_argument("--kills", type=int, default=0,
                    help="also kill -9 this many nodes (one at a time) while sessions move")
     a = p.parse_args()
 
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
     os.makedirs(fleet.STATE, exist_ok=True)
     ledger = os.path.join(fleet.STATE, "ledger.txt")
-    os.environ["CELL_LEDGER"] = ledger
-    os.environ["CELL_TOOL_SCALE"] = a.scale
+    os.environ["AGENTD_LEDGER"] = ledger
+    os.environ["AGENTD_TOOL_SCALE"] = a.scale
     fleet.up(1, 3, 7100)
     time.sleep(1)
     gateways = [f"http://{fleet.addr(0, n)}" for n in (1, 2, 3)]
@@ -92,41 +92,41 @@ def main():
     def sample():
         while not stop.is_set():
             row = {"t": round(time.time() - started)}
-            for cell in fleet.cells():
-                l = cell_load(cell)
+            for shard in fleet.shards():
+                l = shard_load(shard)
                 if l:
-                    row[f"c{cell}"] = l
+                    row[f"c{shard}"] = l
             timeline.append(row)
-            cells = "  ".join(
-                f"cell {k[1:]}: {v['active']:>3} turns {v['sessions']:>4} sessions {v['moving']:>2} moving"
+            shards = "  ".join(
+                f"shard {k[1:]}: {v['active']:>3} turns {v['sessions']:>4} sessions {v['moving']:>2} moving"
                 for k, v in row.items() if k != "t")
-            print(f"{row['t']:>4}s  {cells}", flush=True)
+            print(f"{row['t']:>4}s  {shards}", flush=True)
             stop.wait(3)
 
     sampler = threading.Thread(target=sample)
     sampler.start()
 
     time.sleep(a.add_after)
-    print(f"--- adding cell 1 at {round(time.time() - started)}s", flush=True)
+    print(f"--- adding shard 1 at {round(time.time() - started)}s", flush=True)
     added_at = time.time()
-    fleet.add_cell(1)
-    while cell_load(1) is None:
+    fleet.add_shard(1)
+    while shard_load(1) is None:
         time.sleep(0.2)
-    # Wait until gateways know the new cell, then create more sessions.
-    while '"1"' not in get(f"{gateways[0]}/v1/cells", timeout=10):
+    # Wait until gateways know the new shard, then create more sessions.
+    while '"1"' not in get(f"{gateways[0]}/v1/shards", timeout=10):
         time.sleep(0.2)
     time.sleep(1.5)
     short_load, short_out = load("short", 60, 1, "worker3", "")
 
     kills = []
     for _ in range(a.kills):
-        cell, node = random.randrange(2), random.choice((1, 2, 3))
-        was_leader = fleet.leader(cell) == node
-        fleet.kill(cell, node)
+        shard, node = random.randrange(2), random.choice((1, 2, 3))
+        was_leader = fleet.leader(shard) == node
+        fleet.kill(shard, node)
         kills.append(was_leader)
-        print(f"kill -9 cell {cell} node {node} (leader={was_leader})", flush=True)
+        print(f"kill -9 shard {shard} node {node} (leader={was_leader})", flush=True)
         time.sleep(random.uniform(1.0, 3.0))
-        fleet.start(cell, node)
+        fleet.start(shard, node)
         time.sleep(random.uniform(2.0, 5.0))
 
     long_load.wait()
@@ -136,7 +136,7 @@ def main():
     fleet.wait_ready()
     time.sleep(1)
 
-    all_gateways = ",".join(f"http://{fleet.addr(c, n)}" for c in fleet.cells() for n in fleet.nodes_of(c))
+    all_gateways = ",".join(f"http://{fleet.addr(c, n)}" for c in fleet.shards() for n in fleet.nodes_of(c))
     checks = {}
     for name, turns in (("long", a.turns), ("short", 1)):
         check = subprocess.run(
@@ -148,8 +148,8 @@ def main():
     def placed(name):
         counts = {}
         for session in open(os.path.join(fleet.STATE, f"{name}.txt")).read().split():
-            cell = get(f"{gateways[0]}/cell/directory/{session}").strip()
-            counts[cell] = counts.get(cell, 0) + 1
+            shard = get(f"{gateways[0]}/shard/directory/{session}").strip()
+            counts[shard] = counts.get(shard, 0) + 1
         return counts
 
     def first_balanced():
@@ -169,14 +169,14 @@ def main():
         "turn_p50_s": round(long_report["turn"]["p50_ms"] / 1000, 1),
         "turn_p99_s": round(long_report["turn"]["p99_ms"] / 1000, 1),
         "rebalance_moves": {
-            "busy": metric_sum("cell_rebalance_moves_total", 'kind="busy"'),
-            "idle": metric_sum("cell_rebalance_moves_total", 'kind="idle"'),
+            "busy": metric_sum("agentd_shard_rebalance_moves_total", 'kind="busy"'),
+            "idle": metric_sum("agentd_shard_rebalance_moves_total", 'kind="idle"'),
         },
-        "turns_parked_mid_turn": metric_sum("cell_turns_executed_total", 'outcome="parked"'),
+        "turns_parked_mid_turn": metric_sum("agentd_shard_turns_executed_total", 'outcome="parked"'),
         "secs_until_balanced_after_add": first_balanced(),
-        "peak_running_turns_in_new_cell": peak and peak["c1"]["active"],
-        "long_sessions_by_cell_at_end": placed("long"),
-        "short_sessions_placed_by_cell": placed("short"),
+        "peak_running_turns_in_new_shard": peak and peak["c1"]["active"],
+        "long_sessions_by_shard_at_end": placed("long"),
+        "short_sessions_placed_by_shard": placed("short"),
         "kills": len(kills),
         "leader_kills": sum(kills),
         "load_errors": long_report["errors"] + short_report["errors"],

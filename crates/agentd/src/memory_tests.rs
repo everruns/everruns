@@ -337,7 +337,7 @@ mod files_server {
         }
     }
 
-    /// The control plane's endpoint, as the egress the cell's calls go out
+    /// The control plane's endpoint, as the egress the shard's calls go out
     /// through: a token that does not verify is a 401.
     struct ControlPlane {
         service: Service,

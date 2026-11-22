@@ -1,4 +1,4 @@
-# The data plane v2 cell image (docker/Dockerfile.cell) for EKS load runs
+# The data plane v2 shard image (docker/Dockerfile.agentd) for EKS load runs
 # and the step 10 deployment (design.md, step 10).
 #
 # Decisions:
@@ -10,8 +10,8 @@
 #   deployment pins that tag's digest.
 # - Binaries compile inside the bookworm image the runtime base matches,
 #   with the release profile's link-time settings the drill uses
-#   (cell-drill.yml), which keep a 4-core runner inside its memory.
-name: Cell Image
+#   (agentd-drill.yml), which keep a 4-core runner inside its memory.
+name: Shard Image
 
 on:
   workflow_dispatch:
@@ -22,8 +22,8 @@ on:
         type: string
   pull_request:
     paths:
-      - 'docker/Dockerfile.cell'
-      - '.github/workflows/cell-image.yml'
+      - 'docker/Dockerfile.agentd'
+      - '.github/workflows/agentd-image.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,7 +34,7 @@ permissions:
 
 jobs:
   build:
-    name: Build cell image
+    name: Build shard image
     runs-on: ubuntu-latest
     timeout-minutes: 90
     container:
@@ -70,14 +70,14 @@ jobs:
       - name: Build binaries
         run: |
           set -euo pipefail
-          cargo build --locked --release -p everruns-agentd-testkit --bin cell-testnode --bin cell-drive
+          cargo build --locked --release -p everruns-agentd-testkit --bin agentd-testnode --bin agentd-drive
           mkdir -p bin
-          cp target/release/cell-testnode target/release/cell-drive bin/
+          cp target/release/agentd-testnode target/release/agentd-drive bin/
 
       - name: Upload binaries
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: cell-bin
+          name: shard-bin
           path: bin/
           retention-days: 3
           compression-level: 1
@@ -98,7 +98,7 @@ jobs:
       - name: Download binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: cell-bin
+          name: shard-bin
           path: bin
 
       - name: Set up Docker Buildx
@@ -117,10 +117,10 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
-          file: docker/Dockerfile.cell
+          file: docker/Dockerfile.agentd
           platforms: linux/amd64
           push: ${{ github.event_name == 'workflow_dispatch' }}
-          tags: ghcr.io/${{ github.repository_owner }}/everruns-cell:${{ needs.build.outputs.sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/agentd:${{ needs.build.outputs.sha }}
           labels: org.opencontainers.image.revision=${{ needs.build.outputs.sha }}
 
       - name: Summarize
@@ -131,7 +131,7 @@ jobs:
           OWNER: ${{ github.repository_owner }}
         run: |
           {
-            echo "### Cell image"
+            echo "### Shard image"
             echo
-            echo "\`ghcr.io/${OWNER}/everruns-cell:${SHA}@${DIGEST}\`"
+            echo "\`ghcr.io/${OWNER}/agentd:${SHA}@${DIGEST}\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -41,14 +41,14 @@ secondary. Agent names and conversation content are excluded from the overview.
   sessions; the platform view ranks organizations by public ID only. It also
   names the tools whose calls failed most.
 - Timeline covers both execution paths on one time axis: workers (sampled every
-  10 seconds) and data plane v2 cells (one report per cell per minute), plus
+  10 seconds) and data plane v2 shards (one report per shard per minute), plus
   open sessions, agents, and agents working. Numbers measured differently are
   shown side by side, never added in the API.
-- Organization scope never shows cell nodes, CPU, memory, or elections: an
-  organization shares cells with others. The platform view and its Cells tab
-  show them: cells and nodes (pods), the fullest node's memory and busiest
+- Organization scope never shows shard nodes, CPU, memory, or elections: an
+  organization shares shards with others. The platform view and its Shards tab
+  show them: shards and nodes (pods), the fullest node's memory and busiest
   node's CPU against their limits, admit and shipping p99s, leader changes, and
-  sessions moved between cells.
+  sessions moved between shards.
 
 ## Decisions
 
@@ -79,20 +79,20 @@ and committed events, marked `backfilled` (no phase split, queue, or worker
 data). Reads aggregate minutes into the requested bucket. The sampling and
 read rules live in [the timeline repository](../../crates/server/src/storage/repositories/monitoring/timeline/mod.rs)
 and [the timeline API](../../crates/server/src/api/monitoring/timeline.rs).
-Cells and the rest of the fleet are recorded without a metrics database, so the
+Shards and the rest of the fleet are recorded without a metrics database, so the
 history works on every install
 ([fleet history](../../crates/server/src/storage/repositories/monitoring/timeline/fleet.rs)).
-Each cell's Raft leader proposes one report per finished minute; the report is
+Each shard's Raft leader proposes one report per finished minute; the report is
 built at apply from replicated state plus the leader's node measurements and
-travels the existing data plane feed, so a cell adds one record a minute and no
-new connection. The control plane keeps the first report per cell and minute
-(`monitoring_cell_minutes`) and adds its population to the platform row and the
-rows of organizations with sessions on the cell. Finished turns and model calls
+travels the existing data plane feed, so a shard adds one record a minute and no
+new connection. The control plane keeps the first report per shard and minute
+(`monitoring_shard_minutes`) and adds its population to the platform row and the
+rows of organizations with sessions on the shard. Finished turns and model calls
 come from the feed's existing session and usage records, tallied per batch;
 a batch redelivered after a lost acknowledgement can count twice, which
 monitoring accepts. Open sessions and agents are counted once a minute into rows
 that already exist; reads carry the last count forward, so idle organizations
-cost no rows. A cell's Prometheus endpoint no longer labels series by agent:
+cost no rows. A shard's Prometheus endpoint no longer labels series by agent:
 series grew with every agent, and per-agent history comes from this record.
 Timeline endpoints follow the other Monitoring endpoints: scoped personal
 access tokens are denied, browser sessions and full-access tokens are not.
@@ -100,20 +100,20 @@ Like the rest of Monitoring, Timeline has no CLI command.
 
 Per-node detail finer than a minute is optional and read, never stored: the
 server queries a Prometheus-compatible store (VictoriaMetrics or Prometheus)
-that scrapes the cells, for one cell's last hour at 10-second steps
+that scrapes the shards, for one shard's last hour at 10-second steps
 ([the reader](../../crates/server/src/domains/system/monitoring_detail.rs)).
 PostgreSQL stays the record, so Monitoring works without the store, and a
 missing or unreachable store is an answer that says why, not an error. The
 store's address comes from the environment only, because an address settable
 through the API would let platform users aim the server at internal hosts; pages
-show its scheme and host, never credentials or a path. Cell names reach PromQL
+show its scheme and host, never credentials or a path. Shard names reach PromQL
 only from a fixed character set. CloudWatch on AWS is served by alarms and
 dashboards outside the app, not by this reader. The system doctor reports
 whether minutes are still being recorded and whether the store answers.
 
 An organization sees only the execution path it runs on: on a data plane, its
-sessions on cells without the Workers and Actors tabs; otherwise the worker
-view without cells. The platform view keeps both.
+sessions on shards without the Workers and Actors tabs; otherwise the worker
+view without shards. The platform view keeps both.
 
 The UI reuses Slate's page layout and canonical navigation. The default is Flow,
 with Density available alongside it; Workers, Actors, and Metrics are separate

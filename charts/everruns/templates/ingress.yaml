@@ -30,7 +30,7 @@ spec:
           {{- else }}
           {{- if include "everruns.dataPlaneRuns" . }}
           {{- /* Prefix rules cannot match /workspaces/{id}/fs alone. The edge
-                 routes file calls to the cell and passes workspace records on. */}}
+                 routes file calls to the shard and passes workspace records on. */}}
           {{- range list "/api/v1/sessions" "/api/v1/commands" "/api/v1/workspaces" }}
           - path: {{ . }}
             pathType: Prefix

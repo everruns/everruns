@@ -6,10 +6,10 @@
 //! output stays easy to read in a terminal.
 //!
 //! Two kinds of series:
-//! - per node (`cell`, `node` labels): what this process did, such as turns
+//! - per node (`shard`, `node` labels): what this process did, such as turns
 //!   it executed and events it appended. Summing across nodes gives the
 //!   fleet total.
-//! - per cell (`cell` label only), emitted by the cell's leader alone: the
+//! - per shard (`shard` label only), emitted by the shard's leader alone: the
 //!   replicated state (sessions, running turns, completed turns). Every
 //!   replica holds the same numbers, so only one reports them, and a leader
 //!   change continues the same series.
@@ -93,7 +93,7 @@ impl Histograms {
     }
 }
 
-/// The last minute of one SLO's samples, for its p99 gauge (`cell_slo_*`).
+/// The last minute of one SLO's samples, for its p99 gauge (`shard_slo_*`).
 ///
 /// Decision: each node reports its own one-minute p99 as a gauge, beside
 /// the cumulative histograms. A scraper that keeps only gauges (Vector into
@@ -167,7 +167,7 @@ pub struct Prom {
     /// the wait for the object store.
     pub ship_first_seconds: Histograms,
     /// How long the oldest entry waited to be shipped, per shipping round
-    /// (an upper bound, to the tick): the most a lost cell could lose of
+    /// (an upper bound, to the tick): the most a lost shard could lose of
     /// the log.
     pub ship_lag_seconds: Histograms,
     /// The last minute of each, for the SLO gauges.
@@ -261,7 +261,7 @@ pub struct Writer {
 }
 
 impl Writer {
-    /// `base` labels go on every series (`cell`, `node`).
+    /// `base` labels go on every series (`shard`, `node`).
     pub fn new(base: &[(&str, &str)]) -> Self {
         Self {
             out: String::new(),
@@ -371,16 +371,16 @@ mod tests {
         let h = Histograms::default();
         h.observe(&[("agent", "a")], Duration::from_millis(3));
         h.observe(&[("agent", "a")], Duration::from_secs(2));
-        let mut w = Writer::new(&[("cell", "0")]);
+        let mut w = Writer::new(&[("shard", "0")]);
         w.histograms("t", "test", &h);
         assert!(
             w.out
-                .contains("t_bucket{cell=\"0\",agent=\"a\",le=\"0.005\"} 1")
+                .contains("t_bucket{shard=\"0\",agent=\"a\",le=\"0.005\"} 1")
         );
         assert!(
             w.out
-                .contains("t_bucket{cell=\"0\",agent=\"a\",le=\"2.5\"} 2")
+                .contains("t_bucket{shard=\"0\",agent=\"a\",le=\"2.5\"} 2")
         );
-        assert!(w.out.contains("t_count{cell=\"0\",agent=\"a\"} 2"));
+        assert!(w.out.contains("t_count{shard=\"0\",agent=\"a\"} 2"));
     }
 }

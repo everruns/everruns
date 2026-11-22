@@ -159,7 +159,7 @@ test("an organization sees only the execution path it runs on", async () => {
   const workers = render(app("organization").element);
   await screen.findByText("50,000 active sessions");
   expect(screen.getByRole("tab", { name: "Actors" })).toBeInTheDocument();
-  expect(screen.queryByRole("tab", { name: "Cells" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Shards" })).not.toBeInTheDocument();
   workers.unmount();
   mockDataPlane = true;
   render(app("organization").element);

@@ -21,7 +21,7 @@
 //!   the data plane's key (`EVERRUNS_DP_KEY`, a local key until step 10
 //!   moves it to KMS).
 //! - The link carries a bearer token both ways (`EVERRUNS_DP_TOKEN`, the
-//!   cells' `CELL_DP_TOKEN`) until step 10 replaces it with mTLS.
+//!   shards' `AGENTD_DP_TOKEN`) until step 10 replaces it with mTLS.
 //! - Money: the grant ledger (`allowances`) reserves spend against the
 //!   org's usage policies when it grants and releases it only through a
 //!   closed settlement, so a data plane can never spend more than a policy
@@ -221,7 +221,7 @@ pub trait DataPlane: Send + Sync {
     /// (`messages`: an agent trigger's run, a channel's message, where a
     /// retry with the same message id admits once; `cancel-turn`; `seed`, a
     /// channel's prior conversation; see [`everruns_contracts::session_commands`]).
-    /// The cell's answer.
+    /// The shard's answer.
     async fn session_command(
         &self,
         org: &str,
@@ -572,7 +572,7 @@ pub async fn enable_org(
         .await?;
     event_tap::sync(&cp.db, org_id).await?;
     providers::sync(cp, org_id).await?;
-    // Until its settings arrive the cell asks the control plane, so a
+    // Until its settings arrive the shard asks the control plane, so a
     // setting that does not sync never keeps the org off its data plane.
     if let Err(error) = org_settings::sync(cp, org_id).await {
         tracing::warn!(org_id, %error, "the data plane's org settings were not synced");

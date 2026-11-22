@@ -3,15 +3,15 @@
 //! Decisions:
 //! - Uploads stay org records here (`/v1/images`, `/v1/files`). A message
 //!   that refers to one is sent through the control plane: the edge passes
-//!   such a message here instead of to the cell, and channels send theirs
+//!   such a message here instead of to the shard, and channels send theirs
 //!   from here anyway. Each upload is copied into the session's files on
-//!   its cell at the path a v1 session uses (`/attachments/<id>/<name>`,
+//!   its shard at the path a v1 session uses (`/attachments/<id>/<name>`,
 //!   read-only, a zip unpacked next to it), then the message is admitted
 //!   with its parts. The executor reads the bytes back from those files, so
-//!   a cell never asks the control plane for them during a turn.
+//!   a shard never asks the control plane for them during a turn.
 //! - A copy writes only where nothing is yet, so a retried send keeps the
 //!   first copy and the agent's own files are never replaced.
-//! - One upload per call keeps each call within the cell's file bound.
+//! - One upload per call keeps each call within the shard's file bound.
 //! - An upload the org does not have rejects the message, as on v1.
 
 use everruns_contracts::session_commands;

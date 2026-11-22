@@ -1,10 +1,10 @@
 ---------------------------- MODULE Feed ----------------------------
 (***************************************************************************)
-(* The data plane -> control plane feed for one source cell.               *)
+(* The data plane -> control plane feed for one source shard.               *)
 (*                                                                          *)
 (* One Raft entry holds many batched commands, and a command can emit       *)
 (* several records, so a record's identity is (index, ordinal); the design  *)
-(* adds the cell's incarnation, which is constant within this model.       *)
+(* adds the shard's incarnation, which is constant within this model.       *)
 (* Batches are resent from the last acknowledged cursor and may be          *)
 (* delayed, duplicated and reordered; the CP stores a record only if it is  *)
 (* the next one after its cursor.                                           *)
@@ -19,7 +19,7 @@ CONSTANTS MaxEntries, MaxPerEntry, ByIndexOnly
 VARIABLES
     entries,  \* entries[i] = number of records entry i produced
     stored,   \* records the CP stored, in order: <<index, ordinal>>
-    acked,    \* the cell's view of the CP's cursor
+    acked,    \* the shard's view of the CP's cursor
     net       \* batches ever sent
 
 vars == <<entries, stored, acked, net>>

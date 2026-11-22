@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
-"""Step 6's cost per turn of one cell with separate executors, against budgets.
+"""Step 6's cost per turn of one shard with separate executors, against budgets.
 
   bench.py --sessions 200 --turns 10 --agent chat --executors 2
 
-One cell of three nodes and N executors on this machine, a fixed load from
-`cell-drive`, then what each turn cost:
+One shard of three nodes and N executors on this machine, a fixed load from
+`agentd-drive`, then what each turn cost:
 
-- CPU per turn on the cell's leader, on its followers and on the executors
+- CPU per turn on the shard's leader, on its followers and on the executors
   (from /proc, so it counts everything the process did);
-- the executors' calls to the cell per turn, and of them the round trips a
+- the executors' calls to the shard per turn, and of them the round trips a
   turn waits for: proposals with a waiting caller (background appends are
   not waited) and reads the mirror could not answer (the executor's
   long-polls, pulls and live deltas are not waited). A one-turn load runs
   first, so the per-turn figure is the marginal one and what a new session
   costs once is reported apart;
 - Raft entries and fsyncs per turn on the leader;
-- the framework alone on the same load (`cell-baseline`: Engine on
-  `MemoryHosting`, no Raft, no network), so the cell's own overhead is the
+- the framework alone on the same load (`agentd-baseline`: Engine on
+  `MemoryHosting`, no Raft, no network), so the shard's own overhead is the
   difference.
 
 Budgets (design.md, "Scale estimate" and plan step 1):
 
-- leader CPU per turn: one core at the 115 turns/s a cell must hold, so
-  8.7 ms; the "fits 75k" line is 16 cells at 78 turns/s each on 0.7 core;
+- leader CPU per turn: one core at the 115 turns/s a shard must hold, so
+  8.7 ms; the "fits 75k" line is 16 shards at 78 turns/s each on 0.7 core;
 - waited round trips per chat turn: 5 (Engine's own on its in-memory
   authority, plan step 1); other agents are reported, not gated.
 
@@ -32,12 +32,12 @@ Exit status 1 when a budget is missed. Build first:
 import argparse, json, os, subprocess, sys, time, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
 RELEASE = os.path.join(ROOT, "target", "release")
-DRIVE = os.environ.get("CELL_DRIVE_BIN", os.path.join(RELEASE, "cell-drive"))
-BASELINE = os.environ.get("CELL_BASELINE_BIN", os.path.join(RELEASE, "cell-baseline"))
+DRIVE = os.environ.get("AGENTD_DRIVE_BIN", os.path.join(RELEASE, "agentd-drive"))
+BASELINE = os.environ.get("AGENTD_BASELINE_BIN", os.path.join(RELEASE, "agentd-baseline"))
 
 LEADER_CPU_MS = 1000.0 / 115
 ROUND_TRIPS = 5.0
@@ -57,11 +57,11 @@ def pid_of(path):
 
 
 def calls(executor):
-    """The executor's successful calls to cells, by kind."""
+    """The executor's successful calls to shards, by kind."""
     text = urllib.request.urlopen(f"http://127.0.0.1:{7000 + executor}/metrics", timeout=5).read()
     out = {}
     for line in text.decode().splitlines():
-        if line.startswith("executor_cell_calls_total{"):
+        if line.startswith("executor_shard_calls_total{"):
             labels, value = line.rsplit(" ", 1)
             for label in ("call", "waited"):
                 if f'{label}="' in labels:
@@ -95,10 +95,10 @@ def main():
     if a.executors < 1:
         sys.exit("the bench measures separate executors: --executors 1 or more")
 
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
-    os.environ["CELL_WORK_MS"] = a.work_ms
+    os.environ["AGENTD_WORK_MS"] = a.work_ms
     fleet.up(1, 3, 7100, executors=a.executors)
     time.sleep(2)
     gateways = ",".join(f"http://{fleet.addr(0, n)}" for n in (1, 2, 3))
@@ -120,7 +120,7 @@ def main():
         report = load(a.turns)
         after = sample(a.executors)
     finally:
-        subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+        subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
 
     turns = report["turns_completed"]
     if turns == 0 or report["errors"]:
@@ -168,8 +168,8 @@ def main():
             capture_output=True, text=True, check=True, env=dict(os.environ))
         framework = json.loads(base.stdout)
         result["framework_cpu_ms_per_turn"] = round(framework["cpu_ms_per_turn"], 3)
-        cell = result["leader_cpu_ms_per_turn"] + 2 * result["follower_cpu_ms_per_turn"] + result["executor_cpu_ms_per_turn"]
-        result["cell_overhead_cpu_ms_per_turn"] = round(cell - framework["cpu_ms_per_turn"], 3)
+        shard = result["leader_cpu_ms_per_turn"] + 2 * result["follower_cpu_ms_per_turn"] + result["executor_cpu_ms_per_turn"]
+        result["shard_overhead_cpu_ms_per_turn"] = round(shard - framework["cpu_ms_per_turn"], 3)
     budgets = {
         "leader_cpu_ms_per_turn": (result["leader_cpu_ms_per_turn"], round(LEADER_CPU_MS, 1)),
     }

@@ -6,7 +6,7 @@
 //! Decisions:
 //! - The trace rows come from the control plane's own fold
 //!   (`everruns_core::session_trace`), run over the session's committed
-//!   events on each read. A cell keeps no trace index, so an idle session
+//!   events on each read. A shard keeps no trace index, so an idle session
 //!   costs nothing, and the rows are small next to the events. The control
 //!   plane builds every Trace response from them, as it does for v1.
 //! - Event payloads go out in their public form, as the session stream and
@@ -82,13 +82,13 @@ pub async fn read(
             let gw = gateway.clone();
             let read = read.to_owned();
             gateway
-                .with_cell(session, |cell| {
+                .with_shard(session, |shard| {
                     let gw = gw.clone();
                     let read = read.clone();
                     async move {
                         gw.call::<crate::api::Lookup<Value>>(
-                            cell,
-                            &format!("/cell/sessions/{session}/{read}"),
+                            shard,
+                            &format!("/shard/sessions/{session}/{read}"),
                             None,
                         )
                         .await

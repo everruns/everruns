@@ -254,7 +254,7 @@ async fn a_refusal_and_an_unreachable_control_plane_fail_the_lookup() {
 }
 
 #[tokio::test]
-async fn a_cell_without_a_control_plane_answers_as_a_host_without_org_settings() {
+async fn a_shard_without_a_control_plane_answers_as_a_host_without_org_settings() {
     let material = Material::new(false, Ok(HostCallAnswer::Value(json!("never"))));
     let session = SessionId::new();
     let resolver = resolver(&material, session);
@@ -326,7 +326,7 @@ fn slack(
     );
     let factory = backends.tool_context_extensions_factory?;
     let extensions = factory(0, session);
-    // Posts bind to the turn's input event, which lives in the cell: the
+    // Posts bind to the turn's input event, which lives in the shard: the
     // channel host delivers them, not a conversation sender.
     assert!(
         extensions

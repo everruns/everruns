@@ -1,13 +1,13 @@
 //! The saved scripts of a session a data plane runs (parity, saved-script
 //! triggers): the `agent_scripts` and `agent_script_save` host calls answer
-//! the shell's `tools scripts` on a cell, as the worker commands answer a v1
+//! the shell's `tools scripts` on a shard, as the worker commands answer a v1
 //! worker's (`grpc_saved_scripts.rs`).
 //!
 //! Decisions:
 //! - Both calls name the session; the agent is the session's own, found
 //!   here. The session must be one of the org's sessions on its data plane.
 //! - A save runs as the turn's management user (`runtime_invocations`,
-//!   recorded from the person the forwarding cell names) under the
+//!   recorded from the person the forwarding shard names) under the
 //!   commands' own `AGENT_MANAGE` policy, as v1 runs a bound save
 //!   (THREAT[TM-TOOL-067]). A turn with no management user (a channel or a
 //!   trigger's turn) is refused, and so is an agent whose shell does not

@@ -16,7 +16,7 @@
 //!   those features for a v2 org, so a client never gets half a shape.
 //! - The session record itself (get, list, title, pin, archive) stays with
 //!   the control plane, which keeps it for every session it creates; the
-//!   edge sends those calls there. A cell knows only what it runs.
+//!   edge sends those calls there. A shard knows only what it runs.
 //! - Writes carry a command id, so the gateway retries them safely across
 //!   a leader change or a move.
 //! - The stream is served by the session's stream node and relayed by
@@ -260,12 +260,12 @@ pub(crate) async fn read_events(
 ) -> Result<Vec<Event>, ApiError> {
     let gw = gateway.clone();
     gateway
-        .with_cell(session, |cell| {
+        .with_shard(session, |shard| {
             let gw = gw.clone();
             async move {
                 gw.call::<Lookup<Vec<Event>>>(
-                    cell,
-                    &format!("/cell/sessions/{session}/events?after={after}"),
+                    shard,
+                    &format!("/shard/sessions/{session}/events?after={after}"),
                     None,
                 )
                 .await
@@ -720,7 +720,7 @@ mod tests {
     }
 }
 
-/// A schedule command on the session's cell; a schedule it does not hold
+/// A schedule command on the session's shard; a schedule it does not hold
 /// answers 404, as on the control plane.
 async fn schedule_command(
     gateway: &Gateway,
@@ -890,7 +890,7 @@ async fn get_task(
     Ok(Json(detail))
 }
 
-/// A task write (`tasks::api_op`) on the session's cell; 404 for a task
+/// A task write (`tasks::api_op`) on the session's shard; 404 for a task
 /// the session does not have.
 async fn write_task(
     gateway: &Gateway,
@@ -1023,7 +1023,7 @@ async fn delete_push_config(
 
 /// The public API's session routes against the declared plane table
 /// (`everruns_contracts::session_commands`): every route of a
-/// [`Plane::Cell`](everruns_contracts::session_commands::Plane::Cell)
+/// [`Plane::Shard`](everruns_contracts::session_commands::Plane::Shard)
 /// segment is served here, unless it is a declared gap, and every
 /// declared gap still answers "not available yet", so closing one fails
 /// until the table says so.
@@ -1035,7 +1035,7 @@ mod route_tests {
     use axum::body::Body;
     use axum::http::Request;
     use everruns_contracts::session_commands::{
-        CELL_ROUTE_GAPS, MESSAGE_RECORD_ROUTES, Plane, plane,
+        AGENTD_ROUTE_GAPS, MESSAGE_RECORD_ROUTES, Plane, plane,
     };
     use tower::ServiceExt as _;
 
@@ -1062,7 +1062,7 @@ mod route_tests {
         routes
     }
 
-    /// Whether the cell answered "not available yet" (or not at all).
+    /// Whether the shard answered "not available yet" (or not at all).
     async fn not_served(app: &Router, method: &str, path: &str) -> bool {
         let session = SessionId::new();
         let path = path
@@ -1075,7 +1075,7 @@ mod route_tests {
             .uri(format!("/v1/sessions/{session}/{path}"))
             .body(Body::empty())
             .unwrap();
-        // A served route fails on the missing body or the unreachable cell;
+        // A served route fails on the missing body or the unreachable shard;
         // a slow one is still served.
         match tokio::time::timeout(Duration::from_secs(10), app.clone().oneshot(request)).await {
             Ok(response) => {
@@ -1087,13 +1087,13 @@ mod route_tests {
     }
 
     #[tokio::test]
-    async fn cell_routes_are_served_and_gaps_are_not() {
+    async fn shard_routes_are_served_and_gaps_are_not() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("topology.json");
-        // A cell nobody listens on: every call that reaches it fails fast.
+        // A shard nobody listens on: every call that reaches it fails fast.
         let topology = Topology {
-            directory_cell: 0,
-            cells: BTreeMap::from([(0, BTreeMap::from([(1, "127.0.0.1:1".to_owned())]))]),
+            directory_shard: 0,
+            shards: BTreeMap::from([(0, BTreeMap::from([(1, "127.0.0.1:1".to_owned())]))]),
         };
         std::fs::write(&path, serde_json::to_vec(&topology).unwrap()).unwrap();
         let app = routes().with_state(Gateway::new(TopologySource { path }));
@@ -1112,15 +1112,15 @@ mod route_tests {
             let gap = match plane(first) {
                 Plane::Record => continue,
                 Plane::Gap => true,
-                Plane::Cell => CELL_ROUTE_GAPS.contains(&path.as_str()),
+                Plane::Shard => AGENTD_ROUTE_GAPS.contains(&path.as_str()),
             };
             if not_served(&app, &method, &path).await != gap {
                 wrong.push(format!(
                     "{method} {path}: {}",
                     if gap {
-                        "served by the cell, but declared a gap"
+                        "served by the shard, but declared a gap"
                     } else {
-                        "not served by the cell, but declared the cell's"
+                        "not served by the shard, but declared the shard's"
                     }
                 ));
             }

@@ -277,7 +277,7 @@ pub struct TriggerRun<'a> {
     pub origin: &'a everruns_core::message::MessageOrigin,
     /// The saved script the run runs instead of the model (Shell Code Mode
     /// D9), carried as the message's reserved script-run metadata; the
-    /// cell's turn runs it as a worker's does.
+    /// shard's turn runs it as a worker's does.
     pub script: Option<&'a everruns_contracts::runtime::saved_scripts::ScriptRun>,
 }
 

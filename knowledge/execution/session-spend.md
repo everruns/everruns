@@ -29,7 +29,7 @@ estimate otherwise.
 
 | Part | Source | Priced by |
 |---|---|---|
-| Model calls in turns | `llm_generations` (v1) or the cell's log (v2, `spend` read) | provider-reported cost, else the model price table |
+| Model calls in turns | `llm_generations` (v1) or the shard's log (v2, `spend` read) | provider-reported cost, else the model price table |
 | Background calls (titles, compaction, dreaming) | the same rows with no turn | as above |
 | Images (`generate_image`, `edit_image`) | the tool results' usage | the image model's price table |
 | Sandboxes | lifecycle spans (`sandbox_state_transitions`) | org price list (`sandbox.time`), else the provider list price |
@@ -67,7 +67,7 @@ session's Cost tab for anyone who can view the session.
 | Host | Spend |
 |---|---|
 | v1 worker (gRPC) and in-process server | internal command over the worker link |
-| Cell (data plane v2) | host call `session_spend`; the control plane reads the cell's log and prices it |
+| Shard (data plane v2) | host call `session_spend`; the control plane reads the shard's log and prices it |
 | Embedded framework, Yolop | none yet: `spend` is `null`, tokens only |
 
 A failed read returns `spend: null` and the tool still succeeds.

@@ -1,4 +1,4 @@
-//! The feature mix of the step 11.7 load run (`cell-drive load --agent
+//! The feature mix of the step 11.7 load run (`agentd-drive load --agent
 //! mix`): half chat, the rest writing and reading session files, setting a
 //! schedule, asking a subagent, calling an MCP server (the test node's stub)
 //! and using a managed sandbox (the local provider). Every kind of session
@@ -10,7 +10,7 @@ mod support;
 
 use std::sync::atomic::Ordering;
 
-use everruns_cell_testkit::stub_mcp;
+use everruns_agentd_testkit::stub_mcp;
 use serde_json::Value;
 use support::{Fleet, answers};
 
@@ -29,7 +29,7 @@ async fn every_session_of_the_load_feature_mix_finishes_its_turns() {
     let sessions_file = std::env::temp_dir().join(format!("mix-{}.txt", std::process::id()));
 
     // Two rounds of the twenty-session mix, two turns each.
-    let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_cell-drive"))
+    let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_agentd-drive"))
         .args([
             "load",
             "--gateways",

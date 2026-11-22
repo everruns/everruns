@@ -1,4 +1,4 @@
-//! Monitoring → Cells → one cell's last hour, per node, every 10 seconds,
+//! Monitoring → Shards → one shard's last hour, per node, every 10 seconds,
 //! from the optional Prometheus-compatible detail store
 //! (`domains::system::monitoring_detail`). Platform only.
 //!
@@ -26,14 +26,14 @@ use crate::{
 /// How much detail to read.
 #[derive(Debug, Default, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-pub struct CellDetailQuery {
+pub struct ShardDetailQuery {
     /// Minutes ending now, 5 to 60. Defaults to 60.
     pub minutes: Option<u32>,
 }
 
 /// One point of a node's detail.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct CellNodePoint {
+pub struct ShardNodePoint {
     /// UTC time of the point.
     #[schema(example = "2026-11-15T19:59:50Z")]
     pub t: DateTime<Utc>,
@@ -53,20 +53,20 @@ pub struct CellNodePoint {
 
 /// One node's detail.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct CellNodeDetail {
-    /// Node id within the cell.
+pub struct ShardNodeDetail {
+    /// Node id within the shard.
     #[schema(example = "2")]
     pub node: String,
     /// Points, oldest first.
-    pub points: Vec<CellNodePoint>,
+    pub points: Vec<ShardNodePoint>,
 }
 
-/// A cell's per-node detail, or why there is none.
+/// A shard's per-node detail, or why there is none.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct MonitoringCellDetail {
-    /// Cell name.
-    #[schema(example = "cell-07")]
-    pub cell: String,
+pub struct MonitoringShardDetail {
+    /// Shard name.
+    #[schema(example = "shard-07")]
+    pub shard: String,
     /// Whether detail could be read.
     #[schema(example = true)]
     pub available: bool,
@@ -86,10 +86,10 @@ pub struct MonitoringCellDetail {
     #[schema(example = "2026-11-15T20:00:00Z")]
     pub to: DateTime<Utc>,
     /// Nodes, by id.
-    pub nodes: Vec<CellNodeDetail>,
+    pub nodes: Vec<ShardNodeDetail>,
 }
 
-fn points(series: NodeSeries) -> Vec<CellNodePoint> {
+fn points(series: NodeSeries) -> Vec<ShardNodePoint> {
     let mut times: Vec<i64> = series
         .running
         .keys()
@@ -103,7 +103,7 @@ fn points(series: NodeSeries) -> Vec<CellNodePoint> {
     times
         .into_iter()
         .filter_map(|t| {
-            Some(CellNodePoint {
+            Some(ShardNodePoint {
                 t: DateTime::from_timestamp(t, 0)?,
                 running: series.running.get(&t).copied(),
                 rss_bytes: series.rss_bytes.get(&t).copied(),
@@ -114,20 +114,20 @@ fn points(series: NodeSeries) -> Vec<CellNodePoint> {
         .collect()
 }
 
-/// Read one cell's per-node detail for the last hour. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring/cells/{cell}/detail", tag = "durable",
-    params(("cell" = String, Path, description = "Cell name"), CellDetailQuery),
-    responses((status = 200, description = "Per-node detail, or why there is none", body = MonitoringCellDetail),
-        (status = 400, description = "Invalid cell name or minutes", body = ErrorResponse),
+/// Read one shard's per-node detail for the last hour. Requires platform-user access.
+#[utoipa::path(get, path = "/v1/durable/monitoring/shards/{shard}/detail", tag = "durable",
+    params(("shard" = String, Path, description = "Shard name"), ShardDetailQuery),
+    responses((status = 200, description = "Per-node detail, or why there is none", body = MonitoringShardDetail),
+        (status = 400, description = "Invalid shard name or minutes", body = ErrorResponse),
         (status = 403, description = "Platform access required", body = ErrorResponse)))]
-pub async fn get_fleet_monitoring_cell_detail(
+pub async fn get_fleet_monitoring_shard_detail(
     _platform: PlatformUser,
-    Path(cell): Path<String>,
-    Query(query): Query<CellDetailQuery>,
-) -> ApiResult<MonitoringCellDetail> {
+    Path(shard): Path<String>,
+    Query(query): Query<ShardDetailQuery>,
+) -> ApiResult<MonitoringShardDetail> {
     let bad = |m: &str| ErrorResponse::new(m).into_response(StatusCode::BAD_REQUEST);
-    if !detail::valid_cell(&cell) {
-        return Err(bad("cell must be letters, digits, '-', '_' or '.'"));
+    if !detail::valid_shard(&shard) {
+        return Err(bad("shard must be letters, digits, '-', '_' or '.'"));
     }
     let minutes = query.minutes.unwrap_or(MAX_MINUTES);
     if !(5..=MAX_MINUTES).contains(&minutes) {
@@ -136,17 +136,17 @@ pub async fn get_fleet_monitoring_cell_detail(
     let to = Utc::now();
     let from = to - Duration::minutes(i64::from(minutes));
     let config = DetailConfig::from_env();
-    Ok(Json(answer(config, &cell, from, to).await))
+    Ok(Json(answer(config, &shard, from, to).await))
 }
 
 pub(super) async fn answer(
     config: &DetailConfig,
-    cell: &str,
+    shard: &str,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
-) -> MonitoringCellDetail {
-    let mut out = MonitoringCellDetail {
-        cell: cell.to_owned(),
+) -> MonitoringShardDetail {
+    let mut out = MonitoringShardDetail {
+        shard: shard.to_owned(),
         available: false,
         reason: None,
         source: config.display_host(),
@@ -160,19 +160,19 @@ pub(super) async fn answer(
             out.reason = Some("No detail store is configured (MONITORING_DETAIL).".into());
         }
         DetailConfig::Invalid(why) => out.reason = Some(why.clone()),
-        DetailConfig::Prometheus { url } => match detail::read_cell(url, cell, from, to).await {
+        DetailConfig::Prometheus { url } => match detail::read_shard(url, shard, from, to).await {
             Ok(nodes) => {
                 out.available = true;
                 out.nodes = nodes
                     .into_iter()
-                    .map(|(node, series)| CellNodeDetail {
+                    .map(|(node, series)| ShardNodeDetail {
                         node,
                         points: points(series),
                     })
                     .collect();
             }
             Err(error) => {
-                tracing::warn!(%error, cell, "Monitoring detail store did not answer");
+                tracing::warn!(%error, shard, "Monitoring detail store did not answer");
                 out.reason = Some(format!("The detail store did not answer: {error}"));
             }
         },
@@ -187,14 +187,14 @@ mod tests {
     #[tokio::test]
     async fn without_a_store_the_answer_says_why() {
         let now = Utc::now();
-        let off = answer(&DetailConfig::Off, "cell-01", now, now).await;
+        let off = answer(&DetailConfig::Off, "shard-01", now, now).await;
         assert!(!off.available);
         assert!(off.reason.unwrap().contains("MONITORING_DETAIL"));
         let down = answer(
             &DetailConfig::Prometheus {
                 url: "http://127.0.0.1:1".into(),
             },
-            "cell-01",
+            "shard-01",
             now - Duration::minutes(5),
             now,
         )

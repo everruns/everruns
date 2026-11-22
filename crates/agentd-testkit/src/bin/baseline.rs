@@ -3,7 +3,7 @@
 //! Raft, to tell the runtime's cost from the framework's.
 //!
 //! ```text
-//! cell-baseline --agent worker3 --sessions 400 --turns 2
+//! agentd-baseline --agent worker3 --sessions 400 --turns 2
 //! ```
 
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use everruns::SessionId;
-use everruns_cell::Host;
+use everruns_agentd::Host;
 use futures::stream::{self, StreamExt};
 use serde_json::json;
 
@@ -44,8 +44,8 @@ fn cpu_secs() -> f64 {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let host = Arc::new(everruns_cell_testkit::host());
-    let definition = everruns_cell_testkit::definition(&cli.agent)
+    let host = Arc::new(everruns_agentd_testkit::host());
+    let definition = everruns_agentd_testkit::definition(&cli.agent)
         .ok_or_else(|| anyhow::anyhow!("no test agent {}", cli.agent))?;
     let build = everruns::hosting::AgentBuild::new(cli.agent.clone(), "baseline");
     let agent = host

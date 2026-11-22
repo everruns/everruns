@@ -1,6 +1,6 @@
 ---------------------------- MODULE Epochs ----------------------------
 (***************************************************************************)
-(* Execution epochs of one session, fenced by the cell's authority.        *)
+(* Execution epochs of one session, fenced by the shard's authority.        *)
 (*                                                                          *)
 (* An executor claims the session and gets an epoch: the holder's name and  *)
 (* a fence number that only grows. Every write it makes (a journal append,  *)

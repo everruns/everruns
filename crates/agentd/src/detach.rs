@@ -1,12 +1,12 @@
-//! Detached tool calls on a cell (data plane v2 step 11.4): a long
+//! Detached tool calls on a shard (data plane v2 step 11.4): a long
 //! server-side call leaves its turn, so the turn parks and its executor slot,
 //! epoch and memory are free while the call runs; the call's record keeps the
 //! session waiting for it. The same contract as the worker's
 //! (knowledge/execution/detached-tool-calls.md), with the records in the
-//! session's cell state instead of the control plane.
+//! session's shard state instead of the control plane.
 //!
 //! Decisions:
-//! - A call detaches after `CELL_TOOL_DETACH_AFTER_MS` (300 s, the worker's
+//! - A call detaches after `AGENTD_TOOL_DETACH_AFTER_MS` (300 s, the worker's
 //!   default; 0 turns detaching off).
 //! - Its record lives in the session's authority ([`DetachedCall`]). While a
 //!   record is live the session owes no work, so nothing claims it: input
@@ -42,10 +42,10 @@ use crate::authority::Authority;
 use crate::hosting::Port;
 use crate::state::{Change, Command, Response, SessionState};
 
-/// Life of a record between renewals: `CELL_TOOL_DETACH_TTL_MS`, 30 s
+/// Life of a record between renewals: `AGENTD_TOOL_DETACH_TTL_MS`, 30 s
 /// by default (the worker's).
 fn ttl() -> Duration {
-    let ms = std::env::var("CELL_TOOL_DETACH_TTL_MS")
+    let ms = std::env::var("AGENTD_TOOL_DETACH_TTL_MS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(30_000);
@@ -204,7 +204,7 @@ pub(crate) fn apply(
 
 /// Milliseconds a call runs inline before it detaches; 0: never.
 fn detach_after() -> Duration {
-    let ms = std::env::var("CELL_TOOL_DETACH_AFTER_MS")
+    let ms = std::env::var("AGENTD_TOOL_DETACH_AFTER_MS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(300_000);

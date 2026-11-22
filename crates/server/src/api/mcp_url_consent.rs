@@ -149,7 +149,7 @@ pub async fn submit_elicitation_consent(
         return Err(ErrorResponse::not_found("Session"));
     }
 
-    // A v2 session's elicitation and its parked turn are in its cell, which
+    // A v2 session's elicitation and its parked turn are in its shard, which
     // checks that the call is still pending.
     if let Some(storage) =
         crate::domains::session_storage::plane::PlaneStorage::on(&state.db, org.org_id, session_id)
@@ -423,11 +423,11 @@ fn consent_spoken(action: ConsentAction, pending: &PendingElicitation) -> String
 }
 
 /// [`submit_elicitation_consent`] for a session on a data plane (step
-/// 11.6): the pending elicitation comes from the cell's events, an accept's
-/// consent goes into the session's storage on its cell for the retried
+/// 11.6): the pending elicitation comes from the shard's events, an accept's
+/// consent goes into the session's storage on its shard for the retried
 /// call, the card's call is answered with the summary, and the decision
 /// follows as the person's message (the model never made the synthetic
-/// call, so its result alone would not reach it). The cell refuses a call
+/// call, so its result alone would not reach it). The shard refuses a call
 /// that is not pending any more.
 async fn consent_on_data_plane(
     storage: &crate::domains::session_storage::plane::PlaneStorage,

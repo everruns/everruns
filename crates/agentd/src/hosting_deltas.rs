@@ -4,7 +4,7 @@
 //! Decisions:
 //! - Every epoch, on a node or an executor, sends its deltas to the
 //!   session's stream node, which the sender finds by hashing the session
-//!   over the cell's view (no lookup). A node that is the stream node
+//!   over the shard's view (no lookup). A node that is the stream node
 //!   itself takes them in memory.
 //! - Batching: one request in flight per epoch. Deltas produced while one
 //!   is in flight go together in the next, so a quiet stream sends at once
@@ -98,7 +98,7 @@ impl Node {
         }
         let seeds: Vec<String> = self.members().into_values().collect();
         self.deliver
-            .send(&self.http, self.cfg.cell, &seeds, batch)
+            .send(&self.http, self.cfg.shard, &seeds, batch)
             .await;
     }
 }

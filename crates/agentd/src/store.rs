@@ -1,10 +1,10 @@
-//! The object store: session history segments and cell snapshots.
+//! The object store: session history segments and shard snapshots.
 //!
 //! Decision: a session's events are immutable once committed, so its history
 //! is kept as segments (`sessions/<id>/<from>-<to>.json`, inclusive
 //! sequences) in one fleet-wide bucket. The content of a range is the same on
 //! every replica, so any replica may write any segment and any replica may
-//! read one another wrote. That lets a cell snapshot carry only per-session
+//! read one another wrote. That lets a shard snapshot carry only per-session
 //! metadata (segment lists), lets a replica unload an idle session's events
 //! and page them back from the bucket, and lets a move hand over a session
 //! without copying its history.
@@ -42,7 +42,7 @@ pub fn is_context(event_type: &str) -> bool {
 /// One stored segment: the session's events `from..=to`, of history
 /// branch `branch` (0 until the session is first restored).
 ///
-/// Decision: a restored session (a rebuilt cell, or a one-org restore;
+/// Decision: a restored session (a rebuilt shard, or a one-org restore;
 /// `restore.rs`) writes events at sequences its earlier history may have
 /// used for events the restore left out, so a segment's name carries the
 /// session's history branch (`SessionState::branch`). A name then always
@@ -153,9 +153,9 @@ impl std::fmt::Debug for Store {
     }
 }
 
-/// `CELL_STORE_THROTTLE_MS` (`store_throttle.rs`); unset or 0: no wait.
+/// `AGENTD_STORE_THROTTLE_MS` (`store_throttle.rs`); unset or 0: no wait.
 fn throttled(inner: Arc<dyn ObjectStore>) -> Arc<dyn ObjectStore> {
-    let ms: u64 = std::env::var("CELL_STORE_THROTTLE_MS")
+    let ms: u64 = std::env::var("AGENTD_STORE_THROTTLE_MS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
@@ -223,7 +223,7 @@ impl Store {
         self.get(self.key(name)).await
     }
 
-    /// Delivered feed records of `source` (one cell incarnation), kept so a
+    /// Delivered feed records of `source` (one shard incarnation), kept so a
     /// restored control plane can ask for them again (feed replay).
     pub async fn put_feed(
         &self,
@@ -620,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn a_rebuilt_cells_segments_never_stand_in_for_an_earlier_incarnations() {
+    fn a_rebuilt_shards_segments_never_stand_in_for_an_earlier_incarnations() {
         let old = |from, to| SegRef {
             from,
             to,

@@ -6,8 +6,8 @@
 //! at call time (host calls), the control plane pushes them with the org's
 //! config: each setting is an `org_setting` connection whose settings are
 //! the value, and each search account's key is a secret sealed with the
-//! org's data key. A cell's tools read them from the org's config, so they
-//! keep working while the control plane is down, and a standalone cell's
+//! org's data key. A shard's tools read them from the org's config, so they
+//! keep working while the control plane is down, and a standalone shard's
 //! are simply absent.
 //!
 //! Decisions:
@@ -21,7 +21,7 @@
 //!   and is never lost either: a trigger on the settings' tables counts
 //!   every change in the same transaction (`dp_orgs.settings_rev`), and
 //!   the dispatcher syncs every org whose count is ahead of its last sync
-//!   ([`sync_owed`]). Revoking open egress therefore reaches the cells
+//!   ([`sync_owed`]). Revoking open egress therefore reaches the shards
 //!   even when the sync right after the change failed.
 //! - One sync of an org at a time, across servers (an advisory lock,
 //!   [`settle`]): each reads the change count and the tables under it, so

@@ -1,6 +1,6 @@
 //! Agents using agents on the data plane (data plane v2, step 11.4): a
 //! session's subagent is a session of its own, which the gateway may place
-//! on another cell, and its answer comes back to the parent, inline in the
+//! on another shard, and its answer comes back to the parent, inline in the
 //! foreground or as a wake in the background.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -13,21 +13,21 @@ use serde_json::Value;
 use support::org::{ORG, org_fleet};
 use support::{Fleet, answers, types};
 
-/// The cell holding `session`.
-async fn cell_of(fleet: &Fleet, session: &str) -> u32 {
+/// The shard holding `session`.
+async fn shard_of(fleet: &Fleet, session: &str) -> u32 {
     let http = reqwest::Client::builder().no_proxy().build().unwrap();
-    for cell in [0u32, 1] {
-        for (_, addr) in fleet.addrs(cell) {
-            let url = format!("http://{addr}/cell/sessions/{session}");
+    for shard in [0u32, 1] {
+        for (_, addr) in fleet.addrs(shard) {
+            let url = format!("http://{addr}/shard/sessions/{session}");
             if let Ok(reply) = http.get(&url).send().await
                 && let Ok(found) = reply.json::<Value>().await
                 && found["found"] == "here"
             {
-                return cell;
+                return shard;
             }
         }
     }
-    panic!("no cell holds {session}");
+    panic!("no shard holds {session}");
 }
 
 /// The child the parent's `spawn_agent` call made.
@@ -44,7 +44,7 @@ fn child_of(events: &[Value]) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_subagent_on_another_cell_answers_its_parent() {
+async fn a_subagent_on_another_shard_answers_its_parent() {
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     fleet.executor(2);
@@ -63,14 +63,14 @@ async fn a_subagent_on_another_cell_answers_its_parent() {
     let child = child_of(&events);
     let child_events = fleet.events(&child).await;
     assert_eq!(answers(&child_events), vec!["The answer is 42.".to_owned()]);
-    let (parent_cell, child_cell) = (
-        cell_of(&fleet, &parent).await,
-        cell_of(&fleet, &child).await,
+    let (parent_shard, child_shard) = (
+        shard_of(&fleet, &parent).await,
+        shard_of(&fleet, &child).await,
     );
-    println!("parent on cell {parent_cell}, child on cell {child_cell}, answered in {took:?}");
-    // The gateway places the child by load; the parent's cell carries the
-    // running parent, so the child lands on the idle cell.
-    assert_ne!(parent_cell, child_cell, "the child ran on another cell");
+    println!("parent on shard {parent_shard}, child on shard {child_shard}, answered in {took:?}");
+    // The gateway places the child by load; the parent's shard carries the
+    // running parent, so the child lands on the idle shard.
+    assert_ne!(parent_shard, child_shard, "the child ran on another shard");
 
     // The parent's task records the finished subagent, in the API's shape.
     let tasks = fleet.get(&format!("/v1/sessions/{parent}/tasks")).await;
@@ -182,7 +182,7 @@ async fn a_background_subagent_wakes_its_parent() {
 
 /// Review fix (parity): a subagent of an org's session gets a session record
 /// on the control plane and runs under its id; a push config's signing
-/// secret goes to the control plane and the cell keeps only that it has one.
+/// secret goes to the control plane and the shard keeps only that it has one.
 #[tokio::test(flavor = "multi_thread")]
 async fn an_org_subagent_is_recorded_and_its_push_secret_is_not_kept() {
     let (fleet, cp) = org_fleet(&[]).await;
@@ -191,7 +191,7 @@ async fn an_org_subagent_is_recorded_and_its_push_secret_is_not_kept() {
         .push_config(
             &fleet.base(),
             ORG,
-            &everruns_cell::dp::ConfigUpdate {
+            &everruns_agentd::dp::ConfigUpdate {
                 epoch: 1,
                 version: 2,
                 base_version: 1,
@@ -199,13 +199,16 @@ async fn an_org_subagent_is_recorded_and_its_push_secret_is_not_kept() {
                     "kind": "Agent",
                     "agent_id": "team",
                     "revision": 1,
-                    "package": everruns_cell_testkit::definition("team").unwrap(),
+                    "package": everruns_agentd_testkit::definition("team").unwrap(),
                 })],
             },
         )
         .await
         .unwrap();
-    assert_eq!(ack, everruns_cell::dp::ConfigAck::Ok { applied_version: 2 });
+    assert_eq!(
+        ack,
+        everruns_agentd::dp::ConfigAck::Ok { applied_version: 2 }
+    );
     let parent = everruns_contracts::typed_id::SessionId::new().to_string();
     let (status, created) = cp
         .call(
@@ -262,16 +265,16 @@ async fn an_org_subagent_is_recorded_and_its_push_secret_is_not_kept() {
     assert_eq!(listed[0]["has_secret"], true, "{listed}");
     assert!(
         !format!("{detail}{listed}").contains("s3cret"),
-        "the cell keeps no secret: {detail} {listed}"
+        "the shard keeps no secret: {detail} {listed}"
     );
 }
 
-/// A trigger's saved-script run on a cell: the control plane admits the
+/// A trigger's saved-script run on a shard: the control plane admits the
 /// message with its script-run mark, the turn runs the script through the
 /// shell with no model call, and the shell reads the agent's scripts from
 /// the control plane by session.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_triggers_saved_script_runs_on_a_cell() {
+async fn a_triggers_saved_script_runs_on_a_shard() {
     let (fleet, cp) = org_fleet(&[]).await;
     cp.answer_lookups(ORG, support::org::DATA_KEY, support::org::DATA_KEY_ID);
     cp.set_lookup(
@@ -288,7 +291,7 @@ async fn a_triggers_saved_script_runs_on_a_cell() {
         .push_config(
             &fleet.base(),
             ORG,
-            &everruns_cell::dp::ConfigUpdate {
+            &everruns_agentd::dp::ConfigUpdate {
                 epoch: 1,
                 version: 2,
                 base_version: 1,
@@ -296,13 +299,16 @@ async fn a_triggers_saved_script_runs_on_a_cell() {
                     "kind": "Agent",
                     "agent_id": "scripts",
                     "revision": 1,
-                    "package": everruns_cell_testkit::definition("scripts").unwrap(),
+                    "package": everruns_agentd_testkit::definition("scripts").unwrap(),
                 })],
             },
         )
         .await
         .unwrap();
-    assert_eq!(ack, everruns_cell::dp::ConfigAck::Ok { applied_version: 2 });
+    assert_eq!(
+        ack,
+        everruns_agentd::dp::ConfigAck::Ok { applied_version: 2 }
+    );
     let session = everruns_contracts::typed_id::SessionId::new().to_string();
     let (status, created) = cp
         .call(

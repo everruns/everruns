@@ -106,7 +106,7 @@ This starts:
 - Valkey (rate limiting) and NATS (event delivery and task notifications)
 - Control plane (`server`): HTTP API and worker gRPC
 - 1 worker, or 3 with the `scale` profile
-- Data plane v2: a cell (`cell`), an executor that runs its turns
+- Data plane v2: a shard (`shard`), an executor that runs its turns
   (`executor`), and the edge router (`edge`) that sends session calls to it
 - Next.js UI
 - Caddy reverse proxy
@@ -129,8 +129,8 @@ Sign in to the UI with `AUTH_ADMIN_EMAIL` and `AUTH_ADMIN_PASSWORD`.
 
 ### Data Plane
 
-New organizations run their agents on data plane v2: the `cell` keeps each
-session (its history goes to the `cell_store` volume), the `executor` runs
+New organizations run their agents on data plane v2: the `shard` keeps each
+session (its history goes to the `shard_store` volume), the `executor` runs
 turns, and the proxy sends session calls through the `edge` router, which
 passes everything that is not a v2 session on to the API. An organization
 that already has sessions keeps running them on the workers (v1), so turning
@@ -144,11 +144,11 @@ DATA_PLANE_REPLICAS=0
 DATA_PLANE_PULL_POLICY=never
 ```
 
-`DATA_PLANE_REPLICAS=0` stops the cell, executor and edge containers, and
+`DATA_PLANE_REPLICAS=0` stops the shard, executor and edge containers, and
 `DATA_PLANE_PULL_POLICY=never` skips pulling their image. Leave both out when
 switching an install that already ran v2: its v2 organizations' sessions live
-in the cell. Data plane v2 needs images from the release that
-made it the default or later; an older `EVERRUNS_TAG` has no `everruns-cell`
+in the shard. Data plane v2 needs images from the release that
+made it the default or later; an older `EVERRUNS_TAG` has no `agentd`
 image, so run v1 with it.
 
 ### Run Multiple Copies

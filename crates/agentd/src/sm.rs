@@ -1,4 +1,4 @@
-//! Raft state machine storage: [`CellState`] in memory, persisted as
+//! Raft state machine storage: [`ShardState`] in memory, persisted as
 //! snapshots.
 //!
 //! Decision: the state machine is not written on apply. It is rebuilt on
@@ -28,33 +28,33 @@ use openraft::{
 use parking_lot::RwLock;
 use tokio::sync::{broadcast, watch};
 
-use crate::state::{CellId, CellState, Change, Response, SessionState};
+use crate::state::{Change, Response, SessionState, ShardId, ShardState};
 use crate::store::{SegRef, Store};
 use crate::types::{Entry, LogId, NodeId, StorageError, TypeConfig};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::Event;
 use futures::stream::{self, StreamExt};
 
-/// The cell state shared between the Raft state machine and the node's
+/// The shard state shared between the Raft state machine and the node's
 /// executor, scheduler and API.
 pub struct Shared {
-    pub state: RwLock<CellState>,
+    pub state: RwLock<ShardState>,
     /// Every applied change, for the node's executor and scheduler loops.
     pub changes: broadcast::Sender<Change>,
     /// Per-session changes, for API waiters and streams.
     ///
-    /// Decision: a waiter hears only its own session. With one cell-wide
-    /// channel every waiter woke (and cloned) on every event in the cell,
+    /// Decision: a waiter hears only its own session. With one shard-wide
+    /// channel every waiter woke (and cloned) on every event in the shard,
     /// so cost grew with sessions times events.
     watchers: parking_lot::Mutex<HashMap<SessionId, broadcast::Sender<Change>>>,
     /// Index of the last applied entry, for read-your-writes waits.
     pub applied: watch::Sender<u64>,
-    /// Turns this cell finished in the last minute, as this replica applied
-    /// them (`cell_slo_turn_p99_seconds`).
+    /// Turns this shard finished in the last minute, as this replica applied
+    /// them (`agentd_shard_slo_turn_p99_seconds`).
     pub turn_window: crate::prom::Window,
     /// Session history segments and snapshot copies.
     pub store: Store,
-    pub cell: CellId,
+    pub shard: ShardId,
     /// When each session last changed, for unloading the coldest first.
     touched: parking_lot::Mutex<HashMap<SessionId, Instant>>,
     /// The entry index of each session's latest change (at least: the
@@ -66,7 +66,7 @@ pub struct Shared {
     pub snapshot_ms: AtomicU64,
     /// When this replica last built a snapshot (or started).
     last_snapshot: parking_lot::Mutex<Instant>,
-    /// Whether this replica leads its cell, as the ship loop last saw it
+    /// Whether this replica leads its shard, as the ship loop last saw it
     /// (`set_leading`): only the leader copies its snapshots to the object
     /// store.
     leading: std::sync::atomic::AtomicBool,
@@ -83,15 +83,15 @@ pub struct Shared {
 pub type ChangeHook = Box<dyn Fn(&Change) + Send + Sync>;
 
 impl Shared {
-    pub fn new(store: Store, cell: CellId) -> Arc<Self> {
+    pub fn new(store: Store, shard: ShardId) -> Arc<Self> {
         Arc::new(Self {
-            state: RwLock::new(CellState::default()),
+            state: RwLock::new(ShardState::default()),
             changes: broadcast::channel(65_536).0,
             watchers: Default::default(),
             applied: watch::channel(0).0,
             turn_window: Default::default(),
             store,
-            cell,
+            shard,
             touched: Default::default(),
             changed: Default::default(),
             event_bytes: AtomicU64::new(4096),
@@ -105,7 +105,7 @@ impl Shared {
     }
 
     /// The session's events after sequence `after`, paging unloaded ones in
-    /// from the object store. `None` when the session is not in this cell.
+    /// from the object store. `None` when the session is not in this shard.
     pub async fn read_events(
         &self,
         session: SessionId,
@@ -481,11 +481,11 @@ impl Shared {
     }
 }
 
-/// An archived snapshot copy (`Store::put_snapshot`) as the cell state it
+/// An archived snapshot copy (`Store::put_snapshot`) as the shard state it
 /// holds.
-pub fn decode_archived(bytes: &[u8]) -> anyhow::Result<CellState> {
+pub fn decode_archived(bytes: &[u8]) -> anyhow::Result<ShardState> {
     let (_, at) = split_snapshot(bytes)?;
-    let mut state: CellState = serde_json::from_slice(&bytes[at..])?;
+    let mut state: ShardState = serde_json::from_slice(&bytes[at..])?;
     state.resolve_definitions();
     Ok(state)
 }
@@ -493,11 +493,11 @@ pub fn decode_archived(bytes: &[u8]) -> anyhow::Result<CellState> {
 pub(crate) type Meta = SnapshotMeta<NodeId, openraft::BasicNode>;
 
 /// The header of a stored snapshot (the node's file and the archived copy):
-/// the metadata as one JSON line. The cell state's JSON follows as it is.
+/// the metadata as one JSON line. The shard state's JSON follows as it is.
 ///
 /// Decision: no envelope around the state. Wrapping it in a JSON document
 /// escaped every quote (a 45% larger file) and serializing the envelope
-/// copied the state twice more. With 40 000 sessions a cell state is about
+/// copied the state twice more. With 40 000 sessions a shard state is about
 /// 120 MB, and those copies, made every few seconds, are what pushed nodes
 /// out of memory in the 75 000-session run.
 fn snapshot_header(meta: &Meta) -> io::Result<Vec<u8>> {
@@ -516,7 +516,7 @@ pub(crate) fn split_snapshot(bytes: &[u8]) -> io::Result<(Meta, usize)> {
     Ok((serde_json::from_slice(&bytes[..end])?, end + 1))
 }
 
-/// Write `data` (a cell state's JSON) as the current snapshot in `dir`, a
+/// Write `data` (a shard state's JSON) as the current snapshot in `dir`, a
 /// node's snapshot directory: what a node opens on start.
 pub(crate) fn write_snapshot_file(
     dir: &std::path::Path,
@@ -571,7 +571,7 @@ struct Archiver {
     next: parking_lot::Mutex<Option<Copy>>,
 }
 
-/// The fields of a cell state an archived copy is named by.
+/// The fields of a shard state an archived copy is named by.
 #[derive(serde::Deserialize)]
 struct Stamp {
     #[serde(default)]
@@ -625,10 +625,10 @@ impl Shared {
     ///
     /// Decision: the leader's copies only, one upload at a time, and the
     /// newest snapshot waiting replaces an older one. Every replica's
-    /// snapshot of a cell is the same state and restore takes the newest
+    /// snapshot of a shard is the same state and restore takes the newest
     /// copy whoever wrote it, so three copies bought nothing and tripled
     /// the upload. In EKS run 43827766384 all nine nodes uploaded a whole
-    /// cell state every few minutes through a NAT whose burst ran out, and
+    /// shard state every few minutes through a NAT whose burst ran out, and
     /// once S3 slowed every spawned upload held its snapshot in memory
     /// until it finished or failed. Now a node holds at most two.
     pub(crate) fn archive(&self, meta: &Meta, data: bytes::Bytes, inc: u64, clock_ms: i64) {
@@ -648,7 +648,7 @@ impl Shared {
         if self.archiver.busy.swap(true, Ordering::AcqRel) {
             return;
         }
-        let (archiver, store, cell) = (self.archiver.clone(), self.store.clone(), self.cell);
+        let (archiver, store, shard) = (self.archiver.clone(), self.store.clone(), self.shard);
         tokio::spawn(async move {
             loop {
                 let next = archiver.next.lock().take();
@@ -664,7 +664,7 @@ impl Shared {
                 };
                 if let Err(error) = store
                     .put_snapshot(
-                        cell,
+                        shard,
                         &copy.id,
                         copy.inc,
                         copy.index,
@@ -767,7 +767,7 @@ impl StateMachine {
             snapshot_seq: Default::default(),
         };
         if let Some((_, data)) = machine.read_current()? {
-            let mut state: CellState = serde_json::from_slice(&data).map_err(io::Error::other)?;
+            let mut state: ShardState = serde_json::from_slice(&data).map_err(io::Error::other)?;
             state.resolve_definitions();
             let applied = state.last_applied.map(|id| id.index).unwrap_or(0);
             *machine.shared.state.write() = state;
@@ -786,16 +786,16 @@ impl StateMachine {
         write_snapshot_file(&self.dir, meta, data)
     }
 
-    /// The cell state as a snapshot holds it: metadata and segment lists,
+    /// The shard state as a snapshot holds it: metadata and segment lists,
     /// plus each session's events that are not stored yet, inline.
     ///
     /// Decision: a snapshot writes nothing to the object store. Only the
     /// leader writes segments (as `Stored` commands), so every replica's
-    /// snapshot of the same index is the same, and the cell keeps one copy
+    /// snapshot of the same index is the same, and the shard keeps one copy
     /// of the history instead of one per replica.
-    fn snapshot_state(&self) -> CellState {
+    fn snapshot_state(&self) -> ShardState {
         let state = self.shared.state.read();
-        CellState {
+        ShardState {
             last_applied: state.last_applied,
             membership: state.membership.clone(),
             incarnation: state.incarnation,
@@ -811,11 +811,11 @@ impl StateMachine {
                 .collect(),
             forwarded: state.forwarded.clone(),
             directory: state.directory.clone(),
-            cells: state.cells.clone(),
+            shards: state.shards.clone(),
             draining: state.draining.clone(),
             retired: state.retired.clone(),
             importing: state.importing.clone(),
-            shards: state.shards.clone(),
+            slots: state.slots.clone(),
             sealed: state.sealed.clone(),
             parts: state.parts.clone(),
             definitions: Default::default(),
@@ -944,7 +944,7 @@ impl RaftStateMachine<TypeConfig> for StateMachine {
         // memory budget does under pressure, so readers page events back as
         // usual. The old state is dropped after the swap, outside the lock.
         let freed = self.shared.shed_stored();
-        let mut state: CellState = serde_json::from_slice(&data).map_err(sm_err)?;
+        let mut state: ShardState = serde_json::from_slice(&data).map_err(sm_err)?;
         state.resolve_definitions();
         let applied = state.last_applied.map(|id| id.index).unwrap_or(0);
         let sessions: Vec<_> = state.sessions.keys().copied().collect();
@@ -989,7 +989,7 @@ mod tests {
     /// what its next turn reads.
     #[test]
     fn shedding_drops_only_stored_events() {
-        use crate::state::{CellState, SessionState};
+        use crate::state::{SessionState, ShardState};
         use crate::store::{SegRef, Store};
         use everruns_contracts::typed_id::SessionId;
         use everruns_core::events::{EventContext, SessionActivatedData};
@@ -1025,7 +1025,7 @@ mod tests {
         let shared = super::Shared::new(Store::open("memory://").unwrap(), 0);
         let (stored, tail) = (SessionId::new(), SessionId::new());
         {
-            let mut state: parking_lot::RwLockWriteGuard<'_, CellState> = shared.state.write();
+            let mut state: parking_lot::RwLockWriteGuard<'_, ShardState> = shared.state.write();
             state.sessions.insert(stored, session(stored, 5, 5));
             state.sessions.insert(tail, session(tail, 5, 3));
         }

@@ -7,7 +7,7 @@ appliesTo: [platform]
 ---
 
 `everruns docker up` starts the self-hosted Platform on your computer: the API,
-a worker, the data plane v2 cell that runs new organizations' agents,
+a worker, the data plane v2 shard that runs new organizations' agents,
 PostgreSQL and the UI, in Docker. It asks a few questions the first
 time, generates the secrets, waits until the server is healthy and signs the
 CLI in to it. Running it again is safe: it starts what is stopped, repairs what
@@ -92,9 +92,9 @@ restart. Moving away from `none` revokes the tokens made without sign-in, and
 `up` signs the CLI in again.
 
 `--data-plane v1` runs every organization's agents on the workers instead of
-the cell; `--data-plane v2` (the default) goes back. Organizations that
+the shard; `--data-plane v2` (the default) goes back. Organizations that
 already have sessions stay where they are, so an instance that ran v2 keeps
-its cell running on v1.
+its shard running on v1.
 
 ## What it keeps
 

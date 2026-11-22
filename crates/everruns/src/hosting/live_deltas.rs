@@ -4,7 +4,7 @@
 //! Decision: deltas (`output.message.delta`, `reason.thinking.delta`,
 //! `tool.output.delta`, voice transcript deltas) are never stored, so
 //! Engine's listeners, which carry committed events only, never see them.
-//! A host that streams to watchers elsewhere (a cell's stream node) takes
+//! A host that streams to watchers elsewhere (a shard's stream node) takes
 //! them from its epoch with [`SessionEpoch::live_deltas`](super::SessionEpoch::live_deltas).
 //!
 //! Every delta carries what a stream node needs to fence it:

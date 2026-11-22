@@ -9,7 +9,7 @@
 //   DELETE /v1/sessions/{session_id}/git/branches/{name} - Delete branch
 //
 // A v2 session (data plane v2) is served here too: its commit reads the
-// session's files from its cell (`session_git::plane_files`).
+// session's files from its shard (`session_git::plane_files`).
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_git::{
@@ -187,7 +187,7 @@ async fn commit(
         .as_deref()
         .unwrap_or("agent@everruns.local");
 
-    // A v2 session's files are on its cell (data plane v2 parity, Phase B).
+    // A v2 session's files are on its shard (data plane v2 parity, Phase B).
     let plane = crate::domains::data_plane::session_plane::SessionPlane::of(
         &state.db, org.org_id, session_id,
     )

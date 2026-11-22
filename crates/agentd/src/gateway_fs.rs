@@ -6,9 +6,9 @@
 //! Decisions:
 //! - A session's workspace has the session's id (`wsp_` and `session_`
 //!   name the same UUID), as on the control plane, where every session's
-//!   default workspace id equals its session id. A cell has no shared
+//!   default workspace id equals its session id. A shard has no shared
 //!   workspaces.
-//! - Each call is one [`FsOp`] on the session's cell, through the same
+//! - Each call is one [`FsOp`] on the session's shard, through the same
 //!   retry loop as the other session commands (moves, freezes, a leader
 //!   change). Reads are linearizable there (`api_files.rs`).
 //! - Downloads are served whole from one read: files are bounded by
@@ -84,7 +84,7 @@ pub(crate) fn session_of(id: &str) -> Result<SessionId, ApiError> {
     SessionId::parse(id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
-/// Run `op` on the session's cell.
+/// Run `op` on the session's shard.
 async fn call(gateway: &Gateway, id: &str, op: FsOp) -> Result<Value, ApiError> {
     let session = session_of(id)?;
     let body = serde_json::to_value(&op)

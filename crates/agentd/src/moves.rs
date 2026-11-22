@@ -3,7 +3,7 @@
 //! comes next. Pure, so the node's move driver (`node.rs`) and the protocol
 //! simulation (`tests/protocol_simulation.rs`) run the same rules.
 //!
-//! A move of a session leaving cell `own` at generation `g`:
+//! A move of a session leaving shard `own` at generation `g`:
 //! 1. import a prepared copy at `g + 1` into the target;
 //! 2. place it in the directory over `g` (the ownership transfer);
 //! 3. activate the target's copy, then forward the leaving one.
@@ -14,11 +14,11 @@
 
 use everruns::SessionId;
 
-use crate::state::{CellId, Command, Placed, Response};
+use crate::state::{Command, Placed, Response, ShardId};
 
-/// A freeze toward the cell the session already lives in (a stale view
+/// A freeze toward the shard the session already lives in (a stale view
 /// asked for it): undo it, and only it.
-pub fn unfreeze(own: CellId, session: SessionId) -> Command {
+pub fn unfreeze(own: ShardId, session: SessionId) -> Command {
     Command::Thaw {
         session,
         generation: None,
@@ -28,18 +28,18 @@ pub fn unfreeze(own: CellId, session: SessionId) -> Command {
 
 /// What the target's reply to the import means: the entry to place.
 pub fn after_import(
-    own: CellId,
-    to: CellId,
+    own: ShardId,
+    to: ShardId,
     leaving: u64,
     imported: &Response,
 ) -> Result<Placed, String> {
     match imported {
         Response::Ok | Response::Duplicate => Ok(Placed {
-            cell: to,
+            shard: to,
             generation: leaving + 1,
         }),
         Response::Rejected { .. } => Ok(Placed {
-            cell: own,
+            shard: own,
             generation: leaving + 2,
         }),
         other => Err(format!("import refused: {other:?}")),
@@ -61,14 +61,14 @@ pub fn after_place(leaving: u64, proposed: Placed, placed: &Response) -> Result<
 }
 
 /// The commands that finish a move the directory committed, in order, each
-/// with the cell it goes to. `current` is the entry above `leaving`.
+/// with the shard it goes to. `current` is the entry above `leaving`.
 pub fn settle(
-    own: CellId,
+    own: ShardId,
     session: SessionId,
     leaving: u64,
     current: Placed,
-) -> Vec<(CellId, Command)> {
-    if current.cell == own {
+) -> Vec<(ShardId, Command)> {
+    if current.shard == own {
         return vec![(
             own,
             Command::Thaw {
@@ -81,7 +81,7 @@ pub fn settle(
     let mut steps = Vec::new();
     if current.generation == leaving + 1 {
         steps.push((
-            current.cell,
+            current.shard,
             Command::Activate {
                 session,
                 generation: current.generation,
@@ -92,7 +92,7 @@ pub fn settle(
         own,
         Command::Forward {
             session,
-            cell: current.cell,
+            shard: current.shard,
             generation: leaving + 1,
         },
     ));
@@ -104,24 +104,24 @@ pub fn step_done(response: &Response) -> bool {
     matches!(response, Response::Ok | Response::Duplicate)
 }
 
-/// A prepared copy at `generation` in cell `own` whose move stalled, given
+/// A prepared copy at `generation` in shard `own` whose move stalled, given
 /// the directory's entry: activate it if the directory committed it, drop
 /// it if the directory placed the session elsewhere at its generation or
 /// later, and otherwise wait (the move is still running).
 pub fn settle_prepared(
-    own: CellId,
+    own: ShardId,
     session: SessionId,
     generation: u64,
     current: Option<Placed>,
 ) -> Option<Command> {
     match current {
-        Some(p) if p.cell == own && p.generation == generation => Some(Command::Activate {
+        Some(p) if p.shard == own && p.generation == generation => Some(Command::Activate {
             session,
             generation,
         }),
-        Some(p) if p.cell != own && p.generation >= generation => Some(Command::Drop {
+        Some(p) if p.shard != own && p.generation >= generation => Some(Command::Drop {
             session,
-            cell: p.cell,
+            shard: p.shard,
             generation: p.generation,
         }),
         _ => None,

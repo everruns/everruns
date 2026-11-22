@@ -41,7 +41,7 @@ chat models on an active, shared provider with credentials. Personal providers n
 ### Resolution
 
 `turn_model_id` (`crates/server/src/domains/organizations/research_model/mod.rs`) is the single
-resolver for control-plane turns, cell definitions and the session's displayed model:
+resolver for control-plane turns, shard definitions and the session's displayed model:
 
 1. The session's model, else the agent's pinned model.
 2. Research role: the agent's preset Research job, else the organization research model.
@@ -91,7 +91,7 @@ preset, never a raw model name, so the owner controls cost and which providers s
   model, so it sticks for follow-ups. `same` copies the person's explicit parent choice (session
   model, else the latest message's model). Unusable targets leave the child on ordinary
   resolution rather than failing the spawn.
-- Cells ask the same resolution over the `helper_model` host call and write the answer into the
+- Shards ask the same resolution over the `helper_model` host call and write the answer into the
   child's definition; `same` copies the parent's definition model. Framework (local) runs every
   key on the parent's model.
 - The task spec records `model`, `model_pick`, `model_pick_reason` and `model_id`; the session's

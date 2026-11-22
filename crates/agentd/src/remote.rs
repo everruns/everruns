@@ -1,15 +1,15 @@
-//! Executors outside the cell (data plane v2 step 6): the wire between an
-//! executor and the cells whose sessions it runs, and the executor's mirror
+//! Executors outside the shard (data plane v2 step 6): the wire between an
+//! executor and the shards whose sessions it runs, and the executor's mirror
 //! of those sessions.
 //!
 //! Decisions:
 //! - An executor runs Engine's own activation against the same hosting code
-//!   a cell node uses ([`crate::hosting::RaftHosting`]). Only where that
-//!   code reaches the cell differs: a node proposes through Raft and reads
+//!   a shard node uses ([`crate::hosting::RaftHosting`]). Only where that
+//!   code reaches the shard differs: a node proposes through Raft and reads
 //!   its replica; an executor sends the same [`Command`]s over HTTP and
-//!   reads a **mirror**, a [`CellState`] holding just the sessions it runs.
+//!   reads a **mirror**, a [`ShardState`] holding just the sessions it runs.
 //!   One authority implementation, so the executor cannot drift from it.
-//! - Every proposal's reply carries the session as the cell holds it right
+//! - Every proposal's reply carries the session as the shard holds it right
 //!   after the write (a [`SessionDelta`]): metadata whole, events only past
 //!   what the mirror has. Reads after an executor's own writes therefore
 //!   cost no extra round trip, and a turn's waited writes stay the only
@@ -17,7 +17,7 @@
 //!   mirror through a long poll per running session ([`watch`](Remote::watch)).
 //! - A delta is the session at one applied index, so a newer one replaces
 //!   an older one whole; a late reply never rolls the mirror back.
-//! - History stays where the cell put it: the mirror reads stored segments
+//! - History stays where the shard put it: the mirror reads stored segments
 //!   from the object store directly, through the executor's segment cache.
 
 use std::collections::{BTreeMap, HashMap};
@@ -30,20 +30,20 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::sm::Shared;
-use crate::state::{CellId, CellState, Command, Left, Response, SessionState};
+use crate::state::{Command, Left, Response, SessionState, ShardId, ShardState};
 use crate::types::NodeId;
 
-/// An executor's id. Executors and cell nodes share one id space in an
+/// An executor's id. Executors and shard nodes share one id space in an
 /// epoch's holder record; executors use ids from [`EXECUTOR_IDS`] up.
 pub type ExecutorId = NodeId;
 
-/// The first executor id: below it, ids name cell nodes.
+/// The first executor id: below it, ids name shard nodes.
 pub const EXECUTOR_IDS: ExecutorId = 1 << 32;
 
-/// A session as a cell sends it to an executor.
+/// A session as a shard sends it to an executor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionDelta {
-    /// The cell's applied index the view was taken at.
+    /// The shard's applied index the view was taken at.
     pub applied: u64,
     /// The session, with only the events past the executor's `since` (and
     /// its definition only when the executor asked for the whole session).
@@ -60,7 +60,7 @@ pub struct SessionDelta {
     pub whole: bool,
 }
 
-/// `POST /cell/exec/propose`.
+/// `POST /shard/exec/propose`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExecPropose {
     pub session: SessionId,
@@ -74,17 +74,17 @@ pub struct ExecProposed {
     pub response: Response,
     pub index: u64,
     pub delta: SessionDelta,
-    /// The cell's leader, as a hint for the next call.
+    /// The shard's leader, as a hint for the next call.
     #[serde(default)]
     pub leader: Option<String>,
 }
 
-/// `POST /cell/exec/pull`: `credits` free slots offered to this cell.
+/// `POST /shard/exec/pull`: `credits` free slots offered to this shard.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PullRequest {
     pub executor: ExecutorId,
     pub credits: usize,
-    /// How long the cell may hold the credits before returning them.
+    /// How long the shard may hold the credits before returning them.
     pub wait_ms: u64,
 }
 
@@ -137,7 +137,7 @@ pub fn view(s: &SessionState, since: Option<i32>) -> SessionState {
 
 /// The delta of `session` at `applied` from `state`.
 pub fn delta(
-    state: &CellState,
+    state: &ShardState,
     applied: u64,
     session: SessionId,
     since: Option<i32>,
@@ -155,7 +155,7 @@ pub fn delta(
 
 /// Fold `delta` into the mirror. `false` when the mirror's events and the
 /// delta's do not join up (the caller then fetches the session whole).
-pub fn merge(state: &mut CellState, session: SessionId, delta: SessionDelta) -> bool {
+pub fn merge(state: &mut ShardState, session: SessionId, delta: SessionDelta) -> bool {
     let Some(mut new) = delta.session else {
         state.sessions.remove(&session);
         if let Some(left) = delta.left {
@@ -197,20 +197,20 @@ pub fn merge(state: &mut CellState, session: SessionId, delta: SessionDelta) -> 
     true
 }
 
-/// An executor's link to the cells: proposals over HTTP, and the mirror
+/// An executor's link to the shards: proposals over HTTP, and the mirror
 /// its hosting reads.
 pub struct Remote {
     pub id: ExecutorId,
     /// The mirror: the sessions this executor runs (or ran recently).
     pub shared: Arc<Shared>,
     http: reqwest::Client,
-    /// Each cell's members, from the topology.
-    cells: parking_lot::RwLock<BTreeMap<CellId, BTreeMap<NodeId, String>>>,
-    /// Each cell's leader, as last heard.
-    leaders: Mutex<HashMap<CellId, String>>,
-    /// The cell each mirrored session was pulled from.
-    homes: Mutex<HashMap<SessionId, CellId>>,
-    /// Per session, the cell's applied index of the mirror's copy.
+    /// Each shard's members, from the topology.
+    shards: parking_lot::RwLock<BTreeMap<ShardId, BTreeMap<NodeId, String>>>,
+    /// Each shard's leader, as last heard.
+    leaders: Mutex<HashMap<ShardId, String>>,
+    /// The shard each mirrored session was pulled from.
+    homes: Mutex<HashMap<SessionId, ShardId>>,
+    /// Per session, the shard's applied index of the mirror's copy.
     applied: Mutex<HashMap<SessionId, u64>>,
     /// Round trips and payload, for the bench.
     pub calls: crate::prom::Counters,
@@ -232,9 +232,9 @@ impl Remote {
             .build()?;
         Ok(Arc::new(Self {
             id,
-            shared: Shared::new(store, CellId::MAX),
+            shared: Shared::new(store, ShardId::MAX),
             http,
-            cells: Default::default(),
+            shards: Default::default(),
             leaders: Default::default(),
             homes: Default::default(),
             applied: Default::default(),
@@ -243,25 +243,25 @@ impl Remote {
         }))
     }
 
-    /// Set the cells this executor serves and their members.
-    pub fn set_cells(&self, cells: BTreeMap<CellId, BTreeMap<NodeId, String>>) {
-        *self.cells.write() = cells;
+    /// Set the shards this executor serves and their members.
+    pub fn set_shards(&self, shards: BTreeMap<ShardId, BTreeMap<NodeId, String>>) {
+        *self.shards.write() = shards;
     }
 
-    pub fn cells(&self) -> Vec<CellId> {
-        self.cells.read().keys().copied().collect()
+    pub fn shards(&self) -> Vec<ShardId> {
+        self.shards.read().keys().copied().collect()
     }
 
-    /// `session` runs from `cell`.
+    /// `session` runs from `shard`.
     ///
     /// Decision: a session that moved drops its mirror. Applied indices
-    /// belong to one cell's log, so the old cell's index would make the new
-    /// cell's views look late and be ignored (found by the qualification
+    /// belong to one shard's log, so the old shard's index would make the new
+    /// shard's views look late and be ignored (found by the qualification
     /// suite: a session moved back and forth stalled on a stale mirror).
     /// `true` when it moved: the caller drops its own positions too.
-    pub fn bind(&self, session: SessionId, cell: CellId) -> bool {
-        let previous = self.homes.lock().insert(session, cell);
-        let moved = previous.is_some_and(|previous| previous != cell);
+    pub fn bind(&self, session: SessionId, shard: ShardId) -> bool {
+        let previous = self.homes.lock().insert(session, shard);
+        let moved = previous.is_some_and(|previous| previous != shard);
         if moved {
             // `applied` before the state, as `absorb` takes them.
             let mut applied = self.applied.lock();
@@ -273,17 +273,17 @@ impl Remote {
         moved
     }
 
-    /// The cell `session` runs from. Decision: a session nothing bound
-    /// here belongs to the only cell when the fleet has one (a link that
-    /// serves one cell, as the hosting conformance drives it); with more
-    /// cells only a pull says where a session lives.
-    pub fn home(&self, session: SessionId) -> Option<CellId> {
-        if let Some(cell) = self.homes.lock().get(&session).copied() {
-            return Some(cell);
+    /// The shard `session` runs from. Decision: a session nothing bound
+    /// here belongs to the only shard when the fleet has one (a link that
+    /// serves one shard, as the hosting conformance drives it); with more
+    /// shards only a pull says where a session lives.
+    pub fn home(&self, session: SessionId) -> Option<ShardId> {
+        if let Some(shard) = self.homes.lock().get(&session).copied() {
+            return Some(shard);
         }
-        let cells = self.cells.read();
-        (cells.len() == 1)
-            .then(|| cells.keys().next().copied())
+        let shards = self.shards.read();
+        (shards.len() == 1)
+            .then(|| shards.keys().next().copied())
             .flatten()
     }
 
@@ -306,16 +306,16 @@ impl Remote {
             .map(|s| s.last_sequence().unwrap_or(0))
     }
 
-    /// Fold `delta`, as `cell` answered it, in unless the mirror already
+    /// Fold `delta`, as `shard` answered it, in unless the mirror already
     /// holds a newer copy, and announce a newer copy on the mirror
     /// (`Shared::publish`).
     ///
-    /// Decision: only the cell the session is bound to may move the mirror.
-    /// Applied indices belong to one cell's log, so a reply from the cell a
+    /// Decision: only the shard the session is bound to may move the mirror.
+    /// Applied indices belong to one shard's log, so a reply from the shard a
     /// session left (a long poll or write still in flight across the move)
-    /// would set an index the new cell's log has not reached: every reply
-    /// from the new cell then looks late and is dropped, the mirror keeps
-    /// the old cell's "moved", and the turn retries for good (load run 5's
+    /// would set an index the new shard's log has not reached: every reply
+    /// from the new shard then looks late and is dropped, the mirror keeps
+    /// the old shard's "moved", and the turn retries for good (load run 5's
     /// lost turn). The check holds the `applied` lock, which `bind` takes
     /// after rebinding, so a reply checked before a rebind is cleared by it.
     ///
@@ -324,11 +324,11 @@ impl Remote {
     /// reaches the mirror in the reply to this executor's own write (a
     /// claim renewal, an append) moves the mirror past it, so the watch,
     /// which waits for changes after the mirror, would never report it.
-    fn absorb(&self, session: SessionId, cell: CellId, delta: SessionDelta) -> bool {
+    fn absorb(&self, session: SessionId, shard: ShardId, delta: SessionDelta) -> bool {
         let (merged, advanced) = {
             let mut applied = self.applied.lock();
-            if self.home(session) != Some(cell) {
-                return true; // from a cell the session is not bound to
+            if self.home(session) != Some(shard) {
+                return true; // from a shard the session is not bound to
             }
             let current = applied.get(&session).copied().unwrap_or(0);
             if delta.applied < current {
@@ -351,39 +351,39 @@ impl Remote {
         merged
     }
 
-    /// The members of `cell`, its last known leader first.
-    fn targets(&self, cell: CellId) -> Vec<String> {
+    /// The members of `shard`, its last known leader first.
+    fn targets(&self, shard: ShardId) -> Vec<String> {
         let mut targets: Vec<String> = self
-            .cells
+            .shards
             .read()
-            .get(&cell)
+            .get(&shard)
             .map(|m| m.values().cloned().collect())
             .unwrap_or_default();
-        if let Some(leader) = self.leaders.lock().get(&cell).cloned() {
+        if let Some(leader) = self.leaders.lock().get(&shard).cloned() {
             targets.retain(|t| *t != leader);
             targets.insert(0, leader);
         }
         targets
     }
 
-    fn heard_leader(&self, cell: CellId, leader: Option<String>) {
+    fn heard_leader(&self, shard: ShardId, leader: Option<String>) {
         if let Some(leader) = leader {
-            self.leaders.lock().insert(cell, leader);
+            self.leaders.lock().insert(shard, leader);
         }
     }
 
-    /// POST `body` to `path` on `cell`, trying its members in turn.
+    /// POST `body` to `path` on `shard`, trying its members in turn.
     pub async fn post<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
-        cell: CellId,
+        shard: ShardId,
         path: &str,
         body: &B,
         timeout: Duration,
     ) -> anyhow::Result<T> {
         let deadline = tokio::time::Instant::now() + DEADLINE.max(timeout);
-        let mut last = anyhow::anyhow!("cell {cell} has no members");
+        let mut last = anyhow::anyhow!("shard {shard} has no members");
         loop {
-            for addr in self.targets(cell) {
+            for addr in self.targets(shard) {
                 let sent = self
                     .http
                     .post(format!("http://{addr}{path}"))
@@ -401,8 +401,8 @@ impl Remote {
                     }
                     Err(error) => last = error.into(),
                 }
-                if self.leaders.lock().get(&cell) == Some(&addr) {
-                    self.leaders.lock().remove(&cell);
+                if self.leaders.lock().get(&shard) == Some(&addr) {
+                    self.leaders.lock().remove(&shard);
                 }
             }
             if tokio::time::Instant::now() >= deadline {
@@ -412,20 +412,20 @@ impl Remote {
         }
     }
 
-    /// POST `body` to `path` on `cell` once: a write whose outcome must not
+    /// POST `body` to `path` on `shard` once: a write whose outcome must not
     /// be guessed (a host call that changes something). Only a member that
     /// could not be connected to is passed over for the next, since the
     /// request never left; a timeout, a dropped connection or an error
     /// status is returned as it is, because the write may have happened.
     pub async fn post_once<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
-        cell: CellId,
+        shard: ShardId,
         path: &str,
         body: &B,
         timeout: Duration,
     ) -> anyhow::Result<T> {
-        let mut last = anyhow::anyhow!("cell {cell} has no members");
-        for addr in self.targets(cell) {
+        let mut last = anyhow::anyhow!("shard {shard} has no members");
+        for addr in self.targets(shard) {
             let sent = self
                 .http
                 .post(format!("http://{addr}{path}"))
@@ -441,8 +441,8 @@ impl Remote {
                 Ok(reply) => anyhow::bail!("{addr}{path}: {}", reply.status()),
                 Err(error) if error.is_connect() => {
                     last = error.into();
-                    if self.leaders.lock().get(&cell) == Some(&addr) {
-                        self.leaders.lock().remove(&cell);
+                    if self.leaders.lock().get(&shard) == Some(&addr) {
+                        self.leaders.lock().remove(&shard);
                     }
                 }
                 Err(error) => return Err(error.into()),
@@ -451,19 +451,19 @@ impl Remote {
         Err(last)
     }
 
-    fn cell_of(&self, session: SessionId) -> anyhow::Result<CellId> {
+    fn shard_of(&self, session: SessionId) -> anyhow::Result<ShardId> {
         self.home(session)
-            .ok_or_else(|| anyhow::anyhow!("session {session} is not bound to a cell here"))
+            .ok_or_else(|| anyhow::anyhow!("session {session} is not bound to a shard here"))
     }
 
-    /// Commit `command` in `session`'s cell and fold the session as it
+    /// Commit `command` in `session`'s shard and fold the session as it
     /// stands after the write into the mirror.
     pub async fn propose(
         &self,
         session: SessionId,
         command: Command,
     ) -> anyhow::Result<(Response, u64)> {
-        let cell = self.cell_of(session)?;
+        let shard = self.shard_of(session)?;
         let mut since = self.since(session);
         for _ in 0..2 {
             let body = ExecPropose {
@@ -472,10 +472,10 @@ impl Remote {
                 command: command.clone(),
             };
             let reply: ExecProposed = self
-                .post(cell, "/cell/exec/propose", &body, ATTEMPT)
+                .post(shard, "/shard/exec/propose", &body, ATTEMPT)
                 .await?;
-            self.heard_leader(cell, reply.leader);
-            if self.absorb(session, cell, reply.delta) {
+            self.heard_leader(shard, reply.leader);
+            if self.absorb(session, shard, reply.delta) {
                 return Ok((reply.response, reply.index));
             }
             // The mirror lost its place; the command is idempotent, so
@@ -485,13 +485,13 @@ impl Remote {
         anyhow::bail!("mirror of {session} could not catch up")
     }
 
-    /// Fetch `session` from its cell, at `min_index` or later.
+    /// Fetch `session` from its shard, at `min_index` or later.
     pub async fn refresh(&self, session: SessionId, min_index: u64) -> anyhow::Result<()> {
-        let cell = self.cell_of(session)?;
+        let shard = self.shard_of(session)?;
         let mut since = self.since(session);
         for _ in 0..2 {
-            let delta = self.fetch(cell, session, since, min_index, 0, 0).await?;
-            if self.absorb(session, cell, delta) {
+            let delta = self.fetch(shard, session, since, min_index, 0, 0).await?;
+            if self.absorb(session, shard, delta) {
                 return Ok(());
             }
             since = None;
@@ -501,7 +501,7 @@ impl Remote {
 
     async fn fetch(
         &self,
-        cell: CellId,
+        shard: ShardId,
         session: SessionId,
         since: Option<i32>,
         min_index: u64,
@@ -516,13 +516,13 @@ impl Remote {
             wait_ms,
         };
         self.post(
-            cell,
-            "/cell/exec/view",
+            shard,
+            "/shard/exec/view",
             &body,
             ATTEMPT + Duration::from_millis(wait_ms),
         )
         .await
-        .map_err(|e| anyhow::anyhow!("view of {session} in cell {cell} at {min_index}: {e:#}"))
+        .map_err(|e| anyhow::anyhow!("view of {session} in shard {shard} at {min_index}: {e:#}"))
     }
 
     /// The mirror holds `session` as of `index` or later.
@@ -536,26 +536,26 @@ impl Remote {
         self.refresh(session, index).await
     }
 
-    /// Wait (up to `wait`) for `session` to change in its cell past what the
+    /// Wait (up to `wait`) for `session` to change in its shard past what the
     /// mirror holds, and fold the change in. `true` when it changed.
     pub async fn watch(&self, session: SessionId, wait: Duration) -> anyhow::Result<bool> {
-        let cell = self.cell_of(session)?;
+        let shard = self.shard_of(session)?;
         let after = self.applied.lock().get(&session).copied().unwrap_or(0);
         let since = self.since(session);
         let delta = self
-            .fetch(cell, session, since, 0, after, wait.as_millis() as u64)
+            .fetch(shard, session, since, 0, after, wait.as_millis() as u64)
             .await?;
         let changed = delta.applied > after;
-        if !self.absorb(session, cell, delta) {
+        if !self.absorb(session, shard, delta) {
             self.refresh(session, 0).await?;
         }
         Ok(changed)
     }
 
-    /// Offer `credits` slots to `cell` and take the sessions it hands out.
+    /// Offer `credits` slots to `shard` and take the sessions it hands out.
     pub async fn pull(
         &self,
-        cell: CellId,
+        shard: ShardId,
         credits: usize,
         wait: Duration,
     ) -> anyhow::Result<Vec<(SessionId, Option<String>)>> {
@@ -566,11 +566,11 @@ impl Remote {
         };
         for _ in 0..3 {
             let reply: PullReply = self
-                .post(cell, "/cell/exec/pull", &body, wait + ATTEMPT)
+                .post(shard, "/shard/exec/pull", &body, wait + ATTEMPT)
                 .await?;
             match reply.leader {
                 Some(leader) if reply.sessions.is_empty() => {
-                    self.leaders.lock().insert(cell, leader);
+                    self.leaders.lock().insert(shard, leader);
                 }
                 _ => {
                     let mut tenants = reply.tenants.into_iter();
@@ -588,11 +588,11 @@ impl Remote {
     /// Send an epoch's live deltas to the session's stream node. Best
     /// effort.
     pub async fn live(&self, batch: LiveBatch) {
-        let Ok(cell) = self.cell_of(batch.session) else {
+        let Ok(shard) = self.shard_of(batch.session) else {
             return;
         };
-        let seeds = self.targets(cell);
-        if self.deliver.send(&self.http, cell, &seeds, batch).await {
+        let seeds = self.targets(shard);
+        if self.deliver.send(&self.http, shard, &seeds, batch).await {
             self.calls.inc(&[("call", "live")]);
         }
     }
@@ -646,15 +646,15 @@ mod tests {
         }));
         let id = SessionId::new();
         remote.bind(id, 0);
-        let mut cell = CellState::default();
-        cell.sessions.insert(id, session(id, 1..=5, 0));
-        assert!(remote.absorb(id, 0, delta(&cell, 10, id, None)));
-        cell.sessions.insert(id, session(id, 1..=6, 0));
+        let mut shard = ShardState::default();
+        shard.sessions.insert(id, session(id, 1..=5, 0));
+        assert!(remote.absorb(id, 0, delta(&shard, 10, id, None)));
+        shard.sessions.insert(id, session(id, 1..=6, 0));
         // The reply to a renewal brings the new input with it.
-        assert!(remote.absorb(id, 0, delta(&cell, 12, id, Some(5))));
+        assert!(remote.absorb(id, 0, delta(&shard, 12, id, Some(5))));
         assert_eq!(heard.load(std::sync::atomic::Ordering::SeqCst), 2);
         // An older reply that arrives late changes nothing.
-        assert!(remote.absorb(id, 0, delta(&cell, 11, id, Some(5))));
+        assert!(remote.absorb(id, 0, delta(&shard, 11, id, Some(5))));
         assert_eq!(heard.load(std::sync::atomic::Ordering::SeqCst), 2);
         assert_eq!(
             remote.shared.state.read().sessions[&id].last_sequence(),
@@ -662,39 +662,39 @@ mod tests {
         );
     }
 
-    /// A reply from the cell a session left that lands after the session
-    /// was bound to its new cell changes nothing. Found by load run 5: the
-    /// old cell's long poll returned after the move with its own, higher
-    /// log index, so every reply from the new cell looked late, the mirror
+    /// A reply from the shard a session left that lands after the session
+    /// was bound to its new shard changes nothing. Found by load run 5: the
+    /// old shard's long poll returned after the move with its own, higher
+    /// log index, so every reply from the new shard looked late, the mirror
     /// kept saying "moved", and the turn retried for good.
     #[test]
-    fn a_late_reply_from_the_cell_a_session_left_is_ignored() {
+    fn a_late_reply_from_the_shard_a_session_left_is_ignored() {
         let remote = Remote::new(
             crate::remote::EXECUTOR_IDS,
             crate::store::Store::open("memory://").unwrap(),
         )
         .unwrap();
         let id = SessionId::new();
-        let mut old = CellState::default();
+        let mut old = ShardState::default();
         old.sessions.insert(id, session(id, 1..=5, 0));
         remote.bind(id, 0);
         assert!(remote.absorb(id, 0, delta(&old, 900, id, None)));
-        // Moved: cell 1 holds it now, at a lower index of its own log.
+        // Moved: shard 1 holds it now, at a lower index of its own log.
         assert!(remote.bind(id, 1));
-        let mut new = CellState::default();
+        let mut new = ShardState::default();
         new.sessions.insert(id, session(id, 1..=6, 0));
         assert!(remote.absorb(id, 1, delta(&new, 40, id, None)));
-        // The old cell's long poll returns now: the session left it.
+        // The old shard's long poll returns now: the session left it.
         old.sessions.remove(&id);
         old.forwarded.insert(
             id,
             Left {
-                cell: 1,
+                shard: 1,
                 generation: 2,
             },
         );
         assert!(remote.absorb(id, 0, delta(&old, 950, id, Some(5))));
-        // The new cell's next reply still lands.
+        // The new shard's next reply still lands.
         new.sessions.insert(id, session(id, 1..=7, 0));
         assert!(remote.absorb(id, 1, delta(&new, 41, id, Some(6))));
         let state = remote.shared.state.read();
@@ -705,12 +705,12 @@ mod tests {
     #[test]
     fn a_delta_appends_only_new_events() {
         let id = SessionId::new();
-        let mut cell = CellState::default();
-        cell.sessions.insert(id, session(id, 1..=5, 0));
-        let mut mirror = CellState::default();
-        assert!(merge(&mut mirror, id, delta(&cell, 10, id, None)));
-        cell.sessions.insert(id, session(id, 1..=8, 0));
-        let partial = delta(&cell, 12, id, Some(5));
+        let mut shard = ShardState::default();
+        shard.sessions.insert(id, session(id, 1..=5, 0));
+        let mut mirror = ShardState::default();
+        assert!(merge(&mut mirror, id, delta(&shard, 10, id, None)));
+        shard.sessions.insert(id, session(id, 1..=8, 0));
+        let partial = delta(&shard, 12, id, Some(5));
         assert_eq!(partial.session.as_ref().unwrap().events.len(), 3);
         assert!(partial.session.as_ref().unwrap().definition.is_null());
         assert!(merge(&mut mirror, id, partial));
@@ -722,12 +722,12 @@ mod tests {
     #[test]
     fn an_offload_drops_stored_events_from_the_mirror() {
         let id = SessionId::new();
-        let mut mirror = CellState::default();
-        let mut cell = CellState::default();
-        cell.sessions.insert(id, session(id, 1..=6, 0));
-        assert!(merge(&mut mirror, id, delta(&cell, 1, id, None)));
-        cell.sessions.insert(id, session(id, 5..=7, 4));
-        assert!(merge(&mut mirror, id, delta(&cell, 2, id, Some(6))));
+        let mut mirror = ShardState::default();
+        let mut shard = ShardState::default();
+        shard.sessions.insert(id, session(id, 1..=6, 0));
+        assert!(merge(&mut mirror, id, delta(&shard, 1, id, None)));
+        shard.sessions.insert(id, session(id, 5..=7, 4));
+        assert!(merge(&mut mirror, id, delta(&shard, 2, id, Some(6))));
         let held = &mirror.sessions[&id];
         assert_eq!(held.offloaded, 4);
         assert_eq!(held.events.first().and_then(|e| e.sequence), Some(5));
@@ -737,57 +737,57 @@ mod tests {
     #[test]
     fn a_gap_asks_for_the_whole_session() {
         let id = SessionId::new();
-        let mut mirror = CellState::default();
-        let mut cell = CellState::default();
-        cell.sessions.insert(id, session(id, 1..=3, 0));
-        assert!(merge(&mut mirror, id, delta(&cell, 1, id, None)));
-        cell.sessions.insert(id, session(id, 1..=9, 0));
+        let mut mirror = ShardState::default();
+        let mut shard = ShardState::default();
+        shard.sessions.insert(id, session(id, 1..=3, 0));
+        assert!(merge(&mut mirror, id, delta(&shard, 1, id, None)));
+        shard.sessions.insert(id, session(id, 1..=9, 0));
         // The executor claims to hold 6, but holds only 3.
-        assert!(!merge(&mut mirror, id, delta(&cell, 2, id, Some(6))));
+        assert!(!merge(&mut mirror, id, delta(&shard, 2, id, Some(6))));
         // A partial view of a session the mirror never held.
-        let mut other = CellState::default();
-        assert!(!merge(&mut other, id, delta(&cell, 2, id, Some(2))));
+        let mut other = ShardState::default();
+        assert!(!merge(&mut other, id, delta(&shard, 2, id, Some(2))));
     }
 
     #[test]
     fn a_restored_session_is_fetched_whole_again() {
         let id = SessionId::new();
-        let mut mirror = CellState::default();
-        let mut cell = CellState::default();
-        cell.sessions.insert(id, session(id, 1..=9, 0));
-        assert!(merge(&mut mirror, id, delta(&cell, 1, id, None)));
+        let mut mirror = ShardState::default();
+        let mut shard = ShardState::default();
+        shard.sessions.insert(id, session(id, 1..=9, 0));
+        assert!(merge(&mut mirror, id, delta(&shard, 1, id, None)));
         // Taken back to 5 on a new branch: the mirror's 6..=9 are not its
         // history any more, so a partial view does not join up.
         let mut restored = session(id, 1..=6, 0);
         restored.branch = 7;
-        cell.sessions.insert(id, restored);
-        assert!(!merge(&mut mirror, id, delta(&cell, 2, id, Some(9))));
-        assert!(merge(&mut mirror, id, delta(&cell, 3, id, None)));
+        shard.sessions.insert(id, restored);
+        assert!(!merge(&mut mirror, id, delta(&shard, 2, id, Some(9))));
+        assert!(merge(&mut mirror, id, delta(&shard, 3, id, None)));
         assert_eq!(mirror.sessions[&id].last_sequence(), Some(6));
     }
 
     #[test]
     fn a_session_that_left_leaves_the_mirror() {
         let id = SessionId::new();
-        let mut mirror = CellState::default();
-        let mut cell = CellState::default();
-        cell.sessions.insert(id, session(id, 1..=2, 0));
-        assert!(merge(&mut mirror, id, delta(&cell, 1, id, None)));
-        cell.sessions.remove(&id);
-        cell.forwarded.insert(
+        let mut mirror = ShardState::default();
+        let mut shard = ShardState::default();
+        shard.sessions.insert(id, session(id, 1..=2, 0));
+        assert!(merge(&mut mirror, id, delta(&shard, 1, id, None)));
+        shard.sessions.remove(&id);
+        shard.forwarded.insert(
             id,
             Left {
-                cell: 3,
+                shard: 3,
                 generation: 2,
             },
         );
-        assert!(merge(&mut mirror, id, delta(&cell, 2, id, Some(2))));
+        assert!(merge(&mut mirror, id, delta(&shard, 2, id, Some(2))));
         assert!(!mirror.sessions.contains_key(&id));
-        assert_eq!(mirror.forwarded[&id].cell, 3);
+        assert_eq!(mirror.forwarded[&id].shard, 3);
     }
 }
 
-/// `POST /cell/exec/view`: the session, once the node applied `min_index`;
+/// `POST /shard/exec/view`: the session, once the node applied `min_index`;
 /// with `wait_ms`, once it changed after `changed_after` (or the wait ran
 /// out).
 #[derive(Debug, Serialize, Deserialize)]
@@ -804,9 +804,9 @@ pub struct ViewRequest {
 
 fn path_kind(path: &str) -> &'static str {
     match path {
-        "/cell/exec/propose" => "propose",
-        "/cell/exec/view" => "view",
-        "/cell/exec/pull" => "pull",
+        "/shard/exec/propose" => "propose",
+        "/shard/exec/view" => "view",
+        "/shard/exec/pull" => "pull",
         _ => "other",
     }
 }

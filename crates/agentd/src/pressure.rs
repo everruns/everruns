@@ -1,39 +1,39 @@
-//! Memory pressure: how a cell takes on less work before a node runs out of
+//! Memory pressure: how a shard takes on less work before a node runs out of
 //! memory.
 //!
-//! Decision: a node past its container's memory limit is killed, its cell
+//! Decision: a node past its container's memory limit is killed, its shard
 //! loses a replica, and the node's rejoin (snapshot, log replay, catch-up)
 //! needs more memory still: in EKS run 43747035567 one node went round that
 //! loop five times. Unloading events (`Node::unload_loop`) frees what can
-//! be freed; past that, the cell stops taking on work, in two steps:
+//! be freed; past that, the shard stops taking on work, in two steps:
 //!
-//! - **Full** (a node at 85% of its limit): the cell is closed to new
-//!   sessions. Gateways place them in other cells, and the rebalancer moves
-//!   idle sessions out to cells that are not full.
-//! - **Shedding** (92%): the cell refuses new sessions and new input
+//! - **Full** (a node at 85% of its limit): the shard is closed to new
+//!   sessions. Gateways place them in other shards, and the rebalancer moves
+//!   idle sessions out to shards that are not full.
+//! - **Shedding** (92%): the shard refuses new sessions and new input
 //!   outright. Callers get 429 with a retry hint; turns already admitted
 //!   keep running and finish, which is what frees memory again.
 //!
-//! At either level the cell also starts no more turns than its
+//! At either level the shard also starts no more turns than its
 //! `pressure_turns` floor (`Node::schedule`): input it already queued
-//! waits. A slow cell otherwise draws the shared executor pool into itself,
+//! waits. A slow shard otherwise draws the shared executor pool into itself,
 //! since its turns hold executor credits longer (EKS run 44355318472: 17,000
-//! running turns in a cell that lost a node, three nodes out of memory).
+//! running turns in a shard that lost a node, three nodes out of memory).
 //!
 //! Decision: Full only steers, it does not refuse. A gateway has already
 //! written a session's directory entry when it creates the session on its
-//! cell, so a refused create comes back to the same cell on retry; steering
+//! shard, so a refused create comes back to the same shard on retry; steering
 //! by the load view (a second old at most) sends the next ones elsewhere
 //! instead.
 //!
-//! The levels have hysteresis (clear at 80% and 88%), so a cell does not
-//! flap at a boundary. The level is the cell's, not the node's: every node
-//! holds every session of its cell, so the worst node decides. Each node
+//! The levels have hysteresis (clear at 80% and 88%), so a shard does not
+//! flap at a boundary. The level is the shard's, not the node's: every node
+//! holds every session of its shard, so the worst node decides. Each node
 //! asks its peers every second; a peer that does not answer for 5 s (down,
 //! or not started) does not count.
 //!
-//! A cell whose leader stops committing sheds the same way. Decision: in
-//! EKS run 43774871232 three cells stopped committing for about 20 minutes
+//! A shard whose leader stops committing sheds the same way. Decision: in
+//! EKS run 43774871232 three shards stopped committing for about 20 minutes
 //! each (replication kept missing its deadline, see `network::Isolation`).
 //! Every request waited out its 15 s proposal deadline, clients retried, and
 //! the waiting requests filled the nodes' memory until they were killed. A
@@ -77,7 +77,7 @@ pub const STALL_AFTER: Duration = Duration::from_secs(5);
 /// that a caller does not sit idle long once memory frees.
 pub const RETRY_AFTER_MS: u64 = 2_000;
 
-/// How close a cell's nodes are to their memory limits.
+/// How close a shard's nodes are to their memory limits.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Level {
@@ -110,7 +110,7 @@ impl Level {
     }
 }
 
-/// One node's reading, as `/cell/pressure` answers it.
+/// One node's reading, as `/shard/pressure` answers it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Reading {
     pub rss: u64,
@@ -123,7 +123,7 @@ impl Reading {
     }
 }
 
-/// New work a shedding cell refuses.
+/// New work a shedding shard refuses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Work {
     Session,
@@ -165,7 +165,7 @@ impl Pressure {
         }
     }
 
-    /// Record this node's resident set and recompute the cell's level.
+    /// Record this node's resident set and recompute the shard's level.
     pub fn record_own(&self, rss: u64) -> Level {
         self.own.store(rss, Ordering::Relaxed);
         self.update()
@@ -178,8 +178,8 @@ impl Pressure {
         self.update()
     }
 
-    /// The worst fresh reading of the cell's nodes, in permille.
-    pub fn cell_permille(&self) -> u64 {
+    /// The worst fresh reading of the shard's nodes, in permille.
+    pub fn shard_permille(&self) -> u64 {
         let own = self.own().permille();
         let peers = self.peers.lock();
         peers
@@ -190,7 +190,7 @@ impl Pressure {
     }
 
     fn update(&self) -> Level {
-        let level = self.level().next(self.cell_permille());
+        let level = self.level().next(self.shard_permille());
         self.level.store(level as u8, Ordering::Relaxed);
         level
     }
@@ -200,7 +200,7 @@ impl Pressure {
     }
 
     /// Record Raft's progress: whether this node leads, its last log index
-    /// and its applied index. Returns whether the cell has stalled.
+    /// and its applied index. Returns whether the shard has stalled.
     pub fn record_progress(&self, leader: bool, last_log: u64, applied: u64) -> bool {
         self.record_progress_at(leader, last_log, applied, Instant::now())
     }
@@ -219,7 +219,7 @@ impl Pressure {
         self.stalled.load(Ordering::Relaxed)
     }
 
-    /// The level the cell acts on: shedding while stalled.
+    /// The level the shard acts on: shedding while stalled.
     pub fn effective(&self) -> Level {
         if self.stalled() {
             Level::Shedding
@@ -228,7 +228,7 @@ impl Pressure {
         }
     }
 
-    /// Whether the cell refuses `work` now; counts the refusal.
+    /// Whether the shard refuses `work` now; counts the refusal.
     pub fn refuses(&self, work: Work) -> bool {
         let refused = self.effective() == Level::Shedding;
         if refused {
@@ -257,7 +257,7 @@ pub(crate) fn work_of(command: &Command) -> Option<Work> {
 
 impl Node {
     /// Leader: refuse new work while shipping is behind its bound (callers
-    /// retry a frozen session, so the loss window holds) or while the cell
+    /// retry a frozen session, so the loss window holds) or while the shard
     /// sheds load. Work already admitted keeps going.
     pub(crate) fn refusal(&self, command: &Command) -> Option<Response> {
         let work = work_of(command)?;
@@ -269,23 +269,23 @@ impl Node {
         })
     }
 
-    /// Whether the cell, short of memory, starts no more turns now.
+    /// Whether the shard, short of memory, starts no more turns now.
     ///
-    /// Decision: at Full or worse a cell starts no turns past
-    /// `pressure_turns`. In EKS run 44355318472 a cell that lost a node to
+    /// Decision: at Full or worse a shard starts no turns past
+    /// `pressure_turns`. In EKS run 44355318472 a shard that lost a node to
     /// chaos committed slowly, so its turns held executor credits longer and
     /// the shared pool piled into it (2,600 to 17,000 running turns in four
-    /// minutes, the other cells steady at 2,700); its other two nodes ran
+    /// minutes, the other shards steady at 2,700); its other two nodes ran
     /// out of memory three times. Refusing new input (Shedding) did not stop
-    /// it: the input was already queued. Below the floor the cell still
+    /// it: the input was already queued. Below the floor the shard still
     /// makes progress, so memory that only finished turns free does get
     /// freed.
-    pub(crate) fn holds_turns(&self, state: &crate::state::CellState) -> bool {
+    pub(crate) fn holds_turns(&self, state: &crate::state::ShardState) -> bool {
         self.pressure.effective() >= Level::Full
             && self.running_turns(state) >= self.cfg.pressure_turns
     }
 
-    /// Every second: read this node's resident set and ask the cell's other
+    /// Every second: read this node's resident set and ask the shard's other
     /// members for theirs.
     pub(crate) async fn pressure_loop(self: Arc<Self>) {
         let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -304,9 +304,9 @@ impl Node {
             };
             if stalled != was_stalled {
                 tracing::warn!(
-                    cell = self.cfg.cell,
+                    shard = self.cfg.shard,
                     stalled,
-                    "cell commit progress changed"
+                    "shard commit progress changed"
                 );
                 was_stalled = stalled;
             }
@@ -319,7 +319,7 @@ impl Node {
                 let http = self.http.clone();
                 async move {
                     let reading = http
-                        .get(format!("http://{addr}/cell/pressure"))
+                        .get(format!("http://{addr}/shard/pressure"))
                         .timeout(Duration::from_millis(800))
                         .send()
                         .await
@@ -337,11 +337,11 @@ impl Node {
             }
             if level != was {
                 tracing::warn!(
-                    cell = self.cfg.cell,
+                    shard = self.cfg.shard,
                     ?was,
                     ?level,
-                    permille = self.pressure.cell_permille(),
-                    "cell memory pressure changed"
+                    permille = self.pressure.shard_permille(),
+                    "shard memory pressure changed"
                 );
                 was = level;
             }
@@ -349,39 +349,39 @@ impl Node {
     }
 }
 
-/// `GET /cell/pressure`: this node's own reading.
+/// `GET /shard/pressure`: this node's own reading.
 pub async fn reading(State(node): State<Arc<Node>>) -> Json<Reading> {
     Json(node.pressure.own())
 }
 
 pub fn write_metrics(p: &Pressure, w: &mut crate::prom::Writer) {
     w.gauge(
-        "cell_memory_limit_bytes",
+        "agentd_shard_memory_limit_bytes",
         "Memory limit memory pressure is measured against.",
         p.limit as f64,
     );
     w.gauge(
-        "cell_memory_pressure",
-        "The worst of the cell's nodes' resident set, as a share of its limit.",
-        p.cell_permille() as f64 / 1000.0,
+        "agentd_shard_memory_pressure",
+        "The worst of the shard's nodes' resident set, as a share of its limit.",
+        p.shard_permille() as f64 / 1000.0,
     );
     w.gauge(
-        "cell_overload_level",
+        "agentd_shard_overload_level",
         "0: taking work, 1: full (no new sessions placed here), 2: shedding (new sessions and input refused).",
         p.effective() as u8 as f64,
     );
     w.gauge(
-        "cell_commit_stalled",
+        "agentd_shard_commit_stalled",
         "1 while this node leads and has not applied an entry for 5 s with entries to apply.",
         f64::from(u8::from(p.stalled())),
     );
     w.counter(
-        "cell_shed_sessions_total",
+        "agentd_shard_shed_sessions_total",
         "New sessions refused while shedding load.",
         p.shed_sessions.load(Ordering::Relaxed) as f64,
     );
     w.counter(
-        "cell_shed_inputs_total",
+        "agentd_shard_shed_inputs_total",
         "New input refused while shedding load.",
         p.shed_inputs.load(Ordering::Relaxed) as f64,
     );

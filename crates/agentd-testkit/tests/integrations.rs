@@ -4,11 +4,11 @@
 //! control plane's `/dp/v1/orgs/{org}/sessions/{id}/...` routes: it admits
 //! a message with its thread and sender, seeds history, cancels a turn and
 //! follows the session's events. Observers, trace exports and reports take
-//! the session events the org's policy names, which the cell copies onto
+//! the session events the org's policy names, which the shard copies onto
 //! the feed.
 //!
 //! The bench holds the step's gate and prints its numbers (`cargo test -p
-//! everruns-cell-testkit --test integrations -- --nocapture`).
+//! agentd-testkit --test integrations -- --nocapture`).
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -183,7 +183,7 @@ async fn bench_channel_replies_and_tapped_events() {
     }
 
     // Each session takes a message and is followed to its reply, as the
-    // channel host does; then the directory cell's leader is killed, and
+    // channel host does; then the directory shard's leader is killed, and
     // every session takes another message.
     let fleet_ref = &fleet;
     let cp_ref = &cp;

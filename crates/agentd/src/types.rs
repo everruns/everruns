@@ -1,12 +1,12 @@
-//! Raft type configuration for a cell.
+//! Raft type configuration for a shard.
 
 use std::io::Cursor;
 
-/// A node within a cell.
+/// A node within a shard.
 pub type NodeId = u64;
 
 openraft::declare_raft_types!(
-    /// A cell's Raft types: commands in, responses out, JSON snapshots.
+    /// A shard's Raft types: commands in, responses out, JSON snapshots.
     pub TypeConfig:
         D = crate::state::Command,
         R = crate::state::Response,

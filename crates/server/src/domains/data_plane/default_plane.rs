@@ -4,7 +4,7 @@
 //
 // Decisions:
 // - Configured by the environment: `EVERRUNS_DEFAULT_DATA_PLANE_URL` is the
-//   data plane's gateway (a node of its directory cell) and
+//   data plane's gateway (a node of its directory shard) and
 //   `EVERRUNS_DEFAULT_DATA_PLANE` its id (`local` when unset). Empty URL: no
 //   default, every org runs on v1 as before. `EVERRUNS_DATA_PLANE=v1` turns
 //   it off too, so an install switches with one variable.
@@ -200,16 +200,16 @@ mod tests {
     #[test]
     fn a_url_names_the_default_data_plane() {
         assert_eq!(
-            plane(&[("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://cell:7000/")]),
+            plane(&[("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://shard:7000/")]),
             Some(DefaultDataPlane {
                 id: "local".into(),
-                url: "http://cell:7000".into(),
+                url: "http://shard:7000".into(),
                 since: None,
             })
         );
         assert_eq!(
             plane(&[
-                ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://cell:7000"),
+                ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://shard:7000"),
                 ("EVERRUNS_DEFAULT_DATA_PLANE", "dp-1"),
             ])
             .map(|p| p.id),
@@ -223,7 +223,7 @@ mod tests {
         assert_eq!(plane(&[("EVERRUNS_DEFAULT_DATA_PLANE_URL", " ")]), None);
         assert_eq!(
             plane(&[
-                ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://cell:7000"),
+                ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://shard:7000"),
                 ("EVERRUNS_DATA_PLANE", "V1"),
             ]),
             None
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn a_cutoff_limits_placement_to_orgs_created_after_it() {
-        let url = ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://cell:7000");
+        let url = ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://shard:7000");
         let at = plane(&[
             url,
             ("EVERRUNS_DEFAULT_DATA_PLANE_SINCE", "2026-11-19T01:00:00Z"),
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn without_the_link_secrets_there_is_no_default() {
-        let url = ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://cell:7000");
+        let url = ("EVERRUNS_DEFAULT_DATA_PLANE_URL", "http://shard:7000");
         assert_eq!(plane_with(&[url]), None);
         assert_eq!(plane_with(&[url, LINK[0]]), None);
         assert_eq!(plane_with(&[url, LINK[1]]), None);

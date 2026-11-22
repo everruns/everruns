@@ -36,7 +36,7 @@ again as config, `--drop` forgets it. Running turns finish either way.
 
 `move` moves a running v1 session onto the org's data plane (the org must be
 enabled), keeping its id: its conversation, values, secrets and files go to a
-cell and it runs there from then on. Without a session it moves every v1
+shard and it runs there from then on. Without a session it moves every v1
 session of the org (`--archived` includes archived ones), one at a time. A
 session running a turn is skipped; run `move` again later. What a move left
 behind is in its report.

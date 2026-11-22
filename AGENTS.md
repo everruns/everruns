@@ -80,7 +80,7 @@ PORT_PREFIX=271 AUTH_MODE=none ./scripts/start-agent-dev.sh
 This is the single agent startup contract. The script preserves the caller's `PORT_PREFIX` and
 `AUTH_MODE` through Doppler, then runs `just start-all --no-watch`. It starts PostgreSQL, Valkey,
 and NATS as local processes (no Docker), plus the API, worker, UI, Caddy, and data plane v2 (a
-three-node cell, an executor and the edge router; new orgs run there, `DATA_PLANE=v1` leaves it
+three-node shard, an executor and the edge router; new orgs run there, `DATA_PLANE=v1` leaves it
 out). The proxy is
 `http://localhost/<PORT_PREFIX>00` (prefix `271` → `http://localhost:27100`). Pick an unused prefix
 from `1` through `654`; never reuse one across concurrent worktrees.

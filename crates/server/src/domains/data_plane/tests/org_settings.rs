@@ -119,7 +119,7 @@ async fn a_v1_org_gets_no_settings() {
 
 /// Review fix: a settings change counts in the same transaction, so a sync
 /// that failed after it is caught up by the dispatcher instead of leaving
-/// the old policy (open egress) on the cells.
+/// the old policy (open egress) on the shards.
 #[tokio::test]
 async fn a_settings_change_is_owed_a_sync_until_one_covers_it() {
     let (cp, _, _) = control_plane().await;

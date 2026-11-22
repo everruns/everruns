@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Kill a cell's Raft leader while a model call is in flight on a follower.
+"""Kill a shard's Raft leader while a model call is in flight on a follower.
 
 Pass: the turn completes, its in-flight model call was not repeated (the
 executor kept running across the leader change), and the restarted old leader
-catches up with the cell.
+catches up with the shard.
 """
 import json, os, subprocess, sys, time, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
-DRIVE = os.path.join(ROOT, "target", "release", "cell-drive")
+DRIVE = os.path.join(ROOT, "target", "release", "agentd-drive")
 
 DELAY_MS = 3000
 
@@ -23,15 +23,15 @@ def call(method, url, body=None, timeout=60):
         return json.load(r)
 
 
-def gw(cell, node):
-    return f"http://{fleet.addr(cell, node)}"
+def gw(shard, node):
+    return f"http://{fleet.addr(shard, node)}"
 
 
 def main():
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
-    os.environ["CELL_MODEL_DELAY_MS"] = str(DELAY_MS)
+    os.environ["AGENTD_MODEL_DELAY_MS"] = str(DELAY_MS)
     fleet.up(1, 3, 7100)
     time.sleep(1)
 

@@ -1,13 +1,13 @@
-//! What a cell keeps for its link to the control plane, as replicated state
-//! (cp-dp-protocol.md): each org's config (directory cell only) and the
+//! What a shard keeps for its link to the control plane, as replicated state
+//! (cp-dp-protocol.md): each org's config (directory shard only) and the
 //! feed records not yet acknowledged.
 //!
 //! Decisions:
-//! - Config applies in the directory cell's Raft, so the ordering rules
+//! - Config applies in the directory shard's Raft, so the ordering rules
 //!   (in order per org, a new epoch only as a full snapshot, an older epoch
 //!   refused) hold across leader changes: a retried `PUT` lands on the
 //!   applied version and is answered `AlreadyApplied`.
-//! - Agent revisions are kept whole in the directory cell's state for now:
+//! - Agent revisions are kept whole in the directory shard's state for now:
 //!   they are small, and a session copies its revision's package when it
 //!   is created, so a later revision or a removal never changes a session
 //!   that started on the old one. They move to the object store when
@@ -29,12 +29,12 @@ use crate::dp::{
 };
 use crate::state::SessionState;
 
-/// Every org's config, in the directory cell.
+/// Every org's config, in the directory shard.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Orgs {
     pub orgs: BTreeMap<String, OrgConfig>,
-    /// The event types each org taps (`tap.rs`), as the directory cell's
-    /// policies say; every cell holds them.
+    /// The event types each org taps (`tap.rs`), as the directory shard's
+    /// policies say; every shard holds them.
     #[serde(default)]
     pub taps: BTreeMap<String, Vec<String>>,
 }
@@ -156,7 +156,7 @@ impl OrgConfig {
     }
 }
 
-/// An admin command for one org, applied in the directory cell's Raft.
+/// An admin command for one org, applied in the directory shard's Raft.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "admin")]
 pub enum AdminCommand {
@@ -419,7 +419,7 @@ impl Orgs {
     }
 
     /// The orgs whose sessions may not start new turns, and the reason.
-    /// The orgs whose policy taps events, and the types (directory cell).
+    /// The orgs whose policy taps events, and the types (directory shard).
     pub fn policy_taps(&self) -> BTreeMap<String, Vec<String>> {
         self.orgs
             .iter()
@@ -447,7 +447,7 @@ impl Orgs {
 }
 
 /// Feed records waiting for the control plane's acknowledgement.
-/// What the leader measured on its cell's nodes for one minute
+/// What the leader measured on its shard's nodes for one minute
 /// (`Command::Report`). Carried in the command, so the record it becomes
 /// is the same on every replica.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -478,7 +478,7 @@ pub struct Feed {
     pub acked: (u64, u32),
 }
 
-/// Apply a config update in the directory cell; a new version goes on
+/// Apply a config update in the directory shard; a new version goes on
 /// the feed as `ConfigApplied`.
 pub fn config(
     orgs: &mut Orgs,
@@ -500,7 +500,7 @@ pub fn config(
     }
 }
 
-/// Apply an admin command in the directory cell; a suspension goes on the
+/// Apply an admin command in the directory shard; a suspension goes on the
 /// feed once.
 pub fn admin(
     orgs: &mut Orgs,

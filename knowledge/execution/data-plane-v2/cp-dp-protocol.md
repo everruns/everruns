@@ -10,7 +10,7 @@ tags:
 
 # Control plane ↔ data plane protocol
 
-Status: approved 2026-11-09; implemented in plan step 7 (2026-11-11). Part of [design.md](design.md) (data plane v2). The wire types are `everruns_contracts::dataplane`, and sealing is `everruns_contracts::dataplane_seal`. The data plane side is `crates/agentd` (`gateway_dp.rs`, `node_control.rs`, `org_token.rs`), and `crates/agentd-testkit/src/fake_cp.rs` is a fake control plane for cell tests. The control plane side is the server's `domains/data_plane` (outbox, feed, allowances, org tokens) and the operator CLI `everruns-dataplane`.
+Status: approved 2026-11-09; implemented in plan step 7 (2026-11-11). Part of [design.md](design.md) (data plane v2). The wire types are `everruns_contracts::dataplane`, and sealing is `everruns_contracts::dataplane_seal`. The data plane side is `crates/agentd` (`gateway_dp.rs`, `node_control.rs`, `org_token.rs`), and `crates/agentd-testkit/src/fake_cp.rs` is a fake control plane for shard tests. The control plane side is the server's `domains/data_plane` (outbox, feed, allowances, org tokens) and the operator CLI `everruns-dataplane`.
 
 ## Shape
 
@@ -21,11 +21,11 @@ Status: approved 2026-11-09; implemented in plan step 7 (2026-11-11). Part of [d
 | **Feed** | data → control | Usage, session summaries, refreshed tokens, org events, health | Batched, at least once, deduplicated by cursor |
 | **Keys** | data ← control | Public keys that verify org tokens | The data plane pulls JWKS and caches it |
 
-**Transport:** HTTPS with JSON bodies, mTLS between the planes (until step 10, a bearer token per link: `EVERRUNS_DP_TOKEN` on the control plane, `CELL_DP_TOKEN` on the data plane, checked on both sides; a control plane with no token configured refuses every `/dp/v1` call). This is the same stack as the public `/v1` API (axum, serde types, OpenAPI). Traffic is low volume (config on edits, feed batches about once a second), so nothing here needs streaming. Both sides serve an internal `/dp/v1` prefix that the edge router never exposes publicly.
+**Transport:** HTTPS with JSON bodies, mTLS between the planes (until step 10, a bearer token per link: `EVERRUNS_DP_TOKEN` on the control plane, `AGENTD_DP_TOKEN` on the data plane, checked on both sides; a control plane with no token configured refuses every `/dp/v1` call). This is the same stack as the public `/v1` API (axum, serde types, OpenAPI). Traffic is low volume (config on edits, feed batches about once a second), so nothing here needs streaming. Both sides serve an internal `/dp/v1` prefix that the edge router never exposes publicly.
 
 **Session traffic is not part of this protocol.** Messages, SSE and webhooks go from the edge router straight to the data plane. If the control plane is down, running sessions continue; edits and new orgs wait until it is back.
 
-**Placement is not part of this protocol either.** The control plane only says which data plane an org uses. Inside the data plane, any cell may host sessions of any org, and sessions move freely between cells (see "Placement" in [design.md](design.md)).
+**Placement is not part of this protocol either.** The control plane only says which data plane an org uses. Inside the data plane, any shard may host sessions of any org, and sessions move freely between shards (see "Placement" in [design.md](design.md)).
 
 ## Endpoints
 
@@ -39,7 +39,7 @@ Served by the data plane, called by the control plane:
 | `POST /dp/v1/orgs/{org}/config/unknown` | `ConfigKnown` → `ConfigDiff` | After a control plane restore: the control plane sends the revisions it knows, and the data plane answers with the agent revisions, secrets and connections it holds beyond them. A POST because the known set can be larger than a query string |
 | `GET /dp/v1/orgs/{org}/config/leftovers` | → `ConfigLeftovers` or null | What a new epoch's first full snapshot lacked, set aside (not served). `everruns-dataplane reconcile <org>` lists it |
 | `POST /dp/v1/orgs/{org}/config/leftovers` | `ClearLeftovers` → `CommandAck` | Forget the leftovers, once the control plane wrote them back into its outbox (`--keep`) or chose to drop them (`--drop`) |
-| `POST /dp/v1/feed/replay` | `FeedReplay` → `{ command_id, resent }` | Ask a cell to resend feed records from the shipped log (30 days) |
+| `POST /dp/v1/feed/replay` | `FeedReplay` → `{ command_id, resent }` | Ask a shard to resend feed records from the shipped log (30 days) |
 | `PUT /dp/v1/orgs/{org}` | `OrgEnable` → `CommandAck` | Enable the org on this data plane: data key, placement policy |
 | `POST /dp/v1/orgs/{org}/state` | `{ command_id, state: "active" \| "suspended", reason }` → `CommandAck` | Suspension takes effect immediately |
 | `POST /dp/v1/orgs/{org}/exports` | `{ command_id, export_id }` → `CommandAck` | Writes `orgs/{org}/exports/{export_id}.tar.zst` |
@@ -51,9 +51,9 @@ Served by the control plane, called by the data plane:
 | Method and path | Body → reply | Notes |
 | --- | --- | --- |
 | `POST /dp/v1/feed` | `FeedBatch` → `FeedAck` | At least once; deduplicated by `(source, incarnation, index, ordinal)` |
-| `POST /dp/v1/tenants/{org}/allowances` | `AllowanceRequest` → `AllowanceGrant` | A cell asks for spend allowance when low and settles earlier grants; idempotent by `request_id` |
-| `POST /dp/v1/tenants/{org}/host-calls/{name}` | `HostCallRequest` → `SealedSecret` | A tool's host call: the one way a data plane asks its control plane at call time. The calls are declared in `everruns_contracts::host_calls` (`host_calls_registry.txt` prints them), each with who it acts as, its effect, timeout and planned fate; today knowledge search and browse, a Poppy call, a Slack action as the session's endpoint bot, an operation on the session's SQL databases and, until the org's pushed settings arrive (`org_setting` connections), web search settings and keys, the tool approval policy and egress grants run as the org's internal caller; a platform tool's call (`platform_command`), a connection token, a GitHub token and a service API key act as the member the forwarding cell names from the session's record of the turn's sender (the control plane records the turn's invocation from it first). The `HostCallAnswer` comes back sealed with the org's data key as `host-call:{call}`. Forwarded by the directory cell for its executors, at most 64 in flight per org per node, behind a breaker |
-| `POST /dp/v1/tenants/{org}/lookups` | `LookupRequest` → `SealedSecret` | The route host calls replaced, kept for cells of the release before: the v1 command maps to its host call, the answer is sealed as `lookup:{request}`. Remove with the release after |
+| `POST /dp/v1/tenants/{org}/allowances` | `AllowanceRequest` → `AllowanceGrant` | A shard asks for spend allowance when low and settles earlier grants; idempotent by `request_id` |
+| `POST /dp/v1/tenants/{org}/host-calls/{name}` | `HostCallRequest` → `SealedSecret` | A tool's host call: the one way a data plane asks its control plane at call time. The calls are declared in `everruns_contracts::host_calls` (`host_calls_registry.txt` prints them), each with who it acts as, its effect, timeout and planned fate; today knowledge search and browse, a Poppy call, a Slack action as the session's endpoint bot, an operation on the session's SQL databases and, until the org's pushed settings arrive (`org_setting` connections), web search settings and keys, the tool approval policy and egress grants run as the org's internal caller; a platform tool's call (`platform_command`), a connection token, a GitHub token and a service API key act as the member the forwarding shard names from the session's record of the turn's sender (the control plane records the turn's invocation from it first). The `HostCallAnswer` comes back sealed with the org's data key as `host-call:{call}`. Forwarded by the directory shard for its executors, at most 64 in flight per org per node, behind a breaker |
+| `POST /dp/v1/tenants/{org}/lookups` | `LookupRequest` → `SealedSecret` | The route host calls replaced, kept for shards of the release before: the v1 command maps to its host call, the answer is sealed as `lookup:{request}`. Remove with the release after |
 | `POST /dp/v1/connections/{id}/refresh-lease` | `{ holder, token_revision }` → `{ granted, expires_unix_ms }` | One refresher per connection token at a time (served by the data plane registry when `refresh_owner` is `DataPlane`; listed here for completeness) |
 | `GET /.well-known/jwks.json` | → JWKS | Cached; refreshed on unknown `kid` |
 
@@ -94,7 +94,7 @@ struct AgentDefinition {
                             // secrets only as SealedSecret ids
 }
 
-/// AES-256-GCM under the org data key. Cells store ciphertext only; executors
+/// AES-256-GCM under the org data key. Shards store ciphertext only; executors
 /// unwrap the data key through KMS and decrypt in memory.
 struct SealedSecret { secret_id: String, revision: u64, ciphertext: Base64, nonce: Base64, data_key_id: String }
 
@@ -107,7 +107,7 @@ struct Connection {
 }
 
 struct TenantPolicy {   // the org, seen by the data plane only as a tenant
-    limits: Limits,         // safety nets only: per-cell caps, file quotas
+    limits: Limits,         // safety nets only: per-shard caps, file quotas
     egress: EgressPolicy,   // allowlists, caps, kill switch
     placement: PlacementPolicy, // Shared (default) | Dedicated { pool }
     features: Vec<String>,  // enabled feature stages
@@ -127,8 +127,8 @@ struct CommandStatus { command_id: String, state: String, progress: Option<f32>,
 
 struct FeedBatch {
     data_plane: String,
-    source: String,         // the cell that produced the records
-    incarnation: u64,       // bumped when the cell is rebuilt from a restore
+    source: String,         // the shard that produced the records
+    incarnation: u64,       // bumped when the shard is rebuilt from a restore
     records: Vec<FeedRecord>, // ordered by (index, ordinal)
 }
 
@@ -157,9 +157,9 @@ enum Record {
     SecretRefreshed { secret_id: String, revision: u64, ciphertext: Base64, nonce: Base64, data_key_id: String },
     ConfigApplied { version: u64 },
     OrgEvent { kind: String /* budget_exhausted | limit_hit | suspended */, detail: String },
-    // One per cell per finished minute, no org (org_id ""): proposed by the Raft leader,
+    // One per shard per finished minute, no org (org_id ""): proposed by the Raft leader,
     // population from replicated state, node figures from the leader's poll of members.
-    // The control plane keeps the first per (cell, minute); see operations/monitoring.md.
+    // The control plane keeps the first per (shard, minute); see operations/monitoring.md.
     Health { sessions: u32, running_turns: u32, lag_ms: u32, minute_unix_ms: i64, queued: u32,
              resumed_turns: u32, forwarded: u64, term: u64, leader: String, nodes: u32,
              nodes_answering: u32, rss_peak_bytes: u64, memory_limit_bytes: u64,
@@ -171,7 +171,7 @@ struct FeedAck { source: String, incarnation: u64, stored_through: (u64, u32) } 
 
 struct AllowanceRequest {
     request_id: String,
-    cell: String,
+    shard: String,
     incarnation: u64,
     want_micros: i64,
     settlements: Vec<GrantSettlement>, // usage against earlier grants since the last request
@@ -185,10 +185,10 @@ struct GrantSettlement {
 struct AllowanceGrant {
     grant_id: String,       // reserved in the ledger when issued
     granted_micros: i64,    // 0 = budget exhausted or a policy stops spending
-    spend_until_unix_ms: i64, // after this the cell stops spending from it; the money is
+    spend_until_unix_ms: i64, // after this the shard stops spending from it; the money is
                             // released only by a closed settlement, never by time
     reason: Option<String>, // budget_exhausted | ask_to_continue | suspended
-    per_call_micros: Option<i64>, // the most one provider call may reserve; the cell's
+    per_call_micros: Option<i64>, // the most one provider call may reserve; the shard's
                             // default when absent (additive, step 6)
 }
 ```
@@ -206,7 +206,7 @@ The edge router and gateways check a JWT signed by the control plane (EdDSA). Th
 | `exp` | short: about 10 minutes |
 | `jti` | token id, for audit |
 
-A gateway requires org tokens when `CELL_JWKS_URL` is set. `sessions:write` lets a caller create sessions in its own org and drive them, and a session of another org answers as missing. `admin` is for operators and is never minted by the control plane. The gateway fetches the JWKS again on an unknown `kid`, at most every 10 s.
+A gateway requires org tokens when `AGENTD_JWKS_URL` is set. `sessions:write` lets a caller create sessions in its own org and drive them, and a session of another org answers as missing. `admin` is for operators and is never minted by the control plane. The gateway fetches the JWKS again on an unknown `kid`, at most every 10 s.
 
 The browser and CLI need no token code: the edge exchanges the caller's own credential (console cookie, API key, or bearer token, with `X-Org-Id`) for an org token at the control plane's `POST /v1/auth/token`, caches it by a hash of the credential, and fetches a fresh one halfway through a short life or a minute before expiry. "Not on a data plane" (409) is cached for a minute. A caller may also send an org token itself (`X-Everruns-Org-Token`, the `everruns_org_token` cookie, or a bearer EdDSA JWT); the edge checks it and refuses an expired or forged one rather than falling back to another credential. **API keys** are long-lived, so exchanging them for a short token means revoking a user or key takes effect within the token lifetime. A suspended org is pushed through the org state endpoint, so suspension is immediate while the data plane is connected and takes at most 30 s through a partition (see Rules, freshness). A control plane outage longer than the token lifetime stops new sign-ins and token refreshes; running sessions continue.
 
@@ -226,15 +226,15 @@ The browser and CLI need no token code: the edge exchanges the caller's own cred
   - The control plane owns config, secrets and policy.
   - The data plane owns sessions, files, placement and running usage counters.
   - For a connection whose `refresh_owner` is `DATA_PLANE`, the newest token arrives through the feed, and the control plane stores it without refreshing on its own.
-  - The control plane owns budgets: its ledger and usage policies decide, and cells enforce locally from spend allowances it grants. The guarantee is a strict cap on authorized spend: grants are reserved when issued, cells reserve each operation's maximum cost before starting it, and money returns to the balance only through a closed settlement. A lost cell's open grants count as spent until disaster recovery reconciles them. If the control plane is down, cells run until their allowances are spent, then new turns wait.
+  - The control plane owns budgets: its ledger and usage policies decide, and shards enforce locally from spend allowances it grants. The guarantee is a strict cap on authorized spend: grants are reserved when issued, shards reserve each operation's maximum cost before starting it, and money returns to the balance only through a closed settlement. A lost shard's open grants count as spent until disaster recovery reconciles them. If the control plane is down, shards run until their allowances are spent, then new turns wait.
   - A refreshed connection token carries a higher revision than the one it replaces; a lower revision (delayed feed, old snapshot) never overwrites it.
-- **Delivery and retention.** A cell keeps feed records until they are acknowledged, also while draining; a cell is retired only after its feed is fully acknowledged. The feed also stays in the shipped log for 30 days, so a restored control plane can replay from its own cursor.
+- **Delivery and retention.** A shard keeps feed records until they are acknowledged, also while draining; a shard is retired only after its feed is fully acknowledged. The feed also stays in the shipped log for 30 days, so a restored control plane can replay from its own cursor.
 - **Freshness.** Suspension and policy changes are pushed at once. Every executor, stream node and egress proxy must have heard from the change stream within 30 s, or it stops starting new work; that bounds suspension through a partition.
 - **Evolution.** Additive changes only within `/dp/v1`: new fields, new tagged variants, new values, and readers ignore what they don't know. A breaking change means `/dp/v2`, with both served during the switch. These are the same rules as the session protocol.
 - **Security.**
   - mTLS between the planes.
   - Plaintext secrets never cross: the control plane seals them, and only executors unseal.
-  - Data keys are wrapped with the data plane's KMS key, so a dump of the cell doesn't expose them. Until step 10 the wrapping key is a local key (`EVERRUNS_DP_KEY` on the control plane, `CELL_DP_KEY` on executors). Sealing is AES-256-GCM, and the associated data names the org, item and revision, so a sealed value can't be moved to another org or replayed as another revision.
+  - Data keys are wrapped with the data plane's KMS key, so a dump of the shard doesn't expose them. Until step 10 the wrapping key is a local key (`EVERRUNS_DP_KEY` on the control plane, `AGENTD_DP_KEY` on executors). Sealing is AES-256-GCM, and the associated data names the org, item and revision, so a sealed value can't be moved to another org or replayed as another revision.
 
 ## Data plane v1
 
@@ -242,4 +242,4 @@ v1 implements the same contract trivially. It shares RDS, so `ApplyConfig` is a 
 
 ## Model providers
 
-An org's model provider travels as a connection of kind `llm_provider` with id `llm:<provider key>` (the provider's normalized name, the key an agent's `model.provider` names). Its settings carry what a driver needs besides the key (provider type, base URL, chat API, request options); its token secret is the API key, sealed like any secret. The control plane syncs the whole set whenever the org's providers change and when the org is enabled, seals a key again only when it changed, and removes connections for providers the org no longer has. A provider with a personal sign-in (`chatgpt`) is not the org's to share and is never sent. Only the executor running a turn opens the key, for its session's own org, and keeps it in memory for 30 s. Types: `everruns_contracts::dataplane::LlmProviderSettings`; control plane `domains/data_plane/providers.rs`; cell `providers.rs`.
+An org's model provider travels as a connection of kind `llm_provider` with id `llm:<provider key>` (the provider's normalized name, the key an agent's `model.provider` names). Its settings carry what a driver needs besides the key (provider type, base URL, chat API, request options); its token secret is the API key, sealed like any secret. The control plane syncs the whole set whenever the org's providers change and when the org is enabled, seals a key again only when it changed, and removes connections for providers the org no longer has. A provider with a personal sign-in (`chatgpt`) is not the org's to share and is never sent. Only the executor running a turn opens the key, for its session's own org, and keeps it in memory for 30 s. Types: `everruns_contracts::dataplane::LlmProviderSettings`; control plane `domains/data_plane/providers.rs`; shard `providers.rs`.

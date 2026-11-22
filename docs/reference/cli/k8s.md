@@ -49,7 +49,7 @@ everruns k8s up [OPTIONS]
 | `--image-tag <IMAGE_TAG>` | Image tag to run, such as v0.51.0 or latest (default: the chart's release) |
 | `--set <KEY=VALUE>` | Extra chart value (key=value), as with helm --set; kept on later runs. Repeatable. |
 | `-f`, `--values <FILE>` | Extra values file, as with helm --values. Repeatable. |
-| `--data-plane <DATA_PLANE>` | Where new organizations run agents: v2 (cells, the default) or v1 (workers). Organizations that already have sessions stay where they are. One of `v2`, `v1`. |
+| `--data-plane <DATA_PLANE>` | Where new organizations run agents: v2 (shards, the default) or v1 (workers). Organizations that already have sessions stay where they are. One of `v2`, `v1`. |
 | `--port <PORT>` | Local port for the port-forward when there is no public URL (default 9300) |
 | `--timeout <TIMEOUT>` | How long to wait for the pods, such as 15m. |
 | `-y`, `--yes` | Accept the default for every question, the cluster context included. |

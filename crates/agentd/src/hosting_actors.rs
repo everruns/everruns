@@ -1,12 +1,12 @@
-//! The cell's session actor store: Engine's epochs (claim, renew,
+//! The shard's session actor store: Engine's epochs (claim, renew,
 //! progress, release, hand-off) and the journal its holders read, as Raft
 //! commands, and the spend allowance check before each provider call.
 //! Split from `hosting.rs` for size.
 
 use super::*;
 
-/// `backends` with the cell's allowance as the turn's budget authority: the
-/// Engine's budget gate asks it before every provider call, and the cell
+/// `backends` with the shard's allowance as the turn's budget authority: the
+/// Engine's budget gate asks it before every provider call, and the shard
 /// reserves the call's maximum from the session's tenant (see `allowance`).
 pub(super) fn with_allowance(
     inner: Arc<Inner>,
@@ -14,24 +14,24 @@ pub(super) fn with_allowance(
     mut backends: HostBackends,
 ) -> HostBackends {
     let checker: Arc<dyn everruns_contracts::runtime::tool_execution::BudgetChecker> =
-        Arc::new(CellBudget { inner, session });
+        Arc::new(ShardBudget { inner, session });
     backends.extensions.authorities.budget = Some(Arc::new(move |_| Some(checker.clone())));
     backends
 }
 
-struct CellBudget {
+struct ShardBudget {
     inner: Arc<Inner>,
     session: SessionId,
 }
 
 #[async_trait]
-impl everruns_contracts::runtime::tool_execution::BudgetChecker for CellBudget {
+impl everruns_contracts::runtime::tool_execution::BudgetChecker for ShardBudget {
     async fn check_budgets(
         &self,
         _session_id: &str,
     ) -> Result<everruns_contracts::runtime::budget::BudgetToolResponse> {
         // Decision: an unmetered session (no tenant) answers from the
-        // replica or mirror, as the cell would, without a round trip. Its
+        // replica or mirror, as the shard would, without a round trip. Its
         // tenant is set once, before it takes input, so the epoch that
         // runs this call already sees it.
         let unmetered = self
@@ -49,7 +49,7 @@ impl everruns_contracts::runtime::tool_execution::BudgetChecker for CellBudget {
         }
         // Decision: fail closed. Engine's gate lets a call run when the
         // checker errors (fail open), which for a metered session would be
-        // spend no reservation covers. So the cell retries through a leader
+        // spend no reservation covers. So the shard retries through a leader
         // change and, if it still has no answer, reads the allowance as
         // exhausted: the turn ends as budget exhausted instead of spending.
         let mut delay = Duration::from_millis(50);

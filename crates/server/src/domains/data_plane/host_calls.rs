@@ -3,12 +3,12 @@
 //! A). The calls are declared in `everruns_contracts::host_calls`; this is
 //! their one dispatcher.
 //!
-//! A hosted capability on a cell needs some answers only the control plane
+//! A hosted capability on a shard needs some answers only the control plane
 //! has now: a connection token, a GitHub token or a service key for the
 //! turn's person, the org's knowledge, a Poppy call, a platform tool's call
 //! as a person, a Slack action as the bot. The session's SQL databases come
 //! the same way until they move into the runtime, and the org's settings
-//! (`org_settings.rs`) until their pushed copy reaches the cell, as does
+//! (`org_settings.rs`) until their pushed copy reaches the shard, as does
 //! the session owner's own approval settings (`Fate`).
 //!
 //! Decisions:
@@ -17,16 +17,16 @@
 //!   flags, the same caller, checks and failures a v1 worker's
 //!   `ExecuteCommand` gets (a session of another org is not found).
 //! - A platform tool's call ([`PLATFORM_COMMAND`], Platform Chat) runs on
-//!   the command catalog as the person the forwarding cell names
+//!   the command catalog as the person the forwarding shard names
 //!   (`acting_user`), never as the internal caller: the session must
 //!   resolve `platform` and the person must still be an org member, with
 //!   their current role (THREAT[TM-AGENT-017]).
 //! - A call that acts as the turn's person (`ActsAs::Person`: a
 //!   connection token, a GitHub token, the agent's service key) records
-//!   the turn's invocation first, from the person the forwarding cell
+//!   the turn's invocation first, from the person the forwarding shard
 //!   names and the session's agent, as v1 records it when the message
 //!   comes through its API ([`record_turn`]). A v2 session's messages
-//!   reach the cell without the control plane, so without it every
+//!   reach the shard without the control plane, so without it every
 //!   credential check that reads the invocation (which person's
 //!   connection, which responder's service identity) would find none and
 //!   answer nothing. Only for a session the data plane runs, once per
@@ -39,11 +39,11 @@
 //!   does a session's Memory ([`MEMORY_FILE`], `memory.rs`).
 //! - Dreaming's maintenance state of a session the data plane runs
 //!   ([`DREAMING_STATE`]) stays here, as for a v1 session, so its daily
-//!   budgets hold across sessions; a cell finds its org's due dreams only.
+//!   budgets hold across sessions; a shard finds its org's due dreams only.
 //! - A v2 session's SQL databases are no call: they live in the session's
-//!   cell (data plane v2 parity, step 9).
+//!   shard (data plane v2 parity, step 9).
 //! - Every answer, a refusal included, is sealed with the org's data key
-//!   as the call's own secret (`host-call:{call}`, revision 0): the cells
+//!   as the call's own secret (`host-call:{call}`, revision 0): the shards
 //!   that pass it on hold ciphertext only, and an answer cannot pass for
 //!   another call's.
 //! - Each call is counted by name and outcome
@@ -55,7 +55,7 @@
 //!   ([`TASK_PUSH_SECRET`], encrypted, under the config's id); the agent's
 //!   saved scripts ([`AGENT_SCRIPTS`], [`AGENT_SCRIPT_SAVE`],
 //!   `agent_scripts.rs`); and the
-//!   session record of a subagent a cell starts ([`SUBAGENT_RECORD`],
+//!   session record of a subagent a shard starts ([`SUBAGENT_RECORD`],
 //!   `subagents.rs`).
 //! - A write runs once per call id: the route keeps a receipt
 //!   (`dp_host_call_receipts`) and answers a duplicate from it.
@@ -111,7 +111,7 @@ async fn run(
     match call.name {
         // A platform tool's call (Platform Chat) is not an internal
         // command: it runs on the command catalog as the person the
-        // forwarding cell names.
+        // forwarding shard names.
         PLATFORM_COMMAND => Ok(
             match crate::worker_link::platform_command_surface::data_plane_call(ctx, &params).await
             {
@@ -126,7 +126,7 @@ async fn run(
             super::memory::answer(ctx, &params).await,
         )),
         SLACK_ACTION => Ok(HostCallAnswer::Value(slack_action(ctx, &params).await)),
-        // A worker's dream discovery spans every org; a cell asks for its
+        // A worker's dream discovery spans every org; a shard asks for its
         // org's own (`due_org`).
         DREAMING_STATE if params["operation"] == "due" => Ok(HostCallAnswer::Error {
             kind: everruns_internal_protocol::proto::command_error::Kind::Forbidden as i32,
@@ -166,7 +166,7 @@ async fn run(
 
 /// Record the invocation of the turn a call names (`input_message_id`) on
 /// a session the data plane runs, as v1 does when the message comes
-/// through its API: the person the forwarding cell names (`acting_user`,
+/// through its API: the person the forwarding shard names (`acting_user`,
 /// `null` for a channel message or a trigger) with their default runtime
 /// identity, and the session's agent as the responder. The checks are the
 /// v1 ones (`record_runtime_invocation_with`): an active member, an active

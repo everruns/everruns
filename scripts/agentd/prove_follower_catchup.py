@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
-"""A follower that fell behind the leader's log heals the cell when it must.
+"""A follower that fell behind the leader's log heals the shard when it must.
 
   prove_follower_catchup.py [--sessions 42000]
 
-Starts one cell (a snapshot every 500 entries keeping 200 behind it, so
+Starts one shard (a snapshot every 500 entries keeping 200 behind it, so
 the leader purges its log soon), fills it with `--sessions` sessions so the snapshot is large, then
 pauses one follower (SIGSTOP) while more load runs until the leader has
 moved well past the follower's last entry (so it can only catch up by
 snapshot). It then resumes that follower and kills the other one: the
-cell has a quorum only once the lagging follower has the snapshot.
+shard has a quorum only once the lagging follower has the snapshot.
 
 Pass: the lagging follower catches up, and a new turn completes, within
 the deadline. Found by the 75k-session run: a follower catching up by a
 150 MB snapshot timed out between chunks, called an election, cancelled
-its own catch-up, and the cell never committed again.
+its own catch-up, and the shard never committed again.
 """
 import argparse, json, os, signal, subprocess, sys, time, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "cell"))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "shard"))
 import fleet  # noqa: E402
 
-DRIVE = os.path.join(ROOT, "target", "release", "cell-drive")
+DRIVE = os.path.join(ROOT, "target", "release", "agentd-drive")
 DEADLINE_SECS = 180
 
 
@@ -57,11 +57,11 @@ def main():
     p.add_argument("--sessions", type=int, default=42000)
     a = p.parse_args()
 
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
     time.sleep(0.5)
     subprocess.run(["rm", "-rf", fleet.STATE])
-    os.environ["CELL_NODE_ARGS"] = "--snapshot-every 500 --keep-log 200"
-    os.environ.setdefault("CELL_WORK_MS", "20")
+    os.environ["AGENTD_NODE_ARGS"] = "--snapshot-every 500 --keep-log 200"
+    os.environ.setdefault("AGENTD_WORK_MS", "20")
     fleet.up(1, 3, 7100)
     time.sleep(1)
 
@@ -131,7 +131,7 @@ def cleanup():
             os.kill(pid_of(node), signal.SIGCONT)
         except Exception:
             pass
-    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/cell/fleet.py"), "down"])
+    subprocess.run([sys.executable, os.path.join(ROOT, "scripts/agentd/fleet.py"), "down"])
 
 
 if __name__ == "__main__":

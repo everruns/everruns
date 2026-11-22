@@ -1,14 +1,14 @@
-//! The move rules, one cell's state machine at a time: each test replays a
+//! The move rules, one shard's state machine at a time: each test replays a
 //! step order the `Moves` model (tests/models/data-plane-v2) explores, with
 //! the late and duplicated messages that broke funout's unfenced moves.
 
 use super::*;
 
-const A: CellId = 1;
-const B: CellId = 2;
-const C: CellId = 3;
+const A: ShardId = 1;
+const B: ShardId = 2;
+const C: ShardId = 3;
 
-fn apply(state: &mut CellState, command: Command) -> Response {
+fn apply(state: &mut ShardState, command: Command) -> Response {
     state.apply(command, &mut Vec::new())
 }
 
@@ -26,9 +26,9 @@ fn refused(response: Response) {
     );
 }
 
-/// A cell holding `session` live at `generation`.
-fn holding(session: SessionId, generation: u64) -> CellState {
-    let mut state = CellState::default();
+/// A shard holding `session` live at `generation`.
+fn holding(session: SessionId, generation: u64) -> ShardState {
+    let mut state = ShardState::default();
     state.sessions.insert(
         session,
         SessionState {
@@ -47,14 +47,14 @@ fn image(generation: u64) -> Box<SessionState> {
     })
 }
 
-fn placement(state: &CellState, session: SessionId) -> Option<Placement> {
+fn placement(state: &ShardState, session: SessionId) -> Option<Placement> {
     state.sessions.get(&session).map(|s| s.placement)
 }
 
-fn place(session: SessionId, cell: CellId, generation: u64, previous: u64) -> Command {
+fn place(session: SessionId, shard: ShardId, generation: u64, previous: u64) -> Command {
     Command::Place {
         session,
-        cell,
+        shard,
         generation,
         previous,
     }
@@ -63,9 +63,9 @@ fn place(session: SessionId, cell: CellId, generation: u64, previous: u64) -> Co
 #[test]
 fn a_move_installs_prepared_commits_in_the_directory_then_runs() {
     let session = SessionId::new();
-    let mut directory = CellState::default();
+    let mut directory = ShardState::default();
     let mut a = holding(session, 1);
-    let mut b = CellState::default();
+    let mut b = ShardState::default();
     ok(apply(&mut directory, place(session, A, 1, 0)));
 
     ok(apply(
@@ -105,7 +105,7 @@ fn a_move_installs_prepared_commits_in_the_directory_then_runs() {
         &mut a,
         Command::Forward {
             session,
-            cell: B,
+            shard: B,
             generation: 2,
         },
     ));
@@ -114,7 +114,7 @@ fn a_move_installs_prepared_commits_in_the_directory_then_runs() {
     assert_eq!(
         a.forwarded[&session],
         Left {
-            cell: B,
+            shard: B,
             generation: 1
         }
     );
@@ -134,7 +134,7 @@ fn a_move_installs_prepared_commits_in_the_directory_then_runs() {
     }
     let forward = Command::Forward {
         session,
-        cell: B,
+        shard: B,
         generation: 2,
     };
     assert!(matches!(apply(&mut a, forward), Response::Duplicate));
@@ -149,7 +149,7 @@ fn a_move_installs_prepared_commits_in_the_directory_then_runs() {
 #[test]
 fn a_late_import_cannot_revive_a_copy_that_left() {
     let session = SessionId::new();
-    let mut b = CellState::default();
+    let mut b = ShardState::default();
     ok(apply(
         &mut b,
         Command::Import {
@@ -175,7 +175,7 @@ fn a_late_import_cannot_revive_a_copy_that_left() {
         &mut b,
         Command::Forward {
             session,
-            cell: A,
+            shard: A,
             generation: 3,
         },
     ));
@@ -201,7 +201,7 @@ fn a_late_import_cannot_revive_a_copy_that_left() {
 #[test]
 fn the_directory_commits_a_generation_only_over_the_one_before() {
     let session = SessionId::new();
-    let mut directory = CellState::default();
+    let mut directory = ShardState::default();
     ok(apply(&mut directory, place(session, A, 1, 0)));
     ok(apply(&mut directory, place(session, B, 2, 1)));
     ok(apply(&mut directory, place(session, A, 3, 2)));
@@ -212,7 +212,7 @@ fn the_directory_commits_a_generation_only_over_the_one_before() {
             late,
             Response::Placement {
                 current: Some(Placed {
-                    cell: A,
+                    shard: A,
                     generation: 3
                 })
             }
@@ -224,7 +224,7 @@ fn the_directory_commits_a_generation_only_over_the_one_before() {
     assert_eq!(
         directory.directory[&session],
         Placed {
-            cell: A,
+            shard: A,
             generation: 3
         }
     );
@@ -240,7 +240,7 @@ fn a_late_forward_never_drops_the_copy_that_runs_now() {
         &mut a,
         Command::Forward {
             session,
-            cell: B,
+            shard: B,
             generation: 2,
         },
     ));
@@ -256,7 +256,7 @@ fn a_late_forward_never_drops_the_copy_that_runs_now() {
         &mut a,
         Command::Forward {
             session,
-            cell: B,
+            shard: B,
             generation: 2,
         },
     ));
@@ -268,7 +268,7 @@ fn a_late_forward_never_drops_the_copy_that_runs_now() {
 #[test]
 fn activation_wakes_only_a_prepared_copy() {
     let session = SessionId::new();
-    let mut b = CellState::default();
+    let mut b = ShardState::default();
     ok(apply(
         &mut b,
         Command::Import {
@@ -313,9 +313,9 @@ fn activation_wakes_only_a_prepared_copy() {
 #[test]
 fn an_abandoned_move_takes_the_session_back_above_the_move() {
     let session = SessionId::new();
-    let mut directory = CellState::default();
+    let mut directory = ShardState::default();
     let mut a = holding(session, 1);
-    let mut b = CellState::default();
+    let mut b = ShardState::default();
     ok(apply(&mut directory, place(session, A, 1, 0)));
     ok(apply(
         &mut a,
@@ -359,7 +359,7 @@ fn an_abandoned_move_takes_the_session_back_above_the_move() {
         &mut b,
         Command::Drop {
             session,
-            cell: A,
+            shard: A,
             generation: 3,
         },
     ));
@@ -367,7 +367,7 @@ fn an_abandoned_move_takes_the_session_back_above_the_move() {
     assert_eq!(
         b.forwarded[&session],
         Left {
-            cell: A,
+            shard: A,
             generation: 2
         }
     );
@@ -383,7 +383,7 @@ fn an_abandoned_move_takes_the_session_back_above_the_move() {
 #[test]
 fn a_live_copy_is_never_dropped_as_stale() {
     let session = SessionId::new();
-    let mut b = CellState::default();
+    let mut b = ShardState::default();
     ok(apply(
         &mut b,
         Command::Import {
@@ -402,7 +402,7 @@ fn a_live_copy_is_never_dropped_as_stale() {
         &mut b,
         Command::Drop {
             session,
-            cell: A,
+            shard: A,
             generation: 9,
         },
     ));
@@ -410,18 +410,18 @@ fn a_live_copy_is_never_dropped_as_stale() {
 }
 
 #[test]
-fn a_shard_hand_over_keeps_the_newer_placement() {
+fn a_slot_hand_over_keeps_the_newer_placement() {
     let session = SessionId::new();
-    let mut owner = CellState::default();
+    let mut owner = ShardState::default();
     ok(apply(&mut owner, place(session, B, 2, 0)));
     ok(apply(
         &mut owner,
         Command::Adopt {
-            shard: shard_of(session),
+            slot: slot_of(session),
             entries: vec![(
                 session,
                 Placed {
-                    cell: A,
+                    shard: A,
                     generation: 1,
                 },
             )],
@@ -430,7 +430,7 @@ fn a_shard_hand_over_keeps_the_newer_placement() {
     assert_eq!(
         owner.directory[&session],
         Placed {
-            cell: B,
+            shard: B,
             generation: 2
         }
     );
@@ -443,9 +443,9 @@ fn a_running_move_is_never_retargeted() {
     // next driver thawed it in A while B ran the session.
     let session = SessionId::new();
     let mut a = holding(session, 1);
-    let to = |cell| Command::Freeze {
+    let to = |shard| Command::Freeze {
         session,
-        to: Some(cell),
+        to: Some(shard),
     };
     ok(apply(&mut a, to(B)));
     assert!(matches!(apply(&mut a, to(B)), Response::Duplicate));

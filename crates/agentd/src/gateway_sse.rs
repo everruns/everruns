@@ -4,7 +4,7 @@
 //! Decisions:
 //! - The gateway follows the session for the client. When the stream node
 //!   says the session `moved`, or the node goes away mid-stream, the
-//!   gateway reconnects (to the new cell, or the next node in rank order)
+//!   gateway reconnects (to the new shard, or the next node in rank order)
 //!   from the last event it relayed. The client sees one stream with no
 //!   gap and no repeat, in the control plane's shape: `connected` once,
 //!   then events, then `disconnecting` when the connection cycles.
@@ -110,20 +110,20 @@ async fn connect(
     let mut rounds = 0u32;
     while rounds < 4 || tokio::time::Instant::now() < deadline {
         rounds += 1;
-        let cell = gateway.locate(session).await?;
-        let seeds = gateway.nodes(cell)?;
+        let shard = gateway.locate(session).await?;
+        let seeds = gateway.nodes(shard)?;
         let view = gateway
             .views
-            .view(&gateway.http, cell, &seeds, false)
+            .view(&gateway.http, shard, &seeds, false)
             .await
             .ok_or((
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("cell {cell} answers no view"),
+                format!("shard {shard} answers no view"),
             ))?;
         let mut again = false;
         for (_, addr) in view.rank(session) {
             let mut url = format!(
-                "http://{addr}/cell/sessions/{session}/sse?view={}",
+                "http://{addr}/shard/sessions/{session}/sse?view={}",
                 view.generation
             );
             if !query.is_empty() {
@@ -145,7 +145,7 @@ async fn connect(
                 StatusCode::OK => return Ok(reply),
                 StatusCode::CONFLICT => {
                     if let Ok(redirect) = reply.json::<Redirect>().await {
-                        gateway.views.learn(cell, redirect.view);
+                        gateway.views.learn(shard, redirect.view);
                     }
                     again = true;
                     break;
@@ -166,7 +166,7 @@ async fn connect(
         }
         if !again {
             // Nobody answered: read the view again before the next round.
-            gateway.views.view(&gateway.http, cell, &seeds, true).await;
+            gateway.views.view(&gateway.http, shard, &seeds, true).await;
         }
         // A redirect retries at once for the first few rounds; past those,
         // the stream node is still applying the session, so pause.

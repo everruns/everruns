@@ -4,7 +4,7 @@
 //! The person's server list is theirs across every chat and agent of the
 //! org, so it stays in the control plane (`data_plane/user_mcp.rs`). A
 //! session reaches it two ways, both acting as the turn's person, whom the
-//! session's cell names, never the executor:
+//! session's shard names, never the executor:
 //!
 //! - The manage tools' store (`UserMcpStoreExt`): each call goes over,
 //!   bound to the turn the session has open.
@@ -16,11 +16,11 @@
 //! whose `act` names the person and the open turn's input message, when
 //! the session's create brought that server's URL. Otherwise they are
 //! host calls ([`USER_MCP_STORE`] for the open turn ([`OPEN_TURN`]),
-//! [`USER_MCP_SERVERS`] for its input message), which this cell fills in
+//! [`USER_MCP_SERVERS`] for its input message), which this shard fills in
 //! the person for.
 //!
 //! The same call brings the session's own MCP records (chat-only servers
-//! and ARD MCP targets, kept in the session's storage on this cell), which
+//! and ARD MCP targets, kept in the session's storage on this shard), which
 //! join every agent's turns, not only `user_mcp` ones, as v1 folds them
 //! into the session's `mcpServers`.
 //!
@@ -30,7 +30,7 @@
 //!   person. A turn asks at all only when it wants the person's servers or
 //!   the session has a record (a local read), so a session with neither
 //!   makes no call.
-//! - The records are read by the control plane from this cell, never sent
+//! - The records are read by the control plane from this shard, never sent
 //!   with the call: an executor names no server.
 //! - The servers join the turn's resolution only, never the session
 //!   record: a person's key travels as a literal header, and a record
@@ -172,7 +172,7 @@ pub(crate) fn attach(
     let Some(_) = uses else {
         return backends;
     };
-    let invoker: Arc<dyn UserMcpCallInvoker> = Arc::new(CellUserMcpStore { via, session });
+    let invoker: Arc<dyn UserMcpCallInvoker> = Arc::new(ShardUserMcpStore { via, session });
     let inner = backends.tool_context_extensions_factory.take();
     backends.tool_context_extensions_factory = Some(Arc::new(move |org, session| {
         let mut extensions = inner
@@ -186,13 +186,13 @@ pub(crate) fn attach(
 }
 
 /// The `user_mcp` store of one session, in the control plane.
-struct CellUserMcpStore {
+struct ShardUserMcpStore {
     via: Via,
     session: SessionId,
 }
 
 #[async_trait]
-impl UserMcpCallInvoker for CellUserMcpStore {
+impl UserMcpCallInvoker for ShardUserMcpStore {
     async fn invoke(
         &self,
         input_message: Option<Uuid>,

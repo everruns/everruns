@@ -1,14 +1,14 @@
 //! A v2 session's SQL databases, through the control plane's API.
 //!
 //! Decisions:
-//! - A v2 session's databases live on its cell (`hosting_sqldb.rs`); the
+//! - A v2 session's databases live on its shard (`hosting_sqldb.rs`); the
 //!   control plane's copy of the v1 store holds nothing for it. When the
 //!   edge is down and requests fall back to the control plane, the
-//!   database API must answer from the cell or not at all: reading or
+//!   database API must answer from the shard or not at all: reading or
 //!   writing the v1 store for a v2 session would show an empty list and
 //!   create databases the session's agent never sees.
-//! - So every database command asks the session's cell with the `sqldb`
-//!   session command, and an unreachable cell answers 503, never the v1
+//! - So every database command asks the session's shard with the `sqldb`
+//!   session command, and an unreachable shard answers 503, never the v1
 //!   store.
 
 use everruns_contracts::session_commands;
@@ -21,7 +21,7 @@ use super::types::DatabaseInfoResponse;
 use crate::domains::common::*;
 use crate::domains::data_plane::session_plane::SessionPlane;
 
-/// What the cell answered, inside its reply (`sqldb.rs` on the cell).
+/// What the shard answered, inside its reply (`sqldb.rs` on the shard).
 #[derive(Deserialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
 enum SqlResult {

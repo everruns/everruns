@@ -1,15 +1,15 @@
-//! An executor outside the cells (data plane v2 step 6, design.md
-//! "Executors"): a stateless process that pulls activations from every cell
+//! An executor outside the shards (data plane v2 step 6, design.md
+//! "Executors"): a stateless process that pulls activations from every shard
 //! with credits and runs them with the Everruns Engine.
 //!
 //! Decisions:
 //! - The executor runs Engine's activation against [`RaftHosting`] over a
-//!   [`Remote`] link, the same authority code a cell node runs; everything
+//!   [`Remote`] link, the same authority code a shard node runs; everything
 //!   it knows of a session is its mirror, refreshed by its own writes and by
 //!   one long poll per running session.
-//! - Free slots are split among the cells as credits, one pull in flight
-//!   per cell; a cell returns credits it can't use, and they go back to the
-//!   pool for any cell.
+//! - Free slots are split among the shards as credits, one pull in flight
+//!   per shard; a shard returns credits it can't use, and they go back to the
+//!   pool for any shard.
 //! - Recently run sessions stay mirrored (an LRU, `mirror_sessions` deep),
 //!   so a session that comes back here, as soft affinity prefers, starts
 //!   warm; segment and blob reads go through the store's cache.
@@ -17,7 +17,7 @@
 //!   hand off at its next step boundary, and exit once none runs. Another
 //!   executor resumes each turn from the journal.
 //! - Freshness (`tenants.rs`): an executor that hasn't heard from the
-//!   directory cell within the bound pulls nothing, and one offered a
+//!   directory shard within the bound pulls nothing, and one offered a
 //!   session of a suspended or deleted tenant gives it back unrun.
 
 use std::collections::{HashSet, VecDeque};
@@ -33,7 +33,7 @@ use crate::host::Host;
 use crate::hosting::RaftHosting;
 use crate::node::now_ms;
 use crate::remote::{ExecutorId, Remote};
-use crate::state::{CellId, Placement};
+use crate::state::{Placement, ShardId};
 use crate::store::Store;
 
 #[derive(Debug, Clone)]
@@ -45,7 +45,7 @@ pub struct ExecutorConfig {
     pub slots: usize,
     /// Sessions kept mirrored after their activation ended.
     pub mirror_sessions: usize,
-    /// How long a cell may hold this executor's credits.
+    /// How long a shard may hold this executor's credits.
     pub pull_wait: Duration,
     /// How often due dreams are looked for (`Executor::dreams_loop`).
     pub dream_sweep: Duration,
@@ -64,7 +64,7 @@ pub struct Executor {
     draining: AtomicBool,
     pub tenants: crate::tenants::TenantView,
     pub stats: crate::prom::Counters,
-    /// The data plane's key (`CELL_DP_KEY`), which opens org data keys.
+    /// The data plane's key (`AGENTD_DP_KEY`), which opens org data keys.
     dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
     /// MCP credentials of the orgs whose turns run here.
     pub mcp: Arc<crate::mcp::OrgMcp>,
@@ -83,7 +83,7 @@ impl Executor {
             crate::remote::EXECUTOR_IDS
         );
         let remote = Remote::new(cfg.id, cfg.store.clone())?;
-        remote.set_cells(cfg.topology.read()?.cells);
+        remote.set_shards(cfg.topology.read()?.shards);
         let hosting = RaftHosting::remote(remote.clone());
         let sandboxes = Arc::new(crate::sandbox::OrgSandboxes::default());
         hosting.set_sandboxes(sandboxes.clone());
@@ -145,21 +145,21 @@ impl Executor {
         Ok(executor)
     }
 
-    /// Start pulling from every cell, and keep up with the topology and
+    /// Start pulling from every shard, and keep up with the topology and
     /// the tenants.
     pub fn spawn(self: &Arc<Self>) {
         tokio::spawn(self.clone().tenants_loop());
         tokio::spawn(self.clone().dreams_loop());
         let executor = self.clone();
         tokio::spawn(async move {
-            let mut pulling: HashSet<CellId> = HashSet::new();
+            let mut pulling: HashSet<ShardId> = HashSet::new();
             loop {
                 if let Ok(topology) = executor.cfg.topology.read() {
-                    executor.remote.set_cells(topology.cells);
+                    executor.remote.set_shards(topology.shards);
                 }
-                for cell in executor.remote.cells() {
-                    if pulling.insert(cell) {
-                        tokio::spawn(executor.clone().puller(cell));
+                for shard in executor.remote.shards() {
+                    if pulling.insert(shard) {
+                        tokio::spawn(executor.clone().puller(shard));
                     }
                 }
                 if executor.draining.load(Ordering::SeqCst) {
@@ -170,7 +170,7 @@ impl Executor {
         });
     }
 
-    /// Use `key` as the data plane's key (instead of `CELL_DP_KEY`).
+    /// Use `key` as the data plane's key (instead of `AGENTD_DP_KEY`).
     pub fn set_dp_key(&self, key: everruns_contracts::dataplane_seal::Key) {
         *self.dp_key.lock() = Some(key);
     }
@@ -193,13 +193,13 @@ impl Executor {
         let dp_key = self
             .dp_key
             .lock()
-            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
-        let directory = self.cfg.topology.read()?.directory_cell;
+            .ok_or_else(|| anyhow::anyhow!("no data plane key (AGENTD_DP_KEY)"))?;
+        let directory = self.cfg.topology.read()?.directory_shard;
         let found: Option<crate::gateway_dp::SecretForExecutor> = self
             .remote
             .post(
                 directory,
-                &format!("/cell/orgs/{org}/secrets/{secret_id}"),
+                &format!("/shard/orgs/{org}/secrets/{secret_id}"),
                 &serde_json::json!({}),
                 Duration::from_secs(5),
             )
@@ -221,9 +221,9 @@ impl Executor {
         }))
     }
 
-    /// `org`'s data key from the directory cell, unwrapped in memory;
-    /// `None` on a standalone cell, which has no data plane key
-    /// (`CELL_DP_KEY`) because no control plane wraps keys for it.
+    /// `org`'s data key from the directory shard, unwrapped in memory;
+    /// `None` on a standalone shard, which has no data plane key
+    /// (`AGENTD_DP_KEY`) because no control plane wraps keys for it.
     pub async fn data_key(
         &self,
         org: &str,
@@ -231,12 +231,12 @@ impl Executor {
         let Some(dp_key) = *self.dp_key.lock() else {
             return Ok(None);
         };
-        let directory = self.cfg.topology.read()?.directory_cell;
+        let directory = self.cfg.topology.read()?.directory_shard;
         let wrapped: Option<crate::control::WrappedKey> = self
             .remote
             .post(
                 directory,
-                &format!("/cell/orgs/{org}/data-key"),
+                &format!("/shard/orgs/{org}/data-key"),
                 &serde_json::json!({}),
                 Duration::from_secs(5),
             )
@@ -251,13 +251,13 @@ impl Executor {
         Ok(Some((key, wrapped.data_key_id)))
     }
 
-    /// Lease or write `org`'s secret in the directory cell.
+    /// Lease or write `org`'s secret in the directory shard.
     pub async fn secret_op(
         &self,
         org: &str,
         op: crate::secrets::SecretOp,
     ) -> anyhow::Result<crate::secrets::SecretReply> {
-        let directory = self.cfg.topology.read()?.directory_cell;
+        let directory = self.cfg.topology.read()?.directory_shard;
         let command = crate::state::Command::Secret {
             org: org.to_owned(),
             request: op,
@@ -265,19 +265,24 @@ impl Executor {
         };
         let proposed: crate::node::Proposed = self
             .remote
-            .post(directory, "/cell/propose", &command, Duration::from_secs(5))
+            .post(
+                directory,
+                "/shard/propose",
+                &command,
+                Duration::from_secs(5),
+            )
             .await?;
         match proposed.response {
             crate::state::Response::Value { value } => Ok(serde_json::from_value(value)?),
-            other => anyhow::bail!("the directory cell answered {other:?}"),
+            other => anyhow::bail!("the directory shard answered {other:?}"),
         }
     }
 
     /// Make one of `org`'s host calls (`everruns_contracts::host_calls`),
     /// named by the v1 worker command the shared resolvers issue, through
-    /// the directory cell; the answer comes sealed with the org's data key
+    /// the directory shard; the answer comes sealed with the org's data key
     /// and is opened here (`lookups.rs`). A read is retried once when the
-    /// directory cell cannot be reached. A write is sent once
+    /// directory shard cannot be reached. A write is sent once
     /// ([`crate::remote::Remote::post_once`]): an answer that is lost is an
     /// error, never a second send, and the control plane keeps a receipt
     /// per call id so a duplicate that still arrives runs once
@@ -292,14 +297,14 @@ impl Executor {
         use everruns_contracts::host_calls::{HostCallRequest, by_command, host_call_secret};
         let call =
             by_command(command).ok_or_else(|| anyhow::anyhow!("{command} is not a host call"))?;
-        let directory = self.cfg.topology.read()?.directory_cell;
+        let directory = self.cfg.topology.read()?.directory_shard;
         let id = uuid::Uuid::new_v4().to_string();
         let request = HostCallRequest {
             call: id.clone(),
             params,
         };
-        let path = format!("/cell/orgs/{org}/host-calls/{}", call.name);
-        // The cell's own wait on the control plane, and a little more.
+        let path = format!("/shard/orgs/{org}/host-calls/{}", call.name);
+        // The shard's own wait on the control plane, and a little more.
         let wait = call.timeout() + Duration::from_secs(5);
         let sent = if call.retries() {
             match self.remote.post(directory, &path, &request, wait).await {
@@ -326,22 +331,22 @@ impl Executor {
         let (key, _) = self
             .data_key(org)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
+            .ok_or_else(|| anyhow::anyhow!("no data plane key (AGENTD_DP_KEY)"))?;
         let plain = everruns_contracts::dataplane_seal::unseal(&key, org, &sealed)?;
         Ok(serde_json::from_slice(&plain)?)
     }
 
-    /// `org`'s connection `id`, from the directory cell.
+    /// `org`'s connection `id`, from the directory shard.
     pub async fn connection(
         &self,
         org: &str,
         id: &str,
     ) -> anyhow::Result<Option<everruns_contracts::dataplane::Connection>> {
-        let directory = self.cfg.topology.read()?.directory_cell;
+        let directory = self.cfg.topology.read()?.directory_shard;
         self.remote
             .post(
                 directory,
-                &format!("/cell/orgs/{org}/connections/{id}"),
+                &format!("/shard/orgs/{org}/connections/{id}"),
                 &serde_json::json!({}),
                 Duration::from_secs(5),
             )
@@ -361,10 +366,10 @@ impl Executor {
         }
     }
 
-    /// Credits to offer one cell: an even share of the free slots.
+    /// Credits to offer one shard: an even share of the free slots.
     fn take_credits(&self) -> usize {
-        let cells = self.remote.cells().len().max(1);
-        let share = self.cfg.slots.div_ceil(cells).max(1);
+        let shards = self.remote.shards().len().max(1);
+        let share = self.cfg.slots.div_ceil(shards).max(1);
         let mut free = self.free.load(Ordering::SeqCst);
         loop {
             let take = free.min(share);
@@ -402,8 +407,8 @@ impl Executor {
             match self
                 .remote
                 .post::<_, crate::tenants::Tenants>(
-                    topology.directory_cell,
-                    "/cell/tenants",
+                    topology.directory_shard,
+                    "/shard/tenants",
                     &serde_json::json!({}),
                     Duration::from_secs(5),
                 )
@@ -477,7 +482,7 @@ impl Executor {
         }
     }
 
-    async fn puller(self: Arc<Self>, cell: CellId) {
+    async fn puller(self: Arc<Self>, shard: ShardId) {
         loop {
             if self.draining.load(Ordering::SeqCst) {
                 return;
@@ -493,7 +498,7 @@ impl Executor {
                     tokio::time::timeout(Duration::from_millis(500), self.freed.notified()).await;
                 continue;
             }
-            match self.remote.pull(cell, credits, self.cfg.pull_wait).await {
+            match self.remote.pull(shard, credits, self.cfg.pull_wait).await {
                 Ok(sessions) => {
                     let mut used = 0;
                     for (session, tenant) in sessions.into_iter().take(credits) {
@@ -503,13 +508,13 @@ impl Executor {
                         }
                         used += 1;
                         self.stats.inc(&[("event", "pulled")]);
-                        self.clone().run(cell, session);
+                        self.clone().run(shard, session);
                     }
                     self.give_back(credits - used);
                 }
                 Err(error) => {
                     self.give_back(credits);
-                    tracing::debug!(cell, %error, "pull failed");
+                    tracing::debug!(shard, %error, "pull failed");
                     tokio::time::sleep(Duration::from_millis(250)).await;
                 }
             }
@@ -518,15 +523,15 @@ impl Executor {
 
     /// Run `session`'s activations here until it owes no more work. Holds
     /// one slot.
-    fn run(self: Arc<Self>, cell: CellId, session: SessionId) {
+    fn run(self: Arc<Self>, shard: ShardId, session: SessionId) {
         if !self.running.lock().insert(session) {
             self.give_back(1);
             return;
         }
         self.recent.lock().retain(|s| *s != session);
-        if self.remote.bind(session, cell) {
+        if self.remote.bind(session, shard) {
             // Moved since it last ran here: the writes this hosting waits
-            // to see were at positions in the old cell's log.
+            // to see were at positions in the old shard's log.
             self.hosting.forget(session);
         }
         let watching = Arc::new(AtomicBool::new(true));
@@ -624,13 +629,13 @@ impl Executor {
     }
 }
 
-/// The data plane's key from `CELL_DP_KEY` (base64, 32 bytes); none when
+/// The data plane's key from `AGENTD_DP_KEY` (base64, 32 bytes); none when
 /// unset. A key that is set but malformed stops the executor at start.
 pub fn data_plane_key() -> anyhow::Result<Option<everruns_contracts::dataplane_seal::Key>> {
-    match std::env::var("CELL_DP_KEY") {
+    match std::env::var("AGENTD_DP_KEY") {
         Ok(key) if !key.is_empty() => Ok(Some(
             everruns_contracts::dataplane_seal::key_from_base64(&key)
-                .map_err(|e| anyhow::anyhow!("CELL_DP_KEY: {e}"))?,
+                .map_err(|e| anyhow::anyhow!("AGENTD_DP_KEY: {e}"))?,
         )),
         _ => Ok(None),
     }
@@ -674,8 +679,8 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
                         misses as f64,
                     );
                     w.counters(
-                        "executor_cell_calls_total",
-                        "Calls to cells, by kind.",
+                        "executor_shard_calls_total",
+                        "Calls to shards, by kind.",
                         &executor.remote.calls,
                     );
                     w.counters(
@@ -839,7 +844,7 @@ impl crate::providers::OrgMaterial for Executor {
     }
 
     fn looks_up(&self) -> bool {
-        // A data plane key means a control plane wraps this cell's keys,
+        // A data plane key means a control plane wraps this shard's keys,
         // so it is the one lookups go to.
         self.dp_key.lock().is_some()
     }

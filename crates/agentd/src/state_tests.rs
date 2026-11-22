@@ -4,8 +4,8 @@ use super::*;
 
 #[test]
 fn a_command_in_pieces_applies_once_whole() {
-    let create = Command::RegisterCell {
-        cell: 9,
+    let create = Command::RegisterShard {
+        shard: 9,
         members: vec![(1, "x".repeat(5000))],
     };
     let json = serde_json::to_string(&create).unwrap();
@@ -16,7 +16,7 @@ fn a_command_in_pieces_applies_once_whole() {
         .map(|c| String::from_utf8(c.to_vec()).unwrap())
         .collect();
     let total = pieces.len() as u32;
-    let mut state = CellState::default();
+    let mut state = ShardState::default();
     let mut changes = Vec::new();
     for (seq, data) in pieces.iter().enumerate() {
         let response = state.apply(
@@ -31,12 +31,12 @@ fn a_command_in_pieces_applies_once_whole() {
         );
         if seq + 1 < total as usize {
             assert!(matches!(response, Response::Ok));
-            assert!(!state.cells.contains_key(&9));
+            assert!(!state.shards.contains_key(&9));
         } else {
             assert!(matches!(response, Response::Ok), "{response:?}");
         }
     }
-    assert!(state.cells.contains_key(&9));
+    assert!(state.shards.contains_key(&9));
     assert!(state.parts.is_empty());
 
     // A piece out of order drops the assembly; a stale one is collected.
@@ -114,14 +114,14 @@ fn compaction_keeps_tiers_whatever_the_flush_sizes() {
 }
 
 #[test]
-fn register_cell_round_trips() {
-    let command = Command::RegisterCell {
-        cell: 3,
+fn register_shard_round_trips() {
+    let command = Command::RegisterShard {
+        shard: 3,
         members: vec![(1, "127.0.0.1:7301".into()), (4, "127.0.0.1:7304".into())],
     };
     let json = serde_json::to_string(&command).unwrap();
     let back: Command = serde_json::from_str(&json).unwrap();
-    assert!(matches!(back, Command::RegisterCell { cell: 3, members } if members.len() == 2));
+    assert!(matches!(back, Command::RegisterShard { shard: 3, members } if members.len() == 2));
 }
 
 /// A session keeps its newest checkpoint per model, written only under
@@ -129,7 +129,7 @@ fn register_cell_round_trips() {
 #[test]
 fn checkpoints_keep_the_newest_per_model() {
     let session = SessionId::new();
-    let mut cell = CellState::default();
+    let mut shard = ShardState::default();
     let mut state = SessionState::default();
     state.authority.fence = 7;
     state.authority.holder = Some(crate::authority::Holder {
@@ -138,7 +138,7 @@ fn checkpoints_keep_the_newest_per_model() {
         fence: 7,
         expires_ms: 1,
     });
-    cell.sessions.insert(session, state);
+    shard.sessions.insert(session, state);
     let checkpoint = |model: &str, at: i64| Checkpoint {
         id: uuid::Uuid::new_v4(),
         source_sequence: at,
@@ -158,7 +158,7 @@ fn checkpoints_keep_the_newest_per_model() {
         };
         let command: Command =
             serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
-        match cell.apply(command, &mut Vec::new()) {
+        match shard.apply(command, &mut Vec::new()) {
             Response::Value { value } => Some(value.as_bool().unwrap()),
             Response::Fenced => None,
             other => panic!("{other:?}"),
@@ -169,7 +169,7 @@ fn checkpoints_keep_the_newest_per_model() {
     assert_eq!(apply(7, checkpoint("b", 3)), Some(true));
     assert_eq!(apply(7, checkpoint("a", 20)), Some(true));
     assert_eq!(apply(6, checkpoint("a", 30)), None);
-    let kept = &cell.sessions[&session].checkpoints;
+    let kept = &shard.sessions[&session].checkpoints;
     assert_eq!(kept.len(), 2);
     assert_eq!(
         kept.iter()
@@ -183,7 +183,7 @@ fn checkpoints_keep_the_newest_per_model() {
 #[test]
 fn a_revert_takes_a_session_back_and_fences_its_epoch() {
     let id = SessionId::new();
-    let mut state = CellState::default();
+    let mut state = ShardState::default();
     let mut now = SessionState {
         tenant: Some("org".into()),
         generation: 4,

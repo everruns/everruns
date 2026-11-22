@@ -9,10 +9,10 @@
 // spawn_blocking to avoid holding non-Sync references across .await points.
 //
 // Decision (data plane v2 parity, Phase B): a v2 session's files live in its
-// cell, so a commit reads them from there in one snapshot
+// shard, so a commit reads them from there in one snapshot
 // (`plane_files`); its objects and refs are kept here, in the control
 // plane's history tables, as for a v1 session. Log, diff and refs read only
-// those tables, so they need nothing from the cell.
+// those tables, so they need nothing from the shard.
 
 use crate::storage::{
     CreateSessionGitObject, CreateSessionGitRef, SessionGitObjectRow, StorageBackend,
@@ -196,7 +196,7 @@ impl SessionGitService {
     }
 
     /// Commit `files` (absolute workspace paths and their bytes) as the
-    /// session's tree. A v2 session's files come from its cell
+    /// session's tree. A v2 session's files come from its shard
     /// (`plane_files`); the objects and refs are kept here for both planes.
     pub async fn commit_files(
         &self,
@@ -689,7 +689,7 @@ fn build_tree_from_paths(repo: &Repository, entries: &[(String, Oid)]) -> Result
     Ok(tree_oid)
 }
 
-/// A v2 session's files with their bytes, read from its cell in one
+/// A v2 session's files with their bytes, read from its shard in one
 /// snapshot (`FsOp::Snapshot`): what a commit records.
 pub async fn plane_files(
     plane: &crate::domains::data_plane::session_plane::SessionPlane,

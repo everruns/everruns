@@ -1,5 +1,5 @@
 //! Optional 10-second detail for Monitoring, read from a Prometheus-compatible
-//! store (VictoriaMetrics, Prometheus) that scrapes the cells' `/metrics`.
+//! store (VictoriaMetrics, Prometheus) that scrapes the shards' `/metrics`.
 //!
 //! Decisions (knowledge/operations/monitoring.md):
 //! - PostgreSQL minute history is the record and always present; this source
@@ -7,7 +7,7 @@
 //! - The address comes from the environment only (`MONITORING_DETAIL_URL`),
 //!   never from the API or the database: a settable URL would let anyone with
 //!   platform access point the server at an internal host.
-//! - Cell names reach PromQL only after [`valid_cell`]: label values are quoted,
+//! - Shard names reach PromQL only after [`valid_shard`]: label values are quoted,
 //!   and a name with a quote or backslash would end the string.
 
 use chrono::{DateTime, Utc};
@@ -82,11 +82,11 @@ impl DetailConfig {
     }
 }
 
-/// A cell name safe to put in a PromQL label matcher.
-pub fn valid_cell(cell: &str) -> bool {
-    !cell.is_empty()
-        && cell.len() <= 128
-        && cell
+/// A shard name safe to put in a PromQL label matcher.
+pub fn valid_shard(shard: &str) -> bool {
+    !shard.is_empty()
+        && shard.len() <= 128
+        && shard
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
@@ -101,13 +101,13 @@ pub struct NodeSeries {
 }
 
 /// The queries behind each series, one per node.
-fn queries(cell: &str) -> [(&'static str, String); 4] {
-    let m = |metric: &str, agg: &str| format!("{agg} by (node) ({metric}{{cell=\"{cell}\"}})");
+fn queries(shard: &str) -> [(&'static str, String); 4] {
+    let m = |metric: &str, agg: &str| format!("{agg} by (node) ({metric}{{shard=\"{shard}\"}})");
     [
-        ("running", m("cell_turns_running", "sum")),
-        ("rss_bytes", m("cell_rss_bytes", "max")),
-        ("queued", m("cell_queued_inputs", "max")),
-        ("admit", m("cell_slo_admit_p99_seconds", "max")),
+        ("running", m("agentd_shard_turns_running", "sum")),
+        ("rss_bytes", m("agentd_shard_rss_bytes", "max")),
+        ("queued", m("agentd_shard_queued_inputs", "max")),
+        ("admit", m("agentd_shard_slo_admit_p99_seconds", "max")),
     ]
 }
 
@@ -172,19 +172,19 @@ fn fold(nodes: &mut BTreeMap<String, NodeSeries>, which: &str, body: &str) -> Re
     Ok(())
 }
 
-/// Read `cell`'s per-node detail over `[from, to]`.
-pub async fn read_cell(
+/// Read `shard`'s per-node detail over `[from, to]`.
+pub async fn read_shard(
     url: &str,
-    cell: &str,
+    shard: &str,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
 ) -> Result<BTreeMap<String, NodeSeries>, String> {
-    if !valid_cell(cell) {
-        return Err("invalid cell name".into());
+    if !valid_shard(shard) {
+        return Err("invalid shard name".into());
     }
     let mut nodes = BTreeMap::new();
     let endpoint = format!("{url}/api/v1/query_range");
-    let reads = queries(cell).map(|(which, query)| {
+    let reads = queries(shard).map(|(which, query)| {
         let request = client().get(&endpoint).query(&[
             ("query", query),
             ("start", from.timestamp().to_string()),
@@ -283,12 +283,12 @@ mod tests {
     }
 
     #[test]
-    fn only_plain_cell_names_reach_promql() {
-        assert!(valid_cell("cell-07"));
-        assert!(valid_cell("dp1.cell_2"));
-        assert!(!valid_cell(""));
-        assert!(!valid_cell("a\"}or vector(1)"));
-        assert!(!valid_cell("a\\b"));
+    fn only_plain_shard_names_reach_promql() {
+        assert!(valid_shard("shard-07"));
+        assert!(valid_shard("dp1.shard_2"));
+        assert!(!valid_shard(""));
+        assert!(!valid_shard("a\"}or vector(1)"));
+        assert!(!valid_shard("a\\b"));
     }
 
     #[test]
@@ -309,12 +309,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_cell_is_read_from_a_prometheus_api() {
+    async fn a_shard_is_read_from_a_prometheus_api() {
         use axum::{Router, extract::Query, routing::get};
         async fn range(Query(q): Query<BTreeMap<String, String>>) -> String {
             assert_eq!(q["step"], "10s");
-            assert!(q["query"].contains("cell=\"cell-07\""), "{}", q["query"]);
-            let value = if q["query"].contains("cell_rss_bytes") {
+            assert!(q["query"].contains("shard=\"shard-07\""), "{}", q["query"]);
+            let value = if q["query"].contains("agentd_shard_rss_bytes") {
                 "1024"
             } else {
                 "2"
@@ -337,11 +337,11 @@ mod tests {
         probe(&url).await.unwrap();
         let to = Utc::now();
         let from = to - chrono::TimeDelta::minutes(15);
-        let nodes = read_cell(&url, "cell-07", from, to).await.unwrap();
+        let nodes = read_shard(&url, "shard-07", from, to).await.unwrap();
         let node = &nodes["3"];
         assert_eq!(node.rss_bytes.get(&from.timestamp()), Some(&1024.0));
         assert_eq!(node.running.get(&from.timestamp()), Some(&2.0));
-        assert!(read_cell(&url, "x\"", from, to).await.is_err());
+        assert!(read_shard(&url, "x\"", from, to).await.is_err());
         assert!(probe("http://127.0.0.1:1").await.is_err());
     }
 }

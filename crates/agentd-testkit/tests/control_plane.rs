@@ -1,4 +1,4 @@
-//! The cells against a fake control plane over `/dp/v1` (data plane v2
+//! The shards against a fake control plane over `/dp/v1` (data plane v2
 //! step 6, "the CP protocol exercised early"): agents arrive as config,
 //! turns are paid from allowances the control plane grants, and usage and
 //! session summaries flow back on the feed. Then the protocol's failure
@@ -12,8 +12,8 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use everruns_cell::dp::{ConfigAck, ConfigUpdate};
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd::dp::{ConfigAck, ConfigUpdate};
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use serde_json::{Value, json};
 use support::{Fleet, types};
 
@@ -21,7 +21,7 @@ const ORG: &str = "org-a";
 
 /// Revision `revision` of agent `id`: the test host's `worker`.
 fn agent(id: &str, revision: u64) -> Value {
-    let mut package = everruns_cell_testkit::definition("worker").unwrap();
+    let mut package = everruns_agentd_testkit::definition("worker").unwrap();
     package["name"] = json!(id);
     package["instructions"] = json!(format!("Revision {revision}: do the work."));
     json!({ "kind": "Agent", "agent_id": id, "revision": revision, "package": package })
@@ -53,11 +53,11 @@ async fn setup(balance: i64) -> (Fleet, FakeCp) {
     (fleet, cp)
 }
 
-async fn create(fleet: &Fleet, cell: u32) -> String {
+async fn create(fleet: &Fleet, shard: u32) -> String {
     let created = fleet
         .post(
             "/v1/sessions",
-            json!({ "org": ORG, "agent_ref": "helper", "cell": cell }),
+            json!({ "org": ORG, "agent_ref": "helper", "shard": shard }),
         )
         .await;
     created["id"].as_str().unwrap().to_string()
@@ -72,8 +72,8 @@ fn generations(events: &[Value]) -> usize {
 
 async fn feed_drained(fleet: &Fleet) -> bool {
     let mut pending = 0;
-    for cell in [0, 1] {
-        pending += fleet.stats(cell).await["feed_pending"]
+    for shard in [0, 1] {
+        pending += fleet.stats(shard).await["feed_pending"]
             .as_u64()
             .unwrap_or(0);
     }
@@ -83,7 +83,7 @@ async fn feed_drained(fleet: &Fleet) -> bool {
 /// The session's events, once a read shows `turns` completed turns.
 ///
 /// Decision: wait for it rather than read once. The gateway spreads reads
-/// over the cell's members, and the one answering can still be applying the
+/// over the shard's members, and the one answering can still be applying the
 /// turn the `wait` endpoint (answered by another member) already reported.
 async fn committed(fleet: &Fleet, session: &str, turns: usize) -> Vec<Value> {
     let deadline = Instant::now() + Duration::from_secs(30);
@@ -241,7 +241,7 @@ async fn lost_acknowledgements_grant_and_bill_once() {
         .until("the feed is delivered", || feed_drained(&fleet))
         .await;
     assert!(cp.requests() > cp.grants().len(), "requests were retried");
-    assert_eq!(cp.grants().len(), 2, "one grant per cell, not per retry");
+    assert_eq!(cp.grants().len(), 2, "one grant per shard, not per retry");
     assert_eq!(cp.usage().len(), calls);
     assert_eq!(cp.usage_repeats(), 0);
     assert_eq!(cp.balance(ORG) + cp.outstanding(ORG), 10_000_000);
@@ -329,8 +329,8 @@ async fn a_config_change_mid_turn_keeps_the_running_turns_revision() {
     cp.set_balance(ORG, 10_000_000);
     let mut fleet = Fleet::start_with(Some(cp.url.clone())).await;
     fleet.executor(1);
-    // Revision 1 is slow (`CELL_MODEL_DELAY_MS`, 3 s by default).
-    let mut slow = everruns_cell_testkit::definition("slow").unwrap();
+    // Revision 1 is slow (`AGENTD_MODEL_DELAY_MS`, 3 s by default).
+    let mut slow = everruns_agentd_testkit::definition("slow").unwrap();
     slow["name"] = json!("helper");
     slow["instructions"] = json!("Revision 1: do the work.");
     let first = json!({ "kind": "Agent", "agent_id": "helper", "revision": 1, "package": slow });
@@ -385,7 +385,7 @@ async fn a_config_change_mid_turn_keeps_the_running_turns_revision() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_session_with_its_own_settings_runs_its_own_definition() {
     let (fleet, cp) = setup(10_000_000).await;
-    let mut own = everruns_cell_testkit::definition("worker").unwrap();
+    let mut own = everruns_agentd_testkit::definition("worker").unwrap();
     own["name"] = json!("helper");
     own["instructions"] = json!("Revision 1: do the work.\n\nSession's own: grade it.");
     own["max_iterations"] = json!(4);
@@ -430,13 +430,13 @@ async fn a_session_with_its_own_settings_runs_its_own_definition() {
 }
 
 /// Every node's answer to `path` that is not an error (the directory
-/// cell's leader answers the org's catalog; other cells' leaders answer
+/// shard's leader answers the org's catalog; other shards' leaders answer
 /// null, followers refuse).
 async fn node_answers(fleet: &Fleet, path: &str) -> Vec<Value> {
     let http = reqwest::Client::builder().no_proxy().build().unwrap();
     let mut answers = Vec::new();
-    for cell in [0u32, 1] {
-        for (_, addr) in fleet.addrs(cell) {
+    for shard in [0u32, 1] {
+        for (_, addr) in fleet.addrs(shard) {
             if let Ok(reply) = http.get(format!("http://{addr}{path}")).send().await
                 && reply.status().is_success()
                 && let Ok(value) = reply.json::<Value>().await
@@ -449,7 +449,7 @@ async fn node_answers(fleet: &Fleet, path: &str) -> Vec<Value> {
 }
 
 /// The org's agent catalog (parity gap 9): an agent's card can arrive at
-/// the revision the cells already hold, and the directory finds the agent
+/// the revision the shards already hold, and the directory finds the agent
 /// and its harness by the host's ids.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_catalog_finds_an_agent_by_the_hosts_id() {
@@ -468,7 +468,7 @@ async fn the_catalog_finds_an_agent_by_the_hosts_id() {
     assert_eq!(ack, ConfigAck::Ok { applied_version: 2 });
     let found = node_answers(
         &fleet,
-        &format!("/cell/orgs/{ORG}/catalog/agents/agent_reviewer"),
+        &format!("/shard/orgs/{ORG}/catalog/agents/agent_reviewer"),
     )
     .await;
     let found = found
@@ -479,7 +479,7 @@ async fn the_catalog_finds_an_agent_by_the_hosts_id() {
     assert_eq!(found["revision"], 1);
     let harness = node_answers(
         &fleet,
-        &format!("/cell/orgs/{ORG}/catalog/harnesses/harness_generic"),
+        &format!("/shard/orgs/{ORG}/catalog/harnesses/harness_generic"),
     )
     .await;
     assert!(
@@ -488,7 +488,7 @@ async fn the_catalog_finds_an_agent_by_the_hosts_id() {
     );
     let missing = node_answers(
         &fleet,
-        &format!("/cell/orgs/{ORG}/catalog/agents/agent_other"),
+        &format!("/shard/orgs/{ORG}/catalog/agents/agent_other"),
     )
     .await;
     assert!(
@@ -507,7 +507,7 @@ async fn a_subagent_runs_its_agent_without_the_parents_own_settings() {
     let mut fleet = Fleet::start_with(Some(cp.url.clone())).await;
     fleet.executor(1);
     fleet.executor(2);
-    let mut team = everruns_cell_testkit::definition("team").unwrap();
+    let mut team = everruns_agentd_testkit::definition("team").unwrap();
     team["name"] = json!("helper");
     let published =
         json!({ "kind": "Agent", "agent_id": "helper", "revision": 1, "package": team.clone() });
@@ -555,7 +555,7 @@ async fn a_subagent_runs_its_agent_without_the_parents_own_settings() {
 }
 
 /// Review fix: a moved v1 session is created closed to messages, so one
-/// the edge routes straight to its cell (as it routes every plain message)
+/// the edge routes straight to its shard (as it routes every plain message)
 /// is refused until the control plane has imported it and opens it; its
 /// SQL databases come in whole before that.
 #[tokio::test(flavor = "multi_thread")]
@@ -579,7 +579,7 @@ async fn a_moved_session_takes_no_message_until_its_import_is_done() {
     .await;
     assert_eq!(status, reqwest::StatusCode::CREATED, "{created}");
 
-    // Straight to the cell, as the edge sends a plain message: refused.
+    // Straight to the shard, as the edge sends a plain message: refused.
     let (status, _, refused) = fleet
         .post_once(
             &format!("/v1/sessions/{session}/messages"),

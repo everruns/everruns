@@ -2794,7 +2794,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/durable/monitoring/cells": {
+  "/v1/durable/monitoring/shards": {
     parameters: {
       query?: never;
       header?: never;
@@ -2802,10 +2802,10 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List cells with their newest report and history
-     * @description List cells with their newest report and history. Requires platform-user access.
+     * List shards with their newest report and history
+     * @description List shards with their newest report and history. Requires platform-user access.
      */
-    get: operations["get_fleet_monitoring_cells"];
+    get: operations["get_fleet_monitoring_shards"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2814,7 +2814,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/durable/monitoring/cells/{cell}/detail": {
+  "/v1/durable/monitoring/shards/{shard}/detail": {
     parameters: {
       query?: never;
       header?: never;
@@ -2822,10 +2822,10 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Read one cell's per-node detail for the last hour
-     * @description Read one cell's per-node detail for the last hour. Requires platform-user access.
+     * Read one shard's per-node detail for the last hour
+     * @description Read one shard's per-node detail for the last hour. Requires platform-user access.
      */
-    get: operations["get_fleet_monitoring_cell_detail"];
+    get: operations["get_fleet_monitoring_shard_detail"];
     put?: never;
     post?: never;
     delete?: never;
@@ -12593,7 +12593,7 @@ export interface components {
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
     /** @description One case under one variant. */
-    CaseCell: {
+    CaseShard: {
       /**
        * Format: double
        * @description What the case cost, all its trials together.
@@ -12620,8 +12620,8 @@ export interface components {
       case_id: string;
       /** @example Refund request, angry customer */
       case_name: string;
-      /** @description One cell per variant, in variant order. */
-      cells: components["schemas"]["CaseCell"][];
+      /** @description One shard per variant, in variant order. */
+      shards: components["schemas"]["CaseShard"][];
       /** @description Some variant's pass rate on this case differs from the baseline's. */
       changed: boolean;
     };
@@ -12638,17 +12638,17 @@ export interface components {
       | "timeout"
       | "skipped";
     /** @description One node's detail. */
-    CellNodeDetail: {
+    ShardNodeDetail: {
       /**
-       * @description Node id within the cell.
+       * @description Node id within the shard.
        * @example 2
        */
       node: string;
       /** @description Points, oldest first. */
-      points: components["schemas"]["CellNodePoint"][];
+      points: components["schemas"]["ShardNodePoint"][];
     };
     /** @description One point of a node's detail. */
-    CellNodePoint: {
+    ShardNodePoint: {
       /**
        * Format: double
        * @description One-minute p99 time to admit a turn, in milliseconds.
@@ -24954,8 +24954,8 @@ export interface components {
        */
       next_offset?: number | null;
     };
-    /** @description One data plane v2 cell: its newest minute report and its history. */
-    MonitoringCell: {
+    /** @description One data plane v2 shard: its newest minute report and its history. */
+    MonitoringShard: {
       /**
        * Format: int64
        * @description Worst node's p99 time to admit a turn, in milliseconds.
@@ -24963,12 +24963,12 @@ export interface components {
        */
       admit_p99_ms: number;
       /** @description History over the range, oldest first; buckets without a report are absent. */
-      buckets: components["schemas"]["MonitoringCellBucket"][];
+      buckets: components["schemas"]["MonitoringShardBucket"][];
       /**
-       * @description Cell name.
-       * @example cell-07
+       * @description Shard name.
+       * @example shard-07
        */
-      cell: string;
+      shard: string;
       /**
        * Format: double
        * @description The busiest node's CPU, in cores.
@@ -24982,13 +24982,13 @@ export interface components {
        */
       cpu_limit_cores?: number | null;
       /**
-       * @description Data plane the cell belongs to.
+       * @description Data plane the shard belongs to.
        * @example dp-eks-1
        */
       data_plane: string;
       /**
        * @description Leader node at the newest report.
-       * @example cell-07-node-2
+       * @example shard-07-node-2
        */
       leader?: string | null;
       /**
@@ -25063,8 +25063,8 @@ export interface components {
        */
       term: number;
     };
-    /** @description One cell over one bucket. */
-    MonitoringCellBucket: {
+    /** @description One shard over one bucket. */
+    MonitoringShardBucket: {
       /**
        * Format: int64
        * @description Worst node's p99 time to admit a turn, in milliseconds.
@@ -25087,7 +25087,7 @@ export interface components {
       memory_peak_pct?: number | null;
       /**
        * Format: int64
-       * @description Sessions moved to another cell.
+       * @description Sessions moved to another shard.
        */
       moves: number;
       /**
@@ -25146,7 +25146,7 @@ export interface components {
        */
       turns_failed: number;
     };
-    /** @description A cell's per-node detail, or why there is none. */
+    /** @description A shard's per-node detail, or why there is none. */
     MonitoringCellDetail: {
       /**
        * @description Whether detail could be read.
@@ -25154,10 +25154,10 @@ export interface components {
        */
       available: boolean;
       /**
-       * @description Cell name.
-       * @example cell-07
+       * @description Shard name.
+       * @example shard-07
        */
-      cell: string;
+      shard: string;
       /**
        * Format: date-time
        * @description Inclusive UTC start.
@@ -25165,7 +25165,7 @@ export interface components {
        */
       from: string;
       /** @description Nodes, by id. */
-      nodes: components["schemas"]["CellNodeDetail"][];
+      nodes: components["schemas"]["ShardNodeDetail"][];
       /**
        * @description Why not, when `available` is false.
        * @example No detail store is configured (MONITORING_DETAIL).
@@ -25189,16 +25189,16 @@ export interface components {
        */
       to: string;
     };
-    /** @description Data plane v2 cells as their minute reports show them. */
-    MonitoringCells: {
+    /** @description Data plane v2 shards as their minute reports show them. */
+    MonitoringShards: {
       /**
        * Format: int32
        * @description Bucket size in seconds.
        * @example 60
        */
       bucket_seconds: number;
-      /** @description Cells that reported in the last week, by name. */
-      cells: components["schemas"]["MonitoringCell"][];
+      /** @description Shards that reported in the last week, by name. */
+      shards: components["schemas"]["MonitoringShard"][];
       /**
        * Format: date-time
        * @description Inclusive UTC start of the history.
@@ -25522,7 +25522,7 @@ export interface components {
        * @description UTC time of this read.
        */
       generated_at: string;
-      /** @description Deploys, worker changes and cell leader changes inside the range. */
+      /** @description Deploys, worker changes and shard leader changes inside the range. */
       markers: components["schemas"]["TimelineMarker"][];
       /**
        * Format: int64
@@ -29778,8 +29778,8 @@ export interface components {
     };
     /** @description Everything known about why a Sandbox is in its state. */
     SandboxDiagnosis: {
-      /** @description The sandbox as its cell records it (v2 sessions). */
-      cell_sandbox?: Record<string, unknown> | null;
+      /** @description The sandbox as its shard records it (v2 sessions). */
+      shard_sandbox?: Record<string, unknown> | null;
       /** @description Problems and warnings first. */
       findings: components["schemas"]["SandboxFinding"][];
       /** Format: date-time */
@@ -30184,7 +30184,7 @@ export interface components {
       claim_expires_at?: string | null;
       /** @description Whether a worker holds the turn right now. */
       claimed?: boolean | null;
-      /** @description The session runs on a v2 data plane (a cell). */
+      /** @description The session runs on a v2 data plane (a shard). */
       data_plane: boolean;
       /**
        * Format: int64
@@ -33151,7 +33151,7 @@ export interface components {
       agents_working_peak: number;
       /** @description Whether this bucket includes history rebuilt from turn records (no phase split or queue data). */
       backfilled: boolean;
-      cells?: components["schemas"]["TimelineCellsBucket"] | null;
+      shards?: components["schemas"]["TimelineShardsBucket"] | null;
       /**
        * Format: double
        * @description Model spend in USD, actual where reconciled, otherwise estimated.
@@ -33300,10 +33300,10 @@ export interface components {
       workers?: number | null;
     };
     /**
-     * @description What data plane v2 cells reported over a bucket. Population comes from
-     *     each cell's one-minute report; counters from the cells' feed.
+     * @description What data plane v2 shards reported over a bucket. Population comes from
+     *     each shard's one-minute report; counters from the shards' feed.
      */
-    TimelineCellsBucket: {
+    TimelineShardsBucket: {
       /**
        * Format: int64
        * @description Platform only: worst node's p99 time to admit a turn, in milliseconds.
@@ -33311,17 +33311,17 @@ export interface components {
       admit_p99_ms?: number | null;
       /**
        * Format: double
-       * @description Average distinct agents with a running turn on cells.
+       * @description Average distinct agents with a running turn on shards.
        */
       agents_working_avg: number;
       /**
        * Format: int64
-       * @description Highest per-minute agents with a running turn on cells.
+       * @description Highest per-minute agents with a running turn on shards.
        */
       agents_working_peak: number;
       /**
        * Format: double
-       * @description Model spend on cells in USD.
+       * @description Model spend on shards in USD.
        */
       cost_usd: number;
       /**
@@ -33331,12 +33331,12 @@ export interface components {
       cpu_peak_pct?: number | null;
       /**
        * Format: int64
-       * @description Platform only: leader elections across cells.
+       * @description Platform only: leader elections across shards.
        */
       elections?: number | null;
       /**
        * Format: int64
-       * @description Model input tokens on cells.
+       * @description Model input tokens on shards.
        */
       input_tokens: number;
       /**
@@ -33346,17 +33346,17 @@ export interface components {
       memory_peak_pct?: number | null;
       /**
        * Format: int64
-       * @description Model calls made on cells.
+       * @description Model calls made on shards.
        */
       model_calls: number;
       /**
        * Format: int64
-       * @description Platform only: sessions moved to another cell.
+       * @description Platform only: sessions moved to another shard.
        */
       moves?: number | null;
       /**
        * Format: int64
-       * @description Platform only: highest total of cell nodes (pods) in one minute.
+       * @description Platform only: highest total of shard nodes (pods) in one minute.
        */
       nodes?: number | null;
       /**
@@ -33366,17 +33366,17 @@ export interface components {
       nodes_answering?: number | null;
       /**
        * Format: int64
-       * @description Model output tokens on cells.
+       * @description Model output tokens on shards.
        */
       output_tokens: number;
       /**
        * Format: int64
-       * @description Highest per-minute messages waiting for a turn on cells.
+       * @description Highest per-minute messages waiting for a turn on shards.
        */
       queued_peak: number;
       /**
        * Format: int64
-       * @description Highest number of cells that reported in one minute.
+       * @description Highest number of shards that reported in one minute.
        * @example 12
        */
       reporting: number;
@@ -33387,22 +33387,22 @@ export interface components {
       resumed_peak?: number | null;
       /**
        * Format: double
-       * @description Average turns running on cells.
+       * @description Average turns running on shards.
        */
       running_avg: number;
       /**
        * Format: int64
-       * @description Highest per-minute turns running on cells.
+       * @description Highest per-minute turns running on shards.
        */
       running_peak: number;
       /**
        * Format: double
-       * @description Average sessions resident on cells.
+       * @description Average sessions resident on shards.
        */
       sessions_avg: number;
       /**
        * Format: int64
-       * @description Highest per-minute sessions resident on cells.
+       * @description Highest per-minute sessions resident on shards.
        */
       sessions_peak: number;
       /**
@@ -33412,17 +33412,17 @@ export interface components {
       ship_lag_p99_ms?: number | null;
       /**
        * Format: int64
-       * @description Turns cancelled on cells.
+       * @description Turns cancelled on shards.
        */
       turns_cancelled: number;
       /**
        * Format: int64
-       * @description Turns completed on cells.
+       * @description Turns completed on shards.
        */
       turns_completed: number;
       /**
        * Format: int64
-       * @description Turns failed on cells.
+       * @description Turns failed on shards.
        */
       turns_failed: number;
     };
@@ -33452,7 +33452,7 @@ export interface components {
        */
       kind: string;
       /**
-       * @description Server version for a deploy, worker id or cell name otherwise.
+       * @description Server version for a deploy, worker id or shard name otherwise.
        * @example 0.50.1
        */
       label: string;
@@ -33478,14 +33478,14 @@ export interface components {
     TimelineSummary: {
       /**
        * Format: int64
-       * @description Platform only: leader elections across cells; null when no cell reported.
+       * @description Platform only: leader elections across shards; null when no shard reported.
        */
-      cells_elections?: number | null;
+      shards_elections?: number | null;
       /**
        * Format: int64
-       * @description Highest per-minute turns running on cells; null when no cell reported.
+       * @description Highest per-minute turns running on shards; null when no shard reported.
        */
-      cells_peak_running?: number | null;
+      shards_peak_running?: number | null;
       /**
        * Format: double
        * @description Model spend in USD.
@@ -46356,7 +46356,7 @@ export interface operations {
       };
     };
   };
-  get_fleet_monitoring_cells: {
+  get_fleet_monitoring_shards: {
     parameters: {
       query?: {
         /**
@@ -46380,13 +46380,13 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Cells and their history */
+      /** @description Shards and their history */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["MonitoringCells"];
+          "application/json": components["schemas"]["MonitoringShards"];
         };
       };
       /** @description Invalid range */
@@ -46409,7 +46409,7 @@ export interface operations {
       };
     };
   };
-  get_fleet_monitoring_cell_detail: {
+  get_fleet_monitoring_shard_detail: {
     parameters: {
       query?: {
         /** @description Minutes ending now, 5 to 60. Defaults to 60. */
@@ -46417,8 +46417,8 @@ export interface operations {
       };
       header?: never;
       path: {
-        /** @description Cell name */
-        cell: string;
+        /** @description Shard name */
+        shard: string;
       };
       cookie?: never;
     };
@@ -46433,7 +46433,7 @@ export interface operations {
           "application/json": components["schemas"]["MonitoringCellDetail"];
         };
       };
-      /** @description Invalid cell name or minutes */
+      /** @description Invalid shard name or minutes */
       400: {
         headers: {
           [name: string]: unknown;
