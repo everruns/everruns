@@ -19,12 +19,12 @@ source, durability and lifecycle. Editing a template creates a new immutable
 revision, and existing sessions keep the revision they started with. An agent's
 sandbox policy decides whether a session can pick or override the template.
 
-**In the UI:** open **Sandbox Templates** and select **New Sandbox Template**.
-The **Sandboxes** page lists every sandbox across providers and states, with a
+Open **Sandbox Templates** and select **New Sandbox Template**.
+**Sandboxes** lists the fleet with a
 lifecycle timeline and a **Needs attention** filter. Pause, resume and delete
 are available in the detail drawer.
 
-**In code:** `GET /v1/sandboxes` lists the fleet; `/stats` and `/timeline` back
+`GET /v1/sandboxes` lists the fleet; `/stats` and `/timeline` back
 the page.
 
 See [Sandbox Templates](/features/sandbox-templates/).
@@ -34,3 +34,8 @@ See [Sandbox Templates](/features/sandbox-templates/).
 Idle sandboxes show their last recorded state. Organization admins can check
 the provider's current state in the detail drawer. The idle sweep retries failed
 pauses for sandboxes running in shards.
+
+## Update 2026-11-22
+
+Provider status refreshes automatically in bounded batches, with a five-minute
+cooldown.
