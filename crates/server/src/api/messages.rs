@@ -298,7 +298,11 @@ pub async fn create_message(
         message: req.message,
         addressed_participant_id: req.addressed_participant_id,
         controls: req.controls,
-        metadata: req.metadata,
+        metadata: req.metadata.map(|mut metadata| {
+            // Plain HTTP messages are follow-ups, never explicit redirects.
+            metadata.remove(everruns_core::engine::tool_steering::REDIRECT_TURN);
+            metadata
+        }),
         tags: req.tags,
         external_actor: req.external_actor,
         request_id,

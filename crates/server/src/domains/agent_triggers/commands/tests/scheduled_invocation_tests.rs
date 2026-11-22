@@ -351,3 +351,21 @@ fn trigger_run_reports_its_task_outcome() {
     assert_eq!(done.status, "completed");
     assert_eq!(done.completed_at, Some(queued_at));
 }
+
+#[test]
+fn failure_reason_keeps_internal_errors_internal() {
+    use crate::domains::agent_triggers::events::failure_reason;
+    let trigger = everruns_contracts::typed_id::TriggerId::new();
+    let internal = CommandError::internal(anyhow::anyhow!(
+        "pool timed out: connection to db.internal:5432 refused"
+    ));
+    let reason = failure_reason(&internal, trigger);
+    assert!(reason.starts_with("Internal error (ref "), "{reason}");
+    assert!(!reason.contains("db.internal"), "{reason}");
+
+    let caller = CommandError::forbidden("Agent trigger is disabled".to_string());
+    assert_eq!(
+        failure_reason(&caller, trigger),
+        "Agent trigger is disabled"
+    );
+}

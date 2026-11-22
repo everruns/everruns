@@ -41,6 +41,10 @@ export const messages: Readonly<Record<string, string>> = {
   "History trimming": "历史裁剪",
   "estimated tokens": "估算令牌",
   tokens: "令牌",
+  "MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.":
+    "未加载 MCP 工具：目录预设已停用。请管理员启用该预设。",
+  "MCP tools not loaded: catalog preset is unavailable. Choose an active preset.":
+    "未加载 MCP 工具：目录预设不可用。请选择启用的预设。",
   "Discovery state at the last turn": "上一轮的工具发现状态",
   "Discovery pending": "等待发现工具",
   "Tools need sign-in": "工具需要登录",

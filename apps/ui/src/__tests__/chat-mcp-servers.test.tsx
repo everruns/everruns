@@ -56,6 +56,23 @@ describe("ChatMcpServersList", () => {
     expect(screen.getByText(label)).toHaveAttribute("title", "Discovery state at the last turn");
   });
 
+  it.each([
+    [
+      "preset_disabled",
+      "MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.",
+    ],
+    [
+      "preset_unavailable",
+      "MCP tools not loaded: catalog preset is unavailable. Choose an active preset.",
+    ],
+  ])("explains %s without suggesting sign-in", (discovery, message) => {
+    loaded([{ ...servers[0], connection: "not_needed", discovery }]);
+    render(<ChatMcpServersList sessionId="session_1" />);
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByText("Needs sign-in")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Discovery state at the last turn")).not.toBeInTheDocument();
+  });
+
   it("does not show a pending badge for ready tools", () => {
     loaded([{ ...servers[1], discovery: "ready" }]);
     render(<ChatMcpServersList sessionId="session_1" />);

@@ -333,8 +333,9 @@ boundary exercised by [gRPC tests](../../crates/server/tests/domain/mcp_acts_as_
 - HTTP transport keeps the existing **DNS-pinned SSRF** contract
   (TM-TOOL-018); no relaxation.
 - **stdio is excluded from hosted builds at compile time** and rejected by
-  hosted scoped-config validation; it executes arbitrary local processes and is
-  only acceptable for single-tenant runtime/CLI hosts. New threat-model entry
+  hosted scoped-config validation; the rejection points to Streamable HTTP.
+  Stdio executes arbitrary local processes and is only acceptable for
+  single-tenant runtime/CLI hosts. New threat-model entry
   documents the boundary.
 - Explicit (user-supplied) scoped OAuth servers remain stripped of token
   minting; only capability-contributed servers and the host-injected auth

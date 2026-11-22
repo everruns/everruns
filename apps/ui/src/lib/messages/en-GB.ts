@@ -53,6 +53,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.":
     "Show approval cards only to the requester. If a card disappears, answer the pending request in Everruns. Agent replies remain visible in the conversation.",
 
+  "MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.":
+    "MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.",
+  "MCP tools not loaded: catalog preset is unavailable. Choose an active preset.":
+    "MCP tools not loaded: catalog preset is unavailable. Choose an active preset.",
   "Discovery state at the last turn": "Discovery state at the last turn",
   "Discovery pending": "Discovery pending",
   "Tools need sign-in": "Tools need sign-in",

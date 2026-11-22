@@ -8,7 +8,8 @@ use crate::engine::capabilities::ToolCallHook;
 use crate::engine::execution::ExecutionContext;
 use crate::engine::session_files::SessionFileSystem;
 use crate::engine::tool_narration::{
-    ToolNarrationContext, ToolNarrationPhase, render_tool_narration_with_locale,
+    GroupHeadlineAction, ToolNarrationContext, ToolNarrationPhase,
+    render_tool_narration_with_locale, summarize_group_actions, tool_call_for_group_summary,
 };
 use crate::engine::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::engine::tools::ToolRegistry;
@@ -18,6 +19,67 @@ where
     T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
+    pub(super) fn render_group_headline(
+        &self,
+        execution_context: &ExecutionContext,
+        tool_calls: &[ToolCall],
+        tool_map: &std::collections::HashMap<&str, &ToolDefinition>,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        if tool_calls.is_empty() {
+            return None;
+        }
+        if let [tool_call] = tool_calls {
+            return Some(self.render_tool_narration(
+                execution_context,
+                tool_map.get(tool_call.name.as_str()).copied(),
+                tool_call,
+                phase,
+                locale,
+            ));
+        }
+
+        let actions = tool_calls
+            .iter()
+            .map(|tool_call| {
+                let tool_def = tool_map.get(tool_call.name.as_str()).copied();
+                let narration = self.render_tool_narration(
+                    execution_context,
+                    tool_def,
+                    tool_call,
+                    phase,
+                    locale,
+                );
+                let repeated_narration = self.render_tool_narration(
+                    execution_context,
+                    tool_def,
+                    &tool_call_for_group_summary(tool_call),
+                    phase,
+                    locale,
+                );
+                GroupHeadlineAction::new(tool_call, narration, repeated_narration)
+            })
+            .collect::<Vec<_>>();
+
+        Some(summarize_group_actions(&actions, locale))
+    }
+
+    /// Mirror the file-store wrapping applied during tool execution so
+    /// path-bearing narration uses the same mount resolver and workspace key.
+    fn wrap_file_store_for_narration(
+        &self,
+        execution_context: &ExecutionContext,
+    ) -> Option<Arc<dyn SessionFileSystem>> {
+        let store = self.context_services.file_store.as_ref()?.clone();
+        let store = if let Some(workspace_id) = execution_context.workspace_id {
+            crate::engine::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id)
+        } else {
+            store
+        };
+        Some(crate::engine::mount_fs::MountFs::wrap_if_needed(store))
+    }
+
     pub(super) fn render_tool_narration(
         &self,
         execution_context: &ExecutionContext,

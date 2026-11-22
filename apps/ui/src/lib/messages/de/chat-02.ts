@@ -45,6 +45,10 @@ export const messages: Readonly<Record<string, string>> = {
   "History trimming": "Verlaufskürzung",
   "estimated tokens": "geschätzte Token",
   tokens: "Token",
+  "MCP tools not loaded: catalog preset is disabled. Ask an admin to enable it.":
+    "MCP-Werkzeuge wurden nicht geladen: Die Katalogvoreinstellung ist deaktiviert. Bitte eine Administration, sie zu aktivieren.",
+  "MCP tools not loaded: catalog preset is unavailable. Choose an active preset.":
+    "MCP-Werkzeuge wurden nicht geladen: Die Katalogvoreinstellung ist nicht verfügbar. Wähle eine aktive Voreinstellung.",
   "Discovery state at the last turn": "Erkennungsstatus beim letzten Gesprächsschritt",
   "Discovery pending": "Erkennung ausstehend",
   "Tools need sign-in": "Tools benötigen Anmeldung",

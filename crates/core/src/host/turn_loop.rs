@@ -29,8 +29,7 @@ use crate::engine::{
 };
 use crate::host::InProcessExecution;
 use crate::host::runtime_host::{
-    RuntimeHostAdapter, execute_act_activity, execute_input_activity,
-    execute_reason_activity_with_prompt_messages,
+    RuntimeHostAdapter, execute_input_activity, execute_reason_activity_with_prompt_messages,
 };
 use crate::host::turn_strategy::{self, resolve_pause_hints};
 use everruns_contracts::turn::TurnStopReason;
@@ -145,6 +144,13 @@ impl PendingInput {
 /// (it completed) or [`park`](Self::park) (it waits for tool results).
 #[async_trait]
 pub trait TurnInbox: Send + Sync {
+    /// Optional explicit-redirection admission gate for the next tool batch.
+    fn tool_batch_steering(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
+        None
+    }
+
     /// Take every input that arrived since the last reason boundary, persist
     /// it in the session's log if the host has not already, and return the
     /// ids of its messages. The next reason runs prompt hooks on them.
@@ -395,10 +401,13 @@ pub async fn drive_turn<A: RuntimeHostAdapter>(
             }
             TurnPlan::ScheduleAct(act_plan) => {
                 tool_calls_count += act_plan.input.tool_calls.len();
-                let act_result = crate::engine::tool_detach::for_act(execute_act_activity(
-                    adapter,
-                    act_plan.input,
-                ))
+                let act_result = crate::engine::tool_detach::for_act(
+                    super::runtime_host::execute_act_activity_with_steering(
+                        adapter,
+                        act_plan.input,
+                        inbox.tool_batch_steering(),
+                    ),
+                )
                 .await?;
                 reply.extend_sent(turn_strategy::sent_texts(&act_result));
                 client_tool_calls.clone_from(&act_result.client_tool_calls);

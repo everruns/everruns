@@ -62,6 +62,12 @@ pub enum InputPreparation {
 pub trait ActorHosts: Send + Sync + 'static {
     type Host: RuntimeHostAdapter + Clone + Send + Sync + 'static;
 
+    /// Check explicitly redirected tools against committed ingress. Hosts
+    /// with no explicit redirect admission should not pay for these reads.
+    fn supports_tool_batch_redirect(&self) -> bool {
+        false
+    }
+
     /// A host for `turn`, stopping its tools on `signals`.
     fn host(&self, turn: HostTurn, signals: &TurnSignals) -> Self::Host;
 

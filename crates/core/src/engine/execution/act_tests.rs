@@ -1467,3 +1467,7 @@ async fn test_idempotency_idempotent_tool_stale_running_reexecutes() {
     );
     assert_eq!(result.error_count, 0);
 }
+
+#[cfg(feature = "host")]
+#[path = "act_steering_tests.rs"]
+mod explicit_steering;

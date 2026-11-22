@@ -521,3 +521,154 @@ async fn a_resumed_lease_reports_progress_once_after_a_step_it_ran() {
         "a first lease has nothing to reset"
     );
 }
+
+#[tokio::test]
+async fn explicit_redirect_probe_is_read_only_targeted_and_reconstructible() {
+    use crate::engine::tool_steering::REDIRECT_TURN;
+    use crate::events::{Event, EventContext, InputMessageData};
+    let session_id = SessionId::new();
+    let target = TurnId::new();
+    let mut message = crate::RuntimeMessage::user("redirect");
+    message.metadata = Some(std::collections::HashMap::from([(
+        REDIRECT_TURN.to_string(),
+        serde_json::json!(target.to_string()),
+    )]));
+    let mut event = Event::new(
+        session_id,
+        EventContext::empty(),
+        InputMessageData::new(message),
+    );
+    event.sequence = Some(3);
+    let retained = Arc::new(Journal(vec![event]));
+    let rebuild = || {
+        let mut actor = leased();
+        actor.session_id = session_id;
+        actor.inbox_seq = 3;
+        let lease = Lease::new(
+            retained.clone(),
+            "holder".into(),
+            &actor,
+            Duration::from_secs(3),
+            1,
+        );
+        lease.advance(2);
+        lease
+    };
+    let warm = rebuild();
+    assert!(
+        warm.tool_batch_steering(target)
+            .redirected(target)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        warm.cursor(),
+        2,
+        "probing cannot consume the next reason's input"
+    );
+    assert!(
+        !warm
+            .tool_batch_steering(target)
+            .redirected(TurnId::new())
+            .await
+            .unwrap()
+    );
+    drop(warm);
+    let restarted = rebuild();
+    assert!(
+        restarted
+            .tool_batch_steering(target)
+            .redirected(target)
+            .await
+            .unwrap()
+    );
+    restarted.advance(3);
+    assert!(
+        !restarted
+            .tool_batch_steering(target)
+            .redirected(target)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn explicit_redirect_probe_only_reloads_new_journal_sequences() {
+    use crate::engine::tool_steering::REDIRECT_TURN;
+    use crate::events::{Event, EventContext, InputMessageData};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct TrackedJournal {
+        events: Mutex<Vec<Event>>,
+        offsets: Mutex<Vec<Option<i32>>>,
+    }
+    #[async_trait]
+    impl SessionActorStore for TrackedJournal {
+        async fn renew_actor_lease(
+            &self,
+            _: SessionId,
+            _: &str,
+            _: u64,
+            _: Duration,
+            _: i64,
+        ) -> Result<Option<ActorRenewal>> {
+            unreachable!("read-only steering fixture")
+        }
+        async fn release_actor(
+            &self,
+            _: SessionId,
+            _: &str,
+            _: u64,
+            _: i64,
+        ) -> Result<ActorRelease> {
+            unreachable!("read-only steering fixture")
+        }
+        async fn read_actor_journal(
+            &self,
+            id: SessionId,
+            after: Option<i32>,
+            limit: u32,
+        ) -> Result<ActorJournal> {
+            self.offsets.lock().unwrap().push(after);
+            let current = Journal(self.events.lock().unwrap().clone());
+            current.read_actor_journal(id, after, limit).await
+        }
+    }
+
+    let actor = leased();
+    let target = TurnId::new();
+    let journal = Arc::new(TrackedJournal::default());
+    let append = |index, target: Option<TurnId>| {
+        let mut input = crate::RuntimeMessage::user("input");
+        if let Some(target) = target {
+            input.metadata = Some(std::collections::HashMap::from([(
+                REDIRECT_TURN.to_string(),
+                serde_json::json!(target.to_string()),
+            )]));
+        }
+        let mut event = Event::new(
+            actor.session_id,
+            EventContext::empty(),
+            InputMessageData::new(input),
+        );
+        event.sequence = Some(index);
+        journal.events.lock().unwrap().push(event);
+    };
+    let lease = Lease::new(
+        journal.clone(),
+        "holder".into(),
+        &actor,
+        Duration::from_secs(3),
+        1,
+    );
+    lease.advance(2);
+    append(3, Some(TurnId::new()));
+    let gate = lease.tool_batch_steering(target);
+    assert!(!gate.redirected(target).await.unwrap());
+    append(4, Some(target));
+    assert!(gate.redirected(target).await.unwrap());
+    assert!(gate.redirected(target).await.unwrap());
+    assert_eq!(*journal.offsets.lock().unwrap(), vec![Some(2), Some(3)]);
+    assert_eq!(lease.cursor(), 2);
+}

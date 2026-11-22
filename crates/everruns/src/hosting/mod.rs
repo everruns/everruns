@@ -316,6 +316,12 @@ impl HostingStatus {
 /// One coherent authority and its activation policy.
 #[async_trait]
 pub trait SessionHosting: Send + Sync + 'static {
+    /// Whether this profile admits `Session::redirect_with_id`. An execution-
+    /// only worker with no redirect-producing ingress can opt out of probing.
+    fn supports_tool_batch_redirect(&self) -> bool {
+        true
+    }
+
     /// Execute a semantic command in the authority transaction using the shared
     /// Rust reducer. Remote hosts transport the command, never unchecked effects.
     async fn command(
