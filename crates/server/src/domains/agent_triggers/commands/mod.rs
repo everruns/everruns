@@ -676,16 +676,52 @@ impl Command for ListAgentTriggerRuns {
             )
             .await
             .map_err(|err| classify_anyhow(err.into()))?;
-        Ok(executions
-            .into_iter()
-            .map(|execution| AgentTriggerRun {
+        let store = durable_store(ctx)?;
+        let mut runs = Vec::with_capacity(executions.len());
+        for execution in executions {
+            let mut run = AgentTriggerRun {
                 id: execution.id.to_string(),
                 status: execution.status.to_string(),
                 scheduled_at: execution.scheduled_at,
                 completed_at: execution.completed_at,
                 error: execution.error,
-            })
-            .collect())
+            };
+            // A schedule tick "completes" once it queues its task; the run's
+            // outcome is that task's. Without this a run whose task failed
+            // reads as completed while no session ever started.
+            if let Some(task_id) = execution.task_id
+                && run.status == "completed"
+            {
+                match store.get_task(task_id).await {
+                    Ok(task) => apply_task_outcome(&mut run, &task),
+                    Err(error) => {
+                        tracing::debug!(%error, %task_id, "trigger run task not readable")
+                    }
+                }
+            }
+            runs.push(run);
+        }
+        Ok(runs)
+    }
+}
+
+/// Fold a scheduled run's task state into the run.
+fn apply_task_outcome(run: &mut AgentTriggerRun, task: &everruns_durable::TaskInfo) {
+    use everruns_durable::TaskStatus;
+    let (status, error) = match task.status {
+        TaskStatus::Completed => return,
+        TaskStatus::Pending if task.attempt > 0 => ("retrying", task.last_error.clone()),
+        TaskStatus::Pending => ("queued", None),
+        TaskStatus::Claimed => ("running", None),
+        TaskStatus::Failed | TaskStatus::Dead => ("failed", task.last_error.clone()),
+        TaskStatus::Cancelled => ("cancelled", task.last_error.clone()),
+    };
+    run.status = status.to_string();
+    if matches!(status, "queued" | "running" | "retrying") {
+        run.completed_at = None;
+    }
+    if error.is_some() {
+        run.error = error;
     }
 }
 
