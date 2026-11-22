@@ -384,8 +384,7 @@ export class PageChangeReviewController {
           const from =
             committed.from_revision ??
             (expected || entries.find((entry) => entry.action === "baseline")?.revision);
-          if (from && revision > from)
-            await this.makeReceipt(state, from, revision, "page", epoch);
+          if (from && revision > from) await this.makeReceipt(state, from, revision, "page", epoch);
           state.reviewPending = undefined;
           if (state.receipt && latest !== revision) state.receipt.stale = true;
           for (const form of forms) {
