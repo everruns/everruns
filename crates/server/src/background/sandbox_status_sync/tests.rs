@@ -74,11 +74,12 @@ async fn fixture() -> (
     let template: SandboxTemplateSpec = serde_json::from_value(json!({
         "target": {
             "kind": "managed", "provider": "daytona",
-            "credential": {"source": "session_user", "virtual_user_id": Uuid::nil()}
+            "credential": {"source": "session_user"}
         }
     }))
     .unwrap();
     let mut spec = crate::domains::sandbox_templates::resolution::resolve_spec(&template).unwrap();
+    spec.target.credential.virtual_user_id = Some(Uuid::nil());
     // The wire fixture replaces transport after validating the authored
     // template. A caller cannot configure a Daytona management endpoint.
     spec.target.options["api_base"] = json!(provider.uri());
