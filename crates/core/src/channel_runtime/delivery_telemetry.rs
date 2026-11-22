@@ -86,7 +86,9 @@ impl DeliveryTelemetry {
         kind: DeliveryKind,
         outcome: DeliveryOutcome,
     ) {
-        let Some(observer) = &self.observer else { return };
+        let Some(observer) = &self.observer else {
+            return;
+        };
         let Some(anchor) = &self.anchor else { return };
         if let Some(start) = start {
             observer.observe(platform, anchor, kind, outcome, start);
