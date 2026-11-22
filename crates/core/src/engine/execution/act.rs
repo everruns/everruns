@@ -169,6 +169,7 @@ where
     /// workers can skip already-settled calls and avoid double side-effects for
     /// `AtMostOnce` tools.
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
+    tool_batch_steering: Option<Arc<dyn super::tool_steering::ToolBatchSteering>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -204,6 +205,7 @@ where
             tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            tool_batch_steering: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -229,12 +231,19 @@ where
             tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            tool_batch_steering: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
+    }
+
+    /// Check explicit redirection only as a queued server call is admitted.
+    pub fn with_tool_batch_steering(mut self, steering: Option<Arc<dyn super::tool_steering::ToolBatchSteering>>) -> Self {
+        self.tool_batch_steering = steering;
+        self
     }
 
     /// Add a custom post-act hook.
@@ -736,15 +745,19 @@ where
                     locale.as_deref(),
                     network_access.as_ref(),
                     visible_tool_names.clone(),
+                    client_tool_calls.is_empty() && client_policy_results.is_empty(),
                 ))
             });
         // A call detaches only when nothing in its act waits on the client.
         // Boxed, like each call: a child turn re-enters this act inline.
-        let mut results = if client_tool_calls.is_empty() && client_policy_results.is_empty() {
+        let results = if client_tool_calls.is_empty() && client_policy_results.is_empty() {
             Box::pin(schedule).await
         } else {
             Box::pin(tool_detach::without(schedule)).await
         };
+        // All scheduled futures settle before propagating an admission/store
+        // failure. Do not cancel an already-running sibling.
+        let mut results = results.into_iter().collect::<Result<Vec<_>>>()?;
         results.extend(over_cap);
         if results
             .iter()
@@ -955,7 +968,8 @@ where
         locale: Option<&str>,
         network_access: Option<&crate::engine::network_access::NetworkAccessList>,
         visible_tool_names: Arc<HashSet<String>>,
-    ) -> ToolCallResult {
+        allow_redirect: bool,
+    ) -> Result<ToolCallResult> {
         tracing::debug!(
             session_id = %context.session_id,
             turn_id = %context.turn_id,
@@ -1002,7 +1016,7 @@ where
                 tool_name = %tool_call.name,
                 "ActAtom: outbound tool rate limit exceeded for org"
             );
-            return ToolCallResult {
+            return Ok(ToolCallResult {
                 tool_call: tool_call.clone(),
                 result: ToolResult {
                     details: None,
@@ -1019,11 +1033,18 @@ where
                 status: "error".to_string(),
                 connection_required: None,
                 determinism_fatal: None,
-            };
+            });
         }
 
         // Per-tool-call idempotency (EVE-530): claim before dispatch, replay if
         // already settled, refuse AtMostOnce re-execution on stale running claims.
+        let redirected = if allow_redirect {
+            match &self.tool_batch_steering {
+                Some(steering) => steering.redirected(context.turn_id).await?,
+                None => false,
+            }
+        } else { false };
+        let mut already_running = false;
         let claim_token = if let Some(ref store) = self.durable_tool_result_store {
             let turn_id = context.turn_id.to_string();
             match store
@@ -1075,7 +1096,7 @@ where
                                 .with_display_name(display_name.clone()),
                             ))
                             .await;
-                        return ToolCallResult {
+                        return Ok(ToolCallResult {
                             tool_call: tool_call.clone(),
                             result: ToolResult {
                                 details: None,
@@ -1090,7 +1111,7 @@ where
                             status: "error".to_string(),
                             connection_required: None,
                             determinism_fatal: Some(err_msg),
-                        };
+                        });
                     }
                     tracing::debug!(
                         session_id = %context.session_id,
@@ -1110,7 +1131,11 @@ where
                             raw_output: None,
                         });
                     let success = replayed_result.error.is_none();
-                    let status = if success { "success" } else { "error" };
+                    let status = if replayed_result.details.as_ref()
+                        .and_then(|d| d.get("execution_status"))
+                        .and_then(serde_json::Value::as_str) == Some("skipped") {
+                        "skipped"
+                    } else if success { "success" } else { "error" };
                     let result_fp = tool_result_fingerprint(&tool_call.name, &replayed_result);
                     let completed_data = ToolCompletedData::from_tool_result(
                         &tool_call,
@@ -1129,14 +1154,14 @@ where
                         ))
                         .await;
                     let conn_req = replayed_result.connection_required.clone();
-                    return ToolCallResult {
+                    return Ok(ToolCallResult {
                         tool_call,
                         result: replayed_result,
                         success,
                         status: status.to_string(),
                         connection_required: conn_req,
                         determinism_fatal: None,
-                    };
+                    });
                 }
 
                 Ok(ToolCallClaimResult::AlreadyRunning {
@@ -1177,7 +1202,7 @@ where
                                 .with_display_name(display_name.clone()),
                             ))
                             .await;
-                        return ToolCallResult {
+                        return Ok(ToolCallResult {
                             tool_call: tool_call.clone(),
                             result: ToolResult {
                                 details: None,
@@ -1192,12 +1217,20 @@ where
                             status: "error".to_string(),
                             connection_required: None,
                             determinism_fatal: Some(err_msg),
-                        };
+                        });
                     }
 
-                    let sec = tool_def
-                        .map(|d| d.side_effect_class())
-                        .unwrap_or(SideEffectClass::AtMostOnce);
+                    already_running = true;
+                    // A crash can fall between the claim and the skip receipt.
+                    // Never redispatch that uncertain call after an explicit
+                    // redirect, even if ordinarily safe to retry. Use the
+                    // existing honest interrupted outcome, not "never ran".
+                    let sec = if redirected {
+                        SideEffectClass::AtMostOnce
+                    } else {
+                        tool_def.map(|d| d.side_effect_class())
+                            .unwrap_or(SideEffectClass::AtMostOnce)
+                    };
                     match sec {
                         SideEffectClass::Pure | SideEffectClass::Idempotent => {
                             // Safe to re-execute; proceed as normal (no claim token).
@@ -1228,7 +1261,7 @@ where
                             let err_msg = format!(
                                 "tool '{}' was interrupted mid-execution during a prior \
                                  worker failure; result is uncertain and was not re-run \
-                                 (AtMostOnce safety)",
+                                 (AtMostOnce safety or explicit redirection)",
                                 tool_call.name
                             );
                             let result_fp = tool_result_fingerprint(
@@ -1251,7 +1284,7 @@ where
                                     .with_display_name(display_name.clone()),
                                 ))
                                 .await;
-                            return ToolCallResult {
+                            return Ok(ToolCallResult {
                                 tool_call: tool_call.clone(),
                                 result: ToolResult {
                                     details: None,
@@ -1266,7 +1299,7 @@ where
                                 status: "error".to_string(),
                                 connection_required: None,
                                 determinism_fatal: None,
-                            };
+                            });
                         }
                     }
                 }
@@ -1307,7 +1340,7 @@ where
                             .with_display_name(display_name.clone()),
                         ))
                         .await;
-                    return ToolCallResult {
+                    return Ok(ToolCallResult {
                         tool_call: tool_call.clone(),
                         result: ToolResult {
                             details: None,
@@ -1322,10 +1355,11 @@ where
                         status: "error".to_string(),
                         connection_required: None,
                         determinism_fatal: Some(err_msg),
-                    };
+                    });
                 }
 
                 Err(e) => {
+                    if redirected { return Err(e); }
                     tracing::warn!(
                         session_id = %context.session_id,
                         tool_call_id = %tool_call.id,
@@ -1338,6 +1372,28 @@ where
         } else {
             None
         };
+
+        if redirected && !already_running {
+            let result = ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                details: Some(serde_json::json!({"execution_status":"skipped", "reason":"explicit_redirect"})),
+                ..ToolResult::error("Not executed: the user explicitly redirected this turn before this call was admitted. Follow the new instruction at the next reason boundary.")
+            };
+            if let Some((store, token)) = self.durable_tool_result_store.as_ref().zip(claim_token) {
+                let settled = store.settle_tool_call(&context.turn_id.to_string(), &tool_call.id,
+                    serde_json::to_value(&result).map_err(|e| crate::engine::error::AgentLoopError::store(e.to_string()))?,
+                    "settled", token).await?;
+                if !settled { return Err(crate::engine::error::AgentLoopError::store("redirect skip lost its durable claim")); }
+            }
+            // No tool.started: no invocation took place. The completed error is
+            // paired to the model-authored call by id, never a fabricated success.
+            self.event_emitter.emit(EventRequest::new(context.session_id, event_context,
+                ToolCompletedData::from_tool_result(&tool_call, &result, "skipped", None)
+                    .with_fingerprints(tool_call_fingerprint, tool_result_fingerprint(&tool_call.name, &result))
+                    .with_display_name(display_name))).await?;
+            return Ok(ToolCallResult { tool_call, result, success: false,
+                status: "skipped".into(), connection_required: None, determinism_fatal: None });
+        }
 
         // tool.started (child of act.started); see `start_record`.
         let started = ToolStartedData {
@@ -1362,7 +1418,7 @@ where
         )
         .await
         {
-            return not_run;
+            return Ok(not_run);
         }
 
         // If tool definition not found, return error result
@@ -1405,7 +1461,7 @@ where
                 );
             }
 
-            return ToolCallResult {
+            return Ok(ToolCallResult {
                 tool_call: tool_call.clone(),
                 result: ToolResult {
                     details: None,
@@ -1420,7 +1476,7 @@ where
                 status: "error".to_string(),
                 connection_required: None,
                 determinism_fatal: None,
-            };
+            });
         };
 
         // Same context as the client-side pre-tool gate (one session either way). The
@@ -1495,12 +1551,12 @@ where
             _cancel_on_call_end: call_cancellation.drop_guard(),
         };
         if let Some(pre_hook_result) = pre_hook_result {
-            return Box::pin(tail.finish(Ok(pre_hook_result), None)).await;
+            return Ok(Box::pin(tail.finish(Ok(pre_hook_result), None)).await);
         }
         // Each branch boxed: a tool that runs a child turn re-enters the act
         // inline, and these futures inline made the nested debug-build stack
         // overflow 2 MiB.
-        match detacher.zip(switches) {
+        Ok(match detacher.zip(switches) {
             Some((detacher, switches)) => {
                 Box::pin(act_detach::run(
                     detacher,
@@ -1523,7 +1579,7 @@ where
                     tool_cancel::race(&tail.tool_context, context.session_id, invoke).await;
                 Box::pin(tail.finish_as(result, cpu_ns, cancelled)).await
             }
-        }
+        })
     }
 }
 

@@ -99,6 +99,10 @@ fn cancelled() -> AgentLoopError {
 
 #[async_trait]
 impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
+    fn tool_batch_steering(&self) -> Option<std::sync::Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
+        Some(self.lease.tool_batch_steering())
+    }
+
     async fn take(&self, _session_id: SessionId) -> Result<Vec<MessageId>> {
         let inputs = self.steering().await?;
         self.hosts.begin_phase(self.host, self.drive, Phase::Reason);

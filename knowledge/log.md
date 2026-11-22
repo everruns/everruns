@@ -1,5 +1,9 @@
 # Everruns Knowledge Update Log
 
+## 2026-11-22
+
+- [Tool execution](execution/tool-execution.md): targeted mid-batch redirection, paired skipped results, unchanged ordinary FIFO and approval behavior, and journal-backed replay boundaries.
+
 ## 2026-11-21
 
 - Replace the lifetime session count cap with an organization-configurable monthly creation allowance. [Resource Limits](execution/apis.md#resource-limits).

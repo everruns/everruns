@@ -627,6 +627,23 @@ impl Session {
         self.send_internal(input.into(), None).await
     }
 
+    /// Explicitly redirect one identified running turn. Already running tools
+    /// settle normally; tools still queued for dispatch return skipped results.
+    /// If the target turn has ended, this input is an ordinary follow-up and
+    /// cannot redirect a different turn. Waiting approvals are not resolved.
+    pub async fn redirect_with_id(
+        &self,
+        message_id: MessageId,
+        expected_turn_id: TurnId,
+        input: impl Into<InputMessage>,
+    ) -> Result<SentMessage, RunError> {
+        let input = input.into().with_metadata(
+            everruns_core::engine::tool_steering::REDIRECT_TURN,
+            serde_json::Value::String(expected_turn_id.to_string()),
+        );
+        self.admit_with_id(message_id, input, false, None).await
+    }
+
     /// Admit input under a caller-retained message identity. Use the same id
     /// and content after an uncertain reply, including after frontend loss.
     pub async fn send_with_id(
@@ -634,7 +651,7 @@ impl Session {
         message_id: MessageId,
         input: impl Into<InputMessage>,
     ) -> Result<SentMessage, RunError> {
-        self.admit_with_id(message_id, input.into(), false, None)
+        self.admit_with_id(message_id, ordinary_input(input.into()), false, None)
             .await
     }
 
@@ -647,7 +664,7 @@ impl Session {
         input: impl Into<InputMessage>,
         context: crate::hosting::InputContext,
     ) -> Result<SentMessage, RunError> {
-        self.admit_with_id(message_id, input.into(), false, Some(context))
+        self.admit_with_id(message_id, ordinary_input(input.into()), false, Some(context))
             .await
     }
 
@@ -1013,6 +1030,7 @@ impl Session {
         input: InputMessage,
         cancel: Option<crate::CancellationToken>,
     ) -> Result<SentMessage, RunError> {
+        let input = ordinary_input(input);
         if self.inner.execution.hosting().is_some() {
             return self
                 .admit_with_id(
@@ -1497,3 +1515,11 @@ impl From<AgentLoopError> for RunError {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+// Ordinary ingress cannot opt into redirection through caller metadata.
+fn ordinary_input(mut input: InputMessage) -> InputMessage {
+    if let Some(metadata) = &mut input.metadata {
+        metadata.remove(everruns_core::engine::tool_steering::REDIRECT_TURN);
+    }
+    input
+}

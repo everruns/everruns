@@ -284,6 +284,10 @@ impl Lease {
             .map_or(inbox, |position| position.min(inbox))
     }
 
+    pub(crate) fn tool_batch_steering(&self) -> Arc<dyn crate::engine::tool_steering::ToolBatchSteering> {
+        Arc::new(JournalSteering { store: self.store.clone(), session: self.session_id, after: self.cursor() })
+    }
+
     pub(crate) fn cursor(&self) -> i64 {
         self.cursor.load(Ordering::SeqCst)
     }
@@ -697,4 +701,31 @@ pub(super) fn until_next_tick(epoch: Instant, period: Duration) -> Duration {
     let elapsed = Instant::now().saturating_duration_since(epoch).as_nanos();
     let into = elapsed % period_nanos;
     Duration::from_nanos(u64::try_from(period_nanos - into).unwrap_or(u64::MAX))
+}
+
+// Capture the consumed cursor at the batch boundary. Reads never advance it;
+// the ordinary inbox delivers the redirect only after all results settle.
+struct JournalSteering {
+    store: Arc<dyn SessionActorStore>,
+    session: SessionId,
+    after: i64,
+}
+
+#[async_trait::async_trait]
+impl crate::engine::tool_steering::ToolBatchSteering for JournalSteering {
+    async fn redirected(&self, turn_id: everruns_contracts::typed_id::TurnId) -> Result<bool> {
+        let mut after = Some(i32::try_from(self.after).map_err(|_| AgentLoopError::store("input cursor out of range"))?);
+        loop {
+            let page = self.store.read_admission_journal(self.session, after, 256).await?;
+            for event in &page.events {
+                if event.context.turn_id.is_none()
+                    && let EventData::InputMessage(input) = &event.data
+                    && crate::engine::tool_steering::targets(input.message.metadata.as_ref(), turn_id) {
+                    return Ok(true);
+                }
+            }
+            if !page.has_more || page.events.is_empty() { return Ok(false); }
+            after = page.events.last().and_then(|e| e.sequence);
+        }
+    }
 }

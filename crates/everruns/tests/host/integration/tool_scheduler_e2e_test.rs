@@ -299,3 +299,73 @@ async fn mixed_batch_serializes_class_and_parallelizes_rest_through_runtime() {
         log.global_max
     );
 }
+
+#[derive(Clone)]
+struct RedirectFixture {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+    invoked: Arc<Mutex<Vec<String>>>,
+}
+
+struct RedirectTool { name: &'static str, fixture: RedirectFixture }
+
+#[async_trait]
+impl Tool for RedirectTool {
+    fn name(&self) -> &str { self.name }
+    fn description(&self) -> &str { "offline steering fixture" }
+    fn parameters_schema(&self) -> Value { json!({"type":"object"}) }
+    fn hints(&self) -> ToolHints { ToolHints::default().with_concurrency_class("redirect") }
+    async fn execute(&self, _: Value) -> ToolExecutionResult {
+        self.fixture.invoked.lock().unwrap().push(self.name.to_string());
+        if self.name == "redirect_a" {
+            self.fixture.started.notify_one();
+            self.fixture.release.notified().await;
+        }
+        ToolExecutionResult::success(json!({"tool": self.name}))
+    }
+}
+
+impl Capability for RedirectFixture {
+    fn id(&self) -> &str { TEST_CAPABILITY_ID }
+    fn name(&self) -> &str { "Explicit redirect fixture" }
+    fn description(&self) -> &str { "offline deterministic race" }
+    fn status(&self) -> CapabilityStatus { CapabilityStatus::Available }
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        ["redirect_a", "redirect_b"].into_iter().map(|name| Box::new(RedirectTool { name, fixture: self.clone() }) as Box<dyn Tool>).collect()
+    }
+}
+
+#[tokio::test]
+async fn explicit_redirect_reaches_next_reason_after_tool_batch_settles() {
+    use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId, TurnId};
+    use everruns_core::events::EventData;
+    use everruns_core::host::{AcceptedTurnInput, TurnSteering};
+    let fixture = RedirectFixture { started: Arc::new(tokio::sync::Notify::new()), release: Arc::new(tokio::sync::Notify::new()), invoked: Arc::new(Mutex::new(vec![])) };
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(fixture.clone());
+    let (sid, hid, aid) = (SessionId::new(), HarnessId::new(), AgentId::new());
+    let runtime = everruns::batteries::runtime_builder()
+        .host_composition(HostComposition::new(capabilities, DriverRegistry::new()))
+        .llm_sim_as_default(LlmSimConfig::fixed("Followed the redirect.").with_tool_call_sequence(vec![vec![call("A", "redirect_a"), call("B", "redirect_b")], vec![]]))
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
+        .harness(harness(hid)).agent(agent(aid)).session(session(sid, hid, aid))
+        .build().await.unwrap();
+    let turn = TurnId::new();
+    let steering = TurnSteering::new();
+    let redirect = AcceptedTurnInput::new(everruns_core::InputMessage::user("Change direction now."));
+    let redirect_id = redirect.message_id();
+    let send_redirect = async {
+        fixture.started.notified().await;
+        steering.try_redirect(redirect, turn).unwrap();
+        fixture.release.notify_one();
+    };
+    let (result, ()) = tokio::time::timeout(Duration::from_secs(10), async { tokio::join!(runtime.run_steerable_turn(sid, AcceptedTurnInput::new(everruns_core::InputMessage::user("Run A and B.")), turn, steering.clone()), send_redirect) }).await.expect("steering race must settle");
+    assert!(result.unwrap().success);
+    assert_eq!(*fixture.invoked.lock().unwrap(), vec!["redirect_a"]);
+    let events = runtime.events().await.unwrap();
+    let completed = events.iter().position(|e| matches!(&e.data, EventData::ToolCompleted(d) if d.tool_call_id == "B" && d.status == "skipped")).expect("paired skipped result");
+    assert!(!events.iter().any(|e| matches!(&e.data, EventData::ToolStarted(d) if d.tool_call.id == "B")));
+    let delivered = events.iter().position(|e| matches!(&e.data, EventData::InputMessage(d) if d.message.id == redirect_id)).expect("redirect delivered");
+    assert!(completed < delivered, "new input cannot split an unresolved tool batch");
+    assert!(events[delivered + 1..].iter().any(|e| matches!(&e.data, EventData::ReasonStarted(_))), "next reason follows delivery");
+}
