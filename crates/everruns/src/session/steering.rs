@@ -16,6 +16,17 @@ impl Session {
         expected_turn_id: TurnId,
         input: impl Into<InputMessage>,
     ) -> Result<SentMessage, RunError> {
+        if !self
+            .inner
+            .execution
+            .hosting()
+            .is_some_and(|p| p.supports_tool_batch_redirect())
+        {
+            return Err(AgentLoopError::config(
+                "explicit redirect requires a supporting Engine hosting profile",
+            )
+            .into());
+        }
         let input = input.into().with_metadata(
             everruns_core::engine::tool_steering::REDIRECT_TURN,
             serde_json::Value::String(expected_turn_id.to_string()),

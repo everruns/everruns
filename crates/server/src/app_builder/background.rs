@@ -467,6 +467,10 @@ pub(super) async fn start_maintenance(
         ),
         crate::background::sandbox_idle_sweep::idle_sweep_job(
             deps.background_pool.clone(),
+            deps.session_sandbox_service.clone(),
+        ),
+        crate::background::sandbox_status_sync::sync_job(
+            deps.background_pool.clone(),
             deps.session_sandbox_service,
         ),
         // Needs the connection resolver to decrypt provider accounts; disabled without one.

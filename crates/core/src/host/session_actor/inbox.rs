@@ -102,7 +102,9 @@ impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
     fn tool_batch_steering(
         &self,
     ) -> Option<std::sync::Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
-        Some(self.lease.tool_batch_steering())
+        self.hosts
+            .supports_tool_batch_redirect()
+            .then(|| self.lease.tool_batch_steering(self.drive.turn_id))
     }
 
     async fn take(&self, _session_id: SessionId) -> Result<Vec<MessageId>> {

@@ -176,6 +176,12 @@ fn binding_of(binding: &EngineBinding) -> SessionBinding {
 
 #[async_trait]
 impl<A: WorkerAdapters> SessionHosting for PlatformHosting<A> {
+    fn supports_tool_batch_redirect(&self) -> bool {
+        // This worker is execution-only, and the platform's HTTP message
+        // ingress deliberately strips the explicit redirect marker.
+        false
+    }
+
     async fn command(&self, _session: SessionId, _command: SessionCommand) -> Result<Value> {
         Err(execution_only())
     }

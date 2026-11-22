@@ -65,7 +65,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use tokio::sync::{Notify, watch};
 
 use super::store::{ActorFence, ActorRelease, LeasedActor, SessionActorStore};
@@ -286,11 +286,13 @@ impl Lease {
 
     pub(crate) fn tool_batch_steering(
         &self,
+        turn: TurnId,
     ) -> Arc<dyn crate::engine::tool_steering::ToolBatchSteering> {
         Arc::new(JournalSteering {
             store: self.store.clone(),
             session: self.session_id,
-            after: self.cursor(),
+            turn,
+            progress: Mutex::new((self.cursor(), false)),
         })
     }
 
@@ -709,26 +711,39 @@ pub(super) fn until_next_tick(epoch: Instant, period: Duration) -> Duration {
     Duration::from_nanos(u64::try_from(period_nanos - into).unwrap_or(u64::MAX))
 }
 
-// Capture the consumed cursor at the batch boundary. Reads never advance it;
-// the ordinary inbox delivers the redirect only after all results settle.
+// The probe tracks only sequences it actually examined. It never advances the
+// consumed cursor, which still delivers the redirect with the next reason.
+// Concurrent calls may read the same snapshot without serializing network I/O.
 struct JournalSteering {
     store: Arc<dyn SessionActorStore>,
     session: SessionId,
-    after: i64,
+    turn: TurnId,
+    progress: Mutex<(i64, bool)>,
 }
 
 #[async_trait::async_trait]
 impl crate::engine::tool_steering::ToolBatchSteering for JournalSteering {
-    async fn redirected(&self, turn_id: everruns_contracts::typed_id::TurnId) -> Result<bool> {
-        let mut after = Some(
-            i32::try_from(self.after)
-                .map_err(|_| AgentLoopError::store("input cursor out of range"))?,
-        );
+    async fn redirected(&self, turn_id: TurnId) -> Result<bool> {
+        if turn_id != self.turn {
+            return Ok(false);
+        }
+        let (cursor, redirected) = *self.progress.lock().unwrap_or_else(|p| p.into_inner());
+        if redirected {
+            return Ok(true);
+        }
+        let mut after = i32::try_from(cursor)
+            .map_err(|_| AgentLoopError::store("input cursor out of range"))?;
+        let mut first_head = None;
         loop {
             let page = self
                 .store
-                .read_admission_journal(self.session, after, 256)
+                .read_admission_journal(self.session, Some(after), 256)
                 .await?;
+            if first_head.is_none() {
+                first_head = page.head_sequence;
+            }
+            let mut saw_redirect = false;
+            let mut scanned = after;
             for event in &page.events {
                 if event.context.turn_id.is_none()
                     && let EventData::InputMessage(input) = &event.data
@@ -737,13 +752,27 @@ impl crate::engine::tool_steering::ToolBatchSteering for JournalSteering {
                         turn_id,
                     )
                 {
-                    return Ok(true);
+                    saw_redirect = true;
+                }
+                if let Some(seq) = event.sequence {
+                    scanned = scanned.max(seq);
                 }
             }
-            if !page.has_more || page.events.is_empty() {
-                return Ok(false);
+            let redirected = {
+                let mut progress = self.progress.lock().unwrap_or_else(|p| p.into_inner());
+                progress.0 = progress.0.max(i64::from(scanned));
+                progress.1 |= saw_redirect;
+                progress.1
+            };
+            if redirected || !page.has_more || first_head.is_some_and(|head| scanned >= head) {
+                return Ok(redirected);
             }
-            after = page.events.last().and_then(|e| e.sequence);
+            if scanned == after {
+                return Err(AgentLoopError::store(
+                    "admission journal pagination made no progress",
+                ));
+            }
+            after = scanned;
         }
     }
 }

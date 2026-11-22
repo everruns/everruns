@@ -18,6 +18,7 @@ pub mod event_retention;
 
 // Pauses managed Sandboxes whose in-process idle timer was lost
 pub mod sandbox_idle_sweep;
+pub mod sandbox_status_sync;
 
 // Stops, then deletes, managed provider sandboxes no record tracks
 pub mod sandbox_orphan_scan;

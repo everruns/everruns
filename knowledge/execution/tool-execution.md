@@ -564,7 +564,14 @@ never happened. The admission check is not an
 atomic transaction with a remote tool invocation: a call admitted just before
 a redirect may still run. This is safe-boundary steering, not interruption.
 
-The journal probe is a committed-ingress read, not a lifecycle flush. It adds
-an authority read at each scheduled server-call admission; deployments should
-measure this overhead before enabling high-fan-out remote workloads. Replacing
-it with local notifications alone would lose cross-worker correctness.
+The journal probe is a committed-ingress read, not a lifecycle flush. A
+Framework hosting profile that can admit a redirect keeps this gate, including
+remote Durable Object authorities. The platform execution-only worker does
+not expose explicit redirect admission and makes no new reads for it. In
+admitting profiles, each not-yet-redirected tool admission reads the authority
+(up to additional pages if needed). A separate per-batch cursor avoids reading
+old events again on later sequential admissions; concurrently admitted tools
+can read overlapping pages. Once the matching redirect is observed, the
+remaining calls skip without reads. This bounds redundant event payload, not
+remote round trips; measure RTT where the authority is remote. Local hints
+alone cannot provide the same cross-worker ordering.

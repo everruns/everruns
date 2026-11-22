@@ -1164,3 +1164,174 @@ async fn sqlite_explicit_redirect_skips_queued_tool_and_joins_same_turn() {
             .any(|event| event.event_type() == "reason.started")
     );
 }
+
+// Qualification only: an independently running owner and a different writer
+// share only the SQLite authority. Kill the owner after redirect commits,
+// while A is in flight. A new owner must never dispatch old B.
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn steering_qualification_real_process_takeover() {
+    use serde_json::{Value, json};
+    use std::time::Duration;
+
+    fn fixture(directory: &std::path::Path, initial: bool) -> Agent {
+        let a = directory.join("a-entered");
+        let b = directory.join("b-entered");
+        let model = if initial {
+            Model::simulated_with_config(
+                everruns::LlmSimConfig::fixed("done").with_tool_call_sequence(vec![
+                    vec![
+                        everruns::ToolCall {
+                            id: "A".into(),
+                            name: "steering_a".into(),
+                            arguments: json!({}),
+                        },
+                        everruns::ToolCall {
+                            id: "B".into(),
+                            name: "steering_b".into(),
+                            arguments: json!({}),
+                        },
+                    ],
+                    vec![],
+                ]),
+            )
+        } else {
+            Model::simulated("done")
+        };
+        Agent::builder()
+            .instructions("Run A before B, then respond.")
+            .model(model)
+            .tool(
+                everruns::FunctionTool::new(
+                    "steering_a",
+                    "Fixture latch",
+                    json!({"type":"object"}),
+                    move |_: Value| {
+                        let a = a.clone();
+                        async move {
+                            std::fs::write(a, b"in flight").unwrap();
+                            std::future::pending::<Result<Value, String>>().await
+                        }
+                    },
+                )
+                .concurrency_class("steering"),
+            )
+            .tool(
+                everruns::FunctionTool::new(
+                    "steering_b",
+                    "Fixture observer",
+                    json!({"type":"object"}),
+                    move |_: Value| {
+                        let b = b.clone();
+                        async move {
+                            std::fs::write(b, b"started").unwrap();
+                            Ok::<_, String>(json!({}))
+                        }
+                    },
+                )
+                .concurrency_class("steering"),
+            )
+            .build()
+            .unwrap()
+    }
+    if let Ok(role) = std::env::var("STEERING_QUAL_ROLE") {
+        let dir = std::path::PathBuf::from(std::env::var("STEERING_QUAL_DIR").unwrap());
+        let id = std::env::var("STEERING_QUAL_ID")
+            .unwrap()
+            .parse::<SessionId>()
+            .unwrap();
+        let profile = everruns::hosting::SqliteHosting::open(dir.join("authority.db")).unwrap();
+        let host = engine(External(profile.clone()), fixture(&dir, role == "owner"));
+        if role == "owner" {
+            host.activate(id).await.unwrap();
+        } else {
+            profile
+                .supervise(host, everruns::CancellationToken::new())
+                .await
+                .unwrap();
+        }
+        return;
+    }
+    struct Child(std::process::Child);
+    impl Drop for Child {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let dir = directory.path();
+    let id = SessionId::new();
+    let profile = everruns::hosting::SqliteHosting::open(dir.join("authority.db")).unwrap();
+    let writer = engine(External(profile), fixture(dir, true));
+    let session = writer.create_registered(id, &build()).await.unwrap();
+    let original = session.send("run the batch").await.unwrap();
+    let spawn = |role: &str| {
+        let log = std::fs::File::create(dir.join(format!("{role}.log"))).unwrap();
+        Child(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "controls::steering_qualification_real_process_takeover",
+                    "--nocapture",
+                ])
+                .env("STEERING_QUAL_ROLE", role)
+                .env("STEERING_QUAL_DIR", dir)
+                .env("STEERING_QUAL_ID", id.to_string())
+                .stdout(std::process::Stdio::from(log.try_clone().unwrap()))
+                .stderr(std::process::Stdio::from(log))
+                .spawn()
+                .unwrap(),
+        )
+    };
+    let owner = spawn("owner");
+    tokio::time::timeout(Duration::from_secs(15), async {
+        while !dir.join("a-entered").exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "old owner never entered A: {}",
+            std::fs::read_to_string(dir.join("owner.log")).unwrap()
+        )
+    });
+    assert!(!dir.join("b-entered").exists());
+    let target = writer.session_status(id).await.unwrap().open_turn.unwrap();
+    let redirect = session
+        .redirect_with_id(MessageId::new(), target, "please stop old B")
+        .await
+        .unwrap();
+    drop(owner);
+    let _replacement = spawn("replacement");
+    let outcome = tokio::time::timeout(Duration::from_secs(45), original.wait())
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "replacement did not finish: {}",
+                std::fs::read_to_string(dir.join("replacement.log")).unwrap()
+            )
+        })
+        .unwrap();
+    assert!(outcome.success);
+    assert_eq!(outcome.turn_id, target.to_string());
+    let redirected = redirect.wait().await.unwrap();
+    assert_eq!(redirected.turn_id, outcome.turn_id);
+    assert!(!dir.join("b-entered").exists(), "recovery dispatched B");
+    let events = session.events_after(0).await.unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type() == "tool.completed"
+                && event.canonical_json()["data"]["tool_call_id"] == "B"
+                && event.canonical_json()["data"]["status"] == "skipped")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type() == "tool.completed"
+                && event.canonical_json()["data"]["tool_call_id"] == "A"
+                && event.canonical_json()["data"]["status"] == "interrupted")
+    );
+}
