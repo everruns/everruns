@@ -1434,7 +1434,7 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
 }
 
 mod github;
-mod grant_health;
+mod marked_grants;
 mod user_or_service;
 
 mod service_api_key;
