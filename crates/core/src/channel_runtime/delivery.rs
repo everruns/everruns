@@ -43,7 +43,9 @@ use serde_json::Value;
 use tracing::warn;
 
 use super::approval::approval_prompt;
-use super::delivery_telemetry::{DeliveryKind, DeliveryOutcome, DeliveryTelemetry};
+use super::delivery_telemetry::{
+    DeliveryKind, DeliveryObserver, DeliveryOutcome, DeliveryTelemetry,
+};
 use super::progress::TaskProgress;
 use super::{ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundChannelMessage};
 use crate::conversation::NO_REPLY_TOOL_NAME;
@@ -143,16 +145,17 @@ impl DeliveryEvent {
     pub fn from_envelope(envelope: &Value) -> Option<Self> {
         let sequence = envelope.get("sequence").and_then(Value::as_i64);
         let event_type = envelope.get("type")?.as_str()?;
-        let turn_traceparent = if event_type == TURN_STARTED && sequence.is_some_and(|sequence| sequence > 0) {
-            envelope
-                .get("metadata")
-                .and_then(|metadata| metadata.get(crate::causal::TURN_TRACEPARENT_KEY))
-                .and_then(Value::as_str)
-                .filter(|value| value.len() == 55)
-                .map(str::to_string)
-        } else {
-            None
-        };
+        let turn_traceparent =
+            if event_type == TURN_STARTED && sequence.is_some_and(|sequence| sequence > 0) {
+                envelope
+                    .get("metadata")
+                    .and_then(|metadata| metadata.get(crate::causal::TURN_TRACEPARENT_KEY))
+                    .and_then(Value::as_str)
+                    .filter(|value| value.len() == 55)
+                    .map(str::to_string)
+            } else {
+                None
+            };
         Some(Self {
             sequence,
             event_type: event_type.to_string(),
@@ -265,6 +268,10 @@ impl TurnDelivery {
         }
     }
 
+    pub(super) fn set_observer(&mut self, observer: Option<Arc<dyn DeliveryObserver>>) {
+        self.telemetry.observer = observer;
+    }
+
     /// Tell the delivery a message's platform key it did not post itself
     /// (the input message, an earlier reply), so the agent's reactions on it
     /// reach the platform.
@@ -370,9 +377,7 @@ impl TurnDelivery {
             }
             TASK_CREATED | TASK_UPDATED => self.on_task(&event.data),
             TURN_STARTED => {
-                if self.adapter.platform() == "slack"
-                    && let Some(carrier) = &event.turn_traceparent
-                {
+                if let Some(carrier) = &event.turn_traceparent {
                     self.telemetry.anchor(carrier);
                 }
                 self.set_status(self.options.thinking_status.clone()).await;
@@ -519,12 +524,17 @@ impl TurnDelivery {
         };
         // `replace` closes the stream. When it fails the stream is still open,
         // and every start must end in a stop.
-        let span = self.telemetry.start(DeliveryKind::Reply);
+        let started = self.telemetry.start();
         let result = streaming
             .replace(&stream.handle, replacement, &self.context)
             .await;
         let outcome = DeliveryOutcome::from(&result);
-        span.finish(outcome);
+        self.telemetry.finish(
+            self.adapter.platform(),
+            started,
+            DeliveryKind::Reply,
+            outcome,
+        );
         if let Some(error_type) = outcome.error_type() {
             warn!(session_id = %self.session_id, error_type, "channel: could not replace a streamed message");
             let _ = streaming.stop(&stream.handle, &self.context).await;
@@ -556,8 +566,14 @@ impl TurnDelivery {
             {
                 stream.text = text.clone();
             }
-            let span = self.telemetry.start(DeliveryKind::Reply);
-            span.finish(self.close_stream(id).await);
+            let started = self.telemetry.start();
+            let outcome = self.close_stream(id).await;
+            self.telemetry.finish(
+                self.adapter.platform(),
+                started,
+                DeliveryKind::Reply,
+                outcome,
+            );
             return;
         }
 
@@ -565,13 +581,18 @@ impl TurnDelivery {
             return;
         }
         let Some(text) = text else { return };
-        let span = self.telemetry.start(DeliveryKind::Reply);
+        let started = self.telemetry.start();
         let posted = self.post_message(text, message_id.as_deref()).await;
         let outcome = posted
             .as_ref()
             .err()
             .map_or(DeliveryOutcome::Succeeded, DeliveryOutcome::from);
-        span.finish(outcome);
+        self.telemetry.finish(
+            self.adapter.platform(),
+            started,
+            DeliveryKind::Reply,
+            outcome,
+        );
         match posted {
             Ok(()) => {
                 if let Some(id) = message_id {
@@ -717,12 +738,17 @@ impl TurnDelivery {
         let Some(prompt) = approval_prompt(data) else {
             return;
         };
-        let span = self.telemetry.start(DeliveryKind::Approval);
+        let started = self.telemetry.start();
         let result = approvals
             .prompt(self.session_id, &prompt, &self.context)
             .await;
         let outcome = DeliveryOutcome::from(&result);
-        span.finish(outcome);
+        self.telemetry.finish(
+            self.adapter.platform(),
+            started,
+            DeliveryKind::Approval,
+            outcome,
+        );
         if let Some(error_type) = outcome.error_type() {
             warn!(session_id = %self.session_id, error_type, "channel: could not show an approval prompt");
         } else {

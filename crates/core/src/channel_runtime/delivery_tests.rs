@@ -635,18 +635,25 @@ fn envelopes_are_read_from_the_canonical_shape() {
     assert_eq!(event.sequence, Some(7));
     assert_eq!(event.input_message_id.as_deref(), Some("message_1"));
     assert_eq!(event.data["delta"], "x");
-    assert!(event.turn_traceparent.is_none(), "only committed starts carry a parent");
+    assert!(
+        event.turn_traceparent.is_none(),
+        "only committed starts carry a parent"
+    );
     let mut turn_start = envelope;
     turn_start["type"] = json!(TURN_STARTED);
-    assert!(DeliveryEvent::from_envelope(&turn_start)
-        .unwrap()
-        .turn_traceparent
-        .is_some());
+    assert!(
+        DeliveryEvent::from_envelope(&turn_start)
+            .unwrap()
+            .turn_traceparent
+            .is_some()
+    );
     turn_start["sequence"] = Value::Null;
-    assert!(DeliveryEvent::from_envelope(&turn_start)
-        .unwrap()
-        .turn_traceparent
-        .is_none());
+    assert!(
+        DeliveryEvent::from_envelope(&turn_start)
+            .unwrap()
+            .turn_traceparent
+            .is_none()
+    );
     assert!(!event.is_terminal());
     assert!(DeliveryEvent::from_envelope(&json!({"data": {}})).is_none());
 }
@@ -711,23 +718,11 @@ async fn an_approval_pause_is_drawn_and_counts_as_delivered() {
 #[cfg(feature = "otel")]
 #[tokio::test]
 async fn slack_delivery_traces_distinguish_a_finished_turn_from_delivery_failure() {
-    use opentelemetry::global::BoxedTracer;
-    use opentelemetry::trace::{Span, Tracer, TracerProvider};
-    use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider};
+    use crate::host::observability::delivery::test_support::DeliveryTraceFixture;
 
-    let exporter = InMemorySpanExporter::default();
-    let provider = SdkTracerProvider::builder()
-        .with_simple_exporter(exporter.clone())
-        .build();
-    let tracer = provider.tracer("test");
+    let trace = DeliveryTraceFixture::new();
     for (failed, stream) in [(false, false), (true, false), (false, true), (true, true)] {
-        let mut turn = tracer.start("durable.turn");
-        let turn_context = turn.span_context().clone();
-        let carrier = format!(
-            "00-{}-{}-01",
-            turn_context.trace_id(),
-            turn_context.span_id()
-        );
+        let carrier = trace.completed_turn_carrier();
         let recorder = Arc::new(Recorder {
             approvals: true,
             reactions: true,
@@ -739,7 +734,7 @@ async fn slack_delivery_traces_distinguish_a_finished_turn_from_delivery_failure
             ..Recorder::default()
         });
         let mut delivery = delivery(&recorder, DeliveryOptions::default());
-        delivery.telemetry.tracer = Some(BoxedTracer::new(Box::new(tracer.clone())));
+        delivery.set_observer(Some(trace.observer()));
         delivery.context.auth_token = "PRIVATE_TOKEN".into();
         // The detached delivery task learns the trusted anchor from the
         // committed turn.start, not from the current thread or raw input.
@@ -750,12 +745,13 @@ async fn slack_delivery_traces_distinguish_a_finished_turn_from_delivery_failure
         }))
         .unwrap();
         delivery.observe(&start).await;
-        delivery.observe(&approval_completed("PRIVATE_PROMPT")).await;
+        delivery
+            .observe(&approval_completed("PRIVATE_PROMPT"))
+            .await;
         if stream {
             delivery.observe(&delta("m1", "PRIVATE_")).await;
         }
         delivery.observe(&completed("m1", "PRIVATE_REPLY")).await;
-        turn.end();
         delivery.observe(&event(TURN_COMPLETED, json!({}))).await;
 
         assert!(delivery.is_finished());
@@ -765,7 +761,11 @@ async fn slack_delivery_traces_distinguish_a_finished_turn_from_delivery_failure
         );
         let mut expected = vec![Call::Approval("PRIVATE_PROMPT".into())];
         if stream {
-            expected.extend([Call::Start, Call::Append("PRIVATE_REPLY".into()), Call::Stop]);
+            expected.extend([
+                Call::Start,
+                Call::Append("PRIVATE_REPLY".into()),
+                Call::Stop,
+            ]);
         } else {
             expected.push(Call::Post("PRIVATE_REPLY".into()));
             if failed {
@@ -773,37 +773,7 @@ async fn slack_delivery_traces_distinguish_a_finished_turn_from_delivery_failure
             }
         }
         assert_eq!(recorder.calls(), expected);
-        let spans = exporter.get_finished_spans().unwrap();
-        let mut deliveries = spans.iter().filter(|span| {
-            span.span_context.trace_id() == turn_context.trace_id()
-                && span.name == "agent.channel.deliver"
-        });
-        for (kind, error) in [
-            ("approval", "transient_delivery"),
-            ("reply", "permanent_delivery"),
-        ] {
-            let span = deliveries.next().unwrap();
-            let attr = |key| {
-                span.attributes
-                    .iter()
-                    .find(|kv| kv.key.as_str() == key)
-                    .map(|kv| kv.value.to_string())
-            };
-            assert_eq!(span.parent_span_id, turn_context.span_id());
-            assert_eq!(attr("agent.channel.delivery.kind").as_deref(), Some(kind));
-            let outcome = if failed { "failed" } else { "succeeded" };
-            assert_eq!(
-                attr("agent.channel.delivery.outcome").as_deref(),
-                Some(outcome)
-            );
-            assert_eq!(attr("error.type").as_deref(), failed.then_some(error));
-            assert!(!format!("{span:?}").contains("PRIVATE_"));
-            assert!(!format!("{span:?}").contains("https://slack.example"));
-        }
-        assert!(
-            deliveries.next().is_none(),
-            "do not count the fallback notice as the reply"
-        );
+        trace.assert_deliveries(&carrier, failed);
     }
 }
 

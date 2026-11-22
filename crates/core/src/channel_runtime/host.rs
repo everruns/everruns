@@ -43,6 +43,7 @@ use serde_json::{Value, json};
 use tracing::{debug, warn};
 
 use super::attachments::{AttachmentIntake, AttachmentPolicy, AttachmentStore, ReceivedAttachment};
+use super::delivery_telemetry::DeliveryObserver;
 use super::{
     CHANNEL_MESSAGE_KEY, ChannelDeliveryAdapter, ChannelDriver, ChannelError, ChannelRequest,
     ChannelResponse, ChannelStore, ControlAction, DeliveryEvent, DeliveryOptions, DeliveryStep,
@@ -465,6 +466,7 @@ struct Inner {
     lease: Duration,
     egress: Option<Arc<dyn EgressService>>,
     attachments: AttachmentPolicy,
+    delivery_observer: Option<Arc<dyn DeliveryObserver>>,
 }
 
 /// Runs channels against one host's sessions. Cheap to clone.
@@ -483,6 +485,7 @@ pub struct ChannelHostBuilder {
     lease: Duration,
     egress: Option<Arc<dyn EgressService>>,
     attachments: AttachmentPolicy,
+    delivery_observer: Option<Arc<dyn DeliveryObserver>>,
 }
 
 impl ChannelHostBuilder {
@@ -531,6 +534,12 @@ impl ChannelHostBuilder {
         self
     }
 
+    /// Observe delivery outcomes without changing the channel's send path.
+    pub fn delivery_observer(mut self, observer: Arc<dyn DeliveryObserver>) -> Self {
+        self.delivery_observer = Some(observer);
+        self
+    }
+
     /// How often open streams are flushed.
     pub fn flush_interval(mut self, interval: Duration) -> Self {
         self.flush_interval = interval;
@@ -558,6 +567,7 @@ impl ChannelHostBuilder {
                 lease: self.lease,
                 egress: self.egress,
                 attachments: self.attachments,
+                delivery_observer: self.delivery_observer,
             }),
         }
     }
@@ -574,6 +584,7 @@ impl ChannelHost {
             lease: DEFAULT_DELIVERY_LEASE,
             egress: None,
             attachments: AttachmentPolicy::default(),
+            delivery_observer: None,
         }
     }
 

@@ -207,7 +207,7 @@ fn causal_span_context(link: &CausalLink) -> SpanContext {
 
 const TURN_ANCHOR_KEY: &str = "everruns.turn_traceparent";
 
-pub(super) fn traceparent(context: &SpanContext) -> String {
+pub(crate) fn traceparent(context: &SpanContext) -> String {
     format!(
         "00-{}-{}-{:02x}",
         context.trace_id(),

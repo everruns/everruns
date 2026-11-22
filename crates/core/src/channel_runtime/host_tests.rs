@@ -110,7 +110,6 @@ impl ChannelSessionPort for FakePort {
             .clone()
             .unwrap_or(SendResolution::Assigned {
                 turn_id: None,
-            turn_traceparent: None,
                 steered: false,
             }))
     }
@@ -859,6 +858,7 @@ async fn a_stream_turn_yields_its_own_events_and_ends_at_the_turn_end() {
             data: json!({"delta": "hi"}),
             input_message_id: None,
             turn_id: None,
+            turn_traceparent: None,
         },
     );
     port.reply(&session, "turn_1", "hi there");
