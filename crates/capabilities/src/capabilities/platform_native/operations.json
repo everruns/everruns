@@ -13514,6 +13514,29 @@
     "read_only": true
   },
   {
+    "description": "Read the full recorded input of one trace turn.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        },
+        "turn": {
+          "description": "Turn number.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "name": "get_session_trace_turn_input",
+    "read_only": true
+  },
+  {
     "description": "Show what a session's turn is doing or got done.",
     "input_schema": {
       "description": "Work report of one turn, or of the session's latest turn.",

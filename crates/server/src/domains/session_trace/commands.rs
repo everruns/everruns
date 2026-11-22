@@ -576,6 +576,7 @@ pub struct GetSessionTraceTurnInput {
     path = "/v1/sessions/{session_id}/trace/turns/{turn}/input",
     policy = SESSION_VIEW,
     positional = "session_id",
+    cli = CliRoute::new(&["sessions", "trace", "turns", "input"], "get").with_examples(&[CliExample::new("Read the original input of turn 12", "everruns sessions trace turns input get --session-id session_01h9 --turn 12")]),
     http = plain,
 )]
 impl Command for GetSessionTraceTurnInput {

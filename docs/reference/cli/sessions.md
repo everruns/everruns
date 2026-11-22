@@ -87,6 +87,7 @@ Running and archived sessions, their state and participants.
 | [`sessions trace get`](#sessions-trace-get) | Summarize a session's trace: turn, step and error totals, a minimap of turn buckets, and the turns that failed. |
 | [`sessions trace turns list`](#sessions-trace-turns-list) | List a page of a session's turns with their steps: model calls, tool calls, approvals, sub-agents and messages, with repeated calls folded into batches. |
 | [`sessions trace turns events list`](#sessions-trace-turns-events-list) | List the raw events of one turn of a session's trace, without deltas; small payloads are inlined. |
+| [`sessions trace turns input get`](#sessions-trace-turns-input-get) | Read the full recorded input of one trace turn. |
 | [`sessions trace turns steps get`](#sessions-trace-turns-steps-get) | Read one step of a session's trace in full: tool input and output, the model request and response, and its raw events. |
 | [`sessions trace turns steps list`](#sessions-trace-turns-steps-list) | Page through the steps of one turn of a session's trace, optionally only the failed ones. |
 | [`sessions trace turns steps request list`](#sessions-trace-turns-steps-request-list) | Page through the messages a model call in a session's trace was sent, with each message's full content. |
@@ -1653,6 +1654,26 @@ Example:
 ```bash
 # Read the raw events of one turn
 everruns sessions trace turns events list --session-id session_01h9 --turn 12
+```
+
+## sessions trace turns input get
+
+Read the full recorded input of one trace turn.
+
+```bash
+everruns sessions trace turns input get [OPTIONS] --session-id <session_id> --turn <turn>
+```
+
+| Flag | Description |
+|---|---|
+| `--session-id <SESSION_ID>` | Required. Session's prefixed public identifier. |
+| `--turn <TURN>` | Required. Turn number. |
+
+Example:
+
+```bash
+# Read the original input of turn 12
+everruns sessions trace turns input get --session-id session_01h9 --turn 12
 ```
 
 ## sessions trace turns steps get
