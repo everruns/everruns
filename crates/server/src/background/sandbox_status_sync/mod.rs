@@ -82,6 +82,29 @@ async fn sync(pool: &PgPool, service: &SessionSandboxService) -> anyhow::Result<
     let pending = candidates(pool, BATCH).await?;
     stream::iter(pending)
         .for_each_concurrent(CONCURRENCY, |candidate| async move {
+            // Reserve the polling clock before I/O. Overlapping sweeps share
+            // the cooldown, and an active session whose lifecycle keeps
+            // changing still makes room for the next Sandbox in the batch.
+            let reserved = sqlx::query(
+                "UPDATE sandboxes SET provider_status_checked_at = now()
+                 WHERE id = $1 AND org_id = $2 AND generation = $3
+                   AND deleted_at IS NULL
+                   AND (provider_status_checked_at IS NULL
+                        OR provider_status_checked_at < now() - interval '5 minutes')",
+            )
+            .bind(candidate.id)
+            .bind(candidate.org_id)
+            .bind(candidate.generation)
+            .execute(pool)
+            .await;
+            match reserved {
+                Ok(result) if result.rows_affected() > 0 => {}
+                Ok(_) => return,
+                Err(error) => {
+                    tracing::warn!(sandbox_id = %candidate.id, %error, "Sandbox provider status reservation failed");
+                    return;
+                }
+            }
             let observation = tokio::time::timeout(
                 CHECK_TIMEOUT,
                 service.provider_status(candidate.org_id, candidate.session_id),

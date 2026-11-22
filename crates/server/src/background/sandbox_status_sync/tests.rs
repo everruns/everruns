@@ -130,7 +130,9 @@ async fn automatic_status_sync_updates_fleet_without_changing_runtime_or_activit
     let before = db.get_primary_sandbox(session).await.unwrap().unwrap();
     let store = PgSandboxCheckpointStore::new(db.pool().clone());
     let runtime = store.load_current_state(session).await.unwrap();
-    sync(db.pool(), &service).await.unwrap();
+    let (first, overlapping) = tokio::join!(sync(db.pool(), &service), sync(db.pool(), &service));
+    first.unwrap();
+    overlapping.unwrap();
     let after = db.get_primary_sandbox(session).await.unwrap().unwrap();
     assert_eq!(after.observed_state, before.observed_state);
     assert_eq!(after.desired_state, before.desired_state);
