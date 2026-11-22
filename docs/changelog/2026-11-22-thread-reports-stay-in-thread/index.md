@@ -22,3 +22,6 @@ coordinator still receives the full text, and the message info icon shows it
 under **What the agent received**.
 
 ![A finished thread right after its card adds no row; further down it is one line with Open session](./thread-results@2x.png)
+
+See [Chat and threads](/features/ui/#chat-and-threads) and
+[Coordination](/framework/coordination/).
