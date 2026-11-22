@@ -8,6 +8,7 @@ import type {
   TraceRequestPage,
   TraceStepDetail,
   TraceStepsPage,
+  TraceTurnInput,
   TraceTurnsPage,
 } from "./types";
 
@@ -65,10 +66,11 @@ export async function listSessionTraceSteps(
 }
 
 /** Original text of the message that started one turn. */
-export async function getSessionTraceTurnInput(sessionId: string, turn: number) {
-  const response = await api.get<{ content?: string | null }>(
-    `${base(sessionId)}/turns/${turn}/input`,
-  );
+export async function getSessionTraceTurnInput(
+  sessionId: string,
+  turn: number,
+): Promise<TraceTurnInput> {
+  const response = await api.get<TraceTurnInput>(`${base(sessionId)}/turns/${turn}/input`);
   return response.data;
 }
 

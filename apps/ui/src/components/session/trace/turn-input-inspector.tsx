@@ -27,7 +27,7 @@ export function TurnInputInspector({
     isError,
   } = useQuery({
     queryKey: ["session-trace", currentOrg?.public_id, sessionId, "turn-input", turn],
-    queryFn: async () => (await getSessionTraceTurnInput(sessionId, turn)).content,
+    queryFn: async () => (await getSessionTraceTurnInput(sessionId, turn)).content ?? null,
   });
   return (
     <section>

@@ -8859,6 +8859,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/trace/turns/{turn}/input": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the full recorded input of one trace turn */
+    get: operations["get_session_trace_turn_input"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/trace/turns/{turn}/steps": {
     parameters: {
       query?: never;
@@ -34582,6 +34599,11 @@ export interface components {
       new_from: number;
       /** @description The new messages, at most 50. */
       new_messages: components["schemas"]["TraceRequestMessage"][];
+      /**
+       * Format: int32
+       * @description Position of the system message in the full request.
+       */
+      system_index?: number | null;
       /** @description Start of the system prompt. */
       system_preview?: string | null;
       tool_changes?: components["schemas"]["TraceToolChanges"] | null;
@@ -35007,6 +35029,11 @@ export interface components {
        * @example turn_01a124cd7e9571ac95c312b3c6d0cd82
        */
       turn_id: string;
+    };
+    /** @description Full text recorded when a trace turn starts. */
+    TraceTurnInput: {
+      /** @description The recorded input, when present. */
+      content?: string | null;
     };
     /** @description A page of turns with their steps. */
     TraceTurnsPage: {
@@ -60939,6 +60966,31 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TraceEventsPage"];
+        };
+      };
+    };
+  };
+  get_session_trace_turn_input: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        session_id: string;
+        /** @description Prefixed public identifier */
+        turn: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TraceTurnInput"];
         };
       };
     };
