@@ -149,7 +149,7 @@ services:
       # turns this off.
       EVERRUNS_DATA_PLANE: ${EVERRUNS_DATA_PLANE:-v2}
       EVERRUNS_DEFAULT_DATA_PLANE: local
-      EVERRUNS_DEFAULT_DATA_PLANE_URL: http://shard:7000
+      EVERRUNS_DEFAULT_DATA_PLANE_URL: http://agentd:7000
       EVERRUNS_DP_TOKEN: ${EVERRUNS_DP_TOKEN:-}
       EVERRUNS_DP_KEY: ${EVERRUNS_DP_KEY:-}
       # Where the data plane calls this server's injected capabilities and
@@ -212,15 +212,15 @@ services:
   # executor that runs their turns, and the edge router the proxy sends
   # session calls to. DATA_PLANE_REPLICAS=0 leaves them out (v1).
   #
-  # The shard's restore points go to the `shard_store` volume (file://), which
+  # The shard's restore points go to the `agentd_store` volume (file://), which
   # the executor reads too; point AGENTD_STORE at s3://bucket/prefix to keep
   # them off this machine.
   # ==========================================================================
-  shard:
+  agentd:
     image: ghcr.io/everruns/agentd:${EVERRUNS_TAG:-latest}
     command: ["node", "--shard", "0", "--node", "1", "--data", "/data", "--listen", "0.0.0.0:7000"]
-    environment: &shard-env
-      AGENTD_TOPOLOGY: /etc/shard/topology.json
+    environment: &agentd-env
+      AGENTD_TOPOLOGY: /etc/agentd/topology.json
       AGENTD_STORE: ${AGENTD_STORE:-file:///store}
       AGENTD_DATA_PLANE: local
       AGENTD_CONTROL_PLANE: http://server:9000/api
@@ -233,11 +233,11 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     configs:
-      - source: shard_topology
-        target: /etc/shard/topology.json
+      - source: agentd_topology
+        target: /etc/agentd/topology.json
     volumes:
-      - shard_data:/data
-      - shard_store:/store
+      - agentd_data:/data
+      - agentd_store:/store
     # v1 sets never, so no data plane image is pulled (older tags have none).
     pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
@@ -250,33 +250,33 @@ services:
   executor:
     image: ghcr.io/everruns/agentd:${EVERRUNS_TAG:-latest}
     command: ["executor", "--id", "4294967296", "--listen", "0.0.0.0:7001"]
-    environment: *shard-env
+    environment: *agentd-env
     configs:
-      - source: shard_topology
-        target: /etc/shard/topology.json
+      - source: agentd_topology
+        target: /etc/agentd/topology.json
     volumes:
-      - shard_store:/store
+      - agentd_store:/store
     # v1 sets never, so no data plane image is pulled (older tags have none).
     pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
       replicas: ${DATA_PLANE_REPLICAS:-1}
     depends_on:
-      - shard
+      - agentd
     restart: unless-stopped
 
   edge:
     image: ghcr.io/everruns/agentd:${EVERRUNS_TAG:-latest}
     command: ["edge", "--listen", "0.0.0.0:7100", "--control-plane", "http://server:9000", "--api-prefix", "/api"]
-    environment: *shard-env
+    environment: *agentd-env
     configs:
-      - source: shard_topology
-        target: /etc/shard/topology.json
+      - source: agentd_topology
+        target: /etc/agentd/topology.json
     # v1 sets never, so no data plane image is pulled (older tags have none).
     pull_policy: ${DATA_PLANE_PULL_POLICY:-missing}
     deploy:
       replicas: ${DATA_PLANE_REPLICAS:-1}
     depends_on:
-      - shard
+      - agentd
     restart: unless-stopped
 
   # ==========================================================================
@@ -495,9 +495,9 @@ configs:
       }
 
   # The data plane's layout: shard 0 (the directory shard) with one node.
-  shard_topology:
+  agentd_topology:
     content: |
-      {"directory_shard": 0, "shards": {"0": {"1": "shard:7000"}}}
+      {"directory_shard": 0, "shards": {"0": {"1": "agentd:7000"}}}
 
   prometheus_scrape_config:
     content: |
@@ -529,8 +529,8 @@ configs:
 
 volumes:
   postgres_data:
-  shard_data:
-  shard_store:
+  agentd_data:
+  agentd_store:
   valkey_data:
   nats_data:
   victoriametrics_data:
