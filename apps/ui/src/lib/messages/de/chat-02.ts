@@ -286,4 +286,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Commit author name": "Name des Commit-Autors",
   "Commit author email": "E-Mail des Commit-Autors",
   "History depth, in commits": "Verlaufstiefe in Commits",
+  "finished": "abgeschlossen",
+  "was cancelled": "wurde abgebrochen",
+  "asks:": "fragt:",
+  "Show the run card for {title}": "Ausführungskarte für {title} anzeigen",
+  "What the agent received": "Was der Agent erhalten hat",
+  "failed": "fehlgeschlagen",
 };
