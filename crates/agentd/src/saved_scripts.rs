@@ -1,65 +1,81 @@
 //! The agent's saved scripts for the shell's `tools scripts` on a data plane
-//! (parity, saved-script triggers): read and saved through the control
-//! plane, which keeps them, as a v1 worker's `GrpcSavedScripts` does.
+//! (parity, saved-script triggers): read and saved on the control plane's
+//! platform commands server (`injected::PLATFORM_COMMANDS`, operations
+//! `scripts` and `save_script`), which keeps them, as a v1 worker's
+//! `GrpcSavedScripts` does.
 //!
 //! Decisions:
-//! - The calls name the session, never an agent: the control plane finds
-//!   the session's agent, so a script lists or saves the scripts of the
-//!   agent whose turn it is.
-//! - A save is bound to the turn's input message
-//!   ([`SavedScriptStore::for_execution`]). The forwarding cell names the
-//!   person who sent it (`host_calls::act_as_sender`), and the control
+//! - The calls name no agent: the control plane finds the agent of the
+//!   session the token names, so a script lists or saves the scripts of
+//!   the agent whose turn it is.
+//! - A list acts for no one. A save is bound to the turn's input message
+//!   ([`SavedScriptStore::for_execution`]): its token's `act` names the
+//!   person who sent it, from the session's own record, and the control
 //!   plane saves as that turn's management user under `AGENT_MANAGE`, and
 //!   only when the agent's shell lets it save scripts (THREAT[TM-TOOL-067]).
 //!   An unbound store refuses to save.
 //! - A trigger's script run needs only the list: its turn runs the script
 //!   the way a model's `bash` call would (`core::host::script_run`).
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use async_trait::async_trait;
-use everruns_contracts::host_calls::{AGENT_SCRIPT_SAVE, AGENT_SCRIPTS};
+use everruns_contracts::runtime::capabilities::injected::{
+    PLATFORM_COMMAND_TOOL, PLATFORM_COMMANDS,
+};
 use everruns_contracts::runtime::saved_scripts::{SavedScript, SavedScriptStore};
-use everruns_contracts::typed_id::SessionId;
-use everruns_internal_protocol::commands::InternalCommandTransport;
+use everruns_contracts::typed_id::{MessageId, SessionId};
 use serde_json::{Value, json};
 
-use crate::lookups::OrgLookups;
+use crate::mcp::{Acting, ControllerServer};
+use crate::providers::OrgMaterial;
 
 const UNBOUND_SAVE: &str =
     "saving a script requires a management-authorized turn; this one has none";
 
 /// Saved scripts of one session's agent.
 #[derive(Clone)]
-pub(crate) struct CellSavedScripts {
-    lookups: OrgLookups,
+pub(crate) struct ShardSavedScripts {
+    material: Weak<dyn OrgMaterial>,
     session: SessionId,
+    /// The control plane's platform commands server.
+    url: String,
     /// The turn a save is authorized as; `None` until bound.
-    input: Option<uuid::Uuid>,
+    input: Option<MessageId>,
 }
 
-impl CellSavedScripts {
-    pub(crate) fn new(lookups: OrgLookups, session: SessionId) -> Self {
+impl ShardSavedScripts {
+    pub(crate) fn new(material: Weak<dyn OrgMaterial>, session: SessionId, url: String) -> Self {
         Self {
-            lookups,
+            material,
             session,
+            url,
             input: None,
         }
     }
 
-    async fn call(&self, command: &str, params: Value) -> Result<Value, String> {
-        let by_command = everruns_contracts::host_calls::by_name(command)
-            .map(|call| call.command)
-            .unwrap_or(command);
-        match self
-            .lookups
-            .execute_internal_command(by_command, params)
-            .await
-        {
-            Ok(Ok(value)) => Ok(value),
-            Ok(Err(error)) => Err(error.message),
-            Err(error) => Err(error.to_string()),
-        }
+    async fn call(
+        &self,
+        acting: Acting,
+        operation: &str,
+        arguments: Value,
+    ) -> Result<Value, String> {
+        let server = ControllerServer::acting(
+            Some(&self.material),
+            self.session,
+            acting,
+            PLATFORM_COMMANDS,
+            &self.url,
+        )
+        .ok_or_else(|| "this node holds no session tokens for saved scripts".to_string())?;
+        let text = server
+            .call_tool(
+                PLATFORM_COMMAND_TOOL,
+                json!({ "operation": operation, "arguments": arguments }),
+            )
+            .await?;
+        serde_json::from_str(&text)
+            .map_err(|_| "the saved scripts answer did not parse".to_string())
     }
 }
 
@@ -76,14 +92,9 @@ fn to_script(record: &Value) -> Option<SavedScript> {
 }
 
 #[async_trait]
-impl SavedScriptStore for CellSavedScripts {
+impl SavedScriptStore for ShardSavedScripts {
     async fn list(&self) -> Result<Vec<SavedScript>, String> {
-        let listed = self
-            .call(
-                AGENT_SCRIPTS,
-                json!({ "session_id": self.session.to_string() }),
-            )
-            .await?;
+        let listed = self.call(Acting::NoOne, "scripts", json!({})).await?;
         Ok(listed
             .as_array()
             .into_iter()
@@ -98,10 +109,9 @@ impl SavedScriptStore for CellSavedScripts {
         };
         let saved = self
             .call(
-                AGENT_SCRIPT_SAVE,
+                Acting::Message(input),
+                "save_script",
                 json!({
-                    "session_id": self.session.to_string(),
-                    "input_message_id": input.to_string(),
                     "name": script.name,
                     "description": script.description,
                     "input_schema": script.input_schema,
@@ -114,7 +124,7 @@ impl SavedScriptStore for CellSavedScripts {
 
     fn for_execution(&self, input_message_id: uuid::Uuid) -> Option<Arc<dyn SavedScriptStore>> {
         Some(Arc::new(Self {
-            input: Some(input_message_id),
+            input: Some(MessageId::from_uuid(input_message_id)),
             ..self.clone()
         }))
     }

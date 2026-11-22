@@ -743,12 +743,6 @@ async fn destination(
             .map(|a| everruns_contracts::typed_id::AgentId::from_uuid(a.internal_id)),
     )
     .await?;
-    if existing.is_none()
-        && ctx.db.count_agents_for_org(ctx.org_id()).await?
-            >= ctx.resource_limits.max_agents_per_org
-    {
-        return Err(CommandError::conflict("Agent limit reached"));
-    }
     if let Some(agent) = &existing {
         let channels = crate::domains::agent_channels::ListAgentChannels {
             agent_id: agent.name.clone(),

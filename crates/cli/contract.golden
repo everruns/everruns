@@ -47,6 +47,8 @@ agents health-checks list	--agent-id! --context-revision --reason
 agents health-checks trigger	--agent-id! --context-revision --reason
 agents import	--content --format --reason --target <file>
 agents list	--context-revision --include-archived --limit --offset --reason --search
+agents mcp list	--context-revision --id --reason <id>
+agents mcp revoke	--context-revision --id --name --reason <id> <name>
 agents pause	--agent --context-revision --reason <agent_id>
 agents preview	--agent-id --capabilities --context-revision --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
 agents resume	--agent --context-revision --reason <agent_id>
@@ -202,6 +204,7 @@ history restore	--context-revision --entity-ref --expected-revision --fields... 
 history show	--context-revision --entity-ref --kind --reason --revision <entity_ref>
 images get	--context-revision --id --reason <id>
 images list	--context-revision --limit --offset --reason
+k8s cluster create	--name --provider!
 k8s destroy	--keep-namespace --local-only --name --yes/-y
 k8s doctor	--name
 k8s health	--name
@@ -211,7 +214,7 @@ k8s password	--name
 k8s port-forward	--name
 k8s status	--name
 k8s uninstall	--name
-k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --timeout --values/-f... --yes/-y
+k8s up	--admin-email --auth --bundled-postgres --chart --chart-version --context --data-plane --database-url --image-tag --ingress-class --name --namespace --no-open --port --provider --public-url --set... --storage-class --timeout --values/-f... --yes/-y
 k8s upgrade	--chart-version --name --no-backup --timeout --yes/-y
 knowledge create	--context-revision --description --embedding-model-id --indexer-id --indexing --name! --reason --rules
 knowledge delete	--collection-id! --context-revision --reason
@@ -289,7 +292,18 @@ orgs quality-monitoring scores list	--context-revision --org! --reason
 orgs quality-monitoring scores review	--agrees! --context-revision --note --org! --reason --score!
 orgs resolve	--context-revision --id! --reason
 orgs select
-orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --coding-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --monthly-session-limit --name --org! --quality-monitoring --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
+orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --coding-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --monthly-agent-limit --monthly-session-limit --name --org! --quality-monitoring --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
+payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
+payments accounts disable	--context-revision --payment-account-id! --reason
+payments accounts get	--context-revision --payment-account-id! --reason
+payments accounts list	--context-revision --owner-id --owner-type --reason
+payments accounts update	--context-revision --label --metadata --payment-account-id! --private-key --public-address --reason --status
+payments attempts list	--context-revision --limit! --reason --session-id
+payments policies create	--allowed-capabilities... --allowed-hosts... --context-revision --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-account-id! --rail-preference... --reason --require-approval-above-usd --subject-id! --subject-type!
+payments policies disable	--context-revision --payment-policy-id! --reason
+payments policies get	--context-revision --payment-policy-id! --reason
+payments policies list	--context-revision --payment-account-id --reason --subject-id --subject-type
+payments policies update	--allowed-capabilities... --allowed-hosts... --context-revision --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-policy-id! --rail-preference... --reason --require-approval-above-usd --status
 plugin-marketplaces create	--context-revision --name! --reason --source! --source-type!
 plugin-marketplaces delete	--context-revision --id --reason <id>
 plugin-marketplaces get	--context-revision --id --reason <id>
@@ -434,6 +448,7 @@ sessions tasks push-configs list	--context-revision --reason --session-id! --tas
 sessions tool-results submit	--context-revision --reason --session-id --tool-results! <session_id>
 sessions trace get	--buckets --context-revision --reason --session-id!
 sessions trace turns events list	--after-sequence --context-revision --limit --reason --session-id! --turn!
+sessions trace turns input get	--context-revision --reason --session-id! --turn!
 sessions trace turns list	--after --around --before --context-revision --limit --reason --sequence --session-id!
 sessions trace turns steps get	--context-revision --full --reason --session-id! --step! --turn!
 sessions trace turns steps list	--context-revision --errors-only --from-step --limit --reason --session-id! --to-step --turn!

@@ -61,10 +61,6 @@ impl Capability for SubagentCapability {
         SUBAGENTS_CAPABILITY_ID
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[everruns_contracts::host_calls::HELPER_MODEL]
-    }
-
     fn name(&self) -> &str {
         "Subagents"
     }

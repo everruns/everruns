@@ -3,12 +3,12 @@
 //! Split out of `providers.rs` to keep that file under the size guard.
 
 use super::AppState;
-use super::UpdateProviderRequest;
 use crate::auth::AuthUser;
 use crate::auth::ResolvedOrg;
 use crate::auth::config::AuthMode;
-use crate::domains::providers::LLM_PROVIDER_MANAGE;
+use crate::domains::common::Command;
 use crate::domains::providers::record::Provider;
+use crate::domains::providers::{LLM_PROVIDER_MANAGE, UpdateProvider};
 use crate::kernel_imports::{
     Caller, Policy, contracts::driver_registry::DriverOAuthFlow, contracts::provider::DriverId,
 };
@@ -292,31 +292,25 @@ async fn finish_oauth_callback(
         }
     };
 
-    // Store the obtained key exactly like a hand-entered one: encrypted at rest,
-    // resolver cache invalidated. No backward-compat path needed.
-    state
-        .service
-        .update(
-            &caller,
-            provider.id.uuid(),
-            UpdateProviderRequest {
-                api: None,
-                name: None,
-                provider_type: None,
-                base_url: None,
-                api_key: Some(api_key),
-                credentials: None,
-                status: None,
-                trace: None,
-                request_options: None,
-            },
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to store OAuth provider credential");
-            OAuthCallbackFailure::new("failed", "could not store credential")
-        })?
-        .ok_or_else(|| OAuthCallbackFailure::new("failed", "provider not found"))?;
+    // Use the same credential update as the pasted-key flow, including its
+    // bounded, best-effort model sync and bootstrap.
+    UpdateProvider {
+        id: provider.id.to_string(),
+        api: None,
+        name: None,
+        provider_type: None,
+        base_url: None,
+        api_key: Some(api_key),
+        status: None,
+        trace: None,
+        request_options: None,
+    }
+    .run(&state.ctx_for_caller(caller))
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to store OAuth provider credential");
+        OAuthCallbackFailure::new("failed", "could not store credential")
+    })?;
 
     tracing::info!(
         org_id = pending.org_id,

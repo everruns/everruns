@@ -1,10 +1,10 @@
-//! What a cell leader and an executor know of the tenants they serve: the
+//! What a shard leader and an executor know of the tenants they serve: the
 //! orgs that may not start new turns (suspended or deleted), as the
-//! directory cell holds them (cp-dp-protocol.md, "Freshness").
+//! directory shard holds them (cp-dp-protocol.md, "Freshness").
 //!
 //! Decisions:
-//! - The directory cell is the data plane's change stream: every cell
-//!   leader and every executor polls its `/cell/tenants` read every
+//! - The directory shard is the data plane's change stream: every shard
+//!   leader and every executor polls its `/shard/tenants` read every
 //!   [`POLL`]. A suspension therefore stops new turns within a poll
 //!   everywhere that can reach the directory.
 //! - Freshness bounds a partition: a leader or executor that hasn't heard
@@ -12,9 +12,9 @@
 //!   leader offers nothing, an executor pulls nothing). Running turns go
 //!   on: suspension refuses new work, it doesn't kill turns.
 //! - The same read carries each org's tapped event types (`tap.rs`); a
-//!   leader whose cell holds others proposes them, so every replica taps
+//!   leader whose shard holds others proposes them, so every replica taps
 //!   the same events, within a poll of a policy change.
-//! - Two guards, not one: the cell leader doesn't offer a stopped tenant's
+//! - Two guards, not one: the shard leader doesn't offer a stopped tenant's
 //!   sessions, and the executor doesn't run one it was offered anyway (a
 //!   leader whose view is a poll older than the executor's).
 
@@ -52,7 +52,7 @@ pub enum Admit {
 }
 
 impl TenantView {
-    /// A view that has heard just now (a single-cell test fleet with no
+    /// A view that has heard just now (a single-shard test fleet with no
     /// directory to poll, and unit tests).
     pub fn fresh() -> Self {
         let view = Self::default();
@@ -101,7 +101,7 @@ impl TenantView {
     }
 }
 
-/// The directory's answer to `/cell/tenants`.
+/// The directory's answer to `/shard/tenants`.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Tenants {
     /// Org id → why it is stopped (`suspended`, `deleted`, a reason).
@@ -112,7 +112,7 @@ pub struct Tenants {
 }
 
 impl Node {
-    /// While this node leads its cell: keep [`Node::tenants`] current.
+    /// While this node leads its shard: keep [`Node::tenants`] current.
     pub async fn tenants_loop(self: std::sync::Arc<Self>) {
         let mut tick = tokio::time::interval(POLL);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -126,7 +126,7 @@ impl Node {
                     self.tenants.heard(tenants.stopped);
                     self.sync_taps(tenants.taps).await;
                 }
-                Err(error) => tracing::debug!(cell = self.cfg.cell, %error, "tenants not read"),
+                Err(error) => tracing::debug!(shard = self.cfg.shard, %error, "tenants not read"),
             }
         }
     }
@@ -137,9 +137,9 @@ impl Node {
             .get()
             .ok_or_else(|| anyhow::anyhow!("no gateway yet"))?;
         let directory = gateway
-            .directory_cell()
+            .directory_shard()
             .map_err(|(_, e)| anyhow::anyhow!(e))?;
-        if directory == self.cfg.cell {
+        if directory == self.cfg.shard {
             let state = self.shared.state.read();
             return Ok(Tenants {
                 stopped: state.orgs.stopped(),
@@ -147,7 +147,7 @@ impl Node {
             });
         }
         gateway
-            .call(directory, "/cell/tenants", None)
+            .call(directory, "/shard/tenants", None)
             .await
             .map_err(|(_, e)| anyhow::anyhow!(e))
     }

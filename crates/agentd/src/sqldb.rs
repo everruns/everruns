@@ -1,5 +1,5 @@
 //! A session's SQL databases on the data plane (data plane v2 parity, step 9):
-//! the `sql_database` tools' databases and the Databases API, in the cell.
+//! the `sql_database` tools' databases and the Databases API, in the shard.
 //!
 //! Decisions:
 //! - A session's SQL databases are session state, so they live with the
@@ -45,7 +45,7 @@ use everruns_contracts::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::api::{CellReply, reply_of};
+use crate::api::{ShardReply, reply_of};
 use crate::gateway::{Gateway, parse};
 use crate::node::Node;
 
@@ -229,8 +229,8 @@ impl crate::state::SessionState {
 
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/cell/sessions/{session}/sqldb", post(sqldb))
-        // An import carries a whole database; the cell is a trusted
+        .route("/shard/sessions/{session}/sqldb", post(sqldb))
+        // An import carries a whole database; the shard is a trusted
         // network, and the gateway bounds what reaches it.
         .layer(axum::extract::DefaultBodyLimit::disable())
         .with_state(node)
@@ -262,7 +262,7 @@ pub enum SqlOp {
     },
 }
 
-/// What a call came to, inside [`CellReply::Ok`].
+/// What a call came to, inside [`ShardReply::Ok`].
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum SqlResult {
@@ -303,7 +303,7 @@ async fn sqldb(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(op): Json<SqlOp>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = SessionId::parse(&session).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     // Reads are linearizable, as the workspace API's are (`api_files.rs`).
     crate::api_files::read_barrier(&node)
@@ -311,17 +311,17 @@ async fn sqldb(
         .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
     let store = node.hosting.databases_api();
     let reply = match run(&store, id, op).await {
-        Ok(result) => CellReply::Ok {
+        Ok(result) => ShardReply::Ok {
             value: serde_json::to_value(result).unwrap_or(Value::Null),
         },
         Err(error) => match error {
-            AgentLoopError::SessionNotFound(_) => CellReply::NotFound,
+            AgentLoopError::SessionNotFound(_) => ShardReply::NotFound,
             other => match reply_of(&other) {
-                CellReply::Refused { reason } => CellReply::Ok {
+                ShardReply::Refused { reason } => ShardReply::Ok {
                     value: serde_json::to_value(failed(StatusCode::SERVICE_UNAVAILABLE, reason))
                         .unwrap_or(Value::Null),
                 },
-                CellReply::NotFound => CellReply::Ok {
+                ShardReply::NotFound => ShardReply::Ok {
                     value: serde_json::to_value(failed(
                         StatusCode::SERVICE_UNAVAILABLE,
                         other.to_string(),
@@ -336,7 +336,7 @@ async fn sqldb(
 }
 
 async fn run(
-    store: &crate::hosting::sqldb::CellSqlDb,
+    store: &crate::hosting::sqldb::ShardSqlDb,
     session: SessionId,
     op: SqlOp,
 ) -> everruns_contracts::error::Result<SqlResult> {
@@ -397,7 +397,7 @@ pub fn gateway_routes() -> Router<Arc<Gateway>> {
         )
 }
 
-/// Run `op` on the session's cell.
+/// Run `op` on the session's shard.
 async fn call(gateway: &Gateway, session: &str, op: SqlOp) -> Result<Value, ApiError> {
     let session = parse(session)?;
     let body = serde_json::to_value(&op)

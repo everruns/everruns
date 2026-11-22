@@ -1,7 +1,7 @@
 //! The control plane ↔ data plane protocol, `/dp/v1`.
 //!
 //! Both planes speak these types: the server as the control plane, and the
-//! cells of a v2 data plane. They live here, in a crate both already depend
+//! shards of a v2 data plane. They live here, in a crate both already depend
 //! on, so the control plane never pulls in a data plane's storage.
 //!
 //! Decisions:
@@ -107,13 +107,18 @@ pub struct AgentCard {
     pub agent: Value,
     /// Its harness, inheritance resolved, as the runtime's `HarnessDefinition`.
     pub harness: Value,
+    /// The model preset the agent takes its models from, when it has one:
+    /// the preset a `job` helper target looks in first
+    /// (`runtime::helper_models::resolve_helper_model`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_preset: Option<String>,
 }
 
 fn one() -> u32 {
     1
 }
 
-/// A tenant secret: AES-256-GCM under the org's data key. Cells store the
+/// A tenant secret: AES-256-GCM under the org's data key. Shards store the
 /// ciphertext only; executors unseal it in memory.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SealedSecret {
@@ -174,6 +179,15 @@ pub const TOOL_APPROVAL_SETTING: &str = "setting:tool_approval";
 /// The egress grants the boundary enforces for the org: `{"patterns":
 /// [...], "open": bool}`, patterns only when granted.
 pub const EGRESS_SETTING: &str = "setting:egress";
+/// The own tool approval settings (`tool_approval_policy::PersonalToolApproval`)
+/// of the org member `user` (the control plane's user id), for the sessions
+/// that person owns.
+pub fn personal_approval_setting(user: &str) -> String {
+    format!("setting:tool_approval_personal:{user}")
+}
+/// The org's helper model catalog (`runtime::helper_models::HelperCatalog`):
+/// what a spawn's helper key resolves against on a shard.
+pub const HELPER_MODEL_SETTING: &str = "setting:helper_models";
 
 /// The secret holding the key of the org's search account `account` (an
 /// organization connection whose provider has a search driver).
@@ -233,7 +247,7 @@ pub struct LlmProviderSettings {
 /// The org, seen by the data plane only as a tenant.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct TenantPolicy {
-    /// Safety nets only: per-cell caps, file quotas.
+    /// Safety nets only: per-shard caps, file quotas.
     #[serde(default)]
     pub limits: Value,
     /// Allowlists, caps, kill switch.
@@ -402,7 +416,7 @@ pub struct CommandStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AllowanceRequest {
     pub request_id: String,
-    pub cell: String,
+    pub shard: String,
     pub incarnation: u64,
     pub want_micros: i64,
     /// Usage against earlier grants since the last request.
@@ -428,37 +442,16 @@ pub struct AllowanceGrant {
     pub grant_id: String,
     /// 0: budget exhausted, or a policy stops spending.
     pub granted_micros: i64,
-    /// After this the cell stops spending from the grant. The money is
+    /// After this the shard stops spending from the grant. The money is
     /// released only by a closed settlement, never by time.
     pub spend_until_unix_ms: i64,
     /// `budget_exhausted`, `ask_to_continue`, `suspended`.
     #[serde(default)]
     pub reason: Option<String>,
-    /// The most one provider call may reserve; the cell's default when
+    /// The most one provider call may reserve; the shard's default when
     /// absent.
     #[serde(default)]
     pub per_call_micros: Option<i64>,
-}
-
-// --------------------------------------------------------------- lookups
-
-/// `POST /dp/v1/tenants/{org}/lookups`: the route host calls
-/// (`host_calls`) replaced, kept while cells and executors of the release
-/// before roll over. `command` is the v1 worker command; the control plane
-/// answers it as the host call `host_calls::by_command` names. Remove with
-/// the release after.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct LookupRequest {
-    /// A fresh id per lookup: the answer is sealed under
-    /// [`lookup_secret`] of it, so it cannot pass for another's.
-    pub request: String,
-    pub command: String,
-    pub params: Value,
-}
-
-/// The secret id a legacy lookup's answer is sealed under.
-pub fn lookup_secret(request: &str) -> String {
-    format!("lookup:{request}")
 }
 
 // ------------------------------------------------------------------ feed
@@ -467,9 +460,9 @@ pub fn lookup_secret(request: &str) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FeedBatch {
     pub data_plane: String,
-    /// The cell that produced the records.
+    /// The shard that produced the records.
     pub source: String,
-    /// Bumped when the cell is rebuilt from a restore.
+    /// Bumped when the shard is rebuilt from a restore.
     pub incarnation: u64,
     /// Ordered by `(index, ordinal)`.
     pub records: Vec<FeedRecord>,
@@ -571,15 +564,39 @@ pub enum Record {
         #[serde(default)]
         targets: Vec<PushTarget>,
     },
+    /// One of a session's resources (a fleet sandbox, an activated skill)
+    /// as its shard now holds it, or its removal (`resource: null`). The
+    /// shard keeps them; the control plane mirrors them for the console's
+    /// Resources panel.
+    SessionResource {
+        session_id: String,
+        resource_id: String,
+        /// The entry (`SessionResourceEntry`), or null once removed.
+        #[serde(default)]
+        resource: Value,
+    },
+    /// The lease of something one of a session's tools started at a
+    /// provider (`LeasedResource`), as its shard now holds it. The control
+    /// plane mirrors it so its sweeper stops what a session left running.
+    Lease {
+        session_id: String,
+        lease: Value,
+    },
+    /// A subagent a session started on the data plane: the control plane
+    /// gives it a session record under the same id, as a v1 subagent has.
+    Subagent {
+        session_id: String,
+        origin: SubagentOrigin,
+    },
     OrgEvent {
         /// `budget_exhausted`, `limit_hit`, `suspended`.
         kind: String,
         #[serde(default)]
         detail: String,
     },
-    /// A cell's minute report for Monitoring (`org_id` empty): its
+    /// A shard's minute report for Monitoring (`org_id` empty): its
     /// population from replicated state, and what its leader measured on
-    /// the nodes. One per cell per minute; the control plane keeps the
+    /// the nodes. One per shard per minute; the control plane keeps the
     /// first it stores for a `(source, minute)` (a new leader may send the
     /// minute again).
     Health {
@@ -595,7 +612,7 @@ pub enum Record {
         /// Turns running on a second or later attempt.
         #[serde(default)]
         resumed_turns: u32,
-        /// Sessions this cell has handed to another cell, ever.
+        /// Sessions this shard has handed to another shard, ever.
         #[serde(default)]
         forwarded: u64,
         /// Raft term: a change between minutes is a leader election.
@@ -632,6 +649,20 @@ pub enum Record {
     Unknown,
 }
 
+/// Where a subagent came from ([`Record::Subagent`]): the session that
+/// started it and what it runs. Ids are the control plane's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubagentOrigin {
+    pub parent_session_id: String,
+    pub harness_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+}
+
 /// Where a task's webhook goes ([`Record::TaskTransition`]).
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PushTarget {
@@ -642,10 +673,14 @@ pub struct PushTarget {
     /// agent's own tool input, already in the session's log).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret: Option<String>,
-    /// The config's signing key is kept in the control plane under its id
-    /// (`task_push_secret`), never in the cell.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub secret_held: bool,
+    /// The signing key of a config made through the API, sealed with the
+    /// org's data key under [`dataplane_seal::push_secret_id`] by the edge
+    /// that took it, so the shard and the feed hold ciphertext only; the
+    /// control plane opens it to sign.
+    ///
+    /// [`dataplane_seal::push_secret_id`]: crate::dataplane_seal::push_secret_id
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed: Option<SealedSecret>,
 }
 
 impl std::fmt::Debug for PushTarget {
@@ -654,12 +689,12 @@ impl std::fmt::Debug for PushTarget {
             .field("label", &self.label)
             .field("url", &self.url)
             .field("secret", &self.secret.as_ref().map(|_| "[redacted]"))
-            .field("secret_held", &self.secret_held)
+            .field("sealed", &self.sealed.is_some())
             .finish()
     }
 }
 
-/// One tenant's population in a cell's minute report.
+/// One tenant's population in a shard's minute report.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OrgHealth {
     pub org_id: String,
@@ -714,7 +749,7 @@ pub struct SessionEventRow {
     pub event_type: String,
     pub ts: chrono::DateTime<chrono::Utc>,
     /// The event's context (its turn, input message), as the stream
-    /// serves it. Absent from a cell older than the field.
+    /// serves it. Absent from a shard older than the field.
     #[serde(default)]
     pub context: Value,
     pub data: Value,
@@ -800,7 +835,7 @@ mod tests {
 
     #[test]
     fn a_usage_record_keeps_older_writers_readable() {
-        // Step 6's cells wrote usage without `agent_hash`.
+        // Step 6's shards wrote usage without `agent_hash`.
         let record: FeedRecord = serde_json::from_value(json!({
             "index": 4, "ordinal": 1, "org_id": "o", "at_unix_ms": 7,
             "type": "Usage", "session_id": "s", "turn_id": "t",

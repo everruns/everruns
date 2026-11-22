@@ -190,6 +190,13 @@ export const messages: Readonly<Record<string, string>> = {
   "Check your email": "Перевірте свою електронну пошту",
   "Check your inbox": "Перевірте свою поштову скриньку",
   "Checked {value0}": "Перевірено {value0}",
+  "Last recorded running": "Останній зафіксований стан — працює",
+  "Check provider status": "Перевірити стан у провайдера",
+  "Not found at provider": "Не знайдено у провайдера",
+  "Could not check the provider.": "Не вдалося перевірити стан у провайдера.",
+  "No activity for over an hour": "Без активності понад годину",
+  "Check the provider for the current state and whether it is still using compute.":
+    "Перевірте у провайдера поточний стан і чи пісочниця досі використовує обчислювальні ресурси.",
   "Checking agent usage…": "Перевірка використання агента…",
   "Checking availability…": "Перевіряємо наявність…",
   "Checking key...": "Перевірка ключа...",

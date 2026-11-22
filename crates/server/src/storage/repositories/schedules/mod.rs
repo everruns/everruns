@@ -342,7 +342,7 @@ impl Database {
         &self,
         input: UpsertLeasedResourceRow,
     ) -> Result<LeasedResourceRow> {
-        let id = LeasedResourceId::new();
+        let id = input.id.unwrap_or_default();
         let public_id = id.to_string();
         let now = Utc::now();
 

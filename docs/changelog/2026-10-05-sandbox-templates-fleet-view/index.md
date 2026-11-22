@@ -21,10 +21,16 @@ sandbox policy decides whether a session can pick or override the template.
 
 **In the UI:** open **Sandbox Templates** and select **New Sandbox Template**.
 The **Sandboxes** page lists every sandbox across providers and states, with a
-lifecycle timeline, a **Needs attention** filter and pause, resume and delete in
-the detail drawer. Both sit in the collapsible **Sandboxes** sidebar group.
+lifecycle timeline and a **Needs attention** filter. Pause, resume and delete
+are available in the detail drawer.
 
 **In code:** `GET /v1/sandboxes` lists the fleet; `/stats` and `/timeline` back
 the page.
 
-See [Sandbox Templates](/features/sandbox-templates/) and [#4199](https://github.com/everruns/everruns/pull/4199), [#4246](https://github.com/everruns/everruns/pull/4246), [#4262](https://github.com/everruns/everruns/pull/4262).
+See [Sandbox Templates](/features/sandbox-templates/).
+
+## Update 2026-11-21
+
+Idle sandboxes show their last recorded state. Organization admins can check
+the provider's current state in the detail drawer. The idle sweep retries failed
+pauses for sandboxes running in shards.

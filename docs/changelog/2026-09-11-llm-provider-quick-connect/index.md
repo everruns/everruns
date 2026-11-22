@@ -30,3 +30,9 @@ everruns providers check-credentials check --provider-type openai --api-key "$OP
 
 Disabled models can be re-enabled. See [Providers](/providers/) and
 [CLI providers](/reference/cli/providers/). [#3526](https://github.com/everruns/everruns/pull/3526), [#3516](https://github.com/everruns/everruns/pull/3516), [#3515](https://github.com/everruns/everruns/pull/3515)
+
+## Update 2026-11-20
+
+OpenRouter browser sign-in now syncs models on return. Calibrated decision
+models are available to choose on a newly connected provider. Automatic chat
+defaults prefer agent-oriented models such as Sol, Muse Spark and Opus.

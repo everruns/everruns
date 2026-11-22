@@ -15,52 +15,12 @@ use crate::kernel_imports::{
 };
 use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
-use everruns_core::resource_ownership::{
-    LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
-    LEASED_RESOURCE_TYPE_KEY,
-};
+use everruns_core::resource_ownership::lease_registry_metadata as build_registry_metadata;
 use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
 
 use crate::storage::backend::StorageBackend;
 use crate::storage::{LeasedResourceRow, ReleaseLeasedResourceRow, UpsertLeasedResourceRow};
 use std::sync::Arc;
-
-fn build_registry_metadata(
-    metadata: serde_json::Value,
-    resource_id: &str,
-    provider: &str,
-    resource_type: &str,
-    external_id: &str,
-) -> serde_json::Value {
-    let mut object = match metadata {
-        serde_json::Value::Object(map) => map,
-        serde_json::Value::Null => serde_json::Map::new(),
-        other => {
-            let mut map = serde_json::Map::new();
-            map.insert("provider_metadata".to_string(), other);
-            map
-        }
-    };
-
-    object.insert(
-        LEASED_RESOURCE_PROVIDER_KEY.to_string(),
-        serde_json::Value::String(provider.to_string()),
-    );
-    object.insert(
-        LEASED_RESOURCE_TYPE_KEY.to_string(),
-        serde_json::Value::String(resource_type.to_string()),
-    );
-    object.insert(
-        LEASED_RESOURCE_EXTERNAL_ID_KEY.to_string(),
-        serde_json::Value::String(external_id.to_string()),
-    );
-    object.insert(
-        LEASED_RESOURCE_ID_KEY.to_string(),
-        serde_json::Value::String(resource_id.to_string()),
-    );
-
-    serde_json::Value::Object(object)
-}
 
 /// Convert a storage row into the public leased-resource domain type.
 pub fn row_to_domain(row: &LeasedResourceRow) -> Result<LeasedResource> {
@@ -152,6 +112,7 @@ impl LeasedResourceStore for DbLeasedResourceStore {
         let row = self
             .db
             .upsert_leased_resource(UpsertLeasedResourceRow {
+                id: None,
                 org_id,
                 session_id: input.session_id,
                 provider: input.provider,

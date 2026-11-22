@@ -380,7 +380,7 @@ async fn the_linked_data_planes_tokens_are_trusted_from_its_key_alone() {
         capability_id: "injected:knowledge_base".into(),
         audience: url,
     };
-    // What a cell's executor signs with (`mcp.rs` in everruns-agentd).
+    // What a shard's executor signs with (`mcp.rs` in everruns-agentd).
     let executor =
         SessionTokenSigner::from_pkcs8(SESSION_TOKEN_ISSUER, &session_token_pkcs8(&dp_key))
             .unwrap();
@@ -460,14 +460,14 @@ struct MemoryCalls {
 }
 
 #[async_trait]
-impl hosted::HostCallRunner for MemoryCalls {
+impl hosted::CallRunner for MemoryCalls {
     async fn answer(
         &self,
         org: OrgId,
-        call: &'static everruns_contracts::host_calls::HostCall,
+        call: &'static crate::domains::data_plane::calls::Call,
         params: Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        assert_eq!(call.name, everruns_contracts::host_calls::MEMORY_FILE);
+    ) -> anyhow::Result<crate::domains::data_plane::calls::Answer> {
+        assert_eq!(call.name, crate::domains::data_plane::calls::MEMORY_FILE);
         assert_eq!(org, self.org);
         assert_eq!(params["session_id"], self.session.uuid().to_string());
         self.asked.lock().push(params.clone());
@@ -482,9 +482,7 @@ impl hosted::HostCallRunner for MemoryCalls {
                 "is_directory": false,
             } })
         };
-        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
-            answer,
-        ))
+        Ok(crate::domains::data_plane::calls::Answer::Value(answer))
     }
 }
 
@@ -501,8 +499,8 @@ async fn memory_is_served_as_files_through_the_memory_file_handler() {
         session,
         asked: Default::default(),
     });
-    capabilities.host_calls().bind(runner.clone());
-    let service = hosted::memory::service(BASE_URL, capabilities.host_calls());
+    capabilities.calls().bind(runner.clone());
+    let service = hosted::memory::service(BASE_URL, capabilities.calls());
     let capabilities = capabilities.register(Arc::new(service));
     let definition = capabilities
         .definitions()
@@ -572,17 +570,20 @@ struct PlatformCalls {
 }
 
 #[async_trait]
-impl hosted::HostCallRunner for PlatformCalls {
+impl hosted::CallRunner for PlatformCalls {
     async fn answer(
         &self,
         org: OrgId,
-        call: &'static everruns_contracts::host_calls::HostCall,
+        call: &'static crate::domains::data_plane::calls::Call,
         params: Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        assert_eq!(call.name, everruns_contracts::host_calls::PLATFORM_COMMAND);
+    ) -> anyhow::Result<crate::domains::data_plane::calls::Answer> {
+        assert_eq!(
+            call.name,
+            crate::domains::data_plane::calls::PLATFORM_COMMAND
+        );
         assert_eq!(org, self.org);
         assert_eq!(params["session_id"], self.session.to_string());
-        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+        Ok(crate::domains::data_plane::calls::Answer::Value(
             Value::String(format!(
                 "{} ran {} {}",
                 params["acting_user"].as_str().unwrap(),
@@ -617,9 +618,9 @@ async fn platform_commands_run_as_the_person_who_opened_the_turn() {
     let session = SessionId::new();
     let capabilities = InjectedCapabilities::new(BASE_URL, Some(verifier));
     capabilities
-        .host_calls()
+        .calls()
         .bind(Arc::new(PlatformCalls { org, session }));
-    let service = hosted::platform::service(BASE_URL, capabilities.host_calls());
+    let service = hosted::platform::service(BASE_URL, capabilities.calls());
     let capabilities = capabilities.register(Arc::new(service));
     let definition = capabilities.definitions().remove(0);
     assert_eq!(definition.name(), hosted::platform::NAME);
@@ -682,16 +683,16 @@ struct PersonCalls {
 }
 
 #[async_trait]
-impl hosted::HostCallRunner for PersonCalls {
+impl hosted::CallRunner for PersonCalls {
     async fn answer(
         &self,
         org: OrgId,
-        call: &'static everruns_contracts::host_calls::HostCall,
+        call: &'static crate::domains::data_plane::calls::Call,
         params: Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+    ) -> anyhow::Result<crate::domains::data_plane::calls::Answer> {
         assert_eq!(org, self.org);
         self.asked.lock().push((call.name, params));
-        Ok(everruns_contracts::host_calls::HostCallAnswer::Value(
+        Ok(crate::domains::data_plane::calls::Answer::Value(
             json!({ "ok": { "reply": "list", "servers": [] } }),
         ))
     }
@@ -699,7 +700,7 @@ impl hosted::HostCallRunner for PersonCalls {
 
 #[tokio::test]
 async fn the_persons_mcp_servers_are_asked_for_as_the_tokens_person_and_turn() {
-    use everruns_contracts::host_calls::{USER_MCP_SERVERS, USER_MCP_STORE};
+    use crate::domains::data_plane::calls::{USER_MCP_SERVERS, USER_MCP_STORE};
     use everruns_contracts::runtime::capabilities::injected::SessionActor;
     let signer = Arc::new(SessionTokenSigner::generate("https://dp.example").unwrap());
     let verifier =
@@ -711,8 +712,8 @@ async fn the_persons_mcp_servers_are_asked_for_as_the_tokens_person_and_turn() {
         org,
         asked: parking_lot::Mutex::default(),
     });
-    capabilities.host_calls().bind(runner.clone());
-    let service = hosted::person_mcp::service(BASE_URL, capabilities.host_calls());
+    capabilities.calls().bind(runner.clone());
+    let service = hosted::person_mcp::service(BASE_URL, capabilities.calls());
     let capabilities = capabilities.register(Arc::new(service));
     let definition = capabilities.definitions().remove(0);
     assert_eq!(definition.name(), hosted::person_mcp::NAME);
@@ -818,21 +819,21 @@ struct CredentialCalls {
 }
 
 #[async_trait]
-impl hosted::HostCallRunner for CredentialCalls {
+impl hosted::CallRunner for CredentialCalls {
     async fn answer(
         &self,
         _: OrgId,
-        call: &'static everruns_contracts::host_calls::HostCall,
+        call: &'static crate::domains::data_plane::calls::Call,
         params: Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        use everruns_contracts::host_calls::HostCallAnswer;
+    ) -> anyhow::Result<crate::domains::data_plane::calls::Answer> {
+        use crate::domains::data_plane::calls::Answer;
         self.asked.lock().push((call.name, params));
         Ok(match call.name {
-            everruns_contracts::host_calls::GITHUB_TOKEN => HostCallAnswer::Error {
+            crate::domains::data_plane::calls::GITHUB_TOKEN => Answer::Error {
                 kind: 3,
                 message: "no GitHub connection".into(),
             },
-            _ => HostCallAnswer::Value(json!({ "token": "t0k" })),
+            _ => Answer::Value(json!({ "token": "t0k" })),
         })
     }
 }
@@ -849,8 +850,8 @@ async fn credentials_are_looked_up_as_the_tokens_person_and_turn_only() {
     let runner = Arc::new(CredentialCalls {
         asked: parking_lot::Mutex::default(),
     });
-    capabilities.host_calls().bind(runner.clone());
-    let service = hosted::credentials::service(BASE_URL, capabilities.host_calls());
+    capabilities.calls().bind(runner.clone());
+    let service = hosted::credentials::service(BASE_URL, capabilities.calls());
     let capabilities = capabilities.register(Arc::new(service));
     let definition = capabilities.definitions().remove(0);
     assert_eq!(definition.name(), hosted::credentials::NAME);
@@ -905,7 +906,7 @@ async fn credentials_are_looked_up_as_the_tokens_person_and_turn_only() {
     {
         let asked = runner.asked.lock();
         let (name, params) = &asked[0];
-        assert_eq!(*name, everruns_contracts::host_calls::CONNECTION_TOKEN);
+        assert_eq!(*name, crate::domains::data_plane::calls::CONNECTION_TOKEN);
         assert_eq!(params["provider"], "github");
         assert_eq!(params["session_id"], session.to_string());
         assert_eq!(params["acting_user"], "usr_1");

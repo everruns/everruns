@@ -39,7 +39,7 @@ spec:
       spec:
         accessModes: [ReadWriteOnce]
         {{- with .Values.postgresql.storage.storageClass }}
-        storageClassName: {{ . }}
+        storageClassName: {{ . | quote }}
         {{- end }}
         resources:
           requests: { storage: {{ .Values.postgresql.storage.size }} }
@@ -97,7 +97,7 @@ spec:
       spec:
         accessModes: [ReadWriteOnce]
         {{- with .Values.nats.storage.storageClass }}
-        storageClassName: {{ . }}
+        storageClassName: {{ . | quote }}
         {{- end }}
         resources:
           requests: { storage: {{ .Values.nats.storage.size }} }

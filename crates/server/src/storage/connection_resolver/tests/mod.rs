@@ -994,13 +994,17 @@ async fn invalid_identity_refresh_grant_is_revoked_without_retry() {
     }
 
     assert_eq!(exchange.calls.load(Ordering::SeqCst), 1);
-    assert!(
-        fixture
-            .db
-            .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
-            .await
-            .unwrap()
-            .is_none()
+    // Kept, marked as needing sign-in: people see it in Health and on the
+    // agent's MCP tab instead of the server silently dropping out.
+    let row = fixture
+        .db
+        .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
+        .await
+        .unwrap()
+        .expect("the grant is kept");
+    assert_eq!(
+        grant_health::reconnect_mark(&row).map(|(reason, _)| reason),
+        Some(grant_health::reason::REFUSED.to_string())
     );
 }
 
@@ -1430,6 +1434,7 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
 }
 
 mod github;
+mod marked_grants;
 mod user_or_service;
 
 mod service_api_key;

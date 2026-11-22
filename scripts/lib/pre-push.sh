@@ -376,7 +376,7 @@ else
 fi
 
 # 28. Server layering: domains/storage/services/records never import crate::api,
-#     features read session events through the port, and a cell calls its
+#     features read session events through the port, and a shard calls its
 #     control plane only through host calls (data plane v2)
 echo "28/33 Server API layering and data plane boundary guards"
 if SERVER_API_LAYERING_OUTPUT="$(
@@ -395,13 +395,13 @@ else
   printf '%s\n' "$SESSION_EVENTS_PORT_OUTPUT" | sed 's/^/   /'
   fail "session events port guard failed"
 fi
-if CELL_CP_CALLS_OUTPUT="$(
-  bash "$PROJECT_ROOT/scripts/lib/check-cell-control-plane-calls.sh" 2>&1
+if AGENTD_CP_CALLS_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-agentd-control-plane-calls.sh" 2>&1
 )"; then
-  pass "$CELL_CP_CALLS_OUTPUT"
+  pass "$AGENTD_CP_CALLS_OUTPUT"
 else
-  printf '%s\n' "$CELL_CP_CALLS_OUTPUT" | sed 's/^/   /'
-  fail "cell control plane calls guard failed"
+  printf '%s\n' "$AGENTD_CP_CALLS_OUTPUT" | sed 's/^/   /'
+  fail "shard control plane calls guard failed"
 fi
 
 # 29. Server module layout: folder modules use mod.rs, no path attributes

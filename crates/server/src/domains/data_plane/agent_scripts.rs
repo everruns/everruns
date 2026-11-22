@@ -1,13 +1,14 @@
 //! The saved scripts of a session a data plane runs (parity, saved-script
-//! triggers): the `agent_scripts` and `agent_script_save` host calls answer
-//! the shell's `tools scripts` on a cell, as the worker commands answer a v1
-//! worker's (`grpc_saved_scripts.rs`).
+//! triggers): the platform commands server's `scripts` and `save_script`
+//! operations (`injected/hosted.rs`) answer the shell's `tools scripts` on a
+//! shard, as the worker commands answer a v1 worker's
+//! (`grpc_saved_scripts.rs`).
 //!
 //! Decisions:
 //! - Both calls name the session; the agent is the session's own, found
 //!   here. The session must be one of the org's sessions on its data plane.
 //! - A save runs as the turn's management user (`runtime_invocations`,
-//!   recorded from the person the forwarding cell names) under the
+//!   recorded from the token's person) under the
 //!   commands' own `AGENT_MANAGE` policy, as v1 runs a bound save
 //!   (THREAT[TM-TOOL-067]). A turn with no management user (a channel or a
 //!   trigger's turn) is refused, and so is an agent whose shell does not
@@ -22,10 +23,10 @@ use serde_json::{Value, json};
 
 use super::ControlPlane;
 use crate::domains::common::Ctx;
-use everruns_contracts::host_calls::HostCallAnswer;
+use crate::domains::data_plane::calls::Answer;
 
-fn refused(kind: Kind, message: impl Into<String>) -> HostCallAnswer {
-    HostCallAnswer::Error {
+fn refused(kind: Kind, message: impl Into<String>) -> Answer {
+    Answer::Error {
         kind: kind as i32,
         message: message.into(),
     }
@@ -37,7 +38,7 @@ async fn session(
     cp: &ControlPlane,
     ctx: &Ctx,
     params: &Value,
-) -> anyhow::Result<Result<crate::domains::sessions::record::Session, HostCallAnswer>> {
+) -> anyhow::Result<Result<crate::domains::sessions::record::Session, Answer>> {
     let Some(id) = params["session_id"]
         .as_str()
         .and_then(|id| SessionId::parse(id).ok())
@@ -55,7 +56,7 @@ async fn session(
 }
 
 /// Answer `agent_scripts`: the session's agent's active scripts.
-pub async fn list(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Result<HostCallAnswer> {
+pub async fn list(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Result<Answer> {
     let session = match session(cp, ctx, params).await? {
         Ok(session) => session,
         Err(refusal) => return Ok(refusal),
@@ -78,7 +79,7 @@ pub async fn list(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Resul
 
 /// Answer `agent_script_save`: create or update the script as the turn's
 /// management user.
-pub async fn save(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Result<HostCallAnswer> {
+pub async fn save(cp: &ControlPlane, ctx: &Ctx, params: &Value) -> anyhow::Result<Answer> {
     let session = match session(cp, ctx, params).await? {
         Ok(session) => session,
         Err(refusal) => return Ok(refusal),
@@ -191,14 +192,12 @@ async fn may_save(
     }))
 }
 
-fn answer(
-    result: Result<String, crate::domains::common::CommandError>,
-) -> anyhow::Result<HostCallAnswer> {
+fn answer(result: Result<String, crate::domains::common::CommandError>) -> anyhow::Result<Answer> {
     Ok(match result {
-        Ok(json) => HostCallAnswer::Value(serde_json::from_str(&json)?),
+        Ok(json) => Answer::Value(serde_json::from_str(&json)?),
         Err(error) => {
             let error = crate::worker_link::grpc_service::command_error_to_proto(error);
-            HostCallAnswer::Error {
+            Answer::Error {
                 kind: error.kind,
                 message: error.message,
             }

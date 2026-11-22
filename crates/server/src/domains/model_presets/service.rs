@@ -32,6 +32,18 @@ async fn builtins(db: &StorageBackend, org_id: i64) -> Result<Vec<ModelPreset>> 
     ))
 }
 
+/// Every preset of the org, without agent counts: built-ins over
+/// `models` first, then custom presets by name.
+pub async fn all_presets(
+    db: &StorageBackend,
+    org_id: i64,
+    models: &[crate::storage::ModelWithProviderRow],
+) -> Result<Vec<ModelPreset>> {
+    let mut presets = builtin::all(&crate::domains::common::default_driver_registry(), models);
+    presets.extend(db.list_model_presets(org_id).await?.iter().map(custom));
+    Ok(presets)
+}
+
 /// Every preset of the org: built-ins first, then custom presets by name,
 /// each with how many live agents use it.
 pub async fn list(db: &StorageBackend, org_id: i64) -> Result<Vec<ModelPreset>> {

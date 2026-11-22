@@ -16,17 +16,17 @@ Read secrets v1
 Read sandbox v1
 Read spend v1
 # session routes: segment plane
-messages Cell
-events Cell
-sse Cell
-cancel Cell
-tool-approvals Cell
-tool-results Cell
-tasks Cell
-schedules Cell
-work Cell
-resources Cell
-databases Cell
+messages Shard
+events Shard
+sse Shard
+cancel Shard
+tool-approvals Shard
+tool-results Shard
+tasks Shard
+schedules Shard
+work Shard
+resources Shard
+databases Shard
 archive Record
 pin Record
 cost Record

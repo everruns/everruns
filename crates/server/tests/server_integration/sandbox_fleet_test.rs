@@ -19,6 +19,8 @@ use everruns_server::domains::sandbox_templates::record::{
     ResolvedSandboxSpec, SandboxBootstrap, SandboxContainmentSpec, SandboxDurability,
     SandboxLifecycle, SandboxNetworkPolicy, SandboxTargetSpec,
 };
+use everruns_server::domains::sandboxes::events;
+use everruns_server::domains::session_sandbox::plane::{idle_handled, idle_on_data_planes};
 use everruns_server::storage::backend::sandbox_fleet::SandboxFleetFilter;
 use everruns_server::storage::{Database, PgSandboxCheckpointStore, StorageBackend};
 
@@ -316,8 +318,82 @@ async fn attention_reasons_and_in_process_targets() {
     assert_eq!(rows[0].fleet_state, "not_started");
 }
 
-/// The idle sweep picks a running Sandbox past its idle limit only while its
-/// Session is not running a turn, and never one that keeps running by policy.
+/// A failed v2 idle pause can retry even when the session has had no new activity.
+#[tokio::test]
+async fn v2_idle_pause_retries_failed_legacy_and_recent_attempts() {
+    let (pool, backend, session_id) = setup("fleet-v2-idle-retry").await;
+    let pinned = backend
+        .pin_primary_sandbox(session_id, "build", &managed_spec())
+        .await
+        .expect("pin v2 sandbox");
+    let activity: chrono::DateTime<chrono::Utc> = sqlx::query_scalar(
+        "INSERT INTO dp_session_summaries
+             (session_id, org_id, data_plane_id, agent_id, session_version, status, created_at, last_activity_at)
+         VALUES ($1, $2, 'fleet-dp', 'fleet-agent', 1, 'idle', now() - interval '30 minutes',
+                 now() - interval '30 minutes')
+         RETURNING last_activity_at",
+    )
+    .bind(session_id.to_string())
+    .bind(DEFAULT_ORG_ID)
+    .fetch_one(&pool)
+    .await
+    .expect("store shard summary");
+
+    let eligible = || async {
+        idle_on_data_planes(&pool, std::time::Duration::from_secs(60), 1000)
+            .await
+            .expect("list idle sandbox sessions")
+            .iter()
+            .any(|(id, _, _)| *id == session_id.uuid())
+    };
+    let record = |outcome, reason| {
+        let event = events::event(
+            events::actor::IDLE_SWEEP,
+            outcome,
+            reason,
+            "Fixture outcome",
+        )
+        .with_detail(serde_json::json!({"idle_activity_micros": activity.timestamp_micros()}));
+        let backend = &backend;
+        async move {
+            backend
+                .record_sandbox_event_for_session(session_id.uuid(), &event)
+                .await
+                .expect("record pause result");
+        }
+    };
+
+    // Earlier builds advanced the watermark even when a pause failed.
+    idle_handled(&pool, session_id.uuid(), activity)
+        .await
+        .expect("mark legacy attempt");
+    assert!(eligible().await);
+
+    record(events::outcome::FAILED, events::reason::PROVIDER_ERROR).await;
+    assert!(!eligible().await, "a recent failure cools down");
+    sqlx::query(
+        "UPDATE sandbox_events SET at = now() - interval '6 minutes' WHERE sandbox_id = $1",
+    )
+    .bind(pinned.id)
+    .execute(&pool)
+    .await
+    .expect("advance past the retry cooldown");
+    assert!(eligible().await, "it retries without new activity");
+
+    record(events::outcome::DONE, events::reason::IDLE_LIMIT).await;
+    assert!(!eligible().await, "a successful pause ends this idle spell");
+    sqlx::query(
+        "UPDATE dp_session_summaries SET last_activity_at = last_activity_at + interval '1 second'
+         WHERE session_id = $1",
+    )
+    .bind(session_id.to_string())
+    .execute(&pool)
+    .await
+    .expect("record new sandbox activity");
+    assert!(eligible().await, "new activity starts a new idle spell");
+}
+
+/// The v1 idle sweep respects the session state and the pinned idle limit.
 #[tokio::test]
 async fn idle_sweep_selects_running_sandboxes_past_their_limit() {
     let (pool, backend, session_id) = setup("fleet-idle-sweep").await;

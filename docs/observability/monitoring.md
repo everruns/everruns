@@ -12,7 +12,7 @@ agent names, prompts, and tool arguments out of the display.
 
 ## Organization and platform views
 
-Open **Activity → Monitoring** to see the selected organization’s execution and
+Open **Observability → Monitoring** to see the selected organization’s execution and
 actor ownership. Reading this view requires session-read permission.
 
 Platform operators open **System → Monitoring** for the cross-org
@@ -57,41 +57,41 @@ cause, and failed tool calls by tool for the selection; **What failed** under
 the Errors chart opens the same breakdown in a panel. Each summary tile
 compares with the previous period of the same length.
 
-On the platform view, when sessions run on data plane v2 cells, the charts
-include them, and an **All / Workers / Cells** switch shows one execution path
-at a time. Workers are sampled every 10 seconds; each cell reports once a
-minute, so cell lines move in one-minute steps. An organization sees only the
-path it runs on: on a data plane, its sessions on cells, opening on Timeline
+On the platform view, when sessions run on data plane v2 shards, the charts
+include them, and an **All / Workers / Shards** switch shows one execution path
+at a time. Workers are sampled every 10 seconds; each shard reports once a
+minute, so shard lines move in one-minute steps. An organization sees only the
+path it runs on: on a data plane, its sessions on shards, opening on Timeline
 without the Execution, Workers and Actors tabs or worker waits, which all read
-worker leases; otherwise the worker view, without cells. It never sees the
-cells themselves, which are shared.
+worker leases; otherwise the worker view, without shards. It never sees the
+shards themselves, which are shared.
 
 The platform view adds worker capacity on the working chart, a **Fleet** chart
-(server replicas, workers, cells, and cell nodes), the busiest cell node's CPU
-and fullest node's memory against their limits, cell leader changes and session
+(server replicas, workers, shards, and shard nodes), the busiest shard node's CPU
+and fullest node's memory against their limits, shard leader changes and session
 moves, a load strip per worker (red above 90% of its slots), lease takeovers,
 and worker joins and departures. It ranks organizations by ID only.
 
-## Cells
+## Shards
 
-The platform view has a **Cells** tab listing each data plane v2 cell from its
+The platform view has a **Shards** tab listing each data plane v2 shard from its
 newest minute report: nodes (and how many answered the leader), sessions, turns
 running, messages waiting, the busiest node's CPU and fullest node's memory, and
-admit p99. A cell with no report for three minutes is marked silent. Select a
-cell for its leader, log shipping p99, leader changes, moves, and charts of its
-load, CPU and memory, and turns over the range. Cells need no metrics database:
-the reports travel the cell's existing feed and are kept with the rest of the
+admit p99. A shard with no report for three minutes is marked silent. Select a
+shard for its leader, log shipping p99, leader changes, moves, and charts of its
+load, CPU and memory, and turns over the range. Shards need no metrics database:
+the reports travel the shard's existing feed and are kept with the rest of the
 history.
 
 For a closer look, point the server at a Prometheus-compatible store
-(VictoriaMetrics or Prometheus) that scrapes the cells' `/metrics`:
+(VictoriaMetrics or Prometheus) that scrapes the shards' `/metrics`:
 
 ```bash
 MONITORING_DETAIL=prometheus
 MONITORING_DETAIL_URL=http://victoriametrics:8428
 ```
 
-The selected cell then also shows its last hour by node, every 10 seconds:
+The selected shard then also shows its last hour by node, every 10 seconds:
 turns running and memory. The address is read from the environment only. Without
 it, or when the store does not answer, the tab says why and keeps the minute
 history. **System → Health** reports whether the minute history is still being
@@ -131,7 +131,7 @@ fleet access requires platform authority. The adjacent `/actors` endpoints provi
 bounded, filtered pages and actor detail, and `/timeline` returns recorded
 history in buckets (`range` or `from`/`to`, optional `bucket` seconds) with
 `/timeline/window` for a selection's busiest agents, failure causes, and failed
-tools. `GET /api/v1/durable/monitoring/cells` lists cells with their history. The [API reference](/api/) owns the request and response contracts.
+tools. `GET /api/v1/durable/monitoring/shards` lists shards with their history. The [API reference](/api/) owns the request and response contracts.
 
 Monitoring complements [OpenTelemetry](/observability/opentelemetry/) and
 [Braintrust](/observability/braintrust/), which provide trace exports and

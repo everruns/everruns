@@ -2,22 +2,22 @@
 
 use super::*;
 use crate::org_token::{OrgTokenClaims, OrgTokenClaimsExt};
-use crate::state::{CellState, Left, SessionState};
+use crate::state::{Left, SessionState, ShardState};
 
-async fn gateway(state: Arc<Mutex<CellState>>) -> (Arc<Gateway>, tempfile::TempDir) {
+async fn gateway(state: Arc<Mutex<ShardState>>) -> (Arc<Gateway>, tempfile::TempDir) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap().to_string();
     // Model a follower that has applied Create but not Assign. Proposals
     // are forwarded to the leader, whose state includes committed Assign.
     let app = Router::new()
-        .route("/cell/sessions/{session}", get(|Path(session): Path<String>| async move {
+        .route("/shard/sessions/{session}", get(|Path(session): Path<String>| async move {
             Json(json!({"found": "here", "value": {
                 "id": session, "agent": "echo", "last_sequence": 0,
                 "inbox": 0, "active": null, "turns_completed": 0,
                 "placement": "live", "tenant": null
             }}))
         }))
-        .route("/cell/propose", post(|State(state): State<Arc<Mutex<CellState>>>, Json(command): Json<Command>| async move {
+        .route("/shard/propose", post(|State(state): State<Arc<Mutex<ShardState>>>, Json(command): Json<Command>| async move {
             Json(Proposed { response: state.lock().apply(command, &mut Vec::new()), index: 1 })
         }))
         .with_state(state);
@@ -27,8 +27,8 @@ async fn gateway(state: Arc<Mutex<CellState>>) -> (Arc<Gateway>, tempfile::TempD
     std::fs::write(
         &path,
         serde_json::to_vec(&crate::cluster::Topology {
-            directory_cell: 0,
-            cells: BTreeMap::from([(0, BTreeMap::from([(1, addr)]))]),
+            directory_shard: 0,
+            shards: BTreeMap::from([(0, BTreeMap::from([(1, addr)]))]),
         })
         .unwrap(),
     )
@@ -39,7 +39,7 @@ async fn gateway(state: Arc<Mutex<CellState>>) -> (Arc<Gateway>, tempfile::TempD
 #[tokio::test]
 async fn tenant_lookup_uses_committed_assignment_not_lagging_replica() {
     let session = SessionId::new();
-    let mut state = CellState::default();
+    let mut state = ShardState::default();
     state.sessions.insert(
         session,
         SessionState {
@@ -68,7 +68,7 @@ async fn tenant_lookup_uses_committed_assignment_not_lagging_replica() {
 #[tokio::test]
 async fn tenant_lookup_does_not_cache_before_assignment() {
     let session = SessionId::new();
-    let state = Arc::new(Mutex::new(CellState::default()));
+    let state = Arc::new(Mutex::new(ShardState::default()));
     state
         .lock()
         .sessions
@@ -92,7 +92,7 @@ async fn tenant_lookup_does_not_cache_before_assignment() {
 #[test]
 fn tenant_lookup_preserves_missing_and_moved_sessions() {
     let session = SessionId::new();
-    let mut state = CellState::default();
+    let mut state = ShardState::default();
     assert!(matches!(
         state.apply(Command::Tenant { session }, &mut Vec::new()),
         Response::NotFound
@@ -100,12 +100,12 @@ fn tenant_lookup_preserves_missing_and_moved_sessions() {
     state.forwarded.insert(
         session,
         Left {
-            cell: 2,
+            shard: 2,
             generation: 1,
         },
     );
     assert!(matches!(
         state.apply(Command::Tenant { session }, &mut Vec::new()),
-        Response::Moved { cell: 2 }
+        Response::Moved { shard: 2 }
     ));
 }

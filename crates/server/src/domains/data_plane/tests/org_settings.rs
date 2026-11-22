@@ -119,7 +119,7 @@ async fn a_v1_org_gets_no_settings() {
 
 /// Review fix: a settings change counts in the same transaction, so a sync
 /// that failed after it is caught up by the dispatcher instead of leaving
-/// the old policy (open egress) on the cells.
+/// the old policy (open egress) on the shards.
 #[tokio::test]
 async fn a_settings_change_is_owed_a_sync_until_one_covers_it() {
     let (cp, _, _) = control_plane().await;
@@ -154,35 +154,6 @@ async fn a_settings_change_is_owed_a_sync_until_one_covers_it() {
         .await
         .unwrap();
     assert_eq!(cp.db.dp_orgs_settings_behind(64).await.unwrap().len(), 1);
-}
-
-/// Review fix: a write host call runs once per call id; a duplicate gets
-/// the first run's answer, or "unknown" while that run has not finished,
-/// and another org never sees it.
-#[tokio::test]
-async fn a_write_host_calls_receipt_answers_its_duplicates() {
-    use crate::storage::HostCallReceipt;
-    let (cp, _, _) = control_plane().await;
-    let take = |org| {
-        let db = cp.db.clone();
-        async move {
-            db.dp_take_host_call_receipt("host-call:c1", org, "memory_file")
-                .await
-                .unwrap()
-        }
-    };
-    assert_eq!(take(ORG).await, HostCallReceipt::New);
-    assert_eq!(take(ORG).await, HostCallReceipt::Unknown);
-    cp.db
-        .dp_answer_host_call_receipt("host-call:c1", &json!({ "sealed": 1 }))
-        .await
-        .unwrap();
-    assert_eq!(
-        take(ORG).await,
-        HostCallReceipt::Answered(json!({ "sealed": 1 }))
-    );
-    assert_eq!(take(3).await, HostCallReceipt::Unknown);
-    assert_eq!(cp.db.dp_expire_host_call_receipts(1).await.unwrap(), 0);
 }
 
 /// Review fix: two syncs of one org never overlap, so one that read the

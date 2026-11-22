@@ -29,7 +29,7 @@
 //!   another holder took the session.
 //! - Progress after a death resets the poison guard. The guard counts
 //!   leases since the last release, so three holder deaths inside one long
-//!   turn sealed it even when every lease moved it on (the cell's chaos run:
+//!   turn sealed it even when every lease moved it on (the shard's chaos run:
 //!   node kills, not the turn, cut it off three times). A lease after a death
 //!   (`attempts > 1`) reports progress once, when a step it started is
 //!   stored ([`Lease::step_stored`]): its second phase boundary, since the

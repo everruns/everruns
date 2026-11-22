@@ -1,7 +1,7 @@
 //! Step 6's failure qualification against a live fleet (design.md,
 //! "Implementation plan", step 6), beside the control plane cases in
 //! `control_plane.rs`: a stale executor is fenced out, old messages of
-//! earlier moves change nothing, and a whole cell restarting after an
+//! earlier moves change nothing, and a whole shard restarting after an
 //! external effect neither loses the turn nor runs the effect again.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -10,7 +10,7 @@ mod support;
 
 use std::time::Duration;
 
-use everruns_cell::remote::EXECUTOR_IDS;
+use everruns_agentd::remote::EXECUTOR_IDS;
 use serde_json::{Value, json};
 use support::{Fleet, types};
 
@@ -24,7 +24,7 @@ async fn a_stale_executor_is_fenced_out() {
     assert_eq!(holder["node"], EXECUTOR_IDS + 1, "{holder}");
     let stale = holder["fence"].as_u64().unwrap();
     // Executor 1 stops answering (a long pause looks the same to the
-    // cell); executor 2 takes the turn over under a newer epoch.
+    // shard); executor 2 takes the turn over under a newer epoch.
     fleet.kill_executor(1);
     fleet.executor(2);
     fleet
@@ -47,7 +47,7 @@ async fn a_stale_executor_is_fenced_out() {
     assert_eq!(response["result"], "fenced", "{response}");
     let live = fleet
         .post(
-            "/cell/exec/live",
+            "/shard/exec/live",
             json!({ "session": session, "fence": stale, "deltas": [] }),
         )
         .await;
@@ -57,19 +57,19 @@ async fn a_stale_executor_is_fenced_out() {
     assert!(types(&events).contains(&"turn.completed"));
 }
 
-/// Propose `command` to the cell holding `session`'s directory entry.
-/// Directory shards move between cells while the fleet runs (the
-/// directory leader spreads them), so follow a shard that moved.
+/// Propose `command` to the shard holding `session`'s directory entry.
+/// Directory slots move between shards while the fleet runs (the
+/// directory leader spreads them), so follow a slot that moved.
 async fn to_directory(fleet: &Fleet, session: &str, command: Value) -> Value {
-    let mut cell = 0;
+    let mut shard = 0;
     for _ in 0..8 {
-        let reply = fleet.propose(cell, command.clone()).await;
+        let reply = fleet.propose(shard, command.clone()).await;
         if reply["result"] != "moved" {
             return reply;
         }
-        cell = reply["cell"].as_u64().unwrap() as u32;
+        shard = reply["shard"].as_u64().unwrap() as u32;
     }
-    panic!("the directory shard of {session} keeps moving");
+    panic!("the directory slot of {session} keeps moving");
 }
 
 /// `session`'s directory entry, read through the log.
@@ -97,21 +97,21 @@ async fn old_messages_of_earlier_moves_change_nothing() {
         let moved = fleet
             .post(
                 &format!("/v1/sessions/{session}/move"),
-                json!({ "cell": to }),
+                json!({ "shard": to }),
             )
             .await;
         assert_eq!(moved["to"], to, "{moved}");
         placements.push(placed(&fleet, &session).await);
     }
     let now = placements.last().unwrap().clone();
-    assert_eq!(now["cell"], 0);
+    assert_eq!(now["shard"], 0);
     let first = &placements[0];
     let generation = first["generation"].as_u64().unwrap();
     // The first move's messages, delivered late.
     let place = to_directory(
         &fleet,
         &session,
-        json!({ "op": "place", "session": session, "cell": 1,
+        json!({ "op": "place", "session": session, "shard": 1,
                 "generation": generation, "previous": generation - 1 }),
     )
     .await;
@@ -126,7 +126,7 @@ async fn old_messages_of_earlier_moves_change_nothing() {
     let forward = fleet
         .propose(
             0,
-            json!({ "op": "forward", "session": session, "cell": 1, "generation": generation }),
+            json!({ "op": "forward", "session": session, "shard": 1, "generation": generation }),
         )
         .await;
     assert_ne!(forward["result"], "ok", "{forward}");
@@ -153,18 +153,18 @@ fn executions(ledger: &std::path::Path, session: &str) -> usize {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_cell_restart_after_an_external_effect_runs_it_once() {
+async fn a_shard_restart_after_an_external_effect_runs_it_once() {
     let ledger = tempfile::NamedTempFile::new().unwrap();
     // SAFETY-free in practice: this file's tests read the variable only
     // through the work tool, and no other test in this binary sets it.
     unsafe {
-        std::env::set_var("CELL_LEDGER", ledger.path());
+        std::env::set_var("AGENTD_LEDGER", ledger.path());
     }
     let mut fleet = Fleet::start().await;
     fleet.executor(1);
     let session = fleet.create_in("worker3", 0).await;
     fleet.say(&session, "go").await;
-    // Once the first step's effect happened, the whole cell goes down.
+    // Once the first step's effect happened, the whole shard goes down.
     fleet
         .until("the first step ran", || async {
             executions(ledger.path(), &session) >= 1

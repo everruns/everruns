@@ -223,13 +223,13 @@ async fn backfill_rebuilds_running_turns_without_overwriting_samples() {
 }
 
 fn report(
-    cell: &str,
+    shard: &str,
     at: &str,
     term: i64,
     orgs: Vec<(i64, i64, i64, i64, i64)>,
-) -> CellMinuteReport {
-    CellMinuteReport {
-        cell: cell.into(),
+) -> ShardMinuteReport {
+    ShardMinuteReport {
+        shard: shard.into(),
         data_plane: "dp".into(),
         minute: minute(at),
         leader: "n1".into(),
@@ -252,24 +252,29 @@ fn report(
 }
 
 #[tokio::test]
-async fn a_cell_minute_report_counts_once_for_platform_and_tenants() {
+async fn a_shard_minute_report_counts_once_for_platform_and_tenants() {
     let db = StorageBackend::test_database();
-    let first = report("cell-a", "2026-11-01T06:00:00Z", 1, vec![(2, 10, 4, 0, 3)]);
-    assert!(db.monitoring_record_cell_report(&first).await.unwrap());
+    let first = report("shard-a", "2026-11-01T06:00:00Z", 1, vec![(2, 10, 4, 0, 3)]);
+    assert!(db.monitoring_record_shard_report(&first).await.unwrap());
     // A new leader resends the minute with other numbers: ignored.
-    let resent = report("cell-a", "2026-11-01T06:00:00Z", 2, vec![(2, 99, 99, 0, 9)]);
-    assert!(!db.monitoring_record_cell_report(&resent).await.unwrap());
-    db.monitoring_record_cell_report(&report(
-        "cell-b",
+    let resent = report(
+        "shard-a",
+        "2026-11-01T06:00:00Z",
+        2,
+        vec![(2, 99, 99, 0, 9)],
+    );
+    assert!(!db.monitoring_record_shard_report(&resent).await.unwrap());
+    db.monitoring_record_shard_report(&report(
+        "shard-b",
         "2026-11-01T06:00:00Z",
         1,
         vec![(2, 5, 1, 0, 1), (3, 7, 2, 0, 2)],
     ))
     .await
     .unwrap();
-    // cell-a's next minute: a new term is an election.
-    db.monitoring_record_cell_report(&report(
-        "cell-a",
+    // shard-a's next minute: a new term is an election.
+    db.monitoring_record_shard_report(&report(
+        "shard-a",
         "2026-11-01T06:01:00Z",
         3,
         vec![(2, 10, 2, 0, 1)],
@@ -299,54 +304,54 @@ async fn a_cell_minute_report_counts_once_for_platform_and_tenants() {
         (2, 15, 5)
     );
 
-    let cells = db.timeline_cells_buckets(from, to, 300).await.unwrap();
+    let shards = db.timeline_shards_buckets(from, to, 300).await.unwrap();
     assert_eq!(
-        (cells[0].cells, cells[0].nodes, cells[0].elections),
+        (shards[0].shards, shards[0].nodes, shards[0].elections),
         (2, 6, 2)
     );
-    assert_eq!(cells[0].memory_peak, Some(0.5));
-    assert_eq!(cells[0].cpu_peak, Some(0.25));
-    let markers = db.timeline_cell_markers(from, to).await.unwrap();
+    assert_eq!(shards[0].memory_peak, Some(0.5));
+    assert_eq!(shards[0].cpu_peak, Some(0.25));
+    let markers = db.timeline_shard_markers(from, to).await.unwrap();
     assert_eq!(markers.len(), 1);
     assert_eq!(
         (markers[0].kind.as_str(), markers[0].label.as_str()),
-        ("leader_change", "cell-a")
+        ("leader_change", "shard-a")
     );
 }
 
 #[tokio::test]
-async fn the_cells_list_shows_each_cells_newest_report() {
+async fn the_shards_list_shows_each_shards_newest_report() {
     let db = StorageBackend::test_database();
     let now = timeline_minute(Utc::now());
     let at = |m: i64| (now - Duration::minutes(m)).to_rfc3339();
-    for (cell, ago, term) in [("cell-a", 2, 1), ("cell-a", 1, 2), ("cell-b", 1, 7)] {
-        db.monitoring_record_cell_report(&report(cell, &at(ago), term, vec![]))
+    for (shard, ago, term) in [("shard-a", 2, 1), ("shard-a", 1, 2), ("shard-b", 1, 7)] {
+        db.monitoring_record_shard_report(&report(shard, &at(ago), term, vec![]))
             .await
             .unwrap();
     }
-    let latest = db.monitoring_cells_latest().await.unwrap();
+    let latest = db.monitoring_shards_latest().await.unwrap();
     let terms: Vec<_> = latest
         .iter()
-        .map(|c| (c.cell.as_str(), c.raft_term))
+        .map(|c| (c.shard.as_str(), c.raft_term))
         .collect();
-    assert_eq!(terms, vec![("cell-a", Some(2)), ("cell-b", Some(7))]);
+    assert_eq!(terms, vec![("shard-a", Some(2)), ("shard-b", Some(7))]);
 }
 
 #[tokio::test]
-async fn cell_counters_add_to_tenants_platform_and_the_cell() {
+async fn shard_counters_add_to_tenants_platform_and_the_shard() {
     let db = StorageBackend::test_database();
     let at = minute("2026-11-01T06:00:30Z");
-    let mut counters = CellBatchCounters::default();
+    let mut counters = ShardBatchCounters::default();
     let c = counters.entry(2, at);
     c.turns_completed += 2;
     c.turns_failed += 1;
     c.model_calls += 3;
     c.cost_usd += 0.5;
     counters.entry(3, at).turns_cancelled += 1;
-    db.monitoring_add_cell_counters("cell-a", "dp", &counters)
+    db.monitoring_add_shard_counters("shard-a", "dp", &counters)
         .await
         .unwrap();
-    db.monitoring_add_cell_counters("cell-a", "dp", &counters)
+    db.monitoring_add_shard_counters("shard-a", "dp", &counters)
         .await
         .unwrap();
 
@@ -366,18 +371,18 @@ async fn cell_counters_add_to_tenants_platform_and_the_cell() {
         (4, 2, 2, 6)
     );
     assert!((p.dp_cost_usd - 1.0).abs() < 1e-9);
-    // Counters alone are not a report: no cell population for the minute.
+    // Counters alone are not a report: no shard population for the minute.
     assert_eq!(p.dp_minutes, 0);
     let org3 = &db.timeline_fleet_buckets(3, from, to, 300).await.unwrap()[0];
     assert_eq!(org3.dp_turns_cancelled, 2);
-    let cell = db.timeline_cell_buckets(from, to, 300).await.unwrap();
-    assert_eq!(cell.len(), 1);
+    let shard = db.timeline_shard_buckets(from, to, 300).await.unwrap();
+    assert_eq!(shard.len(), 1);
     assert_eq!(
         (
-            cell[0].reports,
-            cell[0].turns_completed,
-            cell[0].turns_failed,
-            cell[0].turns_cancelled
+            shard[0].reports,
+            shard[0].turns_completed,
+            shard[0].turns_failed,
+            shard[0].turns_cancelled
         ),
         (0, 4, 2, 2)
     );

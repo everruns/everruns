@@ -776,7 +776,7 @@ async fn stub_data_plane() -> (String, DpCommands) {
             [
                 "event: connected\ndata: {\"sequence\":0}\n\n".to_owned(),
                 event(1, "input.message", json!({ "message": { "id": "message_1" } })),
-                event(2, "output.message.completed", json!({ "message": { "content": [{ "type": "text", "text": "Hello from the cell." }] } })),
+                event(2, "output.message.completed", json!({ "message": { "content": [{ "type": "text", "text": "Hello from the shard." }] } })),
                 event(3, "turn.completed", json!({ "turn_id": "turn_1" })),
                 "event: disconnecting\ndata: {}\n\n".to_owned(),
             ]

@@ -171,9 +171,6 @@ impl OrgMaterial for Executor {
     async fn secret(&self, _: &str, _: &str) -> anyhow::Result<Vec<u8>> {
         anyhow::bail!("no secrets")
     }
-    fn looks_up(&self) -> bool {
-        true
-    }
     fn data_plane_key(&self) -> Option<Key> {
         Some(KEY)
     }
@@ -191,14 +188,6 @@ impl OrgMaterial for Executor {
     }
     fn mcp(&self) -> Option<Arc<OrgMcp>> {
         self.mcp.get().cloned()
-    }
-    async fn lookup(
-        &self,
-        _: &str,
-        command: &str,
-        _: Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        panic!("made host call {command} with the control plane's server at hand")
     }
 }
 

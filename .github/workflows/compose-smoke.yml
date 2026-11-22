@@ -10,7 +10,7 @@
 # guide, or the script are checked against `latest`, every release is checked
 # right after its images publish, and a daily run catches drift from either.
 # Each smoke runs a turn on data plane v2 (the default) when the tag has a
-# cell image, else on v1 (scripts/lib/smoke-turn.sh); DATA_PLANE forces one.
+# shard image, else on v1 (scripts/lib/smoke-turn.sh); DATA_PLANE forces one.
 name: Compose Smoke
 
 on:

@@ -596,13 +596,19 @@ async fn remote_service_revocation_evicts_the_grant_and_cache_before_the_next_ca
 
     let rejected = invoke_executor(&executor, "revoked").await;
     assert!(rejected.connection_required.is_some());
+    // The refused grant is kept and marked for sign-in again (never purged),
+    // so the MCP sheet and Health can say why the tools are gone.
+    let marked = fixture
+        .db
+        .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
+        .await
+        .unwrap()
+        .expect("refused grant is retained");
     assert!(
-        fixture
-            .db
-            .get_virtual_user_connection(fixture.identity_id, &fixture.provider)
-            .await
-            .unwrap()
-            .is_none()
+        everruns_server::storage::connection_resolver::grant_health::reconnect_mark(&marked)
+            .is_some(),
+        "refused grant is marked: {:?}",
+        marked.provider_metadata
     );
     assert!(
         fixture

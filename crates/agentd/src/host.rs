@@ -6,7 +6,7 @@
 //! A node binary supplies only what a definition cannot carry: model
 //! providers with their credentials, and the code behind the tools a
 //! definition names. Every turn rebuilds the agent from the definition, so
-//! any node of any cell can run any session.
+//! any node of any shard can run any session.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -131,7 +131,7 @@ pub fn package_with_bindings(
         serde_json::from_value(definition.clone()).map_err(|e| e.to_string())?;
     let bindings = crate::mcp::take_bindings(&mut manifest.mcp_servers);
     // Decision: a definition's bundled agents are members this agent hands
-    // work to. In a cell a member is its own durable session, created by a
+    // work to. In a shard a member is its own durable session, created by a
     // hand-off tool from the member's definition, not an in-process member
     // of this turn; so they do not reach the Everruns builder.
     manifest.agents.clear();
@@ -167,19 +167,6 @@ impl Host for StandardHost {
                 client.parameters.clone(),
             );
         }
-        let model = manifest
-            .model
-            .as_ref()
-            .ok_or("the definition names no model")?;
-        // A provider this host serves itself wins; otherwise the org's own
-        // provider, by its key, when the org runs on the data plane.
-        let local = self
-            .providers
-            .get(
-                everruns_contracts::runtime_provider::ProviderKey::new(model.provider.as_str())
-                    .as_str(),
-            )
-            .and_then(|factory| factory(&model.model));
         // Decision: the `tool_approval` capability an agent names is served
         // here, its decisions kept in the session's storage
         // (`DurableToolApprover`), so a risky call parks the turn as a
@@ -212,7 +199,7 @@ impl Host for StandardHost {
             services =
                 services.register(everruns_capabilities::capabilities::SessionSandboxCapability);
         }
-        // Schedules live in the session's cell state (`platform.rs`); the
+        // Schedules live in the session's shard state (`platform.rs`); the
         // activation's schedule store reaches them.
         if manifest.capabilities.iter().any(|c| {
             c.id() == everruns_capabilities::capabilities::session_schedule::SESSION_SCHEDULE_CAPABILITY_ID
@@ -230,18 +217,34 @@ impl Host for StandardHost {
             services = services.register(everruns_capabilities::capabilities::SubagentCapability);
         }
         services = hosted_capabilities(services, &manifest.capabilities);
-        let model = match (local, orgs) {
-            (Some(model), _) => model,
+        let model = match (manifest.model.as_ref(), orgs) {
+            (Some(spec), orgs) => {
+                // A direct host provider takes precedence over the org's provider.
+                let local = self
+                    .providers
+                    .get(spec.provider.as_str())
+                    .and_then(|factory| factory(&spec.model));
+                match (local, orgs) {
+                    (Some(model), _) => model,
+                    (None, Some(orgs)) => {
+                        services = services.providers(orgs.providers.clone());
+                        Model::on(spec.provider.as_str(), spec.model.as_str())
+                    }
+                    (None, None) => {
+                        return Err(format!(
+                            "this node does not serve {} on {}",
+                            spec.model, spec.provider
+                        ));
+                    }
+                }
+            }
             (None, Some(orgs)) => {
+                // An empty organization can open a chat during provider setup.
+                // The empty provider identity never resolves credentials.
                 services = services.providers(orgs.providers.clone());
-                Model::on(model.provider.as_str(), model.model.as_str())
+                Model::on("", "unconfigured")
             }
-            (None, None) => {
-                return Err(format!(
-                    "this node does not serve {} on {}",
-                    model.model, model.provider
-                ));
-            }
+            (None, None) => return Err("the definition names no model".into()),
         };
         // An org's MCP servers get their credentials per call, from the
         // calling session's org (`mcp.rs`).
@@ -259,7 +262,7 @@ impl Host for StandardHost {
             services = services.shared_mcp_auth(orgs.mcp.provider_for_agent(bindings));
         }
         // Decision: a session's workspace is its own durable one in the
-        // cell, so its file tools may write it, as the platform's workers
+        // shard, so its file tools may write it, as the platform's workers
         // allow (hidden and sensitive paths stay denied by the policy).
         builder
             .host_services(services)
@@ -269,7 +272,7 @@ impl Host for StandardHost {
             .workspace_policy(everruns::WorkspacePolicy::read_write())
             // A tool that needs approval parks the turn until a person
             // answers through `POST /v1/sessions/{id}/tool-approvals`: a
-            // cell never holds a turn open on a callback.
+            // shard never holds a turn open on a callback.
             .durable_approvals()
             .build()
             .map_err(|e| e.to_string())
@@ -297,13 +300,13 @@ pub(crate) fn hosted_registry() -> &'static everruns_core::capabilities::Capabil
 /// ones they depend on) that neither the Framework nor this host already
 /// serves.
 ///
-/// Decision (step 11.6b): a cell runs the capabilities a v1 worker runs,
+/// Decision (step 11.6b): a shard runs the capabilities a v1 worker runs,
 /// from the same catalog, so an org's agents build the same on either
 /// plane. Only what the agent names is registered: a registered
 /// capability can change a turn even unnamed (as `tool_approval` would).
 /// What a capability's tools need at call time (an org's keys, the control
 /// plane's stores) is checked per capability by the matrix in
-/// `cell-testkit/tests/capabilities.rs`.
+/// `shard-testkit/tests/capabilities.rs`.
 fn hosted_capabilities(
     mut services: HostServices,
     named: &[everruns::CapabilityRef],
@@ -326,37 +329,24 @@ fn hosted_capabilities(
     services
 }
 
-/// The host calls the agent of `definition` declares: what its named
-/// capabilities, and the ones they depend on, say their tools ask a
-/// control plane at call time (`Capability::host_calls`). Empty for a
-/// definition that does not parse (it does not build either).
-pub fn declared_host_calls(definition: &Value) -> std::collections::BTreeSet<&'static str> {
-    let mut declared = std::collections::BTreeSet::new();
-    let Ok((package, bindings)) = package_with_bindings(definition) else {
-        return declared;
-    };
-    // An MCP server acting as the turn's person (or a preset backed by a
-    // connection) asks for its token per call (`mcp.rs`, parity gap 8).
-    if !bindings.per_turn.is_empty() {
-        declared.insert(everruns_contracts::host_calls::MCP_CONNECTION_TOKEN);
-    }
-    let registry = hosted_registry();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut queue: Vec<String> = package
-        .manifest()
-        .capabilities
-        .iter()
-        .map(|c| c.id().to_owned())
-        .collect();
-    while let Some(id) = queue.pop() {
-        if !seen.insert(id.clone()) {
-            continue;
-        }
-        let Some(capability) = registry.get(&id) else {
-            continue;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hosted_session_can_be_created_before_a_model_is_selected() {
+        let host = StandardHost::new();
+        let definition = serde_json::json!({
+            "schema_version": 1,
+            "name": "first-chat",
+            "instructions": "Help the user."
+        });
+        let orgs = OrgServices {
+            providers: Arc::new(crate::providers::OrgProviders::default()).host_providers(),
+            mcp: Arc::new(crate::mcp::OrgMcp::from_env()),
         };
-        declared.extend(capability.host_calls().iter().copied());
-        queue.extend(capability.dependencies().into_iter().map(str::to_owned));
+
+        assert!(host.agent_with(&definition, Some(&orgs)).is_ok());
+        assert!(host.agent(&definition).is_err());
     }
-    declared
 }

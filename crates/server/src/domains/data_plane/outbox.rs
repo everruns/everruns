@@ -27,11 +27,6 @@ use crate::storage::{DP_CONFIG_CHANNEL, DpOrgRow};
 const POLL: Duration = Duration::from_secs(1);
 /// Orgs delivered per pass.
 const BATCH: i64 = 64;
-/// How often old host call receipts are dropped.
-const RECEIPTS_EXPIRE_EVERY: Duration = Duration::from_secs(3600);
-/// How long a host call's receipt is kept: a duplicate of a call arrives
-/// within its own timeout, seconds after the first.
-const RECEIPT_DAYS: i32 = 1;
 
 /// Deliver due orgs until the process stops.
 pub async fn run_dispatcher(cp: ControlPlane) {
@@ -49,7 +44,6 @@ pub async fn run_dispatcher(cp: ControlPlane) {
             None
         }
     };
-    let mut expired_at = std::time::Instant::now();
     loop {
         if let Err(error) = deliver_due(&cp).await {
             tracing::warn!(%error, "data plane config not delivered");
@@ -59,12 +53,6 @@ pub async fn run_dispatcher(cp: ControlPlane) {
         // changes in the outbox, which the next pass delivers.
         if let Err(error) = super::org_settings::sync_owed(&cp).await {
             tracing::warn!(%error, "data plane org settings not synced");
-        }
-        if expired_at.elapsed() >= RECEIPTS_EXPIRE_EVERY {
-            expired_at = std::time::Instant::now();
-            if let Err(error) = cp.db.dp_expire_host_call_receipts(RECEIPT_DAYS).await {
-                tracing::warn!(%error, "host call receipts not expired");
-            }
         }
         match listener.as_mut() {
             Some(listener) => {

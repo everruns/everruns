@@ -59,7 +59,7 @@ import { ActorTable, ActorDetail } from "./actors";
 import { MonitoringMetrics } from "./metrics";
 import { MonitoringTimelineView } from "./timeline";
 import type { Plane } from "./timeline-model";
-import { MonitoringCellsView } from "./cells";
+import { MonitoringShardsView } from "./shards";
 
 export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   const ui = useUiTranslations();
@@ -102,7 +102,7 @@ export function MonitoringPage({ scope }: { scope: MonitoringScope }) {
   );
 }
 
-const MONITORING_TABS = ["execution", "timeline", "cells", "workers", "actors", "metrics"];
+const MONITORING_TABS = ["execution", "timeline", "shards", "workers", "actors", "metrics"];
 
 function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: string }) {
   const { displayLocale } = useLocale();
@@ -110,14 +110,14 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
   const ui = useUiTranslations();
   const flags = useFeatureFlagsState();
   // Decision: an organization sees only the execution path it runs on. On a
-  // data plane (cells) the live execution, worker and actor views read actor
-  // leases and would always be empty, and off it the cell parts would be; the
+  // data plane (shards) the live execution, worker and actor views read actor
+  // leases and would always be empty, and off it the shard parts would be; the
   // platform view keeps both.
   const path: Plane | undefined =
-    scope === "fleet" ? undefined : flags.flags.data_plane ? "cells" : "workers";
+    scope === "fleet" ? undefined : flags.flags.data_plane ? "shards" : "workers";
   const hidden = new Set([
-    ...(scope === "fleet" ? [] : ["cells"]),
-    ...(path === "cells" ? ["execution", "workers", "actors"] : []),
+    ...(scope === "fleet" ? [] : ["shards"]),
+    ...(path === "shards" ? ["execution", "workers", "actors"] : []),
   ]);
   const defaultTab = hidden.has("execution") ? "timeline" : "execution";
   // `?tab=timeline` lets Home link straight to the history it summarises.
@@ -294,7 +294,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
         description={
           scope === "fleet"
             ? ui("Live execution and worker ownership across all organizations.")
-            : path === "cells"
+            : path === "shards"
               ? ui("Session history and failures within the selected organization.")
               : ui("Live execution and actor leases within the selected organization.")
         }
@@ -360,8 +360,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
           items={[
             ...(hidden.has("execution") ? [] : [{ value: "execution", label: ui("Execution") }]),
             { value: "timeline", label: ui("Timeline") },
-            // Cells are shared by organizations: platform view only.
-            ...(scope === "fleet" ? [{ value: "cells", label: ui("Cells") }] : []),
+            // Shards are shared by organizations: platform view only.
+            ...(scope === "fleet" ? [{ value: "shards", label: ui("Shards") }] : []),
             ...(hidden.has("workers")
               ? []
               : [
@@ -391,7 +391,7 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
                 </Button>
               ))}
             </div>
-          ) : tab === "timeline" || tab === "cells" ? (
+          ) : tab === "timeline" || tab === "shards" ? (
             <span className="text-xs text-muted-foreground">
               {ui("Recorded history, kept permanently")}
             </span>
@@ -513,8 +513,8 @@ function MonitoringWorkspace({ scope, org }: { scope: MonitoringScope; org: stri
       )}
       {tab === "timeline" ? (
         <MonitoringTimelineView scope={scope} path={path} />
-      ) : tab === "cells" ? (
-        <MonitoringCellsView />
+      ) : tab === "shards" ? (
+        <MonitoringShardsView />
       ) : !data ? (
         snapshot.error ? (
           <EmptyState

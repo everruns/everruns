@@ -317,6 +317,10 @@ export const messages: Readonly<Record<string, string>> = {
   Request: "请求",
   "Request credentials from": "请求凭据",
   "Request view": "请求查看",
+  "Load earlier messages": "加载更早的消息",
+  "Load full message": "加载完整消息",
+  "Full message is unavailable.": "完整消息不可用。",
+  "View {value0} tools": "查看 {value0} 个工具",
   requested: "已请求",
   Requested: "已请求",
   "Requests and the approvals recorded for them will show up here together.":

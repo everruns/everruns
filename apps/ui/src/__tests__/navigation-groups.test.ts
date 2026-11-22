@@ -8,7 +8,7 @@ import {
 // table. These pin the derivation the breadcrumb depends on.
 describe("navigationGroupForPath", () => {
   it("carries the group down to detail and sub-routes", () => {
-    expect(navigationGroupForPath("/sessions/ses-abc123")).toBe("Activity");
+    expect(navigationGroupForPath("/sessions/ses-abc123")).toBe("Observability");
     expect(navigationGroupForPath("/agents/agent-1/edit")).toBe("Build");
     expect(navigationGroupForPath("/agents/all")).toBe("Build");
   });
@@ -43,15 +43,20 @@ describe("navigationGroupForPath", () => {
     expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe("Workshop");
   });
 
-  it("groups destinations as Build, Activity, Blocks and Quality", () => {
+  it("groups destinations as Build, Observability, Blocks and Quality", () => {
     const groups = Object.fromEntries(
       defaultNavigationSections
         .filter((section) => section.label)
         .map((section) => [section.label, section.items.map((item) => item.name)]),
     );
-    expect(Object.keys(groups).slice(0, 4)).toEqual(["Build", "Activity", "Blocks", "Quality"]);
+    expect(Object.keys(groups).slice(0, 4)).toEqual([
+      "Build",
+      "Observability",
+      "Blocks",
+      "Quality",
+    ]);
     expect(groups.Build).toEqual(["Agents", "Playground", "Extractions"]);
-    expect(groups.Activity).toEqual(["Sessions", "Rooms", "Monitoring"]);
+    expect(groups.Observability).toEqual(["Sessions", "Rooms", "Monitoring"]);
     expect(groups.Blocks).toEqual([
       "Harnesses",
       "Capabilities",

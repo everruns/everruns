@@ -5,7 +5,7 @@
 //! - The work report is computed on read from the turn's events with the
 //!   one reducer every host uses (`WorkReport::from_events`), as the
 //!   control plane does for a v1 session, so the two read the same.
-//! - A cell leases no resources: its sandboxes are pinned by the control
+//! - A shard leases no resources: its sandboxes are pinned by the control
 //!   plane (step 11.3) and shown by the sandbox panel. The resources list
 //!   answers empty rather than 501, which is what a v2 session holds.
 

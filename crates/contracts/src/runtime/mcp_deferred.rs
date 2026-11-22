@@ -270,6 +270,51 @@ impl Tool for DeferredMcpServerTool {
     }
 }
 
+// Decision: an MCP server whose sign-in stopped working (expired, refused, or
+// rejected) is not dropped from the turn in silence. It lists one tool,
+// `mcp_<prefix>__sign_in_required`, whose description tells the model the
+// server's tools are unavailable and that a person must sign in again; a call
+// takes the ordinary MCP path, which has no credential and answers with the
+// sign-in step (`connection_required`). Without it the model cannot tell a
+// missing server from one it never had, and an agent stops doing part of its
+// job without saying so (knowledge/integrations/mcp-oauth-grant-health.md).
+
+/// Name, within its server, of the one tool listed for an MCP server whose
+/// sign-in needs renewing.
+pub const MCP_SIGN_IN_REQUIRED_TOOL: &str = "sign_in_required";
+
+/// The tool listed in place of the tools of `server_name`, whose sign-in needs
+/// renewing before they can be used.
+pub fn mcp_sign_in_required_tool(
+    server_name: &str,
+) -> crate::runtime::mcp_server::McpToolDefinition {
+    let server = crate::mcp_metadata::visible_mcp_description(server_name);
+    crate::runtime::mcp_server::McpToolDefinition {
+        name: MCP_SIGN_IN_REQUIRED_TOOL.to_string(),
+        title: Some(format!("{server}: sign-in required")),
+        description: Some(format!(
+            "The `{server}` MCP server's sign-in has expired or was refused, so none of its \
+             other tools are available. Do not pretend its work was done. Tell the person you \
+             work for that `{server}` must be signed in again on this agent's MCP tab in the \
+             Everruns console. Calling this tool returns that sign-in step."
+        )),
+        input_schema: json!({"type": "object", "properties": {}, "additionalProperties": false}),
+        annotations: Some(crate::runtime::mcp_server::McpToolAnnotations {
+            read_only_hint: Some(true),
+            idempotent_hint: Some(true),
+            ..Default::default()
+        }),
+        meta: None,
+    }
+}
+
+/// Whether `tool_name` (`mcp_<prefix>__<tool>`) is the sign-in placeholder.
+pub fn is_mcp_sign_in_required_tool(tool_name: &str) -> bool {
+    tool_name
+        .rsplit_once("__")
+        .is_some_and(|(_, tool)| tool == MCP_SIGN_IN_REQUIRED_TOOL)
+}
+
 #[cfg(test)]
 #[path = "mcp_deferred_tests.rs"]
 mod tests;

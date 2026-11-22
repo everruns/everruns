@@ -1,11 +1,11 @@
-//! The cell node command line, for a node binary that brings its host
+//! The shard node command line, for a node binary that brings its host
 //! (model providers and tools; agents come from clients).
 //!
 //! ```text
-//! app node    --topology cluster.json --cell 0 --node 1 --data .cell/c0n1
+//! app node    --topology cluster.json --shard 0 --node 1 --data .shard/c0n1
 //! app gateway --topology cluster.json --listen 127.0.0.1:7000
-//! app restore --topology cluster.json --cell 0 --store s3://... \
-//!             --node 1=/var/cell/c0n1 [--at 2026-11-12T09:00:00Z]
+//! app restore --topology cluster.json --shard 0 --store s3://... \
+//!             --node 1=/var/shard/c0n1 [--at 2026-11-12T09:00:00Z]
 //! app restore-org --topology cluster.json --store s3://... --org <org> \
 //!             --at 2026-11-12T09:00:00Z
 //! app edge    --topology cluster.json --listen 127.0.0.1:7100 \
@@ -25,11 +25,11 @@ use crate::cluster::{Topology, TopologySource};
 use crate::gateway::Gateway;
 use crate::host::Host;
 use crate::node::{Node, NodeConfig};
-use crate::state::CellId;
+use crate::state::ShardId;
 use crate::types::NodeId;
 
 #[derive(Parser)]
-#[command(about = "A Raft-replicated cell node for Everruns agents")]
+#[command(about = "A Raft-replicated shard node for Everruns agents")]
 struct Cli {
     #[command(subcommand)]
     command: Mode,
@@ -37,49 +37,49 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Mode {
-    /// Run one node of a cell (plus the gateway API).
+    /// Run one node of a shard (plus the gateway API).
     Node {
-        #[arg(long, env = "CELL_TOPOLOGY")]
+        #[arg(long, env = "AGENTD_TOPOLOGY")]
         topology: PathBuf,
         #[arg(long)]
-        cell: CellId,
+        shard: ShardId,
         /// This node's id; unset, one more than the trailing ordinal of
-        /// `HOSTNAME` (a StatefulSet pod `cell0-2` is node 3).
-        #[arg(long, env = "CELL_NODE")]
+        /// `HOSTNAME` (a StatefulSet pod `shard0-2` is node 3).
+        #[arg(long, env = "AGENTD_NODE")]
         node: Option<NodeId>,
         #[arg(long)]
         data: PathBuf,
         /// Object store for session history and snapshot copies, shared by
         /// the whole fleet: `s3://bucket/prefix` (with `AWS_*` settings) or
         /// `file:///dir`.
-        #[arg(long, env = "CELL_STORE")]
+        #[arg(long, env = "AGENTD_STORE")]
         store: String,
         /// Memory this node may use, in MiB: past it, idle sessions' events
         /// are unloaded (everything the process holds counts, see
         /// `event_allowance`). Leave headroom below the container limit.
-        #[arg(long, env = "CELL_MEMORY_BUDGET_MB", default_value = "1024")]
+        #[arg(long, env = "AGENTD_MEMORY_BUDGET_MB", default_value = "1024")]
         memory_budget_mb: u64,
         /// The memory limit this node's memory pressure is measured against,
-        /// in MiB: near it the cell takes no new sessions, then no new input
+        /// in MiB: near it the shard takes no new sessions, then no new input
         /// (see `pressure.rs`). 0: the container's limit.
-        #[arg(long, env = "CELL_MEMORY_LIMIT_MB", default_value = "0")]
+        #[arg(long, env = "AGENTD_MEMORY_LIMIT_MB", default_value = "0")]
         memory_limit_mb: u64,
         /// Serve Raft on the node's port plus this, on its own threads, so
         /// client load cannot hold up replication (0: on the node's
-        /// listener). Every member of a cell must use the same offset.
-        #[arg(long, env = "CELL_RAFT_PORT_OFFSET", default_value = "0")]
+        /// listener). Every member of a shard must use the same offset.
+        #[arg(long, env = "AGENTD_RAFT_PORT_OFFSET", default_value = "0")]
         raft_port_offset: u16,
         /// Also unload sessions idle this many seconds (0: only under pressure).
-        #[arg(long, env = "CELL_UNLOAD_IDLE_SECS", default_value = "0")]
+        #[arg(long, env = "AGENTD_UNLOAD_IDLE_SECS", default_value = "0")]
         unload_idle_secs: u64,
         #[arg(long, default_value = "5000")]
         claim_ttl_ms: u64,
         /// Turns one node runs at once; more wait in their session's inbox.
-        #[arg(long, env = "CELL_MAX_TURNS_PER_NODE", default_value = "256")]
+        #[arg(long, env = "AGENTD_MAX_TURNS_PER_NODE", default_value = "256")]
         max_turns_per_node: usize,
-        /// Turns the cell runs at once while it is short of memory; queued
+        /// Turns the shard runs at once while it is short of memory; queued
         /// work waits until memory frees (see `pressure.rs`).
-        #[arg(long, env = "CELL_PRESSURE_TURNS", default_value = "1024")]
+        #[arg(long, env = "AGENTD_PRESSURE_TURNS", default_value = "1024")]
         pressure_turns: usize,
         #[arg(long, default_value = "20000")]
         snapshot_every: u64,
@@ -88,37 +88,37 @@ enum Mode {
         /// stay in memory (see `node.rs` for the measured cost).
         #[arg(long, default_value = "256")]
         keep_log: u64,
-        /// Join a running cell instead of forming it: the node waits until
-        /// the cell's leader adds it (`POST /v1/cells/{cell}/nodes`).
+        /// Join a running shard instead of forming it: the node waits until
+        /// the shard's leader adds it (`POST /v1/shards/{shard}/nodes`).
         #[arg(long)]
         join: bool,
         /// Address to serve on; required with `--join` when the topology
         /// file does not list this node.
         #[arg(long)]
         listen: Option<String>,
-        /// Leave turns to executors outside the cell, which pull them with
-        /// credits; at most this many run in the cell at once (0: nodes run
+        /// Leave turns to executors outside the shard, which pull them with
+        /// credits; at most this many run in the shard at once (0: nodes run
         /// turns themselves).
-        #[arg(long, env = "CELL_EXECUTOR_CAP", default_value = "0")]
+        #[arg(long, env = "AGENTD_EXECUTOR_CAP", default_value = "0")]
         executor_cap: usize,
         /// The control plane's `/dp/v1` base URL: the leader delivers the
         /// feed there and asks it for spend allowances. Every mode trusts
         /// its origin for injected capabilities and Memory (`run`).
-        #[arg(long, env = "CELL_CONTROL_PLANE")]
+        #[arg(long, env = "AGENTD_CONTROL_PLANE")]
         control_plane: Option<String>,
     },
-    /// Run an executor: pull turns from every cell and run them.
+    /// Run an executor: pull turns from every shard and run them.
     Executor {
-        #[arg(long, env = "CELL_TOPOLOGY")]
+        #[arg(long, env = "AGENTD_TOPOLOGY")]
         topology: PathBuf,
         /// This executor's id (unique in the fleet; at least 2^32); unset,
         /// 2^32 plus the trailing ordinal of `HOSTNAME`.
-        #[arg(long, env = "CELL_EXECUTOR_ID")]
+        #[arg(long, env = "AGENTD_EXECUTOR_ID")]
         id: Option<u64>,
-        #[arg(long, env = "CELL_STORE")]
+        #[arg(long, env = "AGENTD_STORE")]
         store: String,
         /// Turns this executor runs at once.
-        #[arg(long, env = "CELL_EXECUTOR_SLOTS", default_value = "64")]
+        #[arg(long, env = "AGENTD_EXECUTOR_SLOTS", default_value = "64")]
         slots: usize,
         /// Sessions kept mirrored after their turn ended.
         #[arg(long, default_value = "4096")]
@@ -133,35 +133,35 @@ enum Mode {
     /// Run the edge router: one public URL for the control plane and the
     /// data plane (`edge.rs`).
     Edge {
-        #[arg(long, env = "CELL_TOPOLOGY")]
+        #[arg(long, env = "AGENTD_TOPOLOGY")]
         topology: PathBuf,
-        #[arg(long, env = "CELL_EDGE_LISTEN")]
+        #[arg(long, env = "AGENTD_EDGE_LISTEN")]
         listen: SocketAddr,
         /// The control plane's base URL (its `/v1` API).
-        #[arg(long, env = "CELL_EDGE_CONTROL_PLANE")]
+        #[arg(long, env = "AGENTD_EDGE_CONTROL_PLANE")]
         control_plane: String,
         /// The control plane's org token keys; its
         /// `/.well-known/jwks.json` when unset.
-        #[arg(long, env = "CELL_JWKS_URL")]
+        #[arg(long, env = "AGENTD_JWKS_URL")]
         jwks_url: Option<String>,
         /// The data plane org tokens must name.
-        #[arg(long, env = "CELL_DATA_PLANE")]
+        #[arg(long, env = "AGENTD_DATA_PLANE")]
         data_plane: Option<String>,
         /// The path the API is served under (`/api` behind the local
         /// proxy); empty when it is served at the root.
-        #[arg(long, env = "CELL_EDGE_API_PREFIX", default_value = "")]
+        #[arg(long, env = "AGENTD_EDGE_API_PREFIX", default_value = "")]
         api_prefix: String,
     },
-    /// Rebuild a cell from its restore points in the object store, as a
+    /// Rebuild a shard from its restore points in the object store, as a
     /// new incarnation (`restore.rs`): after it lost quorum, or to take it
     /// back to a moment before a bad release. Stop its nodes first; the
-    /// voters are the cell's members in the topology file.
+    /// voters are the shard's members in the topology file.
     Restore {
-        #[arg(long, env = "CELL_TOPOLOGY")]
+        #[arg(long, env = "AGENTD_TOPOLOGY")]
         topology: PathBuf,
         #[arg(long)]
-        cell: CellId,
-        #[arg(long, env = "CELL_STORE")]
+        shard: ShardId,
+        #[arg(long, env = "AGENTD_STORE")]
         store: String,
         /// `<node>=<empty data directory>` for each node on this machine.
         #[arg(long = "node", value_parser = parse_node_dir)]
@@ -181,9 +181,9 @@ enum Mode {
     /// Take one org's sessions back to a moment, where they live now, on a
     /// running fleet (`restore::restore_org`). No other org changes.
     RestoreOrg {
-        #[arg(long, env = "CELL_TOPOLOGY")]
+        #[arg(long, env = "AGENTD_TOPOLOGY")]
         topology: PathBuf,
-        #[arg(long, env = "CELL_STORE")]
+        #[arg(long, env = "AGENTD_STORE")]
         store: String,
         #[arg(long)]
         org: String,
@@ -191,10 +191,10 @@ enum Mode {
         #[arg(long, value_parser = parse_at)]
         at: i64,
     },
-    /// Where a session is and what it is doing, and how each cell keeps
+    /// Where a session is and what it is doing, and how each shard keeps
     /// up (`inspect.rs`). Read only.
     Inspect {
-        #[arg(long, env = "CELL_TOPOLOGY")]
+        #[arg(long, env = "AGENTD_TOPOLOGY")]
         topology: PathBuf,
         /// Print JSON instead of text.
         #[arg(long)]
@@ -207,7 +207,7 @@ enum Mode {
     Usage,
     /// Run a stateless gateway.
     Gateway {
-        #[arg(long, env = "CELL_TOPOLOGY")]
+        #[arg(long, env = "AGENTD_TOPOLOGY")]
         topology: PathBuf,
         #[arg(long)]
         listen: SocketAddr,
@@ -216,9 +216,9 @@ enum Mode {
 
 #[derive(Subcommand)]
 enum Inspect {
-    /// Every cell: leader, shipping, snapshot age, load, and each node's lag.
-    Cells,
-    /// One session: its directory entry, its cell, its claim and its last
+    /// Every shard: leader, shipping, snapshot age, load, and each node's lag.
+    Shards,
+    /// One session: its directory entry, its shard, its claim and its last
     /// events.
     Session { id: String },
     /// Sessions part way through a move, with the directory's view of each.
@@ -256,7 +256,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
     // internal address (a cluster service, `127.0.0.1` locally), which the
     // MCP client refuses for any other server. Every mode reads it, since
     // nodes and executors both run turns.
-    if let Ok(control_plane) = std::env::var("CELL_CONTROL_PLANE")
+    if let Ok(control_plane) = std::env::var("AGENTD_CONTROL_PLANE")
         && !control_plane.is_empty()
     {
         everruns_core::mcp::trust_controller_origin(&control_plane);
@@ -264,7 +264,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
     match Cli::parse().command {
         Mode::Node {
             topology,
-            cell,
+            shard,
             node,
             data,
             store,
@@ -287,17 +287,17 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 None => hostname_ordinal()? + 1,
             };
             let source = TopologySource { path: topology };
-            let seeded = source.read()?.cells.get(&cell).cloned();
+            let seeded = source.read()?.shards.get(&shard).cloned();
             let members = match (&seeded, join) {
                 (Some(members), false) => members.clone(),
-                (None, false) => anyhow::bail!("cell {cell} not in topology (use --join)"),
+                (None, false) => anyhow::bail!("shard {shard} not in topology (use --join)"),
                 (_, true) => Default::default(),
             };
             let addr = listen
                 .or_else(|| seeded.and_then(|m| m.get(&node).cloned()))
                 .ok_or_else(|| anyhow::anyhow!("node {node}: no address (use --listen)"))?;
             let cfg = NodeConfig {
-                cell,
+                shard,
                 node_id: node,
                 members,
                 data_dir: data,
@@ -371,7 +371,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
         }
         Mode::Restore {
             topology,
-            cell,
+            shard,
             store,
             nodes,
             at,
@@ -382,7 +382,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             let report = restore(
                 &store,
                 &TopologySource { path: topology },
-                cell,
+                shard,
                 &nodes.into_iter().collect(),
                 at,
                 incarnation,
@@ -429,16 +429,16 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
 async fn restore(
     store: &crate::store::Store,
     topology: &TopologySource,
-    cell: CellId,
+    shard: ShardId,
     local: &std::collections::BTreeMap<NodeId, PathBuf>,
     at: Option<i64>,
     incarnation: Option<u64>,
     dry_run: bool,
 ) -> anyhow::Result<serde_json::Value> {
     if dry_run {
-        let found = crate::restore::state_at(store, cell, at).await?;
+        let found = crate::restore::state_at(store, shard, at).await?;
         return Ok(serde_json::json!({
-            "cell": cell,
+            "shard": shard,
             "from": found.from.map(|c| serde_json::json!({ "incarnation": c.inc, "index": c.index })),
             "last_index": found.last,
             "clock_ms": found.state.clock_ms,
@@ -452,20 +452,20 @@ async fn restore(
     if let Some(incarnation) = incarnation {
         let mut seeded = serde_json::Map::new();
         for (node, dir) in local {
-            let index = crate::restore::seed(store, cell, incarnation, *node, dir).await?;
+            let index = crate::restore::seed(store, shard, incarnation, *node, dir).await?;
             seeded.insert(node.to_string(), index.into());
         }
         return Ok(
-            serde_json::json!({ "cell": cell, "incarnation": incarnation, "seeded": seeded }),
+            serde_json::json!({ "shard": shard, "incarnation": incarnation, "seeded": seeded }),
         );
     }
     let members = topology
         .read()?
-        .cells
-        .get(&cell)
+        .shards
+        .get(&shard)
         .cloned()
-        .ok_or_else(|| anyhow::anyhow!("cell {cell} not in topology"))?;
-    let rebuilt = crate::restore::rebuild(store, cell, &members, local, at).await?;
+        .ok_or_else(|| anyhow::anyhow!("shard {shard} not in topology"))?;
+    let rebuilt = crate::restore::rebuild(store, shard, &members, local, at).await?;
     Ok(serde_json::to_value(rebuilt)?)
 }
 
@@ -506,13 +506,16 @@ pub async fn serve_node_on(
     listener: tokio::net::TcpListener,
     join: bool,
 ) -> anyhow::Result<()> {
-    let cell = cfg.cell;
+    let shard = cfg.shard;
     let id = cfg.node_id;
     let listen = listener.local_addr()?;
     let node = Node::start(cfg, host).await?;
     let gateway = Gateway::new(topology);
     if let Some(cp) = &node.cfg.control_plane {
         gateway.set_link_token(cp.token.clone());
+        if let Some(key) = &cp.dp_key {
+            gateway.set_dp_key(Some(key.0));
+        }
         if let Some(url) = &cp.jwks_url {
             gateway.require_org_tokens(Arc::new(crate::org_token::OrgTokens::new(
                 Some(url.clone()),
@@ -531,7 +534,7 @@ pub async fn serve_node_on(
             node.raft.clone(),
             node.catchup.clone(),
         )?;
-        tracing::info!(cell, node = id, %raft_listen, "raft listening");
+        tracing::info!(shard, node = id, %raft_listen, "raft listening");
         axum::Router::new()
     };
     let app = crate::api::router(node.clone())
@@ -541,16 +544,16 @@ pub async fn serve_node_on(
         .merge(crate::api_session::router(node.clone()))
         .merge(crate::api_files::router(node.clone()))
         .merge(crate::sqldb::router(node.clone()))
-        .merge(crate::gateway_dp::cell_router(node.clone()))
+        .merge(crate::gateway_dp::shard_router(node.clone()))
         .merge(crate::gateway::router(gateway))
         .layer(axum::middleware::from_fn_with_state(
             node.clone(),
             crate::catchup::guard,
         ));
-    tracing::info!(cell, node = id, %listen, "node listening");
+    tracing::info!(shard, node = id, %listen, "node listening");
     let server = tokio::spawn(async move { axum::serve(listener, app).await });
     if !join && let Err(error) = node.bootstrap().await {
-        // Decision: a node that can't form its cell stops serving too, so
+        // Decision: a node that can't form its shard stops serving too, so
         // it reads as down rather than as a member that never elects.
         server.abort();
         return Err(error);
@@ -599,7 +602,7 @@ pub async fn serve_executor(
     tracing::info!(running = executor.running(), "draining");
     executor.drain();
     // Decision: a drain waits a bounded time. A turn that cannot hand off
-    // (its cell does not answer) would hold the process forever; leaving
+    // (its shard does not answer) would hold the process forever; leaving
     // it costs that turn one step, resumed elsewhere once its claim expires.
     let limit = tokio::time::Instant::now() + DRAIN_LIMIT;
     while executor.running() > 0 && tokio::time::Instant::now() < limit {
@@ -611,44 +614,44 @@ pub async fn serve_executor(
     Ok(())
 }
 
-/// Write a topology file for `cells` cells of `nodes` nodes each on
-/// localhost, ports `base + 100 * cell + node`.
-pub fn local_topology(cells: u32, nodes: u64, base: u16) -> Topology {
+/// Write a topology file for `shards` shards of `nodes` nodes each on
+/// localhost, ports `base + 100 * shard + node`.
+pub fn local_topology(shards: u32, nodes: u64, base: u16) -> Topology {
     let mut topology = Topology {
-        directory_cell: 0,
-        cells: Default::default(),
+        directory_shard: 0,
+        shards: Default::default(),
     };
-    for cell in 0..cells {
+    for shard in 0..shards {
         let members = (1..=nodes)
             .map(|node| {
                 (
                     node,
-                    format!("127.0.0.1:{}", base as u64 + 100 * cell as u64 + node),
+                    format!("127.0.0.1:{}", base as u64 + 100 * shard as u64 + node),
                 )
             })
             .collect();
-        topology.cells.insert(cell, members);
+        topology.shards.insert(shard, members);
     }
     topology
 }
 
 async fn inspect(topology: Topology, json: bool, what: Inspect) -> anyhow::Result<()> {
-    use crate::inspect::{Inspector, render_cells, render_moves, render_session};
+    use crate::inspect::{Inspector, render_moves, render_session, render_shards};
     let inspector = Inspector::new(topology)?;
     let out = match what {
-        Inspect::Cells => {
+        Inspect::Shards => {
             let reports = inspector.reports().await;
             if json {
                 serde_json::to_string_pretty(&reports)?
             } else {
-                render_cells(&reports)
+                render_shards(&reports)
             }
         }
         Inspect::Session { id } => {
             let session = everruns::SessionId::parse(&id)?;
             let placed = inspector.placed(session).await;
             let report = match placed {
-                Some(p) => inspector.session(p.cell, session).await,
+                Some(p) => inspector.session(p.shard, session).await,
                 None => None,
             };
             if json {
@@ -688,9 +691,9 @@ async fn inspect(topology: Topology, json: bool, what: Inspect) -> anyhow::Resul
 mod tests {
     #[test]
     fn a_statefulset_pod_names_its_ordinal() {
-        assert_eq!(super::ordinal("cell0-2"), Some(2));
+        assert_eq!(super::ordinal("shard0-2"), Some(2));
         assert_eq!(super::ordinal("executors-17"), Some(17));
-        assert_eq!(super::ordinal("cell0"), None);
-        assert_eq!(super::ordinal("cell0-x"), None);
+        assert_eq!(super::ordinal("shard0"), None);
+        assert_eq!(super::ordinal("shard0-x"), None);
     }
 }

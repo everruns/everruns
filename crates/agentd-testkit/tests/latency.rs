@@ -5,7 +5,7 @@
 //! The `stamp` model writes the time it made each delta into the delta, so
 //! the client measures make-to-arrival without any clock but its own. The
 //! numbers are printed for the step's record; the gate's are from a release
-//! build (`cargo test --profile release-ci -p everruns-cell-testkit --test
+//! build (`cargo test --profile release-ci -p agentd-testkit --test
 //! latency -- --nocapture`).
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
@@ -15,13 +15,13 @@ mod support;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use everruns_cell::dp::{ConfigAck, ConfigUpdate};
-use everruns_cell::edge::Edge;
-use everruns_cell::gateway::Gateway;
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell::org_token::OrgTokens;
-use everruns_cell_testkit::fake_cp::FakeCp;
-use everruns_cell_testkit::{STAMP_EVERY, STAMPS};
+use everruns_agentd::dp::{ConfigAck, ConfigUpdate};
+use everruns_agentd::edge::Edge;
+use everruns_agentd::gateway::Gateway;
+use everruns_agentd::node_control::ControlPlane;
+use everruns_agentd::org_token::OrgTokens;
+use everruns_agentd_testkit::fake_cp::FakeCp;
+use everruns_agentd_testkit::{STAMP_EVERY, STAMPS};
 use serde_json::{Value, json};
 use support::Fleet;
 
@@ -223,7 +223,7 @@ async fn the_edge_adds_under_5ms_p99() {
     link.jwks_url = Some(cp.jwks_url());
     let mut fleet = Fleet::start_with_cp(Some(link)).await;
     fleet.executor(1);
-    let mut package = everruns_cell_testkit::definition("echo").unwrap();
+    let mut package = everruns_agentd_testkit::definition("echo").unwrap();
     package["name"] = json!("helper");
     let update = ConfigUpdate {
         epoch: 1,
@@ -245,7 +245,7 @@ async fn the_edge_adds_under_5ms_p99() {
     let token = cp.org_token(ORG, "sessions:write").unwrap();
     // The edge's own gateway, as a client would reach it without the edge.
     let direct = Gateway::new(fleet.topology());
-    let direct_app = everruns_cell::gateway::router(direct);
+    let direct_app = everruns_agentd::gateway::router(direct);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let direct_url = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, direct_app).await });

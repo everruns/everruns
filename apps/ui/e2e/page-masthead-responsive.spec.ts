@@ -540,7 +540,7 @@ test.describe("Agent settings drawer animation", () => {
         "Network access",
         "Files",
         "Token usage",
-        "MCP servers",
+        "MCP",
         "Credentials",
         "Service account",
         "Health check",

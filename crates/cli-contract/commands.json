@@ -1879,6 +1879,68 @@
     ]
   },
   {
+    "wire_name": "list_agent_mcp_attachments",
+    "path": [
+      "agents",
+      "mcp"
+    ],
+    "verb": "list",
+    "description": "List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again.",
+    "method": "GET",
+    "http_path": "/v1/agents/{id}/mcp-attachments",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent ID (prefixed) or name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether an agent's MCP sign-ins still work",
+        "command": "everruns agents mcp list agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "revoke_agent_mcp_connection",
+    "path": [
+      "agents",
+      "mcp"
+    ],
+    "verb": "revoke",
+    "description": "Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). The attachment stays; sign in again on the agent's MCP sheet.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{id}/mcp-attachments/{name}/connection",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent ID (prefixed) or name."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "Effective MCP attachment name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove the agent's stend sign-in before signing in again",
+        "command": "everruns agents mcp revoke agent_01h9 stend --reason 'Sign-in stopped renewing'"
+      }
+    ]
+  },
+  {
     "wire_name": "pause_agent",
     "path": [
       "agents"
@@ -10870,6 +10932,13 @@
         "help": "Org-level default provider per service (EVE-569)."
       },
       {
+        "field": "monthly_agent_limit",
+        "long": "monthly-agent-limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Maximum agents this organization can create per UTC calendar month."
+      },
+      {
         "field": "monthly_session_limit",
         "long": "monthly-session-limit",
         "kind": "integer",
@@ -16789,6 +16858,41 @@
       {
         "intent": "Read the raw events of one turn",
         "command": "everruns sessions trace turns events list --session-id session_01h9 --turn 12"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_session_trace_turn_input",
+    "path": [
+      "sessions",
+      "trace",
+      "turns",
+      "input"
+    ],
+    "verb": "get",
+    "description": "Read the full recorded input of one trace turn.",
+    "method": "GET",
+    "http_path": "/v1/sessions/{session_id}/trace/turns/{turn}/input",
+    "args": [
+      {
+        "field": "session_id",
+        "long": "session-id",
+        "kind": "string",
+        "required": true,
+        "help": "Session's prefixed public identifier."
+      },
+      {
+        "field": "turn",
+        "long": "turn",
+        "kind": "integer",
+        "required": true,
+        "help": "Turn number."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read the original input of turn 12",
+        "command": "everruns sessions trace turns input get --session-id session_01h9 --turn 12"
       }
     ]
   },

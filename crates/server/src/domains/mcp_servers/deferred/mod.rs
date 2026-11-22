@@ -296,6 +296,11 @@ async fn keep_last_listed_tools(
     };
     let mut by_prefix: HashMap<String, Vec<ToolDefinition>> = HashMap::new();
     for definition in definitions.iter() {
+        // The sign-in placeholder is not a listing: keep the last real one out
+        // of its way (an empty list, as for any server with no login).
+        if everruns_core::is_mcp_sign_in_required_tool(definition.name()) {
+            continue;
+        }
         if let Some((prefix, _)) = everruns_core::mcp_server::parse_mcp_tool_name(definition.name())
         {
             by_prefix

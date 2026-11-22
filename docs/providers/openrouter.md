@@ -68,8 +68,9 @@ To rotate the credential later, click the key button on the provider's card. The
 same drawer shows the current credential and offers **Sign in again with
 OpenRouter** or **Paste a different API key**.
 
-Either way, save and Everruns discovers available models and their capability
-profiles automatically.
+Everruns syncs the catalog after browser sign-in or saving an API key. On a new
+provider, calibrated decision models are available in **Models → Defaults →
+Decisions**. Review the provider's card to choose additional models.
 
 ## Routing controls
 

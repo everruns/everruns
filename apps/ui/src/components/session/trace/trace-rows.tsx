@@ -119,12 +119,16 @@ export function TurnHeader({
   turn,
   collapsed,
   onToggle,
+  onOpenInput,
+  inputSelected,
   showScale,
   reactions,
 }: {
   turn: TraceTurn;
   collapsed: boolean;
   onToggle: () => void;
+  onOpenInput: () => void;
+  inputSelected: boolean;
   showScale: boolean;
   /** Reactions on the message that started the turn. */
   reactions?: ReactionSummary[];
@@ -188,6 +192,18 @@ export function TurnHeader({
           )}
         </div>
       </button>
+      {turn.prompt && (
+        <div className="border-b bg-card py-1 pl-11">
+          <button
+            type="button"
+            aria-pressed={inputSelected}
+            onClick={onOpenInput}
+            className="py-1 text-xs font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            {ui("View full message")}
+          </button>
+        </div>
+      )}
       {reactions && reactions.length > 0 && (
         // Outside the toggle: the chips are buttons of their own.
         <ReactionChips reactions={reactions} className="border-b px-4 py-2 pl-11" />

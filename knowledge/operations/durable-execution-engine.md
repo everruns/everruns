@@ -486,9 +486,9 @@ production and DEV_MODE alike; the worker side is
   progress once, when a step it started is stored, and the store counts
   from that lease again (`SessionActorStore::record_actor_progress`). Without
   it, three node kills inside one long turn sealed a turn that every lease
-  moved on (data plane v2 cell chaos run, 6 of 300 sessions). A turn that
+  moved on (data plane v2 shard chaos run, 6 of 300 sessions). A turn that
   kills its holder at the same step never stores one, so it is still sealed.
-  The Framework's memory and SQLite stores and the cell implement it; the
+  The Framework's memory and SQLite stores and the shard implement it; the
   PostgreSQL platform store keeps counting every lease until it does. Why
   the second boundary and not any append: see
   [`lease.rs`](../../crates/core/src/host/session_actor/lease.rs).

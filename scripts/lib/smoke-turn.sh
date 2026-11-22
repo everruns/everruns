@@ -3,17 +3,17 @@
 # LlmSim, and check which data plane ran it. Source it; the caller defines
 # `fail` and `step`.
 
-# The data plane to smoke: DATA_PLANE when set, else v2 when the cell image
+# The data plane to smoke: DATA_PLANE when set, else v2 when the shard image
 # is published for $1 (it is from the release that made v2 the default), else
-# v1. Older tags have no cell image, so their smokes keep checking v1.
+# v1. Older tags have no shard image, so their smokes keep checking v1.
 smoke_data_plane() {
   local tag="$1"
   if [ -n "${DATA_PLANE:-}" ]; then
     echo "$DATA_PLANE"
-  elif docker manifest inspect "ghcr.io/everruns/everruns-cell:$tag" >/dev/null 2>&1; then
+  elif docker manifest inspect "ghcr.io/everruns/agentd:$tag" >/dev/null 2>&1; then
     echo v2
   else
-    echo "::notice title=data plane::ghcr.io/everruns/everruns-cell:$tag is not published; smoking v1" >&2
+    echo "::notice title=data plane::ghcr.io/everruns/agentd:$tag is not published; smoking v1" >&2
     echo v1
   fi
 }
@@ -88,7 +88,7 @@ smoke_turn() {
 
 # Check the data plane that ran the turns: $1 v1 or v2, then a command that
 # runs `psql` against the install's database and takes SQL as its last
-# argument. A v2 organization's sessions live in the cell, never in the
+# argument. A v2 organization's sessions live in the shard, never in the
 # server's `sessions` table; a v1 install places no organization.
 smoke_check_plane() {
   local plane="$1"; shift
@@ -98,7 +98,7 @@ smoke_check_plane() {
   case "$plane" in
     v2)
       [ "${placed:-0}" -ge 1 ] || fail "v2: no organization was placed on the data plane"
-      [ "${sessions:-0}" = 0 ] || fail "v2: $sessions session(s) ran on the workers (v1), not on the cell"
+      [ "${sessions:-0}" = 0 ] || fail "v2: $sessions session(s) ran on the workers (v1), not on the shard"
       ;;
     v1)
       [ "${placed:-0}" = 0 ] || fail "v1: $placed organization(s) were placed on a data plane"

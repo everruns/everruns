@@ -11,9 +11,9 @@ use std::sync::Arc;
 use axum::Router;
 use axum::http::HeaderMap;
 use axum::routing::post;
-use everruns_cell::dp::{ConfigAck, ConfigChange, ConfigUpdate};
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd::dp::{ConfigAck, ConfigChange, ConfigUpdate};
+use everruns_agentd::node_control::ControlPlane;
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use everruns_contracts::dataplane::Connection;
 use everruns_contracts::dataplane_seal as seal;
 use parking_lot::Mutex;
@@ -93,7 +93,7 @@ async fn a_turn_calls_the_orgs_own_provider_with_its_sealed_key() {
     assert_eq!(status, StatusCode::OK, "{ack}");
 
     // Its provider "Acme": an OpenAI-compatible API, and its key.
-    let connection = everruns_cell::providers::connection_id("Acme");
+    let connection = everruns_agentd::providers::connection_id("Acme");
     let key = seal::seal(
         &data_key,
         "dk-1",
@@ -104,14 +104,14 @@ async fn a_turn_calls_the_orgs_own_provider_with_its_sealed_key() {
         seal::random_nonce(),
     )
     .unwrap();
-    let settings = everruns_cell::providers::Settings {
+    let settings = everruns_agentd::providers::Settings {
         provider_key: "acme".into(),
         provider_type: "openai".into(),
         base_url: Some(model_url),
         api: Some("chat_completions".into()),
         request_options: Default::default(),
     };
-    let mut package = everruns_cell_testkit::definition("echo").unwrap();
+    let mut package = everruns_agentd_testkit::definition("echo").unwrap();
     package["name"] = json!("helper");
     package["model"] = json!({ "provider": "Acme", "model": "acme-large" });
     let ack = cp
@@ -126,7 +126,7 @@ async fn a_turn_calls_the_orgs_own_provider_with_its_sealed_key() {
                     ConfigChange::Secret(key).to_value(),
                     ConfigChange::Connection(Connection {
                         connection_id: connection.clone(),
-                        kind: everruns_cell::providers::KIND.into(),
+                        kind: everruns_agentd::providers::KIND.into(),
                         settings: serde_json::to_value(&settings).unwrap(),
                         token_secret_id: connection.clone(),
                         refresh_owner: Default::default(),

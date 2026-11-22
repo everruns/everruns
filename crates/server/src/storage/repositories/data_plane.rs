@@ -75,7 +75,7 @@ pub struct DpSettlement<'a> {
 pub struct DpAllowanceAsk<'a> {
     pub org_id: i64,
     pub request_id: &'a str,
-    pub cell: &'a str,
+    pub shard: &'a str,
     pub want_micros: i64,
     pub settlements: Vec<DpSettlement<'a>>,
     /// What the org's usage policies still allow, in micros; `None`: no cap.
@@ -393,7 +393,7 @@ impl Database {
         .await?)
     }
 
-    /// The newest incarnation `source` (a cell) has reported from.
+    /// The newest incarnation `source` (a shard) has reported from.
     pub async fn dp_feed_newest_incarnation(&self, source: &str) -> Result<Option<i64>> {
         Ok(
             sqlx::query_scalar("SELECT max(incarnation) FROM dp_feed_sources WHERE source = $1")
@@ -615,12 +615,12 @@ impl Database {
         let grant_id = format!("grant_{}", uuid::Uuid::new_v4().simple());
         if amount > 0 {
             sqlx::query(
-                "INSERT INTO dp_grants (grant_id, org_id, cell, granted_micros, spend_until)
+                "INSERT INTO dp_grants (grant_id, org_id, shard, granted_micros, spend_until)
                  VALUES ($1, $2, $3, $4, $5)",
             )
             .bind(&grant_id)
             .bind(ask.org_id)
-            .bind(ask.cell)
+            .bind(ask.shard)
             .bind(amount)
             .bind(ask.spend_until)
             .execute(&mut *tx)

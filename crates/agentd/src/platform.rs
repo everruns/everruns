@@ -1,12 +1,12 @@
-//! What a session owns on a cell besides its log and workspace (data plane
+//! What a session owns on a shard besides its log and workspace (data plane
 //! v2 step 11.4): its schedules, and the commands of its detached tool
 //! calls (`detach.rs`).
 //!
 //! Decisions:
 //! - Schedules are part of the session's replicated state, so they move,
 //!   snapshot and restore with it. Nothing about them lives outside the
-//!   session's cell, and no central scheduler exists.
-//! - The cell's leader fires them ([`fire_due`]). On every scheduler tick it
+//!   session's shard, and no central scheduler exists.
+//! - The shard's leader fires them ([`fire_due`]). On every scheduler tick it
 //!   proposes `FireSchedule` for each schedule due by now. Applying it admits
 //!   the occurrence and advances the schedule in one step, and only over the
 //!   time the schedule was due at, so a fire proposed twice (a retry, or an
@@ -15,7 +15,7 @@
 //!   its time, as on Engine's local host, so it is the same id wherever it
 //!   is computed.
 //! - A recurring schedule's next time is computed from the fire time, not
-//!   from the time it was due. A cell that was down does not fire a burst of
+//!   from the time it was due. A shard that was down does not fire a burst of
 //!   missed runs when it comes back.
 //! - An occurrence the session refuses (it is suspended, say) is skipped: the
 //!   schedule moves on, so the leader does not propose it again every tick.
@@ -30,7 +30,7 @@
 //!   latest run is charged, so the record stays one entry per schedule.
 //! - Limits: five active schedules per session, as on every host, checked
 //!   when the create applies, so two concurrent creates cannot both pass.
-//!   The org-wide cap needs a count across cells; it comes with the
+//!   The org-wide cap needs a count across shards; it comes with the
 //!   control plane's tenant limits (11.6).
 
 use std::collections::BTreeMap;
@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::node::Node;
-use crate::state::{CellState, Change, Command, Placement, Response, SessionState};
+use crate::state::{Change, Command, Placement, Response, SessionState, ShardState};
 
 /// A session's platform state.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -89,6 +89,21 @@ pub struct Platform {
     /// call instead.
     #[serde(default, skip_serializing_if = "Servers::is_empty")]
     pub servers: Servers,
+    /// Its resources, leases and dreaming state (`session_records.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::session_records::Records::is_empty"
+    )]
+    pub records: crate::session_records::Records,
+    /// The session that started it, when it is a subagent: set once, with
+    /// its create, which reports it on the feed ([`Record::Subagent`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<everruns_contracts::dataplane::SubagentOrigin>,
+    /// The person who owns it, by the control plane's user id: whose own
+    /// tool approval settings its turns take, from the org's pushed config
+    /// (`dataplane::personal_approval_setting`). Set once, with the create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
 }
 
 impl Platform {
@@ -99,6 +114,9 @@ impl Platform {
             && self.senders.is_empty()
             && self.agent_ref.is_none()
             && self.memory.is_empty()
+            && self.records.is_empty()
+            && self.origin.is_none()
+            && self.owner.is_none()
     }
 
     /// Charge `micros` a committed model call cost to the schedule whose
@@ -202,6 +220,14 @@ pub enum Op {
     /// A person's change to the session's storage
     /// (`session_storage.rs`).
     Storage(crate::session_storage::StorageOp),
+    /// A change to the session's resources, leases or dreaming state
+    /// (`session_records.rs`).
+    Records(crate::session_records::RecordOp),
+    /// The session is a subagent `origin` started ([`Platform::origin`]).
+    /// Proposed once, with the create.
+    Subagent {
+        origin: everruns_contracts::dataplane::SubagentOrigin,
+    },
     /// `user` sent input message `message` (`senders.rs`). Proposed by a
     /// trusted admission path before the message is admitted.
     Sender { message: MessageId, user: String },
@@ -215,6 +241,9 @@ pub enum Op {
         /// [`Platform::servers`].
         #[serde(default, skip_serializing_if = "Servers::is_empty")]
         servers: Servers,
+        /// [`Platform::owner`].
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        owner: Option<String>,
     },
 }
 
@@ -331,7 +360,7 @@ fn not_fired(reason: &str) -> Response {
     }
 }
 
-impl CellState {
+impl ShardState {
     /// Apply [`Command::Platform`].
     pub(crate) fn apply_platform(
         &mut self,
@@ -365,6 +394,35 @@ impl CellState {
             }
             return response;
         }
+        if let Op::Records(op) = op {
+            let org = state.tenant.clone();
+            let mut notices = Vec::new();
+            let response =
+                crate::session_records::apply(state, session, op, now_ms, changes, &mut notices);
+            if let Some(org) = org {
+                let index = self.last_applied.map_or(0, |l| l.index);
+                for record in notices {
+                    self.feed.push(index, &org, now_ms, record);
+                }
+            }
+            return response;
+        }
+        if let Op::Subagent { origin } = op {
+            // Set once: a retried create reports nothing new.
+            if state.platform.origin.is_none() {
+                state.platform.origin = Some(origin.clone());
+                changes.push(Change::Session(session));
+                if let Some(org) = state.tenant.clone() {
+                    let index = self.last_applied.map_or(0, |l| l.index);
+                    let record = everruns_contracts::dataplane::Record::Subagent {
+                        session_id: session.to_string(),
+                        origin,
+                    };
+                    self.feed.push(index, &org, now_ms, record);
+                }
+            }
+            return Response::Ok;
+        }
         if let Op::Record { event_id, request } = op {
             return record(state, session, event_id, *request, changes);
         }
@@ -375,6 +433,7 @@ impl CellState {
             agent_ref,
             memory,
             servers,
+            owner,
         } = op
         {
             // Set once: a retried create names the same agent.
@@ -382,6 +441,7 @@ impl CellState {
                 state.platform.agent_ref = Some(agent_ref);
                 state.platform.memory = memory;
                 state.platform.servers = servers;
+                state.platform.owner = owner;
                 changes.push(Change::Session(session));
             }
             return Response::Value {
@@ -480,6 +540,8 @@ impl CellState {
             | Op::Task(_)
             | Op::Record { .. }
             | Op::Storage(_)
+            | Op::Records(_)
+            | Op::Subagent { .. }
             | Op::Sender { .. }
             | Op::Agent { .. } => {
                 return Response::Ok;
@@ -649,7 +711,7 @@ fn fire(
 /// Fires proposed in one Raft entry.
 const FIRE_BATCH: usize = 256;
 
-/// While `node` leads its cell: fire every schedule due now. Called on each
+/// While `node` leads its shard: fire every schedule due now. Called on each
 /// scheduler tick; a proposal that does not commit within a tick's worth of
 /// time is left to the next tick (applying a fire twice admits once).
 pub(crate) async fn fire_due(node: &Arc<Node>) {

@@ -5,7 +5,7 @@
 //! `append` only buffers; a flusher task fsyncs and then acknowledges every
 //! append that reached the file before the fsync started, so one fsync covers
 //! all sessions' steps that arrived meanwhile (group commit). Raft counts an
-//! entry once a quorum has acknowledged it, which is when the cell acknowledges
+//! entry once a quorum has acknowledged it, which is when the shard acknowledges
 //! the client.
 //!
 //! Entries since the last purge are also held in memory: replication and
@@ -130,7 +130,7 @@ fn read_segment(path: &Path) -> io::Result<(Vec<Entry>, u64)> {
             break;
         }
         // A record whose checksum holds was written whole: one that does
-        // not decode was written by a newer cell (a command this build
+        // not decode was written by a newer shard (a command this build
         // does not know). Refuse to open rather than drop it and every
         // record after it as a torn tail: an older binary pointed at an
         // upgraded log must stop, not truncate acknowledged writes.
@@ -139,7 +139,7 @@ fn read_segment(path: &Path) -> io::Result<(Vec<Entry>, u64)> {
             Err(error) => {
                 return Err(io::Error::other(format!(
                     "{}: record at byte {at} is intact but unreadable by this build \
-                     (written by a newer cell?): {error}",
+                     (written by a newer shard?): {error}",
                     path.display()
                 )));
             }

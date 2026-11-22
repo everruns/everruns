@@ -184,6 +184,13 @@ export const messages: Readonly<Record<string, string>> = {
   "Check your email": "检查您的电子邮件",
   "Check your inbox": "检查您的收件箱",
   "Checked {value0}": "已检查{value0}",
+  "Last recorded running": "最近记录为运行中",
+  "Check provider status": "查询提供商状态",
+  "Not found at provider": "提供商未找到此沙箱",
+  "Could not check the provider.": "无法查询提供商。",
+  "No activity for over an hour": "超过一小时无活动",
+  "Check the provider for the current state and whether it is still using compute.":
+    "请向提供商确认当前状态，以及沙箱是否仍占用计算资源。",
   "Checking agent usage…": "检查智能体使用情况...",
   "Checking availability…": "检查可用性...",
   "Checking key...": "正在检查密钥...",

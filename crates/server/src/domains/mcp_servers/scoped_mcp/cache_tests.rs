@@ -769,18 +769,24 @@ async fn revoked_grant_invalidates_cached_tools() {
         .is_some()
     );
     resolver.set(session_id, None).await;
-    assert!(
-        discover_for_test(
-            &db,
-            preset_id,
-            McpServerActsAs::Service,
-            session_id,
-            context,
-            &resolver_trait,
-            &egress,
-        )
-        .await
-        .is_none()
+    // No login: the model sees the sign-in placeholder, not the cached tools.
+    let placeholder = discover_for_test(
+        &db,
+        preset_id,
+        McpServerActsAs::Service,
+        session_id,
+        context,
+        &resolver_trait,
+        &egress,
+    )
+    .await
+    .expect("the agent's missing login is reported");
+    assert_eq!(
+        placeholder
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        [everruns_core::MCP_SIGN_IN_REQUIRED_TOOL]
     );
     assert!(
         db.get_mcp_service_tool_cache(

@@ -3,7 +3,7 @@
 //! cancelling the running turn, the session's schedules, a channel's
 //! prior conversation (step 11.5), and the events the control plane records
 //! on a session and its storage (11.6). Each answers
-//! a [`CellReply`], so the gateway follows moves and freezes the same way
+//! a [`ShardReply`], so the gateway follows moves and freezes the same way
 //! it does for admissions.
 
 use std::sync::Arc;
@@ -19,30 +19,66 @@ use everruns_core::events::EventData;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::api::{CellReply, Lookup, reply_of};
+use crate::api::{Lookup, ShardReply, reply_of};
 use crate::node::Node;
 use crate::state::Placement;
 
 type ApiError = (StatusCode, String);
 
+/// A session opened during provider setup picks up its first configured model
+/// before the first message. The live model setting keeps its definition and
+/// workspace intact. Read only the published agent of this session's tenant.
+pub(crate) async fn prepare_initial_model(
+    node: &Node,
+    id: SessionId,
+    handle: &everruns::Session,
+) -> Result<(), ShardReply> {
+    let Lookup::Here(Some((org, agent_ref))) = crate::api::lookup(node, id, |state| {
+        if !state.definition["model"].is_null()
+            || !state.authority.configuration()["model"].is_null()
+        {
+            return None;
+        }
+        Some((state.tenant.clone()?, state.platform.agent_ref.clone()?))
+    }) else {
+        return Ok(());
+    };
+    let gateway = node
+        .gateway
+        .get()
+        .ok_or_else(|| reply_of("the agent catalog is unavailable"))?;
+    let definition = gateway
+        .agent_revision(&org, &agent_ref)
+        .await
+        .map_err(|(_, error)| reply_of(error))?;
+    let model: everruns_contracts::model_spec::ModelSpec =
+        serde_json::from_value(definition.package["model"].clone())
+            .map_err(|_| reply_of(crate::providers::MODEL_NOT_CONFIGURED))?;
+    handle
+        .set_model(everruns::Model::on(model.provider.as_str(), model.model))
+        .await
+        .map_err(reply_of)?;
+    Ok(())
+}
+
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/cell/sessions/{session}/approvals", post(approvals))
-        .route("/cell/sessions/{session}/tool-results", post(tool_results))
-        .route("/cell/sessions/{session}/cancel-turn", post(cancel_turn))
-        .route("/cell/sessions/{session}/seed", post(seed))
-        .route("/cell/sessions/{session}/schedules", post(schedules))
-        .route("/cell/sessions/{session}/tasks", post(tasks))
-        .route("/cell/sessions/{session}/task", post(task))
-        .route("/cell/sessions/{session}/push-configs", post(push_configs))
-        .route("/cell/sessions/{session}/record", post(record))
+        .route("/shard/sessions/{session}/approvals", post(approvals))
+        .route("/shard/sessions/{session}/tool-results", post(tool_results))
+        .route("/shard/sessions/{session}/cancel-turn", post(cancel_turn))
+        .route("/shard/sessions/{session}/seed", post(seed))
+        .route("/shard/sessions/{session}/schedules", post(schedules))
+        .route("/shard/sessions/{session}/tasks", post(tasks))
+        .route("/shard/sessions/{session}/task", post(task))
+        .route("/shard/sessions/{session}/push-configs", post(push_configs))
+        .route("/shard/sessions/{session}/record", post(record))
         .route(
-            "/cell/sessions/{session}/storage",
+            "/shard/sessions/{session}/storage",
             get(storage).post(change_storage),
         )
-        .route("/cell/sessions/{session}/secrets", get(secrets))
-        .route("/cell/sessions/{session}/sender", post(sender))
-        .route("/cell/sessions/{session}/activate", post(activate))
+        .route("/shard/sessions/{session}/secrets", get(secrets))
+        .route("/shard/sessions/{session}/sender", post(sender))
+        .route("/shard/sessions/{session}/activate", post(activate))
         .with_state(node)
 }
 
@@ -51,23 +87,23 @@ fn parse(session: &str) -> Result<SessionId, ApiError> {
 }
 
 /// The session through this node's Engine, or why not.
-pub(crate) async fn resume(node: &Node, id: SessionId) -> Result<everruns::Session, CellReply> {
+pub(crate) async fn resume(node: &Node, id: SessionId) -> Result<everruns::Session, ShardReply> {
     match node.engine.resume(id).await {
         Ok(handle) => Ok(handle),
         // Engine folds authority errors into `Unavailable`; ask the replica
         // why.
         Err(error) => Err(match crate::api::lookup(node, id, |s| s.placement) {
-            Lookup::Moved { cell } => CellReply::Moved { cell },
-            Lookup::Missing => CellReply::NotFound,
-            Lookup::Here(Placement::Frozen | Placement::Prepared) => CellReply::Frozen,
+            Lookup::Moved { shard } => ShardReply::Moved { shard },
+            Lookup::Missing => ShardReply::NotFound,
+            Lookup::Here(Placement::Frozen | Placement::Prepared) => ShardReply::Frozen,
             Lookup::Here(_) => reply_of(error),
         }),
     }
 }
 
-async fn open_turn(node: &Node, id: SessionId) -> Result<TurnId, CellReply> {
+async fn open_turn(node: &Node, id: SessionId) -> Result<TurnId, ShardReply> {
     match node.hosting.status(id).await {
-        Ok(status) => status.open_turn.ok_or_else(|| CellReply::Refused {
+        Ok(status) => status.open_turn.ok_or_else(|| ShardReply::Refused {
             reason: "the session is not waiting for an answer".into(),
         }),
         Err(error) => Err(reply_of(error)),
@@ -85,7 +121,7 @@ async fn approvals(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<Approvals>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     let reply = async {
         let handle = resume(&node, id).await?;
@@ -94,7 +130,7 @@ async fn approvals(
             .submit_approvals(body.command, turn, body.decisions)
             .await
             .map_err(reply_of)?;
-        Ok::<_, CellReply>(CellReply::Ok {
+        Ok::<_, ShardReply>(ShardReply::Ok {
             value: serde_json::to_value(response).unwrap_or(Value::Null),
         })
     }
@@ -123,7 +159,7 @@ async fn tool_results(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<ToolResults>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     let accepted = body.tool_results.len();
     let reply = async {
@@ -134,7 +170,7 @@ async fn tool_results(
             let call = pending
                 .iter()
                 .find(|call| call.id == result.tool_call_id)
-                .ok_or_else(|| CellReply::Refused {
+                .ok_or_else(|| ShardReply::Refused {
                     reason: format!("no pending tool call {}", result.tool_call_id),
                 })?;
             answers.push(everruns::ToolAnswer {
@@ -149,7 +185,7 @@ async fn tool_results(
             .resolve_tools(body.command, turn, answers)
             .await
             .map_err(reply_of)?;
-        Ok::<_, CellReply>(CellReply::Ok {
+        Ok::<_, ShardReply>(ShardReply::Ok {
             value: json!({ "accepted": accepted, "status": "active" }),
         })
     }
@@ -189,25 +225,25 @@ async fn cancel_turn(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<CancelTurn>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     let events = match node.shared.read_events(id, 0).await {
         Some(Ok(events)) => events,
         Some(Err(error)) => return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string())),
         None => {
             return Ok(Json(match crate::api::lookup(&node, id, |_| ()) {
-                Lookup::Moved { cell } => CellReply::Moved { cell },
-                _ => CellReply::NotFound,
+                Lookup::Moved { shard } => ShardReply::Moved { shard },
+                _ => ShardReply::NotFound,
             }));
         }
     };
     let Some(input) = running_input(&events) else {
-        return Ok(Json(CellReply::Ok {
+        return Ok(Json(ShardReply::Ok {
             value: json!({ "status": "no_op", "message": "No turn is running" }),
         }));
     };
     let reply = match node.hosting.cancel(id, body.command, input).await {
-        Ok(()) => CellReply::Ok {
+        Ok(()) => ShardReply::Ok {
             value: json!({ "status": "cancelled", "message": "Turn cancelled successfully" }),
         },
         Err(error) => reply_of(error),
@@ -229,7 +265,7 @@ async fn seed(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<Seed>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     if let Err(reply) = resume(&node, id).await {
         return Ok(Json(reply));
@@ -239,7 +275,7 @@ async fn seed(
         .seed_history(id, body.command, body.messages)
         .await
     {
-        Ok(seeded) => CellReply::Ok {
+        Ok(seeded) => ShardReply::Ok {
             value: json!({ "seeded": seeded }),
         },
         Err(error) => reply_of(error),
@@ -259,17 +295,20 @@ async fn schedules(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<Schedules>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     // Senders are recorded only with the message (`api.rs` `send_message`).
     if matches!(body.action, Some(crate::platform::Op::Sender { .. })) {
-        return Ok(Json(CellReply::Refused {
+        return Ok(Json(ShardReply::Refused {
             reason: "a sender is recorded with its message".into(),
         }));
     }
     // The session's agent is set by its create (`api.rs` `create_session`).
-    if matches!(body.action, Some(crate::platform::Op::Agent { .. })) {
-        return Ok(Json(CellReply::Refused {
+    if matches!(
+        body.action,
+        Some(crate::platform::Op::Agent { .. } | crate::platform::Op::Subagent { .. })
+    ) {
+        return Ok(Json(ShardReply::Refused {
             reason: "a session's agent is set when it is created".into(),
         }));
     }
@@ -284,20 +323,20 @@ async fn schedules(
             json!(live)
         });
         return Ok(Json(match listed {
-            Lookup::Here(value) => CellReply::Ok { value },
-            Lookup::Moved { cell } => CellReply::Moved { cell },
-            Lookup::Missing => CellReply::NotFound,
+            Lookup::Here(value) => ShardReply::Ok { value },
+            Lookup::Moved { shard } => ShardReply::Moved { shard },
+            Lookup::Missing => ShardReply::NotFound,
         }));
     };
     Ok(Json(platform(&node, id, action).await?))
 }
 
-/// Propose a platform change to `id`, as a [`CellReply`].
+/// Propose a platform change to `id`, as a [`ShardReply`].
 pub(crate) async fn platform(
     node: &Node,
     id: SessionId,
     action: crate::platform::Op,
-) -> Result<CellReply, ApiError> {
+) -> Result<ShardReply, ApiError> {
     use crate::state::{Command, Response};
     let command = Command::Platform {
         session: id,
@@ -306,12 +345,15 @@ pub(crate) async fn platform(
         seed: everruns_contracts::typed_id::EventId::new(),
     };
     Ok(match node.propose(command).await {
-        Ok((Response::Value { value }, _)) => CellReply::Ok { value },
-        Ok((Response::Moved { cell }, _)) => CellReply::Moved { cell },
-        Ok((Response::Frozen, _)) => CellReply::Frozen,
-        Ok((Response::NotFound, _)) => CellReply::NotFound,
-        Ok((Response::Rejected { reason }, _)) => CellReply::Refused { reason },
-        Ok((other, _)) => CellReply::Refused {
+        Ok((Response::Value { value }, _)) => ShardReply::Ok { value },
+        Ok((Response::Ok, _)) => ShardReply::Ok {
+            value: serde_json::Value::Null,
+        },
+        Ok((Response::Moved { shard }, _)) => ShardReply::Moved { shard },
+        Ok((Response::Frozen, _)) => ShardReply::Frozen,
+        Ok((Response::NotFound, _)) => ShardReply::NotFound,
+        Ok((Response::Rejected { reason }, _)) => ShardReply::Refused { reason },
+        Ok((other, _)) => ShardReply::Refused {
             reason: format!("unexpected reply {other:?}"),
         },
         Err(error) => return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string())),
@@ -331,12 +373,12 @@ async fn record(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<Record>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     // Checked again when the command applies; refused here so an event the
     // control plane may not write never enters the log.
     if let Err(reason) = crate::platform::recordable(id, &body.event) {
-        return Ok(Json(CellReply::Refused { reason }));
+        return Ok(Json(ShardReply::Refused { reason }));
     }
     let action = crate::platform::Op::Record {
         event_id: body.event_id,
@@ -350,7 +392,7 @@ async fn record(
 async fn activate(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     let (response, _) = node
         .propose(crate::state::Command::Importing {
@@ -360,12 +402,12 @@ async fn activate(
         .await
         .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
     Ok(Json(match response {
-        crate::state::Response::Ok => CellReply::Ok {
+        crate::state::Response::Ok => ShardReply::Ok {
             value: json!({ "activated": true }),
         },
-        crate::state::Response::Moved { cell } => CellReply::Moved { cell },
-        crate::state::Response::NotFound => CellReply::NotFound,
-        other => CellReply::Refused {
+        crate::state::Response::Moved { shard } => ShardReply::Moved { shard },
+        crate::state::Response::NotFound => ShardReply::NotFound,
+        other => ShardReply::Refused {
             reason: format!("{other:?}"),
         },
     }))
@@ -403,10 +445,10 @@ async fn change_storage(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(op): Json<crate::session_storage::StorageOp>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     if let Some(reason) = crate::session_storage::refused(id, &op) {
-        return Ok(Json(CellReply::Refused { reason }));
+        return Ok(Json(ShardReply::Refused { reason }));
     }
     let action = crate::platform::Op::Storage(op);
     Ok(Json(platform(&node, id, action).await?))
@@ -428,7 +470,7 @@ async fn tasks(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<Tasks>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     let found = crate::api::lookup(&node, id, |s| match &body.task {
         None => crate::tasks::listed(s),
@@ -440,9 +482,9 @@ async fn tasks(
         ),
     });
     Ok(Json(match found {
-        Lookup::Here(value) => CellReply::Ok { value },
-        Lookup::Moved { cell } => CellReply::Moved { cell },
-        Lookup::Missing => CellReply::NotFound,
+        Lookup::Here(value) => ShardReply::Ok { value },
+        Lookup::Moved { shard } => ShardReply::Moved { shard },
+        Lookup::Missing => ShardReply::NotFound,
     }))
 }
 
@@ -453,23 +495,23 @@ async fn task(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(write): Json<crate::tasks::ApiWrite>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     let kind = match crate::api::lookup(&node, id, |s| crate::tasks::kind_of(s, &write.task)) {
         Lookup::Here(Some(kind)) => kind,
         Lookup::Here(None) => {
-            return Ok(Json(CellReply::Ok {
+            return Ok(Json(ShardReply::Ok {
                 value: serde_json::Value::Null,
             }));
         }
-        Lookup::Moved { cell } => return Ok(Json(CellReply::Moved { cell })),
-        Lookup::Missing => return Ok(Json(CellReply::NotFound)),
+        Lookup::Moved { shard } => return Ok(Json(ShardReply::Moved { shard })),
+        Lookup::Missing => return Ok(Json(ShardReply::NotFound)),
     };
     match crate::tasks::api_op(write, &kind) {
         Ok(op) => Ok(Json(
             platform(&node, id, crate::platform::Op::Task(op)).await?,
         )),
-        Err(reason) => Ok(Json(CellReply::Refused { reason })),
+        Err(reason) => Ok(Json(ShardReply::Refused { reason })),
     }
 }
 
@@ -482,10 +524,11 @@ enum PushConfigs {
     },
     Add {
         task: String,
-        config: crate::tasks::PushConfig,
-        /// Its signing secret, handed to the control plane, never kept.
+        config: Box<crate::tasks::PushConfig>,
+        /// Its signing secret, sealed with the org's data key by the edge
+        /// (`gateway_v1.rs`); this node keeps only the ciphertext.
         #[serde(default)]
-        secret: Option<String>,
+        sealed: Option<everruns_contracts::dataplane::SealedSecret>,
     },
     Delete {
         task: String,
@@ -499,7 +542,7 @@ async fn push_configs(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(call): Json<PushConfigs>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     use crate::tasks::TaskOp;
     let id = parse(&session)?;
     let op = match call {
@@ -519,25 +562,30 @@ async fn push_configs(
                 json!(listed)
             });
             return Ok(Json(match found {
-                Lookup::Here(value) => CellReply::Ok { value },
-                Lookup::Moved { cell } => CellReply::Moved { cell },
-                Lookup::Missing => CellReply::NotFound,
+                Lookup::Here(value) => ShardReply::Ok { value },
+                Lookup::Moved { shard } => ShardReply::Moved { shard },
+                Lookup::Missing => ShardReply::NotFound,
             }));
         }
         PushConfigs::Add {
             task,
             mut config,
-            secret,
+            sealed,
         } => {
-            if let Some(secret) = secret.filter(|s| !s.is_empty()) {
-                if let Err(reply) = hand_over_secret(&node, id, &config.id, &secret).await {
-                    return Ok(Json(reply));
+            if let Some(sealed) = sealed {
+                let expected =
+                    everruns_contracts::dataplane_seal::push_secret_id(&id.to_string(), &config.id);
+                if sealed.secret_id != expected {
+                    return Ok(Json(ShardReply::Refused {
+                        reason: "the signing secret is sealed for another config".into(),
+                    }));
                 }
                 config.has_secret = true;
+                config.sealed_secret = Some(sealed);
             }
             TaskOp::AddPushConfig {
                 task_id: task,
-                config,
+                config: *config,
             }
         }
         PushConfigs::Delete { task, config_id } => TaskOp::DeletePushConfig {
@@ -548,44 +596,6 @@ async fn push_configs(
     Ok(Json(
         platform(&node, id, crate::platform::Op::Task(op)).await?,
     ))
-}
-
-/// Hand push config `config`'s signing secret to the control plane before
-/// the config is written: a config that says it has one always does. A
-/// refusal is the command's answer (the gateway retries only a node that
-/// did not answer), so the caller sees why.
-async fn hand_over_secret(
-    node: &Node,
-    session: SessionId,
-    config: &str,
-    secret: &str,
-) -> Result<(), CellReply> {
-    if node.cfg.control_plane.is_none() {
-        return Err(CellReply::Refused {
-            reason: "a signing secret needs a control plane to keep it".into(),
-        });
-    }
-    let org = match crate::api::lookup(node, session, |s| s.tenant.clone()) {
-        Lookup::Here(Some(org)) => org,
-        Lookup::Here(None) => {
-            return Err(CellReply::Refused {
-                reason: "a signing secret needs the session's org".into(),
-            });
-        }
-        Lookup::Moved { cell } => return Err(CellReply::Moved { cell }),
-        Lookup::Missing => return Err(CellReply::NotFound),
-    };
-    crate::host_calls::from_node(
-        node,
-        &org,
-        everruns_contracts::host_calls::TASK_PUSH_SECRET,
-        config,
-        json!({ "session_id": session, "config_id": config, "secret": secret }),
-    )
-    .await
-    .map_err(|(_, reason)| CellReply::Refused {
-        reason: format!("the signing secret was not kept: {reason}"),
-    })
 }
 
 #[cfg(test)]
@@ -645,7 +655,7 @@ async fn sender(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<SenderOf>,
-) -> Result<Json<CellReply>, ApiError> {
+) -> Result<Json<ShardReply>, ApiError> {
     let id = parse(&session)?;
     let found = crate::api::lookup(&node, id, |s| {
         let message = body
@@ -655,10 +665,10 @@ async fn sender(
         (message, user)
     });
     Ok(Json(match found {
-        Lookup::Here((message, user)) => CellReply::Ok {
+        Lookup::Here((message, user)) => ShardReply::Ok {
             value: json!({ "message": message, "user": user }),
         },
-        Lookup::Moved { cell } => CellReply::Moved { cell },
-        Lookup::Missing => CellReply::NotFound,
+        Lookup::Moved { shard } => ShardReply::Moved { shard },
+        Lookup::Missing => ShardReply::NotFound,
     }))
 }

@@ -1,5 +1,5 @@
 //! A session's SQL databases: the index's rules, then the tools' store and
-//! the Databases API over a one-node cell served on a real socket.
+//! the Databases API over a one-node shard served on a real socket.
 
 use super::*;
 
@@ -87,19 +87,19 @@ fn the_index_holds_the_session_to_its_limits() {
     );
 }
 
-struct Cell {
+struct Shard {
     app: Router,
     node: Arc<Node>,
     session: SessionId,
     _dirs: (tempfile::TempDir, tempfile::TempDir),
 }
 
-async fn cell() -> Cell {
+async fn shard() -> Shard {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap().to_string();
     let data = tempfile::tempdir().unwrap();
     let cfg = NodeConfig {
-        cell: 0,
+        shard: 0,
         node_id: 1,
         members: BTreeMap::from([(1, addr.clone())]),
         data_dir: data.path().to_path_buf(),
@@ -140,8 +140,8 @@ async fn cell() -> Cell {
     std::fs::write(
         &path,
         serde_json::to_vec(&Topology {
-            directory_cell: 0,
-            cells: BTreeMap::from([(0, BTreeMap::from([(1, addr)]))]),
+            directory_shard: 0,
+            shards: BTreeMap::from([(0, BTreeMap::from([(1, addr)]))]),
         })
         .unwrap(),
     )
@@ -161,7 +161,7 @@ async fn cell() -> Cell {
         )
         .await
         .unwrap();
-    Cell {
+    Shard {
         app: crate::gateway::router(gateway),
         node,
         session,
@@ -169,7 +169,7 @@ async fn cell() -> Cell {
     }
 }
 
-impl Cell {
+impl Shard {
     async fn api(&self, method: Method, path: &str, body: Option<Value>) -> (StatusCode, Value) {
         let mut request = Request::builder()
             .method(method)
@@ -206,10 +206,10 @@ impl Cell {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_sessions_databases_live_in_its_cell_and_the_api_reads_them_there() {
-    let cell = cell().await;
-    let session = cell.session;
-    let tools = cell.node.hosting.databases();
+async fn a_sessions_databases_live_in_its_shard_and_the_api_reads_them_there() {
+    let shard = shard().await;
+    let session = shard.session;
+    let tools = shard.node.hosting.databases();
 
     tools
         .sql_execute(session, "notes", "CREATE TABLE t (n INTEGER, body TEXT)")
@@ -227,8 +227,8 @@ async fn a_sessions_databases_live_in_its_cell_and_the_api_reads_them_there() {
     assert_eq!(rows.rows, vec![vec![json!("a")], vec![json!("b")]]);
 
     // The index names the file, and the object store holds it.
-    let notes = cell.index()["notes"].clone();
-    let bytes = cell
+    let notes = shard.index()["notes"].clone();
+    let bytes = shard
         .node
         .shared
         .store
@@ -238,31 +238,31 @@ async fn a_sessions_databases_live_in_its_cell_and_the_api_reads_them_there() {
     assert_eq!(bytes.len() as u64, notes.size);
     assert!(bytes.starts_with(b"SQLite format 3\0"));
 
-    // The Databases API answers from the cell, in the control plane's shapes.
-    let (status, listed) = cell.api(Method::GET, "", None).await;
+    // The Databases API answers from the shard, in the control plane's shapes.
+    let (status, listed) = shard.api(Method::GET, "", None).await;
     assert_eq!(status, StatusCode::OK, "{listed}");
     assert_eq!(listed["data"][0]["name"], "notes");
     assert_eq!(listed["data"][0]["size_bytes"], notes.size);
-    let (status, schema) = cell.api(Method::GET, "/notes/schema", None).await;
+    let (status, schema) = shard.api(Method::GET, "/notes/schema", None).await;
     assert_eq!(status, StatusCode::OK, "{schema}");
     assert_eq!(schema["database"], "notes");
     assert_eq!(schema["tables"][0]["name"], "t");
     assert_eq!(schema["tables"][0]["row_count"], 2);
 
-    let (status, created) = cell
+    let (status, created) = shard
         .api(Method::POST, "", Some(json!({ "name": "scratch" })))
         .await;
     assert_eq!(status, StatusCode::CREATED, "{created}");
     assert_eq!(created["name"], "scratch");
-    let (status, _) = cell
+    let (status, _) = shard
         .api(Method::POST, "", Some(json!({ "name": "scratch" })))
         .await;
     assert_eq!(status, StatusCode::CONFLICT);
-    let (status, _) = cell
+    let (status, _) = shard
         .api(Method::POST, "", Some(json!({ "name": "../escape" })))
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    let (status, got) = cell.api(Method::GET, "/scratch", None).await;
+    let (status, got) = shard.api(Method::GET, "/scratch", None).await;
     assert_eq!(
         (status, got["size_bytes"].clone()),
         (StatusCode::OK, json!(0))
@@ -272,13 +272,13 @@ async fn a_sessions_databases_live_in_its_cell_and_the_api_reads_them_there() {
         .sql_execute(session, "scratch", "CREATE TABLE s (v)")
         .await
         .unwrap();
-    let (status, _) = cell.api(Method::DELETE, "/scratch", None).await;
+    let (status, _) = shard.api(Method::DELETE, "/scratch", None).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, _) = cell.api(Method::GET, "/scratch", None).await;
+    let (status, _) = shard.api(Method::GET, "/scratch", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = cell.api(Method::DELETE, "/scratch", None).await;
+    let (status, _) = shard.api(Method::DELETE, "/scratch", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = cell.api(Method::GET, "/scratch/schema", None).await;
+    let (status, _) = shard.api(Method::GET, "/scratch/schema", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     // A deleted database is gone for the tools too, kind kept.
     let error = tools
@@ -289,10 +289,10 @@ async fn a_sessions_databases_live_in_its_cell_and_the_api_reads_them_there() {
         matches!(error, SessionSqlDbError::DatabaseNotFound(_)),
         "{error:?}"
     );
-    assert_eq!(cell.index().len(), 1);
+    assert_eq!(shard.index().len(), 1);
 
     // Another session's databases are its own.
-    let (status, other) = cell.api(Method::GET, "", None).await;
+    let (status, other) = shard.api(Method::GET, "", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(other["data"].as_array().unwrap().len(), 1);
     assert!(
@@ -303,20 +303,20 @@ async fn a_sessions_databases_live_in_its_cell_and_the_api_reads_them_there() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_working_copy_follows_the_index_not_its_own_file() {
-    let cell = cell().await;
-    let session = cell.session;
-    let tools = cell.node.hosting.databases();
+    let shard = shard().await;
+    let session = shard.session;
+    let tools = shard.node.hosting.databases();
     tools
         .sql_execute(session, "notes", "CREATE TABLE t (n INTEGER)")
         .await
         .unwrap();
-    let empty_db = cell.index()["notes"].clone();
+    let empty_db = shard.index()["notes"].clone();
     let empty = empty_db.sha256.clone();
     tools
         .sql_execute(session, "notes", "INSERT INTO t VALUES (1)")
         .await
         .unwrap();
-    let one_row = cell.index()["notes"].sha256.clone();
+    let one_row = shard.index()["notes"].sha256.clone();
     assert_ne!(empty, one_row, "a write is a new file");
 
     // A read changes nothing.
@@ -324,11 +324,11 @@ async fn the_working_copy_follows_the_index_not_its_own_file() {
         .sql_query(session, "notes", "SELECT count(*) FROM t")
         .await
         .unwrap();
-    assert_eq!(cell.index()["notes"].sha256, one_row);
+    assert_eq!(shard.index()["notes"].sha256, one_row);
 
     // Another writer (a restore, another executor) points the session at
     // the earlier file: this copy reads that, not what it last wrote.
-    let (reply, _) = cell
+    let (reply, _) = shard
         .node
         .propose(Command::SqlDb {
             session,
@@ -355,7 +355,7 @@ async fn the_working_copy_follows_the_index_not_its_own_file() {
         matches!(error, SessionSqlDbError::QueryError(_)),
         "{error:?}"
     );
-    assert_eq!(cell.index()["notes"].sha256, empty);
+    assert_eq!(shard.index()["notes"].sha256, empty);
     // The authorizer still guards what a statement may do.
     let error = tools
         .sql_execute(session, "notes", "ATTACH DATABASE ':memory:' AS escape")

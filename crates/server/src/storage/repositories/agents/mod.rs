@@ -12,13 +12,25 @@ use everruns_server_macros::sql;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+/// Turn the monthly agent creation trigger's error into a 409 resource limit.
+fn agent_insert_error(error: sqlx::Error) -> anyhow::Error {
+    if let Some(db_error) = error.as_database_error()
+        && db_error.constraint() == Some("agent_monthly_creation_limit")
+    {
+        return crate::errors::ResourceLimitError::new(db_error.message())
+            .with_code("monthly_agent_limit_reached")
+            .into();
+    }
+    anyhow::Error::from(error)
+}
+
 impl Database {
     pub async fn get_platform_chat_starter_id(
         &self,
         org_id: i64,
         user_id: Uuid,
     ) -> Result<Option<everruns_contracts::typed_id::SessionId>> {
-        let id: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM sessions WHERE org_id = $1 AND 'platform-chat-starter' = ANY(tags) AND owner_principal_id IN (SELECT p.id FROM principals p JOIN virtual_user_bindings b ON b.org_id = p.org_id AND b.virtual_user_id = p.subject_id WHERE p.kind = 'virtual_user' AND b.management_user_id = $2) LIMIT 1")
+        let id: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM sessions WHERE org_id = $1 AND deleted_at IS NULL AND tags @> ARRAY['platform-chat-starter']::text[] AND owner_principal_id IN (SELECT p.id FROM principals p JOIN virtual_user_bindings b ON b.org_id = p.org_id AND b.virtual_user_id = p.subject_id WHERE p.kind = 'virtual_user' AND b.management_user_id = $2) LIMIT 1")
             .bind(org_id).bind(user_id).fetch_optional(&self.pool).await?;
         Ok(id.map(|(id,)| everruns_contracts::typed_id::SessionId::from_uuid(id)))
     }
@@ -89,7 +101,8 @@ impl Database {
         .bind(sqlx::types::Json(&input.localizations))
         .bind(input.completion_check.as_str())
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(agent_insert_error)?;
 
         Ok(row)
     }
@@ -178,7 +191,8 @@ impl Database {
         .bind(sqlx::types::Json(&input.localizations))
         .bind(input.completion_check.as_str())
         .fetch_optional(&self.pool)
-        .await?;
+        .await
+        .map_err(agent_insert_error)?;
 
         Ok(row)
     }
@@ -697,7 +711,8 @@ impl Database {
         .bind(input.max_output_tokens)
         .bind(input.completion_check.as_str())
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(agent_insert_error)?;
 
         // Detect if insert or update: if created_at == updated_at, it was a fresh insert
         let was_created = row.created_at == row.updated_at;
@@ -763,7 +778,8 @@ impl Database {
         .bind(input.max_output_tokens)
         .bind(input.completion_check.as_str())
         .fetch_one(&self.pool)
-        .await?;
+        .await
+        .map_err(agent_insert_error)?;
 
         let was_created = row.created_at == row.updated_at;
         Ok((row, was_created))

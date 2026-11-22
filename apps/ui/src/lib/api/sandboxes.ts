@@ -6,6 +6,7 @@
 import { api } from "./client";
 import type {
   ManageSessionSandboxResponse,
+  ProviderSandboxState,
   SessionRepositoriesResponse,
   SessionRepository,
   SessionRepositoryFile,
@@ -97,6 +98,10 @@ export async function getSandboxTimeline(
 
 export async function getSandbox(id: string): Promise<SandboxFleetDetail> {
   return (await api.get<SandboxFleetDetail>(`/v1/sandboxes/${id}`)).data;
+}
+
+export async function getSandboxProviderState(id: string): Promise<ProviderSandboxState> {
+  return (await api.get<ProviderSandboxState>(`/v1/sandboxes/${id}/provider`)).data;
 }
 
 export async function manageSessionSandbox(

@@ -2,19 +2,17 @@
 //! data plane from outside it (data plane v2 parity, Phase A).
 //!
 //! Decisions:
-//! - Host calls (`host_calls`) are the one way a data plane asks its
-//!   control plane anything. This is the same discipline the other way: the
-//!   control plane reaches a v2 session only through a declared session
+//! - The control plane reaches a v2 session only through a declared session
 //!   command or read (`POST` or `GET /dp/v1/orgs/{org}/sessions/{id}/{name}`),
-//!   each with what it does, its version and who uses it. The cell serves
+//!   each with what it does, its version and who uses it. The shard serves
 //!   only these, and the control plane names them by constant, never by a
 //!   string of its own.
 //! - Every session route of the public API (`/v1/sessions/{id}/{segment}`)
 //!   is declared too, with the plane that serves it ([`Plane`]): the
-//!   session's cell, the control plane's record, or a known gap (the cell
+//!   session's shard, the control plane's record, or a known gap (the shard
 //!   answers "not available yet"). The edge routes by this table, and a test
 //!   on each side fails on a route nobody declared (the server's API), a
-//!   cell route the cell does not serve, or a gap the cell has closed, so a
+//!   shard route the shard does not serve, or a gap the shard has closed, so a
 //!   new route shows up in review instead of silently going to the wrong
 //!   plane.
 //! - Both lists print to `session_commands_registry.txt`; a test fails
@@ -106,7 +104,7 @@ pub const TRACE: SessionCommand = read("trace", "the session's trace rows");
 pub const STORAGE_READ: SessionCommand = read("storage", "the session's storage values");
 /// The session's sealed secrets' names and revisions.
 pub const SECRETS: SessionCommand = read("secrets", "the session's sealed secrets, without values");
-/// The pinned sandbox's state on the cell.
+/// The pinned sandbox's state on the shard.
 pub const SANDBOX: SessionCommand = read("sandbox", "the pinned sandbox's state");
 /// What the session's model calls, turns and image tools spent, unpriced
 /// (`runtime::session_spend::SpendInputs`).
@@ -145,13 +143,13 @@ pub fn find(kind: Kind, name: &str) -> Option<&'static SessionCommand> {
 /// Which plane serves a session route of the public API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Plane {
-    /// The session's cell, through the edge.
-    Cell,
+    /// The session's shard, through the edge.
+    Shard,
     /// The control plane, for both planes: the session's record (owner,
-    /// budgets, cost) or a feature that reads the session on its cell
+    /// budgets, cost) or a feature that reads the session on its shard
     /// through the session commands above.
     Record,
-    /// Not served for a v2 session yet: the cell answers 501 with the
+    /// Not served for a v2 session yet: the shard answers 501 with the
     /// feature's name. Each one is a parity gap to close.
     Gap,
 }
@@ -159,19 +157,19 @@ pub enum Plane {
 /// Every `/v1/sessions/{id}/{segment}` route of the public API, by its
 /// first segment, with the plane that serves it for a v2 session.
 pub const SESSION_ROUTES: &[(&str, Plane)] = &[
-    // The conversation: the cell runs it.
-    ("messages", Plane::Cell),
-    ("events", Plane::Cell),
-    ("sse", Plane::Cell),
-    ("cancel", Plane::Cell),
-    ("tool-approvals", Plane::Cell),
-    ("tool-results", Plane::Cell),
-    ("tasks", Plane::Cell),
-    ("schedules", Plane::Cell),
-    ("work", Plane::Cell),
-    ("resources", Plane::Cell),
+    // The conversation: the shard runs it.
+    ("messages", Plane::Shard),
+    ("events", Plane::Shard),
+    ("sse", Plane::Shard),
+    ("cancel", Plane::Shard),
+    ("tool-approvals", Plane::Shard),
+    ("tool-results", Plane::Shard),
+    ("tasks", Plane::Shard),
+    ("schedules", Plane::Shard),
+    ("work", Plane::Shard),
+    ("resources", Plane::Shard),
     // The session's SQL databases (parity step 9).
-    ("databases", Plane::Cell),
+    ("databases", Plane::Shard),
     // The record the control plane keeps for both planes.
     ("archive", Plane::Record),
     ("pin", Plane::Record),
@@ -184,7 +182,7 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     ("run-requests", Plane::Record),
     ("agent-view", Plane::Record),
     // Served by the control plane with one code path, reading the
-    // session's events from its cell and sending outcomes back as session
+    // session's events from its shard and sending outcomes back as session
     // commands (step 11.6).
     ("trace", Plane::Record),
     ("question-answers", Plane::Record),
@@ -192,11 +190,11 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     ("feedback", Plane::Record),
     ("context-report", Plane::Record),
     ("export", Plane::Record),
-    // The session's storage: read and changed on the cell, with the
+    // The session's storage: read and changed on the shard, with the
     // control plane's policy and secret sealing.
     ("storage", Plane::Record),
     ("approval-mode", Plane::Record),
-    // Answered by the control plane on the session's cell: an MCP server's
+    // Answered by the control plane on the session's shard: an MCP server's
     // sign-in link, a fork, the whole run, continuing past a usage policy.
     ("mcp-elicitation-consent", Plane::Record),
     ("fork", Plane::Record),
@@ -210,31 +208,31 @@ pub const SESSION_ROUTES: &[(&str, Plane)] = &[
     // (the Changes tab): read from the pinned sandbox, as its lifecycle is.
     ("repositories", Plane::Record),
     // Commits of the session's files: the history the control plane keeps
-    // for both planes, a commit's files read from the session's cell.
+    // for both planes, a commit's files read from the session's shard.
     ("git", Plane::Record),
     // The MCP servers added to one chat: records in the session's storage.
     ("mcp-servers", Plane::Record),
     // A voice call: the control plane runs it, follows the session's
-    // events from its cell and records the call's events there.
+    // events from its shard and records the call's events there.
     ("voice", Plane::Record),
 ];
 
-/// Paths under a [`Plane::Cell`] route the cell does not serve yet (it
+/// Paths under a [`Plane::Shard`] route the shard does not serve yet (it
 /// answers 501), relative to the session, as the public API spells them.
-pub const CELL_ROUTE_GAPS: &[&str] = &[];
+pub const AGENTD_ROUTE_GAPS: &[&str] = &[];
 
 /// The calls on one of a session's messages (`messages/{id}/{call}`) the
-/// control plane serves; every other message route is the cell's.
+/// control plane serves; every other message route is the shard's.
 pub const MESSAGE_RECORD_ROUTES: &[&str] = &["reactions", "feedback"];
 
 /// The plane serving the session route whose first segment is `segment`;
-/// an undeclared one is the cell's, which answers what it does not serve
+/// an undeclared one is the shard's, which answers what it does not serve
 /// with "not available yet".
 pub fn plane(segment: &str) -> Plane {
     SESSION_ROUTES
         .iter()
         .find(|(name, _)| *name == segment)
-        .map_or(Plane::Cell, |(_, plane)| *plane)
+        .map_or(Plane::Shard, |(_, plane)| *plane)
 }
 
 /// Both lists as text: what `session_commands_registry.txt` holds.
@@ -250,7 +248,7 @@ pub fn registry_text() -> String {
     for call in MESSAGE_RECORD_ROUTES {
         out.push_str(&format!("messages/{{id}}/{call} Record\n"));
     }
-    for path in CELL_ROUTE_GAPS {
+    for path in AGENTD_ROUTE_GAPS {
         out.push_str(&format!("{path} Gap\n"));
     }
     out
@@ -286,7 +284,7 @@ mod tests {
         );
         assert!(find(Kind::Command, "events").is_none());
         assert_eq!(plane("archive"), Plane::Record);
-        assert_eq!(plane("messages"), Plane::Cell);
+        assert_eq!(plane("messages"), Plane::Shard);
         assert_eq!(plane("git"), Plane::Record);
         assert_eq!(plane("voice"), Plane::Record);
     }

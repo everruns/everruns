@@ -50,10 +50,6 @@ impl Capability for JevCapability {
         CAPABILITY_ID
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[everruns_contracts::host_calls::CONNECTION_TOKEN]
-    }
-
     fn name(&self) -> &str {
         "[Experimental] Jev Decisions"
     }

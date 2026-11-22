@@ -191,6 +191,13 @@ export const messages: Readonly<Record<string, string>> = {
   "Check your email": "Überprüfen Sie Ihre E-Mails",
   "Check your inbox": "Überprüfen Sie Ihren Posteingang",
   "Checked {value0}": "Geprüft {value0}",
+  "Last recorded running": "Zuletzt als laufend erfasst",
+  "Check provider status": "Anbieterstatus prüfen",
+  "Not found at provider": "Beim Anbieter nicht gefunden",
+  "Could not check the provider.": "Der Anbieterstatus konnte nicht geprüft werden.",
+  "No activity for over an hour": "Seit über einer Stunde keine Aktivität",
+  "Check the provider for the current state and whether it is still using compute.":
+    "Beim Anbieter lässt sich prüfen, ob die Sandbox noch läuft und Rechenleistung belegt.",
   "Checking agent usage…": "Agent-Nutzung prüfen…",
   "Checking availability…": "Verfügbarkeit prüfen…",
   "Checking key...": "Schlüssel prüfen...",

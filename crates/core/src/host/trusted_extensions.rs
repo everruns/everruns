@@ -142,7 +142,7 @@ pub struct HookExtensions {
 ///
 /// Decision: they join only the turn's resolution, never the session
 /// record, so a record written back (a session override, an MCP edit)
-/// cannot keep them: a data plane cell adds the turn's person's own servers
+/// cannot keep them: a data plane shard adds the turn's person's own servers
 /// this way, whose credentials are the person's and whose list changes with
 /// whoever sent the turn.
 #[async_trait]

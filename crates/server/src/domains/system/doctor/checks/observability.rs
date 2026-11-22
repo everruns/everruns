@@ -53,23 +53,23 @@ fn detail_check(config: &DetailConfig, probe: Option<Result<(), String>>) -> Doc
     let host = config.display_host().unwrap_or_default();
     match (config, probe) {
         (DetailConfig::Off, _) => check.info(
-            "Monitoring keeps one-minute history in PostgreSQL. To add 10-second cell detail, \
+            "Monitoring keeps one-minute history in PostgreSQL. To add 10-second shard detail, \
              set MONITORING_DETAIL=prometheus and MONITORING_DETAIL_URL to VictoriaMetrics or \
              Prometheus.",
         ),
         (DetailConfig::Invalid(why), _) => check
             .warning(format!("Monitoring detail is misconfigured: {why}."))
-            .why("The Cells tab shows minute history only.")
+            .why("The Shards tab shows minute history only.")
             .fix("Set MONITORING_DETAIL=prometheus with an http(s) MONITORING_DETAIL_URL, or unset both."),
         (DetailConfig::Prometheus { .. }, Some(Ok(()))) => {
-            check.ok(format!("Reads 10-second cell detail from {host}."))
+            check.ok(format!("Reads 10-second shard detail from {host}."))
         }
         (DetailConfig::Prometheus { .. }, probe) => check
             .warning(format!(
                 "{host} did not answer: {}.",
                 probe.and_then(Result::err).unwrap_or_else(|| "not probed".into())
             ))
-            .why("The Cells tab shows minute history only, without per-node detail.")
+            .why("The Shards tab shows minute history only, without per-node detail.")
             .fix("Check that the store is up and that MONITORING_DETAIL_URL points at its query API."),
     }
 }
@@ -135,25 +135,25 @@ pub(super) async fn run(doctor: &SystemDoctor) -> Findings {
         )
     });
 
-    let (extent, cells, probe) = tokio::join!(
+    let (extent, shards, probe) = tokio::join!(
         doctor.db.monitoring_history_extent(),
-        doctor.db.monitoring_cells_latest(),
+        doctor.db.monitoring_shards_latest(),
         detail_probe(DetailConfig::from_env()),
     );
     let now = Utc::now();
     if let Ok(extent) = extent {
         found.check(history_check(extent, now));
     }
-    if let Ok(cells) = cells {
-        let reporting = cells
+    if let Ok(shards) = shards {
+        let reporting = shards
             .iter()
             .filter(|c| now - c.minute <= chrono::TimeDelta::minutes(3))
             .count();
         if reporting > 0 {
             found.fact(super::plural(
                 reporting,
-                "cell reporting",
-                "cells reporting",
+                "shard reporting",
+                "shards reporting",
             ));
         }
     }

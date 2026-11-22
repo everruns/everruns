@@ -1,20 +1,20 @@
-//! Cells: in-memory, Raft-replicated session authorities for Everruns
+//! Shards: in-memory, Raft-replicated session authorities for Everruns
 //! Engine (data plane v2). Ported from funout `0a0c0ec`.
 //!
-//! A fleet is made of cells. A cell is a few nodes running one Raft group;
-//! each session lives in exactly one cell as part of its replicated state
-//! machine ([`state::CellState`]): the session's canonical Everruns event
+//! A fleet is made of shards. A shard is a few nodes running one Raft group;
+//! each session lives in exactly one shard as part of its replicated state
+//! machine ([`state::ShardState`]): the session's canonical Everruns event
 //! log, its inbox and the claim naming the executor of its current turn. The
 //! Raft log is the write-ahead log ([`wal::Wal`]); snapshots bound it.
 //!
-//! Each cell is an Everruns Engine hosting profile ([`hosting::RaftHosting`]):
+//! Each shard is an Everruns Engine hosting profile ([`hosting::RaftHosting`]):
 //! admission, execution epochs, receipts and commands are Raft commands
 //! applied by [`authority`], and executors run Engine's own session driver
 //! (`Engine::activate`), so every step's events are committed on a quorum
 //! before the turn moves on, and a turn cut off anywhere resumes from the
 //! journal on another node. Execution is separate from leadership: a leader
 //! change does not stop in-flight model calls. A directory (the state of
-//! cell 0) maps sessions to cells, so capacity grows by adding cells, and
+//! shard 0) maps sessions to shards, so capacity grows by adding shards, and
 //! sessions can move.
 //!
 //! Design: `knowledge/execution/data-plane-v2/design.md`.
@@ -54,7 +54,6 @@ pub mod gateway_v1;
 mod gateway_wait;
 pub mod gateway_work;
 pub mod host;
-pub mod host_calls;
 pub mod hosting;
 pub mod inspect;
 pub mod lookups;
@@ -81,6 +80,7 @@ pub mod sandbox;
 mod saved_scripts;
 pub mod secrets;
 pub mod senders;
+pub mod session_records;
 pub mod session_storage;
 pub mod ship;
 pub mod sm;

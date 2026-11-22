@@ -3,13 +3,13 @@
 //!
 //! On a v1 worker the control plane finds the person in its own record of
 //! the turn (`runtime_invocations`), written when the message came through
-//! its API. A v2 session's messages come through the edge to the cell, so
-//! the control plane never sees them; the session's cell keeps the record.
+//! its API. A v2 session's messages come through the edge to the shard, so
+//! the control plane never sees them; the session's shard keeps the record.
 //!
 //! Decisions:
 //! - THREAT[TM-AGENT-017]: the executor that runs a turn never names the
-//!   person. It names the session and the turn's input message; the cell
-//!   that forwards its lookup asks the session's cell who sent that message
+//!   person. It names the session and the turn's input message; the shard
+//!   that forwards its lookup asks the session's shard who sent that message
 //!   (`gateway_dp.rs`), and the control plane checks the person is still a
 //!   member of the org, with their current role.
 //!   An injected capability's session token names the person the same way:

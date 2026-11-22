@@ -561,7 +561,7 @@ function AgentDetailContent({ params }: { params: Promise<{ agentId: string }> }
     },
     {
       id: "mcp",
-      label: ui("MCP servers"),
+      label: ui("MCP"),
       summary: mcpAttachments?.length
         ? ui("{value0} attached", { value0: mcpAttachments.length })
         : ui("None"),

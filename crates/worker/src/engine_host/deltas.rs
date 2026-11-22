@@ -5,7 +5,7 @@
 //! Decisions:
 //! - Deltas reach the control plane the way a worker turn's do, as fenced
 //!   event writes, so the platform's live streams show text as the model
-//!   writes it. Taking them off the control plane's store is the cell's
+//!   writes it. Taking them off the control plane's store is the shard's
 //!   stream node (data plane v2 "Live streaming"), not this step.
 //! - Publishing never waits on the control plane: one bounded queue per
 //!   epoch, drained in order by one task, in batches. A full queue drops the

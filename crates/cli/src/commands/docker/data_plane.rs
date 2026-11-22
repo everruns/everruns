@@ -4,7 +4,7 @@ use clap::ValueEnum;
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
 pub enum DataPlaneChoice {
-    /// Cells: the data plane v2 runtime
+    /// Shards: the data plane v2 runtime
     V2,
     /// Workers: the original runtime
     V1,
@@ -29,7 +29,7 @@ impl DataPlaneChoice {
 
 /// The data plane `choice` selects, and how many of its containers run.
 ///
-/// Decision: switching an instance that ran v2 back to v1 keeps the cell
+/// Decision: switching an instance that ran v2 back to v1 keeps the shard
 /// running. Its organizations' sessions live there; v1 only means new
 /// organizations go to the workers. An instance that never ran v2 runs no
 /// data plane containers in v1.
@@ -68,7 +68,7 @@ mod tests {
         );
         // v1 from the start runs no data plane containers.
         assert_eq!(data_plane_settings(Some(V1), None, None), (V1, "0"));
-        // An instance that ran v2 keeps its cell: its organizations live there.
+        // An instance that ran v2 keeps its shard: its organizations live there.
         assert_eq!(
             data_plane_settings(Some(V1), Some("v2"), Some("1")),
             (V1, "1")

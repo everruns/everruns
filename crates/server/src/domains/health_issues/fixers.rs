@@ -278,6 +278,9 @@ pub async fn fixers_for(ctx: &Ctx, row: &HealthIssueRow) -> Result<Vec<IssueFixe
     if super::model_health::owns(&row.code) {
         return Ok(model_sync_fixer(ctx, row).await?.into_iter().collect());
     }
+    if row.code == super::mcp_grants::MCP_SIGN_IN {
+        return Ok(super::mcp_grants::fixer(row).into_iter().collect());
+    }
     if row.code != "slack.permissions" {
         return Ok(Vec::new());
     }

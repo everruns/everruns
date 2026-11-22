@@ -1,19 +1,19 @@
-//! The cell inspector: where a session is and what it is doing, and how each
-//! cell is keeping up. An operator's first look in an incident (runbooks:
+//! The shard inspector: where a session is and what it is doing, and how each
+//! shard is keeping up. An operator's first look in an incident (runbooks:
 //! leader loss, a stuck move, a drain).
 //!
 //! ```text
-//! app inspect --topology cluster.json cells
+//! app inspect --topology cluster.json shards
 //! app inspect --topology cluster.json session <id>
 //! app inspect --topology cluster.json moves
 //! ```
 //!
 //! Decisions:
 //! - Read only, and from the nodes' own HTTP endpoints, so it works with no
-//!   control plane and against a cell that has no leader (it then says so
+//!   control plane and against a shard that has no leader (it then says so
 //!   instead of failing).
-//! - The cell list is the topology file's plus the directory cell's
-//!   registry: cells and nodes added later by `--join` are not in the file.
+//! - The shard list is the topology file's plus the directory shard's
+//!   registry: shards and nodes added later by `--join` are not in the file.
 //! - A move is "stuck" when a session sits frozen or prepared; the inspector
 //!   lists them with their generation and target, and the directory's view,
 //!   which is what decides how the move ends.
@@ -30,19 +30,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::cluster::Topology;
 use crate::node::Node;
-use crate::state::{CellId, Placed, Placement};
+use crate::state::{Placed, Placement, ShardId};
 use crate::types::NodeId;
 
-/// Moves listed per cell, at most.
+/// Moves listed per shard, at most.
 const MOVES_SHOWN: usize = 50;
 
 /// Events of a session's tail the inspector shows.
 const TAIL: usize = 8;
 
-/// One node's view of its cell.
+/// One node's view of its shard.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CellReport {
-    pub cell: CellId,
+pub struct ShardReport {
+    pub shard: ShardId,
     pub node: NodeId,
     pub leader: Option<NodeId>,
     pub incarnation: u64,
@@ -75,19 +75,19 @@ pub struct MoveView {
     pub session: SessionId,
     pub placement: Placement,
     pub generation: u64,
-    pub moving_to: Option<CellId>,
+    pub moving_to: Option<ShardId>,
 }
 
 /// What a session is doing, from the node that answered.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SessionReport {
-    pub cell: CellId,
+    pub shard: ShardId,
     pub node: NodeId,
     pub agent: String,
     pub tenant: Option<String>,
     pub placement: Placement,
     pub generation: u64,
-    pub moving_to: Option<CellId>,
+    pub moving_to: Option<ShardId>,
     pub branch: u64,
     pub last_sequence: i32,
     pub turns_completed: u64,
@@ -128,8 +128,8 @@ pub struct TailEvent {
     pub ts: Option<String>,
 }
 
-/// `GET /cell/inspect`.
-pub(crate) async fn cell(State(node): State<Arc<Node>>) -> Json<CellReport> {
+/// `GET /shard/inspect`.
+pub(crate) async fn shard(State(node): State<Arc<Node>>) -> Json<ShardReport> {
     // Before the state lock: `resident` takes it too.
     let resident_mb = node.shared.resident().0 >> 20;
     let log_mb = node.wal.held_bytes() >> 20;
@@ -148,8 +148,8 @@ pub(crate) async fn cell(State(node): State<Arc<Node>>) -> Json<CellReport> {
     let moves_total = moves.len();
     moves.sort_by_key(|m| m.session.to_string());
     moves.truncate(MOVES_SHOWN);
-    Json(CellReport {
-        cell: node.cfg.cell,
+    Json(ShardReport {
+        shard: node.cfg.shard,
         node: node.cfg.node_id,
         leader: node.leader(),
         incarnation: state.incarnation,
@@ -160,7 +160,7 @@ pub(crate) async fn cell(State(node): State<Arc<Node>>) -> Json<CellReport> {
             .waiting_since()
             .map(|since| since.elapsed().as_millis() as u64),
         last_snapshot_s: node.shared.last_snapshot_age().as_secs(),
-        draining: state.draining.contains(&node.cfg.cell),
+        draining: state.draining.contains(&node.cfg.shard),
         sessions: state.sessions.len(),
         active_turns: state.sessions.values().filter(|s| s.turn_running()).count(),
         queued_inputs: state.sessions.values().map(|s| s.queued()).sum(),
@@ -173,10 +173,10 @@ pub(crate) async fn cell(State(node): State<Arc<Node>>) -> Json<CellReport> {
     })
 }
 
-/// `GET /cell/sessions/{session}/sandbox`: the session's managed sandbox as
+/// `GET /shard/sessions/{session}/sandbox`: the session's managed sandbox as
 /// its state records it, and the session's work, for the control plane's
 /// sandbox diagnosis (`sandboxes diagnose`). Only non-secret fields leave
-/// the cell: the state is stored as a session secret, and its provider state
+/// the shard: the state is stored as a session secret, and its provider state
 /// and lease credential stay here.
 pub(crate) async fn sandbox(
     State(node): State<Arc<Node>>,
@@ -233,14 +233,14 @@ fn sandbox_report(s: &crate::state::SessionState) -> serde_json::Value {
     })
 }
 
-/// `GET /cell/sessions/{session}/inspect`.
+/// `GET /shard/sessions/{session}/inspect`.
 pub(crate) async fn session(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
 ) -> Result<Json<crate::api::Lookup<SessionReport>>, (StatusCode, String)> {
     let id = SessionId::parse(&session).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(crate::api::lookup(&node, id, |s| SessionReport {
-        cell: node.cfg.cell,
+        shard: node.cfg.shard,
         node: node.cfg.node_id,
         agent: s.agent.clone(),
         tenant: s.tenant.clone(),
@@ -319,20 +319,20 @@ impl Inspector {
         response.json().await.ok()
     }
 
-    /// Every cell and its nodes: the topology file's, plus what the
-    /// directory cell's registry adds (cells that joined later, nodes added
-    /// since), less retired cells.
-    pub async fn cells(&self) -> BTreeMap<CellId, BTreeMap<NodeId, String>> {
+    /// Every shard and its nodes: the topology file's, plus what the
+    /// directory shard's registry adds (shards that joined later, nodes added
+    /// since), less retired shards.
+    pub async fn shards(&self) -> BTreeMap<ShardId, BTreeMap<NodeId, String>> {
         let registry = self.registry().await;
         self.merged(registry.as_ref())
     }
 
-    /// The directory cell's registry: cells added since the topology file
-    /// was written, retired cells, and which cell holds each directory
-    /// shard.
+    /// The directory shard's registry: shards added since the topology file
+    /// was written, retired shards, and which shard holds each directory
+    /// slot.
     async fn registry(&self) -> Option<crate::api::Registry> {
-        for addr in self.topology.nodes(self.topology.directory_cell) {
-            if let Some(registry) = self.get(&addr, "/cell/registry").await {
+        for addr in self.topology.nodes(self.topology.directory_shard) {
+            if let Some(registry) = self.get(&addr, "/shard/registry").await {
                 return Some(registry);
             }
         }
@@ -342,45 +342,45 @@ impl Inspector {
     fn merged(
         &self,
         registry: Option<&crate::api::Registry>,
-    ) -> BTreeMap<CellId, BTreeMap<NodeId, String>> {
-        let mut cells = self.topology.cells.clone();
+    ) -> BTreeMap<ShardId, BTreeMap<NodeId, String>> {
+        let mut shards = self.topology.shards.clone();
         if let Some(registry) = registry {
-            for (cell, nodes) in &registry.cells {
-                cells.entry(*cell).or_default().extend(nodes.clone());
+            for (shard, nodes) in &registry.shards {
+                shards.entry(*shard).or_default().extend(nodes.clone());
             }
             for retired in &registry.retired {
-                cells.remove(retired);
+                shards.remove(retired);
             }
         }
-        cells
+        shards
     }
 
     /// Each node's report, `None` for a node that did not answer.
-    pub async fn reports(&self) -> BTreeMap<CellId, Vec<(NodeId, Option<CellReport>)>> {
+    pub async fn reports(&self) -> BTreeMap<ShardId, Vec<(NodeId, Option<ShardReport>)>> {
         let mut out = BTreeMap::new();
-        for (cell, nodes) in self.cells().await {
+        for (shard, nodes) in self.shards().await {
             let mut reports = Vec::new();
             for (node, addr) in nodes {
-                reports.push((node, self.get(&addr, "/cell/inspect").await));
+                reports.push((node, self.get(&addr, "/shard/inspect").await));
             }
-            out.insert(cell, reports);
+            out.insert(shard, reports);
         }
         out
     }
 
     /// Where the directory places `session`.
     pub async fn placed(&self, session: SessionId) -> Option<Placed> {
-        // The directory is sharded across cells: ask the cell that holds
-        // this session's shard (the directory cell until shards spread).
+        // The directory spreads its slots over shards: ask the shard that holds
+        // this session's slot (the directory shard until slots spread).
         let registry = self.registry().await;
         let owner = registry
             .as_ref()
-            .and_then(|r| r.shards.get(&crate::state::shard_of(session)).copied())
-            .unwrap_or(self.topology.directory_cell);
-        let cells = self.merged(registry.as_ref());
-        for addr in cells.get(&owner)?.values() {
+            .and_then(|r| r.slots.get(&crate::state::slot_of(session)).copied())
+            .unwrap_or(self.topology.directory_shard);
+        let shards = self.merged(registry.as_ref());
+        for addr in shards.get(&owner)?.values() {
             if let Some(placed) = self
-                .get::<Option<Placed>>(addr, &format!("/cell/directory/{session}"))
+                .get::<Option<Placed>>(addr, &format!("/shard/directory/{session}"))
                 .await
             {
                 return placed;
@@ -389,16 +389,16 @@ impl Inspector {
         None
     }
 
-    /// The session as its cell's leader (else any node) sees it.
-    pub async fn session(&self, cell: CellId, session: SessionId) -> Option<SessionReport> {
-        let cells = self.cells().await;
-        let nodes = cells.get(&cell)?;
+    /// The session as its shard's leader (else any node) sees it.
+    pub async fn session(&self, shard: ShardId, session: SessionId) -> Option<SessionReport> {
+        let shards = self.shards().await;
+        let nodes = shards.get(&shard)?;
         let mut answers = Vec::new();
         for addr in nodes.values() {
             if let Some(crate::api::Lookup::Here(report)) = self
                 .get::<crate::api::Lookup<SessionReport>>(
                     addr,
-                    &format!("/cell/sessions/{session}/inspect"),
+                    &format!("/shard/sessions/{session}/inspect"),
                 )
                 .await
             {
@@ -408,7 +408,7 @@ impl Inspector {
         let leader = self
             .reports()
             .await
-            .get(&cell)
+            .get(&shard)
             .and_then(|nodes| nodes.iter().find_map(|(_, r)| r.as_ref()?.leader));
         let pick = answers
             .iter()
@@ -418,15 +418,15 @@ impl Inspector {
     }
 }
 
-/// The text the `cells` subcommand prints.
-pub fn render_cells(reports: &BTreeMap<CellId, Vec<(NodeId, Option<CellReport>)>>) -> String {
+/// The text the `shards` subcommand prints.
+pub fn render_shards(reports: &BTreeMap<ShardId, Vec<(NodeId, Option<ShardReport>)>>) -> String {
     let mut out = String::new();
-    for (cell, nodes) in reports {
-        let answered: Vec<&CellReport> = nodes.iter().filter_map(|(_, r)| r.as_ref()).collect();
+    for (shard, nodes) in reports {
+        let answered: Vec<&ShardReport> = nodes.iter().filter_map(|(_, r)| r.as_ref()).collect();
         let leader = answered.iter().find_map(|r| r.leader);
         let lead = leader.and_then(|l| answered.iter().find(|r| r.node == l));
         out.push_str(&format!(
-            "cell {cell}: leader {}, {} of {} nodes answer{}\n",
+            "shard {shard}: leader {}, {} of {} nodes answer{}\n",
             leader.map_or("NONE".to_string(), |l| l.to_string()),
             answered.len(),
             nodes.len(),
@@ -473,11 +473,11 @@ pub fn render_cells(reports: &BTreeMap<CellId, Vec<(NodeId, Option<CellReport>)>
 
 /// The text the `moves` subcommand prints.
 pub fn render_moves(
-    reports: &BTreeMap<CellId, Vec<(NodeId, Option<CellReport>)>>,
+    reports: &BTreeMap<ShardId, Vec<(NodeId, Option<ShardReport>)>>,
     placed: &std::collections::HashMap<SessionId, Option<Placed>>,
 ) -> String {
     let mut out = String::new();
-    for (cell, nodes) in reports {
+    for (shard, nodes) in reports {
         let Some(r) = nodes
             .iter()
             .filter_map(|(_, r)| r.as_ref())
@@ -487,20 +487,20 @@ pub fn render_moves(
         };
         for m in &r.moves {
             out.push_str(&format!(
-                "{} in cell {cell}: {:?} at generation {}, to {}; directory says {}\n",
+                "{} in shard {shard}: {:?} at generation {}, to {}; directory says {}\n",
                 m.session,
                 m.placement,
                 m.generation,
                 m.moving_to.map_or("-".to_string(), |c| c.to_string()),
                 match placed.get(&m.session).copied().flatten() {
-                    Some(p) => format!("cell {} at generation {}", p.cell, p.generation),
+                    Some(p) => format!("shard {} at generation {}", p.shard, p.generation),
                     None => "nothing".to_string(),
                 }
             ));
         }
         if r.moves_total > r.moves.len() {
             out.push_str(&format!(
-                "... and {} more in cell {cell}\n",
+                "... and {} more in shard {shard}\n",
                 r.moves_total - r.moves.len()
             ));
         }
@@ -520,25 +520,25 @@ pub fn render_session(
     let mut out = format!("session {session}\n");
     match placed {
         Some(p) => out.push_str(&format!(
-            "  directory: cell {} at generation {}\n",
-            p.cell, p.generation
+            "  directory: shard {} at generation {}\n",
+            p.shard, p.generation
         )),
         None => out.push_str(
-            "  directory: not placed (unknown session, or the directory cell did not answer)\n",
+            "  directory: not placed (unknown session, or the directory shard did not answer)\n",
         ),
     }
     let Some(r) = report else {
-        out.push_str("  no node of that cell holds it\n");
+        out.push_str("  no node of that shard holds it\n");
         return out;
     };
     out.push_str(&format!(
-        "  held by cell {} (answered by node {}), {:?} at generation {}{}, branch {}\n",
-        r.cell,
+        "  held by shard {} (answered by node {}), {:?} at generation {}{}, branch {}\n",
+        r.shard,
         r.node,
         r.placement,
         r.generation,
         r.moving_to
-            .map_or(String::new(), |c| format!(", moving to cell {c}")),
+            .map_or(String::new(), |c| format!(", moving to shard {c}")),
         r.branch
     ));
     out.push_str(&format!(

@@ -264,11 +264,8 @@ async fn bootstrap_enables_favourites_and_elects_a_default() {
     }
 }
 
-/// No other OpenAI model wins the default election over the curated pick,
-/// whether newer or pricier: GPT-6 Luna is the everyday default, GPT-6
-/// Astra and Sol are the stronger tiers an operator opts into.
 #[tokio::test]
-async fn bootstrap_elects_luna_over_other_openai_models() {
+async fn bootstrap_elects_latest_sol_over_astra_and_luna() {
     let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
@@ -295,22 +292,21 @@ async fn bootstrap_elects_luna_over_other_openai_models() {
         .await
         .unwrap()
         .expect("default elected");
-    assert_eq!(default.model_id, "gpt-6-luna");
+    assert_eq!(default.model_id, "gpt-6.2-sol");
 }
 
 #[test]
-fn hydrogen_is_preferred_over_a_newer_uncurated_gemini_profile() {
-    let hydrogen = get_model_profile(&DriverId::Gemini, "gemini-4-hydrogen").unwrap();
-    let mut flash = get_model_profile(&DriverId::Gemini, "gemini-3.8-flash").unwrap();
-    flash.release_date = Some("2099-01-01".into());
-    assert!(ModelRank::of(&hydrogen) < ModelRank::of(&flash));
-    // Neon is newer than Hydrogen but not the curated pick.
+fn neon_is_preferred_over_other_gemini_profiles() {
     let neon = get_model_profile(&DriverId::Gemini, "gemini-4-neon").unwrap();
-    assert!(ModelRank::of(&hydrogen) < ModelRank::of(&neon));
+    for model in ["gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.8-flash"] {
+        let mut profile = get_model_profile(&DriverId::Gemini, model).unwrap();
+        profile.release_date = Some("2099-01-01".into());
+        assert!(ModelRank::of(&neon) < ModelRank::of(&profile));
+    }
 }
 
 #[tokio::test]
-async fn bootstrap_elects_hydrogen_for_gemini_and_preserves_existing_default() {
+async fn bootstrap_elects_neon_for_gemini_and_preserves_existing_default() {
     let db = Arc::new(StorageBackend::test_database());
     let org_id = create_second_org(&db).await;
     let service = ModelService::new(db.clone());
@@ -328,15 +324,15 @@ async fn bootstrap_elects_hydrogen_for_gemini_and_preserves_existing_default() {
         .await
         .unwrap();
     let flash = discover_model(&db, org_id, provider.id, "gemini-3.8-flash", &["chat"]).await;
-    discover_model(&db, org_id, provider.id, "gemini-4-neon", &["chat"]).await;
-    let hydrogen = discover_model(&db, org_id, provider.id, "gemini-4-hydrogen", &["chat"]).await;
+    let neon = discover_model(&db, org_id, provider.id, "gemini-4-neon", &["chat"]).await;
+    discover_model(&db, org_id, provider.id, "gemini-4-hydrogen", &["chat"]).await;
     let outcome = service
         .bootstrap_intelligence(org_id, provider.id.uuid())
         .await
         .unwrap();
-    assert_eq!(outcome.default_model_id, Some(hydrogen.id.uuid()));
+    assert_eq!(outcome.default_model_id, Some(neon.id.uuid()));
     let selected = db.get_default_model(org_id).await.unwrap().unwrap();
-    assert_eq!(selected.model_id, "gemini-4-hydrogen");
+    assert_eq!(selected.model_id, "gemini-4-neon");
     assert!(selected.enabled && selected.is_favorite);
 
     db.upsert_organization_settings(org_id, Some(flash.id.uuid()))
@@ -352,6 +348,108 @@ async fn bootstrap_elects_hydrogen_for_gemini_and_preserves_existing_default() {
     assert_eq!(
         db.get_default_model(org_id).await.unwrap().unwrap().id,
         flash.id
+    );
+}
+
+#[tokio::test]
+async fn openrouter_bootstrap_enables_calibrated_decisions_and_keeps_astra_opt_in() {
+    let db = Arc::new(StorageBackend::test_database());
+    let org_id = create_second_org(&db).await;
+    let service = ModelService::new(db.clone());
+    let provider = db
+        .create_provider(
+            org_id,
+            CreateProviderRow {
+                name: "OpenRouter".into(),
+                provider_type: "openrouter".into(),
+                base_url: None,
+                api_key_encrypted: Some(b"encrypted".to_vec()),
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+    for id in [
+        "openai/gpt-6.2-astra",
+        "meta/muse-spark-1.3-contributor",
+        "anthropic/claude-opus-5-5",
+        "x-ai/grok-4.7",
+    ] {
+        discover_model(&db, org_id, provider.id, id, &["chat"]).await;
+    }
+    let jev = discover_model(
+        &db,
+        org_id,
+        provider.id,
+        "~typesafe/jev-latest",
+        &["decisions"],
+    )
+    .await;
+    let pinned = discover_model(
+        &db,
+        org_id,
+        provider.id,
+        "typesafe/jev-1.14",
+        &["decisions"],
+    )
+    .await;
+    let uncalibrated =
+        discover_model(&db, org_id, provider.id, "unknown-decision", &["decisions"]).await;
+    service
+        .bootstrap_intelligence(org_id, provider.id.uuid())
+        .await
+        .unwrap();
+    assert_eq!(
+        db.get_default_model(org_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .model_id,
+        "meta/muse-spark-1.3-contributor"
+    );
+    let rows = db
+        .list_models_for_provider(org_id, provider.id.uuid())
+        .await
+        .unwrap();
+    for row in &rows {
+        if row.id == jev.id || row.id == pinned.id {
+            assert!(row.enabled, "{} should be selectable", row.model_id);
+        }
+        if row.id == uncalibrated.id || row.model_id == "openai/gpt-6.2-astra" {
+            assert!(!row.enabled, "{} is opt-in", row.model_id);
+        }
+    }
+
+    db.mark_provider_models_reviewed(org_id, provider.id.uuid())
+        .await
+        .unwrap();
+    db.update_model(
+        org_id,
+        jev.id.uuid(),
+        UpdateModel {
+            enabled: Some(false),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        !service
+            .bootstrap_intelligence(org_id, provider.id.uuid())
+            .await
+            .unwrap()
+            .changed()
+    );
+    let reviewed = db
+        .list_models_for_provider(org_id, provider.id.uuid())
+        .await
+        .unwrap();
+    assert!(
+        !reviewed
+            .iter()
+            .find(|row| row.id == jev.id)
+            .unwrap()
+            .enabled
     );
 }
 

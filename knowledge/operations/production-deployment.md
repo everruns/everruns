@@ -108,6 +108,17 @@ See:
 - [`knowledge/operations/notifications.md`](notifications.md)
 - [`docs/sre/environment-variables.md`](../../docs/sre/environment-variables.md)
 
+### Kubernetes volume setup
+
+The CLI checks the rendered chart before applying it, so explicit storage
+choices and disabled volumes determine whether a default class is required.
+Only a context verified against a local runtime can bootstrap the
+development provisioner. The CLI preserves existing StatefulSet volume
+templates on repair because Kubernetes makes them immutable. Bundled
+PostgreSQL has a readiness gate before the server starts migrations.
+
+See [Kubernetes installation](../../docs/getting-started/kubernetes.md).
+
 ## Production Reverse Proxy Setup
 
 The reverse proxy is mandatory in production unless an equivalent platform ingress enforces the same routing contract.

@@ -2,7 +2,7 @@
 //!
 //! Engine's `SessionHosting` contract asks one consistency domain to own a
 //! session's binding, admitted input, canonical journal, receipts, execution
-//! epoch and wakeup obligation together. Here that domain is the cell:
+//! epoch and wakeup obligation together. Here that domain is the shard:
 //! every field here is replicated by Raft, and every rule runs in `apply`.
 //! The rules follow Everruns' own volatile authority (`MemoryHosting`), with
 //! two differences that come from replication:
@@ -45,7 +45,7 @@ const KEEP_TURNS: usize = 32;
 ///
 /// Decision: those two carry the turn's whole response (about 4 KB of JSON a
 /// turn with the llmsim mix, four to five times that as parsed values), and
-/// the log already holds it. At 256 turns they were nine tenths of the cell
+/// the log already holds it. At 256 turns they were nine tenths of the shard
 /// state: the 2026-11-15 EKS run reached 0.5 MB per session after ten turns
 /// and its nodes ran out of memory near 10 000 sessions each. Only the
 /// executor of a turn retries its terminal write, and it does so within the
@@ -77,7 +77,7 @@ pub struct ProactiveAttempt {
     pub source_fingerprint: [u8; 32],
 }
 
-/// What the cell owns for one session, beside its journal (`SessionState`).
+/// What the shard owns for one session, beside its journal (`SessionState`).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Authority {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -144,7 +144,7 @@ pub struct Authority {
     pub secrets: BTreeMap<String, String>,
     /// When each value and secret was first set and last changed, in ms
     /// (the Storage tab's `created_at`, `updated_at`), keyed as
-    /// [`stamp_key`] writes them. Absent for ones set before cells kept
+    /// [`stamp_key`] writes them. Absent for ones set before shards kept
     /// them; those show no time.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub stamps: BTreeMap<String, Stamp>,

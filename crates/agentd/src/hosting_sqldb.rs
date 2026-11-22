@@ -1,4 +1,4 @@
-//! A session's SQL databases over the cell, as the `sql_database` tools'
+//! A session's SQL databases over the shard, as the `sql_database` tools'
 //! store (`SessionSqlDbStore`) and the Databases API's. The index and its
 //! rules are `sqldb.rs`. Split from `hosting.rs` for size.
 //!
@@ -43,9 +43,9 @@ const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 /// Sessions whose working copies a process keeps while not in use.
 const COPIES_MAX: usize = 64;
 
-/// A session's SQL databases in this hosting's cell.
+/// A session's SQL databases in this hosting's shard.
 #[derive(Clone)]
-pub struct CellSqlDb {
+pub struct ShardSqlDb {
     inner: Arc<Inner>,
     /// Whether writes commit under the epoch this hosting holds: the tools'
     /// do, the Databases API's do not (a gateway write).
@@ -54,8 +54,8 @@ pub struct CellSqlDb {
 
 impl RaftHosting {
     /// Sessions' SQL databases as their tools use them: fenced writes.
-    pub fn databases(&self) -> CellSqlDb {
-        CellSqlDb {
+    pub fn databases(&self) -> ShardSqlDb {
+        ShardSqlDb {
             inner: self.inner.clone(),
             fenced: true,
         }
@@ -63,8 +63,8 @@ impl RaftHosting {
 
     /// Sessions' SQL databases as the Databases API changes them: unfenced,
     /// like any gateway write.
-    pub fn databases_api(&self) -> CellSqlDb {
-        CellSqlDb {
+    pub fn databases_api(&self) -> ShardSqlDb {
+        ShardSqlDb {
             inner: self.inner.clone(),
             fenced: false,
         }
@@ -95,7 +95,7 @@ struct Workdir {
 fn workdir() -> &'static Workdir {
     static WORKDIR: OnceLock<Workdir> = OnceLock::new();
     WORKDIR.get_or_init(|| {
-        let root = std::env::temp_dir().join(format!("everruns-cell-sqldb-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("agentd-sqldb-{}", std::process::id()));
         // Copies of an earlier process with this id are not this one's.
         let _ = std::fs::remove_dir_all(&root);
         Workdir {
@@ -147,7 +147,7 @@ fn sha256_of(bytes: &[u8]) -> String {
     hex::encode(sha2::Sha256::digest(bytes))
 }
 
-impl CellSqlDb {
+impl ShardSqlDb {
     fn store(&self) -> Result<crate::store::Store> {
         match &self.inner.source {
             Source::Node(_) => Ok(self.inner.node()?.shared.store.clone()),
@@ -437,7 +437,7 @@ impl CellSqlDb {
 }
 
 #[async_trait]
-impl SessionSqlDbStore for CellSqlDb {
+impl SessionSqlDbStore for ShardSqlDb {
     async fn create_database(&self, session: SessionId, name: &str) -> SqlResult<DatabaseInfo> {
         everruns::database::runtime::validation::validate_database_name(name)
             .map_err(SessionSqlDbError::from)?;

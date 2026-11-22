@@ -88,7 +88,7 @@ const SECTIONS: Record<
     kind: "draft",
   },
   mcp: {
-    title: "MCP servers",
+    title: "MCP",
     description: "Servers whose tools this agent can call.",
     kind: "live",
     wide: true,

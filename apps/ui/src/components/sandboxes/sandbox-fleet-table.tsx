@@ -70,17 +70,22 @@ export function SandboxFleetTable({
             >
               <TableCell>
                 <div className="flex items-center gap-2">
-                  <SandboxStateBadge state={sandbox.state} />
+                  <SandboxStateBadge
+                    state={sandbox.state}
+                    idle={sandbox.attention.includes("idle_running")}
+                  />
                   {sandbox.attention.length > 0 ? (
                     <Tooltip>
                       <TooltipTrigger
-                        aria-label={sandbox.attention.map(attentionTitle).join(", ")}
+                        aria-label={sandbox.attention
+                          .map((reason) => ui(attentionTitle(reason)))
+                          .join(", ")}
                         className="text-destructive"
                       >
                         <AlertTriangle className="size-3.5" />
                       </TooltipTrigger>
                       <TooltipContent>
-                        {sandbox.attention.map(attentionTitle).join(". ")}
+                        {sandbox.attention.map((reason) => ui(attentionTitle(reason))).join(". ")}
                       </TooltipContent>
                     </Tooltip>
                   ) : null}

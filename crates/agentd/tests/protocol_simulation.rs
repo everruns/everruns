@@ -1,9 +1,9 @@
-//! Deterministic simulation of the cell protocols on the real state
-//! machine: three cells and a directory, each a `CellState` (Raft below it
+//! Deterministic simulation of the shard protocols on the real state
+//! machine: three shards and a directory, each a `ShardState` (Raft below it
 //! is the other simulation's job, `raft_simulation.rs`), with executors
 //! claiming and writing, clients sending input, a rebalancer moving
 //! sessions, and move drivers that run the node's own move rules
-//! (`everruns_cell::moves`). Every command and reply travels through one
+//! (`everruns_agentd::moves`). Every command and reply travels through one
 //! network that delays, reorders, duplicates and drops; executors and move
 //! drivers die mid-step and come back; proposers' clocks disagree by up to
 //! a lease, so an expired epoch can look current again.
@@ -15,15 +15,15 @@
 //!
 //! What must hold at every step (the `Moves`, `Epochs` and `Grants`
 //! models' invariants, on the code):
-//! - one owner: at most one cell holds a session live, and that copy is
-//!   the one the directory names (cell and generation);
+//! - one owner: at most one shard holds a session live, and that copy is
+//!   the one the directory names (shard and generation);
 //! - one writer: the writes a session accepts come from epochs that only
-//!   grow, across every cell it lives in;
-//! - a cell holds a reservation only for a session it holds, and no grant
+//!   grow, across every shard it lives in;
+//! - a shard holds a reservation only for a session it holds, and no grant
 //!   has more reserved and spent than it was granted.
 //!
 //! And once the faults stop and every move settles: every session lives in
-//! exactly one cell, and every write an executor saw acknowledged is in it.
+//! exactly one shard, and every write an executor saw acknowledged is in it.
 //!
 //! It found three move bugs the kill runs had not (each now has a rule in
 //! `state.rs` saying so): a late freeze retargeting a committed move, a
@@ -40,10 +40,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use everruns::SessionId;
 use everruns::hosting::SessionBinding;
 use everruns::hosting::spi::session_commands::SessionCommand;
-use everruns_cell::allowance::Grant;
-use everruns_cell::authority::WriteOp;
-use everruns_cell::moves;
-use everruns_cell::state::{CellId, CellState, Command, Placed, Placement, Response};
+use everruns_agentd::allowance::Grant;
+use everruns_agentd::authority::WriteOp;
+use everruns_agentd::moves;
+use everruns_agentd::state::{Command, Placed, Placement, Response, ShardId, ShardState};
 use everruns_contracts::runtime::message::RuntimeMessage;
 use everruns_contracts::typed_id::{EventId, MessageId};
 use serde_json::{Value, json};
@@ -69,8 +69,8 @@ impl Rng {
     }
 }
 
-const CELLS: [CellId; 3] = [1, 2, 3];
-const DIRECTORY: CellId = 0;
+const SHARDS: [ShardId; 3] = [1, 2, 3];
+const DIRECTORY: ShardId = 0;
 const SESSIONS: usize = 6;
 const EXECUTORS: usize = 4;
 const TTL_MS: i64 = 1_000;
@@ -88,9 +88,9 @@ type Key = uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Driver {
-    /// Moving `session` out of `cell`.
+    /// Moving `session` out of `shard`.
     Move,
-    /// Settling a prepared copy in `cell`.
+    /// Settling a prepared copy in `shard`.
     Prepared,
 }
 
@@ -103,9 +103,9 @@ enum Reply {
         n: usize,
         life: u64,
     },
-    /// To the driver of (`cell`, `session`), for its step `life`.
+    /// To the driver of (`shard`, `session`), for its step `life`.
     Driver {
-        cell: CellId,
+        shard: ShardId,
         session: SessionId,
         kind: Driver,
         life: u64,
@@ -114,7 +114,7 @@ enum Reply {
 
 #[derive(Clone, Debug)]
 struct Msg {
-    to: CellId,
+    to: ShardId,
     command: Command,
     reply: Reply,
 }
@@ -122,13 +122,13 @@ struct Msg {
 #[derive(Clone, Debug)]
 enum Step {
     /// Waiting on the revoke of the leaving copy's epoch, to move to `to`.
-    Revoke { to: CellId },
+    Revoke { to: ShardId },
     /// Waiting on the import of the copy at `leaving + 1` into `to`.
-    Import { to: CellId, leaving: u64 },
+    Import { to: ShardId, leaving: u64 },
     /// Waiting on the directory to place `proposed` over `leaving`.
     Place { leaving: u64, proposed: Placed },
     /// Sent the first of `rest`; waiting on its reply.
-    Settle { rest: Vec<(CellId, Command)> },
+    Settle { rest: Vec<(ShardId, Command)> },
     /// Waiting on the directory's entry for a prepared copy at `generation`.
     Locate { generation: u64 },
     /// Sent the last command; waiting on its reply to finish.
@@ -144,8 +144,8 @@ struct Running {
 #[derive(Default)]
 struct Executor {
     life: u64,
-    /// The epoch it believes it holds: cell, session, fence.
-    holding: Option<(CellId, SessionId, u64)>,
+    /// The epoch it believes it holds: shard, session, fence.
+    holding: Option<(ShardId, SessionId, u64)>,
     waiting: bool,
     written: u64,
 }
@@ -153,12 +153,12 @@ struct Executor {
 struct World {
     rng: Rng,
     now: i64,
-    cells: BTreeMap<CellId, CellState>,
+    shards: BTreeMap<ShardId, ShardState>,
     net: Vec<Msg>,
     executors: Vec<Executor>,
-    drivers: BTreeMap<(CellId, Key, Driver), Running>,
-    /// When each prepared copy was first seen, per cell.
-    prepared_since: BTreeMap<(CellId, Key), i64>,
+    drivers: BTreeMap<(ShardId, Key, Driver), Running>,
+    /// When each prepared copy was first seen, per shard.
+    prepared_since: BTreeMap<(ShardId, Key), i64>,
     sessions: Vec<SessionId>,
     /// Commit keys an executor saw acknowledged, per session.
     acked: BTreeMap<Key, BTreeSet<String>>,
@@ -175,7 +175,7 @@ impl World {
         let mut world = Self {
             rng: Rng::new(seed),
             now: 1_000_000,
-            cells: BTreeMap::new(),
+            shards: BTreeMap::new(),
             net: Vec::new(),
             executors: (0..EXECUTORS).map(|_| Executor::default()).collect(),
             drivers: BTreeMap::new(),
@@ -188,15 +188,15 @@ impl World {
             faults: true,
             stats: BTreeMap::new(),
         };
-        for cell in std::iter::once(DIRECTORY).chain(CELLS) {
-            world.cells.insert(cell, CellState::default());
+        for shard in std::iter::once(DIRECTORY).chain(SHARDS) {
+            world.shards.insert(shard, ShardState::default());
         }
-        for cell in CELLS {
+        for shard in SHARDS {
             world.apply(
-                cell,
+                shard,
                 Command::Grant {
                     tenant: TENANT.into(),
-                    grant_id: format!("g{cell}"),
+                    grant_id: format!("g{shard}"),
                     grant: Grant {
                         granted_micros: 20 * PER_CALL,
                         per_call_micros: PER_CALL,
@@ -210,7 +210,7 @@ impl World {
         // Placed first, then created where placed, as the gateway does.
         let definition = json!({ "name": "sim" });
         let build =
-            everruns_cell::hosting::build_for(&definition, everruns_cell::hosting::BUILD_ID);
+            everruns_agentd::hosting::build_for(&definition, everruns_agentd::hosting::BUILD_ID);
         let binding = serde_json::to_value(SessionBinding {
             framework: 1,
             behavior: build,
@@ -221,12 +221,12 @@ impl World {
         .unwrap();
         for _ in 0..SESSIONS {
             let session = SessionId::from_uuid(world.uuid());
-            let cell = CELLS[world.rng.below(CELLS.len() as u64) as usize];
+            let shard = SHARDS[world.rng.below(SHARDS.len() as u64) as usize];
             let placed = world.apply(
                 DIRECTORY,
                 Command::Place {
                     session,
-                    cell,
+                    shard,
                     generation: 1,
                     previous: 0,
                 },
@@ -234,7 +234,7 @@ impl World {
             assert!(matches!(placed, Response::Ok), "{placed:?}");
             let seed = EventId::from_uuid(world.uuid());
             let created = world.apply(
-                cell,
+                shard,
                 Command::Host {
                     session,
                     command: SessionCommand::Create {
@@ -247,7 +247,7 @@ impl World {
             );
             assert!(matches!(created, Response::Value { .. }), "{created:?}");
             let assigned = world.apply(
-                cell,
+                shard,
                 Command::Assign {
                     session,
                     tenant: TENANT.into(),
@@ -278,12 +278,12 @@ impl World {
         }
     }
 
-    fn send(&mut self, to: CellId, command: Command, reply: Reply) {
+    fn send(&mut self, to: ShardId, command: Command, reply: Reply) {
         self.net.push(Msg { to, command, reply });
     }
 
-    /// Apply `command` in `cell` and check every invariant after it.
-    fn apply(&mut self, cell: CellId, command: Command) -> Response {
+    /// Apply `command` in `shard` and check every invariant after it.
+    fn apply(&mut self, shard: ShardId, command: Command) -> Response {
         let write = match &command {
             Command::Write { session, fence, .. } => Some((*session, *fence)),
             _ => None,
@@ -296,12 +296,12 @@ impl World {
             let text = format!("{command:?}");
             text.chars().take(160).collect::<String>()
         });
-        let state = self.cells.get_mut(&cell).unwrap();
+        let state = self.shards.get_mut(&shard).unwrap();
         let response = state.apply(command, &mut Vec::new());
         if let Some(summary) = summary {
             let r = format!("{response:?}");
             eprintln!(
-                "t{} cell {cell}: {summary} -> {}",
+                "t{} shard {shard}: {summary} -> {}",
                 self.now,
                 &r[..r.len().min(120)]
             );
@@ -319,37 +319,37 @@ impl World {
     }
 
     fn check(&self) {
-        let directory = &self.cells[&DIRECTORY].directory;
+        let directory = &self.shards[&DIRECTORY].directory;
         for session in &self.sessions {
-            let live: Vec<(CellId, u64)> = CELLS
+            let live: Vec<(ShardId, u64)> = SHARDS
                 .iter()
-                .filter_map(|cell| {
-                    self.cells[cell]
+                .filter_map(|shard| {
+                    self.shards[shard]
                         .sessions
                         .get(session)
                         .filter(|s| s.placement == Placement::Live)
-                        .map(|s| (*cell, s.generation))
+                        .map(|s| (*shard, s.generation))
                 })
                 .collect();
             assert!(live.len() <= 1, "one owner: {session} is live in {live:?}");
-            if let Some((cell, generation)) = live.first() {
+            if let Some((shard, generation)) = live.first() {
                 assert_eq!(
                     directory.get(session),
                     Some(&Placed {
-                        cell: *cell,
+                        shard: *shard,
                         generation: *generation
                     }),
                     "the live copy of {session} is the one the directory names"
                 );
             }
         }
-        for cell in CELLS {
-            let state = &self.cells[&cell];
+        for shard in SHARDS {
+            let state = &self.shards[&shard];
             for (tenant, allowance) in &state.allowances.tenants {
                 for session in allowance.reserved.keys() {
                     assert!(
                         state.sessions.contains_key(session),
-                        "cell {cell} holds a reservation of {tenant} for {session}, which left"
+                        "shard {shard} holds a reservation of {tenant} for {session}, which left"
                     );
                 }
                 for (id, grant) in &allowance.grants {
@@ -361,7 +361,7 @@ impl World {
                         .sum();
                     assert!(
                         grant.used_micros + held <= grant.granted_micros + grant.overrun_micros,
-                        "cell {cell} grant {id}: {} used + {held} held over {} granted",
+                        "shard {shard} grant {id}: {} used + {held} held over {} granted",
                         grant.used_micros,
                         grant.granted_micros
                     );
@@ -370,12 +370,12 @@ impl World {
         }
     }
 
-    /// Where a caller would send work for `session`: the directory's cell.
-    fn home(&self, session: SessionId) -> Option<CellId> {
-        self.cells[&DIRECTORY]
+    /// Where a caller would send work for `session`: the directory's shard.
+    fn home(&self, session: SessionId) -> Option<ShardId> {
+        self.shards[&DIRECTORY]
             .directory
             .get(&session)
-            .map(|p| p.cell)
+            .map(|p| p.shard)
     }
 
     fn pick_session(&mut self) -> SessionId {
@@ -421,17 +421,17 @@ impl World {
             Reply::None => {}
             Reply::Executor { n, life } => self.executor_reply(n, life, &msg.command, response),
             Reply::Driver {
-                cell,
+                shard,
                 session,
                 kind,
                 life,
-            } => self.driver_reply(cell, session, kind, life, response),
+            } => self.driver_reply(shard, session, kind, life, response),
         }
     }
 
     fn client_sends(&mut self) {
         let session = self.pick_session();
-        let Some(cell) = self.home(session) else {
+        let Some(shard) = self.home(session) else {
             return;
         };
         let mut message = RuntimeMessage::user("go");
@@ -440,7 +440,7 @@ impl World {
         let seed = EventId::from_uuid(self.uuid());
         let now_ms = self.stamp();
         self.send(
-            cell,
+            shard,
             Command::Host {
                 session,
                 command: SessionCommand::Admit {
@@ -467,14 +467,14 @@ impl World {
         let holder = format!("e{n}");
         let now_ms = self.stamp();
         let reply = Reply::Executor { n, life };
-        let (cell, command) = match self.executors[n].holding {
+        let (shard, command) = match self.executors[n].holding {
             None => {
                 let session = self.pick_session();
-                let Some(cell) = self.home(session) else {
+                let Some(shard) = self.home(session) else {
                     return;
                 };
                 (
-                    cell,
+                    shard,
                     Command::Claim {
                         session,
                         holder,
@@ -484,11 +484,11 @@ impl World {
                     },
                 )
             }
-            Some((cell, session, fence)) => match self.rng.below(10) {
+            Some((shard, session, fence)) => match self.rng.below(10) {
                 0..=4 => {
                     let written = self.executors[n].written;
                     (
-                        cell,
+                        shard,
                         Command::Write {
                             session,
                             fence,
@@ -501,9 +501,9 @@ impl World {
                         },
                     )
                 }
-                5..=6 => (cell, Command::Reserve { session, now_ms }),
+                5..=6 => (shard, Command::Reserve { session, now_ms }),
                 7..=8 => (
-                    cell,
+                    shard,
                     Command::Renew {
                         session,
                         holder,
@@ -517,7 +517,7 @@ impl World {
                 _ => {
                     let hand_off = self.rng.chance(50);
                     (
-                        cell,
+                        shard,
                         Command::Release {
                             session,
                             holder,
@@ -532,7 +532,7 @@ impl World {
             },
         };
         self.executors[n].waiting = true;
-        self.send(cell, command, reply);
+        self.send(shard, command, reply);
     }
 
     fn executor_reply(&mut self, n: usize, life: u64, command: &Command, response: Response) {
@@ -549,22 +549,22 @@ impl World {
                 Response::Value { value },
             ) => {
                 if let Some(fence) = value["fence"].as_u64() {
-                    let cell = self.home(*session).unwrap_or(DIRECTORY);
-                    // The claim went to the cell that answered; the
+                    let shard = self.home(*session).unwrap_or(DIRECTORY);
+                    // The claim went to the shard that answered; the
                     // executor keeps writing there.
-                    let cell = CELLS
+                    let shard = SHARDS
                         .into_iter()
                         .find(|c| {
-                            self.cells[c].sessions.get(session).is_some_and(|s| {
+                            self.shards[c].sessions.get(session).is_some_and(|s| {
                                 s.authority
                                     .holder
                                     .as_ref()
                                     .is_some_and(|h| h.name == *holder && h.fence == fence)
                             })
                         })
-                        .unwrap_or(cell);
+                        .unwrap_or(shard);
                     let executor = &mut self.executors[n];
-                    executor.holding = Some((cell, *session, fence));
+                    executor.holding = Some((shard, *session, fence));
                     executor.written = 0;
                     self.count("claimed");
                 }
@@ -612,12 +612,12 @@ impl World {
 
     fn rebalance(&mut self) {
         let session = self.pick_session();
-        let Some(cell) = self.home(session) else {
+        let Some(shard) = self.home(session) else {
             return;
         };
-        let to = CELLS[self.rng.below(CELLS.len() as u64) as usize];
+        let to = SHARDS[self.rng.below(SHARDS.len() as u64) as usize];
         self.send(
-            cell,
+            shard,
             Command::Freeze {
                 session,
                 to: Some(to),
@@ -631,53 +631,53 @@ impl World {
     /// epoch is gone, and for every prepared copy past its grace.
     fn spawn_drivers(&mut self) {
         let mut wanted = Vec::new();
-        for cell in CELLS {
-            for (session, s) in &self.cells[&cell].sessions {
+        for shard in SHARDS {
+            for (session, s) in &self.shards[&shard].sessions {
                 match s.placement {
                     Placement::Frozen
                         if s.moving_to.is_some() && !s.authority.executing(self.now) =>
                     {
-                        wanted.push((cell, *session, Driver::Move));
+                        wanted.push((shard, *session, Driver::Move));
                     }
-                    Placement::Prepared => wanted.push((cell, *session, Driver::Prepared)),
+                    Placement::Prepared => wanted.push((shard, *session, Driver::Prepared)),
                     _ => {}
                 }
             }
         }
         // Session maps hash in a per-process order; the world must not.
-        wanted.sort_by_key(|(cell, session, kind)| (*cell, session.uuid(), *kind));
+        wanted.sort_by_key(|(shard, session, kind)| (*shard, session.uuid(), *kind));
         self.prepared_since.retain(|key, _| {
             wanted
                 .iter()
                 .any(|(c, s, k)| (*c, s.uuid()) == *key && *k == Driver::Prepared)
         });
-        for (cell, session, kind) in wanted {
-            if self.drivers.contains_key(&(cell, session.uuid(), kind)) {
+        for (shard, session, kind) in wanted {
+            if self.drivers.contains_key(&(shard, session.uuid(), kind)) {
                 continue;
             }
             if kind == Driver::Prepared {
                 let since = *self
                     .prepared_since
-                    .entry((cell, session.uuid()))
+                    .entry((shard, session.uuid()))
                     .or_insert(self.now);
                 if self.now - since < PREPARED_GRACE_MS {
                     continue;
                 }
             }
-            self.start_driver(cell, session, kind);
+            self.start_driver(shard, session, kind);
         }
     }
 
-    fn start_driver(&mut self, cell: CellId, session: SessionId, kind: Driver) {
+    fn start_driver(&mut self, shard: ShardId, session: SessionId, kind: Driver) {
         self.lives += 1;
         let life = self.lives;
         let reply = Reply::Driver {
-            cell,
+            shard,
             session,
             kind,
             life,
         };
-        let s = &self.cells[&cell].sessions[&session];
+        let s = &self.shards[&shard].sessions[&session];
         let step = match kind {
             Driver::Prepared => {
                 let generation = s.generation;
@@ -685,19 +685,19 @@ impl World {
                 Step::Locate { generation }
             }
             Driver::Move => {
-                let to = s.moving_to.unwrap_or(cell);
-                if to == cell {
-                    self.send(cell, moves::unfreeze(cell, session), reply);
+                let to = s.moving_to.unwrap_or(shard);
+                if to == shard {
+                    self.send(shard, moves::unfreeze(shard, session), reply);
                     Step::Last
                 } else {
                     let now_ms = self.stamp();
-                    self.send(cell, Command::Revoke { session, now_ms }, reply);
+                    self.send(shard, Command::Revoke { session, now_ms }, reply);
                     Step::Revoke { to }
                 }
             }
         };
         self.drivers.insert(
-            (cell, session.uuid(), kind),
+            (shard, session.uuid(), kind),
             Running {
                 life,
                 step,
@@ -708,13 +708,13 @@ impl World {
 
     fn driver_reply(
         &mut self,
-        cell: CellId,
+        shard: ShardId,
         session: SessionId,
         kind: Driver,
         life: u64,
         response: Response,
     ) {
-        let key = (cell, session.uuid(), kind);
+        let key = (shard, session.uuid(), kind);
         let Some(running) = self.drivers.get(&key) else {
             return;
         };
@@ -727,7 +727,7 @@ impl World {
         self.lives += 1;
         let life = self.lives;
         let reply = Reply::Driver {
-            cell,
+            shard,
             session,
             kind,
             life,
@@ -739,10 +739,10 @@ impl World {
                 };
                 // Read right after the revoke applied, as the node reads
                 // its replica once the proposal returns.
-                let Some(s) = self.cells[&cell].sessions.get(&session) else {
+                let Some(s) = self.shards[&shard].sessions.get(&session) else {
                     return;
                 };
-                let mut image = everruns_cell::sm::move_image(s);
+                let mut image = everruns_agentd::sm::move_image(s);
                 let leaving = image.generation;
                 image.generation = leaving + 1;
                 self.send(
@@ -756,17 +756,17 @@ impl World {
                 Step::Import { to, leaving }
             }
             Step::Import { to, leaving } => {
-                let Ok(proposed) = moves::after_import(cell, to, leaving, &response) else {
+                let Ok(proposed) = moves::after_import(shard, to, leaving, &response) else {
                     return; // failed: a new driver tries again
                 };
-                if proposed.cell == cell {
+                if proposed.shard == shard {
                     self.count("moves abandoned");
                 }
                 self.send(
                     DIRECTORY,
                     Command::Place {
                         session,
-                        cell: proposed.cell,
+                        shard: proposed.shard,
                         generation: proposed.generation,
                         previous: leaving,
                     },
@@ -778,7 +778,7 @@ impl World {
                 let Ok(current) = moves::after_place(leaving, proposed, &response) else {
                     return;
                 };
-                let rest = moves::settle(cell, session, leaving, current);
+                let rest = moves::settle(shard, session, leaving, current);
                 self.next_settle(rest, reply)
             }
             Step::Settle { rest } => {
@@ -791,11 +791,11 @@ impl World {
                 let Response::Placement { current } = response else {
                     return;
                 };
-                let Some(command) = moves::settle_prepared(cell, session, generation, current)
+                let Some(command) = moves::settle_prepared(shard, session, generation, current)
                 else {
                     return;
                 };
-                self.send(cell, command, reply);
+                self.send(shard, command, reply);
                 Step::Last
             }
             Step::Last => {
@@ -815,7 +815,7 @@ impl World {
         );
     }
 
-    fn next_settle(&mut self, mut rest: Vec<(CellId, Command)>, reply: Reply) -> Step {
+    fn next_settle(&mut self, mut rest: Vec<(ShardId, Command)>, reply: Reply) -> Step {
         let (to, command) = rest.remove(0);
         self.send(to, command, reply);
         if rest.is_empty() {
@@ -856,8 +856,8 @@ impl World {
             while !self.net.is_empty() {
                 self.deliver();
             }
-            let unsettled = CELLS.iter().any(|cell| {
-                self.cells[cell]
+            let unsettled = SHARDS.iter().any(|shard| {
+                self.shards[shard]
                     .sessions
                     .values()
                     .any(|s| s.placement != Placement::Live)
@@ -871,12 +871,12 @@ impl World {
 
     fn final_checks(&self, seed: u64) {
         for session in &self.sessions {
-            let homes: Vec<CellId> = CELLS
+            let homes: Vec<ShardId> = SHARDS
                 .into_iter()
-                .filter(|cell| self.cells[cell].sessions.contains_key(session))
+                .filter(|shard| self.shards[shard].sessions.contains_key(session))
                 .collect();
             assert_eq!(homes.len(), 1, "seed {seed}: {session} lives in {homes:?}");
-            let records = &self.cells[&homes[0]].sessions[session].authority.records;
+            let records = &self.shards[&homes[0]].sessions[session].authority.records;
             for key in self.acked.get(&session.uuid()).into_iter().flatten() {
                 assert!(
                     records.contains_key(key),
@@ -886,16 +886,16 @@ impl World {
         }
     }
 
-    /// The end state, independent of hash order: what each cell holds.
+    /// The end state, independent of hash order: what each shard holds.
     fn digest(&self) -> String {
         let mut out = String::new();
-        for (cell, state) in &self.cells {
+        for (shard, state) in &self.shards {
             let mut sessions: Vec<_> = state.sessions.iter().collect();
             sessions.sort_by_key(|(id, _)| id.to_string());
             for (id, s) in sessions {
                 let keys: BTreeSet<&String> = s.authority.records.keys().collect();
                 out += &format!(
-                    "{cell} {id} {:?} g{} f{} e{} {keys:?}\n",
+                    "{shard} {id} {:?} g{} f{} e{} {keys:?}\n",
                     s.placement,
                     s.generation,
                     s.authority.fence,
@@ -904,9 +904,9 @@ impl World {
             }
             let mut directory: Vec<_> = state.directory.iter().collect();
             directory.sort_by_key(|(id, _)| id.to_string());
-            out += &format!("{cell} directory {directory:?}\n");
+            out += &format!("{shard} directory {directory:?}\n");
             for (tenant, allowance) in &state.allowances.tenants {
-                out += &format!("{cell} {tenant} {:?}\n", allowance.grants);
+                out += &format!("{shard} {tenant} {:?}\n", allowance.grants);
             }
         }
         out

@@ -191,6 +191,13 @@ export const messages: Readonly<Record<string, string>> = {
   "Check your email": "Vérifiez votre courrier électronique",
   "Check your inbox": "Vérifiez votre boîte de réception",
   "Checked {value0}": "Vérifié {value0}",
+  "Last recorded running": "Dernier état enregistré : en cours d’exécution",
+  "Check provider status": "Vérifier l’état chez le fournisseur",
+  "Not found at provider": "Introuvable chez le fournisseur",
+  "Could not check the provider.": "Impossible de consulter le fournisseur.",
+  "No activity for over an hour": "Aucune activité depuis plus d’une heure",
+  "Check the provider for the current state and whether it is still using compute.":
+    "Consultez le fournisseur pour connaître l’état actuel et vérifier si le bac à sable utilise toujours des ressources de calcul.",
   "Checking agent usage…": "Vérification de l'utilisation de l'agent…",
   "Checking availability…": "Vérification de la disponibilité…",
   "Checking key...": "Vérification de la clé...",

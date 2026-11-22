@@ -2,12 +2,12 @@
 //! Authorization matches the live snapshot: organization adoption plus
 //! session-read authority, or platform access for the fleet view.
 //!
-//! Decision: worker (v1) and cell (data plane v2) history arrive in one
-//! bucket, side by side: the cell part is `cells`, absent while no cell
+//! Decision: worker (v1) and shard (data plane v2) history arrive in one
+//! bucket, side by side: the shard part is `shards`, absent while no shard
 //! reported. The page chooses what to stack; the API never adds numbers
 //! measured differently (sampled every 10 seconds versus reported once a
 //! minute). Node, CPU and memory detail is platform only: an organization
-//! shares cells with others.
+//! shares shards with others.
 
 use axum::{
     Json,
@@ -23,8 +23,8 @@ use crate::{
     api::common::{ApiResult, ApiResultExt, ErrorResponse},
     auth::{PlatformUser, ResolvedOrg},
     storage::{
-        PLATFORM_ORG, TimelineBucketRow, TimelineCellBucketRow, TimelineCellsRow, TimelineFleetRow,
-        TimelineWorkerBucket, timeline_minute,
+        PLATFORM_ORG, TimelineBucketRow, TimelineFleetRow, TimelineShardBucketRow,
+        TimelineShardsRow, TimelineWorkerBucket, timeline_minute,
     },
 };
 
@@ -152,46 +152,46 @@ pub struct TimelineBucket {
     pub agents_working_peak: u64,
     /// Platform only: server replicas running.
     pub servers: Option<u64>,
-    /// Data plane v2 cells; absent when no cell reported and no cell turn finished in the bucket.
-    pub cells: Option<TimelineCellsBucket>,
+    /// Data plane v2 shards; absent when no shard reported and no shard turn finished in the bucket.
+    pub shards: Option<TimelineShardsBucket>,
 }
 
-/// What data plane v2 cells reported over a bucket. Population comes from
-/// each cell's one-minute report; counters from the cells' feed.
+/// What data plane v2 shards reported over a bucket. Population comes from
+/// each shard's one-minute report; counters from the shards' feed.
 #[derive(Debug, Clone, Default, Serialize, ToSchema)]
-pub struct TimelineCellsBucket {
-    /// Highest number of cells that reported in one minute.
+pub struct TimelineShardsBucket {
+    /// Highest number of shards that reported in one minute.
     #[schema(example = 12)]
     pub reporting: u64,
-    /// Average sessions resident on cells.
+    /// Average sessions resident on shards.
     pub sessions_avg: f64,
-    /// Highest per-minute sessions resident on cells.
+    /// Highest per-minute sessions resident on shards.
     pub sessions_peak: u64,
-    /// Average turns running on cells.
+    /// Average turns running on shards.
     pub running_avg: f64,
-    /// Highest per-minute turns running on cells.
+    /// Highest per-minute turns running on shards.
     pub running_peak: u64,
-    /// Highest per-minute messages waiting for a turn on cells.
+    /// Highest per-minute messages waiting for a turn on shards.
     pub queued_peak: u64,
-    /// Average distinct agents with a running turn on cells.
+    /// Average distinct agents with a running turn on shards.
     pub agents_working_avg: f64,
-    /// Highest per-minute agents with a running turn on cells.
+    /// Highest per-minute agents with a running turn on shards.
     pub agents_working_peak: u64,
-    /// Turns completed on cells.
+    /// Turns completed on shards.
     pub turns_completed: u64,
-    /// Turns failed on cells.
+    /// Turns failed on shards.
     pub turns_failed: u64,
-    /// Turns cancelled on cells.
+    /// Turns cancelled on shards.
     pub turns_cancelled: u64,
-    /// Model calls made on cells.
+    /// Model calls made on shards.
     pub model_calls: u64,
-    /// Model input tokens on cells.
+    /// Model input tokens on shards.
     pub input_tokens: u64,
-    /// Model output tokens on cells.
+    /// Model output tokens on shards.
     pub output_tokens: u64,
-    /// Model spend on cells in USD.
+    /// Model spend on shards in USD.
     pub cost_usd: f64,
-    /// Platform only: highest total of cell nodes (pods) in one minute.
+    /// Platform only: highest total of shard nodes (pods) in one minute.
     pub nodes: Option<u64>,
     /// Platform only: lowest total of nodes that answered their leader in one minute.
     pub nodes_answering: Option<u64>,
@@ -203,9 +203,9 @@ pub struct TimelineCellsBucket {
     pub admit_p99_ms: Option<u64>,
     /// Platform only: worst node's p99 log shipping lag, in milliseconds.
     pub ship_lag_p99_ms: Option<u64>,
-    /// Platform only: leader elections across cells.
+    /// Platform only: leader elections across shards.
     pub elections: Option<u64>,
-    /// Platform only: sessions moved to another cell.
+    /// Platform only: sessions moved to another shard.
     pub moves: Option<u64>,
     /// Platform only: highest per-minute turns running on a second or later attempt.
     pub resumed_peak: Option<u64>,
@@ -236,10 +236,10 @@ pub struct TimelineSummary {
     pub cost_usd: f64,
     /// Platform only: seconds of buckets whose peak load exceeded 90% of capacity.
     pub seconds_above_90: Option<u64>,
-    /// Highest per-minute turns running on cells; null when no cell reported.
-    pub cells_peak_running: Option<u64>,
-    /// Platform only: leader elections across cells; null when no cell reported.
-    pub cells_elections: Option<u64>,
+    /// Highest per-minute turns running on shards; null when no shard reported.
+    pub shards_peak_running: Option<u64>,
+    /// Platform only: leader elections across shards; null when no shard reported.
+    pub shards_elections: Option<u64>,
 }
 
 /// Deploy or worker change on the timeline.
@@ -250,7 +250,7 @@ pub struct TimelineMarker {
     /// deploy, worker_joined, worker_left, or leader_change (all but deploy are platform only).
     #[schema(example = "deploy")]
     pub kind: String,
-    /// Server version for a deploy, worker id or cell name otherwise.
+    /// Server version for a deploy, worker id or shard name otherwise.
     #[schema(example = "0.50.1")]
     pub label: String,
 }
@@ -276,7 +276,7 @@ pub struct MonitoringTimeline {
     pub summary: TimelineSummary,
     /// Totals for the same length of time immediately before.
     pub previous: TimelineSummary,
-    /// Deploys, worker changes and cell leader changes inside the range.
+    /// Deploys, worker changes and shard leader changes inside the range.
     pub markers: Vec<TimelineMarker>,
     /// Sessions not archived right now, on any data plane.
     pub open_sessions_now: u64,
@@ -448,7 +448,7 @@ pub(super) fn bucket(
             agents_working_avg: 0.0,
             agents_working_peak: 0,
             servers: None,
-            cells: None,
+            shards: None,
         };
     };
     let s = r.samples;
@@ -508,7 +508,7 @@ pub(super) fn bucket(
         agents_working_avg: 0.0,
         agents_working_peak: 0,
         servers: None,
-        cells: None,
+        shards: None,
     }
 }
 
@@ -528,7 +528,7 @@ fn pct(share: Option<f64>) -> Option<f64> {
 pub(super) fn apply_fleet(
     b: &mut TimelineBucket,
     fleet: Option<&TimelineFleetRow>,
-    cells: Option<&TimelineCellsRow>,
+    shards: Option<&TimelineShardsRow>,
     samples: i64,
     platform: bool,
     carry: &mut Carry,
@@ -541,12 +541,12 @@ pub(super) fn apply_fleet(
         if platform {
             b.servers = f.servers.map(|v| nonneg(v.into()));
         }
-        let has_cells = f.dp_minutes > 0
+        let has_shards = f.dp_minutes > 0
             || f.dp_turns_completed + f.dp_turns_failed + f.dp_turns_cancelled + f.dp_model_calls
                 > 0;
-        if has_cells {
+        if has_shards {
             let m = f.dp_minutes;
-            b.cells = Some(TimelineCellsBucket {
+            b.shards = Some(TimelineShardsBucket {
                 reporting: nonneg(f.dp_reports.into()),
                 sessions_avg: ratio(f.dp_sessions_sum, m),
                 sessions_peak: nonneg(f.dp_sessions_peak),
@@ -568,9 +568,9 @@ pub(super) fn apply_fleet(
     }
     b.open_sessions = carry.sessions.map(nonneg);
     b.agents = carry.agents.map(|v| nonneg(v.into()));
-    if let (true, Some(c)) = (platform, cells) {
-        let out = b.cells.get_or_insert_with(Default::default);
-        out.reporting = out.reporting.max(nonneg(c.cells));
+    if let (true, Some(c)) = (platform, shards) {
+        let out = b.shards.get_or_insert_with(Default::default);
+        out.reporting = out.reporting.max(nonneg(c.shards));
         out.nodes = Some(nonneg(c.nodes));
         out.nodes_answering = Some(nonneg(c.nodes_answering));
         out.memory_peak_pct = pct(c.memory_peak);
@@ -619,11 +619,11 @@ pub(super) fn summarize(rows: &[TimelineBucketRow], bucket_secs: i64) -> Timelin
     s
 }
 
-/// Cell totals of a range folded into its summary.
-fn summarize_cells(
+/// Shard totals of a range folded into its summary.
+fn summarize_shards(
     s: &mut TimelineSummary,
     fleet: &[TimelineFleetRow],
-    cells: &[TimelineCellsRow],
+    shards: &[TimelineShardsRow],
 ) {
     for f in fleet {
         let finished = f.dp_turns_completed + f.dp_turns_failed + f.dp_turns_cancelled;
@@ -632,11 +632,11 @@ fn summarize_cells(
         s.cost_usd += f.dp_cost_usd.max(0.0);
         if f.dp_minutes > 0 {
             let peak = nonneg(f.dp_running_peak);
-            s.cells_peak_running = Some(s.cells_peak_running.map_or(peak, |p| p.max(peak)));
+            s.shards_peak_running = Some(s.shards_peak_running.map_or(peak, |p| p.max(peak)));
         }
     }
-    if !cells.is_empty() {
-        s.cells_elections = Some(cells.iter().map(|c| nonneg(c.elections)).sum());
+    if !shards.is_empty() {
+        s.shards_elections = Some(shards.iter().map(|c| nonneg(c.elections)).sum());
     }
     s.failure_rate =
         (s.turns_finished > 0).then(|| s.turns_failed as f64 / s.turns_finished as f64);
@@ -667,23 +667,23 @@ async fn timeline(
         state.db.timeline_live_counts(org),
     )
     .log_internal_error_json("load monitoring timeline fleet")?;
-    let (workers, cells, previous_cells) = if platform {
-        let (workers, cells, previous_cells, cell_markers) = tokio::try_join!(
+    let (workers, shards, previous_shards) = if platform {
+        let (workers, shards, previous_shards, shard_markers) = tokio::try_join!(
             state.db.timeline_worker_buckets(from, to, step),
-            state.db.timeline_cells_buckets(from, to, step),
-            state.db.timeline_cells_buckets(previous_from, from, step),
-            state.db.timeline_cell_markers(from, to),
+            state.db.timeline_shards_buckets(from, to, step),
+            state.db.timeline_shards_buckets(previous_from, from, step),
+            state.db.timeline_shard_markers(from, to),
         )
         .log_internal_error_json("load monitoring timeline workers")?;
-        markers.extend(cell_markers);
+        markers.extend(shard_markers);
         markers.sort_by_key(|m| m.at);
-        (workers, cells, previous_cells)
+        (workers, shards, previous_shards)
     } else {
         Default::default()
     };
     let by_start: std::collections::HashMap<_, _> = rows.iter().map(|r| (r.bucket, r)).collect();
     let fleet_by: std::collections::HashMap<_, _> = fleet.iter().map(|r| (r.bucket, r)).collect();
-    let cells_by: std::collections::HashMap<_, _> = cells.iter().map(|r| (r.bucket, r)).collect();
+    let shards_by: std::collections::HashMap<_, _> = shards.iter().map(|r| (r.bucket, r)).collect();
     let mut carry = Carry {
         sessions: seed.0,
         agents: seed.1,
@@ -696,7 +696,7 @@ async fn timeline(
         apply_fleet(
             &mut b,
             fleet_by.get(&at).copied(),
-            cells_by.get(&at).copied(),
+            shards_by.get(&at).copied(),
             row.map_or(0, |r| r.samples),
             platform,
             &mut carry,
@@ -711,9 +711,9 @@ async fn timeline(
         last.agents = Some(nonneg(agents_now));
     }
     let mut summary = summarize(&rows, step);
-    summarize_cells(&mut summary, &fleet, &cells);
+    summarize_shards(&mut summary, &fleet, &shards);
     let mut previous_summary = summarize(&previous, step);
-    summarize_cells(&mut previous_summary, &previous_fleet, &previous_cells);
+    summarize_shards(&mut previous_summary, &previous_fleet, &previous_shards);
     Ok(Json(MonitoringTimeline {
         generated_at: now,
         scope: if platform { "fleet" } else { "organization" }.into(),
@@ -836,12 +836,12 @@ pub async fn get_fleet_monitoring_timeline_window(
     window(&state, None, query).await
 }
 
-/// How old a cell's newest report may be before the cell shows as silent.
-const CELL_SILENT_AFTER_SECS: i64 = 180;
+/// How old a shard's newest report may be before the shard shows as silent.
+const AGENTD_SILENT_AFTER_SECS: i64 = 180;
 
-/// One cell over one bucket.
+/// One shard over one bucket.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct MonitoringCellBucket {
+pub struct MonitoringShardBucket {
     /// UTC start of the bucket.
     pub start: DateTime<Utc>,
     /// Minute reports received in the bucket.
@@ -866,7 +866,7 @@ pub struct MonitoringCellBucket {
     pub ship_lag_p99_ms: Option<u64>,
     /// Leader elections.
     pub elections: u64,
-    /// Sessions moved to another cell.
+    /// Sessions moved to another shard.
     pub moves: u64,
     /// Turns completed.
     pub turns_completed: u64,
@@ -876,13 +876,13 @@ pub struct MonitoringCellBucket {
     pub turns_cancelled: u64,
 }
 
-/// One data plane v2 cell: its newest minute report and its history.
+/// One data plane v2 shard: its newest minute report and its history.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct MonitoringCell {
-    /// Cell name.
-    #[schema(example = "cell-07")]
-    pub cell: String,
-    /// Data plane the cell belongs to.
+pub struct MonitoringShard {
+    /// Shard name.
+    #[schema(example = "shard-07")]
+    pub shard: String,
+    /// Data plane the shard belongs to.
     #[schema(example = "dp-eks-1")]
     pub data_plane: String,
     /// Minute of the newest report.
@@ -892,7 +892,7 @@ pub struct MonitoringCell {
     #[schema(example = false)]
     pub silent: bool,
     /// Leader node at the newest report.
-    #[schema(example = "cell-07-node-2")]
+    #[schema(example = "shard-07-node-2")]
     pub leader: Option<String>,
     /// Members.
     #[schema(example = 3)]
@@ -934,12 +934,12 @@ pub struct MonitoringCell {
     #[schema(example = 4)]
     pub term: u64,
     /// History over the range, oldest first; buckets without a report are absent.
-    pub buckets: Vec<MonitoringCellBucket>,
+    pub buckets: Vec<MonitoringShardBucket>,
 }
 
-/// Data plane v2 cells as their minute reports show them.
+/// Data plane v2 shards as their minute reports show them.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct MonitoringCells {
+pub struct MonitoringShards {
     /// UTC time of this read.
     #[schema(example = "2026-11-15T20:00:00Z")]
     pub generated_at: DateTime<Utc>,
@@ -952,8 +952,8 @@ pub struct MonitoringCells {
     /// Bucket size in seconds.
     #[schema(example = 60)]
     pub bucket_seconds: u32,
-    /// Cells that reported in the last week, by name.
-    pub cells: Vec<MonitoringCell>,
+    /// Shards that reported in the last week, by name.
+    pub shards: Vec<MonitoringShard>,
 }
 
 fn share_pct(used: Option<f64>, limit: Option<f64>) -> Option<f64> {
@@ -963,10 +963,10 @@ fn share_pct(used: Option<f64>, limit: Option<f64>) -> Option<f64> {
     }
 }
 
-fn cell_bucket(r: &TimelineCellBucketRow) -> MonitoringCellBucket {
+fn shard_bucket(r: &TimelineShardBucketRow) -> MonitoringShardBucket {
     let opt = |v: Option<i64>| v.map(nonneg);
     let opt32 = |v: Option<i32>| v.map(|v| nonneg(v.into()));
-    MonitoringCellBucket {
+    MonitoringShardBucket {
         start: r.bucket,
         reports: nonneg(r.reports),
         nodes: opt32(r.nodes),
@@ -992,39 +992,39 @@ fn cell_bucket(r: &TimelineCellBucketRow) -> MonitoringCellBucket {
     }
 }
 
-/// List cells with their newest report and history. Requires platform-user access.
-#[utoipa::path(get, path = "/v1/durable/monitoring/cells", tag = "durable", params(TimelineQuery),
-    responses((status = 200, description = "Cells and their history", body = MonitoringCells),
+/// List shards with their newest report and history. Requires platform-user access.
+#[utoipa::path(get, path = "/v1/durable/monitoring/shards", tag = "durable", params(TimelineQuery),
+    responses((status = 200, description = "Shards and their history", body = MonitoringShards),
         (status = 400, description = "Invalid range", body = ErrorResponse),
         (status = 403, description = "Platform access required", body = ErrorResponse)))]
-pub async fn get_fleet_monitoring_cells(
+pub async fn get_fleet_monitoring_shards(
     _platform: PlatformUser,
     State(state): State<AppState>,
     Query(query): Query<TimelineQuery>,
-) -> ApiResult<MonitoringCells> {
+) -> ApiResult<MonitoringShards> {
     let now = Utc::now();
     let (from, to, step) = resolve(&query, now)?;
     let (latest, history) = tokio::try_join!(
-        state.db.monitoring_cells_latest(),
-        state.db.timeline_cell_buckets(from, to, step),
+        state.db.monitoring_shards_latest(),
+        state.db.timeline_shard_buckets(from, to, step),
     )
-    .log_internal_error_json("load monitoring cells")?;
-    let mut by_cell: std::collections::HashMap<&str, Vec<MonitoringCellBucket>> =
+    .log_internal_error_json("load monitoring shards")?;
+    let mut by_shard: std::collections::HashMap<&str, Vec<MonitoringShardBucket>> =
         std::collections::HashMap::new();
     for r in &history {
-        by_cell
-            .entry(r.cell.as_str())
+        by_shard
+            .entry(r.shard.as_str())
             .or_default()
-            .push(cell_bucket(r));
+            .push(shard_bucket(r));
     }
     let limit = |v: Option<f64>| v.filter(|l| *l > 0.0);
-    let cells = latest
+    let shards = latest
         .iter()
-        .map(|c| MonitoringCell {
-            cell: c.cell.clone(),
+        .map(|c| MonitoringShard {
+            shard: c.shard.clone(),
             data_plane: c.data_plane.clone(),
             reported_at: c.minute,
-            silent: now - c.minute > Duration::seconds(CELL_SILENT_AFTER_SECS),
+            silent: now - c.minute > Duration::seconds(AGENTD_SILENT_AFTER_SECS),
             leader: c.leader.clone().filter(|l| !l.is_empty()),
             nodes: c.nodes.map_or(0, |v| nonneg(v.into())),
             nodes_answering: c.nodes_answering.map_or(0, |v| nonneg(v.into())),
@@ -1039,14 +1039,14 @@ pub async fn get_fleet_monitoring_cells(
             admit_p99_ms: c.admit_p99_ms.map_or(0, |v| nonneg(v.into())),
             ship_lag_p99_ms: c.ship_lag_p99_ms.map_or(0, |v| nonneg(v.into())),
             term: c.raft_term.map_or(0, nonneg),
-            buckets: by_cell.remove(c.cell.as_str()).unwrap_or_default(),
+            buckets: by_shard.remove(c.shard.as_str()).unwrap_or_default(),
         })
         .collect();
-    Ok(Json(MonitoringCells {
+    Ok(Json(MonitoringShards {
         generated_at: now,
         from,
         to,
         bucket_seconds: step as u32,
-        cells,
+        shards,
     }))
 }

@@ -14,14 +14,14 @@ tags:
 
 ## Abstract
 
-A data plane (a v1 worker, a v2 cell, standalone agentd) runs only **native**
+A data plane (a v1 worker, a v2 shard, standalone agentd) runs only **native**
 capabilities: files, shell, web, subagents, tasks, schedules, session state,
 SQL databases. Capabilities that need the control plane's data (Knowledge,
 Memory, Slack actions, Poppy, platform commands, the MCP store, connection
 lookups) are **injected**: the control plane serves them over MCP, and the data
 plane calls them like any MCP server, with a session token it signed.
 
-This replaces porting each hosted capability into the cell and replaces the
+This replaces porting each hosted capability into the shard and replaces the
 host-call path. One implementation stays on the server; the data plane needs no
 code per hosted feature, and agentd can run without the server at all.
 
@@ -110,8 +110,8 @@ trusted data planes. Every authentication failure is the same 401. Source:
 
 The URLs it hands data planes (and the audiences it checks) use
 `INJECTED_CAPABILITIES_BASE_URL` when set, the address data planes reach it on
-(a cluster service, `127.0.0.1` locally), else the public base URL. A cell
-trusts its configured control plane's origin (`CELL_CONTROL_PLANE`) and skips
+(a cluster service, `127.0.0.1` locally), else the public base URL. A shard
+trusts its configured control plane's origin (`AGENTD_CONTROL_PLANE`) and skips
 the MCP client's private-address check only there.
 
 THREAT: the exemption follows operator configuration, never a URL an agent,
@@ -127,7 +127,7 @@ Built (side by side with today's paths, nothing switched over):
   `search_knowledge` tool; the session's config comes from its agent's
   `injected:knowledge_base` or `knowledge_base` entry.
 
-- Cells mint session tokens per call (`everruns-agentd` `mcp.rs`), with the
+- Shards mint session tokens per call (`everruns-agentd` `mcp.rs`), with the
   key derived from their link key; the control plane trusts its linked data
   plane from that key alone.
 - Hosts collect `injected:` refs whose config is the controller's
@@ -139,45 +139,48 @@ Built (side by side with today's paths, nothing switched over):
   keeps a hosted capability's native part beside it (Slack's model view as
   `slack_model_view`).
 - Served: Knowledge Base, Poppy client and Slack (`hosted.rs`: the
-  capability's own tools, with the same host call handlers a cell's calls
-  get, run in process). Slack's `slack_upload_file` reads the session's file
-  from its cell through the `fs` session command (`io.everruns/files` serves
+  capability's own tools, run in process by the call dispatcher that runs
+  each call's v1 worker command, `server/src/domains/data_plane/calls.rs`). Slack's `slack_upload_file` reads the session's file
+  from its shard through the `fs` session command (`io.everruns/files` serves
   the control plane's trees to data planes, not the reverse). Platform stays native (its tools, `/docs` mount, skills and the shell's
   `everruns` builtin); only its command catalog is served, as the
   `platform_commands` server whose one tool runs a command as the token's
-  `act` (`hosted.rs` `platform`), and a cell calls it instead of the
-  `platform_command` host call (`everruns-agentd` `platform_calls.rs`).
+  `act` (`hosted.rs` `platform`; `everruns-agentd` `platform_calls.rs`).
+  The same server answers the session-scoped operations a native tool
+  needs from the control plane: the session's spend (`get_session_info`,
+  as no one) and its agent's saved scripts (`tools scripts`: a list as no
+  one, a save as the turn's sender; `everruns-agentd` `saved_scripts.rs`).
 - Memory is a remote mount: the control plane serves it as the
-  `memory_files` files server (`hosted.rs` `memory`, the same mount check as
-  the `memory_file` host call). The URLs of these control plane servers
-  (`CONTROLLER_SERVERS`) come with each create, never from a package; a cell
+  `memory_files` files server (`hosted.rs` `memory`, with the v1 worker's
+  mount check). The URLs of these control plane servers
+  (`CONTROLLER_SERVERS`) come with each create, never from a package; a shard
   mounts the session's Memory from it with a session token (`everruns-agentd`
-  `memory.rs`), and falls back to the host call only when none is sent.
-- The turn's person's own MCP servers (`user_mcp`) stay native in the cell
+  `memory.rs`); a create with no files server mounts no Memory.
+- The turn's person's own MCP servers (`user_mcp`) stay native in the shard
   (the manage tools, the per-turn servers hook); their list and its
   resolution are the `person_mcp` server's (`hosted.rs` `person_mcp`): one
   tool for the manage tools' store and one for the servers a turn adds. The
   token's `act` names the person and the open turn's input message
   (`SessionActor.turn`, from the same session record), so the tools take
   neither as an argument, and the control plane records the turn's
-  invocation for that person as the host call does (`everruns-agentd`
-  `user_mcp.rs`).
+  invocation for that person first (`everruns-agentd` `user_mcp.rs`).
 - Connection lookups are one credential lookup: the `credentials` server
   (`hosted.rs` `credentials`) has one tool for the four credential calls
   (`CREDENTIAL_CALLS`: provider connections, MCP sign-ins, GitHub, service
-  keys), run by the handlers their host calls run. A cell mints its token
+  keys), each running its v1 worker command. A shard mints its token
   acting as the sender of the message the lookup names (`"open"`: the open
   turn's; none: no one), from the session's record, so a detached tool
   call of an earlier turn still acts for that turn's person
-  (`everruns-agentd` `lookups.rs`, `mcp.rs` `Acting`). Org connections stay
-  pushed config.
+  (`everruns-agentd` `lookups.rs`, `mcp.rs` `Acting`). Org connections and
+  settings stay pushed config. A shard with no credentials server (no
+  control plane) finds no connections.
 
 Next, in order:
 
 1. Agentd publishes JWKS and mints tokens.
 2. Hosts honor `tools: native` and load facts and hooks per turn.
 3. Step 0 on data plane v2: convert the hosted capabilities, then delete the
-   host-call path. The audit found none uses facts or tool hooks; Slack's
+   host-call path (done 2026-11-22). The audit found none uses facts or tool hooks; Slack's
    model view and Platform's static `/docs` mount stay native, Memory becomes
    a remote mount, and connection lookups become one native credential lookup
    (pushed org connections plus a per-turn, person-scoped token fetch) served

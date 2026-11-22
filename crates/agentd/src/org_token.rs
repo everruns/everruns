@@ -5,7 +5,7 @@
 //! - Checked against the control plane's JWKS, fetched and cached; an
 //!   unknown `kid` refetches (at most every [`REFETCH`]), so a rotated key
 //!   is picked up without a restart and no request calls back otherwise.
-//! - Off unless configured (`CELL_JWKS_URL`): a test fleet and the step 6
+//! - Off unless configured (`AGENTD_JWKS_URL`): a test fleet and the step 6
 //!   suites run open, as before. Configured, every `/v1/sessions` call
 //!   needs a token with the `sessions:write` scope (or `admin`).
 //! - The token's org is the session's tenant. A create bills the session to
@@ -13,7 +13,7 @@
 //!   later call on a session checks the session's tenant against it. A
 //!   session with no tenant is reachable only with `admin`.
 //! - `dp` must name this data plane when one is configured
-//!   (`CELL_DATA_PLANE`): a token minted for another data plane is refused.
+//!   (`AGENTD_DATA_PLANE`): a token minted for another data plane is refused.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -53,12 +53,12 @@ struct Keys {
 }
 
 impl OrgTokens {
-    /// From `CELL_JWKS_URL` and `CELL_DATA_PLANE`; none when unset.
+    /// From `AGENTD_JWKS_URL` and `AGENTD_DATA_PLANE`; none when unset.
     pub fn from_env() -> Option<Arc<Self>> {
-        let url = std::env::var("CELL_JWKS_URL")
+        let url = std::env::var("AGENTD_JWKS_URL")
             .ok()
             .filter(|u| !u.is_empty())?;
-        let data_plane = std::env::var("CELL_DATA_PLANE")
+        let data_plane = std::env::var("AGENTD_DATA_PLANE")
             .ok()
             .filter(|d| !d.is_empty());
         Some(Arc::new(Self::new(Some(url), data_plane)))

@@ -1,16 +1,16 @@
 //! The data plane's side of `/dp/v1` config (cp-dp-protocol.md), served by
-//! every gateway, and the directory cell's reads behind it.
+//! every gateway, and the directory shard's reads behind it.
 //!
 //! Decisions:
-//! - A config update is one command in the directory cell's Raft; the
-//!   gateway only forwards it and returns the cell's `ConfigAck`.
+//! - A config update is one command in the directory shard's Raft; the
+//!   gateway only forwards it and returns the shard's `ConfigAck`.
 //! - A session created by agent reference (`org` + `agent_ref`) copies the
 //!   agent's current revision when it is created and is billed to the org,
 //!   so later revisions and removals never change it.
 //! - The directory reads behind these are answered by its leader only (a
 //!   follower answers 503 and the gateway tries the next member), so a
 //!   create right after a config update sees that update.
-//! - Org admin commands are, like config, commands in the directory cell's
+//! - Org admin commands are, like config, commands in the directory shard's
 //!   Raft, idempotent by `command_id`. They are served by nodes (not
 //!   standalone gateways) because an export writes to the object store.
 //! - `ConfigDiff` takes what the restored control plane knows in the
@@ -19,7 +19,7 @@
 //! - An export is one tar (zstd) per org at
 //!   `orgs/{org}/exports/{export_id}.tar.zst`: the org's config without its
 //!   data key, then every session's full log. The node that accepted the
-//!   command writes it and reports progress through the directory cell.
+//!   command writes it and reports progress through the directory shard.
 
 use std::sync::Arc;
 
@@ -62,7 +62,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         )
         // A session command may carry a whole file (`fs`: a moved v1
         // session's files, one per call when large; `sqldb`: one of its
-        // databases), as big as a cell holds, base64 encoded. Only the
+        // databases), as big as a shard holds, base64 encoded. Only the
         // control plane reaches these routes (the link token).
         .route(
             "/dp/v1/orgs/{org}/sessions/{session}/{command}",
@@ -77,44 +77,37 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         .with_state(gateway)
 }
 
-/// The directory cell's reads, and `/dp/v1` org admin, on a node.
-pub fn cell_router(node: Arc<Node>) -> Router {
+/// The directory shard's reads, and `/dp/v1` org admin, on a node.
+pub fn shard_router(node: Arc<Node>) -> Router {
     Router::new()
-        .route("/cell/orgs/{org}/config", get(cell_position))
-        .route("/cell/orgs/{org}/agents/{agent}", get(cell_agent))
+        .route("/shard/orgs/{org}/config", get(shard_position))
+        .route("/shard/orgs/{org}/agents/{agent}", get(shard_agent))
         .route(
-            "/cell/orgs/{org}/catalog/agents/{agent}",
-            get(cell_catalog_agent),
+            "/shard/orgs/{org}/catalog/agents/{agent}",
+            get(shard_catalog_agent),
         )
         .route(
-            "/cell/orgs/{org}/catalog/harnesses/{harness}",
-            get(cell_catalog_harness),
+            "/shard/orgs/{org}/catalog/harnesses/{harness}",
+            get(shard_catalog_harness),
         )
-        .route("/cell/orgs/{org}/full", get(cell_full))
-        .route("/cell/orgs/{org}/commands/{command}", get(cell_command))
-        .route("/cell/orgs/{org}/diff", post(cell_diff))
-        .route("/cell/orgs/{org}/leftovers", get(cell_leftovers))
+        .route("/shard/orgs/{org}/full", get(shard_full))
+        .route("/shard/orgs/{org}/commands/{command}", get(shard_command))
+        .route("/shard/orgs/{org}/diff", post(shard_diff))
+        .route("/shard/orgs/{org}/leftovers", get(shard_leftovers))
         .route(
-            "/cell/orgs/{org}/secrets/{secret}",
-            get(cell_secret).post(cell_secret),
-        )
-        .route(
-            "/cell/orgs/{org}/data-key",
-            get(cell_data_key).post(cell_data_key),
+            "/shard/orgs/{org}/secrets/{secret}",
+            get(shard_secret).post(shard_secret),
         )
         .route(
-            "/cell/orgs/{org}/connections/{connection}",
-            get(cell_connection).post(cell_connection),
+            "/shard/orgs/{org}/data-key",
+            get(shard_data_key).post(shard_data_key),
         )
         .route(
-            "/cell/orgs/{org}/host-calls/{name}",
-            post(crate::host_calls::cell_host_call),
+            "/shard/orgs/{org}/connections/{connection}",
+            get(shard_connection).post(shard_connection),
         )
-        // The route host calls replaced, kept while executors of the
-        // release before roll over. Remove with the release after.
-        .route("/cell/orgs/{org}/lookups", post(cell_lookup))
-        .route("/cell/orgs/{org}/sessions", get(cell_org_sessions))
-        .route("/cell/tenants", get(cell_tenants).post(cell_tenants))
+        .route("/shard/orgs/{org}/sessions", get(shard_org_sessions))
+        .route("/shard/tenants", get(shard_tenants).post(shard_tenants))
         .with_state(node.clone())
         .merge(admin_router(node))
 }
@@ -169,7 +162,7 @@ async fn config(
             "the path's epoch and version must match the body's".into(),
         ));
     }
-    let directory = gateway.directory_cell()?;
+    let directory = gateway.directory_shard()?;
     let command = Command::Config {
         org,
         update,
@@ -189,6 +182,9 @@ struct OrgSession {
     /// The control plane's id for it, so its record and the data plane's
     /// session are one session; creating again is a no-op.
     id: everruns_contracts::typed_id::SessionId,
+    /// The person who owns it ([`crate::platform::Platform::owner`]).
+    #[serde(default)]
+    owner: Option<String>,
     /// The org's agent, at its current revision.
     agent_ref: String,
     /// Or the session's own declaration of that agent: the agent with the
@@ -272,6 +268,8 @@ async fn org_session(
                 memory: body.memory,
                 servers: body.servers,
                 importing: body.importing,
+                subagent: None,
+                owner: body.owner,
             },
         )
         .await?;
@@ -313,7 +311,7 @@ async fn owned_session(
 /// `POST /dp/v1/orgs/{org}/sessions/{session}/{command}`: one of
 /// a declared session command
 /// ([`everruns_contracts::session_commands::SESSION_COMMANDS`]) on one of
-/// the org's sessions. The cell checks each body.
+/// the org's sessions. The shard checks each body.
 async fn org_session_command(
     State(gateway): State<Arc<Gateway>>,
     Path((org, session, command)): Path<(String, String, String)>,
@@ -379,10 +377,10 @@ async fn position(
     State(gateway): State<Arc<Gateway>>,
     Path(org): Path<String>,
 ) -> Result<Json<ConfigPosition>, ApiError> {
-    let directory = gateway.directory_cell()?;
+    let directory = gateway.directory_shard()?;
     Ok(Json(
         gateway
-            .call(directory, &format!("/cell/orgs/{org}/config"), None)
+            .call(directory, &format!("/shard/orgs/{org}/config"), None)
             .await?,
     ))
 }
@@ -395,10 +393,10 @@ impl Gateway {
         org: &str,
         agent: &str,
     ) -> Result<Option<AgentDefinition>, ApiError> {
-        let directory = self.directory_cell()?;
+        let directory = self.directory_shard()?;
         self.call(
             directory,
-            &format!("/cell/orgs/{org}/catalog/agents/{agent}"),
+            &format!("/shard/orgs/{org}/catalog/agents/{agent}"),
             None,
         )
         .await
@@ -410,10 +408,10 @@ impl Gateway {
         org: &str,
         harness: &str,
     ) -> Result<Option<serde_json::Value>, ApiError> {
-        let directory = self.directory_cell()?;
+        let directory = self.directory_shard()?;
         self.call(
             directory,
-            &format!("/cell/orgs/{org}/catalog/harnesses/{harness}"),
+            &format!("/shard/orgs/{org}/catalog/harnesses/{harness}"),
             None,
         )
         .await
@@ -424,9 +422,13 @@ impl Gateway {
         org: &str,
         agent: &str,
     ) -> Result<AgentDefinition, ApiError> {
-        let directory = self.directory_cell()?;
+        let directory = self.directory_shard()?;
         let found: Option<AgentDefinition> = self
-            .call(directory, &format!("/cell/orgs/{org}/agents/{agent}"), None)
+            .call(
+                directory,
+                &format!("/shard/orgs/{org}/agents/{agent}"),
+                None,
+            )
             .await?;
         found.ok_or((
             StatusCode::NOT_FOUND,
@@ -443,7 +445,7 @@ fn leader_only(node: &Node) -> Result<(), ApiError> {
     }
 }
 
-async fn cell_position(
+async fn shard_position(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
 ) -> Result<Json<ConfigPosition>, ApiError> {
@@ -462,7 +464,7 @@ async fn cell_position(
     ))
 }
 
-async fn cell_agent(
+async fn shard_agent(
     State(node): State<Arc<Node>>,
     Path((org, agent)): Path<(String, String)>,
 ) -> Result<Json<Option<AgentDefinition>>, ApiError> {
@@ -480,7 +482,7 @@ async fn cell_agent(
 
 /// The org's agent whose card names the host's agent `agent` (parity gap
 /// 9): the agent on its own harness.
-async fn cell_catalog_agent(
+async fn shard_catalog_agent(
     State(node): State<Arc<Node>>,
     Path((org, agent)): Path<(String, String)>,
 ) -> Result<Json<Option<AgentDefinition>>, ApiError> {
@@ -496,7 +498,7 @@ async fn cell_catalog_agent(
 
 /// The host's harness `harness` as a card of one of the org's agents
 /// carries it, inheritance resolved.
-async fn cell_catalog_harness(
+async fn shard_catalog_harness(
     State(node): State<Arc<Node>>,
     Path((org, harness)): Path<(String, String)>,
 ) -> Result<Json<Option<serde_json::Value>>, ApiError> {
@@ -520,10 +522,10 @@ fn gateway_of(node: &Node) -> Result<Arc<Gateway>, ApiError> {
         .ok_or((StatusCode::SERVICE_UNAVAILABLE, "starting".into()))
 }
 
-/// Propose `command` for `org` in the directory cell.
+/// Propose `command` for `org` in the directory shard.
 async fn admin(node: &Node, org: String, command: AdminCommand) -> Result<CommandAck, ApiError> {
     let gateway = gateway_of(node)?;
-    let directory = gateway.directory_cell()?;
+    let directory = gateway.directory_shard()?;
     let command = Command::Admin {
         org,
         command,
@@ -570,11 +572,11 @@ async fn export(
     Json(body): Json<OrgExport>,
 ) -> Result<Json<CommandAck>, ApiError> {
     let gateway = gateway_of(&node)?;
-    let directory = gateway.directory_cell()?;
+    let directory = gateway.directory_shard()?;
     let before: Option<CommandStatus> = gateway
         .call(
             directory,
-            &format!("/cell/orgs/{org}/commands/{}", body.command_id),
+            &format!("/shard/orgs/{org}/commands/{}", body.command_id),
             None,
         )
         .await?;
@@ -625,9 +627,9 @@ async fn write_export(
     export_id: &str,
 ) -> anyhow::Result<()> {
     let topology = gateway.topology().map_err(|(_, e)| anyhow::anyhow!(e))?;
-    let directory = topology.directory_cell;
+    let directory = topology.directory_shard;
     let config: Option<serde_json::Value> = gateway
-        .call(directory, &format!("/cell/orgs/{org}/full"), None)
+        .call(directory, &format!("/shard/orgs/{org}/full"), None)
         .await
         .map_err(|(_, e)| anyhow::anyhow!(e))?;
     let mut tar = tar::Builder::new(Vec::new());
@@ -640,9 +642,9 @@ async fn write_export(
         Ok(())
     };
     add("config.json", &serde_json::to_vec(&config)?)?;
-    for cell in topology.cells.keys() {
+    for shard in topology.shards.keys() {
         let sessions: Vec<ExportedSession> = gateway
-            .call(*cell, &format!("/cell/orgs/{org}/sessions"), None)
+            .call(*shard, &format!("/shard/orgs/{org}/sessions"), None)
             .await
             .map_err(|(_, e)| anyhow::anyhow!(e))?;
         for session in sessions {
@@ -667,11 +669,11 @@ async fn command_status(
     Path((org, command)): Path<(String, String)>,
 ) -> Result<Json<CommandStatus>, ApiError> {
     let gateway = gateway_of(&node)?;
-    let directory = gateway.directory_cell()?;
+    let directory = gateway.directory_shard()?;
     let status: Option<CommandStatus> = gateway
         .call(
             directory,
-            &format!("/cell/orgs/{org}/commands/{command}"),
+            &format!("/shard/orgs/{org}/commands/{command}"),
             None,
         )
         .await?;
@@ -686,12 +688,12 @@ async fn unknown(
     Json(known): Json<ConfigKnown>,
 ) -> Result<Json<ConfigDiff>, ApiError> {
     let gateway = gateway_of(&node)?;
-    let directory = gateway.directory_cell()?;
+    let directory = gateway.directory_shard()?;
     let body =
         serde_json::to_value(&known).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(
         gateway
-            .call(directory, &format!("/cell/orgs/{org}/diff"), Some(&body))
+            .call(directory, &format!("/shard/orgs/{org}/diff"), Some(&body))
             .await?,
     ))
 }
@@ -703,10 +705,10 @@ async fn leftovers(
     Path(org): Path<String>,
 ) -> Result<Json<Option<ConfigLeftovers>>, ApiError> {
     let gateway = gateway_of(&node)?;
-    let directory = gateway.directory_cell()?;
+    let directory = gateway.directory_shard()?;
     Ok(Json(
         gateway
-            .call(directory, &format!("/cell/orgs/{org}/leftovers"), None)
+            .call(directory, &format!("/shard/orgs/{org}/leftovers"), None)
             .await?,
     ))
 }
@@ -723,7 +725,7 @@ async fn clear_leftovers(
         .map(Json)
 }
 
-async fn cell_leftovers(
+async fn shard_leftovers(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
 ) -> Result<Json<Option<ConfigLeftovers>>, ApiError> {
@@ -735,7 +737,7 @@ async fn cell_leftovers(
 }
 
 /// `org`'s whole config without its data key (an export).
-async fn cell_full(
+async fn shard_full(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
 ) -> Result<Json<Option<crate::control::OrgConfig>>, ApiError> {
@@ -747,7 +749,7 @@ async fn cell_full(
     })))
 }
 
-async fn cell_command(
+async fn shard_command(
     State(node): State<Arc<Node>>,
     Path((org, command)): Path<(String, String)>,
 ) -> Result<Json<Option<CommandStatus>>, ApiError> {
@@ -763,7 +765,7 @@ async fn cell_command(
     ))
 }
 
-async fn cell_diff(
+async fn shard_diff(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
     Json(known): Json<ConfigKnown>,
@@ -812,7 +814,7 @@ impl SecretForExecutor {
     }
 }
 
-async fn cell_secret(
+async fn shard_secret(
     State(node): State<Arc<Node>>,
     Path((org, secret)): Path<(String, String)>,
 ) -> Result<Json<Option<SecretForExecutor>>, ApiError> {
@@ -828,7 +830,7 @@ async fn cell_secret(
 
 /// `org`'s data key, wrapped under the data plane's key: what an executor
 /// seals and opens the org's session secrets with (`session_secrets.rs`).
-async fn cell_data_key(
+async fn shard_data_key(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
 ) -> Result<Json<Option<crate::control::WrappedKey>>, ApiError> {
@@ -841,7 +843,7 @@ async fn cell_data_key(
 
 /// `org`'s connection, for the executor that runs a turn needing it (its
 /// token stays sealed: the executor opens it with `secrets`).
-async fn cell_connection(
+async fn shard_connection(
     State(node): State<Arc<Node>>,
     Path((org, connection)): Path<(String, String)>,
 ) -> Result<Json<Option<everruns_contracts::dataplane::Connection>>, ApiError> {
@@ -856,51 +858,8 @@ async fn cell_connection(
     ))
 }
 
-/// A legacy lookup from an executor of the release before host calls
-/// (`host_calls.rs`), passed on to the control plane's legacy route. The
-/// answer comes back sealed with the org's data key and goes to the
-/// executor unopened.
-async fn cell_lookup(
-    State(node): State<Arc<Node>>,
-    Path(org): Path<String>,
-    Json(mut request): Json<everruns_contracts::dataplane::LookupRequest>,
-) -> Result<Json<everruns_contracts::dataplane::SealedSecret>, ApiError> {
-    let cp = node.cfg.control_plane.as_ref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        "this cell has no control plane".to_owned(),
-    ))?;
-    if everruns_contracts::host_calls::by_command(&request.command)
-        .is_some_and(|call| call.acts_as == everruns_contracts::host_calls::ActsAs::Person)
-    {
-        crate::host_calls::act_as_sender(&node, &mut request.params).await?;
-    }
-    let failed = |error: reqwest::Error| {
-        tracing::warn!(%org, %error, "a lookup did not reach the control plane");
-        (
-            StatusCode::BAD_GATEWAY,
-            "the control plane did not answer the lookup".to_owned(),
-        )
-    };
-    let reply = cp
-        .post(&node.http, &format!("/dp/v1/tenants/{org}/lookups"))
-        .json(&request)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-        .map_err(failed)?;
-    if !reply.status().is_success() {
-        let status = reply.status();
-        tracing::warn!(%org, %status, command = %request.command, "the control plane refused a lookup");
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            format!("the control plane refused the lookup ({status})"),
-        ));
-    }
-    Ok(Json(reply.json().await.map_err(failed)?))
-}
-
-/// Every session of `org` in this cell, with its full log (an export).
-async fn cell_org_sessions(
+/// Every session of `org` in this shard, with its full log (an export).
+async fn shard_org_sessions(
     State(node): State<Arc<Node>>,
     Path(org): Path<String>,
 ) -> Result<Json<Vec<ExportedSession>>, ApiError> {
@@ -921,16 +880,16 @@ async fn cell_org_sessions(
             Some(Err(error)) => {
                 return Err((StatusCode::SERVICE_UNAVAILABLE, error.to_string()));
             }
-            // Moved away since the listing: its new cell exports it.
+            // Moved away since the listing: its new shard exports it.
             None => {}
         }
     }
     Ok(Json(out))
 }
 
-/// The tenants that may not start turns; cell leaders and executors poll
+/// The tenants that may not start turns; shard leaders and executors poll
 /// it (see `tenants.rs`).
-async fn cell_tenants(
+async fn shard_tenants(
     State(node): State<Arc<Node>>,
 ) -> Result<Json<crate::tenants::Tenants>, ApiError> {
     leader_only(&node)?;

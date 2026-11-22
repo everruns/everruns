@@ -4,13 +4,13 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-use everruns_cell::Host;
+use everruns_agentd::Host;
 
 #[test]
 fn every_test_definition_builds() {
-    let host = everruns_cell_testkit::host();
+    let host = everruns_agentd_testkit::host();
     for name in ["echo", "worker", "worker3", "slow", "sim", "lead", "files"] {
-        let definition = everruns_cell_testkit::definition(name).expect(name);
+        let definition = everruns_agentd_testkit::definition(name).expect(name);
         host.agent(&definition)
             .unwrap_or_else(|error| panic!("{name}: {error}"));
     }
@@ -18,8 +18,8 @@ fn every_test_definition_builds() {
 
 #[test]
 fn unknown_tools_and_providers_are_refused() {
-    let host = everruns_cell_testkit::host();
-    let mut definition = everruns_cell_testkit::definition("worker").unwrap();
+    let host = everruns_agentd_testkit::host();
+    let mut definition = everruns_agentd_testkit::definition("worker").unwrap();
     definition["model"]["provider"] = "openai".into();
     let Err(error) = host.agent(&definition) else {
         panic!("no openai here")
@@ -27,7 +27,7 @@ fn unknown_tools_and_providers_are_refused() {
     assert!(error.contains("does not serve"), "{error}");
 
     // A built-in tool comes through a capability, never by name.
-    let mut definition = everruns_cell_testkit::definition("worker").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("worker").unwrap();
     definition["tools"][0]["type"] = "builtin".into();
     let Err(error) = host.agent(&definition) else {
         panic!("a built-in tool by name")
@@ -38,7 +38,7 @@ fn unknown_tools_and_providers_are_refused() {
     );
 
     // A declared tool the node has no code for is the client's to run.
-    let mut definition = everruns_cell_testkit::definition("worker").unwrap();
+    let mut definition = everruns_agentd_testkit::definition("worker").unwrap();
     definition["tools"][0]["name"] = "read_page".into();
     host.agent(&definition)
         .expect("a client-side tool needs no code on the node");
@@ -48,11 +48,12 @@ fn unknown_tools_and_providers_are_refused() {
 fn the_example_agents_parse() {
     for file in ["assistant", "reviewer"] {
         let path = format!(
-            "{}/../../examples/cell-assistant/agents/{file}.json",
+            "{}/../../examples/agentd-assistant/agents/{file}.json",
             env!("CARGO_MANIFEST_DIR")
         );
         let definition: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        everruns_cell::host::package(&definition).unwrap_or_else(|error| panic!("{file}: {error}"));
+        everruns_agentd::host::package(&definition)
+            .unwrap_or_else(|error| panic!("{file}: {error}"));
     }
 }

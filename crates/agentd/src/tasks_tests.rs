@@ -1,12 +1,12 @@
-//! A session's tasks in cell state: create once, wake the owner once.
+//! A session's tasks in shard state: create once, wake the owner once.
 
 use super::*;
-use crate::state::CellState;
+use crate::state::ShardState;
 use everruns_core::session_task::{TaskInputRequest, TaskWakePolicy};
 
 const T0: i64 = 1_800_000_000_000;
 
-fn session() -> (CellState, SessionId) {
+fn session() -> (ShardState, SessionId) {
     use everruns::hosting::spi::session_commands::SessionCommand;
     let id = SessionId::new();
     let mut s = SessionState {
@@ -24,12 +24,12 @@ fn session() -> (CellState, SessionId) {
         binding: serde_json::to_value(binding).unwrap(),
     };
     s.command(id, create, T0, EventId::new()).unwrap();
-    let mut state = CellState::default();
+    let mut state = ShardState::default();
     state.sessions.insert(id, s);
     (state, id)
 }
 
-fn apply_op(state: &mut CellState, session: SessionId, op: TaskOp, now_ms: i64) -> Response {
+fn apply_op(state: &mut ShardState, session: SessionId, op: TaskOp, now_ms: i64) -> Response {
     let mut changes = Vec::new();
     state.apply(
         Command::Platform {
@@ -67,7 +67,7 @@ fn task(session: SessionId, policy: TaskWakePolicy) -> SessionTask {
     )
 }
 
-fn head(state: &CellState, session: SessionId) -> i32 {
+fn head(state: &ShardState, session: SessionId) -> i32 {
     state.sessions[&session].last_sequence().unwrap_or(0)
 }
 
@@ -307,13 +307,20 @@ fn push_config(id: &str, filter: &[&str], secret: Option<&str>) -> PushConfig {
         id: id.into(),
         url: format!("https://example.test/{id}"),
         has_secret: secret.is_some(),
+        sealed_secret: secret.map(|secret| everruns_contracts::dataplane::SealedSecret {
+            secret_id: format!("push/session/{id}"),
+            revision: 0,
+            ciphertext: format!("sealed:{secret}"),
+            nonce: "n".into(),
+            data_key_id: "dk".into(),
+        }),
         event_filter: filter.iter().map(|f| (*f).to_owned()).collect(),
         created_at: at(T0),
         updated_at: at(T0),
     }
 }
 
-fn transitions(state: &CellState) -> Vec<(String, Vec<String>, Value)> {
+fn transitions(state: &ShardState) -> Vec<(String, Vec<String>, Value)> {
     state
         .feed
         .records
@@ -359,6 +366,7 @@ fn push_configs_are_kept_without_their_secrets_and_listed_without_them() {
     ));
     assert_eq!(shown["has_secret"], true);
     assert!(shown.get("secret").is_none(), "a secret is never shown");
+    assert!(shown.get("sealed_secret").is_none(), "nor its sealed form");
     // A retried add keeps one.
     value(apply_op(
         &mut state,
@@ -477,12 +485,12 @@ fn transitions_go_on_the_feed_with_the_targets_that_ask_for_them() {
     let Record::TaskTransition { targets, .. } = &state.feed.records.back().unwrap().record else {
         panic!("a task transition");
     };
-    // An API config's secret stays in the control plane; a spawn-time one
-    // travels as the agent gave it.
+    // An API config's secret travels sealed; a spawn-time one as the agent
+    // gave it.
     assert_eq!(targets[0].secret, None);
-    assert!(targets[0].secret_held);
+    assert!(targets[0].sealed.is_some());
     assert_eq!(targets[1].secret.as_deref(), Some("s3"));
-    assert!(!targets[1].secret_held);
+    assert!(targets[1].sealed.is_none());
 }
 
 #[test]

@@ -79,8 +79,12 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        self.ctx_for_caller(Caller::from(org))
+    }
+
+    fn ctx_for_caller(&self, caller: Caller) -> Ctx {
         Ctx::minimal(
-            Caller::from(org),
+            caller,
             self.db.clone(),
             None,
             self.auth.permission_resolver.clone(),

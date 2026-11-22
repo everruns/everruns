@@ -153,7 +153,7 @@ pub struct UpArgs {
     #[arg(long, value_enum)]
     pub tunnel: Option<public::TunnelChoice>,
 
-    /// Where new organizations run agents: v2 (cells, the default) or v1
+    /// Where new organizations run agents: v2 (shards, the default) or v1
     /// (workers). Organizations that already have sessions stay where they are
     #[arg(long, value_enum)]
     pub data_plane: Option<DataPlaneChoice>,
@@ -373,7 +373,7 @@ async fn up(args: UpArgs) -> Result<()> {
     );
     if plane == DataPlaneChoice::V1 && replicas != "0" {
         ui::detail(
-            "New organizations run on v1. Ones already on v2 keep running on the cell, so it stays up.",
+            "New organizations run on v1. Ones already on v2 keep running on the shard, so it stays up.",
         );
     }
     s.set(settings::DATA_PLANE, plane.as_str());

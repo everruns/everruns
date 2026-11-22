@@ -15,9 +15,12 @@
 //!   `kubectl port-forward` on a fixed local port, which `port-forward` keeps
 //!   open.
 
+mod apple;
 mod cluster;
+mod contexts;
 mod destroy;
 mod rollout;
+mod storage;
 mod values;
 
 use std::io::IsTerminal;
@@ -33,7 +36,7 @@ use serde_json::Value;
 use crate::commands::docker::{self, Asker, AuthChoice, LlmProvider, signin};
 use crate::ui;
 use cluster::{Target, cluster_checks, tool_checks};
-use rollout::helm_apply;
+use rollout::{ChartInputs, helm_apply, helm_template};
 use values::{Answers, Database, Known};
 
 const CHART_OCI: &str = "oci://ghcr.io/everruns/charts/everruns";
@@ -45,6 +48,10 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(120);
 pub enum K8sCommand {
     /// Install Everruns into the current Kubernetes cluster, or repair it. Safe to run again
     Up(Box<UpArgs>),
+
+    /// Create a local Kubernetes cluster
+    #[command(subcommand)]
+    Cluster(apple::ClusterCommand),
 
     /// Show the install: where it is, whether its server is healthy, its pods, and which CLI
     /// profile points at it
@@ -130,6 +137,10 @@ pub struct UpArgs {
     #[arg(long)]
     pub bundled_postgres: bool,
 
+    /// StorageClass for new volumes without a per-volume class, or auto to use the cluster default
+    #[arg(long, default_value = "auto")]
+    pub storage_class: String,
+
     /// Public address such as https://everruns.example.com. Enables direct Ingress by default
     #[arg(long)]
     pub public_url: Option<String>,
@@ -158,7 +169,7 @@ pub struct UpArgs {
     #[arg(long = "values", short = 'f', value_name = "FILE")]
     pub values: Vec<PathBuf>,
 
-    /// Where new organizations run agents: v2 (cells, the default) or v1
+    /// Where new organizations run agents: v2 (shards, the default) or v1
     /// (workers). Organizations that already have sessions stay where they are
     #[arg(long, value_enum)]
     pub data_plane: Option<docker::DataPlaneChoice>,
@@ -225,6 +236,7 @@ pub struct DestroyArgs {
 pub async fn run(command: K8sCommand) -> Result<()> {
     match command {
         K8sCommand::Up(args) => Box::pin(up(*args)).await,
+        K8sCommand::Cluster(command) => apple::run(command),
         K8sCommand::Status(args) => Box::pin(status(&args)).await,
         K8sCommand::Logs {
             instance,
@@ -375,7 +387,7 @@ async fn up(args: UpArgs) -> Result<()> {
     let context = match (&args.context, &saved) {
         (Some(c), _) => c.clone(),
         (None, Some(r)) => r.context.clone(),
-        (None, None) => cluster::current_context()?,
+        (None, None) => contexts::select(asker)?,
     };
     let namespace = args
         .namespace
@@ -490,7 +502,7 @@ async fn up(args: UpArgs) -> Result<()> {
             .iter()
             .any(|s| s.replace(' ', "") == "worker.autoscaling.enabled=true");
     require(
-        &cluster_checks(&target, bundled, autoscaling),
+        &cluster_checks(&target, false, autoscaling),
         first_install,
         "Cluster",
     )?;
@@ -520,6 +532,22 @@ async fn up(args: UpArgs) -> Result<()> {
         None
     };
 
+    let mut inputs = ChartInputs {
+        values: &values,
+        set: &args.set,
+        files: &args.values,
+        storage: &[],
+    };
+    let manifest = helm_template(&target, &chart, version.as_deref(), &inputs, !first_install)?;
+    let storage = storage::prepare(
+        &target,
+        &args.storage_class,
+        &manifest,
+        first_install,
+        asker,
+    )?;
+    inputs.storage = &storage;
+
     let port = match (args.port, &saved) {
         (Some(p), _) => p,
         (None, Some(r)) => r.port,
@@ -543,15 +571,7 @@ async fn up(args: UpArgs) -> Result<()> {
     } else {
         "Updating"
     });
-    helm_apply(
-        &target,
-        &chart,
-        version.as_deref(),
-        &values,
-        &args.set,
-        &args.values,
-        &args.timeout,
-    )?;
+    helm_apply(&target, &chart, version.as_deref(), &inputs, &args.timeout)?;
 
     // Helm applies -f and --set after the generated values. Use the deployed
     // public URL and secret name for sign-in.
@@ -1314,9 +1334,12 @@ async fn upgrade(args: UpgradeArgs) -> Result<()> {
         &target,
         &record.chart,
         Some(&target_version),
-        &values,
-        &[],
-        &[],
+        &ChartInputs {
+            values: &values,
+            set: &[],
+            files: &[],
+            storage: &[],
+        },
         &args.timeout,
     )?;
     ui::ok(ui::bold(format!(

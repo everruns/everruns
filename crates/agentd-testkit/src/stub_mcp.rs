@@ -7,9 +7,9 @@
 //!   protection), so an in-cluster server would be refused, and an
 //!   exception for it would be one in production code. Everything else
 //!   still goes out through the Framework's direct transport.
-//! - Its one tool, `lookup`, answers after `CELL_STUB_MCP_MS` (20 ms by
+//! - Its one tool, `lookup`, answers after `AGENTD_STUB_MCP_MS` (20 ms by
 //!   default), about a nearby server's own time, so an MCP call costs what
-//!   the cell adds (discovery, credentials, the client) plus that.
+//!   the shard adds (discovery, credentials, the client) plus that.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -47,7 +47,7 @@ impl StubMcpEgress {
     pub fn new(next: Arc<dyn EgressService>) -> Self {
         Self {
             next,
-            delay: crate::env_ms("CELL_STUB_MCP_MS", 20),
+            delay: crate::env_ms("AGENTD_STUB_MCP_MS", 20),
         }
     }
 

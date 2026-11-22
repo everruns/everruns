@@ -14693,6 +14693,35 @@
     "read_only": true
   },
   {
+    "category": "sessions",
+    "cli": "sessions trace turns input get",
+    "description": "Read the full recorded input of one trace turn.",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Session's prefixed public identifier.",
+          "type": "string"
+        },
+        "turn": {
+          "description": "Turn number.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_session_trace_turn_input",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/{session_id}/trace/turns/{turn}/input",
+    "positional_arg": "session_id",
+    "read_only": true
+  },
+  {
     "category": "events",
     "cli": "sessions work get",
     "description": "Show what a session's turn is doing or got done.",
@@ -15801,6 +15830,30 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys",
     "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": "agents mcp list",
+    "description": "List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again.",
+    "input_schema": {
+      "description": "List an agent's effective MCP servers and whether each one's sign-in works.",
+      "properties": {
+        "id": {
+          "description": "Agent ID (prefixed) or name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_mcp_attachments",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{id}/mcp-attachments",
+    "positional_arg": "id",
     "read_only": true
   },
   {
@@ -21762,6 +21815,35 @@
     "name": "revoke_agent_key",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/channels/{channel_id}/keys/{key_id}/revoke",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "agents",
+    "cli": "agents mcp revoke",
+    "description": "Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). The attachment stays; sign in again on the agent's MCP sheet.",
+    "input_schema": {
+      "description": "Revoke the caller's own sign-in for an agent's MCP server, or the agent's\nshared sign-in when the caller has none. The attachment stays.",
+      "properties": {
+        "id": {
+          "description": "Agent ID (prefixed) or name.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Effective MCP attachment name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "revoke_agent_mcp_connection",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{id}/mcp-attachments/{name}/connection",
     "positional_arg": null,
     "read_only": false
   },
@@ -29143,6 +29225,16 @@
               },
               "type": [
                 "object",
+                "null"
+              ]
+            },
+            "monthly_agent_limit": {
+              "description": "Maximum agents this organization can create per UTC calendar month.",
+              "format": "int32",
+              "maximum": 100000,
+              "minimum": 1,
+              "type": [
+                "integer",
                 "null"
               ]
             },

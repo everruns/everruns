@@ -1,4 +1,4 @@
-//! A node's HTTP surface: the internal cell API the gateway uses and a
+//! A node's HTTP surface: the internal shard API the gateway uses and a
 //! per-node event stream. Raft RPC is `network::router`.
 
 use std::convert::Infallible;
@@ -20,49 +20,52 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::node::{Node, Proposed};
-use crate::state::{CellId, Change, Command, Placement, Response, SessionState};
+use crate::state::{Change, Command, Placement, Response, SessionState, ShardId};
 use crate::types::NodeId;
 
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
         .route("/health", get(|| async { "ok" }))
-        .route("/cell/propose", post(propose))
-        .route("/cell/activate/{session}", post(activate))
-        .route("/cell/stats", get(stats))
-        .route("/cell/usage", get(usage))
-        .route("/cell/inspect", get(crate::inspect::cell))
+        .route("/shard/propose", post(propose))
+        .route("/shard/activate/{session}", post(activate))
+        .route("/shard/stats", get(stats))
+        .route("/shard/usage", get(usage))
+        .route("/shard/inspect", get(crate::inspect::shard))
         .route(
-            "/cell/sessions/{session}/inspect",
+            "/shard/sessions/{session}/inspect",
             get(crate::inspect::session),
         )
         .route(
-            "/cell/sessions/{session}/sandbox",
+            "/shard/sessions/{session}/sandbox",
             get(crate::inspect::sandbox),
         )
         .route("/metrics", get(metrics))
-        .route("/cell/metrics/reset", post(reset_metrics))
-        .route("/cell/snapshot", post(trigger_snapshot))
-        .route("/cell/registry", get(registry))
-        .route("/cell/load", get(load))
-        .route("/cell/pressure", get(crate::pressure::reading))
-        .route("/cell/tools", get(tools))
-        .route("/cell/movable", get(movable))
-        .route("/cell/members", get(members).post(add_member))
-        .route("/cell/members/{node}", axum::routing::delete(remove_member))
-        .route("/cell/directory/{session}", get(directory))
-        .route("/cell/tenants/{tenant}/grants", post(grant))
-        .route("/cell/allowances", get(allowances))
-        .route("/cell/shards/{shard}/handoff", post(handoff_shard))
-        .route("/cell/sessions/{session}", get(session))
-        .route("/cell/sessions/{session}/events", get(events))
-        .route("/cell/sessions/{session}/agent", get(agent))
-        .route("/cell/sessions/{session}/image", get(image))
-        .route("/cell/sessions/{session}/stream", get(stream))
-        .route("/cell/sessions/{session}/wait", get(wait))
-        .route("/cell/sessions/{session}/create", post(create_session))
-        .route("/cell/sessions/{session}/messages", post(send_message))
-        .route("/cell/sessions/{session}/cancel", post(cancel))
-        // Raft batches and session images can be large; the cell is a
+        .route("/shard/metrics/reset", post(reset_metrics))
+        .route("/shard/snapshot", post(trigger_snapshot))
+        .route("/shard/registry", get(registry))
+        .route("/shard/load", get(load))
+        .route("/shard/pressure", get(crate::pressure::reading))
+        .route("/shard/tools", get(tools))
+        .route("/shard/movable", get(movable))
+        .route("/shard/members", get(members).post(add_member))
+        .route(
+            "/shard/members/{node}",
+            axum::routing::delete(remove_member),
+        )
+        .route("/shard/directory/{session}", get(directory))
+        .route("/shard/tenants/{tenant}/grants", post(grant))
+        .route("/shard/allowances", get(allowances))
+        .route("/shard/slots/{slot}/handoff", post(handoff_slot))
+        .route("/shard/sessions/{session}", get(session))
+        .route("/shard/sessions/{session}/events", get(events))
+        .route("/shard/sessions/{session}/agent", get(agent))
+        .route("/shard/sessions/{session}/image", get(image))
+        .route("/shard/sessions/{session}/stream", get(stream))
+        .route("/shard/sessions/{session}/wait", get(wait))
+        .route("/shard/sessions/{session}/create", post(create_session))
+        .route("/shard/sessions/{session}/messages", post(send_message))
+        .route("/shard/sessions/{session}/cancel", post(cancel))
+        // Raft batches and session images can be large; the shard is a
         // trusted network.
         .layer(axum::extract::DefaultBodyLimit::disable())
         .with_state(node.clone())
@@ -82,7 +85,7 @@ async fn propose(
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Stats {
-    pub cell: CellId,
+    pub shard: ShardId,
     pub node: NodeId,
     pub leader: Option<NodeId>,
     pub applied: u64,
@@ -120,7 +123,7 @@ pub(crate) fn rss_mb() -> u64 {
 }
 
 /// One node's resources and latencies, for its leader's minute report
-/// (`GET /cell/usage`, `node_control::report_minute`).
+/// (`GET /shard/usage`, `node_control::report_minute`).
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct NodeUsage {
     pub rss_bytes: u64,
@@ -233,7 +236,7 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
     };
     let (resident_bytes, resident_events) = node.shared.resident();
     Json(Stats {
-        cell: node.cfg.cell,
+        shard: node.cfg.shard,
         node: node.cfg.node_id,
         leader: node.leader(),
         applied: *node.shared.applied.borrow(),
@@ -254,211 +257,205 @@ async fn stats(State(node): State<Arc<Node>>) -> Json<Stats> {
 }
 
 /// `GET /metrics`: Prometheus text format. See `prom.rs` for which series
-/// are per node and which per cell.
+/// are per node and which per shard.
 async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
     use crate::prom::{Writer, render};
-    let cell = node.cfg.cell.to_string();
+    let shard = node.cfg.shard.to_string();
     let id = node.cfg.node_id.to_string();
-    let mut w = Writer::new(&[("cell", &cell), ("node", &id)]);
+    let mut w = Writer::new(&[("shard", &shard), ("node", &id)]);
     let p = &node.prom;
 
     // Per node: what this process did.
     w.counters(
-        "cell_turns_executed_total",
+        "agentd_shard_turns_executed_total",
         "Turn executions on this node, by outcome.",
         &p.turns_executed,
     );
     w.histograms(
-        "cell_turn_duration_seconds",
+        "agentd_shard_turn_duration_seconds",
         "Wall time of turn executions on this node.",
         &p.turn_seconds,
     );
     w.gauges(
-        "cell_turns_running",
+        "agentd_shard_turns_running",
         "Turns executing on this node now.",
         &p.turns_running,
     );
     w.counters(
-        "cell_events_appended_total",
+        "agentd_shard_events_appended_total",
         "Durable events appended by this node's executors, by type.",
         &p.events_appended,
     );
     w.counters(
-        "cell_model_calls_total",
+        "agentd_shard_model_calls_total",
         "Model calls made by this node's turns, by model and success.",
         &p.model_calls,
     );
     w.histograms(
-        "cell_model_call_duration_seconds",
+        "agentd_shard_model_call_duration_seconds",
         "Model call duration, by model.",
         &p.model_seconds,
     );
     w.histograms(
-        "cell_model_ttft_seconds",
+        "agentd_shard_model_ttft_seconds",
         "Model time to first token, by model.",
         &p.model_ttft_seconds,
     );
     w.counters(
-        "cell_host_calls_total",
-        "Host calls passed to the control plane, by call and outcome.",
-        &p.host_calls,
-    );
-    w.histograms(
-        "cell_host_call_duration_seconds",
-        "Host call round trips to the control plane, by call.",
-        &p.host_call_seconds,
-    );
-    w.counters(
-        "cell_tool_calls_total",
+        "agentd_shard_tool_calls_total",
         "Tool calls completed on this node, by tool and status.",
         &p.tool_calls,
     );
     w.histograms(
-        "cell_tool_call_duration_seconds",
+        "agentd_shard_tool_call_duration_seconds",
         "Tool call duration, by tool.",
         &p.tool_seconds,
     );
     w.histograms(
-        "cell_append_duration_seconds",
+        "agentd_shard_append_duration_seconds",
         "Executor append: propose, quorum commit, apply.",
         &p.append_seconds,
     );
     w.histograms(
-        "cell_propose_duration_seconds",
+        "agentd_shard_propose_duration_seconds",
         "Proposals from this node, end to end.",
         &p.propose_seconds,
     );
     w.histograms(
-        "cell_ship_first_duration_seconds",
+        "agentd_shard_ship_first_duration_seconds",
         "Writes shipped to the object store before they were answered.",
         &p.ship_first_seconds,
     );
     w.histograms(
-        "cell_ship_lag_seconds",
+        "agentd_shard_ship_lag_seconds",
         "How long the oldest unshipped entry waited, per shipping round (upper bound).",
         &p.ship_lag_seconds,
     );
     w.counters(
-        "cell_schedules_fired_total",
-        "Schedules this node fired as its cell's leader.",
+        "agentd_shard_schedules_fired_total",
+        "Schedules this node fired as its shard's leader.",
         &p.schedules_fired,
     );
     w.histograms(
-        "cell_schedule_fire_lag_seconds",
+        "agentd_shard_schedule_fire_lag_seconds",
         "From a schedule's time to its occurrence committed.",
         &p.schedule_lag_seconds,
     );
     if let Some(gateway) = node.gateway.get() {
         w.counters(
-            "cell_messages_admitted_total",
+            "agentd_shard_messages_admitted_total",
             "Messages admitted through this node's gateway, by status.",
             &gateway.admitted,
         );
         w.counters(
-            "cell_sessions_created_total",
+            "agentd_shard_sessions_created_total",
             "Sessions created through this node's gateway.",
             &gateway.created,
         );
         w.counters(
-            "cell_rebalance_moves_total",
+            "agentd_shard_rebalance_moves_total",
             "Moves the rebalancer started from this node, by kind (busy, idle, drain, drain-idle).",
             &gateway.rebalanced,
         );
     }
     // One-minute p99s, the SLO dashboard's gauges (`prom::Window`).
     w.gauge(
-        "cell_slo_turn_p99_seconds",
-        "p99 turn time this cell finished in the last minute, turn.started to its end.",
+        "agentd_shard_slo_turn_p99_seconds",
+        "p99 turn time this shard finished in the last minute, turn.started to its end.",
         node.shared.turn_window.p99(),
     );
     w.gauge(
-        "cell_slo_ship_lag_p99_seconds",
+        "agentd_shard_slo_ship_lag_p99_seconds",
         "p99 shipping lag in the last minute (budget 2 s).",
         p.ship_lag_window.p99(),
     );
     w.gauge(
-        "cell_slo_ship_first_p99_seconds",
+        "agentd_shard_slo_ship_first_p99_seconds",
         "p99 wait for the object store before answering, in the last minute.",
         p.ship_first_window.p99(),
     );
     if let Some(gateway) = node.gateway.get() {
         w.gauge(
-            "cell_slo_admit_p99_seconds",
+            "agentd_shard_slo_admit_p99_seconds",
             "p99 admission through this node's gateway in the last minute.",
             gateway.admit_window.p99(),
         );
     }
     let leader = node.leader();
     w.gauge(
-        "cell_is_leader",
-        "1 if this node leads its cell.",
+        "agentd_shard_is_leader",
+        "1 if this node leads its shard.",
         f64::from(u8::from(leader == Some(node.cfg.node_id))),
     );
     w.gauge(
-        "cell_cell_members",
-        "Members of this node's cell, as this node knows them.",
+        "agentd_shard_members",
+        "Members of this node's shard, as this node knows them.",
         node.members().len() as f64,
     );
     let raft = node.raft.metrics().borrow().clone();
     w.gauge(
-        "cell_raft_term",
+        "agentd_shard_raft_term",
         "Current Raft term.",
         raft.current_term as f64,
     );
     w.gauge(
-        "cell_raft_applied_index",
+        "agentd_shard_raft_applied_index",
         "Last log index applied here.",
         raft.last_applied.map(|l| l.index).unwrap_or(0) as f64,
     );
     let (resident_bytes, resident_events) = node.shared.resident();
     w.gauge(
-        "cell_resident_events",
+        "agentd_shard_resident_events",
         "Session events held in memory.",
         resident_events as f64,
     );
     w.gauge(
-        "cell_resident_bytes",
+        "agentd_shard_resident_bytes",
         "Estimated bytes of session events held in memory.",
         resident_bytes as f64,
     );
     w.gauge(
-        "cell_wal_held_bytes",
+        "agentd_shard_wal_held_bytes",
         "Raft log bytes held in memory (not yet purged).",
         node.wal.held_bytes() as f64,
     );
     w.gauge(
-        "cell_memory_budget_bytes",
+        "agentd_shard_memory_budget_bytes",
         "Memory budget for resident events.",
         node.cfg.memory_budget as f64,
     );
     w.gauge(
-        "cell_rss_bytes",
+        "agentd_shard_rss_bytes",
         "Process resident set size.",
         (rss_mb() << 20) as f64,
     );
     crate::pressure::write_metrics(&node.pressure, &mut w);
     w.gauge(
-        "cell_catching_up",
+        "agentd_shard_catching_up",
         "1 while this follower is far behind its leader and steps aside (no elections, no session requests).",
         f64::from(u8::from(node.catchup.behind())),
     );
     let wal = node.wal.stats();
-    w.counter("cell_wal_fsyncs_total", "WAL fsyncs.", wal.fsyncs as f64);
     w.counter(
-        "cell_wal_entries_total",
+        "agentd_shard_wal_fsyncs_total",
+        "WAL fsyncs.",
+        wal.fsyncs as f64,
+    );
+    w.counter(
+        "agentd_shard_wal_entries_total",
         "Raft entries written to the WAL.",
         wal.entries as f64,
     );
     w.counter(
-        "cell_unloaded_events_total",
+        "agentd_shard_unloaded_events_total",
         "Events dropped from memory by unloading idle sessions.",
         node.metrics.report().unloaded_events as f64,
     );
 
-    // Per cell, from the replicated state: only the leader reports, so a
-    // sum over the fleet counts each cell once.
+    // Per shard, from the replicated state: only the leader reports, so a
+    // sum over the fleet counts each shard once.
     if leader == Some(node.cfg.node_id) {
-        let base = render(&[("cell", &cell)]);
+        let base = render(&[("shard", &shard)]);
         // Totals only: an agent label would grow with the fleet (see
         // `node::Running`).
         let mut row = [0u64; 5];
@@ -474,24 +471,24 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
             frozen += u64::from(s.placement == Placement::Frozen);
         }
         for (i, (name, kind, help)) in [
-            ("cell_sessions", "gauge", "Sessions in the cell."),
+            ("agentd_shard_sessions", "gauge", "Sessions in the shard."),
             (
-                "cell_active_turns",
+                "agentd_shard_active_turns",
                 "gauge",
                 "Sessions with a turn claimed (running or about to).",
             ),
             (
-                "cell_queued_inputs",
+                "agentd_shard_queued_inputs",
                 "gauge",
                 "Messages waiting for a turn.",
             ),
             (
-                "cell_turns_completed_total",
+                "agentd_shard_turns_completed_total",
                 "counter",
-                "Turns completed in the cell's sessions.",
+                "Turns completed in the shard's sessions.",
             ),
             (
-                "cell_resumed_turns",
+                "agentd_shard_resumed_turns",
                 "gauge",
                 "Active turns on a second or later attempt (resumed after a failure).",
             ),
@@ -502,23 +499,23 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
             w.sample_raw(name, kind, help, &base, row[i] as f64);
         }
         w.sample_raw(
-            "cell_unloaded_sessions",
+            "agentd_shard_unloaded_sessions",
             "gauge",
             "Sessions whose events are only in the object store (leader's view).",
             &base,
             unloaded as f64,
         );
         w.sample_raw(
-            "cell_frozen_sessions",
+            "agentd_shard_frozen_sessions",
             "gauge",
             "Sessions frozen for a move.",
             &base,
             frozen as f64,
         );
         w.sample_raw(
-            "cell_forwarded_sessions",
+            "agentd_shard_forwarded_sessions",
             "gauge",
-            "Sessions this cell handed to another cell.",
+            "Sessions this shard handed to another shard.",
             &base,
             state.forwarded.len() as f64,
         );
@@ -538,10 +535,10 @@ async fn trigger_snapshot(State(node): State<Arc<Node>>) -> StatusCode {
     }
 }
 
-/// How busy this cell is, for placement and rebalancing. Every replica
-/// holds the same replicated state, so any node answers for the cell.
+/// How busy this shard is, for placement and rebalancing. Every replica
+/// holds the same replicated state, so any node answers for the shard.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
-pub struct CellLoad {
+pub struct ShardLoad {
     pub sessions: u64,
     /// Turns claimed (running, or parked mid-move).
     pub active: u64,
@@ -550,9 +547,9 @@ pub struct CellLoad {
     #[serde(default)]
     pub busy: u64,
     pub queued: u64,
-    /// Sessions frozen for a move out of this cell.
+    /// Sessions frozen for a move out of this shard.
     pub moving: u64,
-    /// The worst of the cell's nodes' memory use, in permille of its limit.
+    /// The worst of the shard's nodes' memory use, in permille of its limit.
     #[serde(default)]
     pub pressure: u64,
     /// Short of memory: place no new sessions here (see `pressure.rs`).
@@ -565,16 +562,16 @@ pub struct CellLoad {
 pub const WAITING_AFTER: chrono::Duration = chrono::Duration::seconds(30);
 
 /// An idle session whose schedule falls due within this is not moved.
-/// Decision: no cell fires a schedule while its session moves (the source
+/// Decision: no shard fires a schedule while its session moves (the source
 /// is frozen, the target's copy only prepared), so a move that straddles
 /// the due time makes it late by the move. Under load a move takes seconds:
-/// main CI saw schedules fire 6.5 s late in `cell-testkit`'s 10 000
+/// main CI saw schedules fire 6.5 s late in `shard-testkit`'s 10 000
 /// schedules test while the rebalancer evened out idle sessions. Idle
 /// sessions are only moved to even out counts, so waiting costs nothing.
 pub const SCHEDULE_CLEAR: std::time::Duration = std::time::Duration::from_secs(30);
 
-impl CellLoad {
-    /// What the cell's turns cost, in turn slots.
+impl ShardLoad {
+    /// What the shard's turns cost, in turn slots.
     ///
     /// Decision: a turn's cost is what it takes from the nodes now, not
     /// that it exists. Turns may run for days, mostly waiting; one that
@@ -592,8 +589,8 @@ impl CellLoad {
     }
 }
 
-pub fn cell_load(state: &crate::state::CellState) -> CellLoad {
-    let mut load = CellLoad::default();
+pub fn shard_load(state: &crate::state::ShardState) -> ShardLoad {
+    let mut load = ShardLoad::default();
     let since = chrono::Utc::now() - WAITING_AFTER;
     for s in state.sessions.values() {
         load.sessions += 1;
@@ -611,9 +608,9 @@ async fn tools(State(node): State<Arc<Node>>) -> Json<Vec<serde_json::Value>> {
     Json(node.host.tools())
 }
 
-async fn load(State(node): State<Arc<Node>>) -> Json<CellLoad> {
-    let mut load = cell_load(&node.shared.state.read());
-    load.pressure = node.pressure.cell_permille();
+async fn load(State(node): State<Arc<Node>>) -> Json<ShardLoad> {
+    let mut load = shard_load(&node.shared.state.read());
+    load.pressure = node.pressure.shard_permille();
     load.closed = node.pressure.effective() >= crate::pressure::Level::Full;
     Json(load)
 }
@@ -656,31 +653,31 @@ async fn movable(State(node): State<Arc<Node>>, Query(q): Query<Movable>) -> Jso
     Json(found.into_iter().take(q.n).map(|(_, id)| id).collect())
 }
 
-/// The fleet's cells as the directory knows them (meaningful on the
-/// directory cell).
+/// The fleet's shards as the directory knows them (meaningful on the
+/// directory shard).
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Registry {
-    pub cells: std::collections::BTreeMap<CellId, std::collections::BTreeMap<NodeId, String>>,
-    pub draining: std::collections::BTreeSet<CellId>,
-    pub retired: std::collections::BTreeSet<CellId>,
-    /// Directory shards held outside the directory cell.
+    pub shards: std::collections::BTreeMap<ShardId, std::collections::BTreeMap<NodeId, String>>,
+    pub draining: std::collections::BTreeSet<ShardId>,
+    pub retired: std::collections::BTreeSet<ShardId>,
+    /// Directory slots held outside the directory shard.
     #[serde(default)]
-    pub shards: std::collections::BTreeMap<u16, CellId>,
+    pub slots: std::collections::BTreeMap<u16, ShardId>,
 }
 
 async fn registry(State(node): State<Arc<Node>>) -> Json<Registry> {
     let state = node.shared.state.read();
     Json(Registry {
-        cells: state.cells.clone(),
+        shards: state.shards.clone(),
         draining: state.draining.clone(),
         retired: state.retired.clone(),
-        shards: state.shards.clone(),
+        slots: state.slots.clone(),
     })
 }
 
 async fn members(State(node): State<Arc<Node>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
-        "cell": node.cfg.cell,
+        "shard": node.cfg.shard,
         "leader": node.leader(),
         "members": node.members(),
     }))
@@ -692,7 +689,7 @@ pub struct NewMember {
     pub addr: String,
 }
 
-/// Add a node to this cell (leader only; others answer 421 so a caller
+/// Add a node to this shard (leader only; others answer 421 so a caller
 /// tries the next node).
 async fn add_member(
     State(node): State<Arc<Node>>,
@@ -728,7 +725,7 @@ fn parse(session: &str) -> Result<SessionId, (StatusCode, String)> {
 #[serde(tag = "found", content = "value", rename_all = "snake_case")]
 pub enum Lookup<T> {
     Here(T),
-    Moved { cell: CellId },
+    Moved { shard: ShardId },
     Missing,
 }
 
@@ -749,7 +746,7 @@ struct GrantBody {
     grant: crate::allowance::Grant,
 }
 
-/// `POST /cell/tenants/{tenant}/grants`: take a spend allowance grant (the
+/// `POST /shard/tenants/{tenant}/grants`: take a spend allowance grant (the
 /// control plane's side of `allowance`). Idempotent by `grant_id`.
 async fn grant(
     State(node): State<Arc<Node>>,
@@ -767,7 +764,7 @@ async fn grant(
     Ok(Json(response))
 }
 
-/// `GET /cell/allowances`: every tenant's grants, usage and open
+/// `GET /shard/allowances`: every tenant's grants, usage and open
 /// reservations, as this replica applied them.
 async fn allowances(State(node): State<Arc<Node>>) -> Json<crate::allowance::Allowances> {
     Json(node.shared.state.read().allowances.clone())
@@ -775,16 +772,16 @@ async fn allowances(State(node): State<Arc<Node>>) -> Json<crate::allowance::All
 
 #[derive(Deserialize)]
 struct Handoff {
-    to: CellId,
+    to: ShardId,
 }
 
-/// `POST /cell/shards/{shard}/handoff?to=B`: hand this cell's directory
-/// entries of `shard` to cell `B`. Seals the shard first, so no entry
+/// `POST /shard/slots/{slot}/handoff?to=B`: hand this shard's directory
+/// entries of `slot` to shard `B`. Seals the slot first, so no entry
 /// changes here while it is copied; `B` keeps any entry it already has
-/// (written after the seal). The directory cell then assigns the shard.
-async fn handoff_shard(
+/// (written after the seal). The directory shard then assigns the slot.
+async fn handoff_slot(
     State(node): State<Arc<Node>>,
-    Path(shard): Path<u16>,
+    Path(slot): Path<u16>,
     Query(q): Query<Handoff>,
 ) -> Result<Json<usize>, (StatusCode, String)> {
     let error = |e: String| (StatusCode::SERVICE_UNAVAILABLE, e);
@@ -793,7 +790,7 @@ async fn handoff_shard(
         .get()
         .ok_or_else(|| error("no gateway".into()))?;
     let (_, index) = node
-        .propose(Command::SealShard { shard, to: q.to })
+        .propose(Command::SealSlot { slot, to: q.to })
         .await
         .map_err(|e| error(e.to_string()))?;
     node.shared.wait_applied(index).await;
@@ -803,17 +800,17 @@ async fn handoff_shard(
         .read()
         .directory
         .iter()
-        .filter(|(session, _)| crate::state::shard_of(**session) == shard)
+        .filter(|(session, _)| crate::state::slot_of(**session) == slot)
         .map(|(session, placed)| (*session, *placed))
         .collect();
     let n = entries.len();
-    // At least one Adopt, so the new owner takes the shard even when empty.
+    // At least one Adopt, so the new owner takes the slot even when empty.
     for chunk in entries
         .chunks(2000)
         .chain(entries.is_empty().then_some(&[][..]))
     {
         let command = Command::Adopt {
-            shard,
+            slot,
             entries: chunk.to_vec(),
         };
         gateway
@@ -868,7 +865,7 @@ pub(crate) fn lookup<T>(
     match state.sessions.get(&session) {
         Some(s) => Lookup::Here(f(s)),
         None => match state.forwarded.get(&session) {
-            Some(left) => Lookup::Moved { cell: left.cell },
+            Some(left) => Lookup::Moved { shard: left.shard },
             None => Lookup::Missing,
         },
     }
@@ -1070,13 +1067,13 @@ async fn activate(State(node): State<Arc<Node>>, Path(session): Path<String>) ->
 /// What a session command through this node's Engine came to.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "reply", rename_all = "snake_case")]
-pub enum CellReply {
+pub enum ShardReply {
     Ok {
         value: serde_json::Value,
     },
-    /// The session lives in another cell now.
+    /// The session lives in another shard now.
     Moved {
-        cell: CellId,
+        shard: ShardId,
     },
     /// Frozen for a move: retry shortly.
     Frozen,
@@ -1090,29 +1087,29 @@ pub enum CellReply {
     },
 }
 
-pub(crate) fn reply_of(error: impl std::fmt::Display) -> CellReply {
+pub(crate) fn reply_of(error: impl std::fmt::Display) -> ShardReply {
     let text = error.to_string();
     if let Some(at) = text.find(crate::hosting::MOVED) {
         let rest = &text[at + crate::hosting::MOVED.len()..];
         let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-        if let Ok(cell) = digits.parse() {
-            return CellReply::Moved { cell };
+        if let Ok(shard) = digits.parse() {
+            return ShardReply::Moved { shard };
         }
     }
     if text.contains(crate::hosting::FROZEN) {
-        return CellReply::Frozen;
+        return ShardReply::Frozen;
     }
     if let Some(at) = text.find(crate::hosting::BUSY) {
         let rest = &text[at + crate::hosting::BUSY.len()..];
         let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-        return CellReply::Busy {
+        return ShardReply::Busy {
             retry_after_ms: digits.parse().unwrap_or(crate::pressure::RETRY_AFTER_MS),
         };
     }
     if text.contains("not found") || text.contains("NotFound") {
-        return CellReply::NotFound;
+        return ShardReply::NotFound;
     }
-    CellReply::Refused { reason: text }
+    ShardReply::Refused { reason: text }
 }
 
 #[derive(Deserialize)]
@@ -1136,6 +1133,13 @@ pub struct CreateBody {
     /// ([`crate::platform::Platform::servers`]).
     #[serde(default)]
     pub servers: crate::platform::Servers,
+    /// The session that started it, when it is a subagent
+    /// ([`crate::platform::Platform::origin`]).
+    #[serde(default)]
+    pub subagent: Option<everruns_contracts::dataplane::SubagentOrigin>,
+    /// The person who owns it ([`crate::platform::Platform::owner`]).
+    #[serde(default)]
+    pub owner: Option<String>,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -1144,7 +1148,7 @@ async fn create_session(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<CreateBody>,
-) -> Result<Json<CellReply>, (StatusCode, String)> {
+) -> Result<Json<ShardReply>, (StatusCode, String)> {
     let id = parse(&session)?;
     // Marked before it exists, so no message reaches it before its import.
     if body.importing {
@@ -1157,8 +1161,8 @@ async fn create_session(
             .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
         if !matches!(marked, Response::Ok) {
             return Ok(Json(match marked {
-                Response::Moved { cell } => CellReply::Moved { cell },
-                other => CellReply::Refused {
+                Response::Moved { shard } => ShardReply::Moved { shard },
+                other => ShardReply::Refused {
                     reason: format!("{other:?}"),
                 },
             }));
@@ -1168,14 +1172,14 @@ async fn create_session(
     let definition = crate::state::definitions::intern(body.definition);
     let build = crate::hosting::build_for(&definition, crate::hosting::BUILD_ID);
     let reply = match node.engine.create_registered(id, &build).await {
-        Ok(_) => CellReply::Ok {
+        Ok(_) => ShardReply::Ok {
             value: serde_json::json!({ "id": id }),
         },
         Err(error) => reply_of(error),
     };
     drop(definition);
     // Billed before the reply, so no input reaches the session unmetered.
-    if let (CellReply::Ok { .. }, Some(tenant)) = (&reply, body.tenant) {
+    if let (ShardReply::Ok { .. }, Some(tenant)) = (&reply, body.tenant) {
         let (assigned, _) = node
             .propose(Command::Assign {
                 session: id,
@@ -1184,17 +1188,25 @@ async fn create_session(
             .await
             .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error.to_string()))?;
         if let Response::Rejected { reason } = assigned {
-            return Ok(Json(CellReply::Refused { reason }));
+            return Ok(Json(ShardReply::Refused { reason }));
         }
     }
-    if let (CellReply::Ok { .. }, Some(agent_ref)) = (&reply, body.agent_ref) {
+    if let (ShardReply::Ok { .. }, Some(agent_ref)) = (&reply, body.agent_ref) {
         let action = crate::platform::Op::Agent {
             agent_ref,
             memory: body.memory,
             servers: body.servers,
+            owner: body.owner,
         };
         match crate::api_session::platform(&node, id, action).await? {
-            CellReply::Ok { .. } => {}
+            ShardReply::Ok { .. } => {}
+            other => return Ok(Json(other)),
+        }
+    }
+    if let (ShardReply::Ok { .. }, Some(origin)) = (&reply, body.subagent) {
+        let action = crate::platform::Op::Subagent { origin };
+        match crate::api_session::platform(&node, id, action).await? {
+            ShardReply::Ok { .. } => {}
             other => return Ok(Json(other)),
         }
     }
@@ -1239,7 +1251,7 @@ async fn send_message(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<MessageBody>,
-) -> Result<Json<CellReply>, (StatusCode, String)> {
+) -> Result<Json<ShardReply>, (StatusCode, String)> {
     let id = parse(&session)?;
     let handle = match node.engine.resume(id).await {
         Ok(handle) => handle,
@@ -1247,21 +1259,24 @@ async fn send_message(
             // Engine folds authority errors into `Unavailable`; ask the
             // replica why.
             let reply = match lookup(&node, id, |s| s.placement) {
-                Lookup::Moved { cell } => CellReply::Moved { cell },
-                Lookup::Missing => CellReply::NotFound,
-                Lookup::Here(Placement::Frozen | Placement::Prepared) => CellReply::Frozen,
+                Lookup::Moved { shard } => ShardReply::Moved { shard },
+                Lookup::Missing => ShardReply::NotFound,
+                Lookup::Here(Placement::Frozen | Placement::Prepared) => ShardReply::Frozen,
                 Lookup::Here(_) => reply_of(error),
             };
             return Ok(Json(reply));
         }
     };
     if matches!(lookup(&node, id, |s| s.importing), Lookup::Here(true)) {
-        return Ok(Json(CellReply::Refused {
+        return Ok(Json(ShardReply::Refused {
             reason: IMPORTING.into(),
         }));
     }
     if let Some(reason) = missing_attachment(&node, id, &body.parts).await {
-        return Ok(Json(CellReply::Refused { reason }));
+        return Ok(Json(ShardReply::Refused { reason }));
+    }
+    if let Err(reply) = crate::api_session::prepare_initial_model(&node, id, &handle).await {
+        return Ok(Json(reply));
     }
     if let Some(user) = body.sender.clone() {
         let action = crate::platform::Op::Sender {
@@ -1269,7 +1284,7 @@ async fn send_message(
             user,
         };
         match crate::api_session::platform(&node, id, action).await? {
-            CellReply::Ok { .. } => {}
+            ShardReply::Ok { .. } => {}
             other => return Ok(Json(other)),
         }
     }
@@ -1292,7 +1307,7 @@ async fn send_message(
                 everruns::SendDisposition::Steered => "steered",
                 _ => "pending",
             };
-            CellReply::Ok {
+            ShardReply::Ok {
                 value: serde_json::json!({
                     "id": body.id,
                     "session_id": id,
@@ -1365,11 +1380,11 @@ async fn cancel(
     State(node): State<Arc<Node>>,
     Path(session): Path<String>,
     Json(body): Json<CancelBody>,
-) -> Result<Json<CellReply>, (StatusCode, String)> {
+) -> Result<Json<ShardReply>, (StatusCode, String)> {
     use everruns::hosting::SessionHosting as _;
     let id = parse(&session)?;
     let reply = match node.hosting.cancel(id, body.id, body.input).await {
-        Ok(()) => CellReply::Ok {
+        Ok(()) => ShardReply::Ok {
             value: serde_json::json!({ "cancelled": body.input }),
         },
         Err(error) => reply_of(error),
@@ -1379,22 +1394,22 @@ async fn cancel(
 
 #[cfg(test)]
 mod load_tests {
-    use super::CellLoad;
+    use super::ShardLoad;
 
     #[test]
     fn waiting_turns_weigh_a_tenth_of_stepping_ones() {
-        let waiting = CellLoad {
+        let waiting = ShardLoad {
             active: 100,
             busy: 0,
             ..Default::default()
         };
-        let stepping = CellLoad {
+        let stepping = ShardLoad {
             active: 10,
             busy: 10,
             ..Default::default()
         };
         assert_eq!(waiting.work(), stepping.work());
-        let queued = CellLoad {
+        let queued = ShardLoad {
             queued: 3,
             ..Default::default()
         };

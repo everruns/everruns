@@ -1,4 +1,4 @@
-//! The rest of the control plane contract against the cells (data plane v2
+//! The rest of the control plane contract against the shards (data plane v2
 //! step 7): the link's token, org tokens at the gateway, an org's data key
 //! and sealed secrets, suspension, export and feed replay.
 
@@ -8,9 +8,9 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use everruns_cell::dp::{ConfigAck, ConfigChange, ConfigUpdate};
-use everruns_cell::node_control::ControlPlane;
-use everruns_cell_testkit::fake_cp::FakeCp;
+use everruns_agentd::dp::{ConfigAck, ConfigChange, ConfigUpdate};
+use everruns_agentd::node_control::ControlPlane;
+use everruns_agentd_testkit::fake_cp::FakeCp;
 use everruns_contracts::dataplane_seal as seal;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
@@ -20,7 +20,7 @@ const ORG: &str = "org-a";
 const LINK: &str = "link-secret";
 
 fn agent(id: &str) -> Value {
-    let mut package = everruns_cell_testkit::definition("worker").unwrap();
+    let mut package = everruns_agentd_testkit::definition("worker").unwrap();
     package["name"] = json!(id);
     json!({ "kind": "Agent", "agent_id": id, "revision": 1, "package": package })
 }
@@ -102,7 +102,7 @@ async fn the_link_and_the_gateway_take_only_tokens_they_trust() {
         Some("wrong"),
         Method::POST,
         "/dp/v1/feed/replay",
-        json!({ "command_id": "r", "source": "cell-0", "incarnation": 1, "from_index": 0 }),
+        json!({ "command_id": "r", "source": "shard-0", "incarnation": 1, "from_index": 0 }),
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -111,7 +111,7 @@ async fn the_link_and_the_gateway_take_only_tokens_they_trust() {
     let create = json!({ "org": ORG, "agent_ref": "helper" });
     let mine = cp.org_token(ORG, "sessions:write").unwrap();
     let theirs = cp.org_token("org-b", "sessions:write").unwrap();
-    let forged = everruns_cell_testkit::signer::Signer::new("cp-key-1")
+    let forged = everruns_agentd_testkit::signer::Signer::new("cp-key-1")
         .unwrap()
         .token(ORG, "dp-local", "admin", 600)
         .unwrap();
@@ -132,7 +132,7 @@ async fn the_link_and_the_gateway_take_only_tokens_they_trust() {
 
     // A member's own definition may not name the org's MCP credentials:
     // filled per call, they would go wherever the definition points.
-    let mut forged_agent = everruns_cell_testkit::definition("echo").unwrap();
+    let mut forged_agent = everruns_agentd_testkit::definition("echo").unwrap();
     forged_agent["mcpServers"] = json!({
         "mine": {
             "url": "https://attacker.example/mcp",
@@ -175,10 +175,10 @@ async fn the_link_and_the_gateway_take_only_tokens_they_trust() {
     wait_turns(&fleet, &mine, &session, 1).await;
 
     // Fleet operations need admin.
-    let (status, _) = as_caller(&fleet, Some(&mine), Method::GET, "/v1/cells", Value::Null).await;
+    let (status, _) = as_caller(&fleet, Some(&mine), Method::GET, "/v1/shards", Value::Null).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     let admin = cp.org_token(ORG, "admin").unwrap();
-    let (status, _) = as_caller(&fleet, Some(&admin), Method::GET, "/v1/cells", Value::Null).await;
+    let (status, _) = as_caller(&fleet, Some(&admin), Method::GET, "/v1/shards", Value::Null).await;
     assert_eq!(status, StatusCode::OK);
 }
 
@@ -253,7 +253,7 @@ async fn secrets_open_only_on_executors_and_suspension_stops_new_turns() {
         .unwrap();
     assert_eq!(ack["accepted"], true, "{ack}");
     // Every leader and executor hears within a poll.
-    tokio::time::sleep(everruns_cell::tenants::POLL * 3).await;
+    tokio::time::sleep(everruns_agentd::tenants::POLL * 3).await;
     fleet.say(&session, "two").await;
     tokio::time::sleep(Duration::from_secs(4)).await;
     let view = fleet.get(&format!("/v1/sessions/{session}")).await;
@@ -334,8 +334,8 @@ async fn an_export_lands_in_the_store_and_a_replay_is_stored_once() {
     fleet
         .until("the feed is delivered and archived", || async {
             let mut pending = 0;
-            for cell in [0, 1] {
-                pending += fleet.stats(cell).await["feed_pending"]
+            for shard in [0, 1] {
+                pending += fleet.stats(shard).await["feed_pending"]
                     .as_u64()
                     .unwrap_or(0);
             }
@@ -344,7 +344,7 @@ async fn an_export_lands_in_the_store_and_a_replay_is_stored_once() {
         .await;
     let usage = cp.usage();
     let mut resent = 0;
-    for source in ["cell-0", "cell-1"] {
+    for source in ["shard-0", "shard-1"] {
         let (status, reply) = cp
             .call(
                 &base,

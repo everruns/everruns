@@ -5,9 +5,9 @@
 //   plane's event index, as it always has. A v2 session keeps them in its
 //   own log on its data plane: the control plane reads them back through the
 //   session's event read, and records a person's reaction there as an event
-//   the cell takes from the control plane (`record`). One fold, one set of
+//   the shard takes from the control plane (`record`). One fold, one set of
 //   rules, for both.
-// - Telling the agent at once sends a reaction message to the cell, like any
+// - Telling the agent at once sends a reaction message to the shard, like any
 //   message the control plane admits. A reaction left for the agent's next
 //   turn is told with the next message the control plane admits; a message a
 //   person sends straight to a v2 session's data plane does not carry it.

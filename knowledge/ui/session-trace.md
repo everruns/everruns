@@ -103,6 +103,7 @@ cache. The first open of a large session would still read everything.
 |---|---|---|
 | Trace overview | session totals, minimap buckets (`from, to, steps, duration, errors`), error turn numbers | one row per bucket, about 120 buckets |
 | Turns page | turns plus their steps, from the end or around a turn number | about 20 turns and a step budget (about 2,000 rows) per response |
+| Turn input | full recorded message text reached from the turn header | one turn's start event, fetched on demand |
 | Turn steps page | a step range of one turn, optionally only errors or one tool | 100 to 500 steps |
 | Step detail | facts, input, output, raw events of the step, request summary | payloads over about 50 KB truncated with "load full" |
 | Model request | the messages of one model call, by role, paged | 100 messages per page |
@@ -119,6 +120,12 @@ cache. The first open of a large session would still read everything.
   call with the previous one in the same turn and returns only the new messages plus one
   "N earlier messages, unchanged" row. The full request sheet pages through all messages.
   Only these two reads ever touch a stored prompt, and only for one call.
+- **Request inspection stays in one viewport modal**: opening a message replaces its
+  preview with its content, and the body scrolls without moving the modal chrome.
+  The step inspector opens the relevant message page or the expanded tools list
+  directly. Larger messages load individually. Recorded image bytes and references
+  can be previewed and stored files can be downloaded through the organization-scoped
+  media APIs. Inspecting a request does not fetch captured remote image URLs.
 - **The request is shown as the driver receives it, not as the wire sees it**: roles are
   the four a driver is handed (`system`, `user`, `assistant`, `tool`), mapped from the
   stored `agent` and `tool_result`. The provider's own request body is recorded on

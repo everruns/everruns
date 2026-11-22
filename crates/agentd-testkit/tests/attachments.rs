@@ -9,7 +9,7 @@
 mod support;
 
 use base64::Engine as _;
-use everruns_cell::dp::{ConfigAck, ConfigUpdate};
+use everruns_agentd::dp::{ConfigAck, ConfigUpdate};
 use everruns_contracts::typed_id::{FileId, ImageId, MessageId, SessionId};
 use reqwest::{Method, StatusCode};
 use serde_json::json;
@@ -74,7 +74,7 @@ async fn an_inline_image_is_kept_in_the_sessions_files_and_seen() {
 #[tokio::test(flavor = "multi_thread")]
 async fn an_upload_the_control_plane_copied_is_seen() {
     let (fleet, cp) = org_fleet(&[]).await;
-    let package = everruns_cell_testkit::definition("eyes").unwrap();
+    let package = everruns_agentd_testkit::definition("eyes").unwrap();
     let ack = cp
         .push_config(
             &fleet.base(),

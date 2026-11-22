@@ -17,7 +17,7 @@ export const timelineColors = {
   wait: "hsl(var(--warning))",
   spend: "hsl(var(--primary))",
   latency: "hsl(var(--info))",
-  cells: "hsl(var(--accent-foreground))",
+  shards: "hsl(var(--accent-foreground))",
   open: "hsl(var(--foreground))",
   agents: "hsl(var(--info))",
   working: "hsl(var(--success))",
@@ -30,25 +30,25 @@ export const timelineColors = {
 
 /**
  * Which execution path the charts show. Workers are sampled every 10 seconds,
- * cells report once a minute; "all" stacks the two (knowledge/operations/monitoring.md).
+ * shards report once a minute; "all" stacks the two (knowledge/operations/monitoring.md).
  */
-export type Plane = "all" | "workers" | "cells";
+export type Plane = "all" | "workers" | "shards";
 
-/** Whether any bucket has data plane v2 cells. */
-export function hasCells(data: MonitoringTimeline): boolean {
-  return data.buckets.some((b) => b.cells != null);
+/** Whether any bucket has data plane v2 shards. */
+export function hasShards(data: MonitoringTimeline): boolean {
+  return data.buckets.some((b) => b.shards != null);
 }
 
 export const timelineRanges = ["15m", "1h", "6h", "24h", "7d", "30d"] as const;
 
 /** Chart rows. History rebuilt from turn records has no phase split, so it is drawn as one area. */
 export function timelineRows(buckets: TimelineBucket[], plane: Plane = "all"): TimeRow[] {
-  const workers = plane !== "cells";
-  const onCells = plane !== "workers";
+  const workers = plane !== "shards";
+  const onShards = plane !== "workers";
   return buckets.map((b) => {
     const rebuilt = b.backfilled && !b.sampled;
     const w = (v: number) => (workers ? v : 0);
-    const c = b.cells && onCells ? b.cells : null;
+    const c = b.shards && onShards ? b.shards : null;
     const pct = (v: number | null | undefined) => (v == null ? null : v);
     return {
       t: Date.parse(b.start),
@@ -58,7 +58,7 @@ export function timelineRows(buckets: TimelineBucket[], plane: Plane = "all"): T
       runnable: w(rebuilt ? 0 : b.runnable_avg),
       setup: w(rebuilt ? 0 : b.setup_avg),
       rebuilt: w(rebuilt ? b.active_avg : 0),
-      on_cells: c?.running_avg ?? 0,
+      on_shards: c?.running_avg ?? 0,
       peak: w(b.active_peak) + (c?.running_peak ?? 0),
       capacity: workers ? (b.worker_capacity ?? null) : null,
       load: workers ? (b.worker_load_avg ?? null) : null,
@@ -78,12 +78,12 @@ export function timelineRows(buckets: TimelineBucket[], plane: Plane = "all"): T
       agents_working: w(b.agents_working_avg) + (c?.agents_working_avg ?? 0),
       servers: b.servers ?? null,
       workers: b.workers ?? null,
-      cells: b.cells ? b.cells.reporting : null,
-      nodes: b.cells?.nodes ?? null,
-      cpu: pct(b.cells?.cpu_peak_pct),
-      memory: pct(b.cells?.memory_peak_pct),
-      elections: b.cells?.elections ?? null,
-      moves: b.cells?.moves ?? null,
+      shards: b.shards ? b.shards.reporting : null,
+      nodes: b.shards?.nodes ?? null,
+      cpu: pct(b.shards?.cpu_peak_pct),
+      memory: pct(b.shards?.memory_peak_pct),
+      elections: b.shards?.elections ?? null,
+      moves: b.shards?.moves ?? null,
     };
   });
 }
@@ -124,15 +124,15 @@ export function selectionTotals(
     to: last
       ? new Date(Date.parse(last.start) + data.bucket_seconds * 1000).toISOString()
       : data.to,
-    peak: Math.max(0, ...picked.map((b) => b.active_peak + (b.cells?.running_peak ?? 0))),
+    peak: Math.max(0, ...picked.map((b) => b.active_peak + (b.shards?.running_peak ?? 0))),
     average: picked.length ? sum((b) => b.active_avg) / picked.length : 0,
     turnsStarted: sum((b) => b.turns_started),
-    turnsFailed: sum((b) => b.turns_failed + (b.cells?.turns_failed ?? 0)),
+    turnsFailed: sum((b) => b.turns_failed + (b.shards?.turns_failed ?? 0)),
     toolCalls: sum((b) => b.tool_calls),
-    elections: sum((b) => b.cells?.elections ?? 0),
-    moves: sum((b) => b.cells?.moves ?? 0),
+    elections: sum((b) => b.shards?.elections ?? 0),
+    moves: sum((b) => b.shards?.moves ?? 0),
     longestWaitMs: waits.length ? Math.max(...waits) : null,
-    spend: sum((b) => b.cost_usd + (b.cells?.cost_usd ?? 0)),
+    spend: sum((b) => b.cost_usd + (b.shards?.cost_usd ?? 0)),
     phases: (Object.keys(phaseSum) as (keyof typeof phaseSum)[]).map((key) => ({
       key,
       share: phaseTotal > 0 ? phaseSum[key] / phaseTotal : 0,
