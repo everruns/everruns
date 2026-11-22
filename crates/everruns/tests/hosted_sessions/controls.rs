@@ -336,8 +336,19 @@ async fn approval_survives_frontend_loss(profile: impl SessionHosting + Clone) {
         .redirect_with_id(MessageId::new(), turn_id, "Use a safer approach.")
         .await
         .unwrap();
-    assert!(session.pending_tools().await.unwrap().iter().any(|call| call.id == request.id));
-    assert_eq!(effects.load(Ordering::SeqCst), 0, "redirection cannot grant approval");
+    assert!(
+        session
+            .pending_tools()
+            .await
+            .unwrap()
+            .iter()
+            .any(|call| call.id == request.id)
+    );
+    assert_eq!(
+        effects.load(Ordering::SeqCst),
+        0,
+        "redirection cannot grant approval"
+    );
     let bypass = everruns::ToolAnswer {
         tool_call_id: request.id.clone(),
         tool_name: request.name.clone(),
@@ -1044,8 +1055,8 @@ async fn sqlite_explicit_redirect_skips_queued_tool_and_joins_same_turn() {
     let agent = Agent::builder()
         .instructions("Run the first batch and then answer.")
         .model(Model::simulated_with_config(
-            everruns::LlmSimConfig::fixed("Continued after redirection.")
-                .with_tool_call_sequence(vec![
+            everruns::LlmSimConfig::fixed("Continued after redirection.").with_tool_call_sequence(
+                vec![
                     vec![
                         everruns::ToolCall {
                             id: "steering_a".into(),
@@ -1059,34 +1070,53 @@ async fn sqlite_explicit_redirect_skips_queued_tool_and_joins_same_turn() {
                         },
                     ],
                     vec![],
-                ]),
+                ],
+            ),
         ))
         .tool(
-            everruns::FunctionTool::new("steering_a", "Block on a test latch", json!({"type":"object"}), tool_a)
-                .concurrency_class("steering-race"),
+            everruns::FunctionTool::new(
+                "steering_a",
+                "Block on a test latch",
+                json!({"type":"object"}),
+                tool_a,
+            )
+            .concurrency_class("steering-race"),
         )
         .tool(
-            everruns::FunctionTool::new("steering_b", "Record a test dispatch", json!({"type":"object"}), tool_b)
-                .concurrency_class("steering-race"),
+            everruns::FunctionTool::new(
+                "steering_b",
+                "Record a test dispatch",
+                json!({"type":"object"}),
+                tool_b,
+            )
+            .concurrency_class("steering-race"),
         )
         .build()
         .unwrap();
     let engine = engine(profile, agent);
     let id = SessionId::new();
     let session = engine.create_registered(id, &build()).await.unwrap();
-    let (original, redirected, target, redirect_id) = tokio::time::timeout(Duration::from_secs(10), async {
-        let original = session.send("Run both tools.").await.unwrap();
-        entered.notified().await;
-        assert_eq!(calls_b.load(Ordering::SeqCst), 0);
-        let target = engine.session_status(id).await.unwrap().open_turn.unwrap();
-        let redirect_id = MessageId::new();
-        let redirected = session
-            .redirect_with_id(redirect_id, target, "Use a different approach.")
-            .await
-            .unwrap();
-        release.notify_one();
-        (original.wait().await.unwrap(), redirected.wait().await.unwrap(), target, redirect_id)
-    }).await.expect("the committed redirect and original turn must both settle");
+    let (original, redirected, target, redirect_id) =
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let original = session.send("Run both tools.").await.unwrap();
+            entered.notified().await;
+            assert_eq!(calls_b.load(Ordering::SeqCst), 0);
+            let target = engine.session_status(id).await.unwrap().open_turn.unwrap();
+            let redirect_id = MessageId::new();
+            let redirected = session
+                .redirect_with_id(redirect_id, target, "Use a different approach.")
+                .await
+                .unwrap();
+            release.notify_one();
+            (
+                original.wait().await.unwrap(),
+                redirected.wait().await.unwrap(),
+                target,
+                redirect_id,
+            )
+        })
+        .await
+        .expect("the committed redirect and original turn must both settle");
 
     assert!(original.success);
     assert_eq!(original.turn_id, target.to_string());
@@ -1099,7 +1129,9 @@ async fn sqlite_explicit_redirect_skips_queued_tool_and_joins_same_turn() {
         .iter()
         .flat_map(|message| &message.content)
         .filter_map(|part| match part {
-            ContentPart::ToolResult(result) => Some((result.tool_call_id.as_str(), result.error.as_deref())),
+            ContentPart::ToolResult(result) => {
+                Some((result.tool_call_id.as_str(), result.error.as_deref()))
+            }
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -1107,13 +1139,28 @@ async fn sqlite_explicit_redirect_skips_queued_tool_and_joins_same_turn() {
     assert_eq!(results[0], ("steering_a", None));
     assert_eq!(results[1].0, "steering_b");
     assert!(results[1].1.unwrap().contains("explicitly redirected"));
-    assert!(history.iter().any(|message| message.id == redirect_id.to_string()));
+    assert!(
+        history
+            .iter()
+            .any(|message| message.id == redirect_id.to_string())
+    );
 
     let events = session.events_after(0).await.unwrap();
-    assert!(!events.iter().any(|event| event.event_type() == "tool.started"
-        && event.canonical_json()["data"]["tool_call"]["id"] == "steering_b"));
-    let skipped = events.iter().position(|event| event.event_type() == "tool.completed"
-        && event.canonical_json()["data"]["tool_call_id"] == "steering_b"
-        && event.canonical_json()["data"]["status"] == "skipped").expect("skip receipt");
-    assert!(events[skipped + 1..].iter().any(|event| event.event_type() == "reason.started"));
+    assert!(!events.iter().any(|event| {
+        event.event_type() == "tool.started"
+            && event.canonical_json()["data"]["tool_call"]["id"] == "steering_b"
+    }));
+    let skipped = events
+        .iter()
+        .position(|event| {
+            event.event_type() == "tool.completed"
+                && event.canonical_json()["data"]["tool_call_id"] == "steering_b"
+                && event.canonical_json()["data"]["status"] == "skipped"
+        })
+        .expect("skip receipt");
+    assert!(
+        events[skipped + 1..]
+            .iter()
+            .any(|event| event.event_type() == "reason.started")
+    );
 }

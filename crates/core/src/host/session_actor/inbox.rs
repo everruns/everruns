@@ -99,7 +99,9 @@ fn cancelled() -> AgentLoopError {
 
 #[async_trait]
 impl<H: ActorHosts> TurnInbox for ActorInbox<'_, H> {
-    fn tool_batch_steering(&self) -> Option<std::sync::Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
+    fn tool_batch_steering(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
         Some(self.lease.tool_batch_steering())
     }
 

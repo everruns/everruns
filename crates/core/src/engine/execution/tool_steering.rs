@@ -14,7 +14,12 @@ pub trait ToolBatchSteering: Send + Sync {
     async fn redirected(&self, turn_id: TurnId) -> Result<bool>;
 }
 
-pub fn targets(metadata: Option<&std::collections::HashMap<String, serde_json::Value>>, turn_id: TurnId) -> bool {
-    metadata.and_then(|m| m.get(REDIRECT_TURN)).and_then(serde_json::Value::as_str)
+pub fn targets(
+    metadata: Option<&std::collections::HashMap<String, serde_json::Value>>,
+    turn_id: TurnId,
+) -> bool {
+    metadata
+        .and_then(|m| m.get(REDIRECT_TURN))
+        .and_then(serde_json::Value::as_str)
         == Some(turn_id.to_string().as_str())
 }

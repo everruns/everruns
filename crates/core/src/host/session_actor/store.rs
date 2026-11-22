@@ -373,7 +373,7 @@ pub trait SessionActorStore: Send + Sync {
         after_sequence: Option<i32>,
         limit: u32,
     ) -> Result<ActorJournal> {
-        self.read_actor_journal(session_id, after_sequence, limit).await
+        self.read_actor_journal(session_id, after_sequence, limit)
+            .await
     }
-
 }

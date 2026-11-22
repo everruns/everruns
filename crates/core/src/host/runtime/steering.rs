@@ -101,7 +101,11 @@ impl TurnSteering {
 
     /// Explicitly redirect the identified turn; ordinary `try_push` messages
     /// retain the usual FIFO next-reason behavior.
-    pub fn try_redirect(&self, input: AcceptedTurnInput, turn_id: TurnId) -> std::result::Result<(), TurnSteeringPushError> {
+    pub fn try_redirect(
+        &self,
+        input: AcceptedTurnInput,
+        turn_id: TurnId,
+    ) -> std::result::Result<(), TurnSteeringPushError> {
         let mut input = input;
         input.input = input.input.with_metadata(
             crate::engine::tool_steering::REDIRECT_TURN,
@@ -243,7 +247,9 @@ impl<'a> InProcessInbox<'a> {
 
 #[async_trait]
 impl TurnInbox for InProcessInbox<'_> {
-    fn tool_batch_steering(&self) -> Option<Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
+    fn tool_batch_steering(
+        &self,
+    ) -> Option<Arc<dyn crate::engine::tool_steering::ToolBatchSteering>> {
         Some(Arc::new(self.steering.clone()))
     }
 
@@ -314,6 +320,8 @@ impl TurnInbox for InProcessInbox<'_> {
 impl crate::engine::tool_steering::ToolBatchSteering for TurnSteering {
     async fn redirected(&self, turn_id: TurnId) -> Result<bool> {
         let state = self.state.lock().expect("turn steering lock poisoned");
-        Ok(state.inputs.iter().any(|input| crate::engine::tool_steering::targets(input.input().metadata.as_ref(), turn_id)))
+        Ok(state.inputs.iter().any(|input| {
+            crate::engine::tool_steering::targets(input.input().metadata.as_ref(), turn_id)
+        }))
     }
 }

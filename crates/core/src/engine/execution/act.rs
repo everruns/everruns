@@ -21,9 +21,7 @@ use crate::engine::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::engine::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
 };
-use crate::engine::tool_narration::{
-    GroupHeadlineAction, ToolNarrationPhase, summarize_group_actions, tool_call_for_group_summary,
-};
+use crate::engine::tool_narration::ToolNarrationPhase;
 use crate::engine::tool_types::ConnectionRequired;
 use crate::engine::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::engine::typed_id::{AgentId, HarnessId};
@@ -238,12 +236,6 @@ where
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
-    }
-
-    /// Check explicit redirection only as a queued server call is admitted.
-    pub fn with_tool_batch_steering(mut self, steering: Option<Arc<dyn super::tool_steering::ToolBatchSteering>>) -> Self {
-        self.tool_batch_steering = steering;
-        self
     }
 
     /// Add a custom post-act hook.
@@ -883,67 +875,6 @@ where
     T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
-    fn render_group_headline(
-        &self,
-        execution_context: &ExecutionContext,
-        tool_calls: &[ToolCall],
-        tool_map: &std::collections::HashMap<&str, &ToolDefinition>,
-        phase: ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        if tool_calls.is_empty() {
-            return None;
-        }
-        if let [tool_call] = tool_calls {
-            return Some(self.render_tool_narration(
-                execution_context,
-                tool_map.get(tool_call.name.as_str()).copied(),
-                tool_call,
-                phase,
-                locale,
-            ));
-        }
-
-        let actions = tool_calls
-            .iter()
-            .map(|tool_call| {
-                let tool_def = tool_map.get(tool_call.name.as_str()).copied();
-                let narration = self.render_tool_narration(
-                    execution_context,
-                    tool_def,
-                    tool_call,
-                    phase,
-                    locale,
-                );
-                let repeated_narration = self.render_tool_narration(
-                    execution_context,
-                    tool_def,
-                    &tool_call_for_group_summary(tool_call),
-                    phase,
-                    locale,
-                );
-                GroupHeadlineAction::new(tool_call, narration, repeated_narration)
-            })
-            .collect::<Vec<_>>();
-
-        Some(summarize_group_actions(&actions, locale))
-    }
-
-    /// Mirror the file-store wrapping applied during tool execution so
-    /// path-bearing narration uses the same mount resolver and workspace key.
-    fn wrap_file_store_for_narration(
-        &self,
-        execution_context: &ExecutionContext,
-    ) -> Option<Arc<dyn SessionFileSystem>> {
-        let store = self.context_services.file_store.as_ref()?.clone();
-        let store = if let Some(workspace_id) = execution_context.workspace_id {
-            crate::engine::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id)
-        } else {
-            store
-        };
-        Some(crate::engine::mount_fs::MountFs::wrap_if_needed(store))
-    }
-
     fn transform_tool_call_for_execution(&self, tool_call: ToolCall) -> ToolCall {
         self.tool_call_hooks
             .iter()
@@ -1043,7 +974,9 @@ where
                 Some(steering) => steering.redirected(context.turn_id).await?,
                 None => false,
             }
-        } else { false };
+        } else {
+            false
+        };
         let mut already_running = false;
         let claim_token = if let Some(ref store) = self.durable_tool_result_store {
             let turn_id = context.turn_id.to_string();
@@ -1131,11 +1064,19 @@ where
                             raw_output: None,
                         });
                     let success = replayed_result.error.is_none();
-                    let status = if replayed_result.details.as_ref()
+                    let status = if replayed_result
+                        .details
+                        .as_ref()
                         .and_then(|d| d.get("execution_status"))
-                        .and_then(serde_json::Value::as_str) == Some("skipped") {
+                        .and_then(serde_json::Value::as_str)
+                        == Some("skipped")
+                    {
                         "skipped"
-                    } else if success { "success" } else { "error" };
+                    } else if success {
+                        "success"
+                    } else {
+                        "error"
+                    };
                     let result_fp = tool_result_fingerprint(&tool_call.name, &replayed_result);
                     let completed_data = ToolCompletedData::from_tool_result(
                         &tool_call,
@@ -1228,7 +1169,8 @@ where
                     let sec = if redirected {
                         SideEffectClass::AtMostOnce
                     } else {
-                        tool_def.map(|d| d.side_effect_class())
+                        tool_def
+                            .map(|d| d.side_effect_class())
                             .unwrap_or(SideEffectClass::AtMostOnce)
                     };
                     match sec {
@@ -1296,7 +1238,8 @@ where
                                     raw_output: None,
                                 },
                                 success: false,
-                                status: if redirected { "interrupted" } else { "error" }.to_string(),
+                                status: if redirected { "interrupted" } else { "error" }
+                                    .to_string(),
                                 connection_required: None,
                                 determinism_fatal: None,
                             });
@@ -1359,7 +1302,9 @@ where
                 }
 
                 Err(e) => {
-                    if redirected { return Err(e); }
+                    if redirected {
+                        return Err(e);
+                    }
                     tracing::warn!(
                         session_id = %context.session_id,
                         tool_call_id = %tool_call.id,
@@ -1374,25 +1319,16 @@ where
         };
 
         if redirected && !already_running {
-            let result = ToolResult {
-                tool_call_id: tool_call.id.clone(),
-                details: Some(serde_json::json!({"execution_status":"skipped", "reason":"explicit_redirect"})),
-                ..ToolResult::error("Not executed: the user explicitly redirected this turn before this call was admitted. Follow the new instruction at the next reason boundary.")
-            };
-            if let Some((store, token)) = self.durable_tool_result_store.as_ref().zip(claim_token) {
-                let settled = store.settle_tool_call(&context.turn_id.to_string(), &tool_call.id,
-                    serde_json::to_value(&result).map_err(|e| crate::engine::error::AgentLoopError::store(e.to_string()))?,
-                    "settled", token).await?;
-                if !settled { return Err(crate::engine::error::AgentLoopError::store("redirect skip lost its durable claim")); }
-            }
-            // No tool.started: no invocation took place. The completed error is
-            // paired to the model-authored call by id, never a fabricated success.
-            self.event_emitter.emit(EventRequest::new(context.session_id, event_context,
-                ToolCompletedData::from_tool_result(&tool_call, &result, "skipped", None)
-                    .with_fingerprints(tool_call_fingerprint, tool_result_fingerprint(&tool_call.name, &result))
-                    .with_display_name(display_name))).await?;
-            return Ok(ToolCallResult { tool_call, result, success: false,
-                status: "skipped".into(), connection_required: None, determinism_fatal: None });
+            return self
+                .record_redirect_skip(
+                    context,
+                    event_context,
+                    tool_call,
+                    tool_call_fingerprint,
+                    display_name,
+                    claim_token,
+                )
+                .await;
         }
 
         // tool.started (child of act.started); see `start_record`.
@@ -1589,6 +1525,9 @@ where
 
 #[path = "act_client_policy.rs"]
 mod client_policy;
+
+#[path = "act_steering.rs"]
+mod steering;
 
 #[path = "act_narration.rs"]
 mod narration;

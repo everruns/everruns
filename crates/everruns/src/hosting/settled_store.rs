@@ -106,7 +106,8 @@ impl SessionActorStore for SettledStore {
         after_sequence: Option<i32>,
         limit: u32,
     ) -> Result<ActorJournal> {
-        self.inner.read_admission_journal(session_id, after_sequence, limit).await
+        self.inner
+            .read_admission_journal(session_id, after_sequence, limit)
+            .await
     }
-
 }
