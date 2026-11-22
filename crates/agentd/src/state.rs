@@ -1491,3 +1491,7 @@ mod tests;
 #[cfg(test)]
 #[path = "state_moves_tests.rs"]
 mod moves_tests;
+
+#[cfg(test)]
+#[path = "state_format_tests.rs"]
+mod format_tests;

@@ -43,6 +43,7 @@ page is the state of it.
 | Layer | Where | Runs | Catches | Cannot catch |
 | --- | --- | --- | --- | --- |
 | Storage proofs | `crates/agentd/src/wal_tests.rs`, `store.rs`, `restore_points.rs`, `restore.rs` tests | Every PR | Lost acknowledged entries after a crash at named points and torn tails (200 seeds, each replays exactly); retention and restore edge cases | Faults outside the write-ahead log; real store behavior |
+| Stored format | `crates/agentd/src/state_format_tests.rs` | Every PR | A rename in Rust that renames a shard command or snapshot field on disk, so a node of the new build cannot read the log an older one wrote | Engine-owned records (session events), which keep their own format |
 | Protocol models | `tests/models/data-plane-v2/` (TLA+, TLC) | Every change to a model | Interleavings of moves, epochs, grants, the feed, durability that no run is likely to hit | Drift between the model and the code |
 | Fleet tests | `crates/agentd-testkit/tests/` | Every PR touching `crates/agentd*` (`ci.yml`) | Real shards, executors and edge in one process, each node in its own runtime so it can be killed; fake control plane; simulated model | Network partitions, slow or failing disks, process-level crashes with unsynced pages |
 | Store check | `agentd-testnode store-check` (`store_check.rs`) | Every load run (SaaS `dataplane-load.yml`), and by hand on a new bucket | The real store disagreeing with what restore and collection assume | Store faults (5xx, throttling) |
@@ -64,6 +65,7 @@ page is the state of it.
 | Spend within balance | `Grants` model; `control_plane.rs` (lost acknowledgements, control plane down, expired grants); `allowance.rs` |
 | Config order and revisions | `control_plane.rs` (rollback, mid-turn change) |
 | Overload sheds instead of failing | `executors.rs` memory and stopped-commit tests; load runs (0 OOM kills gate) |
+| A node reads what an earlier release wrote | `state_format_tests.rs` (exact JSON of every shard command and the registry part of a snapshot) |
 | Restores | `recovery.rs` point-in-time and one-org; `restore.rs` and `restore_points.rs` tests; store check |
 | Tenancy | `edge.rs` `no_token_reaches_another_orgs_session` |
 
@@ -86,5 +88,9 @@ Known, in the order we would close them:
    models' transitions (trace checking).
 6. **The survivor path at scale.** `restore --survivor` is covered by fleet
    tests; the weekly drill still rebuilds from the store alone.
-7. **Cross-region restore.** Bucket replication and the second-region drill
+7. **Upgrade from a real older log.** The stored-format test pins today's
+   JSON; it was added after the cell-to-shard rename renamed commands on
+   disk and the live test fleet could not restart on its own log
+   (2026-11-22). Nothing yet replays a log written by the previous release.
+8. **Cross-region restore.** Bucket replication and the second-region drill
    wait on the production bucket setup.
