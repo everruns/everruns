@@ -729,30 +729,50 @@ small stated loss window from anything worse, and a point-in-time restore.
 | Failure | What happens | Data lost |
 | --- | --- | --- |
 | One node or one zone | Raft elects a new leader on the surviving quorum; the replaced node catches up from a snapshot and the log | None |
-| A shard loses quorum (two zones, correlated disks) | The shard is rebuilt from its last snapshot plus the shipped log in S3, on new nodes, as a new incarnation | Entries not yet shipped: target under 2 s, enforced by backpressure; never a started side effect |
-| Registry shard loses quorum | Same rebuild. Session creates and every move step ship before they are answered, so no directory entry falls in the window | Same window; no directory entry |
+| A shard loses quorum (two zones, correlated disks) | The shard is rebuilt from its last snapshot plus the shipped log in S3 plus the third zone's disk (`restore --survivor`), on new nodes, as a new incarnation | With the survivor's disk: what it had not received yet, usually nothing; never a started side effect. Without any disk: entries not yet shipped, at most about 10 s, enforced by backpressure at 30 s |
+| Registry shard loses quorum | Same rebuild. Session creates and every move step are answered only once every voter holds them (or the bucket, while a voter is down), so no directory entry falls in the window while one disk is left | Same window; no directory entry |
 | S3 bucket damage or a bad delete | Object versioning; deletes are tombstones first (data rule: nothing is purged by accident) | None |
 | Region loss | Restore in a second region from the replicated bucket and multi-region KMS keys | Replication lag: S3 Replication Time Control commits to 99.99% of objects within 15 minutes, so the regional target is 15 minutes, not seconds |
 | Bad release corrupts state | Point-in-time restore of the affected shard, or of one org's sessions, to before the release | Turns after the chosen point |
 
 How:
 
+- **Readers see a write before S3 does.** A write is durable once a quorum
+  of zones fsynced it; readers (streams, the control plane feed) see it
+  then. S3 is the disaster copy, not the commit point, and its own
+  durability does not carry over to ours. A rebuild that has no disk left
+  can lose writes someone already read, inside the window below.
 - **Log shipping.** Each shard leader writes its committed Raft batches to
-  S3 continuously (an object per second or per few MB, whichever comes
-  first). This is the same data the segments already hold, just shipped
-  sooner, so the loss window on quorum loss is the shipping interval, not
-  the segment interval. If shipping falls more than 5 s behind, the shard
-  stops admitting new turns until it catches up, so the 2 s target is a
-  bound and not a hope.
-- **Ship before an external effect.** A lost log tail must not turn into a
-  repeated side effect. A tool call that isn't safe to repeat (today's
-  AtMostOnce class) already writes `tool.started` before it runs; in v2 it
-  also waits until that record is shipped to S3 (a forced flush, one PUT,
-  tens of milliseconds). After a restore, every started operation is
-  known, and its idempotency key (derived from session, message and call)
-  is the same as before. Operations whose outcome was lost are reported
-  to the agent as "outcome unknown", as on a crash today; they are not
-  rerun automatically.
+  S3 at most every 10 s, sooner once 4 096 entries wait (`ship.rs`). It
+  was every second until 2026-11-22: each object is a billed request, and
+  the second-by-second log was a large share of a load run's 20 million
+  writes. If shipping falls more than 30 s behind, the shard stops
+  admitting new turns until it catches up, so the window is a bound and
+  not a hope.
+- **A surviving replica narrows the window.** Followers fsync before they
+  acknowledge, so the zone left after a two-zone loss holds every
+  committed write it received. `restore --survivor <data dir>` adds its
+  snapshot and log to the bucket's, joined only where its log provably
+  continues the shipped one (`restore.rs`). Its uncommitted tail comes
+  with it: Raft would have committed it had that node been elected, and
+  none of it was answered.
+- **No started side effect is ever lost while one disk is left.** A tool
+  call that isn't safe to repeat (today's AtMostOnce class) already writes
+  `tool.started` before it runs; in v2 that record, a session's create and
+  every move step are answered only once every voter of a three-zone
+  shard holds them (`Node::ship_first`), so any one surviving disk has
+  them. While a voter is down or more than 250 ms behind, they are shipped
+  to S3 first instead (a forced flush, one PUT, tens of milliseconds).
+  After a restore, every started operation is known, and its idempotency
+  key (derived from session, message and call) is the same as before.
+  Operations whose outcome was lost are reported to the agent as "outcome
+  unknown", as on a crash today; they are not rerun automatically. Losing
+  all three disks at once (a region) can lose such a record inside the
+  shipping window; region loss already loses the replication lag.
+- **Session history waits a minute.** An idle session's events are stored
+  as a segment once it has been idle 60 s, or at once when its node needs
+  the memory (`sm.rs`, `FLUSH_IDLE_AFTER`), not after every turn: they are
+  in the log and snapshots until then.
 - **Incarnations.** A rebuilt shard gets a new incarnation number. Feed
   record ids, executor epochs and moves carry it, so nothing from the lost
   incarnation (a late feed batch, a stale executor, an old move message)
@@ -793,8 +813,9 @@ How:
 - **Drills.** The weekly tier kills a shard's quorum in the bench and
   restores it, checking the stated loss window and the invariants. A
   quarterly drill restores a copy of production into a second region.
-- **Bench budget:** log-shipping lag p99 under 2 s at 75k agents, and
-  rebuild of a full shard under 10 minutes.
+- **Bench budget:** log-shipping lag p99 under 15 s at 75k agents (2 s
+  until the 10 s interval), object store writes counted by kind in every
+  load run summary, and rebuild of a full shard under 10 minutes.
 
 ## Deployment and rollout
 

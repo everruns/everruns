@@ -1,7 +1,8 @@
 //! Step 9's disaster recovery against a live fleet (design.md, "Disaster
-//! recovery"): a shard that loses every node, disks and all, comes back
-//! from the object store alone, and a point-in-time restore takes a shard
-//! back to a moment before later turns.
+//! recovery"): a shard that loses two zones comes back from the object
+//! store and the disk left in the third, without running an effect twice,
+//! and a point-in-time restore takes a shard back to a moment before later
+//! turns.
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
@@ -77,22 +78,19 @@ async fn completed_events(
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn a_shard_that_loses_every_node_comes_back_from_the_store() {
-    let ledger = ledger();
-    let mut fleet = Fleet::start().await;
-    fleet.executor(1);
+/// Lose two zones of shard 0 while a tool that must not run twice is
+/// running, keeping `survivor`'s disk, and check the rebuilt shard knows
+/// the call started: it finishes the turn without running it again.
+async fn two_zones_lost_mid_tool(fleet: &mut Fleet, ledger: &std::path::Path, survivor: u64) {
     let session = fleet.create_in("worker", 0).await;
     fleet.say(&session, "go").await;
     let lost_fence = fleet.fence(&session).await;
-    // The tool is running (an effect that must not happen twice) when
-    // every node of the shard goes, disks included.
     fleet
         .until("the tool started", || async {
             executions(ledger, &session) >= 1
         })
         .await;
-    let rebuilt = fleet.rebuild(0, None).await;
+    let rebuilt = fleet.rebuild_with_survivor(0, survivor).await;
     assert_eq!(rebuilt.incarnation, 2, "{rebuilt:?}");
     assert!(rebuilt.sessions >= 1, "{rebuilt:?}");
     assert_eq!(fleet.store().incarnations(0).await.unwrap(), vec![2]);
@@ -114,6 +112,32 @@ async fn a_shard_that_loses_every_node_comes_back_from_the_store() {
     assert_eq!(completed(&fleet.events(&session).await), 2);
 }
 
+/// Every voter held the tool's start before it ran (the shipped log may
+/// not have it yet): the disk left in the third zone brings it back.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_shard_that_loses_two_zones_comes_back_from_the_store_and_the_survivor() {
+    let ledger = ledger();
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let leader = fleet.leader(0).await;
+    let survivor = (1..=3).find(|n| *n != leader).unwrap();
+    two_zones_lost_mid_tool(&mut fleet, ledger, survivor).await;
+}
+
+/// A voter was down before the tool started, so its start was shipped to
+/// the object store instead; then the two up-to-date zones go and the
+/// lagging replica is the one left. The store has what it lacks.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_zones_lost_while_the_survivor_lagged_still_keeps_every_started_call() {
+    let ledger = ledger();
+    let mut fleet = Fleet::start().await;
+    fleet.executor(1);
+    let leader = fleet.leader(0).await;
+    let lagging = (1..=3).find(|n| *n != leader).unwrap();
+    fleet.kill_node(0, lagging);
+    two_zones_lost_mid_tool(&mut fleet, ledger, lagging).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_point_in_time_restore_drops_what_came_after() {
     ledger();
@@ -128,7 +152,7 @@ async fn a_point_in_time_restore_drops_what_came_after() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     fleet.say(&session, "second").await;
     fleet.turns(&session, 2).await;
-    // The leader ships every second; wait for turn 2 to reach the store,
+    // The leader ships every ten seconds; wait for turn 2 to reach the store,
     // so the restore really has something after the point to leave out.
     let store = fleet.store();
     fleet

@@ -134,6 +134,7 @@ fn a_session_mid_move_is_listed_with_the_directory_view() {
         feed_pending: 0,
         rss_mb: 10,
         resident_mb: 4,
+        store_puts: Default::default(),
         log_mb: 2,
         moves_total: 1,
         moves: vec![MoveView {

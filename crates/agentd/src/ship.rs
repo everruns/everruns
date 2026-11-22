@@ -2,14 +2,21 @@
 //!
 //! Data plane v2 design, "Disaster recovery": a shard that loses quorum (two
 //! zones, correlated disks) is rebuilt from its last archived snapshot plus
-//! the log its leader shipped to the object store since (`restore.rs`).
+//! the log its leader shipped to the object store since, and the log a
+//! surviving replica still holds (`restore.rs`).
 //!
 //! Decisions:
-//! - The leader ships committed (applied) entries, an object per
-//!   [`SHIP_EVERY`] holding a contiguous index range of the shard's current
-//!   incarnation (`restore_points.rs`). A range holds the same entries
-//!   whoever ships it, so a new leader that ships an overlapping range
-//!   again changes nothing, and restore takes each index once.
+//! - The leader ships committed (applied) entries, an object at most every
+//!   [`SHIP_EVERY`] (sooner once [`MAX_ENTRIES`] wait), holding a contiguous
+//!   index range of the shard's current incarnation (`restore_points.rs`).
+//!   A range holds the same entries whoever ships it, so a new leader that
+//!   ships an overlapping range again changes nothing, and restore takes
+//!   each index once.
+//! - Ten seconds, not one: every object is a billed request, and at one a
+//!   second per shard the shipped log alone was a large share of a load
+//!   run's 20 million object writes (2026-11-22). The window it bounds only
+//!   matters when a shard loses two of its three zones, and then a
+//!   surviving replica's own log narrows it again (`restore --survivor`).
 //! - A new leader resumes after the highest shipped index in the store; its
 //!   own log has everything after it unless a snapshot purged it, in which
 //!   case it ships from its first entry and restore starts from an archived
@@ -17,14 +24,18 @@
 //! - If shipping falls more than [`BEHIND_LIMIT`] behind, the shard stops
 //!   admitting new work ([`Shipper::behind`]) until it catches up, so the
 //!   loss window is a bound and not a hope.
-//! - Some writes are shipped before they are answered ([`ships_first`]):
-//!   the start of a tool call that is not safe to repeat, a session's
-//!   create, and every step of a move. A rebuild then knows every call
-//!   that started (it reports a lost outcome as unknown instead of running
-//!   the call again), never loses a session someone was told exists, and
-//!   never finds a session in two shards. What a rebuild can lose is the
-//!   last [`SHIP_EVERY`] or so of turn progress, never an effect or an
-//!   identity. The cost is one object write on those paths only.
+//! - Some writes must survive anything short of losing every replica before
+//!   they are answered ([`ships_first`]): the start of a tool call that is
+//!   not safe to repeat, a session's create, and every step of a move. A
+//!   rebuild then knows every call that started (it reports a lost outcome
+//!   as unknown instead of running the call again), never loses a session
+//!   someone was told exists, and never finds a session in two shards.
+//!   Such a write is answered once every voter of a shard of three or more
+//!   holds it on disk (followers fsync before they acknowledge), so two
+//!   lost zones still leave a copy on the third; while a voter lags or is
+//!   down, it is shipped to the object store first instead, as before
+//!   (`Node::ship_first`). The cost is one object write only while the
+//!   shard runs short of a replica.
 //! - Shipping is one at a time per node: the loop and the writes that
 //!   ship first share one lock, so progress is never read half-updated.
 
@@ -38,14 +49,18 @@ use crate::store::Store;
 use crate::types::Entry;
 use crate::wal::Wal;
 
-/// How often the leader ships what committed since the last object.
-pub const SHIP_EVERY: Duration = Duration::from_secs(1);
+/// The longest a committed entry waits before the leader ships it.
+pub const SHIP_EVERY: Duration = Duration::from_secs(10);
+
+/// How often the leader checks whether shipping is due.
+pub const SHIP_TICK: Duration = Duration::from_secs(1);
 
 /// Unshipped work older than this stops admission.
-pub const BEHIND_LIMIT: Duration = Duration::from_secs(5);
+pub const BEHIND_LIMIT: Duration = Duration::from_secs(30);
 
-/// Entries per shipped object, at most; a backlog ships in several.
-const MAX_ENTRIES: usize = 4096;
+/// Entries per shipped object, at most; a backlog ships in several, and
+/// this many waiting ship before [`SHIP_EVERY`] is up.
+pub const MAX_ENTRIES: usize = 4096;
 
 /// Ships one shard's committed log from its leader.
 pub struct Shipper {
@@ -108,6 +123,21 @@ impl Shipper {
         if state.shipped.is_none_or(|shipped| applied > shipped) {
             state.pending_since.get_or_insert_with(Instant::now);
         }
+    }
+
+    /// Whether the loop should ship now: the oldest waiting entry is
+    /// [`SHIP_EVERY`] old, [`MAX_ENTRIES`] wait, or this leader term has not
+    /// read its progress from the store yet.
+    pub fn due(&self, applied: u64, inc: u64) -> bool {
+        let state = self.state.lock();
+        let Some(shipped) = state.shipped.filter(|_| state.inc == inc) else {
+            return true;
+        };
+        applied > shipped
+            && (applied - shipped >= MAX_ENTRIES as u64
+                || state
+                    .pending_since
+                    .is_some_and(|since| since.elapsed() >= SHIP_EVERY))
     }
 
     /// Ship every entry through `applied` of incarnation `inc` that is not

@@ -4,7 +4,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
-use futures::StreamExt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -176,6 +175,9 @@ pub struct Node {
     moving: Mutex<HashSet<SessionId>>,
     /// Ships the committed log to the object store while this node leads.
     pub(crate) shipper: crate::ship::Shipper,
+    /// Ship-first writes skip waiting for every voter until then
+    /// (`Node::held_everywhere`).
+    pub(crate) replicas_slow_until: Mutex<Option<Instant>>,
     /// The shard's members (voters and learners) as Raft last committed
     /// them, refreshed by the liveness loop.
     members: parking_lot::RwLock<BTreeMap<NodeId, String>>,
@@ -284,6 +286,7 @@ impl Node {
                 gateway: std::sync::OnceLock::new(),
                 moving: Mutex::default(),
                 shipper: crate::ship::Shipper::new(shared_store, cfg.shard, ship_wal),
+                replicas_slow_until: Mutex::default(),
                 members: parking_lot::RwLock::new(cfg.members.clone()),
                 dispatch: Default::default(),
                 control: Default::default(),
@@ -665,16 +668,28 @@ impl Node {
                 trim = true;
             }
             self.shared.sweep_watchers();
-            if self.is_leader() {
-                self.store_events().await;
-            }
-            let mut sessions = Vec::new();
-            let (bytes, events) = self.shared.resident();
+            let (bytes, _) = self.shared.resident();
             let budget = crate::sm::event_allowance(
                 self.cfg.memory_budget,
                 crate::api::rss_mb() << 20,
                 bytes,
             );
+            if self.is_leader() {
+                // Idle sessions' events wait a minute to be stored, unless
+                // the node needs them unloaded sooner (`Shared::flush`).
+                let idle_for = if bytes > budget * 8 / 10 {
+                    Duration::ZERO
+                } else {
+                    self.cfg
+                        .unload_idle
+                        .map_or(crate::sm::FLUSH_IDLE_AFTER, |age| {
+                            age.min(crate::sm::FLUSH_IDLE_AFTER)
+                        })
+                };
+                self.store_events(idle_for).await;
+            }
+            let mut sessions = Vec::new();
+            let (bytes, events) = self.shared.resident();
             if bytes > budget {
                 let per_event = (bytes / events.max(1) as u64).max(1);
                 let mut to_free = bytes.saturating_sub(budget * 8 / 10) / per_event;
@@ -714,39 +729,6 @@ impl Node {
                 .fetch_add(freed as u64, std::sync::atomic::Ordering::Relaxed);
             tracing::debug!(freed, "unloaded idle sessions");
         }
-    }
-
-    /// Leader only: store sessions' unstored events in the object store and
-    /// record the segments with `Stored`, so every replica can unload them.
-    /// A compaction (one segment for a trailing run) then deletes the pieces
-    /// it replaces.
-    async fn store_events(&self) {
-        let stored = self.shared.flush(512).await;
-        if stored.is_empty() {
-            return;
-        }
-        let compacted: Vec<_> = stored
-            .iter()
-            .filter(|(_, _, compact)| *compact)
-            .map(|(session, seg, _)| (*session, *seg))
-            .collect();
-        let commands = stored
-            .into_iter()
-            .map(|(session, seg, _)| Command::Stored { session, seg })
-            .collect();
-        if let Err(error) = self.propose(Command::Batch { commands }).await {
-            tracing::debug!(%error, "recording stored segments failed");
-            return;
-        }
-        let store = self.shared.store.clone();
-        tokio::spawn(async move {
-            futures::stream::iter(compacted)
-                .for_each_concurrent(16, |(session, seg)| {
-                    let store = store.clone();
-                    async move { store.prune_segments(session, seg).await }
-                })
-                .await;
-        });
     }
 
     /// Decision: the shard's membership lives in Raft, not in the topology

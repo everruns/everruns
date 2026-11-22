@@ -5,7 +5,7 @@
 //! app node    --topology cluster.json --shard 0 --node 1 --data .shard/c0n1
 //! app gateway --topology cluster.json --listen 127.0.0.1:7000
 //! app restore --topology cluster.json --shard 0 --store s3://... \
-//!             --node 1=/var/shard/c0n1 [--at 2026-11-12T09:00:00Z]
+//!             --node 1=/var/shard/c0n1 [--at 2026-11-12T09:00:00Z | --survivor /var/shard/c0n3]
 //! app restore-org --topology cluster.json --store s3://... --org <org> \
 //!             --at 2026-11-12T09:00:00Z
 //! app edge    --topology cluster.json --listen 127.0.0.1:7100 \
@@ -174,6 +174,12 @@ enum Mode {
         /// machine instead of rebuilding.
         #[arg(long, conflicts_with = "at")]
         incarnation: Option<u64>,
+        /// The data directory of a stopped replica that survived: its
+        /// snapshot and log extend the object store's (`restore::with_survivor`).
+        /// Give it whenever one replica is left; it holds every write that
+        /// was answered only once all replicas held it.
+        #[arg(long, conflicts_with_all = ["at", "incarnation"])]
+        survivor: Option<PathBuf>,
         /// Report what a restore would find, and write nothing.
         #[arg(long)]
         dry_run: bool,
@@ -205,6 +211,13 @@ enum Mode {
     /// This container's CPU and memory and its machine's, as JSON
     /// (`container.rs`), for load runs that sample every pod. Read only.
     Usage,
+    /// Check the object store operations the shard's safety rests on
+    /// against the real store (`store_check.rs`), under a scratch prefix
+    /// it deletes after. Prints JSON; fails when any check does.
+    StoreCheck {
+        #[arg(long, env = "AGENTD_STORE")]
+        store: String,
+    },
     /// Run a stateless gateway.
     Gateway {
         #[arg(long, env = "AGENTD_TOPOLOGY")]
@@ -376,6 +389,7 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             nodes,
             at,
             incarnation,
+            survivor,
             dry_run,
         } => {
             let store = crate::store::Store::open(&store)?;
@@ -384,8 +398,11 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
                 &TopologySource { path: topology },
                 shard,
                 &nodes.into_iter().collect(),
-                at,
-                incarnation,
+                RestorePoint {
+                    at,
+                    survivor,
+                    incarnation,
+                },
                 dry_run,
             )
             .await?;
@@ -414,6 +431,15 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
             println!("{}", serde_json::to_string(&crate::container::read())?);
             Ok(())
         }
+        Mode::StoreCheck { store } => {
+            let checks = crate::store_check::run(&store).await?;
+            println!("{}", serde_json::to_string_pretty(&checks)?);
+            let failed: Vec<&str> = checks.iter().filter(|c| !c.ok).map(|c| c.name).collect();
+            if !failed.is_empty() {
+                anyhow::bail!("store checks failed: {}", failed.join(", "));
+            }
+            Ok(())
+        }
         Mode::Gateway { topology, listen } => {
             let gateway = Gateway::new(TopologySource { path: topology });
             let listener = tokio::net::TcpListener::bind(listen).await?;
@@ -424,6 +450,13 @@ pub async fn run(host: impl Host) -> anyhow::Result<()> {
     }
 }
 
+/// What the `restore` command restores from.
+struct RestorePoint {
+    at: Option<i64>,
+    survivor: Option<PathBuf>,
+    incarnation: Option<u64>,
+}
+
 /// The `restore` command: a dry run, a rebuild, or seeding nodes of a
 /// rebuilt incarnation.
 async fn restore(
@@ -431,12 +464,19 @@ async fn restore(
     topology: &TopologySource,
     shard: ShardId,
     local: &std::collections::BTreeMap<NodeId, PathBuf>,
-    at: Option<i64>,
-    incarnation: Option<u64>,
+    point: RestorePoint,
     dry_run: bool,
 ) -> anyhow::Result<serde_json::Value> {
+    let RestorePoint {
+        at,
+        survivor,
+        incarnation,
+    } = point;
     if dry_run {
-        let found = crate::restore::state_at(store, shard, at).await?;
+        let found = match &survivor {
+            Some(dir) => crate::restore::with_survivor(store, shard, dir).await?,
+            None => crate::restore::state_at(store, shard, at).await?,
+        };
         return Ok(serde_json::json!({
             "shard": shard,
             "from": found.from.map(|c| serde_json::json!({ "incarnation": c.inc, "index": c.index })),
@@ -444,6 +484,7 @@ async fn restore(
             "clock_ms": found.state.clock_ms,
             "sessions": found.state.sessions.len(),
             "replayed": found.replayed,
+            "from_survivor": found.from_survivor,
         }));
     }
     if local.is_empty() {
@@ -465,7 +506,8 @@ async fn restore(
         .get(&shard)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("shard {shard} not in topology"))?;
-    let rebuilt = crate::restore::rebuild(store, shard, &members, local, at).await?;
+    let rebuilt =
+        crate::restore::rebuild(store, shard, &members, local, at, survivor.as_deref()).await?;
     Ok(serde_json::to_value(rebuilt)?)
 }
 

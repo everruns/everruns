@@ -87,6 +87,7 @@ pub mod sm;
 pub mod sqldb;
 pub mod state;
 pub mod store;
+pub mod store_check;
 mod store_throttle;
 pub mod stream;
 pub mod subagents;

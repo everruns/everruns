@@ -36,8 +36,8 @@ only gauges can chart the budgets (`prom::Window`):
 |---|---|---|
 | `agentd_shard_slo_turn_p99_seconds` | Turns the shard finished, `turn.started` to the end of the turn, as each replica applied them | none; depends on the agent |
 | `agentd_shard_slo_admit_p99_seconds` | Admitting a message through this node's gateway | 100 ms |
-| `agentd_shard_slo_ship_lag_p99_seconds` | How long the oldest entry waited to reach the object store | 2 s |
-| `agentd_shard_slo_ship_first_p99_seconds` | How long a ship-first write waited for the object store before it was answered | 100 ms |
+| `agentd_shard_slo_ship_lag_p99_seconds` | How long the oldest entry waited to reach the object store | 15 s |
+| `agentd_shard_slo_ship_first_p99_seconds` | How long a write that must survive two lost zones waited before it was answered: for every voter, or for the object store while one is down | 100 ms |
 
 A minute with no samples reports 0. The worst minute in a longer period is the gauge's maximum.
 
@@ -122,13 +122,18 @@ itself resumes from the journal once its claim expires.
    When the data directory is gone, remove the member (`DELETE /v1/shards/{shard}/nodes/{node}`)
    and add a fresh one (`POST /v1/shards/{shard}/nodes`); it catches up from a snapshot.
 3. `leader NONE` with fewer than two nodes answering means the shard lost its quorum and stops
-   taking writes. Bring back a node that still has its data first. When two or more data
-   directories are lost, rebuild the shard from the object store with `agentd-testnode restore`
-   ([Disaster recovery](design.md#disaster-recovery)); the rebuild starts a new incarnation, and
-   at most the last shipping lag of writes is lost.
+   taking writes. Bring back a node that still has its data first. When two data
+   directories are lost, stop the node that is left and rebuild the shard with
+   `agentd-testnode restore --survivor <its data directory>` into fresh directories
+   ([Disaster recovery](design.md#disaster-recovery)): it adds that disk's log to the object
+   store's, so writes that had not shipped yet come back. Only with every directory gone,
+   rebuild from the object store alone; then at most the last shipping lag of writes is lost.
+   Either way the rebuild starts a new incarnation; never start the survivor in the old one.
 
-Watch `agentd_shard_slo_ship_lag_p99_seconds` before taking a node down on purpose: what a lost shard
-would lose is bounded by the shipping lag, not by the node count.
+Watch `agentd_shard_slo_ship_lag_p99_seconds` before taking a node down on purpose: with one node
+down, losing a second would leave the third's disk, but losing both would leave only the
+shipped log. `agentd_shard_ship_first_total{path="store"}` rising says writes are waiting on the
+object store because a voter is behind. `agentd_store_puts_total{kind}` counts object writes.
 
 ## A stuck move
 

@@ -402,6 +402,26 @@ impl Fleet {
         shard: u32,
         at_ms: Option<i64>,
     ) -> everruns_agentd::restore::Rebuilt {
+        self.rebuild_from(shard, at_ms, None).await
+    }
+
+    /// Lose two zones of `shard`: every node stops, and only `survivor`'s
+    /// disk is left. Rebuild from the object store plus that disk on new
+    /// nodes at the same addresses, and wait for a leader.
+    pub async fn rebuild_with_survivor(
+        &mut self,
+        shard: u32,
+        survivor: u64,
+    ) -> everruns_agentd::restore::Rebuilt {
+        self.rebuild_from(shard, None, Some(survivor)).await
+    }
+
+    async fn rebuild_from(
+        &mut self,
+        shard: u32,
+        at_ms: Option<i64>,
+        survivor: Option<u64>,
+    ) -> everruns_agentd::restore::Rebuilt {
         let nodes: Vec<u64> = self
             .configs
             .keys()
@@ -413,19 +433,34 @@ impl Fleet {
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
         let (mut members, mut local) = (BTreeMap::new(), BTreeMap::new());
+        let mut kept = None;
         for node in &nodes {
             let dir = self.configs[&(shard, *node)].data_dir.clone();
             if dir.exists() {
-                let lost = dir.with_extension(format!("lost-{}", now_ms()));
-                std::fs::rename(&dir, lost).unwrap();
+                let suffix = if survivor == Some(*node) {
+                    "survivor"
+                } else {
+                    "lost"
+                };
+                let aside = dir.with_extension(format!("{suffix}-{}", now_ms()));
+                std::fs::rename(&dir, &aside).unwrap();
+                if survivor == Some(*node) {
+                    kept = Some(aside);
+                }
             }
             members.insert(*node, self.nodes[&(shard, *node)].0.clone());
             local.insert(*node, dir);
         }
-        let rebuilt =
-            everruns_agentd::restore::rebuild(&self.store(), shard, &members, &local, at_ms)
-                .await
-                .unwrap();
+        let rebuilt = everruns_agentd::restore::rebuild(
+            &self.store(),
+            shard,
+            &members,
+            &local,
+            at_ms,
+            kept.as_deref(),
+        )
+        .await
+        .unwrap();
         for node in &nodes {
             self.start_node(shard, *node);
         }

@@ -332,6 +332,20 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         &p.ship_lag_seconds,
     );
     w.counters(
+        "agentd_shard_ship_first_total",
+        "Ship-first writes by path: replicas (every voter held them) or store (shipped first).",
+        &p.ship_first_total,
+    );
+    let puts = crate::prom::Counters::default();
+    for (kind, n) in crate::store::puts() {
+        puts.add(&[("kind", kind)], n);
+    }
+    w.counters(
+        "agentd_store_puts_total",
+        "Object store writes from this process, by kind, retries included.",
+        &puts,
+    );
+    w.counters(
         "agentd_shard_schedules_fired_total",
         "Schedules this node fired as its shard's leader.",
         &p.schedules_fired,
@@ -366,7 +380,7 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
     );
     w.gauge(
         "agentd_shard_slo_ship_lag_p99_seconds",
-        "p99 shipping lag in the last minute (budget 2 s).",
+        "p99 shipping lag in the last minute (budget 15 s).",
         p.ship_lag_window.p99(),
     );
     w.gauge(

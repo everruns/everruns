@@ -238,15 +238,28 @@ impl Shared {
 
     /// Leader only: store up to `limit` sessions' events that are not in
     /// the object store yet, and return the segments to record with
-    /// `Stored`. A session qualifies once idle, or once its unstored tail
-    /// reaches [`FLUSH_BUSY_AT`] events; one with [`COMPACT_AT`] segments has
-    /// a run of them rewritten as one (see
+    /// `Stored`. A session qualifies once idle for `idle_for`, or once its
+    /// unstored tail reaches [`FLUSH_BUSY_AT`] events; one with
+    /// [`COMPACT_AT`] segments has a run of them rewritten as one (see
     /// [`compaction_range`](crate::state::SessionState::compaction_range)).
     /// The flag marks a compaction.
-    pub async fn flush(&self, limit: usize) -> Vec<(SessionId, SegRef, bool)> {
+    ///
+    /// Decision: an idle session waits [`FLUSH_IDLE_AFTER`] before its tail
+    /// is stored, not one pass of the loop. A conversation's next message
+    /// usually comes within a minute, and storing after every turn cost two
+    /// object writes a turn (the 75 000-session run's largest share of
+    /// requests). The events are in the Raft log and the snapshots until
+    /// then, so waiting loses nothing; the node passes zero when it needs
+    /// the memory back (`Node::store_events`).
+    pub async fn flush(
+        &self,
+        limit: usize,
+        idle_for: std::time::Duration,
+    ) -> Vec<(SessionId, SegRef, bool)> {
         // Per session: a compaction of stored segments `(from, to)`, or a
         // flush of the unstored tail.
         let jobs: Vec<(SessionId, Option<(i32, i32)>)> = {
+            let touched = self.touched.lock();
             let state = self.state.read();
             state
                 .sessions
@@ -257,7 +270,9 @@ impl Shared {
                     let compact = (s.segments.len() >= COMPACT_AT)
                         .then(|| s.compaction_range())
                         .flatten();
-                    (compact.is_some() || (tail > 0 && (s.idle() || tail >= FLUSH_BUSY_AT)))
+                    let quiet =
+                        s.idle() && touched.get(id).is_none_or(|at| at.elapsed() >= idle_for);
+                    (compact.is_some() || (tail > 0 && (quiet || tail >= FLUSH_BUSY_AT)))
                         .then_some((*id, compact))
                 })
                 .take(limit)
@@ -543,7 +558,7 @@ pub(crate) fn archived_parts(meta: &Meta, data: bytes::Bytes) -> io::Result<[byt
 /// The current snapshot in `dir`, a node's snapshot directory: its
 /// metadata and state. The state is the file's own buffer with the header
 /// cut off, not a copy.
-fn read_snapshot_file(dir: &std::path::Path) -> io::Result<Option<(Meta, Vec<u8>)>> {
+pub(crate) fn read_snapshot_file(dir: &std::path::Path) -> io::Result<Option<(Meta, Vec<u8>)>> {
     match fs::read(dir.join("current.snap")) {
         Ok(mut bytes) => {
             let (meta, at) = split_snapshot(&bytes)?;
@@ -717,6 +732,9 @@ const COMPACT_AT: usize = 16;
 
 /// Store a running turn's events once this many are not stored yet.
 const FLUSH_BUSY_AT: i32 = 64;
+
+/// Store an idle session's events once it has been quiet this long.
+pub const FLUSH_IDLE_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// What a move carries of a session: its metadata and the events the
 /// object store doesn't hold yet (history stays in the store).

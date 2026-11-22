@@ -5,7 +5,8 @@
 # configuration that reproduces the design flaw the model exists for (the
 # funout move race, feed records keyed by Raft index alone, grants released
 # on expiry, epochs fenced by holder name, the poison guard's progress
-# rules). A bug configuration that stops failing means the model no
+# rules, a must-survive write answered on a plain commit or a rebuild that
+# ignores the surviving disk). A bug configuration that stops failing means the model no
 # longer checks what it claims to, so it fails this script too.
 #
 # Usage: scripts/check-tla-models.sh            (downloads TLC once)
@@ -38,6 +39,9 @@ CHECKS=(
   "Epochs EpochsFencedByName fail"
   "Epochs EpochsCountEveryLease fail"
   "Epochs EpochsUnfencedProgress fail"
+  "Durability Durability pass"
+  "Durability DurabilityAnswerOnQuorum fail"
+  "Durability DurabilityBucketOnly fail"
 )
 
 status=0

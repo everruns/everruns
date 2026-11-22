@@ -1,5 +1,6 @@
 //! The leader's upkeep of its shard's restore points (`restore_points.rs`):
 //! a snapshot at least every [`RESTORE_POINT_EVERY`] and before a drain,
+//! sessions' history stored as segments,
 //! shipping the log each round, answering ship-first writes, and collecting what the restore window no
 //! longer needs.
 //!
@@ -16,6 +17,8 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use futures::StreamExt;
 
 use crate::node::Node;
 
@@ -79,10 +82,46 @@ impl Node {
         }
     }
 
+    /// Leader only: store sessions' unstored events in the object store and
+    /// record the segments with `Stored`, so every replica can unload them.
+    /// A compaction (one segment for a trailing run) then deletes the pieces
+    /// it replaces.
+    pub(crate) async fn store_events(&self, idle_for: Duration) {
+        let stored = self.shared.flush(512, idle_for).await;
+        if stored.is_empty() {
+            return;
+        }
+        let compacted: Vec<_> = stored
+            .iter()
+            .filter(|(_, _, compact)| *compact)
+            .map(|(session, seg, _)| (*session, *seg))
+            .collect();
+        let commands = stored
+            .into_iter()
+            .map(|(session, seg, _)| crate::state::Command::Stored { session, seg })
+            .collect();
+        if let Err(error) = self
+            .propose(crate::state::Command::Batch { commands })
+            .await
+        {
+            tracing::debug!(%error, "recording stored segments failed");
+            return;
+        }
+        let store = self.shared.store.clone();
+        tokio::spawn(async move {
+            futures::stream::iter(compacted)
+                .for_each_concurrent(16, |(session, seg)| {
+                    let store = store.clone();
+                    async move { store.prune_segments(session, seg).await }
+                })
+                .await;
+        });
+    }
+
     /// While this node leads: ship the committed log to the object store
     /// (see `ship`).
     pub(crate) async fn ship_loop(self: Arc<Self>) {
-        let mut tick = tokio::time::interval(crate::ship::SHIP_EVERY);
+        let mut tick = tokio::time::interval(crate::ship::SHIP_TICK);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             tick.tick().await;
@@ -95,12 +134,15 @@ impl Node {
             let applied = *self.shared.applied.borrow();
             let inc = self.shared.state.read().incarnation;
             self.shipper.observe(applied);
+            if !self.shipper.due(applied, inc) {
+                continue;
+            }
             let waiting = self.shipper.waiting_since();
             let shipped = self.shipper.ship(applied, inc).await;
             if let (Ok(_), Some(since)) = (&shipped, waiting) {
                 // The wait is noticed at a tick, so the oldest entry may
                 // have been applied up to one tick earlier: count it.
-                let lag = since.elapsed() + crate::ship::SHIP_EVERY;
+                let lag = since.elapsed() + crate::ship::SHIP_TICK;
                 self.prom.ship_lag_seconds.observe(&[], lag);
                 self.prom.ship_lag_window.observe(lag);
             }
@@ -110,16 +152,25 @@ impl Node {
         }
     }
 
-    /// Ship the log through `index` before answering a write that must not
-    /// be lost (`ship::ships_first`), retrying until `deadline`.
+    /// Make the write at `index` survive the loss of all but one replica
+    /// before it is answered (`ship::ships_first`): held on disk by every
+    /// voter, or else shipped to the object store, retrying until
+    /// `deadline`.
     pub(crate) async fn ship_first(&self, index: u64, deadline: Instant) -> anyhow::Result<()> {
         let started = Instant::now();
+        if self.held_everywhere(index).await {
+            self.prom.ship_first_total.inc(&[("path", "replicas")]);
+            self.prom.ship_first_seconds.observe(&[], started.elapsed());
+            self.prom.ship_first_window.observe(started.elapsed());
+            return Ok(());
+        }
         let mut backoff = Duration::from_millis(20);
         loop {
             let inc = self.shared.state.read().incarnation;
             let applied = &self.shared.applied;
             match self.shipper.flush(index, inc, || *applied.borrow()).await {
                 Ok(()) => {
+                    self.prom.ship_first_total.inc(&[("path", "store")]);
                     self.prom.ship_first_seconds.observe(&[], started.elapsed());
                     self.prom.ship_first_window.observe(started.elapsed());
                     return Ok(());
@@ -133,4 +184,61 @@ impl Node {
             backoff = (backoff * 2).min(Duration::from_millis(500));
         }
     }
+
+    /// Whether every voter of this shard holds the log through `index` on
+    /// disk, waiting up to [`REPLICA_WAIT`] for the slowest.
+    ///
+    /// Decisions:
+    /// - Only a shard of three or more voters: with fewer, every replica can
+    ///   go at once, and the object store is the only other copy.
+    /// - The leader's replication progress counts an entry only once the
+    ///   follower acknowledged it, and followers fsync before they do
+    ///   (`wal.rs`); the leader's own entry counts once its own disk has it.
+    ///   A matched index past `index` implies `index` (Raft's log matching).
+    /// - A voter that misses [`REPLICA_WAIT`] is likely down or far behind:
+    ///   for [`REPLICA_RETRY`] after, writes go straight to the object store
+    ///   instead of each waiting out the timeout first.
+    async fn held_everywhere(&self, index: u64) -> bool {
+        if self
+            .replicas_slow_until
+            .lock()
+            .is_some_and(|until| Instant::now() < until)
+        {
+            return false;
+        }
+        let voters: Vec<crate::types::NodeId> = {
+            let metrics = self.raft.metrics();
+            let metrics = metrics.borrow();
+            metrics.membership_config.membership().voter_ids().collect()
+        };
+        if voters.len() < 3 {
+            return false;
+        }
+        let held = |m: &openraft::RaftMetrics<crate::types::NodeId, openraft::BasicNode>| {
+            m.replication.as_ref().is_some_and(|progress| {
+                voters.iter().all(|voter| {
+                    progress
+                        .get(voter)
+                        .and_then(|matched| *matched)
+                        .is_some_and(|matched| matched.index >= index)
+                })
+            })
+        };
+        let everywhere = self
+            .raft
+            .wait(Some(REPLICA_WAIT))
+            .metrics(held, "every voter holds the entry")
+            .await
+            .is_ok();
+        if !everywhere {
+            *self.replicas_slow_until.lock() = Some(Instant::now() + REPLICA_RETRY);
+        }
+        everywhere
+    }
 }
+
+/// How long a ship-first write waits for the slowest voter to hold it.
+const REPLICA_WAIT: Duration = Duration::from_millis(250);
+
+/// How long ship-first writes skip the wait after a voter missed it.
+const REPLICA_RETRY: Duration = Duration::from_secs(5);
