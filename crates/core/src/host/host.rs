@@ -1274,6 +1274,14 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     input: ActInput,
 ) -> everruns_contracts::error::Result<ActResult> {
+    execute_act_activity_with_steering(adapter, input, None).await
+}
+
+pub(crate) async fn execute_act_activity_with_steering<A: RuntimeHostAdapter>(
+    adapter: &A,
+    input: ActInput,
+    steering: Option<Arc<dyn crate::engine::tool_steering::ToolBatchSteering>>,
+) -> everruns_contracts::error::Result<ActResult> {
     let org_id = input.org_id.ok_or_else(|| {
         everruns_contracts::error::AgentLoopError::config(
             "ActInput.org_id must be set for runtime host execution",
@@ -1366,6 +1374,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     let executor: Arc<dyn crate::tool_execution::ToolExecutor> = Arc::new(tool_registry);
 
     let mut atom = ActAtom::new(executor, adapter.event_emitter())
+        .with_tool_batch_steering(steering)
         .with_thread_cpu_clock(super::thread_cpu::clock())
         .with_context_services(context_services)
         .with_tool_surface_plan(execution_capabilities.tool_surface_plan.clone())

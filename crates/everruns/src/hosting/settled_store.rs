@@ -100,4 +100,14 @@ impl SessionActorStore for SettledStore {
             .read_actor_journal(session_id, after_sequence, limit)
             .await
     }
+    async fn read_admission_journal(
+        &self,
+        session_id: SessionId,
+        after_sequence: Option<i32>,
+        limit: u32,
+    ) -> Result<ActorJournal> {
+        self.inner
+            .read_admission_journal(session_id, after_sequence, limit)
+            .await
+    }
 }

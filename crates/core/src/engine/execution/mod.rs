@@ -10,6 +10,7 @@ mod reason;
 pub mod tool_cancel;
 pub mod tool_detach;
 mod tool_scheduler;
+pub mod tool_steering;
 pub use tool_scheduler::configured_max_tool_concurrency;
 
 pub use crate::execution_context::ExecutionContext;

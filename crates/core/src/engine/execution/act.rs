@@ -21,9 +21,7 @@ use crate::engine::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::engine::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
 };
-use crate::engine::tool_narration::{
-    GroupHeadlineAction, ToolNarrationPhase, summarize_group_actions, tool_call_for_group_summary,
-};
+use crate::engine::tool_narration::ToolNarrationPhase;
 use crate::engine::tool_types::ConnectionRequired;
 use crate::engine::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::engine::typed_id::{AgentId, HarnessId};
@@ -169,6 +167,7 @@ where
     /// workers can skip already-settled calls and avoid double side-effects for
     /// `AtMostOnce` tools.
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
+    tool_batch_steering: Option<Arc<dyn super::tool_steering::ToolBatchSteering>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -204,6 +203,7 @@ where
             tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            tool_batch_steering: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -229,6 +229,7 @@ where
             tool_surface_plan: Default::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            tool_batch_steering: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -736,15 +737,19 @@ where
                     locale.as_deref(),
                     network_access.as_ref(),
                     visible_tool_names.clone(),
+                    client_tool_calls.is_empty() && client_policy_results.is_empty(),
                 ))
             });
         // A call detaches only when nothing in its act waits on the client.
         // Boxed, like each call: a child turn re-enters this act inline.
-        let mut results = if client_tool_calls.is_empty() && client_policy_results.is_empty() {
+        let results = if client_tool_calls.is_empty() && client_policy_results.is_empty() {
             Box::pin(schedule).await
         } else {
             Box::pin(tool_detach::without(schedule)).await
         };
+        // All scheduled futures settle before propagating an admission/store
+        // failure. Do not cancel an already-running sibling.
+        let mut results = results.into_iter().collect::<Result<Vec<_>>>()?;
         results.extend(over_cap);
         if results
             .iter()
@@ -870,67 +875,6 @@ where
     T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
-    fn render_group_headline(
-        &self,
-        execution_context: &ExecutionContext,
-        tool_calls: &[ToolCall],
-        tool_map: &std::collections::HashMap<&str, &ToolDefinition>,
-        phase: ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        if tool_calls.is_empty() {
-            return None;
-        }
-        if let [tool_call] = tool_calls {
-            return Some(self.render_tool_narration(
-                execution_context,
-                tool_map.get(tool_call.name.as_str()).copied(),
-                tool_call,
-                phase,
-                locale,
-            ));
-        }
-
-        let actions = tool_calls
-            .iter()
-            .map(|tool_call| {
-                let tool_def = tool_map.get(tool_call.name.as_str()).copied();
-                let narration = self.render_tool_narration(
-                    execution_context,
-                    tool_def,
-                    tool_call,
-                    phase,
-                    locale,
-                );
-                let repeated_narration = self.render_tool_narration(
-                    execution_context,
-                    tool_def,
-                    &tool_call_for_group_summary(tool_call),
-                    phase,
-                    locale,
-                );
-                GroupHeadlineAction::new(tool_call, narration, repeated_narration)
-            })
-            .collect::<Vec<_>>();
-
-        Some(summarize_group_actions(&actions, locale))
-    }
-
-    /// Mirror the file-store wrapping applied during tool execution so
-    /// path-bearing narration uses the same mount resolver and workspace key.
-    fn wrap_file_store_for_narration(
-        &self,
-        execution_context: &ExecutionContext,
-    ) -> Option<Arc<dyn SessionFileSystem>> {
-        let store = self.context_services.file_store.as_ref()?.clone();
-        let store = if let Some(workspace_id) = execution_context.workspace_id {
-            crate::engine::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id)
-        } else {
-            store
-        };
-        Some(crate::engine::mount_fs::MountFs::wrap_if_needed(store))
-    }
-
     fn transform_tool_call_for_execution(&self, tool_call: ToolCall) -> ToolCall {
         self.tool_call_hooks
             .iter()
@@ -955,7 +899,8 @@ where
         locale: Option<&str>,
         network_access: Option<&crate::engine::network_access::NetworkAccessList>,
         visible_tool_names: Arc<HashSet<String>>,
-    ) -> ToolCallResult {
+        allow_redirect: bool,
+    ) -> Result<ToolCallResult> {
         tracing::debug!(
             session_id = %context.session_id,
             turn_id = %context.turn_id,
@@ -1002,7 +947,7 @@ where
                 tool_name = %tool_call.name,
                 "ActAtom: outbound tool rate limit exceeded for org"
             );
-            return ToolCallResult {
+            return Ok(ToolCallResult {
                 tool_call: tool_call.clone(),
                 result: ToolResult {
                     details: None,
@@ -1019,11 +964,20 @@ where
                 status: "error".to_string(),
                 connection_required: None,
                 determinism_fatal: None,
-            };
+            });
         }
 
         // Per-tool-call idempotency (EVE-530): claim before dispatch, replay if
         // already settled, refuse AtMostOnce re-execution on stale running claims.
+        let redirected = if allow_redirect {
+            match &self.tool_batch_steering {
+                Some(steering) => steering.redirected(context.turn_id).await?,
+                None => false,
+            }
+        } else {
+            false
+        };
+        let mut already_running = false;
         let claim_token = if let Some(ref store) = self.durable_tool_result_store {
             let turn_id = context.turn_id.to_string();
             match store
@@ -1075,7 +1029,7 @@ where
                                 .with_display_name(display_name.clone()),
                             ))
                             .await;
-                        return ToolCallResult {
+                        return Ok(ToolCallResult {
                             tool_call: tool_call.clone(),
                             result: ToolResult {
                                 details: None,
@@ -1090,7 +1044,7 @@ where
                             status: "error".to_string(),
                             connection_required: None,
                             determinism_fatal: Some(err_msg),
-                        };
+                        });
                     }
                     tracing::debug!(
                         session_id = %context.session_id,
@@ -1110,7 +1064,19 @@ where
                             raw_output: None,
                         });
                     let success = replayed_result.error.is_none();
-                    let status = if success { "success" } else { "error" };
+                    let status = if replayed_result
+                        .details
+                        .as_ref()
+                        .and_then(|d| d.get("execution_status"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some("skipped")
+                    {
+                        "skipped"
+                    } else if success {
+                        "success"
+                    } else {
+                        "error"
+                    };
                     let result_fp = tool_result_fingerprint(&tool_call.name, &replayed_result);
                     let completed_data = ToolCompletedData::from_tool_result(
                         &tool_call,
@@ -1129,14 +1095,14 @@ where
                         ))
                         .await;
                     let conn_req = replayed_result.connection_required.clone();
-                    return ToolCallResult {
+                    return Ok(ToolCallResult {
                         tool_call,
                         result: replayed_result,
                         success,
                         status: status.to_string(),
                         connection_required: conn_req,
                         determinism_fatal: None,
-                    };
+                    });
                 }
 
                 Ok(ToolCallClaimResult::AlreadyRunning {
@@ -1177,7 +1143,7 @@ where
                                 .with_display_name(display_name.clone()),
                             ))
                             .await;
-                        return ToolCallResult {
+                        return Ok(ToolCallResult {
                             tool_call: tool_call.clone(),
                             result: ToolResult {
                                 details: None,
@@ -1192,12 +1158,21 @@ where
                             status: "error".to_string(),
                             connection_required: None,
                             determinism_fatal: Some(err_msg),
-                        };
+                        });
                     }
 
-                    let sec = tool_def
-                        .map(|d| d.side_effect_class())
-                        .unwrap_or(SideEffectClass::AtMostOnce);
+                    already_running = true;
+                    // A crash can fall between the claim and the skip receipt.
+                    // Never redispatch that uncertain call after an explicit
+                    // redirect, even if ordinarily safe to retry. Use the
+                    // existing honest interrupted outcome, not "never ran".
+                    let sec = if redirected {
+                        SideEffectClass::AtMostOnce
+                    } else {
+                        tool_def
+                            .map(|d| d.side_effect_class())
+                            .unwrap_or(SideEffectClass::AtMostOnce)
+                    };
                     match sec {
                         SideEffectClass::Pure | SideEffectClass::Idempotent => {
                             // Safe to re-execute; proceed as normal (no claim token).
@@ -1228,7 +1203,7 @@ where
                             let err_msg = format!(
                                 "tool '{}' was interrupted mid-execution during a prior \
                                  worker failure; result is uncertain and was not re-run \
-                                 (AtMostOnce safety)",
+                                 (AtMostOnce safety or explicit redirection)",
                                 tool_call.name
                             );
                             let result_fp = tool_result_fingerprint(
@@ -1251,7 +1226,7 @@ where
                                     .with_display_name(display_name.clone()),
                                 ))
                                 .await;
-                            return ToolCallResult {
+                            return Ok(ToolCallResult {
                                 tool_call: tool_call.clone(),
                                 result: ToolResult {
                                     details: None,
@@ -1263,10 +1238,11 @@ where
                                     raw_output: None,
                                 },
                                 success: false,
-                                status: "error".to_string(),
+                                status: if redirected { "interrupted" } else { "error" }
+                                    .to_string(),
                                 connection_required: None,
                                 determinism_fatal: None,
-                            };
+                            });
                         }
                     }
                 }
@@ -1307,7 +1283,7 @@ where
                             .with_display_name(display_name.clone()),
                         ))
                         .await;
-                    return ToolCallResult {
+                    return Ok(ToolCallResult {
                         tool_call: tool_call.clone(),
                         result: ToolResult {
                             details: None,
@@ -1322,10 +1298,13 @@ where
                         status: "error".to_string(),
                         connection_required: None,
                         determinism_fatal: Some(err_msg),
-                    };
+                    });
                 }
 
                 Err(e) => {
+                    if redirected {
+                        return Err(e);
+                    }
                     tracing::warn!(
                         session_id = %context.session_id,
                         tool_call_id = %tool_call.id,
@@ -1338,6 +1317,19 @@ where
         } else {
             None
         };
+
+        if redirected && !already_running {
+            return self
+                .record_redirect_skip(
+                    context,
+                    event_context,
+                    tool_call,
+                    tool_call_fingerprint,
+                    display_name,
+                    claim_token,
+                )
+                .await;
+        }
 
         // tool.started (child of act.started); see `start_record`.
         let started = ToolStartedData {
@@ -1362,7 +1354,7 @@ where
         )
         .await
         {
-            return not_run;
+            return Ok(not_run);
         }
 
         // If tool definition not found, return error result
@@ -1405,7 +1397,7 @@ where
                 );
             }
 
-            return ToolCallResult {
+            return Ok(ToolCallResult {
                 tool_call: tool_call.clone(),
                 result: ToolResult {
                     details: None,
@@ -1420,7 +1412,7 @@ where
                 status: "error".to_string(),
                 connection_required: None,
                 determinism_fatal: None,
-            };
+            });
         };
 
         // Same context as the client-side pre-tool gate (one session either way). The
@@ -1495,12 +1487,12 @@ where
             _cancel_on_call_end: call_cancellation.drop_guard(),
         };
         if let Some(pre_hook_result) = pre_hook_result {
-            return Box::pin(tail.finish(Ok(pre_hook_result), None)).await;
+            return Ok(Box::pin(tail.finish(Ok(pre_hook_result), None)).await);
         }
         // Each branch boxed: a tool that runs a child turn re-enters the act
         // inline, and these futures inline made the nested debug-build stack
         // overflow 2 MiB.
-        match detacher.zip(switches) {
+        Ok(match detacher.zip(switches) {
             Some((detacher, switches)) => {
                 Box::pin(act_detach::run(
                     detacher,
@@ -1523,7 +1515,7 @@ where
                     tool_cancel::race(&tail.tool_context, context.session_id, invoke).await;
                 Box::pin(tail.finish_as(result, cpu_ns, cancelled)).await
             }
-        }
+        })
     }
 }
 
@@ -1533,6 +1525,9 @@ where
 
 #[path = "act_client_policy.rs"]
 mod client_policy;
+
+#[path = "act_steering.rs"]
+mod steering;
 
 #[path = "act_narration.rs"]
 mod narration;

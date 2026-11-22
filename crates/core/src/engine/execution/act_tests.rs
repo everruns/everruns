@@ -1470,3 +1470,7 @@ async fn test_idempotency_idempotent_tool_stale_running_reexecutes() {
 
 #[path = "act_payment_tests.rs"]
 mod payment_tests;
+
+#[cfg(feature = "host")]
+#[path = "act_steering_tests.rs"]
+mod explicit_steering;
