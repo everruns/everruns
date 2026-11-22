@@ -456,7 +456,9 @@ pub fn summarize(
                 );
                 call_cost(c, priced).map_or(0.0, |(usd, _)| usd)
             })
-            .sum()
+            // An empty f64 sum is -0.0; report a plain 0.
+            .sum::<f64>()
+            + 0.0
     };
     let wasted_usd = turn_usd(&|t| failed.contains(&t));
     let current_turn_usd = current_turn.map(|current| turn_usd(&|t| t == current));

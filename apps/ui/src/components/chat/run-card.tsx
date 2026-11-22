@@ -45,7 +45,7 @@ function kindIcon(kind: string) {
 
 /** Where "Open session" goes: the run's own transcript when it has one,
  *  otherwise the owning session's task list. */
-function runHref(task: SessionTask): string {
+export function runHref(task: SessionTask): string {
   const childSessionId = task.links?.child_session_id;
   return childSessionId
     ? `/sessions/${childSessionId}/trace`
@@ -62,6 +62,7 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
   return (
     <div
       data-slot="run-card"
+      data-run-task-id={task.id}
       className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 border border-border/70 bg-card/90 px-3 py-2 text-[13px] shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]"
     >
       <span className="flex min-w-0 items-center gap-2">

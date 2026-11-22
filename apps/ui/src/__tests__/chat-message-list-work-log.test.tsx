@@ -2,7 +2,8 @@ import type React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { WORK_LOG_PAGE_SIZE } from "@/components/chat/turn-work-log";
-import type { Event } from "@/lib/api/types";
+import type { ChatRun } from "@/components/chat/run-cards";
+import type { Event, SessionTask } from "@/lib/api/types";
 
 jest.mock("@/hooks/use-turn-work-report", () => ({ useTurnWorkReport: () => null }));
 
@@ -26,6 +27,17 @@ jest.mock("@/providers/locale-provider", () => ({
     locale: "en",
     t: (key: string) => key,
   }),
+}));
+
+jest.mock("@/components/chat/run-card", () => ({
+  ...jest.requireActual("@/components/chat/run-card"),
+  RunCards: ({ runs }: { runs: { task: { id: string } }[] }) => (
+    <div>
+      {runs.map((run) => (
+        <div key={run.task.id} data-testid="run-card" data-run-task-id={run.task.id} />
+      ))}
+    </div>
+  ),
 }));
 
 jest.mock("@/components/chat/work-log-narration", () => ({
@@ -725,24 +737,6 @@ describe("ChatMessageList platform messages", () => {
     );
   }
 
-  it("folds an automatic update and keeps the task id out of the report", () => {
-    renderMessages([
-      {
-        text: 'Task "Releases" (task_01abc) finished: succeeded.\n- summary: Found v0.44.0.',
-        metadata: { everruns_origin: "task_wake" },
-      },
-    ]);
-    expect(screen.getByText("automatic_update")).toBeInTheDocument();
-    expect(screen.getByText("task_update_done")).toBeInTheDocument();
-    expect(screen.queryByText("Found v0.44.0.")).not.toBeInTheDocument();
-    expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /automatic_update/ }));
-
-    expect(screen.getByText("Found v0.44.0.")).toBeInTheDocument();
-    expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
-  });
-
   it("shows no row for a reaction note; the chip is the record", () => {
     renderMessages([
       {
@@ -754,15 +748,122 @@ describe("ChatMessageList platform messages", () => {
     expect(screen.queryByText("origin_reaction")).not.toBeInTheDocument();
   });
 
-  it("leaves an automatic update with no report as a line", () => {
+  it("shows a finished task as one line, without the report or the task id", () => {
+    renderMessages([
+      {
+        text: 'Task "Releases" (task_01abc) finished: succeeded.\n- summary: Found v0.44.0.',
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    const marker = screen.getByTestId("task-update-marker");
+    expect(marker).toHaveAttribute("data-kind", "done");
+    expect(within(marker).getByText("Releases")).toBeInTheDocument();
+    expect(within(marker).getByText("task_marker_done")).toBeInTheDocument();
+    expect(screen.queryByText(/Found v0.44.0/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/task_01abc/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /automatic_update/ })).not.toBeInTheDocument();
+  });
+
+  it("marks a failed task", () => {
     renderMessages([
       {
         text: 'Task "Draft" (task_1) finished: failed.',
         metadata: { everruns_origin: "task_wake" },
       },
     ]);
-    expect(screen.getByText("task_update_failed")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /automatic_update/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("task-update-marker")).toHaveAttribute("data-kind", "failed");
+    expect(screen.getByText("task_marker_failed")).toBeInTheDocument();
+  });
+
+  it("keeps a task's question visible on the line", () => {
+    renderMessages([
+      {
+        text: 'Task "Draft" (task_1) is awaiting input: Which tone?',
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.getByTestId("task-update-marker")).toHaveAttribute("data-kind", "needs_input");
+    expect(screen.getByText("Which tone?")).toBeInTheDocument();
+  });
+
+  it("shows nothing for a task's progress message", () => {
+    renderMessages([
+      {
+        text: 'Task "Draft" (task_1) sent a message: halfway',
+        metadata: { everruns_origin: "task_wake" },
+      },
+    ]);
+    expect(screen.queryByTestId("task-update-marker")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("automatic-update")).not.toBeInTheDocument();
+    expect(screen.queryByText(/halfway/)).not.toBeInTheDocument();
+  });
+
+  it("drops the line right after the task's own run card, keeps it further down", () => {
+    const task = {
+      id: "task_9",
+      session_id: "session-1",
+      kind: "subagent",
+      display_name: "Sandboxes",
+      state: "succeeded",
+    } as unknown as SessionTask;
+    const reply = (id: string, text: string) =>
+      event(id, "output.message.completed", {
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      });
+    const wake = (id: string) =>
+      event(id, "input.message", {
+        message: {
+          id: `msg-${id}`,
+          role: "user",
+          content: [
+            { type: "text", text: 'Task "Sandboxes" (task_9) finished: succeeded.\n- summary: x' },
+          ],
+          metadata: { everruns_origin: "task_wake" },
+        },
+      });
+    const renderWith = (chatEvents: Event[]) =>
+      render(
+        <ChatMessageList
+          events={chatEvents}
+          chatEvents={chatEvents}
+          sessionId="session-1"
+          toolResultsMap={new Map()}
+          toolProgressMap={new Map()}
+          toolOutputMap={new Map()}
+          eventsLoading={false}
+          hasMoreEvents={false}
+          loadingOlderEvents={false}
+          getMessageText={(data) =>
+            data.message?.content
+              ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+              .join("") ?? ""
+          }
+          getToolCalls={() => []}
+          runsByEventId={new Map<string, ChatRun[]>([["a", [{ task, subagentCount: 0 }]]])}
+        />,
+      );
+
+    const adjacent = renderWith([reply("a", "Started it."), wake("bb")]);
+    expect(screen.getByTestId("run-card")).toBeInTheDocument();
+    expect(screen.queryByTestId("task-update-marker")).not.toBeInTheDocument();
+    adjacent.unmount();
+
+    renderWith([
+      reply("a", "Started it."),
+      event("bb", "input.message", {
+        message: { role: "user", content: [{ type: "text", text: "Meanwhile, quota?" }] },
+      }),
+      reply("ccc", "20 sandboxes."),
+      wake("dddd"),
+    ]);
+    const marker = screen.getByTestId("task-update-marker");
+    expect(
+      within(marker).getByRole("button", { name: "task_marker_show_card" }),
+    ).toBeInTheDocument();
+    expect(within(marker).getByRole("link", { name: "Open session" })).toHaveAttribute(
+      "href",
+      "/sessions/session-1/resources",
+    );
   });
 
   it("folds an automatic update it cannot read", () => {

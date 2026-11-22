@@ -124,8 +124,8 @@ export const messages: Readonly<Record<string, string>> = {
     "Довідкова сторінка розділу на вихід, створена повністю з компонентів стенограми інструменту виробництва.",
   "A Session gets a Sandbox when its Agent or harness uses a Sandbox Template with a provider such as Daytona or Modal. Sandboxes appear here once a Session starts one. In-process sandboxes are not listed.":
     "Сеанс отримує пісочницю, коли його агент або зв’язка використовує шаблон пісочниці з таким постачальником, як Daytona або Modal. Пісочниці з’являються тут після початку сеансу. У списку пісочниці в процесі немає.",
-  "A thread report is one folded line. Open it to read the report. A wake with nothing to read is the line only.":
-    "Звіт про ланцюжок складається з одного рядка. Відкрийте його, щоб прочитати звіт. Побудка, у якій нічого читати, — це лише рядок.",
+  "A task wake right after its run card adds no row. Further down it is one status line; the report stays in the task's thread.":
+    "Повідомлення задачі одразу після її картки не додає рядка. Нижче це один рядок статусу; звіт лишається в гілці задачі.",
   "A virtual user has its own profile, runtime defaults, and connections. End users use agents; service accounts let agents act on external services.":
     "Віртуальний користувач має власний профіль, параметри часу виконання за замовчуванням і підключення. Кінцеві користувачі використовують агентів; облікові записи служб дозволяють агентам працювати із зовнішніми службами.",
   Accent: "Акцент",

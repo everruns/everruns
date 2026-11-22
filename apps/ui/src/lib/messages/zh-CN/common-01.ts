@@ -122,8 +122,8 @@ export const messages: Readonly<Record<string, string>> = {
     "完全由生产工具脚本组件构建的每个输出部分的参考页面。",
   "A Session gets a Sandbox when its Agent or harness uses a Sandbox Template with a provider such as Daytona or Modal. Sandboxes appear here once a Session starts one. In-process sandboxes are not listed.":
     "当会话的智能体或执行框架使用沙箱模板以及 Daytona 或 Modal 等提供程序时，会话就会获得沙箱。一旦会话开始，沙箱就会出现在此处。未列出进程内沙箱。",
-  "A thread report is one folded line. Open it to read the report. A wake with nothing to read is the line only.":
-    "线程报告是一条折叠线。打开它阅读报告。没有什么可读的唤醒只是一行。",
+  "A task wake right after its run card adds no row. Further down it is one status line; the report stays in the task's thread.":
+    "紧跟在运行卡片之后的任务唤醒不再新增一行。更靠后时显示为一行状态；报告留在任务自己的线程中。",
   "A virtual user has its own profile, runtime defaults, and connections. End users use agents; service accounts let agents act on external services.":
     "虚拟用户有自己的配置文件、运行时默认值和连接。最终用户使用智能体；服务帐户让智能体可以对外部服务进行操作。",
   Accent: "口音",
