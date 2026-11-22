@@ -344,3 +344,19 @@ fn shard_reads_map_to_work_and_sandbox() {
     let (_, none) = shard_work(&json!({"work": {}, "sandbox": null}));
     assert!(none.is_none());
 }
+#[test]
+fn provider_lookup_uses_the_shards_current_primary_resource() {
+    let shard = serde_json::json!({"external_id": "current-sandbox"});
+    assert_eq!(
+        super::provider_external_id(Some("old-sandbox"), true, Some(&shard)),
+        Some("current-sandbox")
+    );
+    assert_eq!(
+        super::provider_external_id(Some("old-sandbox"), true, None),
+        None
+    );
+    assert_eq!(
+        super::provider_external_id(Some("resource-sandbox"), false, Some(&shard)),
+        Some("resource-sandbox")
+    );
+}
