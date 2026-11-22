@@ -202,6 +202,7 @@ mod tests {
         let sequences = std::collections::HashMap::new();
         apply_proactive_compaction(
             ProactiveCompactionContext {
+                history_evidence_allowed: false,
                 chat_driver: &SmallWindowDriver,
                 policy: p.as_ref(),
                 checkpoint_store: None,

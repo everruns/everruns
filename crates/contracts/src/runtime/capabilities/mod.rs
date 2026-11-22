@@ -94,6 +94,7 @@ use crate::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 
 mod declarative;
 pub mod facts;
+pub mod injected;
 pub mod skill_contribution;
 pub mod util;
 
@@ -128,8 +129,8 @@ pub const MCP_ELICITATION_FORM_KV_PREFIX: &str = "mcp/elicitation-form/";
 pub const SPAWN_AGENT_CONCURRENCY_CLASS: &str = "spawn_agent";
 pub use declarative::{
     DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
-    DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile, declarative_capability_id,
-    declarative_capability_info, hydrate_declarative_capability_config,
+    DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile, carries_declarative_definition,
+    declarative_capability_id, declarative_capability_info, hydrate_declarative_capability_config,
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, validate_declarative_capability_definition,
 };

@@ -36,12 +36,17 @@ pub mod client;
 pub mod discovery;
 pub mod elicitation;
 pub mod executor;
+pub mod extensions;
 pub mod form_elicitation;
 pub mod http;
+#[cfg(feature = "session-token")]
+pub mod injected_server;
 pub mod oauth;
 pub mod param_headers;
 pub mod protocol;
 pub mod result;
+#[cfg(feature = "session-token")]
+pub mod session_token;
 pub mod tasks;
 pub mod transport;
 pub mod user_store;
@@ -69,6 +74,9 @@ pub use elicitation::{
 };
 pub use everruns_contracts::mcp_metadata::visible_mcp_description;
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
+pub use extensions::{
+    InjectedServerState, InjectedToolHooks, apply_after_tool, load_injected_server_state,
+};
 pub use form_elicitation::{
     FORM_ANSWER_TTL, FormAnswer, FormAnswerAction, FormAnswerStore, FormElicitation,
     FormElicitationHandler, FormElicitationPending, FormOutcome, FormRefusal, FormSchema,
@@ -76,7 +84,7 @@ pub use form_elicitation::{
 };
 pub use http::{
     HttpToolsList, HttpTransport, McpHttpStatusError, McpRpcError, http_call_tool, http_list_tools,
-    http_list_tools_with_cache_hints, http_request, http_send_rpc,
+    http_list_tools_with_cache_hints, http_request, http_send_rpc, trust_controller_origin,
 };
 pub use oauth::validate_oauth_resource;
 pub use protocol::{CacheHints, CacheScope, ClientCapabilities, Negotiated};

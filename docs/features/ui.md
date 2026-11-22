@@ -298,6 +298,17 @@ Other members see the page read-only.
 
 ## Settings
 
+### Monthly session limit
+
+Each organization can create 10,000 sessions per UTC calendar month by default.
+Organization owners and admins can set a limit from 1 to 100,000 under
+**Settings → Limits → Session creation**. At the limit, session creation stops
+until an admin raises it or the next UTC month begins. Archived and deleted
+sessions count toward the month in which they were created.
+
+On self-hosted installations, this setting replaces the
+`RESOURCE_LIMIT_MAX_SESSIONS_PER_ORG` environment variable.
+
 ### Personal access tokens
 
 Manage personal access tokens for programmatic access. Tokens are tied to your

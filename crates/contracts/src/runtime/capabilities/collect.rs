@@ -20,7 +20,6 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
-use crate::is_plugin_capability;
 use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped_with_context;
 use crate::runtime::events::TokenUsage;
 use crate::runtime::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
@@ -421,9 +420,9 @@ pub fn collect_capability_mcp_servers(
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
-        // Both `declarative:` and `plugin:` carry a serialized
+        // `declarative:`, `plugin:` and `injected:` carry a serialized
         // `DeclarativeCapabilityDefinition`; handle them the same way.
-        if is_declarative_capability(cap_id) || is_plugin_capability(cap_id) {
+        if carries_declarative_definition(cap_id) {
             if let Ok(definition) = serde_json::from_value::<DeclarativeCapabilityDefinition>(
                 cap_config.config_value().clone(),
             ) {
@@ -745,11 +744,11 @@ async fn collect(
         if superseded.contains(cap_id) {
             continue;
         }
-        // `declarative:` and `plugin:` refs both carry a serialized
+        // `declarative:`, `plugin:` and `injected:` refs carry a serialized
         // `DeclarativeCapabilityDefinition` in their config and execute through
         // the same runtime path. `plugin:` is handled first (more specific
         // prefix), then `declarative:`, then the registry lookup.
-        if is_declarative_capability(cap_id) || is_plugin_capability(cap_id) {
+        if carries_declarative_definition(cap_id) {
             match serde_json::from_value::<DeclarativeCapabilityDefinition>(
                 cap_config.config_value().clone(),
             ) {

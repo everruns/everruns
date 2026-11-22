@@ -17,7 +17,7 @@ pub struct CreateDatabaseRequest {
 }
 
 /// Database info response.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DatabaseInfoResponse {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

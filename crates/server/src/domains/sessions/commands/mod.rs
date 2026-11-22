@@ -70,8 +70,6 @@ impl Command for CreateSession {
         req.locale = crate::domains::validation::normalize_locale(req.locale)
             .map_err(limit_validation_error)?;
 
-        // Cheap request-shape validation first, so a malformed request reports
-        // 400 rather than being masked by a 409 when the org is at the cap.
         if req.harness_id.is_some() && req.harness_name.is_some() {
             return Err(CommandError::bad_request(
                 "Cannot specify both harness_id and harness_name",
@@ -87,16 +85,6 @@ impl Command for CreateSession {
             return Err(CommandError::bad_request(
                 "seed requires forked_from_session_id",
             ));
-        }
-
-        // Enforce per-org session cap before the heavier creation work. Sessions
-        // are hard-deleted, so the count reflects only live rows.
-        let max = ctx.resource_limits.max_sessions_per_org;
-        let count = ctx.db.count_sessions_for_org(ctx.org_id()).await?;
-        if count >= max {
-            return Err(CommandError::conflict(format!(
-                "Session limit reached (max {max})"
-            )));
         }
 
         // Resolve the agent first (by id or name) so its harness can seed the
@@ -581,6 +569,7 @@ impl Command for ForkSession {
                     locale: overrides.locale,
                     system_prompt: overrides.system_prompt,
                     up_to_message_id: overrides.up_to_message_id,
+                    sandbox: overrides.sandbox,
                 },
             )
             .await

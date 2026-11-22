@@ -17,6 +17,7 @@ use tracing::{debug, warn};
 
 use crate::browserless::browser_egress::BrowserEgress;
 use crate::browserless::cdp::{CdpSession, DEFAULT_RECONNECT_TIMEOUT_MS, is_cdp_refused};
+use crate::browserless::saved_logins::{self, ProfileClient};
 use crate::browserless::state::{
     BrowserSessionState, browser_session_external_id, delete_browser_session, delete_cookies,
     get_api_token, get_browser_session, load_cookies, save_browser_session, save_cookies,
@@ -113,6 +114,7 @@ impl Tool for BrowserlessOpenBrowserTool {
     fn description(&self) -> &str {
         "Open a persistent browser session. The browser stays alive between tool calls, \
          allowing multi-step workflows (e.g., login once, then navigate multiple pages). \
+         Pass `login` to start signed in with a saved login (see browserless_list_logins). \
          Use browserless_close_browser when done to release the browser."
     }
 
@@ -127,6 +129,10 @@ impl Tool for BrowserlessOpenBrowserTool {
                 "timeout_ms": {
                     "type": "integer",
                     "description": "How long the browser stays alive between tool calls, in milliseconds (default: 60000 = 60 seconds)"
+                },
+                "login": {
+                    "type": "string",
+                    "description": "Name of a saved login to restore before the first page loads: its cookies, and the site's local storage when `url` is on that site"
                 }
             },
             "additionalProperties": false
@@ -160,6 +166,16 @@ impl Tool for BrowserlessOpenBrowserTool {
             return error;
         }
 
+        let login = arguments
+            .get("login")
+            .and_then(|value| value.as_str())
+            .filter(|name| !name.is_empty());
+        if let Some(name) = login
+            && let Err(message) = saved_logins::validate_login_name(name)
+        {
+            return ToolExecutionResult::tool_error(message);
+        }
+
         context
             .emit_progress("browserless_open_browser", "Resolving connection…")
             .await;
@@ -180,6 +196,19 @@ impl Tool for BrowserlessOpenBrowserTool {
                 .await
                 {
                     Ok(mut session) => {
+                        let restored = match login {
+                            Some(name) => {
+                                match saved_logins::load_into(&mut session, &api_token, name).await
+                                {
+                                    Ok(summary) => Some(summary.to_json(name)),
+                                    Err(message) => {
+                                        session.disconnect().await;
+                                        return ToolExecutionResult::tool_error(message);
+                                    }
+                                }
+                            }
+                            None => None,
+                        };
                         let landing_blocked = session
                             .reset_if_landing_blocked(context.network_access.as_ref())
                             .await
@@ -212,12 +241,16 @@ impl Tool for BrowserlessOpenBrowserTool {
                                 if let Some(message) = landing_blocked {
                                     return ToolExecutionResult::tool_error(message);
                                 }
-                                return ToolExecutionResult::Success(json!({
+                                let mut result = json!({
                                     "status": "already_open",
                                     "message": "Browser session is already active.",
                                     "title": title,
                                     "url": current_url
-                                }));
+                                });
+                                if let Some(restored) = restored {
+                                    result["login"] = restored;
+                                }
+                                return ToolExecutionResult::Success(result);
                             }
                             Err(_) => {
                                 session.disconnect().await;
@@ -250,6 +283,24 @@ impl Tool for BrowserlessOpenBrowserTool {
                 Ok(s) => s,
                 Err(e) => return ToolExecutionResult::tool_error(e),
             };
+
+        // Seed the saved login before the first page loads, so the site sees
+        // its cookies on the very first request.
+        let restored = match login {
+            Some(name) => {
+                context
+                    .emit_progress("browserless_open_browser", "Restoring saved login…")
+                    .await;
+                match saved_logins::load_into(&mut session, &api_token, name).await {
+                    Ok(summary) => Some(summary.to_json(name)),
+                    Err(message) => {
+                        session.disconnect().await;
+                        return ToolExecutionResult::tool_error(message);
+                    }
+                }
+            }
+            None => None,
+        };
 
         // Navigate to initial URL if provided
         if let Some(url) = arguments
@@ -332,13 +383,17 @@ impl Tool for BrowserlessOpenBrowserTool {
         session.disconnect().await;
         debug!("Browser session opened and registered for reconnection");
 
-        ToolExecutionResult::Success(json!({
+        let mut result = json!({
             "status": "opened",
             "message": "Browser session opened. It will stay alive between tool calls. Use browserless_close_browser when done.",
             "title": title,
             "url": current_url,
             "timeout_ms": timeout_ms
-        }))
+        });
+        if let Some(restored) = restored {
+            result["login"] = restored;
+        }
+        ToolExecutionResult::Success(result)
     }
 
     fn requires_context(&self) -> bool {
@@ -438,6 +493,163 @@ impl Tool for BrowserlessCloseBrowserTool {
             "status": "closed",
             "message": "Browser session closed. Resources and cookies have been released."
         }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// ============================================================================
+// BrowserlessSaveLoginTool / BrowserlessListLoginsTool
+// ============================================================================
+
+/// Save the persistent browser's sign-in as a named login.
+pub struct BrowserlessSaveLoginTool;
+
+#[async_trait]
+impl Tool for BrowserlessSaveLoginTool {
+    fn name(&self) -> &str {
+        "browserless_save_login"
+    }
+
+    fn description(&self) -> &str {
+        "Save the persistent browser's sign-in (all its cookies, and local storage of the page \
+         now open) as a named login in the Browserless account, so a later session can start \
+         signed in with browserless_open_browser `login`. Saving under an existing name \
+         replaces it. Open the browser and sign in first."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Login name, e.g. `github-work`: up to 255 characters, no spaces or / ? # % &"
+                }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error("browserless_save_login requires context.")
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let Some(name) = arguments.get("name").and_then(Value::as_str) else {
+            return ToolExecutionResult::tool_error("`name` is required.");
+        };
+        if let Err(message) = saved_logins::validate_login_name(name) {
+            return ToolExecutionResult::tool_error(message);
+        }
+        let api_token = match get_api_token(context).await {
+            Ok(token) => token,
+            Err(e) => return e,
+        };
+        let Some(mut session) = try_get_cdp_session(context).await else {
+            return ToolExecutionResult::tool_error(
+                "No persistent browser is open. Call browserless_open_browser and sign in first.",
+            );
+        };
+        let state = saved_logins::capture_from(&mut session).await;
+        // Keep the browser alive for the next call, as every tool does.
+        if let Ok(Some(mut stored)) = get_browser_session(context).await
+            && let Ok(endpoint) = session.reconnect(DEFAULT_RECONNECT_TIMEOUT_MS).await
+        {
+            stored.ws_endpoint = endpoint;
+            stored.last_active_at = chrono::Utc::now().to_rfc3339();
+            let _ = save_browser_session(context, &stored).await;
+        }
+        session.disconnect().await;
+        let state = match state {
+            Ok(state) => state,
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        };
+        let cookies = state
+            .get("cookies")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        if cookies == 0 {
+            return ToolExecutionResult::tool_error(
+                "The browser holds no cookies yet, so there is no sign-in to save. Sign in first.",
+            );
+        }
+        match ProfileClient::new(api_token).save(name, &state).await {
+            Ok(_) => ToolExecutionResult::Success(json!({
+                "status": "saved",
+                "name": name,
+                "cookies": cookies,
+                "sites_with_storage": state.get("origins").and_then(Value::as_array).map_or(0, Vec::len),
+            })),
+            Err(message) => ToolExecutionResult::tool_error(message),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+/// List the saved logins in the connection's Browserless account.
+pub struct BrowserlessListLoginsTool;
+
+#[async_trait]
+impl Tool for BrowserlessListLoginsTool {
+    fn name(&self) -> &str {
+        "browserless_list_logins"
+    }
+
+    fn description(&self) -> &str {
+        "List saved logins in the Browserless account: name, cookie and site counts, last \
+         change. Logins come from browserless_save_login or from signing in through the \
+         Browserless dashboard. Never returns cookie values."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({ "type": "object", "properties": {}, "additionalProperties": false })
+    }
+
+    fn hints(&self) -> ToolHints {
+        // Shares the browser class so the "every browserless tool" rule
+        // stays one rule; listing is quick, so ordering costs nothing.
+        ToolHints::default()
+            .with_concurrency_class(crate::browserless::SESSION_BROWSER_CONCURRENCY_CLASS)
+            .with_readonly(true)
+            .with_open_world(true)
+            .with_requires_secrets(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error("browserless_list_logins requires context.")
+    }
+
+    async fn execute_with_context(
+        &self,
+        _arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let api_token = match get_api_token(context).await {
+            Ok(token) => token,
+            Err(e) => return e,
+        };
+        match ProfileClient::new(api_token).list().await {
+            Ok(logins) => ToolExecutionResult::Success(json!({ "logins": logins })),
+            Err(message) => ToolExecutionResult::tool_error(message),
+        }
     }
 
     fn requires_context(&self) -> bool {

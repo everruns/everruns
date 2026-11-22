@@ -29,6 +29,7 @@ async fn policy_events(cp: &ControlPlane) -> Vec<String> {
 
 fn observer() -> CreateObserverRow {
     CreateObserverRow {
+        system_kind: None,
         public_id: ObserverId::from_uuid(uuid::Uuid::now_v7()).to_string(),
         name: "every turn".into(),
         description: None,

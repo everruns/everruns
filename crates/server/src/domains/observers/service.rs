@@ -89,6 +89,13 @@ fn validate(sampling_rate: f64, scorers: &[ObserverScorerConfig]) -> Result<()> 
     }
     let mut keys = std::collections::HashSet::new();
     for scorer in scorers {
+        if scorer.scope == ObserverScope::Compaction
+            || matches!(scorer.method, ScorerMethod::SystemCompaction { .. })
+        {
+            anyhow::bail!(BadRequestError::new(
+                "Compaction monitoring is managed through organization quality_monitoring settings"
+            ));
+        }
         if scorer.key.trim().is_empty() {
             anyhow::bail!(BadRequestError::new("scorer key must not be empty"));
         }
@@ -151,6 +158,9 @@ fn validate(sampling_rate: f64, scorers: &[ObserverScorerConfig]) -> Result<()> 
                         "llm_judge pass_threshold must be between 0.0 and 1.0"
                     ));
                 }
+            }
+            ScorerMethod::SystemCompaction { .. } => {
+                unreachable!("system scorers are rejected before validation")
             }
         }
     }
@@ -245,6 +255,7 @@ impl ObserverService {
         let public_id = ObserverId::from_uuid(internal_uuid);
 
         let input = CreateObserverRow {
+            system_kind: None,
             public_id: public_id.to_string(),
             name: req.name,
             description: req.description,
@@ -279,7 +290,10 @@ impl ObserverService {
             .db
             .list_observers(caller.org_id, include_archived)
             .await?;
-        rows.into_iter().map(row_to_observer).collect()
+        rows.into_iter()
+            .filter(|row| row.system_kind.is_none())
+            .map(row_to_observer)
+            .collect()
     }
 
     pub async fn update(
@@ -295,6 +309,11 @@ impl ObserverService {
         let Some(existing) = existing.filter(|o| o.status != "deleted") else {
             return Ok(None);
         };
+        if existing.system_kind.is_some() {
+            anyhow::bail!(BadRequestError::new(
+                "Manage system observers through organization quality_monitoring settings"
+            ));
+        }
 
         // Validate the effective configuration after applying the patch.
         let effective_rate = req.sampling_rate.unwrap_or(existing.sampling_rate);
@@ -354,6 +373,11 @@ impl ObserverService {
         let Some(existing) = existing else {
             return Ok(false);
         };
+        if existing.system_kind.is_some() {
+            anyhow::bail!(BadRequestError::new(
+                "Manage system observers through organization quality_monitoring settings"
+            ));
+        }
         let deleted = self.db.delete_observer(caller.org_id, existing.id).await?;
         event_tap::resync(&self.db, caller.org_id).await;
         Ok(deleted)
@@ -476,6 +500,11 @@ impl ObserverService {
         };
         if observer.status != "active" {
             anyhow::bail!(BadRequestError::new("only an active observer can backfill"));
+        }
+        if observer.system_kind.is_some() {
+            anyhow::bail!(BadRequestError::new(
+                "System monitoring assesses new compactions automatically; historical backfill is disabled"
+            ));
         }
         let now = chrono::Utc::now();
         let since = now - chrono::Duration::hours(hours as i64);
@@ -601,6 +630,7 @@ impl ObserverService {
 
 pub fn row_to_observer(row: ObserverRow) -> Result<Observer> {
     Ok(Observer {
+        system_kind: row.system_kind,
         public_id: row.public_id.parse()?,
         internal_id: row.id,
         org_id: row.org_id,
@@ -623,6 +653,7 @@ pub fn row_to_observer(row: ObserverRow) -> Result<Observer> {
 /// neither is derivable from the row's internal UUID.
 pub fn row_to_trace_score(row: TraceScoreRow, observer_id: ObserverId) -> Result<TraceScore> {
     Ok(TraceScore {
+        evidence_ref: row.evidence_ref,
         public_id: row.public_id.parse()?,
         internal_id: row.id,
         org_id: row.org_id,
@@ -736,6 +767,7 @@ mod tests {
         db.enqueue_trace_scores(
             1,
             &[CreateTraceScoreRow {
+                evidence_ref: None,
                 public_id: score_public.to_string(),
                 observer_id: observer.internal_id,
                 scorer_key: "k".into(),
@@ -1073,6 +1105,7 @@ mod tests {
         let session = db.create_test_session().await;
         let rows: Vec<_> = (0..4)
             .map(|i| CreateTraceScoreRow {
+                evidence_ref: None,
                 public_id: TraceScoreId::from_uuid(Uuid::now_v7()).to_string(),
                 observer_id: observer.internal_id,
                 scorer_key: "k".into(),

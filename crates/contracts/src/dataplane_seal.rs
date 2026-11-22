@@ -230,12 +230,54 @@ pub fn open_session_secret(
     String::from_utf8(plain).map_err(|_| err("the session secret is not UTF-8"))
 }
 
+/// The issuer of the session tokens a data plane signs for injected
+/// capabilities (injected-capabilities.md, "Session tokens").
+pub const SESSION_TOKEN_ISSUER: &str = "everruns-data-plane";
+
+/// The Ed25519 key a data plane signs session tokens with, as PKCS#8 v1
+/// (RFC 8410), derived from the data plane's key.
+///
+/// Decision: derived, not generated and stored. Every executor already
+/// holds the data plane's key and the control plane holds the same one
+/// (`EVERRUNS_DP_KEY`), so executors sign with one key without sharing
+/// state, and the control plane trusts its data planes' tokens without a
+/// JWKS fetch or a key to distribute. Rotating the data plane's key
+/// rotates this one. The derivation is a SHA-256 of a domain label and the
+/// key, which is a sound KDF for a uniformly random 32-byte key; the label
+/// keeps it unrelated to anything else the key does.
+pub fn session_token_pkcs8(dp_key: &Key) -> Vec<u8> {
+    use sha2::{Digest, Sha256};
+    const PKCS8_ED25519_PREFIX: [u8; 16] = [
+        0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04,
+        0x20,
+    ];
+    let mut hash = Sha256::new();
+    hash.update(b"everruns/dp/v1/session-token/ed25519\0");
+    hash.update(dp_key);
+    let mut pkcs8 = PKCS8_ED25519_PREFIX.to_vec();
+    pkcs8.extend_from_slice(&hash.finalize());
+    pkcs8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const DP_KEY: Key = [7u8; 32];
     const DATA_KEY: Key = [9u8; 32];
+
+    #[test]
+    fn the_session_token_key_follows_the_data_plane_key() {
+        let one = session_token_pkcs8(&DP_KEY);
+        assert_eq!(one.len(), 48);
+        assert_eq!(
+            one,
+            session_token_pkcs8(&DP_KEY),
+            "every executor derives the same"
+        );
+        assert_ne!(one, session_token_pkcs8(&DATA_KEY));
+        assert_ne!(&one[16..], &DP_KEY[..], "never the data plane key itself");
+    }
 
     /// Fixed vectors: a change to the format breaks these, and with them
     /// every data key and secret already sealed.

@@ -113,6 +113,7 @@ for every delegation provider; the dispatcher does not rewrite them per target.
 | `goal` | string | No | Objective stored on the spawned `Session.goal` and injected at system-prompt level |
 | `lifetime` | string | No | `linked` (default) creates a lifecycle child; `detached` creates an independent top-level peer session |
 | `seed` | string | No | For `detached`: `fresh` (default), `fork`, or `workspace` |
+| `sandbox` | string | No | `fresh` (default) or `fork`: start from a copy of the parent's running sandbox where the provider can copy it (see knowledge/runtime-resources/forking-sessions.md, Sandbox copy) |
 | `mode` | string | No | `background` (default) or `foreground` |
 | `blueprint` | string | No | Optional blueprint ID for a specialist child agent. |
 | `config` | object | No | Blueprint-specific configuration. Only valid with `blueprint`. |

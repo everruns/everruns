@@ -46,6 +46,7 @@ later change is a deliberate one.
 | KV + secrets | Copy (target design; see status note) | Config/state the child is expected to reuse. |
 | SQL databases | Copy (page-level) | Pure data, transparent to the agent. |
 | Leased resources, sandbox, voice, tasks, schedules | **Do not copy** | Execution-bound or externally-billed; the child re-leases on demand. |
+| Sandbox, on request | **Copy** when `sandbox: "fork"` and the provider can | Opt-in: installed packages and build output are expensive to rebuild. See [Sandbox copy](#sandbox-copy). |
 | Parent state required to fork | Not `active` / `waiting_for_tool_results` | Avoids snapshotting a half-written, in-flight turn. |
 
 ## What gets copied
@@ -98,9 +99,40 @@ state.
   browser sessions, voice connections. These are provider-managed and
   often billed; duplicating the lease would double external state and cost. The
   child re-leases on first tool use.
-- **Session sandbox state** (encrypted `session_sandbox` secret), tied to a
-  remote sandbox lifecycle. Re-created on demand from the (copied) sandbox
-  capability config.
+- **Session sandbox state** (durable `sandboxes` rows, or the legacy
+  `session_sandbox` secret, which the storage copy skips), tied to a remote
+  sandbox lifecycle. Re-created on demand from the (copied) sandbox
+  capability config, unless a [sandbox copy](#sandbox-copy) was requested.
+
+### Sandbox copy
+
+A fork (`sandbox: "fork"` on the fork request) or a subagent (`sandbox:
+"fork"` on `spawn_agent`) can start from a copy of the source session's
+running sandbox instead of an empty one. The request is recorded on the
+child (`sessions.sandbox_fork_source_session_id`), and the store refuses any
+source that is not the child's parent or fork source. The child's first
+sandbox use takes the request and calls the provider's `fork`, in the
+child's own runtime context, so the copy gets the child's name, labels,
+lease, egress credential and recovery state. The copy skips workspace
+seeding and init: it already holds both. Its instance metadata records
+`forked_from` (source session and sandbox).
+
+The copy is best-effort and never fails a turn. Anything that cannot be
+copied starts fresh, as before: no request, a source with no running
+sandbox on the same provider, a provider without `fork`, or a provider error.
+Provider support, as measured on 2026-11-21:
+
+- **E2B** forks any running sandbox, memory and processes included. The
+  source keeps running, but its open connections drop.
+- **Daytona** forks VM sandboxes only (`daytona-vm-*` or a custom
+  `LINUX_VM` snapshot); a container sandbox answers 422 and starts fresh.
+  A source with a recovery volume is not forked, because the copy would
+  write checkpoints into the source's volume subpath.
+- Other providers keep the default: fresh.
+
+The copy is of the sandbox as it is when the child first needs it, not as it
+was at the fork point, so branching from an earlier message does not rewind
+the machine.
 - **Session tasks** (`session_tasks`, `session_task_messages`), subagent runs,
   background tool runs, monitors. Execution-scoped to the parent. A monitor's
   *definition* lives in capability config (copied); its live instances do not.
@@ -191,7 +223,8 @@ Request body (all fields optional, omitted fields inherit from the parent):
 Overridable on fork: `title`, `tags`, `model_id`, `agent_id`,
 `agent_identity_id`, `locale`, `system_prompt`, plus additive
 `capabilities`/`tools`/`mcp_servers` merges (same validation as
-`create_session`). Everything else is copied. Title defaults to
+`create_session`), and `sandbox` (`fresh` or `fork`, see
+[Sandbox copy](#sandbox-copy)). Everything else is copied. Title defaults to
 `"{parent title} (fork)"` when omitted.
 
 Response: `201 Created`, body is the new `Session` (same shape as

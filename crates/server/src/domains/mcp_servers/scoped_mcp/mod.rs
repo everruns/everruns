@@ -1255,6 +1255,12 @@ fn validate_scoped_mcp_servers_inner(
         if name.trim().is_empty() {
             return Err(BadRequestError::new("Scoped MCP server name cannot be empty").into());
         }
+        // Session tokens are minted only for injected capabilities a
+        // controller registered (knowledge/execution/injected-capabilities.md).
+        everruns_contracts::runtime::capabilities::injected::reject_session_token_servers([(
+            name, server,
+        )])
+        .map_err(BadRequestError::new)?;
         if server.preset.is_some() {
             validate_catalog_reference_shape(name, server)?;
         } else {

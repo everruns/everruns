@@ -163,7 +163,7 @@ pub(super) fn start_session_graders(
     supervisor: &mut TaskSupervisor,
     db: Arc<StorageBackend>,
     graders: crate::domains::evals::graders::Graders,
-    observer_wake: Option<Arc<tokio::sync::Notify>>,
+    observer_wake: Option<(Arc<tokio::sync::Notify>, bool)>,
     sample_sessions: bool,
 ) {
     if let Some(decisions) = graders.decisions() {
@@ -182,13 +182,16 @@ pub(super) fn start_session_graders(
             crate::domains::health_issues::inspector::spawn_sweep(db.clone(), inspector),
         );
     }
-    if let Some(observer_wake) = observer_wake {
+    if let Some((observer_wake, user_observers_enabled)) = observer_wake {
         supervisor.track(
             "observer_scoring",
             crate::domains::observers::spawn_observer_worker(
                 crate::domains::observers::ObserverWorkerDeps { db, graders },
                 observer_wake,
-                crate::domains::observers::ObserverWorkerConfig::default(),
+                crate::domains::observers::ObserverWorkerConfig {
+                    user_observers_enabled,
+                    ..Default::default()
+                },
             ),
         );
         tracing::info!("Observers enabled: scoring worker started");

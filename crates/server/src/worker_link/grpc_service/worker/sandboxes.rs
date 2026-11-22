@@ -185,6 +185,29 @@ impl WorkerServiceImpl {
                         Err(error) => state_error(error),
                     }
                 }
+                "request_fork" => {
+                    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "session_id")?,
+                    );
+                    let source_session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "source_session_id")?,
+                    );
+                    match store.request_fork(session_id, source_session_id).await {
+                        Ok(recorded) => encode(json!({"recorded": recorded}))?,
+                        Err(error) => state_error(error),
+                    }
+                }
+                "take_fork_source" => {
+                    let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
+                        uuid_field(&value, "session_id")?,
+                    );
+                    match store.take_fork_source(session_id).await {
+                        Ok(source) => {
+                            encode(json!({"source_session_id": source.map(|id| id.uuid())}))?
+                        }
+                        Err(error) => state_error(error),
+                    }
+                }
                 "ensure_sandbox" => {
                     let session_id = everruns_contracts::typed_id::SessionId::from_uuid(
                         uuid_field(&value, "session_id")?,

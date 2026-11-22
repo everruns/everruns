@@ -21,8 +21,9 @@ handle, such as canvas apps, heavy single-page apps, and custom widgets.
 The capability is provider-neutral. It is a regular function tool that returns
 images, so it works with OpenAI, Anthropic, Gemini, and any other model that
 accepts images in tool results. On models with a native computer tool (OpenAI
-GPT-5.4 and later through the Responses API, and recent Claude models with
-`computer_toolset_20260801`), the agent uses the provider's own tool instead,
+GPT-5.4 and later through the Responses API, recent Claude models with
+`computer_toolset_20260801`, and Gemini 4 models on Google's own endpoint),
+the agent uses the provider's own tool instead,
 which those models are trained on. The display, the actions, and the limits
 are the same either way.
 

@@ -178,6 +178,7 @@ async fn pre_stream_capability_rejection_reassembles_legacy_history_once() {
 #[derive(Clone, Debug)]
 struct OutputBudgetFallbackDriver {
     calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
+    hosted: bool,
 }
 
 #[async_trait]
@@ -188,6 +189,13 @@ impl everruns_contracts::ChatDriver for OutputBudgetFallbackDriver {
         messages: Vec<everruns_contracts::Message>,
         config: &everruns_contracts::LlmCallConfig,
     ) -> everruns_contracts::Result<everruns_contracts::LlmResponseStream> {
+        if self.hosted
+            && let Some(option) = config.driver_options.keys().next()
+        {
+            return Err(everruns_contracts::error::AgentLoopError::config(format!(
+                "option {option} is not supported by Everruns models"
+            )));
+        }
         self.calls.lock().await.push((messages, config.clone()));
         Ok(Box::pin(stream::iter(vec![
             Ok(everruns_contracts::LlmStreamEvent::TextDelta(
@@ -203,10 +211,12 @@ impl everruns_contracts::ChatDriver for OutputBudgetFallbackDriver {
         _model: &str,
         budget_tokens: usize,
     ) -> Option<(String, serde_json::Value)> {
-        Some((
-            "anthropic/server_compaction".to_string(),
-            json!({"trigger_tokens":budget_tokens}),
-        ))
+        (!self.hosted).then(|| {
+            (
+                "anthropic/server_compaction".to_string(),
+                json!({"trigger_tokens":budget_tokens}),
+            )
+        })
     }
 
     fn provider_managed_reduction_fallback_reason(
@@ -220,6 +230,15 @@ impl everruns_contracts::ChatDriver for OutputBudgetFallbackDriver {
 
 #[tokio::test]
 async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
+    run_output_budget_fallback(DriverId::Anthropic, false).await;
+}
+
+#[tokio::test]
+async fn hosted_provider_accepts_compaction_fallback_and_records_the_reason() {
+    run_output_budget_fallback(DriverId::external("everruns"), true).await;
+}
+
+async fn run_output_budget_fallback(provider_type: DriverId, hosted: bool) {
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::builtins::{INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability};
     use everruns_core::engine::ReasonAtom;
@@ -237,7 +256,6 @@ async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
         agent_id,
         session_id,
     ) = setup_test_environment().await;
-    let provider_type = DriverId::Anthropic;
     set_default_test_model(
         &provider_store,
         provider_type.clone(),
@@ -271,6 +289,7 @@ async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let driver = OutputBudgetFallbackDriver {
         calls: calls.clone(),
+        hosted,
     };
     let mut drivers = DriverRegistry::new();
     drivers.register(provider_type.clone(), move |_| Box::new(driver.clone()));
@@ -331,9 +350,11 @@ async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
             .driver_options
             .contains_key("anthropic/server_compaction")
     );
-    assert_eq!(
-        calls[0].1.driver_options["everruns/provider_managed_reduction_fallback"]["reason"],
-        "configured_output_budget"
+    assert!(
+        !calls[0]
+            .1
+            .driver_options
+            .contains_key("everruns/provider_managed_reduction_fallback")
     );
     drop(calls);
     let options = events
@@ -347,7 +368,11 @@ async fn configured_max_tokens_reassembles_legacy_history_before_the_call() {
         .cloned()
         .expect("fallback generation should record request options");
     assert_eq!(
-        options.provider_options["anthropic"]["fallback_reason"],
-        "configured_output_budget"
+        options.provider_options[provider_type.as_str()]["fallback_reason"],
+        if hosted {
+            "provider_or_model_ineligible"
+        } else {
+            "configured_output_budget"
+        }
     );
 }

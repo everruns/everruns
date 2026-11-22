@@ -2,7 +2,7 @@
 //! use the same validation and transaction; audit remains on the HTTP adapter.
 use super::{
     queries as q,
-    types::{OrganizationResponse, UpdateOrganizationRequest},
+    types::{MAX_MONTHLY_SESSION_LIMIT, OrganizationResponse, UpdateOrganizationRequest},
 };
 use crate::domains::common::*;
 use crate::storage::{UpdateField, UpdateOrganization, UpdateOrganizationSettings};
@@ -77,6 +77,7 @@ impl Command for UpdateOrg {
             .await?
             .ok_or_else(|| CommandError::not_found("Organization"))?;
         let UpdateOrganizationRequest {
+            quality_monitoring,
             name,
             default_model_id,
             chat_model_id,
@@ -91,11 +92,24 @@ impl Command for UpdateOrg {
             agentid_agents_per_owner,
             web_search_defaults,
             background_limits,
+            monthly_session_limit,
             self_healing,
             tool_approval_policy,
         } = self.request;
+        if let Some(policy) = &quality_monitoring {
+            crate::domains::observers::system::validate_policy(&ctx.db, row.org_id, policy)
+                .await
+                .map_err(CommandError::bad_request)?;
+        }
         if let Some(policy) = &tool_approval_policy {
             policy.validate().map_err(CommandError::bad_request)?;
+        }
+        if monthly_session_limit
+            .is_some_and(|limit| !(1..=MAX_MONTHLY_SESSION_LIMIT).contains(&limit))
+        {
+            return Err(CommandError::bad_request(format!(
+                "monthly_session_limit must be between 1 and {MAX_MONTHLY_SESSION_LIMIT}"
+            )));
         }
         if let Some(limits) = &background_limits {
             limits.validate().map_err(CommandError::bad_request)?;
@@ -230,6 +244,7 @@ impl Command for UpdateOrg {
             || base_harness_id.is_some()
             || default_provider_per_service.is_some()
             || system_decisions.is_some()
+            || monthly_session_limit.is_some()
         {
             let model_field = |value| match value {
                 None => UpdateField::Unchanged,
@@ -252,6 +267,7 @@ impl Command for UpdateOrg {
                         default_provider_per_service: default_provider_per_service
                             .map_or(UpdateField::Unchanged, UpdateField::Set),
                         system_decisions,
+                        monthly_session_limit,
                     },
                 )
                 .await?;
@@ -285,6 +301,9 @@ impl Command for UpdateOrg {
         }
         if let Some(cap) = agentid_agents_per_owner {
             ctx.db.set_agentid_agents_per_owner(row.org_id, cap).await?;
+        }
+        if let Some(policy) = quality_monitoring {
+            crate::domains::observers::system::configure(&ctx.db, row.org_id, &policy).await?;
         }
         q::build_organization_response(&ctx.db, row.org_id, updated).await
     }

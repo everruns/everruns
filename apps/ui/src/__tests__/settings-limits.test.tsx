@@ -8,6 +8,7 @@ import type { BackgroundLimits, SelfHealingPolicy } from "@/lib/api/types";
 let mockOrganization: {
   id: string;
   background_limits?: BackgroundLimits;
+  monthly_session_limit?: number;
   self_healing?: SelfHealingPolicy;
 } = { id: "org-1" };
 const limitsCard = () => within(screen.getByTestId("background-limits-settings"));
@@ -27,6 +28,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 beforeEach(() => {
   mockOrganization = {
     id: "org-1",
+    monthly_session_limit: 10000,
     background_limits: {
       schedule_max_lifetime_days: 3,
       schedule_max_runs: 48,
@@ -89,8 +91,27 @@ test("members see the limits read-only", () => {
   mockCanManage = false;
   render(<LimitsSettingsPage />);
   expect(screen.getByLabelText("Most runs per agent schedule")).toHaveAttribute("readonly");
+  expect(screen.getByLabelText("Monthly session limit")).toHaveAttribute("readonly");
   expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
   expect(limitsCard().getByText(/Only organization owners and admins/)).toBeInTheDocument();
+});
+
+test("saves the monthly session limit up to the hard ceiling", async () => {
+  render(<LimitsSettingsPage />);
+  const input = screen.getByRole("spinbutton", { name: "Monthly session limit" });
+  const form = within(input.closest("form")!);
+  expect(input).toHaveValue(10000);
+  expect(input).toHaveAttribute("max", "100000");
+
+  fireEvent.change(input, { target: { value: "100001" } });
+  fireEvent.submit(input.closest("form")!);
+  expect(form.getByRole("alert")).toHaveTextContent("from 1 to 100,000");
+  expect(mockMutate).not.toHaveBeenCalled();
+
+  fireEvent.change(input, { target: { value: "100000" } });
+  fireEvent.click(form.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mockMutate).toHaveBeenCalledWith({ monthly_session_limit: 100000 }));
+  expect(await form.findByRole("status")).toHaveTextContent("Saved");
 });
 
 test("self-healing saves the whole policy and shows the defaults when unset", async () => {

@@ -48,6 +48,7 @@ pub async fn gather(
 ) -> anyhow::Result<Option<Evidence>> {
     let session_id = SessionId::from_uuid(score.session_id);
     match ObserverScope::from(score.scope.as_str()) {
+        ObserverScope::Compaction => Ok(None), // Built-in bounded evidence is gathered by system observers.
         ObserverScope::Turn => {
             let events = list(db, session_id, Some(&score.turn_id), None).await?;
             Ok(Some(turn_evidence(&events)))

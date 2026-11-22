@@ -36,6 +36,11 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
   URL in the tool for clear user-facing errors on both paths.
 - See `crates/integrations/src/web_fetch/lib.rs`
 
+Connection failures and timeouts are classified at the egress boundary before
+the HTTP client error is reduced to text. Fetch errors distinguish those cases
+from network policy denials without including transport URL credentials in
+trace errors.
+
 ## Agent-oriented fetching
 
 FetchKit owns the structured fetchers, focused extraction, page quality signals,

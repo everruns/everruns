@@ -18,7 +18,7 @@ use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::domains::sessions::record::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::domains::users::{PrincipalService, row_to_principal};
-use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
+use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::kernel_imports::{
     AgentCapabilityConfig, Caller, CapabilityRegistry, contracts::typed_id::AgentId,
 };
@@ -39,7 +39,6 @@ use crate::kernel_imports::{
     parse_skill_capability_id,
 };
 use crate::max_iterations;
-use crate::server::ResourceLimitsConfig;
 use crate::setup::org_init;
 use crate::storage::UpdateField;
 use crate::storage::{
@@ -109,6 +108,8 @@ pub struct ForkOverrides {
     pub system_prompt: Option<String>,
     /// Message id to branch from; history after its turn is not copied.
     pub up_to_message_id: Option<String>,
+    /// Start the fork from a copy of the parent's sandbox.
+    pub sandbox: crate::domains::sessions::types::ForkSandbox,
 }
 
 /// Session counts grouped by status.
@@ -128,7 +129,6 @@ pub struct SessionService {
     session_file_service: WorkspaceFileService,
     session_sandbox_service: Option<Arc<SessionSandboxService>>,
     caps: OrgCaps,
-    resource_limits: ResourceLimitsConfig,
 }
 
 #[derive(Default)]

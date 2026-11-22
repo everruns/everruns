@@ -1,7 +1,9 @@
 //! Moving a running v1 session onto its org's data plane (`moves.rs`), on a
 //! real database against the stub data plane: switched first, then its
-//! conversation, storage and files imported, its v1 log kept.
+//! conversation, storage, files and SQL databases imported, its v1 log
+//! kept, and the session opened to messages last.
 
+use base64::Engine as _;
 use everruns_core::message::{ContentPart, RuntimeMessage};
 
 use super::*;
@@ -98,6 +100,16 @@ async fn v1_session(cp: &ControlPlane) -> crate::storage::SessionRow {
             .await
             .unwrap();
     }
+    let sqldb = crate::session_sqldb::PostgresSqlDbStore::new(cp.db.database().clone());
+    use everruns_contracts::session_sqldb::SessionSqlDbStore as _;
+    sqldb
+        .sql_execute(
+            session.id,
+            "notes",
+            "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('kept');",
+        )
+        .await
+        .unwrap();
     session
 }
 
@@ -195,6 +207,30 @@ async fn a_running_v1_session_moves_onto_its_data_plane_with_its_conversation_st
             .any(|f| f["path"] == "/data.bin" && f["encoding"] == "base64")
     );
     assert_eq!(report.files, 2);
+    // The SQL database, whole: its pages in order are its SQLite file.
+    let databases = commands(&seen, &public, "sqldb");
+    assert_eq!(databases.len(), 1);
+    assert_eq!(databases[0]["op"], "import");
+    assert_eq!(databases[0]["name"], "notes");
+    let file = base64::engine::general_purpose::STANDARD
+        .decode(databases[0]["file"].as_str().unwrap())
+        .unwrap();
+    assert!(file.starts_with(b"SQLite format 3\0"));
+    assert_eq!(report.databases, 1);
+    // Created closed to messages, and opened only once everything is in.
+    {
+        let seen = seen.lock();
+        let (_, body, _) = seen.sessions.last().unwrap();
+        assert_eq!(body["importing"], json!(true));
+        let order: Vec<&str> = seen
+            .commands
+            .iter()
+            .filter(|(s, _, _)| s == &public)
+            .map(|(_, c, _)| c.as_str())
+            .collect();
+        assert_eq!(order.last(), Some(&"activate"), "{order:?}");
+        assert_eq!(order.iter().filter(|c| **c == "activate").count(), 1);
+    }
 
     // Served from the data plane now, with the move on record.
     assert!(sessions::runs_on_data_plane(&cp, ORG, id).await.unwrap());

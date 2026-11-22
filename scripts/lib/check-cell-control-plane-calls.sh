@@ -9,7 +9,7 @@
 # nobody declared, which then fails on a standalone cell and hides from the
 # registry that lists what a data plane needs.
 #
-# What it checks: in `crates/cell/src`, outside tests, the control plane's
+# What it checks: in `crates/agentd/src`, outside tests, the control plane's
 # outbound paths (`/dp/v1/tenants/...` and `/dp/v1/feed`) appear only in the
 # allowlisted files. Inbound `/dp/v1/orgs/...` routes the cell serves are not
 # calls and are not checked.
@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-SRC="${1:-crates/cell/src}"
+SRC="${1:-crates/agentd/src}"
 if [ ! -d "$SRC" ]; then
   echo "Cell control plane calls guard: missing $SRC; the guard would check nothing." >&2
   exit 1

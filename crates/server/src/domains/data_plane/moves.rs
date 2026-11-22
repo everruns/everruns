@@ -7,15 +7,19 @@
 //!   plane's ([`MOVING`]) in the same transaction that records the move, so
 //!   from that moment no message reaches the platform's workers; the
 //!   control plane refuses its messages ("moving, send again") until the
-//!   import is done. Only a session with no turn running or waiting is
+//!   import is done. The cell does too: the session is created there
+//!   closed to messages (`importing`), so one the edge routes straight to
+//!   the cell is refused alike, and only the move's last step opens it
+//!   ([`session_commands::ACTIVATE`]), after everything below is in. Only a session with no turn running or waiting is
 //!   switched, and the move then waits out a turn that started just before
 //!   the switch. A turn waiting on tool results is not moved: its call would
 //!   be left without an answer.
 //! - The import is what a fork carries (`fork_plane.rs`): the conversation
 //!   (the people's and the agent's messages with their text and media; tool
 //!   calls and their results stay behind, a seeded call without its result
-//!   would be refused by a model provider), the values and secrets, and the
-//!   workspace's files. The v1 log itself stays where it is, in the control
+//!   would be refused by a model provider), the values and secrets, the
+//!   workspace's files, and the SQL databases, each whole (a fork leaves
+//!   those with its parent, as on v1; a move takes the session's own). The v1 log itself stays where it is, in the control
 //!   plane's `events`, never deleted; the move records where it ends
 //!   (`dp_session_moves.from_sequence`).
 //! - Bounded: the newest messages that fit one seed call
@@ -26,7 +30,9 @@
 //!   copying it unbound would widen where it may be sent.
 //! - Resumable: every step is retry-safe (the create, a seed only while the
 //!   session is empty, files written only where absent, storage set to the
-//!   same values), so a move that stopped midway is run again and continues.
+//!   same values, a database imported again as the same file, the session
+//!   opened once more), so a move that stopped midway is run again and
+//!   continues.
 //! - The session's own settings go with the create as its layer, as for a
 //!   session created on a data plane with them (`sessions::session_layer`);
 //!   the capabilities its record holds are the resolved set and stay with
@@ -53,7 +59,7 @@ pub const SEED_BYTES: usize = 1 << 20;
 pub const SEED_MESSAGES: usize = 4_000;
 /// Files sent in one call, base64 encoded, before a call is sent.
 const FILES_BATCH_BYTES: usize = 1 << 20;
-/// The largest file a cell holds (`crates/cell/src/api_files.rs`).
+/// The largest file a cell holds (`crates/agentd/src/api_files.rs`).
 const FILE_MAX: i64 = 32 * 1024 * 1024;
 
 /// What a move carried and what stayed behind.
@@ -65,6 +71,8 @@ pub struct MoveReport {
     pub values: usize,
     pub secrets: usize,
     pub files: usize,
+    /// SQL databases, each imported whole.
+    pub databases: usize,
     /// What stayed behind, and why.
     pub left_behind: Vec<String>,
     /// The conversation was not seeded: the session already held history
@@ -182,8 +190,11 @@ pub async fn move_session(
         session,
         harness_id,
         row.agent_id,
-        &[],
-        layer(&row),
+        super::sessions::Joining {
+            initial_files: &[],
+            layer: layer(&row),
+            importing: true,
+        },
     )
     .await?;
     let plane = SessionPlane::with(cp, org_id, session)
@@ -193,6 +204,11 @@ pub async fn move_session(
     let from_sequence = seed(cp, &plane, session, &mut report).await?;
     storage(cp, &org, &plane, session, &mut report).await?;
     files(cp, &plane, &row, &mut report).await?;
+    databases(cp, &plane, session, &mut report).await?;
+    // Imported: the cell takes its messages from now on.
+    plane
+        .command(&session_commands::ACTIVATE, &json!({}))
+        .await?;
 
     cp.db
         .dp_finish_session_move(&public, from_sequence, &serde_json::to_value(&report)?)
@@ -387,6 +403,45 @@ async fn files(
         report.files += 1;
     }
     seeder.finish().await
+}
+
+/// The session's SQL databases, each imported whole: v1 keeps a database
+/// as its pages, which in order are its SQLite file. A database is never
+/// left behind: both planes hold the same limits, so one that does not go
+/// stops the move, and the session stays closed until the move is run
+/// again.
+async fn databases(
+    cp: &ControlPlane,
+    plane: &SessionPlane,
+    session: SessionId,
+    report: &mut MoveReport,
+) -> anyhow::Result<()> {
+    for database in cp.db.list_session_databases(session).await? {
+        // Deleted since it was listed.
+        let Some((_, pages)) = cp.db.load_session_database_pages(database.id).await? else {
+            continue;
+        };
+        let file = crate::session_sqldb::pages::image(&pages)?;
+        let reply = plane
+            .command(
+                &session_commands::SQLDB,
+                &json!({
+                    "op": "import",
+                    "name": database.name,
+                    "file": base64::engine::general_purpose::STANDARD.encode(file),
+                }),
+            )
+            .await?;
+        if reply["result"] != "done" {
+            anyhow::bail!(
+                "database {} was not imported: {}",
+                database.name,
+                reply["message"].as_str().unwrap_or("no answer")
+            );
+        }
+        report.databases += 1;
+    }
+    Ok(())
 }
 
 /// Files written into a session on its cell, in `seed` calls of about a

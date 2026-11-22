@@ -38,6 +38,10 @@ change; opaque native content is never translated. Current working-context size
 and raw evidence since the checkpoint trigger reduction; cumulative lifetime
 usage alone cannot rearm a checkpoint. See the [public contract](../../docs/advanced/compaction.md).
 
+The fallback reason is runtime telemetry. The model request records when
+provider-managed reduction falls back to the portable path, and the outgoing
+provider options contain only options the provider can use.
+
 ## Inspection and defaults
 
 The shared Base preset supplies compaction to its children; Framework's
@@ -196,3 +200,16 @@ The [semantic probe](../../crates/core/benches/compaction_semantics.rs) and
 provide repeatable evidence. Model judgments supplement source review rather than
 replacing it. Public APIs expose safe policy/checkpoint metadata, never checkpoint
 payloads or provider-encrypted reasoning material.
+
+## Operational monitoring boundary
+
+Compaction emits a raw-history evidence permission derived from the same driver
+and prompt-hook gate as portable summarization. Old events default to denied.
+The [shared assessment](../../crates/core/src/compaction_observation.rs) reports
+execution metadata without judging semantics; equal message counts remain valid.
+Hosted opt-in [system observers](../evaluation/online-evals.md#opt-in-system-compaction-monitoring)
+consume terminal outcomes and a bounded continuation, independently of harness
+selection. A successful installation event is not an independent readback test.
+Opaque native content remains private; continuity is inferred only from sampled
+observable behavior. These checks supplement regression cases rather than proving
+universal fidelity or replacing offline qualification.

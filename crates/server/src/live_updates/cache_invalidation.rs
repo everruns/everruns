@@ -265,6 +265,7 @@ mod tests {
             .create_observer(
                 org_id,
                 crate::storage::CreateObserverRow {
+                    system_kind: None,
                     public_id: format!("observer_{}", uuid::Uuid::now_v7().simple()),
                     name: "cached".into(),
                     description: None,

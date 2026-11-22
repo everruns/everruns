@@ -87,6 +87,14 @@ pub const FS: SessionCommand = command(
     "fs",
     "the session's files: a message's uploads, a git commit's snapshot",
 );
+/// A moved v1 session's SQL database, imported whole (one SQLite file).
+pub const SQLDB: SessionCommand =
+    command("sqldb", "a moved session's SQL database, imported whole");
+/// Open a moved v1 session to messages once its import is done.
+pub const ACTIVATE: SessionCommand = command(
+    "activate",
+    "open a moved session to messages once it is imported",
+);
 
 /// Event rows in a sequence range, by type or message.
 pub const EVENTS: SessionCommand = read("events", "event rows in a range, by type or message");
@@ -116,6 +124,8 @@ pub const SESSION_COMMANDS: &[SessionCommand] = &[
     RECORD,
     STORAGE,
     FS,
+    SQLDB,
+    ACTIVATE,
     EVENTS,
     LOG,
     TRACE,

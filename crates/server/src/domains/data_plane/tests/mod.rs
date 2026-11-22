@@ -41,6 +41,8 @@ struct Seen {
     files: std::collections::HashMap<String, Vec<Value>>,
     /// Refuse a `snapshot` as too large, as a cell does past its limit.
     snapshot_refused: bool,
+    /// A session's SQL databases on its cell: (name, SQLite file).
+    databases: std::collections::HashMap<String, Vec<(String, Vec<u8>)>>,
 }
 
 type Stub = Arc<Mutex<Seen>>;
@@ -138,6 +140,7 @@ async fn stub() -> (String, Stub) {
                 None => json!({ "result": "failed", "status": 404, "message": "File not found" }),
             },
             ("fs", _) => json!({ "result": "ok" }),
+            ("sqldb", Some(op)) => sqldb(&mut seen, &session, op, &body),
             _ => json!(true),
         })
     }
@@ -158,6 +161,76 @@ async fn stub() -> (String, Stub) {
     let url = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, app).await });
     (url, seen)
+}
+
+/// A cell's `sqldb` session command over the stub's databases.
+fn sqldb(seen: &mut Seen, session: &str, op: &str, body: &Value) -> Value {
+    use base64::Engine as _;
+    let databases = seen.databases.entry(session.to_owned()).or_default();
+    let name = body["name"].as_str().unwrap_or_default().to_owned();
+    let shown = |name: &str, file: &[u8]| {
+        json!({
+            "name": name, "size_bytes": file.len(), "page_count": file.len() / 4096,
+            "created_at": "2026-11-20T00:00:00Z", "updated_at": "2026-11-20T00:00:00Z",
+        })
+    };
+    let found = databases.iter().position(|(n, _)| *n == name);
+    let missing = json!({ "result": "failed", "status": 404, "message": "Database not found" });
+    let value = match (op, found) {
+        ("list", _) => json!({
+            "data": databases.iter().map(|(n, f)| shown(n, f)).collect::<Vec<_>>(),
+        }),
+        ("import", _) => {
+            let file = base64::engine::general_purpose::STANDARD
+                .decode(body["file"].as_str().unwrap())
+                .unwrap();
+            let value = shown(&name, &file);
+            databases.retain(|(n, _)| *n != name);
+            databases.push((name, file));
+            value
+        }
+        ("create", Some(_)) => {
+            return json!({ "result": "failed", "status": 409, "message": "exists" });
+        }
+        ("create", None) => {
+            databases.push((name.clone(), Vec::new()));
+            shown(&name, &[])
+        }
+        ("get", Some(at)) => shown(&name, &databases[at].1),
+        ("delete", Some(at)) => {
+            databases.remove(at);
+            json!({ "deleted": true })
+        }
+        ("schema", Some(at)) => {
+            let file = &databases[at].1;
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            if !file.is_empty() {
+                conn.deserialize_read_exact("main", file.as_slice(), file.len(), true)
+                    .unwrap();
+            }
+            let tables: Vec<String> = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+                .unwrap()
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            let tables: Vec<Value> = tables
+                .into_iter()
+                .map(|table| {
+                    let rows: i64 = conn
+                        .query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |r| {
+                            r.get(0)
+                        })
+                        .unwrap();
+                    json!({ "name": table, "columns": [], "row_count": rows })
+                })
+                .collect();
+            json!({ "database": name, "tables": tables })
+        }
+        _ => return missing,
+    };
+    json!({ "result": "done", "value": value })
 }
 
 fn test_encryption() -> Arc<crate::storage::EncryptionService> {
@@ -1019,6 +1092,7 @@ mod memory;
 mod moves;
 mod org_settings;
 mod sandboxes;
+mod sqldb;
 mod subagents;
 mod task_webhooks;
 mod user_mcp;

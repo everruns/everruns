@@ -1,3 +1,4 @@
+import { messages as qualityMonitoring } from "./messages/uk/quality-monitoring";
 import { messages as mcpApps } from "./messages/uk/mcp-apps";
 import { messages as extractions } from "./messages/uk/extractions";
 import { messages as rooms } from "./messages/uk/rooms";
@@ -94,7 +95,7 @@ export const uiMessages: Readonly<Record<string, string>> = Object.assign(
 
 /** Product catalogs use null-prototype maps so hostile lookup keys fall back safely. */
 export const uiMessagesByLocale: Readonly<Record<string, Readonly<Record<string, string>>>> =
-  Object.assign(Object.create(null), {
+  Object.assign(Object.create(null), qualityMonitoring, {
     uk: uiMessages,
     fr,
     de,

@@ -33,6 +33,18 @@ pub use everruns_core::evaluation_judge::{JudgeOutput, JudgeResult, TurnEvidence
 /// Abstraction over the judge LLM call so the worker is testable with a fake.
 #[async_trait]
 pub trait JudgeClient: Send + Sync {
+    /// Bounded system assessment. Implementations without admission support
+    /// leave the check unassessed rather than falling back to an unmetered call.
+    async fn judge_compaction(
+        &self,
+        _org_id: i64,
+        _model_id: ModelId,
+        _system: String,
+        _user: String,
+        _admission: MonitoringAdmission<'_>,
+    ) -> Result<Option<OrgCompletion>> {
+        Ok(None)
+    }
     /// Grade `evidence` against `rubric` for `org_id`, using `model_id` (or the
     /// org's default model when `None`).
     ///
@@ -53,17 +65,19 @@ pub use everruns_core::evaluation_judge::{build_judge_messages, parse_judge_outp
 
 /// Production [`JudgeClient`] that calls the org's configured model.
 pub struct LlmJudgeClient {
+    db: Arc<StorageBackend>,
     driver_registry: Arc<DriverRegistry>,
     provider_resolver: Arc<ProviderResolverService>,
 }
 
 impl LlmJudgeClient {
     pub fn new(
-        _db: Arc<StorageBackend>,
+        db: Arc<StorageBackend>,
         driver_registry: Arc<DriverRegistry>,
         provider_resolver: Arc<ProviderResolverService>,
     ) -> Self {
         Self {
+            db,
             driver_registry,
             provider_resolver,
         }
@@ -84,11 +98,23 @@ pub struct OrgCompletion {
 /// Sampling and attribution for one [`LlmJudgeClient::complete`] call.
 #[derive(Debug, Clone, Copy)]
 pub struct CompletionOptions<'a> {
+    pub monitoring: Option<MonitoringAdmission<'a>>,
     pub temperature: f32,
     pub max_tokens: u32,
     /// Request metadata naming the caller.
     pub purpose: &'a str,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct MonitoringAdmission<'a> {
+    pub score_id: uuid::Uuid,
+    pub attempt: i32,
+    pub policy: &'a super::system::QualityMonitoringPolicy,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Monitoring call was not admitted: consent, pricing or daily budget is unavailable")]
+pub struct MonitoringNotAdmitted;
 
 impl LlmJudgeClient {
     /// Ask `model_id` (the org's default model when `None`) to answer
@@ -103,6 +129,9 @@ impl LlmJudgeClient {
         user: String,
         options: CompletionOptions<'_>,
     ) -> Result<Option<OrgCompletion>> {
+        let input_token_bound =
+            u32::try_from(system.len().saturating_add(user.len()).saturating_add(1024))
+                .unwrap_or(u32::MAX);
         // Resolve the org's model + decrypted provider credentials. A missing
         // model is a permanent config condition → Ok(None) so the worker skips
         // (rather than retrying and finally erroring).
@@ -162,14 +191,93 @@ impl LlmJudgeClient {
             ("scorer".to_string(), options.purpose.to_string()),
         ]);
 
-        let response = driver
-            .chat_completion(
-                &everruns_contracts::runtime_provider::ProviderEndpoint::default(),
-                messages,
-                &config,
-            )
-            .await?;
+        if let Some(admission) = options.monitoring {
+            config.speed = Some("default".into());
+            // Include the driver's bounded retry allowance and an auth retry.
+            // Holds remain conservative when provider outcomes are ambiguous.
+            let cost = profile
+                .as_ref()
+                .and_then(|profile| profile.cost.as_ref())
+                .ok_or(MonitoringNotAdmitted)?;
+            let input_rate = cost
+                .cost_tiers
+                .iter()
+                .map(|tier| tier.input)
+                .fold(cost.input, f64::max);
+            let output_rate = cost
+                .cost_tiers
+                .iter()
+                .map(|tier| tier.output)
+                .fold(cost.output, f64::max);
+            if !input_rate.is_finite()
+                || input_rate < 0.0
+                || !output_rate.is_finite()
+                || output_rate < 0.0
+            {
+                return Err(MonitoringNotAdmitted.into());
+            }
+            let calls =
+                f64::from((everruns_contracts::LlmRetryConfig::default().max_retries + 1) * 2);
+            let hold = ((f64::from(input_token_bound) * input_rate
+                + f64::from(config.max_tokens.unwrap_or(0)) * output_rate)
+                * calls)
+                .ceil();
+            if !hold.is_finite() || hold < 0.0 || hold > i64::MAX as f64 {
+                return Err(MonitoringNotAdmitted.into());
+            }
+            let allowed = self
+                .db
+                .reserve_monitoring_budget(
+                    org_id,
+                    admission.score_id,
+                    admission.attempt,
+                    &serde_json::to_value(admission.policy)?,
+                    (hold as i64).max(1),
+                )
+                .await?;
+            if !allowed {
+                return Err(MonitoringNotAdmitted.into());
+            }
+        }
+
+        let endpoint = everruns_contracts::runtime_provider::ProviderEndpoint::default();
+        let completion = driver.chat_completion(&endpoint, messages, &config);
+        // Finish before the scoring lease can be reclaimed. A timed-out call
+        // keeps its conservative reservation because its billing is uncertain.
+        let response = if options.monitoring.is_some() {
+            tokio::time::timeout(std::time::Duration::from_secs(90), completion).await??
+        } else {
+            completion.await?
+        };
         let meta = response.metadata;
+        if let Some(admission) = options.monitoring {
+            let actual = meta
+                .provider_cost_usd
+                .filter(|cost| cost.is_finite() && *cost >= 0.0)
+                .map(|cost| (cost * 1_000_000.0).ceil() as i64);
+            self.db
+                .settle_monitoring_budget(org_id, admission.score_id, admission.attempt, actual)
+                .await?;
+            let usage_id =
+                uuid::Uuid::new_v5(&admission.score_id, &admission.attempt.to_be_bytes());
+            // Usage is attributed per admitted attempt, including responses
+            // whose judgment cannot subsequently be parsed or accepted.
+            if let Some(session) = self
+                .db
+                .get_trace_score_session(admission.score_id, org_id)
+                .await?
+            {
+                crate::domains::budgets::BudgetService::new(self.db.clone())
+                    .meter_observer_grading(
+                        session,
+                        usage_id,
+                        meta.prompt_tokens.unwrap_or(0) as u64,
+                        meta.completion_tokens.unwrap_or(0) as u64,
+                        meta.provider_cost_usd,
+                    )
+                    .await;
+            }
+        }
         Ok(Some(OrgCompletion {
             text: response.text,
             model,
@@ -182,6 +290,28 @@ impl LlmJudgeClient {
 
 #[async_trait]
 impl JudgeClient for LlmJudgeClient {
+    async fn judge_compaction(
+        &self,
+        org_id: i64,
+        model_id: ModelId,
+        system: String,
+        user: String,
+        admission: MonitoringAdmission<'_>,
+    ) -> Result<Option<OrgCompletion>> {
+        self.complete(
+            org_id,
+            Some(model_id),
+            system,
+            user,
+            CompletionOptions {
+                monitoring: Some(admission),
+                temperature: 0.0,
+                max_tokens: 700,
+                purpose: "compaction_quality_monitoring",
+            },
+        )
+        .await
+    }
     async fn judge(
         &self,
         org_id: i64,
@@ -197,6 +327,7 @@ impl JudgeClient for LlmJudgeClient {
                 system,
                 user,
                 CompletionOptions {
+                    monitoring: None,
                     temperature: 0.0,
                     max_tokens: 700,
                     purpose: "observer_llm_judge",

@@ -1,5 +1,6 @@
 use web_time::Instant;
 
+use crate::engine::driver_registry::LlmCallConfig;
 use crate::engine::error::Result;
 use crate::engine::event_emitter::EventEmitter;
 use crate::engine::events::{
@@ -15,6 +16,22 @@ use super::error_policy::{error_disclosure_override, resolve_error_disclosure};
 use super::{ReasonAtom, ReasonResult};
 
 const STRATEGY: &str = "anthropic_server_compaction";
+
+/// Keep fallback metadata in the runtime; strict providers reject this option.
+pub(super) fn take_fallback(config: &mut LlmCallConfig) -> Option<serde_json::Value> {
+    config
+        .driver_options
+        .remove(crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK)
+}
+
+pub(super) fn restore_fallback(config: &mut LlmCallConfig, marker: Option<serde_json::Value>) {
+    if let Some(marker) = marker {
+        config.driver_options.insert(
+            crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
+            marker,
+        );
+    }
+}
 
 pub(super) fn replay_artifacts(
     metadata: Option<&crate::engine::driver_registry::LlmCompletionMetadata>,
@@ -53,6 +70,7 @@ pub(super) fn decorate_request(
 }
 
 pub(super) struct Lifecycle<'a> {
+    history_evidence_allowed: bool,
     emitter: &'a dyn EventEmitter,
     session_id: SessionId,
     context: &'a EventContext,
@@ -74,8 +92,10 @@ impl<'a> Lifecycle<'a> {
         messages: usize,
         source_sequence: Option<i64>,
         config: &crate::engine::driver_registry::LlmCallConfig,
+        history_evidence_allowed: bool,
     ) -> Self {
         Self {
+            history_evidence_allowed,
             emitter,
             session_id,
             context,
@@ -255,6 +275,7 @@ impl<'a> Lifecycle<'a> {
                 self.session_id,
                 self.context.clone(),
                 ContextCompactedData {
+                    history_evidence_allowed: self.history_evidence_allowed,
                     checkpoint_id: install.checkpoint_id,
                     checkpoint_bytes: install.checkpoint_bytes,
                     replay_source: Some(replay_source.to_string()),
@@ -405,7 +426,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                     && fallback.model.provider_managed_reduction_option.is_none() =>
             {
                 fallback.turn_agent.driver_options.insert(
-                    "everruns/provider_managed_reduction_fallback".to_string(),
+                    crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
                     serde_json::json!({"reason":reason}),
                 );
                 assembled = fallback;
@@ -561,7 +582,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                 "ReasonAtom: retrying provider capability rejection with legacy history"
             );
             fallback.turn_agent.driver_options.insert(
-                "everruns/provider_managed_reduction_fallback".to_string(),
+                crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK.to_string(),
                 serde_json::json!({"reason":"provider_capability_rejected"}),
             );
             disclosure = resolve_error_disclosure(

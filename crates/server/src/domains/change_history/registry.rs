@@ -675,7 +675,7 @@ pub fn declared(name: &str) -> Change {
         "apply_model_preset" => Change::Exempt(
             "copies models into the organization defaults; update_org records that change",
         ),
-        "review_observer_score" => {
+        "review_observer_score" | "review_org_quality_monitoring_score" => {
             Change::Exempt("a review annotates one derived score, not the observer")
         }
         "backfill_observer" => {

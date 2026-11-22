@@ -1,0 +1,175 @@
+//! The platform tools (`platform_discover`, `platform_query`,
+//! `platform_execute`: Platform Chat) on the data plane (data plane v2,
+//! step 11.6b).
+//!
+//! The command catalog is the control plane's, so a call goes there over
+//! the lookups channel (`lookups.rs`) and runs as the person who sent the
+//! turn's input message, as on a v1 worker.
+//!
+//! Decisions:
+//! - THREAT[TM-AGENT-017]: a call names only the session and the turn's
+//!   input message ([`PLATFORM_COMMAND_SURFACE`]'s params). The cell that
+//!   forwards it adds the person from the session's own record
+//!   (`senders.rs`, `gateway_dp.rs`), replacing anything the call carried,
+//!   and the control plane re-derives the session's `platform` capability
+//!   and the person's membership and role before it runs anything.
+//! - A call outside a turn (no input message bound) is refused here: there
+//!   is no person to act as.
+//! - The shell's `everruns` builtin forwards its line to the `execute`
+//!   tool (bashkit's `ForwardingBuiltin`), so it runs here too, bound to
+//!   the same turn.
+//! - Where the control plane serves its platform commands
+//!   (`injected::PLATFORM_COMMANDS`, sent with the create), a call is one
+//!   MCP tool call there with a session token, whose `act` is the turn's
+//!   person from the same record; the host call stays for a control plane
+//!   that does not serve it yet. The tools, docs and builtin stay native.
+
+use std::sync::Arc;
+
+/// The v1 command the `platform_command` host call answers.
+const PLATFORM_COMMAND_SURFACE: &str = "platform_command_surface";
+use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_core::tool_context::{ExecutionServices, ExecutionServicesExt, ToolContext};
+use everruns_internal_protocol::commands::InternalCommandTransport;
+use serde_json::{Value, json};
+
+use crate::lookups::OrgLookups;
+use everruns_contracts::runtime::saved_scripts::SavedScripts;
+
+/// One session's platform calls, bound to a turn's input message once the
+/// turn runs.
+#[derive(Clone)]
+pub(crate) struct PlatformCalls {
+    lookups: OrgLookups,
+    session: SessionId,
+    input: Option<MessageId>,
+    /// The control plane's commands server, when it serves one.
+    server: Option<crate::mcp::ControllerServer>,
+}
+
+impl PlatformCalls {
+    pub(crate) fn new(
+        lookups: OrgLookups,
+        session: SessionId,
+        server: Option<crate::mcp::ControllerServer>,
+    ) -> Self {
+        Self {
+            lookups,
+            session,
+            input: None,
+            server,
+        }
+    }
+
+    /// The same calls, for the turn of input message `input`.
+    pub(crate) fn bound(&self, input: MessageId) -> Self {
+        Self {
+            input: Some(input),
+            ..self.clone()
+        }
+    }
+
+    /// Run `operation` (`discover`, `query`, `execute` or `run`) with
+    /// `arguments`; the command's output.
+    pub(crate) async fn call(&self, operation: &str, arguments: Value) -> Result<String> {
+        let Some(input) = self.input else {
+            return Err(AgentLoopError::tool(
+                "Platform commands run only within a turn a person started",
+            ));
+        };
+        if let Some(server) = &self.server {
+            return command(server, operation, arguments).await;
+        }
+        let params = json!({
+            "session_id": self.session.to_string(),
+            "input_message_id": input.to_string(),
+            "operation": operation,
+            "arguments": arguments,
+        });
+        match self
+            .lookups
+            .execute_internal_command(PLATFORM_COMMAND_SURFACE, params)
+            .await?
+        {
+            Ok(Value::String(output)) => Ok(output),
+            Ok(other) => Ok(other.to_string()),
+            Err(error) => Err(AgentLoopError::tool(error.message)),
+        }
+    }
+}
+
+impl PlatformCalls {
+    /// Ask the control plane for a record for a new child of this session
+    /// (the `subagent_record` host call, `subagents.rs`): the child's id and
+    /// its Memory mounts. Needs no turn: the child acts as no one.
+    pub(crate) async fn record_subagent(
+        &self,
+        params: Value,
+    ) -> Result<(SessionId, Vec<String>, crate::platform::Servers)> {
+        let answer = self
+            .lookups
+            .execute_internal_command(everruns_contracts::host_calls::SUBAGENT_RECORD, params)
+            .await?
+            .map_err(|error| AgentLoopError::store(error.message))?;
+        let id = answer["session_id"]
+            .as_str()
+            .and_then(|id| id.parse().ok())
+            .ok_or_else(|| AgentLoopError::store("the control plane named no child session"))?;
+        let memory = serde_json::from_value(answer["memory"].clone()).unwrap_or_default();
+        let servers = serde_json::from_value(answer["servers"].clone()).unwrap_or_default();
+        Ok((id, memory, servers))
+    }
+}
+
+/// `operation` with `arguments` on the control plane's commands server.
+async fn command(
+    server: &crate::mcp::ControllerServer,
+    operation: &str,
+    arguments: Value,
+) -> Result<String> {
+    server
+        .call_tool(
+            everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMAND_TOOL,
+            json!({ "operation": operation, "arguments": arguments }),
+        )
+        .await
+        .map_err(AgentLoopError::tool)
+}
+
+/// Binds the session's platform store, and its saved scripts, to each
+/// turn's input message, as the v1 worker's `PlatformExecutionScope` does.
+pub(crate) struct BindPlatformStore {
+    pub(crate) store: Arc<dyn everruns_capabilities::PlatformStore>,
+    pub(crate) scripts: Option<SavedScripts>,
+}
+
+impl ExecutionServices for BindPlatformStore {
+    fn bind(&self, context: &mut ToolContext, id: uuid::Uuid) {
+        if let Some(store) = self.store.for_execution(id) {
+            context
+                .extensions
+                .insert(Arc::new(everruns_capabilities::PlatformStoreExt(store)));
+        }
+        if let Some(saved) = &self.scripts
+            && let Some(store) = saved.store.for_execution(id)
+        {
+            context.extensions.insert(Arc::new(SavedScripts {
+                store,
+                can_save: saved.can_save,
+            }));
+        }
+    }
+}
+
+/// `ExecutionServicesExt` binding `store` and `scripts`.
+pub(crate) fn binding(
+    store: Arc<dyn everruns_capabilities::PlatformStore>,
+    scripts: Option<SavedScripts>,
+) -> ExecutionServicesExt {
+    ExecutionServicesExt(Arc::new(BindPlatformStore { store, scripts }))
+}
+
+#[cfg(test)]
+#[path = "platform_calls_tests.rs"]
+mod tests;

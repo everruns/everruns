@@ -29,6 +29,8 @@ export const settingsNavigationSections: NavigationSection[] = [
           "organizations",
           "organisation",
           "organisations",
+          "quality monitoring",
+          "compaction monitoring",
           "team",
           "switch",
         ],

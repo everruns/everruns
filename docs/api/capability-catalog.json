@@ -312,8 +312,10 @@
         "browserless_close_browser",
         "browserless_content",
         "browserless_interact",
+        "browserless_list_logins",
         "browserless_navigate",
         "browserless_open_browser",
+        "browserless_save_login",
         "browserless_scrape",
         "browserless_screenshot"
       ]
@@ -1626,6 +1628,21 @@
         "slack_update_message",
         "slack_upload_file"
       ]
+    },
+    {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "slack_model_view",
+      "name": "Slack messages",
+      "status": "available",
+      "tools": []
     },
     {
       "category": "Safety",

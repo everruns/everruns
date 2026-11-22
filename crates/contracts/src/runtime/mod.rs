@@ -53,6 +53,7 @@ pub mod llm_error_hook;
 pub mod localization;
 pub mod mcp_apps;
 pub mod mcp_deferred;
+pub mod mcp_extensions;
 pub mod mcp_proxy;
 pub mod mcp_resources;
 pub mod mcp_server;

@@ -1,0 +1,862 @@
+//! An executor outside the cells (data plane v2 step 6, design.md
+//! "Executors"): a stateless process that pulls activations from every cell
+//! with credits and runs them with the Everruns Engine.
+//!
+//! Decisions:
+//! - The executor runs Engine's activation against [`RaftHosting`] over a
+//!   [`Remote`] link, the same authority code a cell node runs; everything
+//!   it knows of a session is its mirror, refreshed by its own writes and by
+//!   one long poll per running session.
+//! - Free slots are split among the cells as credits, one pull in flight
+//!   per cell; a cell returns credits it can't use, and they go back to the
+//!   pool for any cell.
+//! - Recently run sessions stay mirrored (an LRU, `mirror_sessions` deep),
+//!   so a session that comes back here, as soft affinity prefers, starts
+//!   warm; segment and blob reads go through the store's cache.
+//! - Draining (a rolling deploy): stop pulling, ask every running epoch to
+//!   hand off at its next step boundary, and exit once none runs. Another
+//!   executor resumes each turn from the journal.
+//! - Freshness (`tenants.rs`): an executor that hasn't heard from the
+//!   directory cell within the bound pulls nothing, and one offered a
+//!   session of a suspended or deleted tenant gives it back unrun.
+
+use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
+
+use everruns_contracts::typed_id::SessionId;
+use parking_lot::Mutex;
+
+use crate::cluster::TopologySource;
+use crate::host::Host;
+use crate::hosting::RaftHosting;
+use crate::node::now_ms;
+use crate::remote::{ExecutorId, Remote};
+use crate::state::{CellId, Placement};
+use crate::store::Store;
+
+#[derive(Debug, Clone)]
+pub struct ExecutorConfig {
+    pub id: ExecutorId,
+    pub topology: TopologySource,
+    pub store: Store,
+    /// Turns this executor runs at once.
+    pub slots: usize,
+    /// Sessions kept mirrored after their activation ended.
+    pub mirror_sessions: usize,
+    /// How long a cell may hold this executor's credits.
+    pub pull_wait: Duration,
+    /// How often due dreams are looked for (`Executor::dreams_loop`).
+    pub dream_sweep: Duration,
+}
+
+pub struct Executor {
+    pub cfg: ExecutorConfig,
+    pub remote: Arc<Remote>,
+    pub hosting: RaftHosting,
+    pub engine: everruns::Engine,
+    free: AtomicUsize,
+    freed: tokio::sync::Notify,
+    running: Mutex<HashSet<SessionId>>,
+    /// Sessions mirrored but not running, least recently run first.
+    recent: Mutex<VecDeque<SessionId>>,
+    draining: AtomicBool,
+    pub tenants: crate::tenants::TenantView,
+    pub stats: crate::prom::Counters,
+    /// The data plane's key (`CELL_DP_KEY`), which opens org data keys.
+    dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
+    /// MCP credentials of the orgs whose turns run here.
+    pub mcp: Arc<crate::mcp::OrgMcp>,
+    /// Managed sandboxes of the sessions whose turns run here.
+    pub sandboxes: Arc<crate::sandbox::OrgSandboxes>,
+    /// Host calls a session made that its agent's capabilities do not
+    /// declare, by call.
+    pub host_calls_undeclared: crate::prom::Counters,
+}
+
+impl Executor {
+    pub fn start(cfg: ExecutorConfig, host: Arc<dyn Host>) -> anyhow::Result<Arc<Self>> {
+        anyhow::ensure!(
+            cfg.id >= crate::remote::EXECUTOR_IDS,
+            "executor ids start at {}",
+            crate::remote::EXECUTOR_IDS
+        );
+        let remote = Remote::new(cfg.id, cfg.store.clone())?;
+        remote.set_cells(cfg.topology.read()?.cells);
+        let hosting = RaftHosting::remote(remote.clone());
+        let sandboxes = Arc::new(crate::sandbox::OrgSandboxes::default());
+        hosting.set_sandboxes(sandboxes.clone());
+        hosting.set_gateway(crate::gateway::Gateway::new(cfg.topology.clone()));
+        let orgs = Arc::new(crate::providers::OrgProviders::default());
+        let mcp = Arc::new(crate::mcp::OrgMcp::from_env());
+        let services = crate::host::OrgServices {
+            providers: orgs.host_providers(),
+            mcp: mcp.clone(),
+        };
+        let engine = crate::node::engine(hosting.clone(), host, Some(services));
+        let executor = Arc::new(Self {
+            free: AtomicUsize::new(cfg.slots),
+            cfg,
+            remote,
+            hosting,
+            engine,
+            freed: tokio::sync::Notify::new(),
+            running: Mutex::default(),
+            recent: Mutex::default(),
+            draining: AtomicBool::new(false),
+            tenants: Default::default(),
+            stats: Default::default(),
+            dp_key: Mutex::new(data_plane_key()?),
+            mcp,
+            sandboxes,
+            host_calls_undeclared: Default::default(),
+        });
+        let material: Arc<dyn crate::providers::OrgMaterial> = executor.clone();
+        orgs.bind(Arc::downgrade(&material));
+        executor.mcp.bind(Arc::downgrade(&material));
+        executor.sandboxes.bind(Arc::downgrade(&material));
+        executor.hosting.set_material(Arc::downgrade(&material));
+        crate::lookups::serve_org_egress(Arc::downgrade(&material));
+        // Whatever refreshes the mirror wakes Engine's waiters, as a node's
+        // applied changes do (`Remote::absorb`); a session that left the
+        // mirror or froze hands off.
+        let weak = Arc::downgrade(&executor);
+        let _ = executor
+            .remote
+            .shared
+            .on_change
+            .set(Box::new(move |change| {
+                let (crate::state::Change::Session(session)
+                | crate::state::Change::Event(session, _)) = change;
+                let Some(executor) = weak.upgrade() else {
+                    return;
+                };
+                let frozen = executor
+                    .remote
+                    .shared
+                    .state
+                    .read()
+                    .sessions
+                    .get(session)
+                    .is_none_or(|s| s.placement == Placement::Frozen);
+                executor.hosting.changed(*session, frozen);
+            }));
+        Ok(executor)
+    }
+
+    /// Start pulling from every cell, and keep up with the topology and
+    /// the tenants.
+    pub fn spawn(self: &Arc<Self>) {
+        tokio::spawn(self.clone().tenants_loop());
+        tokio::spawn(self.clone().dreams_loop());
+        let executor = self.clone();
+        tokio::spawn(async move {
+            let mut pulling: HashSet<CellId> = HashSet::new();
+            loop {
+                if let Ok(topology) = executor.cfg.topology.read() {
+                    executor.remote.set_cells(topology.cells);
+                }
+                for cell in executor.remote.cells() {
+                    if pulling.insert(cell) {
+                        tokio::spawn(executor.clone().puller(cell));
+                    }
+                }
+                if executor.draining.load(Ordering::SeqCst) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        });
+    }
+
+    /// Use `key` as the data plane's key (instead of `CELL_DP_KEY`).
+    pub fn set_dp_key(&self, key: everruns_contracts::dataplane_seal::Key) {
+        *self.dp_key.lock() = Some(key);
+    }
+
+    /// `org`'s secret `secret_id`, opened in memory. Never stored or logged.
+    pub async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>> {
+        self.open_secret(org, secret_id)
+            .await?
+            .map(|s| s.plain)
+            .ok_or_else(|| anyhow::anyhow!("org {org} has no secret {secret_id}"))
+    }
+
+    /// [`secret`](Self::secret) with its revision and the org's data key,
+    /// to write its next revision (`mcp.rs`).
+    pub async fn open_secret(
+        &self,
+        org: &str,
+        secret_id: &str,
+    ) -> anyhow::Result<Option<crate::mcp::OpenedSecret>> {
+        let dp_key = self
+            .dp_key
+            .lock()
+            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let found: Option<crate::gateway_dp::SecretForExecutor> = self
+            .remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/secrets/{secret_id}"),
+                &serde_json::json!({}),
+                Duration::from_secs(5),
+            )
+            .await?;
+        let Some(found) = found else {
+            return Ok(None);
+        };
+        let data_key = everruns_contracts::dataplane_seal::unwrap_data_key(
+            &dp_key,
+            org,
+            &found.data_key.data_key_id,
+            &found.data_key.wrapped,
+        )?;
+        Ok(Some(crate::mcp::OpenedSecret {
+            revision: found.secret.revision,
+            plain: found.open(org, &dp_key)?,
+            data_key,
+            data_key_id: found.data_key.data_key_id,
+        }))
+    }
+
+    /// `org`'s data key from the directory cell, unwrapped in memory;
+    /// `None` on a standalone cell, which has no data plane key
+    /// (`CELL_DP_KEY`) because no control plane wraps keys for it.
+    pub async fn data_key(
+        &self,
+        org: &str,
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
+        let Some(dp_key) = *self.dp_key.lock() else {
+            return Ok(None);
+        };
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let wrapped: Option<crate::control::WrappedKey> = self
+            .remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/data-key"),
+                &serde_json::json!({}),
+                Duration::from_secs(5),
+            )
+            .await?;
+        let wrapped = wrapped.ok_or_else(|| anyhow::anyhow!("org {org} has no data key"))?;
+        let key = everruns_contracts::dataplane_seal::unwrap_data_key(
+            &dp_key,
+            org,
+            &wrapped.data_key_id,
+            &wrapped.wrapped,
+        )?;
+        Ok(Some((key, wrapped.data_key_id)))
+    }
+
+    /// Lease or write `org`'s secret in the directory cell.
+    pub async fn secret_op(
+        &self,
+        org: &str,
+        op: crate::secrets::SecretOp,
+    ) -> anyhow::Result<crate::secrets::SecretReply> {
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let command = crate::state::Command::Secret {
+            org: org.to_owned(),
+            request: op,
+            now_ms: crate::node::now_ms(),
+        };
+        let proposed: crate::node::Proposed = self
+            .remote
+            .post(directory, "/cell/propose", &command, Duration::from_secs(5))
+            .await?;
+        match proposed.response {
+            crate::state::Response::Value { value } => Ok(serde_json::from_value(value)?),
+            other => anyhow::bail!("the directory cell answered {other:?}"),
+        }
+    }
+
+    /// Make one of `org`'s host calls (`everruns_contracts::host_calls`),
+    /// named by the v1 worker command the shared resolvers issue, through
+    /// the directory cell; the answer comes sealed with the org's data key
+    /// and is opened here (`lookups.rs`). A read is retried once when the
+    /// directory cell cannot be reached. A write is sent once
+    /// ([`crate::remote::Remote::post_once`]): an answer that is lost is an
+    /// error, never a second send, and the control plane keeps a receipt
+    /// per call id so a duplicate that still arrives runs once
+    /// (`dp_host_call_receipts`).
+    pub async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        use everruns_contracts::dataplane::SealedSecret;
+        use everruns_contracts::host_calls::{HostCallRequest, by_command, host_call_secret};
+        let call =
+            by_command(command).ok_or_else(|| anyhow::anyhow!("{command} is not a host call"))?;
+        let directory = self.cfg.topology.read()?.directory_cell;
+        let id = uuid::Uuid::new_v4().to_string();
+        let request = HostCallRequest {
+            call: id.clone(),
+            params,
+        };
+        let path = format!("/cell/orgs/{org}/host-calls/{}", call.name);
+        // The cell's own wait on the control plane, and a little more.
+        let wait = call.timeout() + Duration::from_secs(5);
+        let sent = if call.retries() {
+            match self.remote.post(directory, &path, &request, wait).await {
+                Ok(sent) => Ok(sent),
+                Err(_) => self.remote.post(directory, &path, &request, wait).await,
+            }
+        } else {
+            self.remote
+                .post_once(directory, &path, &request, wait)
+                .await
+                .map_err(|error| {
+                    error.context(format!(
+                        "{} may or may not have happened: its answer did not arrive",
+                        call.name
+                    ))
+                })
+        };
+        let sealed: SealedSecret = sent?;
+        // The seal binds the secret id; the id must be this call's, or an
+        // answer to another call could stand in for this one.
+        if sealed.secret_id != host_call_secret(&id) || sealed.revision != 0 {
+            anyhow::bail!("the control plane answered another host call");
+        }
+        let (key, _) = self
+            .data_key(org)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("no data plane key (CELL_DP_KEY)"))?;
+        let plain = everruns_contracts::dataplane_seal::unseal(&key, org, &sealed)?;
+        Ok(serde_json::from_slice(&plain)?)
+    }
+
+    /// `org`'s connection `id`, from the directory cell.
+    pub async fn connection(
+        &self,
+        org: &str,
+        id: &str,
+    ) -> anyhow::Result<Option<everruns_contracts::dataplane::Connection>> {
+        let directory = self.cfg.topology.read()?.directory_cell;
+        self.remote
+            .post(
+                directory,
+                &format!("/cell/orgs/{org}/connections/{id}"),
+                &serde_json::json!({}),
+                Duration::from_secs(5),
+            )
+            .await
+    }
+
+    pub fn running(&self) -> usize {
+        self.running.lock().len()
+    }
+
+    /// Stop taking work and hand running epochs back at their next step.
+    pub fn drain(&self) {
+        self.draining.store(true, Ordering::SeqCst);
+        let running: Vec<SessionId> = self.running.lock().iter().copied().collect();
+        for session in running {
+            self.hosting.changed(session, true);
+        }
+    }
+
+    /// Credits to offer one cell: an even share of the free slots.
+    fn take_credits(&self) -> usize {
+        let cells = self.remote.cells().len().max(1);
+        let share = self.cfg.slots.div_ceil(cells).max(1);
+        let mut free = self.free.load(Ordering::SeqCst);
+        loop {
+            let take = free.min(share);
+            if take == 0 {
+                return 0;
+            }
+            match self
+                .free
+                .compare_exchange(free, free - take, Ordering::SeqCst, Ordering::SeqCst)
+            {
+                Ok(_) => return take,
+                Err(now) => free = now,
+            }
+        }
+    }
+
+    fn give_back(&self, credits: usize) {
+        if credits > 0 {
+            self.free.fetch_add(credits, Ordering::SeqCst);
+            self.freed.notify_waiters();
+        }
+    }
+
+    async fn tenants_loop(self: Arc<Self>) {
+        let mut tick = tokio::time::interval(crate::tenants::POLL);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            if self.draining.load(Ordering::SeqCst) {
+                return;
+            }
+            let Ok(topology) = self.cfg.topology.read() else {
+                continue;
+            };
+            match self
+                .remote
+                .post::<_, crate::tenants::Tenants>(
+                    topology.directory_cell,
+                    "/cell/tenants",
+                    &serde_json::json!({}),
+                    Duration::from_secs(5),
+                )
+                .await
+            {
+                Ok(tenants) => {
+                    self.tenants.heard(tenants.stopped);
+                }
+                Err(error) => tracing::debug!(%error, "tenants not read"),
+            }
+        }
+    }
+
+    /// Run the due dreams of the orgs whose sessions this executor mirrors.
+    ///
+    /// Decision (parity, step 10): a turn that leaves a dream owed runs it
+    /// from its own timer (`after_turn` in core's dreaming host); this
+    /// sweep is what a v1 worker's `run_due` is, for a dream that timer did
+    /// not finish (a retry, a restart, a budget that reopened). The control
+    /// plane keeps the due index and answers for one org at a time
+    /// (`due_org`), and only its sessions on the data plane; a v1 worker
+    /// never sees them. Every executor may sweep the same org: the dream's
+    /// claim is a compare-exchange, so one runs it. An org none of whose
+    /// sessions an executor mirrors is swept once one of them runs again.
+    async fn dreams_loop(self: Arc<Self>) {
+        let mut tick = tokio::time::interval(self.cfg.dream_sweep);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let material: Arc<dyn crate::providers::OrgMaterial> = self.clone();
+        let material = Arc::downgrade(&material);
+        loop {
+            tick.tick().await;
+            if self.draining.load(Ordering::SeqCst) {
+                return;
+            }
+            let orgs: std::collections::BTreeSet<String> = self
+                .remote
+                .shared
+                .state
+                .read()
+                .sessions
+                .values()
+                .filter_map(|s| s.tenant.clone())
+                .collect();
+            for org in orgs {
+                let Some(lookups) = crate::lookups::for_org(material.clone(), org.clone()) else {
+                    return;
+                };
+                let now = everruns_contracts::rt::utc_now().timestamp();
+                let due = match everruns_internal_protocol::commands::dreaming::due_in_org(
+                    &lookups, now, 32,
+                )
+                .await
+                {
+                    Ok(due) => due,
+                    Err(error) => {
+                        tracing::debug!(%org, %error, "due dreams not read");
+                        continue;
+                    }
+                };
+                for session in due {
+                    match self.engine.maintain_dreaming(session).await {
+                        Ok(ran) => self
+                            .stats
+                            .inc(&[("event", if ran { "dreamed" } else { "dream_waited" })]),
+                        Err(error) => {
+                            tracing::warn!(%org, %session, %error, "a due dream did not run");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn puller(self: Arc<Self>, cell: CellId) {
+        loop {
+            if self.draining.load(Ordering::SeqCst) {
+                return;
+            }
+            if !self.tenants.is_fresh() {
+                // No word from the directory: start nothing new.
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            let credits = self.take_credits();
+            if credits == 0 {
+                let _ =
+                    tokio::time::timeout(Duration::from_millis(500), self.freed.notified()).await;
+                continue;
+            }
+            match self.remote.pull(cell, credits, self.cfg.pull_wait).await {
+                Ok(sessions) => {
+                    let mut used = 0;
+                    for (session, tenant) in sessions.into_iter().take(credits) {
+                        if self.tenants.admit(tenant.as_deref()) != crate::tenants::Admit::Yes {
+                            self.stats.inc(&[("event", "refused")]);
+                            continue;
+                        }
+                        used += 1;
+                        self.stats.inc(&[("event", "pulled")]);
+                        self.clone().run(cell, session);
+                    }
+                    self.give_back(credits - used);
+                }
+                Err(error) => {
+                    self.give_back(credits);
+                    tracing::debug!(cell, %error, "pull failed");
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+            }
+        }
+    }
+
+    /// Run `session`'s activations here until it owes no more work. Holds
+    /// one slot.
+    fn run(self: Arc<Self>, cell: CellId, session: SessionId) {
+        if !self.running.lock().insert(session) {
+            self.give_back(1);
+            return;
+        }
+        self.recent.lock().retain(|s| *s != session);
+        if self.remote.bind(session, cell) {
+            // Moved since it last ran here: the writes this hosting waits
+            // to see were at positions in the old cell's log.
+            self.hosting.forget(session);
+        }
+        let watching = Arc::new(AtomicBool::new(true));
+        tokio::spawn(self.clone().watch(session, watching.clone()));
+        tokio::spawn(async move {
+            for _ in 0..64 {
+                let started = std::time::Instant::now();
+                // Its own task: an activation that panics ends as an error
+                // here, and its slot and claim go back, instead of the
+                // slot staying held for good.
+                let engine = self.clone();
+                let activation = tokio::spawn(async move { engine.engine.activate(session).await });
+                let outcome = match activation.await {
+                    Ok(Ok(())) => "completed",
+                    Ok(Err(error)) => {
+                        tracing::warn!(%session, %error, "activation stopped");
+                        "error"
+                    }
+                    Err(error) => {
+                        tracing::error!(%session, %error, "activation panicked");
+                        "panicked"
+                    }
+                };
+                self.stats.inc(&[("activation", outcome)]);
+                self.stats.add(
+                    &[("activation_ms", "sum")],
+                    started.elapsed().as_millis() as u64,
+                );
+                if outcome != "completed" || self.draining.load(Ordering::SeqCst) {
+                    break;
+                }
+                if self.remote.refresh(session, 0).await.is_err() {
+                    break;
+                }
+                let again = self
+                    .remote
+                    .shared
+                    .state
+                    .read()
+                    .sessions
+                    .get(&session)
+                    .is_some_and(|s| {
+                        s.placement == Placement::Live
+                            && s.authority.holder.is_none()
+                            && s.authority.owed(now_ms())
+                    });
+                if !again {
+                    break;
+                }
+            }
+            watching.store(false, Ordering::SeqCst);
+            self.running.lock().remove(&session);
+            self.retire(session);
+            self.give_back(1);
+        });
+    }
+
+    /// Keep `session`'s mirror current while it runs: input, cancels and a
+    /// freeze for a move reach Engine's waiters and hand-off flag.
+    async fn watch(self: Arc<Self>, session: SessionId, watching: Arc<AtomicBool>) {
+        // A change the watch folds in announces itself (`Remote::absorb`).
+        while watching.load(Ordering::SeqCst) {
+            if self
+                .remote
+                .watch(session, Duration::from_secs(10))
+                .await
+                .is_err()
+            {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+        }
+    }
+
+    /// Keep `session` mirrored for a while; evict the least recently run
+    /// beyond the bound.
+    fn retire(&self, session: SessionId) {
+        let evict: Vec<SessionId> = {
+            let mut recent = self.recent.lock();
+            recent.push_back(session);
+            let running = self.running.lock();
+            let mut out = Vec::new();
+            while recent.len() > self.cfg.mirror_sessions {
+                if let Some(oldest) = recent.pop_front()
+                    && !running.contains(&oldest)
+                {
+                    out.push(oldest);
+                }
+            }
+            out
+        };
+        for session in evict {
+            self.remote.evict(session);
+            self.hosting.forget(session);
+        }
+    }
+}
+
+/// The data plane's key from `CELL_DP_KEY` (base64, 32 bytes); none when
+/// unset. A key that is set but malformed stops the executor at start.
+pub fn data_plane_key() -> anyhow::Result<Option<everruns_contracts::dataplane_seal::Key>> {
+    match std::env::var("CELL_DP_KEY") {
+        Ok(key) if !key.is_empty() => Ok(Some(
+            everruns_contracts::dataplane_seal::key_from_base64(&key)
+                .map_err(|e| anyhow::anyhow!("CELL_DP_KEY: {e}"))?,
+        )),
+        _ => Ok(None),
+    }
+}
+
+/// `/health` and `/metrics` of an executor.
+pub fn router(executor: Arc<Executor>) -> axum::Router {
+    use axum::routing::get;
+    axum::Router::new()
+        .route("/health", get(|| async { "ok" }))
+        .route(
+            "/metrics",
+            get(
+                |axum::extract::State(executor): axum::extract::State<Arc<Executor>>| async move {
+                    let id = executor.cfg.id.to_string();
+                    let mut w = crate::prom::Writer::new(&[("executor", &id)]);
+                    w.gauge(
+                        "executor_running_turns",
+                        "Turns running here.",
+                        executor.running() as f64,
+                    );
+                    w.gauge(
+                        "executor_free_slots",
+                        "Slots not running or offered.",
+                        executor.free.load(Ordering::SeqCst) as f64,
+                    );
+                    w.gauge(
+                        "executor_mirrored_sessions",
+                        "Sessions in the mirror.",
+                        executor.remote.mirrored() as f64,
+                    );
+                    let (hits, misses) = executor.cfg.store.cache_stats();
+                    w.counter(
+                        "executor_cache_hits_total",
+                        "Segment and blob cache hits.",
+                        hits as f64,
+                    );
+                    w.counter(
+                        "executor_cache_misses_total",
+                        "Segment and blob cache misses (object store reads).",
+                        misses as f64,
+                    );
+                    w.counters(
+                        "executor_cell_calls_total",
+                        "Calls to cells, by kind.",
+                        &executor.remote.calls,
+                    );
+                    w.counters(
+                        "executor_events_total",
+                        "Pulls and activations.",
+                        &executor.stats,
+                    );
+                    w.histograms(
+                        "executor_mcp_credential_seconds",
+                        "Time to find an MCP call's credentials, by kind.",
+                        &executor.mcp.resolve,
+                    );
+                    w.counters(
+                        "executor_mcp_refreshes_total",
+                        "MCP OAuth token refreshes, by outcome.",
+                        &executor.mcp.refreshes,
+                    );
+                    w.histograms(
+                        "executor_sandbox_sync_seconds",
+                        "Time to sync a session's workspace with its sandbox, by direction and kind.",
+                        &executor.sandboxes.sync,
+                    );
+                    w.counters(
+                        "executor_sandbox_sync_files_total",
+                        "Files a workspace sync copied, by direction and op.",
+                        &executor.sandboxes.files,
+                    );
+                    w.counters(
+                        "executor_sandbox_orphans_total",
+                        "Orphaned sandboxes removed before a create, by provider.",
+                        &executor.sandboxes.orphans,
+                    );
+                    w.counters(
+                        "executor_host_calls_undeclared_total",
+                        "Host calls a session made that its agent's capabilities do not declare, by call.",
+                        &executor.host_calls_undeclared,
+                    );
+                    w.out
+                },
+            ),
+        )
+        .with_state(executor)
+}
+
+#[async_trait::async_trait]
+impl crate::providers::OrgMaterial for Executor {
+    fn tenant(&self, session: SessionId) -> Option<String> {
+        self.remote
+            .shared
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .and_then(|s| s.tenant.clone())
+    }
+
+    async fn connection(
+        &self,
+        org: &str,
+        id: &str,
+    ) -> anyhow::Result<Option<everruns_contracts::dataplane::Connection>> {
+        Executor::connection(self, org, id).await
+    }
+
+    async fn secret(&self, org: &str, secret_id: &str) -> anyhow::Result<Vec<u8>> {
+        Executor::secret(self, org, secret_id).await
+    }
+
+    async fn open_secret(
+        &self,
+        org: &str,
+        secret_id: &str,
+    ) -> anyhow::Result<Option<crate::mcp::OpenedSecret>> {
+        Executor::open_secret(self, org, secret_id).await
+    }
+
+    async fn secret_op(
+        &self,
+        org: &str,
+        op: crate::secrets::SecretOp,
+    ) -> anyhow::Result<crate::secrets::SecretReply> {
+        Executor::secret_op(self, org, op).await
+    }
+
+    fn seals(&self) -> bool {
+        self.dp_key.lock().is_some()
+    }
+
+    fn data_plane_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
+        *self.dp_key.lock()
+    }
+
+    fn mcp(&self) -> Option<Arc<crate::mcp::OrgMcp>> {
+        Some(self.mcp.clone())
+    }
+
+    fn turn_actor(
+        &self,
+        session: SessionId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let state = self.remote.shared.state.read();
+        let s = state.sessions.get(&session)?;
+        let message = s.authority.open.and(s.authority.open_input)?;
+        s.platform.senders.of(message).map(|sub| {
+            everruns_contracts::runtime::capabilities::injected::SessionActor {
+                sub: sub.to_owned(),
+                turn: Some(message.uuid().to_string()),
+            }
+        })
+    }
+
+    fn message_actor(
+        &self,
+        session: SessionId,
+        message: everruns_contracts::typed_id::MessageId,
+    ) -> Option<everruns_contracts::runtime::capabilities::injected::SessionActor> {
+        let state = self.remote.shared.state.read();
+        let s = state.sessions.get(&session)?;
+        s.platform.senders.of(message).map(|sub| {
+            everruns_contracts::runtime::capabilities::injected::SessionActor {
+                sub: sub.to_owned(),
+                turn: Some(message.uuid().to_string()),
+            }
+        })
+    }
+
+    fn controller_url(&self, session: SessionId, name: &str) -> Option<String> {
+        let state = self.remote.shared.state.read();
+        state
+            .sessions
+            .get(&session)?
+            .platform
+            .servers
+            .get(name)
+            .cloned()
+    }
+
+    fn declared_host_calls(
+        &self,
+        session: SessionId,
+    ) -> Option<std::collections::BTreeSet<&'static str>> {
+        let (definition, memory) = self
+            .remote
+            .shared
+            .state
+            .read()
+            .sessions
+            .get(&session)
+            .map(|s| (s.definition.clone(), !s.platform.memory.is_empty()))?;
+        let mut declared = crate::host::declared_host_calls(&definition);
+        // A session the control plane gave Memory reaches it per call
+        // (`memory.rs`).
+        if memory {
+            declared.insert(everruns_contracts::host_calls::MEMORY_FILE);
+        }
+        Some(declared)
+    }
+
+    fn undeclared_host_call(&self, call: &str) {
+        self.host_calls_undeclared.inc(&[("call", call)]);
+    }
+
+    fn looks_up(&self) -> bool {
+        // A data plane key means a control plane wraps this cell's keys,
+        // so it is the one lookups go to.
+        self.dp_key.lock().is_some()
+    }
+
+    async fn lookup(
+        &self,
+        org: &str,
+        command: &str,
+        params: serde_json::Value,
+    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
+        Executor::lookup(self, org, command, params).await
+    }
+
+    async fn data_key(
+        &self,
+        org: &str,
+    ) -> anyhow::Result<Option<(everruns_contracts::dataplane_seal::Key, String)>> {
+        Executor::data_key(self, org).await
+    }
+}

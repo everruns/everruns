@@ -135,6 +135,9 @@ pub struct Graders {
 }
 
 impl Graders {
+    pub fn compaction_judge(&self) -> Option<Arc<dyn JudgeClient>> {
+        self.judge.clone()
+    }
     /// Rules only: model-backed graders report themselves unavailable.
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {

@@ -339,6 +339,7 @@ async fn an_observer_under_its_alert_opens_an_issue_for_the_agents_authors() {
         f.db.create_observer(
             DEFAULT_ORG_ID,
             crate::storage::CreateObserverRow {
+                system_kind: None,
                 public_id: everruns_contracts::typed_id::ObserverId::from_uuid(Uuid::now_v7())
                     .to_string(),
                 name: "Support quality".into(),
@@ -357,6 +358,7 @@ async fn an_observer_under_its_alert_opens_an_issue_for_the_agents_authors() {
         .unwrap();
     let rows: Vec<_> = (0..4)
         .map(|i| crate::storage::CreateTraceScoreRow {
+            evidence_ref: None,
             public_id: everruns_contracts::typed_id::TraceScoreId::from_uuid(Uuid::now_v7())
                 .to_string(),
             observer_id: observer.id,

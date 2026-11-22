@@ -12,10 +12,14 @@ implementing the provider-neutral driver contract over the Gemini API.
 
 ## What you get
 
-- **Gemini API** streaming.
+- **Interactions API** streaming, with the conversation kept on Google's side
+  between turns (see [Server-kept conversation](#server-kept-conversation)).
 - **Gemini 4 long decode** (Hydrogen, Neon, Carbon, Argon): one response can
   continue across requests with a shared output budget.
 - **Tool calls and reasoning** mapped to provider-neutral Everruns types.
+- **Native computer use** on Gemini 4: the
+  [computer use](/capabilities/computer-use/) capability hands Gemini its
+  built-in `computer_use` tool on Google's own endpoint.
 - **Context caching**: explicit caching via `cachedContent` when a cached-content
   resource is supplied, otherwise Gemini's default implicit caching on supported
   models.
@@ -45,6 +49,29 @@ Neon for coding agents and Carbon for research.
 Gemini models resolve to Everruns' built-in model profiles for capability and
 cost metadata. Gemini 4 models default to 65,536 output tokens. Other Gemini
 models resolve their default from the model profile, falling back to a safe value.
+
+## Server-kept conversation
+
+On Google's own endpoint, agent turns use Gemini's
+[Interactions API](https://ai.google.dev/gemini-api/docs/interactions), the
+interface Google recommends since June 2026. Google stores each interaction
+and Everruns keeps its id. The next model call sends that id and only what
+happened since the model last answered, such as tool results and new
+messages. The earlier transcript and its thought signatures are not sent
+again, so long tool loops send much less per call and Google's implicit
+cache covers the stored prefix.
+
+The system prompt, tools and thinking settings travel with every call, so a
+change to the agent applies on the next call. When the stored interaction is
+gone (Google keeps it 55 days on paid projects and one day on the free tier,
+and you can delete it in AI Studio's Logs), Everruns sends the whole
+transcript once and continues from the new interaction.
+
+Stored interactions appear in AI Studio's Logs for the API key's project.
+Calls that need a feature Interactions does not offer yet use
+`generateContent` and resend the transcript as before: batch requests, an
+explicit cached-content resource, long decode above 65,536 output tokens, and
+providers configured with a custom base URL.
 
 ## Long decode
 

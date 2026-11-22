@@ -77,7 +77,7 @@ jobs:
           shared-key: "cell-drill-release"
 
       - name: Build release test node and driver
-        run: cargo build --release -p everruns-cell-testkit --bin cell-testnode --bin cell-drive
+        run: cargo build --release -p everruns-agentd-testkit --bin cell-testnode --bin cell-drive
 
       - name: Run the drill
         run: python3 scripts/cell/drill.py --sessions "$SESSIONS" --inflight "$INFLIGHT" --concurrency 500

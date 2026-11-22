@@ -114,6 +114,46 @@ async fn send_raw(
     .await
 }
 
+/// Origins (`scheme://host:port`) of the controller this process is
+/// linked to ([`trust_controller_origin`]).
+static CONTROLLER_ORIGINS: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+
+fn origin_of(url: &url::Url) -> String {
+    url.origin().ascii_serialization()
+}
+
+/// Trust the controller at `url`'s origin: requests there skip the
+/// private-address check, so a data plane can reach the control plane that
+/// serves its injected capabilities on an internal address (a cluster
+/// service, `127.0.0.1` in local development).
+///
+/// THREAT[TM-TOOL-018]: only an operator sets this (a data plane's
+/// configured control plane), never anything an agent or tool names; every
+/// other host still gets the DNS-pinned check.
+pub fn trust_controller_origin(url: &str) {
+    let Ok(url) = url::Url::parse(url) else {
+        return;
+    };
+    let origin = origin_of(&url);
+    let mut origins = CONTROLLER_ORIGINS
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !origins.contains(&origin) {
+        origins.push(origin);
+    }
+}
+
+/// `url`, parsed, when it is on a trusted controller's origin.
+fn controller_url(url: &str) -> Option<url::Url> {
+    let parsed = url::Url::parse(url).ok()?;
+    let origin = origin_of(&parsed);
+    CONTROLLER_ORIGINS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(&origin)
+        .then_some(parsed)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn send_raw_bounded(
     egress: &dyn EgressService,
@@ -125,10 +165,13 @@ async fn send_raw_bounded(
     timeout: Duration,
     max_response_bytes: Option<usize>,
 ) -> Result<RawMcpResponse> {
-    let (validated_url, resolved_addrs) = validate_url_dns_pinned(url).await.map_err(|e| {
-        tracing::warn!(url = %url, error = %e, "Blocked MCP request: URL failed SSRF validation");
-        anyhow!("MCP server URL blocked: {}", e)
-    })?;
+    let (validated_url, resolved_addrs) = match controller_url(url) {
+        Some(url) => (url, Vec::new()),
+        None => validate_url_dns_pinned(url).await.map_err(|e| {
+            tracing::warn!(url = %url, error = %e, "Blocked MCP request: URL failed SSRF validation");
+            anyhow!("MCP server URL blocked: {}", e)
+        })?,
+    };
     let pin_host = validated_url.host_str().unwrap_or("").to_string();
 
     let mut request = EgressRequest::new("POST", url, EgressRequestKind::Mcp)
@@ -726,6 +769,7 @@ pub async fn http_call_tool(
         // A connection-less call has no transport to keep polling with.
         tasks: false,
         ui_apps: false,
+        everruns: false,
     };
     let (text, negotiated) = negotiate_and_send(
         egress,
@@ -1163,6 +1207,7 @@ impl HttpTransport {
             form_elicitation: handlers.form.is_some(),
             tasks: false,
             ui_apps: self.ui_apps,
+            everruns: connection.auth_mode == crate::McpServerAuthMode::SessionToken,
         }
     }
 

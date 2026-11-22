@@ -302,6 +302,9 @@ pub struct TraceStepDetail {
     pub input: Option<TracePayload>,
     /// Tool result, or error.
     pub output: Option<TracePayload>,
+    /// Exit outcome for a completed shell command, independent of tool status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_outcome: Option<everruns_core::events::CommandOutcome>,
     /// The request of a model call: what changed since the previous call.
     pub request: Option<TraceRequestSummary>,
     /// Raw events of the step, in sequence order.

@@ -24,6 +24,7 @@ use crate::storage::StorageBackend;
 pub const OBSERVED_EVENT_TYPES: &[&str] = &[TURN_COMPLETED, TOOL_COMPLETED, SESSION_IDLED];
 
 pub struct ObserverMatchListener {
+    user_observers_enabled: bool,
     db: Arc<StorageBackend>,
     /// Wakes the scoring worker after enqueue for low-latency scoring.
     wake: Arc<tokio::sync::Notify>,
@@ -31,7 +32,16 @@ pub struct ObserverMatchListener {
 
 impl ObserverMatchListener {
     pub fn new(db: Arc<StorageBackend>, wake: Arc<tokio::sync::Notify>) -> Self {
-        Self { db, wake }
+        Self {
+            db,
+            wake,
+            user_observers_enabled: true,
+        }
+    }
+
+    pub fn with_user_observers_enabled(mut self, enabled: bool) -> Self {
+        self.user_observers_enabled = enabled;
+        self
     }
 
     async fn handle_slice(&self, event: &Event, slice: Slice) -> anyhow::Result<()> {
@@ -74,6 +84,14 @@ impl ObserverMatchListener {
 impl EventListener for ObserverMatchListener {
     #[instrument(skip(self, event), fields(event_id = %event.id, session_id = %event.session_id))]
     async fn on_event(&self, event: &Event) {
+        match super::system::enqueue_event(&self.db, event).await {
+            Ok(inserted) if inserted > 0 => self.wake.notify_one(),
+            Err(error) => error!(error = %error, "System compaction observer matching failed"),
+            _ => {}
+        }
+        if !self.user_observers_enabled {
+            return;
+        }
         let slice = match &event.data {
             EventData::TurnCompleted(data) => Slice::Turn {
                 turn_id: data.turn_id.to_string(),
@@ -91,7 +109,13 @@ impl EventListener for ObserverMatchListener {
     }
 
     fn event_types(&self) -> Option<Vec<&'static str>> {
-        Some(OBSERVED_EVENT_TYPES.to_vec())
+        Some(
+            OBSERVED_EVENT_TYPES
+                .iter()
+                .chain(super::system::EVENT_TYPES)
+                .copied()
+                .collect(),
+        )
     }
 
     fn name(&self) -> &'static str {

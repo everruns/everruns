@@ -3,6 +3,7 @@
 pub mod commands;
 pub mod egress_allowlist;
 pub mod provider_accounts;
+pub mod quality_monitoring;
 pub mod queries;
 pub mod record;
 pub mod research_model;

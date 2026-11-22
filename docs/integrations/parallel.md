@@ -1,6 +1,6 @@
 ---
 title: Parallel
-description: Use Parallel's hosted MCP server for free web search and URL fetching, with optional API-key authentication and OAuth-compatible endpoint selection.
+description: Use Parallel's hosted MCP server for free web search, URL fetching and web-grounded decisions, with optional API-key authentication.
 appliesTo: [platform]
 ---
 
@@ -8,7 +8,7 @@ appliesTo: [platform]
 
 > **Status:** Experimental, available without a feature flag.
 
-Parallel provides hosted MCP tools for web search and URL fetching.
+Parallel provides hosted MCP tools for web search, URL fetching, and typed questions answered from web evidence.
 
 ## Setup
 
@@ -32,5 +32,32 @@ instead of `parallel_search` when you want one `web_search` tool that can switch
 |---|---|
 | `mcp_parallel__web_search` | Search the web and return ranked URLs with excerpts. |
 | `mcp_parallel__web_fetch` | Fetch and extract focused content from known URLs. |
+| `mcp_parallel__web_decisions` | Answer typed questions about a subject from current web evidence: a probability (`noul`), a pick among given options (`choice`), or a score on a given scale (`score`), with call-level citations. Up to 100 questions per call. |
+| `mcp_parallel__image_search` | Search the web for images. |
+
+The default endpoint is `https://mcp.parallel.ai/mcp`. Parallel may add tools to it; the agent
+sees whatever the server lists. The OAuth endpoint (`endpoint: "oauth"`) is
+`https://search.parallel.ai/mcp-oauth`, which offers search and fetch only.
+
+A `web_decisions` call asks about a subject described as JSON:
+
+```json
+{
+  "state": { "project": "Everruns", "website": "https://everruns.com" },
+  "questions": {
+    "open_source": { "type": "noul", "instructions": "Is Everruns open source?" },
+    "language": {
+      "type": "choice",
+      "instructions": "Main implementation language",
+      "criteria": { "rust": "Rust", "go": "Go", "unknown": "Not enough evidence" }
+    }
+  }
+}
+```
+
+Each answer comes back under its question name, for example
+`{"type": "choice", "choice": "rust", "probabilities": {"rust": 0.999, ...}}`, with the
+pages it relied on in `citations`. A question the evidence cannot answer comes back as
+`{"type": "refusal"}`.
 
 Agents should reuse one stable `session_id` across Parallel tool calls in the same conversation.

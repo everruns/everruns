@@ -151,6 +151,7 @@ impl TestRun {
             display_name: None,
             success: true,
             status: "success".to_string(),
+            command_outcome: None,
             result: Some(vec![ContentPart::text(result)]),
             error: None,
             duration_ms: Some(10),

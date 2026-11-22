@@ -96,6 +96,7 @@ async fn session_definition(
     let binding_key = format!("{agent_key}:{session}");
     super::mcp::prepare_layers(cp, org_id, &binding_key, agent_id, &layers, &mut package).await?;
     super::sandboxes::strip(&mut package);
+    crate::injected::attach(&mut package, &crate::injected::served());
     Ok(package)
 }
 
@@ -119,8 +120,11 @@ pub async fn created(
         session,
         harness_id,
         agent_id,
-        initial_files,
-        layer,
+        Joining {
+            initial_files,
+            layer,
+            importing: false,
+        },
     )
     .await?;
     // Marks the session as the data plane's: its messages go there, never
@@ -145,6 +149,17 @@ pub async fn created(
     Ok(())
 }
 
+/// What a session starts with on its data plane, beyond its agent.
+pub(crate) struct Joining<'a> {
+    /// Its own starter files.
+    pub initial_files: &'a [InitialFile],
+    /// Its own settings, as a layer over its agent.
+    pub layer: Option<AgentConfigOverlay>,
+    /// A moved v1 session: closed to messages until the move activates it
+    /// (`moves.rs`).
+    pub importing: bool,
+}
+
 /// Create `session` on `org_id`'s data plane, its agent delivered first
 /// (retry-safe: the same id is the same session); its agent's key and the
 /// data plane's id. Whether its messages go there is the caller's
@@ -155,9 +170,13 @@ pub(crate) async fn create_on_plane(
     session: SessionId,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-    initial_files: &[InitialFile],
-    layer: Option<AgentConfigOverlay>,
+    joining: Joining<'_>,
 ) -> anyhow::Result<(String, String)> {
+    let Joining {
+        initial_files,
+        layer,
+        importing,
+    } = joining;
     let (key, revision) = key_for(&cp.db, org_id, harness_id, agent_id).await?;
     agent_published(cp, &key, org_id, &revision).await?;
     let definition = match layer {
@@ -200,6 +219,7 @@ pub(crate) async fn create_on_plane(
                     initial_files,
                     sandbox: sandbox.as_ref(),
                     memory: &memory,
+                    importing,
                 },
             )
             .await

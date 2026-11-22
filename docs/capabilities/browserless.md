@@ -43,6 +43,20 @@ A typical flow for a login-protected page:
 4. `browserless_screenshot` to capture the authenticated page state.
 5. `browserless_close_browser` to release resources.
 
+## Saved logins
+
+A sign-in can outlive the browser. `browserless_save_login` stores the persistent browser's cookies, plus the local storage of the page it has open, as a named login in your Browserless account. A later session passes that name as `login` to `browserless_open_browser` and starts signed in, without typing the password again.
+
+Logins belong to the Browserless account of the connection the agent uses. With a personal Browserless connection, they are yours. A login you create in the Browserless dashboard, where you sign in through a remote browser yourself (handy for MFA or a CAPTCHA), works the same way. `browserless_list_logins` shows their names and counts, never the cookie values.
+
+A typical flow:
+
+1. `browserless_open_browser` with the login page URL, then sign in with `browserless_interact`.
+2. `browserless_save_login` with a name such as `github-work`.
+3. In a later session: `browserless_open_browser` with `login: "github-work"` and the page URL.
+
+Cookies apply to every site in the login. A site's local storage is written on the first page load of that site in the same `browserless_open_browser` call, so pass `url` when the site keeps its sign-in there. A saved login is as sensitive as the password it replaces: anyone whose agent uses the same Browserless connection can open it. Browserless deletes a login that goes unused for a year.
+
 ## Tools
 
 ### `browserless_open_browser`
@@ -53,10 +67,23 @@ Open a persistent browser session via CDP.
 |---|---|---|---|
 | `url` | string | no | Initial URL to navigate to |
 | `timeout_ms` | integer | no | How long the browser stays alive between calls (default: 60000) |
+| `login` | string | no | Name of a saved login to restore before the first page loads |
 
 ### `browserless_close_browser`
 
 Close the persistent browser session and release resources. Takes no parameters.
+
+### `browserless_save_login`
+
+Save the persistent browser's sign-in as a named login. Saving under an existing name replaces it.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | yes | Up to 255 characters, no spaces or `/ ? # % &` |
+
+### `browserless_list_logins`
+
+List the saved logins in the connection's Browserless account: name, cookie and site counts, and last change. Takes no parameters.
 
 ### `browserless_navigate`
 

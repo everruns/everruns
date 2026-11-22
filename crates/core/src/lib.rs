@@ -206,6 +206,7 @@ pub use everruns_contracts::runtime::command;
 pub use everruns_contracts::runtime::command_host;
 pub use everruns_contracts::runtime::tool_surface;
 pub mod compaction_checkpoint;
+pub mod compaction_observation;
 pub mod compaction_status;
 pub use everruns_contracts::runtime::browser_use;
 pub use everruns_contracts::runtime::compaction_policy;

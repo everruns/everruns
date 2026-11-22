@@ -21,6 +21,7 @@
 //! ```
 
 // Decisions share the System One transport, which is native-only.
+mod computer_use;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod decisions;
 mod driver;

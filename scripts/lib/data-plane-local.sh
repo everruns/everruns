@@ -53,6 +53,9 @@ data_plane_local_env() {
   export EVERRUNS_DEFAULT_DATA_PLANE="$DP_LOCAL_ID"
   export EVERRUNS_DEFAULT_DATA_PLANE_URL="http://127.0.0.1:${PORT_PREFIX}41"
   export CELL_CONTROL_PLANE="http://127.0.0.1:${API_PORT}/api"
+  # Injected capabilities and Memory are served to the cells at the address
+  # they reach the API on, which they trust as their control plane.
+  export INJECTED_CAPABILITIES_BASE_URL="$CELL_CONTROL_PLANE"
   export CELL_JWKS_URL="http://127.0.0.1:${API_PORT}/api/.well-known/jwks.json"
   export DP_EDGE_PORT="${PORT_PREFIX}45"
   export SESSIONS_UPSTREAM="127.0.0.1:${DP_EDGE_PORT}"
@@ -81,7 +84,7 @@ data_plane_local_start() {
   mkdir -p "$dir/logs" "$dir/data" "$dir/store"
   data_plane_local_topology "$dir"
   echo "   Building the cell binary..."
-  cargo build -p everruns-cell --bin everruns-cell || return 1
+  cargo build -p everruns-agentd --bin everruns-cell || return 1
   bin="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}/debug/everruns-cell"
   store="file://$dir/store"
   local node

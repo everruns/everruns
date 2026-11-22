@@ -56,6 +56,7 @@ pub mod harness_chain;
 pub mod harnesses;
 
 pub mod execution_metadata;
+pub mod injected;
 mod kernel_imports;
 pub mod knowledge_store;
 

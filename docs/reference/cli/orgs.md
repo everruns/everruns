@@ -23,6 +23,9 @@ Organizations you belong to, and which one is active.
 | [`orgs egress-allowlist set`](#orgs-egress-allowlist-set) | Replace the organization's outbound allowlist extension. |
 | [`orgs egress-allowlist grant set`](#orgs-egress-allowlist-grant-set) | Platform administrators only: allow or stop an organization extending the outbound allowlist (revoking keeps its patterns but stops enforcing them), and give or take back open egress (any public host the deny list allows, reads and writes). |
 | [`orgs provider-accounts list`](#orgs-provider-accounts-list) | List the organization's provider accounts (sandbox provider accounts such as Daytona or E2B, and web search accounts): id, name, provider, provider username, and timestamps. |
+| [`orgs quality-monitoring get`](#orgs-quality-monitoring-get) | Read organization compaction monitoring policy, coverage and budget reservations. |
+| [`orgs quality-monitoring scores list`](#orgs-quality-monitoring-scores-list) | Read the newest fifty compaction monitoring findings with source trace references. |
+| [`orgs quality-monitoring scores review`](#orgs-quality-monitoring-scores-review) | Record a person's agreement with a compaction assessment, without starting model work. |
 
 ## orgs select
 
@@ -105,8 +108,10 @@ everruns orgs update [OPTIONS] --org <org>
 | `--default-harness-name <DEFAULT_HARNESS_NAME>` | Alternative to `default_harness_id` — looked up by stable name within the org. Mutually exclu... |
 | `--default-model-id <DEFAULT_MODEL_ID>` | Default LLM model for this organization. |
 | `--default-provider-per-service <DEFAULT_PROVIDER_PER_SERVICE>` | Org-level default provider per service (EVE-569). |
+| `--monthly-session-limit <MONTHLY_SESSION_LIMIT>` | Maximum sessions this organization can create per UTC calendar month. |
 | `--name <NAME>` | The display name of the organization. |
 | `--org <ORG>` | Required. |
+| `--quality-monitoring <QUALITY_MONITORING>` |  |
 | `--research-model-id <RESEARCH_MODEL_ID>` | Research model for agents set to "Organization research model". |
 | `--self-healing <SELF_HEALING>` |  |
 | `--small-model-id <SMALL_MODEL_ID>` | Shared small chat model for lightweight work. |
@@ -244,4 +249,64 @@ Example:
 ```bash
 # Find the sandbox provider account to point a Sandbox Template at
 everruns orgs provider-accounts list --org org_01h9
+```
+
+## orgs quality-monitoring get
+
+Read organization compaction monitoring policy, coverage and budget reservations.
+
+```bash
+everruns orgs quality-monitoring get [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. Organization whose monitoring policy and coverage to inspect. |
+
+Example:
+
+```bash
+# Inspect compaction monitoring consent, coverage and allowance
+everruns orgs quality-monitoring get --org org_01h9
+```
+
+## orgs quality-monitoring scores list
+
+Read the newest fifty compaction monitoring findings with source trace references.
+
+```bash
+everruns orgs quality-monitoring scores list [OPTIONS] --org <org>
+```
+
+| Flag | Description |
+|---|---|
+| `--org <ORG>` | Required. Organization whose newest monitoring findings to inspect. |
+
+Example:
+
+```bash
+# Read recent compaction assessments and their trace references
+everruns orgs quality-monitoring scores list --org org_01h9
+```
+
+## orgs quality-monitoring scores review
+
+Record a person's agreement with a compaction assessment, without starting model work.
+
+```bash
+everruns orgs quality-monitoring scores review [OPTIONS] --agrees [<agrees>] --org <org> --score <score>
+```
+
+| Flag | Description |
+|---|---|
+| `--agrees` | Required. True when the grader got it right. |
+| `--note <NOTE>` | Optional note on why (at most 2000 characters). |
+| `--org <ORG>` | Required. Organization that owns the assessment. |
+| `--score <SCORE>` | Required. Assessment whose human review to record. |
+
+Example:
+
+```bash
+# Record a suspected continuity issue as a grader mistake
+everruns orgs quality-monitoring scores review --org org_01h9 --score score_01h9 --agrees false --note 'A later user correction explains the answer' --reason 'Calibrate compaction monitoring'
 ```

@@ -11,7 +11,7 @@ with the never-enabled `machine_payments` feature.
 The `parallel_search` capability contributes one scoped remote MCP server named `Parallel`.
 Tools are discovered from the contributed MCP server so agents see a single MCP-backed tool surface.
 
-Default mode uses `https://search.parallel.ai/mcp` without authentication. Optional config:
+Default mode uses `https://mcp.parallel.ai/mcp` without authentication. It serves `web_search`, `web_fetch`, `web_decisions` (typed noul/choice/score questions answered from web evidence, with probabilities and call-level citations), `image_search` and vertical search. Optional config:
 
 - `auth: "connection"` sends the user-scoped `parallel` connection token as a bearer token.
 - `endpoint: "oauth"` switches the server URL to `https://search.parallel.ai/mcp-oauth` and requires the same user-scoped connection token.

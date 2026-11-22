@@ -169,6 +169,9 @@ pub use crate::domains::organizations::types::UpdateOrganizationRequest;
 /// Build organization routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .command::<crate::domains::organizations::quality_monitoring::GetOrgQualityMonitoring>()
+        .command::<crate::domains::organizations::quality_monitoring::ListOrgQualityMonitoringScores>()
+        .command::<crate::domains::organizations::quality_monitoring::ReviewOrgQualityMonitoringScore>()
         .command::<crate::domains::organizations::provider_accounts::GetOrganizationAccount>()
         .command::<crate::domains::organizations::provider_accounts::UpdateOrganizationAccountName>(
         )
@@ -674,6 +677,9 @@ async fn build_organization_response(
     };
 
     Ok(OrganizationResponse {
+        quality_monitoring: crate::domains::observers::system::policy(db, org_id)
+            .await
+            .log_internal_error_json("get quality monitoring policy")?,
         id: org.public_id,
         name: org.name,
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
@@ -685,6 +691,10 @@ async fn build_organization_response(
             crate::domains::organizations::research_model::effective_research_model_id(db, org_id)
                 .await
                 .log_internal_error_json("resolve research model")?,
+        monthly_session_limit: settings.as_ref().map_or(
+            crate::domains::organizations::types::DEFAULT_MONTHLY_SESSION_LIMIT,
+            |s| s.monthly_session_limit,
+        ),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
         default_provider_per_service: settings

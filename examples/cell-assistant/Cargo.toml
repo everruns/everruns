@@ -6,7 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-everruns-cell = { path = "../../crates/cell" }
+everruns-agentd = { path = "../../crates/agentd" }
 everruns = { path = "../../crates/everruns", features = ["openai"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 anyhow.workspace = true

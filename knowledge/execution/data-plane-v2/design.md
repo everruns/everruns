@@ -239,6 +239,30 @@ Moves are what make every upgrade safe:
 - The same drain handles cell replacement, zone evacuation and shrinking
   the fleet.
 
+What the canary upgrade qualification (2026-11-20) showed, and what holds
+until mixed releases are checked in CI:
+
+- **The control plane and cells upgrade as a matched pair, with v2 writes
+  paused.** Neither order works on its own: a newer control plane refuses
+  an older cell's host calls it no longer serves, and a newer cell needs
+  host calls an older control plane lacks.
+- **With the edge down**, requests fall back to the control plane. For a v2
+  session it answers from the session's cell or with 503, never from the
+  v1 store (the session database API, `session_databases/plane.rs`, was
+  the last path that read the v1 store).
+- **Rollback is a restore, not an image swap.** An older control plane
+  refuses newer migrations, and an older cell cannot read newer Raft
+  records. Restore the pre-upgrade restore point with writes paused
+  ([Disaster recovery](#disaster-recovery)); never start older binaries on
+  upgraded volumes. A cell refuses to open a log holding an intact record
+  it cannot decode (`wal.rs`) rather than cutting it off as a torn tail,
+  so from this release on an older cell stops instead of truncating
+  acknowledged writes.
+- Data plane v2 has no production data yet (2026-11-21): a release that
+  changes cell state rebuilds the test fleets instead of migrating them, so
+  v2 sessions' SQL databases left in the control plane's store before
+  cells held them (everruns#5537) are not imported.
+
 ### Gateways
 
 Every cell node serves the `/v1` session API (create session, send message,
@@ -596,13 +620,13 @@ isolated from consensus.
 ## Layout
 
 ```text
-crates/cell/            everruns-cell: Raft state machine, WAL, S3 store, directory,
+crates/agentd/          everruns-agentd: Raft state machine, WAL, S3 store, directory,
                         moves, rebalancer, gateway (/v1), node binary
   benches/  tests/  scripts/   (fleet, chaos, soak, scale, many_sessions,
                                 big_context, prove_*, ported from funout)
 crates/cell-executor/   executor binary: Engine + platform host (agent hydration,
                         environment factory, usage), no turn logic of its own
-crates/cell-testkit/    unpublished: sim executor, load and check tool
+crates/agentd-testkit/  unpublished: sim executor, load and check tool
 crates/server           data_plane module: org setting, agent resolution + config outbox,
                         tokens, allowances, feed ingest
 ```
@@ -616,7 +640,7 @@ server's session domains.
 
 Testing is a deliverable of every phase, not a later phase. funout's habit stays: a whole data plane runs on one machine with no database, control plane, cloud account or real model. Every run ends with an invariant check over every session, and a red check fails the run.
 
-### Simulators (`crates/cell-testkit`, unpublished)
+### Simulators (`crates/agentd-testkit`, unpublished)
 
 | Real thing | Simulator |
 | --- | --- |
@@ -661,7 +685,7 @@ Testing is a deliverable of every phase, not a later phase. funout's habit stays
 
 | When | What |
 | --- | --- |
-| Every PR touching `crates/cell*`, hosting or the executor | Unit and state-machine property tests, hosting conformance on a cell, a 2-minute chaos run with invariants, protocol contract tests (`/dp/v1` schemas, unknown-field tolerance) |
+| Every PR touching `crates/agentd*`, hosting or the executor | Unit and state-machine property tests, hosting conformance on a cell, a 2-minute chaos run with invariants, protocol contract tests (`/dp/v1` schemas, unknown-field tolerance) |
 | Nightly | Soak (1 h chaos), 75k scale, long-session gate, upgrade tests against the last release, stress bench with budgets; results posted with a trend |
 | Weekly | Large-org and many-small-org placement runs, zone loss |
 | Before each prod ramp step | The same stress profile against EKS with llmsim; prod is only the final check, never the discovery tool |
@@ -800,7 +824,7 @@ stress` bench) checked in CI, so a later step can't silently undo it.
 | 2 | **Trusted host extensions** (composition, authorities, stores, resolvers). | Per-model-call overhead at 100 agents unchanged versus step 0 | 1 |
 | 3 | **Agent definitions as data.** One definition format, built by the control plane, hydrated and cached by the Engine. | Hydration cost per activation (cold and warm) within budget | 1 |
 | 4 | **Workers on the Engine** (PostgreSQL `SessionHosting`, still actors). Platform e2e and hosting conformance against PostgreSQL. `WorkerRuntimeHost` removed. It inherits step 1's batched commits, which on PostgreSQL is the difference between passing and failing the 8k budgets. | The 8k budgets of today's bench not regressed | 1, 2, 3 |
-| 5 | **`crates/cell` + `crates/cell-testkit`.** Port funout `0a0c0ec` with Engine hosting, adding placement generations; registry, session placement, moves, spend allowances, log shipping. TLA+ models and the deterministic simulation harness. | Cells alone: 75k simulated agents, long session flat, chaos invariants, DST seeds clean | 1 (can start in parallel with 2 to 4) |
+| 5 | **`crates/agentd` + `crates/agentd-testkit`.** Port funout `0a0c0ec` with Engine hosting, adding placement generations; registry, session placement, moves, spend allowances, log shipping. TLA+ models and the deterministic simulation harness. | Cells alone: 75k simulated agents, long session flat, chaos invariants, DST seeds clean | 1 (can start in parallel with 2 to 4) |
 | 6 | **One thin, complete cell deployment.** Three state nodes, separate executors on credits, real Engine, a minimal agent definition, admission, cancel, recovery, streaming, a minimal durable workspace, and the CP protocol exercised early. Then the failure qualification: repeated moves with delayed old messages, lost acknowledgements, CP rollback, delayed feed, expired grants, stale executors, restore after an external effect. Stage-1 features come after this passes. | Level 2 and the failure suite green; overhead per turn and per-cell leader CPU within budget | 2, 3, 5 |
 | 7 | **Control-plane contract** ([cp-dp-protocol.md](cp-dp-protocol.md)): outbox, org tokens, allowances, feed, v1 as the trivial implementation. | Config propagation p99 under 1 s; feed lag within budget; allowances never overspend in chaos | 5 |
 | 8 | **Gateway, edge router, live streaming, local full v2** (`start-all` with a v2 data plane, real UI end to end). | Level 3: the whole stack locally, SSE first-delta latency and edge hop within budget | 6, 7 |
@@ -1046,7 +1070,7 @@ and live deltas never left the worker (chat showed no typing).
 
 ### Step 5 progress (2026-11-10)
 
-funout `0a0c0ec` is ported into `crates/cell` and `crates/cell-testkit`
+funout `0a0c0ec` is ported into `crates/agentd` and `crates/agentd-testkit`
 against today's Engine: the cell is an `AgentDefinitions` and
 `SessionHosting` profile, definitions travel with their sessions, and the
 fleet scripts (`scripts/cell/`) and a real-model example
@@ -1063,7 +1087,7 @@ the storage decision below requires. What it checks and what it found:
   ([durable execution engine](../../operations/durable-execution-engine.md),
   "Poison guard"). Since then 4 of 4 runs pass: 900 to 1 500 turns, up to
   17 kills (6 of a leader), up to 51 live moves, no tool ran twice.
-- **Log crash tests** (`crates/cell/src/wal_tests.rs`): seeded crashes with
+- **Log crash tests** (`crates/agentd/src/wal_tests.rs`): seeded crashes with
   torn tails and garbage, and named crash points inside truncation, roll
   and purge. They found a data-loss bug: truncation deleted the segments
   before renaming the rewritten log in, so a crash between the two left
@@ -1071,7 +1095,7 @@ the storage decision below requires. What it checks and what it found:
   finishes it. A tear before the active segment now refuses to open rather
   than hand Raft a log with a hole. The log and the state machine also pass
   openraft's own storage suite.
-- **Cell simulation** (`crates/cell/tests/raft_simulation.rs`): three real
+- **Cell simulation** (`crates/agentd/tests/raft_simulation.rs`): three real
   nodes (log, state machine, openraft) over an in-memory network that
   drops, delays and partitions messages, with nodes killed and restarted
   from disk and snapshots every 40 entries. 12 seeds per run, about 400
@@ -1081,7 +1105,7 @@ the storage decision below requires. What it checks and what it found:
   before. (Not "one leader per term": openraft 0.9 without
   `single-term-leader` lets two candidates win one term, the higher node
   id taking over, and a loaded machine makes that happen.)
-- **Placement generations** (`crates/cell/src/state.rs`,
+- **Placement generations** (`crates/agentd/src/state.rs`,
   `state_moves_tests.rs`): moves now follow the `Moves` model. A session's
   copy carries a generation that only grows; an imported copy is prepared
   and runs nothing until the directory commits its generation over the
@@ -1091,7 +1115,7 @@ the storage decision below requires. What it checks and what it found:
   image from; an abandoned move takes the session back two generations up,
   and a prepared copy the directory never committed is dropped. The kill
   run with 300 sessions, 12 kills (7 of a leader) and 48 live moves passes.
-- **Log shipping** (`crates/cell/src/ship.rs`): the leader ships committed
+- **Log shipping** (`crates/agentd/src/ship.rs`): the leader ships committed
   entries to the object store every second, a new leader resumes after
   the highest shipped index, and new sessions and input wait (callers see
   a frozen session and retry) while shipping is more than 5 s behind.
@@ -1115,7 +1139,7 @@ the storage decision below requires. What it checks and what it found:
   writer and the poison guard to "seal after exactly K deaths without
   progress". Three bug configurations keep failing: fencing by holder name,
   the guard before the fix, and progress reports accepted from any epoch.
-- **Spend allowances** (`crates/cell/src/allowance.rs`, the `Grants`
+- **Spend allowances** (`crates/agentd/src/allowance.rs`, the `Grants`
   model): grants per tenant live in replicated cell state, so every
   replica and a new leader agree on what was spent. The cell plugs into
   the budget gate Engine already has (the host's budget authority), with
@@ -1136,10 +1160,10 @@ the storage decision below requires. What it checks and what it found:
   cell can't answer (after retrying through a leader change for about
   5 s) stops the call, because Engine's gate lets a call run when the
   check errors.
-- **Protocol simulation** (`crates/cell/tests/protocol_simulation.rs`):
+- **Protocol simulation** (`crates/agentd/tests/protocol_simulation.rs`):
   three cells and a directory as real `CellState`s, with executors,
   clients, a rebalancer and move drivers that run the node's own move
-  rules (now pure functions in `crates/cell/src/moves.rs`). One network
+  rules (now pure functions in `crates/agentd/src/moves.rs`). One network
   delays, reorders, duplicates and drops every command and reply;
   executors and drivers die mid-step; proposers' clocks lag by up to a
   lease. Nothing reads the wall clock, so a seed replays exactly, and each
@@ -1220,14 +1244,14 @@ layer above it.
 
 One cell now runs as the plan's thin deployment: three state nodes, and
 executors as their own processes that pull turns on credits
-(`cell-testnode executor`, `crates/cell/src/remote.rs`). An executor keeps
+(`cell-testnode executor`, `crates/agentd/src/remote.rs`). An executor keeps
 a mirror of the sessions it runs, catches it up with deltas from the cell,
 and sends every write as a fenced proposal; the nodes run no Engine when
 executors serve them (`CELL_EXECUTOR_CAP`). What it covers and what it
 found:
 
 - **Hosting conformance through an executor's link**
-  (`crates/cell/tests/hosting_conformance.rs`, `remote_*`): authority,
+  (`crates/agentd/tests/hosting_conformance.rs`, `remote_*`): authority,
   lease expiry, waits and retained builds pass over HTTP as they do in
   process. A view that carried no definition looked like a partial view and
   was ignored, so the mirror never caught up; a delta now says when it is
@@ -1244,7 +1268,7 @@ found:
   executor started 13 it never ran).
 - **The control plane protocol, early** (`dp.rs`, `control.rs`,
   `node_control.rs`, `gateway_dp.rs`; a fake control plane in
-  `crates/cell-testkit/src/fake_cp.rs` with a ledger, feed dedup and
+  `crates/agentd-testkit/src/fake_cp.rs` with a ledger, feed dedup and
   fault knobs). Agents arrive as config in the directory cell's Raft, by
   the protocol's ordering rules; a session copies its revision when it is
   created, so a new revision or a removal never changes a running one.
@@ -1253,7 +1277,7 @@ found:
   with no answer yet waits, a refused one ends exhausted. Feed records are
   made at apply from committed events, numbered by Raft index and position,
   and leave state only when acknowledged.
-- **Failure qualification** (`crates/cell-testkit/tests/control_plane.rs`
+- **Failure qualification** (`crates/agentd-testkit/tests/control_plane.rs`
   and `qualification.rs`, against a live fleet): lost acknowledgements
   grant and bill once; with the control plane down turns wait for money
   and then run; a control plane restored to an older epoch starts only
@@ -1378,7 +1402,7 @@ Gate:
   (`allowances_never_overspend_under_concurrency_and_retries`).
 - **Conformance and the failure suite:** green on the cell side against
   the fake control plane, which now also checks link and org tokens,
-  secrets, suspension, export and replay (`crates/cell-testkit/tests/org_admin.rs`).
+  secrets, suspension, export and replay (`crates/agentd-testkit/tests/org_admin.rs`).
   The server side is tested on a real database against a stub data plane
   (`domains/data_plane/tests.rs`). Both sides use the same wire types. A
   cell fleet driven by the real server, not the fake, comes with step 8's
@@ -1394,7 +1418,7 @@ A v2 org's sessions now run on its data plane end to end: the console and
 the CLI keep one URL, the control plane keeps every session's record, and
 the cells run the turns. Decisions (approved 2026-11-12):
 
-- **The edge is a mode of the cell binary** (`serve edge`, `crates/cell/src/edge.rs`).
+- **The edge is a mode of the cell binary** (`serve edge`, `crates/agentd/src/edge.rs`).
   The proxy in front sends `/v1/sessions` and below to it. The edge sends
   a session's record calls (get, list, create, title, archive, and what
   the record answers: resolved model, participants, slash commands, run
@@ -1420,7 +1444,7 @@ the cells run the turns. Decisions (approved 2026-11-12):
   routes ([fs.md](fs.md)) move to stage 2 with the rest.
 - **An org's own model provider** reaches executors as an `llm_provider`
   connection whose key is a sealed secret; only the executor running the
-  turn opens it (`crates/cell/src/providers.rs`).
+  turn opens it (`crates/agentd/src/providers.rs`).
 - **Tools that need a person's approval** park the turn (the Engine's
   durable approver), and `POST /v1/sessions/{id}/tool-approvals` resumes it.
   An agent's `tool_approval` capability ("ask before acting") is served on
@@ -1432,7 +1456,7 @@ the cells run the turns. Decisions (approved 2026-11-12):
   `POST /v1/commands/{name}`; the edge turns a v2 session's chat commands
   (send and list messages, list events, cancel, tool results) into the
   `/v1` call they name and answers in the command's envelope
-  (`crates/cell/src/edge_commands.rs`). A send keeps its idempotency: the
+  (`crates/agentd/src/edge_commands.rs`). A send keeps its idempotency: the
   message id comes from the command's key.
 - **The console's own Chat runs on the data plane** in a v2 org since
   parity Phase B (below); until then it stayed on the control plane.
@@ -1452,7 +1476,7 @@ Gate, measured:
   answer p50 4.1 ms, p99 25 ms; against 100 ms (release build, one machine,
   three nodes, two executors and 200 clients in one process; 3 976 of
   4 000 deltas arrived live, the rest were the last of an answer, which its
-  committed message already carries; `crates/cell-testkit/tests/latency.rs`). The bench found that every
+  committed message already carries; `crates/agentd-testkit/tests/latency.rs`). The bench found that every
   answer lost its first delta on the live stream: the stream node
   numbered "nothing taken yet" as 0, the number of an epoch's first delta.
 - **Edge hop:** p50 0.1 ms, p99 under 1 ms, against 5 ms (400 calls
@@ -1461,7 +1485,7 @@ Gate, measured:
 - **Token expiry** with a 30 s token: an expired token gets 401. Clock
   skew allowed on an org token was cut from 30 s to 5 s, which had given
   a 30 s token twice its life. A token of another org reaches nothing
-  (`crates/cell-testkit/tests/edge.rs`).
+  (`crates/agentd-testkit/tests/edge.rs`).
 - **Control plane down:** running sessions keep taking messages and
   finishing turns through the edge; new sessions and record calls fail
   until it is back (the record is the control plane's).
@@ -1506,7 +1530,7 @@ or a moment before it, and one org can be taken back to a moment without
 touching any other. Decisions (approved 2026-11-12, all as recommended):
 
 1. **Both restores.** `restore` rebuilds a whole cell, latest or point in
-   time (`crates/cell/src/restore.rs`); `restore-org` takes one org's
+   time (`crates/agentd/src/restore.rs`); `restore-org` takes one org's
    sessions back to a moment where they live now. Both are modes of the
    cell binary (`cli.rs`).
 2. **Ship first only what must not be lost** (`ship::ships_first`): a
@@ -1576,7 +1600,7 @@ How a rebuild works, and what it found:
   session deleted since is reported, not brought back. Grants are not
   restored: they come from the control plane.
 
-Tests, all against real fleets (`crates/cell-testkit/tests/recovery.rs`):
+Tests, all against real fleets (`crates/agentd-testkit/tests/recovery.rs`):
 every node of a cell killed while a tool not safe to repeat is running,
 rebuilt from the store: the tool ran once, the turn finished, the
 incarnation is 2, the session's next epoch is past the gap; a whole cell
@@ -1744,13 +1768,13 @@ header into an org secret (`mcp:<BINDING>`, the binding named for the
 agent key, server and header) and the header into its `${BINDING}`
 placeholder, and a server that acts as the agent's service identity into
 an `mcp_oauth:<grant>` connection whose token secret is the grant as a
-self-contained OAuth token set. On the cell (`crates/cell/src/mcp.rs`)
+self-contained OAuth token set. On the cell (`crates/agentd/src/mcp.rs`)
 the placeholders and the connection leave the definition before the agent
 is built, so nodes never open a secret; per call the executor that runs
 the turn fills them for the calling session's org (a session it does not
 know gets nothing). A token within a minute of expiry is refreshed by one
 executor at a time: it leases the secret for the revision it read in the
-directory cell's replicated state (`crates/cell/src/secrets.rs`, 30 s
+directory cell's replicated state (`crates/agentd/src/secrets.rs`, 30 s
 lease), writes the new token set as the next revision, and the feed takes
 it to the control plane, which stores it on the platform's grant (only
 over the access token it handed over, so a grant the person authorized
@@ -1759,7 +1783,7 @@ the same one spent twice. Still on the platform after 11.2: a person's own
 grant (`actsAs: user`), connection-backed presets (GitHub), legacy
 capability servers and session-level server overrides; they go with 11.6.
 
-What a call pays for its credentials (`crates/cell-testkit/tests/mcp.rs`,
+What a call pays for its credentials (`crates/agentd-testkit/tests/mcp.rs`,
 a header binding and a grant together, on a fleet executor): opened from
 the directory cell 3.6 / 4.1 ms p50 / p99, kept 7 / 21 µs, against a gate
 of 20 ms p99. The same test shows the lease across two executors: the
@@ -1777,7 +1801,7 @@ in v1, and sends the resolved `session_sandbox` entry with the session
 (`crates/server/src/domains/data_plane/sandboxes.rs`); the provider key
 travels as a sealed org secret (`sandbox:<provider>:<user>:<connection>`),
 sealed again only when it changed, and a published agent carries no
-sandbox of its own. On the executor (`crates/cell/src/sandbox.rs`) the
+sandbox of its own. On the executor (`crates/agentd/src/sandbox.rs`) the
 capability gets a sync hook (`workspace_sync.rs` in the capabilities
 crate) instead of v1's seed and checkpoints. Before a call the sandbox
 catches up with the workspace: nothing when this executor last synced it
@@ -1797,7 +1821,7 @@ create and the record leaves no orphan behind. Engine does not run a
 cut-off `bash` call again; the next call finds the sandbox put back to the
 workspace.
 
-What it costs (`crates/cell-testkit/tests/sandboxes.rs`, a local provider
+What it costs (`crates/agentd-testkit/tests/sandboxes.rs`, a local provider
 taking 1.5 s to create and 50 ms per call, about Daytona's warm numbers):
 a first call takes four provider calls (orphan check, create, command,
 scan) against v1's two, 1700 ms of provider time against 1600 ms (+6.2%,
@@ -1811,7 +1835,7 @@ stop, the fleet view), idle pause, the desktop and mount mode; they go
 with 11.6.
 
 **11.4 Schedules, triggers, detached calls and subagents.** A session's
-schedules live in its cell state (`crates/cell/src/platform.rs`), built in
+schedules live in its cell state (`crates/agentd/src/platform.rs`), built in
 full by the proposer so every replica applies the same one. The cell leader
 fires due ones on its tick in batches of 256 (`FireSchedule` carries the
 time it was due, so a retry or the old leader's late fire does nothing),
@@ -1822,19 +1846,19 @@ trigger (schedule, webhook, GitHub, MCP event) on a v2 org creates its
 session on the data plane as before, and the control plane admits the run
 there (`POST /dp/v1/orgs/{org}/sessions/{id}/messages`, under the
 trigger's origin, idempotent per dispatch). A long tool call detaches
-(`crates/cell/src/detach.rs`, after 5 minutes by default): its record
+(`crates/agentd/src/detach.rs`, after 5 minutes by default): its record
 moves into the session's authority, the turn parks and frees its executor,
 the call's events append once the turn parked, and its result resumes the
 turn; an executor that dies stops renewing the record, and once it
 expires (30 s) another executor resumes the turn. Input that arrives
 meanwhile waits and joins the resumed turn, as on v1. Subagents
-(`crates/cell/src/subagents.rs`) are sessions of the parent's own agent,
+(`crates/agentd/src/subagents.rs`) are sessions of the parent's own agent,
 created and driven through the gateway's own calls, so the child lands
 wherever the gateway places it; the parent's tasks live in its cell state
 (`tasks.rs`) and a finished background child's wake is admitted in the
 same command that settles its task.
 
-What it costs (`crates/cell-testkit/tests/schedules.rs`, `detached.rs`,
+What it costs (`crates/agentd-testkit/tests/schedules.rs`, `detached.rs`,
 `subagents.rs`, debug build, 2 cells): 10 000 one-shot schedules on 2000
 sessions fire with lag p50 113 ms and max 121 ms (gate 1 s). With the
 leader killed just before they are due, the new leader took 4.97 s to be
@@ -1867,7 +1891,7 @@ computed by `crates/server/src/domains/data_plane/event_tap.rs` and set
 again when an observer or trace destination changes; the directory cell
 hands the list to every cell on the tenants poll, so a change reaches a
 cell within one poll, about 2 s), the cell copies
-those committed events onto the feed (`crates/cell/src/tap.rs`, payloads
+those committed events onto the feed (`crates/agentd/src/tap.rs`, payloads
 over 512 KiB left out and named), and feed ingest hands each to the same
 listeners v1 runs, once, by feed position. Reports were removed
 (2026-11-17); analytics come from the warehouse export, which is
@@ -1887,7 +1911,7 @@ session (the Trace view, reactions, ratings, question answers, the context
 meter, export) for a v2 session too, with the same code: one implementation
 per feature keeps validation, attribution and policy in one place. It
 reads the session's events from the cell through the gateway's
-`GET /dp/v1/orgs/{org}/sessions/{id}/{read}` (`crates/cell/src/gateway_reads.rs`:
+`GET /dp/v1/orgs/{org}/sessions/{id}/{read}` (`crates/agentd/src/gateway_reads.rs`:
 `trace` folds the committed events with `everruns_core::session_trace`, the
 fold the control plane's own index uses; `events` selects a sequence range by
 type or message id, public form, at most 1000; `log` pages the whole log for
@@ -1923,7 +1947,7 @@ agent's tools read them. The control plane keeps the Storage API (keys,
 secrets, the approval mode switch, which is a reserved key) for both planes
 with one code path, policy and validation: it reads them with the `storage`
 read and changes them with the `storage` session command
-(`crates/cell/src/session_storage.rs`,
+(`crates/agentd/src/session_storage.rs`,
 `crates/server/src/domains/session_storage/plane.rs`). Session secrets are
 sealed with the org's data key, bound to the session and the name
 (`dataplane_seal::seal_session_secret`): the control plane seals what a
@@ -1954,7 +1978,7 @@ session's files on the cell at the path a v1 session uses
 admits the message with its parts (`crates/server/src/domains/data_plane/attachments.rs`).
 Channels (Slack) do the same before they send. An inline image sent to the
 cell is written to the session's files by the gateway and referred to by id,
-so the bytes stay out of the log (`crates/cell/src/gateway_input.rs`). The
+so the bytes stay out of the log (`crates/agentd/src/gateway_input.rs`). The
 executor reads an attachment's bytes back from the session's files, so a
 cell never asks the control plane for them during a turn, and a node refuses
 a message naming an attachment its session does not hold. The Work tab:
@@ -1980,20 +2004,20 @@ cell-owned idle timer may replace it; that is for the decision brief. A
 schedule's spend cap is kept with the schedule on the cell:
 what its latest run's model calls cost is added as their events commit,
 from the same cost the allowance settles, and the schedule stops with
-`budget_exhausted` when the cap is reached (`crates/cell/src/platform.rs`).
+`budget_exhausted` when the cap is reached (`crates/agentd/src/platform.rs`).
 
 **11.6b: which capabilities a cell runs (2026-11-17).** A test names every
 capability in the hosted catalog (`docs/api/capability-catalog.json`) on
 an agent, builds it on the cell's host and runs a turn on a fleet
-(`crates/cell-testkit/tests/capabilities.rs`). The outcome per capability
-is checked into `crates/cell-testkit/tests/capability_matrix.json`, so a
+(`crates/agentd-testkit/tests/capabilities.rs`). The outcome per capability
+is checked into `crates/agentd-testkit/tests/capability_matrix.json`, so a
 capability the cell starts or stops serving shows up as a diff. The
 first run found 40 of 102: the cell's host had only the Framework's
 runtime catalog and the platform capabilities it implements (approvals,
 sandbox, schedules, subagents), not the hosted catalog the v1 worker
 registers. The cell's host now registers that catalog, with the worker's
 features, for the capabilities an agent names
-(`crates/cell/src/host.rs`, `hosted_capabilities`), and 96 of 102 build
+(`crates/agentd/src/host.rs`, `hosted_capabilities`), and 96 of 102 build
 and complete a turn. The rest: `container_sandbox`, `docker_container` and
 `parallel` were behind feature flags that are off by default, as on a
 worker (the last two were removed in 2026-11); `dreaming` and `sandbox_desktop` need their config (and the
@@ -2018,7 +2042,7 @@ fixed (executor, directory cell, `POST /dp/v1/tenants/{org}/host-calls/{name}`,
 one dispatcher in `crates/server/src/domains/data_plane/host_calls.rs`);
 the cell stamps the acting person, holds each org to 64 calls in flight,
 and stops calling a control plane that stopped answering for 10 s
-(`crates/cell/src/host_calls.rs`). Reads retry once, writes never.
+(`crates/agentd/src/host_calls.rs`). Reads retry once, writes never.
 Both sides count each call by name and outcome. Two guards keep it the
 only path: the registry's printed copy (`host_calls_registry.txt`) must
 change with it, and `scripts/lib/check-cell-control-plane-calls.sh` fails
@@ -2052,7 +2076,7 @@ each search key a secret sealed with the org's data key
 (`crates/server/src/domains/data_plane/org_settings.rs`). They sync
 whole when one of them changes and when the org is put on a data plane,
 and a sync never fails the change that caused it. A cell reads them from
-its directory cell (`crates/cell/src/lookups.rs`), so web search and
+its directory cell (`crates/agentd/src/lookups.rs`), so web search and
 egress keep working while the control plane is down. A setting that has
 not arrived is asked as before, which covers orgs placed before this
 change until their next settings change. The session owner's own
@@ -2155,8 +2179,8 @@ has no Memory, and there is no content search over it yet (a shell's
 `grep` reads the files). A capability's virtual tree (the product docs)
 is mounted read-only from the cell's memory, built once and shared by
 every session; its inline files are written with the create, only where
-absent, as v1 copies them (`crates/cell/src/memory.rs`,
-`crates/cell/src/capability_files.rs`,
+absent, as v1 copies them (`crates/agentd/src/memory.rs`,
+`crates/agentd/src/capability_files.rs`,
 `crates/server/src/domains/data_plane/memory.rs`).
 
 **Parity, Phase B: Console Chat on cells (2026-11-19).** The console's
@@ -2177,7 +2201,7 @@ cannot keep a person's key; a turn nobody sent (a channel message, a
 schedule run) never asks. "Add to this chat only" waits for session MCP
 records on cells (step 9). The Chat's model is the one the org set when
 its definition was last published; a change reaches new chats with the
-next republish, within the ten-minute sweep (`crates/cell/src/user_mcp.rs`,
+next republish, within the ten-minute sweep (`crates/agentd/src/user_mcp.rs`,
 `crates/server/src/domains/data_plane/user_mcp.rs`).
 
 **Parity, Phase B: a session's SQL databases live in its cell
@@ -2193,8 +2217,8 @@ brought to the index before each call, with the executor, authorizer and
 limits every host shares (`everruns::database`); the index also holds the
 database count and the session's total size. Executors commit under their
 epoch, the Databases API (`/v1/sessions/{id}/databases`, now served by the
-cell) unfenced as the gateway (`crates/cell/src/sqldb.rs`,
-`crates/cell/src/hosting_sqldb.rs`). Not carried yet: a fork's copy of the
+cell) unfenced as the gateway (`crates/agentd/src/sqldb.rs`,
+`crates/agentd/src/hosting_sqldb.rs`). Not carried yet: a fork's copy of the
 parent's databases.
 
 **Parity, Phase B: Changes, git, chat MCP servers and task push configs
@@ -2246,11 +2270,11 @@ Memory scope shares) in process memory: a dream lived only as long as
 its turn's timer and its executor, and budgets reset per session. The
 state now stays in the control plane's `dreaming_state`, through the v1
 worker's command as the host call `dreaming_state`, scoped to the
-session as an Engine session's store is (`crates/cell/src/hosting.rs`,
+session as an Engine session's store is (`crates/agentd/src/hosting.rs`,
 `crates/internal-protocol/src/commands/dreaming.rs`). A turn still runs
 its dream from its own timer; for one that timer did not finish, each
 executor sweeps the orgs whose sessions it mirrors and asks the control
-plane for that org's due dreams (`due_org`, `crates/cell/src/executor.rs`).
+plane for that org's due dreams (`due_org`, `crates/agentd/src/executor.rs`).
 The control plane answers a cell for its own org only, and a v1 worker's
 discovery skips every session the data plane runs, so no dream runs on
 both planes. Reader ports carry the session's Memory so a swept dream can
@@ -2293,14 +2317,21 @@ without a session moves every v1 session of the org). The move switches
 first: one transaction records it (`dp_session_moves`) and marks the
 session as the data plane's, so no message reaches the workers again; the
 control plane refuses its messages ("moving, send again") until the import
-is done. Only a session with no turn running or waiting is switched, and a
+is done, and so does the cell: the session is created there closed to
+messages (`importing`, marked in the cell's state before the create, so it
+holds from the session's first moment), since the edge sends plain
+messages straight to the cell once it finds the session there. The move's
+last step opens it (`activate`), after everything below is in. Only a session with no turn running or waiting is switched, and a
 turn that started just before the switch is waited out; a turn waiting on
 tool results is not moved, since its call would be left without an answer.
-The import carries what a fork carries: the conversation (the newest
+The import carries what a fork carries, and the session's databases: the conversation (the newest
 messages that fit one seed call, text and media only), the values and the
 secrets (sealed again for the session), and the workspace's files (one
 call each when large; the data plane's session commands take a file as
-big as a cell holds). A bound secret stays behind, since a cell has no
+big as a cell holds), and the SQL databases, each whole (v1 keeps a
+database as its pages, which in order are its SQLite file; both planes
+hold the same limits, so a database that does not go stops the move
+rather than stay behind). A bound secret stays behind, since a cell has no
 egress binding yet. The v1 log stays in the control plane's `events`, and
 the move records where it ends and what stayed behind. Every step is
 retry-safe, so a move that stopped midway is run again and continues.
@@ -2316,7 +2347,7 @@ request to the control plane over the link (`POST
 /dp/v1/tenants/{org}/lookups`), and the control plane runs the command
 as the org's internal caller and seals the answer with the org's data
 key under the request's own id, so the cell in between passes on
-ciphertext (`crates/cell/src/lookups.rs`,
+ciphertext (`crates/agentd/src/lookups.rs`,
 `crates/server/src/domains/data_plane/host_calls.rs`). Only those six
 commands go over: sandbox keys and MCP credentials are already sealed
 org secrets on the data plane, and a cell leases nothing to clean up. A
@@ -2367,9 +2398,9 @@ an MCP server's tool on every turn (two) and a managed sandbox from the
 test node's local provider, 1.5 s to create and 50 ms a call (one). Each
 feature's turn latency is reported on its own. The MCP server is a stub
 the test node answers in process behind the agents' egress
-(`HostServices::egress`, `crates/cell-testkit/src/stub_mcp.rs`), since
+(`HostServices::egress`, `crates/agentd-testkit/src/stub_mcp.rs`), since
 the MCP transport refuses a server whose address is private, which an
-in-cluster one would be. `crates/cell-testkit/tests/mix.rs` runs the mix on
+in-cluster one would be. `crates/agentd-testkit/tests/mix.rs` runs the mix on
 a fleet and checks what each kind of session answered.
 
 The first EKS run with the mix (saas run 44355318472, run 6 shape, chaos

@@ -5,6 +5,7 @@ mod cache_reset;
 pub mod commands;
 pub mod plan;
 pub mod source;
+mod tool_output;
 pub mod types;
 
 pub use commands::*;

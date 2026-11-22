@@ -917,7 +917,7 @@ async fn internal_callers_can_set_reserved_routing_tags() {
 }
 
 #[tokio::test]
-async fn app_session_creation_enforces_total_session_cap() {
+async fn app_session_creation_enforces_monthly_session_limit() {
     let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -944,11 +944,16 @@ async fn app_session_creation_enforces_total_session_cap() {
     .await
     .unwrap();
 
-    let resource_limits = ResourceLimitsConfig {
-        max_sessions_per_org: 1,
-        ..Default::default()
-    };
-    let svc = SessionService::new(db.clone()).with_resource_limits(resource_limits);
+    db.patch_organization_settings(
+        DEFAULT_ORG_ID,
+        crate::storage::UpdateOrganizationSettings {
+            monthly_session_limit: Some(1),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let svc = SessionService::new(db.clone());
 
     let owner_principal = svc
         .principal_service
@@ -991,11 +996,12 @@ async fn app_session_creation_enforces_total_session_cap() {
         .unwrap_err();
 
     assert!(
-        err.downcast_ref::<ResourceLimitError>().is_some(),
+        err.downcast_ref::<crate::errors::ResourceLimitError>()
+            .is_some(),
         "expected ResourceLimitError, got: {err}"
     );
     assert!(
-        err.to_string().contains("Session limit reached"),
+        err.to_string().contains("Monthly session limit reached"),
         "got: {err}"
     );
 }

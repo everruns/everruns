@@ -76,6 +76,21 @@ pub(crate) fn validate_registered_capability_config(
         })?;
     }
 
+    // An injected capability's definition comes from the controller that
+    // serves it, with a session-token server user-authored definitions may
+    // not have: it only has to be one. A bare ref (a host that does not
+    // serve it) contributes nothing.
+    if everruns_contracts::runtime::capabilities::injected::is_injected_capability(id) {
+        if config.is_null() || config.as_object().is_some_and(|o| o.is_empty()) {
+            return Ok(());
+        }
+        serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(config.clone())
+            .map_err(|error| BuildError::InvalidCapability {
+                id: id.to_string(),
+                reason: format!("invalid injected capability config: {error}"),
+            })?;
+        return Ok(());
+    }
     if everruns_core::is_declarative_capability(id) || everruns_contracts::is_plugin_capability(id)
     {
         let mut definition =

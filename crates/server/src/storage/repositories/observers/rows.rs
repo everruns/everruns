@@ -21,6 +21,7 @@ pub struct ObserverRow {
     pub archived_at: Option<DateTime<Utc>>,
     /// Pass-rate alert (`ObserverAlert`), when set.
     pub alert: Option<serde_json::Value>,
+    pub system_kind: Option<String>,
 }
 
 /// Input for creating an observer
@@ -33,6 +34,7 @@ pub struct CreateObserverRow {
     pub sampling_rate: f64,
     pub scorers: serde_json::Value,
     pub alert: Option<serde_json::Value>,
+    pub system_kind: Option<String>,
 }
 
 /// Input for updating an observer
@@ -51,6 +53,7 @@ pub struct UpdateObserverRow {
 /// Trace score row from database. Pending rows double as the scoring queue.
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct TraceScoreRow {
+    pub evidence_ref: Option<serde_json::Value>,
     pub id: Uuid,
     pub org_id: i64,
     pub public_id: String,
@@ -81,6 +84,7 @@ pub struct TraceScoreRow {
 /// Input for enqueueing a trace score (one per matched scorer).
 #[derive(Debug, Clone)]
 pub struct CreateTraceScoreRow {
+    pub evidence_ref: Option<serde_json::Value>,
     pub public_id: String,
     pub observer_id: Uuid,
     pub scorer_key: String,

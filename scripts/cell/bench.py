@@ -27,7 +27,7 @@ Budgets (design.md, "Scale estimate" and plan step 1):
   authority, plan step 1); other agents are reported, not gated.
 
 Exit status 1 when a budget is missed. Build first:
-`cargo build --release -p everruns-cell-testkit --bins`.
+`cargo build --release -p everruns-agentd-testkit --bins`.
 """
 import argparse, json, os, subprocess, sys, time, urllib.request
 

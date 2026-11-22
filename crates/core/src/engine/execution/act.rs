@@ -17,7 +17,6 @@ use crate::engine::events::{
     ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCompletedData,
     ToolStartedData,
 };
-use crate::engine::message::ContentPart;
 use crate::engine::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::engine::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
@@ -1104,42 +1103,14 @@ where
                     let success = replayed_result.error.is_none();
                     let status = if success { "success" } else { "error" };
                     let result_fp = tool_result_fingerprint(&tool_call.name, &replayed_result);
-                    let completed_data = if success {
-                        // Reconstruct content: text + images (preserves image-producing tools on replay)
-                        let mut content = replayed_result
-                            .result
-                            .as_ref()
-                            .map(|r| vec![ContentPart::tool_result_text(r)])
-                            .unwrap_or_default();
-                        if let Some(ref images) = replayed_result.images {
-                            for img in images {
-                                content.push(ContentPart::Image(
-                                    crate::engine::message::ImageContentPart::from_base64(
-                                        &img.base64,
-                                        &img.media_type,
-                                    ),
-                                ));
-                            }
-                        }
-                        ToolCompletedData::success(
-                            tool_call.id.clone(),
-                            tool_call.name.clone(),
-                            content,
-                            None,
-                        )
-                        .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
-                        .with_display_name(display_name.clone())
-                    } else {
-                        ToolCompletedData::failure(
-                            tool_call.id.clone(),
-                            tool_call.name.clone(),
-                            status.to_string(),
-                            replayed_result.error.clone().unwrap_or_default(),
-                            None,
-                        )
-                        .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
-                        .with_display_name(display_name.clone())
-                    };
+                    let completed_data = ToolCompletedData::from_tool_result(
+                        &tool_call,
+                        &replayed_result,
+                        status,
+                        None,
+                    )
+                    .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
+                    .with_display_name(display_name.clone());
                     let _ = self
                         .event_emitter
                         .emit(EventRequest::new(

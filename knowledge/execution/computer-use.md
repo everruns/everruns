@@ -96,6 +96,18 @@ are the same on every path.
   call's id); after a failure the tool answers the rest of that batch with the
   reference's "Not executed" text without touching the display. See
   [`crates/drivers/drivers/src/anthropic/computer_toolset.rs`](../../crates/drivers/drivers/src/anthropic/computer_toolset.rs).
+- **Gemini** (`computer_use` on the Interactions API, Gemini 4 models): the
+  tool's environment is `browser` when the `computer` tool offers `navigate`,
+  else `desktop`. Gemini calls predefined actions as plain function calls on a
+  0-999 grid; each becomes a `computer` call (one action, or a short batch for
+  `type` with `press_enter` and `mouse_down`/`mouse_up`) on real pixels, and
+  keeps Gemini's original call under `native_batch.call` so replay sends back
+  exactly what the model produced. `key_down`/`key_up` are excluded (no action
+  holds a key across calls); `go_back`/`go_forward` become `alt+Left`/`alt+Right`.
+  A `safety_decision` travels as `pending_safety_checks` and a result that ran
+  is acknowledged. Off Google's endpoint (`generateContent`) the function tool
+  stays. See
+  [`crates/drivers/drivers/src/gemini/computer_use.rs`](../../crates/drivers/drivers/src/gemini/computer_use.rs).
 
 Model support is a model-id rule next to each adapter rather than a model
 profile flag: the native tools landed on a handful of current models, and the
@@ -221,6 +233,7 @@ for a session on that Sandbox, through the Daytona or E2B session types above.
 | 3c | Desktop as a Sandbox Template option on Daytona and E2B, capability `sandbox_desktop` | Done |
 | 3d | Daytona desktop recordings saved to session files and played in the chat | Done |
 | 4 | Full Anthropic toolset: `zoom`, `cursor_position`, `left_mouse_down`/`up`, `hold_key`, modified drags, native batches stop at the first failure | Done |
+| 5 | Gemini native adapter (`computer_use` on the Interactions API, desktop and browser), checked live on `gemini-4-hydrogen` | Done |
 
 Open before the capability leaves experimental mode: verify the native OpenAI
 path against the live API (the GA reference leaves some action fields

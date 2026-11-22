@@ -604,13 +604,18 @@ Configurable limits on resource creation. See `crates/server/src/server.rs` for 
 | Personal access tokens per user | 25 | `RESOURCE_LIMIT_MAX_PERSONAL_ACCESS_TOKENS_PER_USER` |
 | Harnesses per org | 50 | `RESOURCE_LIMIT_MAX_HARNESSES_PER_ORG` |
 | Agents per org | 500 | `RESOURCE_LIMIT_MAX_AGENTS_PER_ORG` |
-| Sessions per org | 10000 | `RESOURCE_LIMIT_MAX_SESSIONS_PER_ORG` |
 
-Returns `409 Conflict` when a limit is exceeded. Harness, agent, and session
-caps are per org and enforced in the create commands (covering HTTP, MCP, and
-gRPC entry paths); counts exclude soft-deleted rows. The harness cap counts only
-user-created harnesses, built-in (system-seeded) harnesses do not consume the
-budget.
+Returns `409 Conflict` when a limit is exceeded. Harness and agent counts
+exclude soft-deleted rows. Built-in harnesses are excluded from the harness cap.
+
+Session creation has a per-organization allowance for each UTC calendar month.
+Owners and admins can change it under Settings → Limits or through the
+[organization update request](../../crates/server/src/domains/organizations/types.rs).
+The default is 10,000 and the hard maximum is 100,000. New sessions share
+the same allowance across creation paths. Archiving and deleting sessions keep
+their original month's usage. The allowance resets at midnight UTC on the
+first day of the next month. The limit is enforced in the
+[session insert transaction](../../crates/server/migrations/20261121040243_monthly_session_creation_limits.sql).
 
 ### Error Responses
 

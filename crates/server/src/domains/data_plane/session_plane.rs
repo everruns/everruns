@@ -67,6 +67,21 @@ impl SessionPlane {
         self.select(from, to, types, &[], last).await
     }
 
+    /// Bounded source excerpts, projected on the cell before transport.
+    pub async fn event_previews(
+        &self,
+        from: i32,
+        to: i32,
+        chars: usize,
+    ) -> anyhow::Result<Vec<everruns_core::compaction_observation::CompactionEvidenceExcerpt>> {
+        let query = format!("from={from}&to={to}&preview_chars={chars}");
+        let value = self
+            .plane
+            .session_read(&self.org, self.session, &session_commands::EVENTS, &query)
+            .await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
     /// The events carrying the user and agent messages with these ids
     /// (`input.message`, `output.message.completed`).
     pub async fn messages(&self, ids: &[String]) -> anyhow::Result<Vec<SessionEventRow>> {

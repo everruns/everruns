@@ -41,6 +41,8 @@ pub(super) struct ChannelStates {
     pub fcp: crate::channels::fcp::FcpState,
     pub public_chat: crate::channels::ag_ui::AgUiState,
     pub poppy: crate::channels::poppy::PoppyState,
+    /// Hosted capabilities served to data planes over MCP.
+    pub injected: Arc<crate::injected::InjectedCapabilities>,
 }
 
 impl ChannelDeps {
@@ -87,6 +89,12 @@ impl ChannelStates {
             deps.rate_limiter("poppy"),
             a2a_replay_store,
         );
+        let injected = Arc::new(crate::injected::from_env(
+            deps.db.clone(),
+            &deps.auth.config.base_url,
+        ));
+        // Data planes get the served ones in place of hosted capabilities.
+        crate::injected::serve_to_data_planes(&injected);
         // api_endpoint execution keys.
         let mut api = api::channel_api::ChannelApiState::new(
             deps.db.clone(),
@@ -140,12 +148,22 @@ impl ChannelStates {
             fcp,
             public_chat,
             poppy,
+            injected,
         }
     }
 
     /// The channels' routes: those under the API prefix, and those at the
-    /// server root (Poppy's RFC 8414 metadata).
-    pub(super) fn into_routes(self) -> (axum::Router, axum::Router) {
+    /// server root (Poppy's RFC 8414 metadata). The injected capabilities'
+    /// host call handlers run on `api_state`.
+    pub(super) fn into_routes(
+        self,
+        api_state: &api::state::ApiState,
+    ) -> (axum::Router, axum::Router) {
+        self.injected
+            .host_calls()
+            .bind(Arc::new(api::data_plane::InjectedHostCalls(
+                api_state.clone(),
+            )));
         let api = axum::Router::new()
             .merge(api::channel_webhooks::routes(self.webhooks))
             .merge(crate::channels::a2a::routes(self.a2a))
@@ -153,7 +171,8 @@ impl ChannelStates {
             .merge(crate::channels::ag_ui::routes(self.ag_ui))
             .merge(crate::channels::public_chat::routes(self.public_chat))
             .merge(crate::channels::fcp::routes(self.fcp))
-            .merge(crate::channels::poppy::routes(self.poppy.clone()));
+            .merge(crate::channels::poppy::routes(self.poppy.clone()))
+            .merge(crate::injected::routes(self.injected, "/v1"));
         let root = crate::channels::poppy::well_known_routes(self.poppy);
         (api, root)
     }

@@ -127,6 +127,18 @@ pub(super) fn build_request_options(
     {
         provider_options.insert("gemini".to_string(), json!({ "cached_content": true }));
     }
+    let reduction_fallback = config
+        .driver_options
+        .get(crate::runtime_context::PROVIDER_MANAGED_REDUCTION_FALLBACK);
+    if provider != "anthropic"
+        && let Some(fallback) = reduction_fallback
+    {
+        let options = provider_options
+            .entry(provider.to_string())
+            .or_insert_with(|| json!({}));
+        options["reduction_mode"] = json!("legacy");
+        options["fallback_reason"] = fallback["reason"].clone();
+    }
     if provider == "anthropic" {
         let mut anthropic = json!({});
         if let Some(option) = config.driver_options.get("anthropic/server_compaction") {
@@ -145,10 +157,7 @@ pub(super) fn build_request_options(
                 .cloned()
                 .unwrap_or(serde_json::Value::Null);
         }
-        if let Some(option) = config
-            .driver_options
-            .get("everruns/provider_managed_reduction_fallback")
-        {
+        if let Some(option) = reduction_fallback {
             anthropic["reduction_mode"] = json!("legacy");
             anthropic["fallback_reason"] = option
                 .get("reason")

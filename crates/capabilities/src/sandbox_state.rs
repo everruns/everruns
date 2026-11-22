@@ -91,6 +91,47 @@ pub trait SandboxStateStore: Send + Sync {
         provider: &str,
         expected: Option<&SandboxRef>,
     ) -> Result<bool, SandboxStateError>;
+
+    /// Ask that `session_id`'s first sandbox be a copy of `source_session_id`'s.
+    ///
+    /// Returns `false` when the request was not recorded: the store has no
+    /// such support, or `source_session_id` is not the session's parent or
+    /// fork source. Implementations must enforce that relation themselves,
+    /// so a session can only ever copy the sandbox of the session it came
+    /// from.
+    async fn request_fork(
+        &self,
+        _session_id: SessionId,
+        _source_session_id: SessionId,
+    ) -> Result<bool, SandboxStateError> {
+        Ok(false)
+    }
+
+    /// Take the pending copy request for `session_id`, if any. Taking it
+    /// clears it: a later replacement sandbox starts fresh, as it always has.
+    async fn take_fork_source(
+        &self,
+        _session_id: SessionId,
+    ) -> Result<Option<SessionId>, SandboxStateError> {
+        Ok(None)
+    }
+}
+
+/// Record that `session_id` should start from a copy of the calling
+/// session's sandbox. `Ok(false)` when this host cannot do that; the child
+/// then gets a fresh sandbox seeded from its workspace.
+pub async fn request_session_sandbox_fork(
+    context: &ToolContext,
+    session_id: SessionId,
+) -> Result<bool, ToolExecutionResult> {
+    let Some(store) = context.extensions.get::<SandboxStateStoreExt>() else {
+        return Ok(false);
+    };
+    store
+        .0
+        .request_fork(session_id, context.session_id)
+        .await
+        .map_err(ToolExecutionResult::internal_error)
 }
 
 /// Hosted store installed on [`everruns_core::ToolContext`] as a typed

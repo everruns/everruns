@@ -1127,6 +1127,7 @@ fn lifecycle_test_context<'a>(
     store: Option<&'a std::sync::Arc<dyn crate::engine::CompactionCheckpointStore>>,
 ) -> ProactiveCompactionContext<'a> {
     ProactiveCompactionContext {
+        history_evidence_allowed: false,
         policy,
         chat_driver: driver,
         checkpoint_store: store,

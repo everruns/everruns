@@ -697,7 +697,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -2441,7 +2442,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -5828,7 +5830,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -6173,7 +6176,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -7214,6 +7218,13 @@
     "description": "Create an observer (online scoring).",
     "input_schema": {
       "$defs": {
+        "CompactionCheck": {
+          "enum": [
+            "execution",
+            "continuity"
+          ],
+          "type": "string"
+        },
         "LlmJudgeConfig": {
           "description": "LLM-as-judge scoring configuration. The judge grades the scoped trace\nslice against `rubric` and returns a 0.0–1.0 value, an optional\ncategorical label, and free-text reasoning.",
           "properties": {
@@ -7309,7 +7320,8 @@
           "enum": [
             "turn",
             "session",
-            "tool"
+            "tool",
+            "compaction"
           ],
           "type": "string"
         },
@@ -7824,6 +7836,25 @@
                 }
               ],
               "description": "LLM-as-judge."
+            },
+            {
+              "description": "Versioned built-in checks, configured through organization settings.",
+              "properties": {
+                "check": {
+                  "$ref": "#/$defs/CompactionCheck"
+                },
+                "method": {
+                  "enum": [
+                    "system_compaction"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check",
+                "method"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -8865,7 +8896,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -11395,6 +11427,14 @@
     "description": "Fork a session into a new, independent session that copies its conversation history and workspace files.",
     "input_schema": {
       "$defs": {
+        "ForkSandbox": {
+          "description": "How a forked session's sandbox starts.",
+          "enum": [
+            "fresh",
+            "fork"
+          ],
+          "type": "string"
+        },
         "ForkSessionRequest": {
           "description": "Request to fork a session. Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
           "properties": {
@@ -11429,6 +11469,10 @@
                 "string",
                 "null"
               ]
+            },
+            "sandbox": {
+              "$ref": "#/$defs/ForkSandbox",
+              "description": "How the fork's sandbox starts. `fresh` (default) creates a new sandbox\nfrom the copied workspace files. `fork` copies the parent's running\nsandbox, with installed packages, build output and (on E2B) running\nprocesses, when its first command runs. Where the provider cannot\ncopy that sandbox, the fork starts fresh."
             },
             "system_prompt": {
               "description": "Override the session-level system prompt.",
@@ -12432,6 +12476,24 @@
       "type": "object"
     },
     "name": "get_org_egress_allowlist",
+    "read_only": true
+  },
+  {
+    "description": "Read organization compaction monitoring policy, coverage and budget reservations.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization whose monitoring policy and coverage to inspect.",
+          "example": "org_00000000000000000000000000000001",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "name": "get_org_quality_monitoring",
     "read_only": true
   },
   {
@@ -15467,6 +15529,24 @@
     "read_only": true
   },
   {
+    "description": "Read the newest fifty compaction monitoring findings with source trace references.",
+    "input_schema": {
+      "properties": {
+        "org": {
+          "description": "Organization whose newest monitoring findings to inspect.",
+          "example": "org_00000000000000000000000000000001",
+          "type": "string"
+        }
+      },
+      "required": [
+        "org"
+      ],
+      "type": "object"
+    },
+    "name": "list_org_quality_monitoring_scores",
+    "read_only": true
+  },
+  {
     "description": "Read the change feed of every room in the org, in order. Poll with after=next_after.",
     "input_schema": {
       "properties": {
@@ -17351,7 +17431,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -17922,7 +18003,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -18464,7 +18546,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -19138,6 +19221,59 @@
       ]
     },
     "name": "review_observer_score",
+    "read_only": false
+  },
+  {
+    "description": "Record a person's agreement with a compaction assessment, without starting model work.",
+    "input_schema": {
+      "$defs": {
+        "ReviewScoreRequest": {
+          "description": "A person's verdict on one score.",
+          "properties": {
+            "agrees": {
+              "description": "True when the grader got it right.",
+              "type": "boolean"
+            },
+            "note": {
+              "description": "Optional note on why (at most 2000 characters).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "agrees"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/ReviewScoreRequest"
+        },
+        {
+          "properties": {
+            "org": {
+              "description": "Organization that owns the assessment.",
+              "example": "org_00000000000000000000000000000001",
+              "type": "string"
+            },
+            "score": {
+              "description": "Assessment whose human review to record.",
+              "example": "score_01933b5a000070008000000000000001",
+              "type": "string"
+            }
+          },
+          "required": [
+            "org",
+            "score"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "name": "review_org_quality_monitoring_score",
     "read_only": false
   },
   {
@@ -21144,7 +21280,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -24113,7 +24250,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -24551,7 +24689,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
@@ -25117,6 +25256,13 @@
     "description": "Update an observer.",
     "input_schema": {
       "$defs": {
+        "CompactionCheck": {
+          "enum": [
+            "execution",
+            "continuity"
+          ],
+          "type": "string"
+        },
         "LlmJudgeConfig": {
           "description": "LLM-as-judge scoring configuration. The judge grades the scoped trace\nslice against `rubric` and returns a 0.0–1.0 value, an optional\ncategorical label, and free-text reasoning.",
           "properties": {
@@ -25212,7 +25358,8 @@
           "enum": [
             "turn",
             "session",
-            "tool"
+            "tool",
+            "compaction"
           ],
           "type": "string"
         },
@@ -25737,6 +25884,25 @@
                 }
               ],
               "description": "LLM-as-judge."
+            },
+            {
+              "description": "Versioned built-in checks, configured through organization settings.",
+              "properties": {
+                "check": {
+                  "$ref": "#/$defs/CompactionCheck"
+                },
+                "method": {
+                  "enum": [
+                    "system_compaction"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "check",
+                "method"
+              ],
+              "type": "object"
             }
           ]
         },
@@ -25913,6 +26079,56 @@
           },
           "type": "object"
         },
+        "QualityMonitoringPolicy": {
+          "additionalProperties": false,
+          "description": "Consent and spending admission for system-managed compaction observers.\nNo content is shared outside the organization's configured model provider.",
+          "properties": {
+            "daily_budget_usd": {
+              "default": 0.0,
+              "description": "UTC-day admission cap, including reserved uncertain/retry costs.\nZero disables model calls while retaining mechanical checks.",
+              "example": 0.0,
+              "format": "double",
+              "type": "number"
+            },
+            "enabled": {
+              "default": false,
+              "description": "Explicit organization consent. Disabled by default.",
+              "example": false,
+              "type": "boolean"
+            },
+            "excluded_tags": {
+              "default": [],
+              "description": "Sessions with any of these tags are excluded before reading content.",
+              "example": [
+                "sensitive"
+              ],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "model_id": {
+              "default": null,
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/modelId",
+                  "description": "Explicit org model. None enables mechanical checks only."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sampling_rate": {
+              "default": 0.02,
+              "description": "Fraction of eligible checkpoints receiving a content-based assessment.",
+              "example": 0.02,
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
         "SearchFallbackMode": {
           "description": "What happens when a provider cannot answer.",
           "enum": [
@@ -26078,12 +26294,33 @@
                 "null"
               ]
             },
+            "monthly_session_limit": {
+              "description": "Maximum sessions this organization can create per UTC calendar month.",
+              "format": "int32",
+              "maximum": 100000,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "name": {
               "description": "The display name of the organization.",
               "example": "Acme Corporation",
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "quality_monitoring": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/QualityMonitoringPolicy",
+                  "description": "Replaces the monitoring policy. Enabling paid checks requires a model\nand a positive daily budget; zero permits mechanical checks only."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "research_model_id": {
@@ -26193,6 +26430,12 @@
             }
           },
           "type": "object"
+        },
+        "modelId": {
+          "description": "Prefixed identifier with 'model' prefix",
+          "example": "model_01933b5a000070008000000000000001",
+          "pattern": "^model_[0-9a-f]{32}$",
+          "type": "string"
         }
       },
       "allOf": [
@@ -27898,7 +28141,8 @@
           "enum": [
             "none",
             "api_key",
-            "oauth"
+            "oauth",
+            "session_token"
           ],
           "example": "api_key",
           "type": "string"
