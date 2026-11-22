@@ -26,6 +26,9 @@ export interface SavedPageChange {
   pending: boolean;
   error?: string;
   members?: ModelSelectionReceipt[];
+  // Who made the change: this page's Chat, or the person saving on the page.
+  // Only Chat's changes get the inline "Changed by chat" marks.
+  by: "chat" | "page";
 }
 interface ResourceState {
   resource: PageResource;
@@ -34,7 +37,7 @@ interface ResourceState {
   initializing?: boolean;
   error?: string;
   writes: number;
-  reviewPending?: { from: number; revision: number };
+  reviewPending?: { from: number; revision: number; by: SavedPageChange["by"] };
   receipt?: SavedPageChange;
   /** How many changes the last completed Undo all reverted, until shown. */
   undone?: number;
@@ -222,6 +225,7 @@ export class PageChangeReviewController {
             state,
             state.reviewPending.from || 1,
             state.reviewPending.revision,
+            state.reviewPending.by,
             epoch,
           );
           if (!this.live(epoch)) return;
@@ -259,7 +263,8 @@ export class PageChangeReviewController {
               ? Math.max(previous, Math.min(...contiguous) - 1)
               : revision;
             if (state.receipt && state.receipt.revision !== from) state.receipt.stale = true;
-            if (from > 0 && from < revision) await this.makeReceipt(state, from, revision, epoch);
+            if (from > 0 && from < revision)
+              await this.makeReceipt(state, from, revision, "chat", epoch);
           } else if (state.receipt && state.receipt.revision !== revision)
             state.receipt.stale = true;
           await this.transport.refresh(state.resource);
@@ -281,6 +286,7 @@ export class PageChangeReviewController {
     state: ResourceState,
     from: number,
     revision: number,
+    by: SavedPageChange["by"],
     epoch = this.epoch,
   ) {
     const old = state.receipt;
@@ -291,7 +297,15 @@ export class PageChangeReviewController {
     if (!this.live(epoch)) return;
     if (fields.length) state.undone = undefined;
     state.receipt = fields.length
-      ? { resource: state.resource, from: baseline, revision, fields, stale: false, pending: false }
+      ? {
+          resource: state.resource,
+          from: baseline,
+          revision,
+          fields,
+          stale: false,
+          pending: false,
+          by,
+        }
       : undefined;
   }
   beforeWrite = async (method: string, endpoint: string): Promise<ObservedWrite | undefined> => {
@@ -359,6 +373,7 @@ export class PageChangeReviewController {
           state.reviewPending = {
             from: committed.from_revision ?? expected,
             revision: committed.revision,
+            by: "page",
           };
           const entries = await this.transport.history(resource);
           if (!this.live(epoch)) return;
@@ -369,7 +384,8 @@ export class PageChangeReviewController {
           const from =
             committed.from_revision ??
             (expected || entries.find((entry) => entry.action === "baseline")?.revision);
-          if (from && revision > from) await this.makeReceipt(state, from, revision, epoch);
+          if (from && revision > from)
+            await this.makeReceipt(state, from, revision, "page", epoch);
           state.reviewPending = undefined;
           if (state.receipt && latest !== revision) state.receipt.stale = true;
           for (const form of forms) {
@@ -420,6 +436,7 @@ export class PageChangeReviewController {
           revision: 0,
           stale: false,
           pending: false,
+          by: "page",
           members: next,
           fields: next.map((item) => ({
             field: item.id,
