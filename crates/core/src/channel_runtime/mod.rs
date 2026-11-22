@@ -21,6 +21,7 @@ use everruns_contracts::runtime::channel::*;
 mod approval;
 mod attachments;
 mod delivery;
+mod delivery_telemetry;
 mod host;
 mod progress;
 mod store;
@@ -35,6 +36,7 @@ pub use delivery::{
     DeliveryEvent, DeliveryOptions, DeliveryStep, STREAM_FLUSH_CHARS, TurnDelivery,
     is_terminal_turn_event, response_text,
 };
+pub use delivery_telemetry::{DeliveryKind, DeliveryObserver, DeliveryOutcome};
 pub use host::{
     ChannelConfig, ChannelEventStream, ChannelHost, ChannelHostBuilder, ChannelKind, ChannelRef,
     ChannelResolver, ChannelScope, ChannelSessionPort, Conversation, DEFAULT_DELIVERY_LEASE,
