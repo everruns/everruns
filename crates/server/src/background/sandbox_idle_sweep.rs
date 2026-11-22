@@ -103,17 +103,18 @@ async fn pause_idle_on_data_planes(pool: &PgPool, service: &SessionSandboxServic
     };
     for (session, org_id, activity) in idle {
         let session_id = everruns_contracts::typed_id::SessionId::from_uuid(session);
-        match plane::pause_idle(service, org_id, session_id).await {
-            Ok(true) => info!(session_id = %session_id, "Paused idle Sandbox on a data plane"),
-            Ok(false) => {}
+        match plane::pause_idle(service, org_id, session_id, activity).await {
+            Ok(paused) => {
+                if paused {
+                    info!(session_id = %session_id, "Paused idle Sandbox on a data plane");
+                }
+                if let Err(e) = plane::idle_handled(pool, session, activity).await {
+                    warn!(session_id = %session_id, error = %e, "Sandbox idle mark failed");
+                }
+            }
             Err(e) => {
                 warn!(session_id = %session_id, error = %e, "Data plane Sandbox idle pause failed")
             }
-        }
-        // Handled for this idle spell even when it failed, so one sandbox
-        // whose provider keeps refusing never holds the batch.
-        if let Err(e) = plane::idle_handled(pool, session, activity).await {
-            warn!(session_id = %session_id, error = %e, "Sandbox idle mark failed");
         }
     }
 }
