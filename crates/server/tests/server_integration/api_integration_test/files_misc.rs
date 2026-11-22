@@ -84,7 +84,7 @@ async fn test_capability_discovery_respects_active_and_retired_rollout_flags() {
         .expect("disable rollout flags");
 
     let discovery: Value = server
-        .get("/v1/capabilities")
+        .get("/v1/capabilities?limit=200")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -102,7 +102,7 @@ async fn test_capability_discovery_respects_active_and_retired_rollout_flags() {
     }
 
     let named: Value = server
-        .get("/v1/capabilities?include_retired=true")
+        .get("/v1/capabilities?include_retired=true&limit=200")
         .await
         .assert_status(StatusCode::OK)
         .json();
