@@ -34,6 +34,12 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct PgSandboxCheckpointStore {
     pool: PgPool,
+    /// The same pool, but joining the caller's command transaction when one is
+    /// open (`storage::transaction`). Session creation pins the Sandbox inside
+    /// that transaction, before the session row is committed: a pin on the
+    /// raw pool cannot see the row, inserts nothing, and the scheduled trigger
+    /// path failed every attempt that way.
+    tx_pool: crate::storage::transaction::TxPool,
 }
 
 /// Durable logical primary Sandbox. Physical provider state remains in
@@ -56,7 +62,8 @@ pub struct PrimarySandboxRecord {
 
 impl PgSandboxCheckpointStore {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        let tx_pool = crate::storage::transaction::TxPool::new(pool.clone());
+        Self { pool, tx_pool }
     }
 
     /// Pin the fully resolved Agent/session specification to its logical Sandbox.
@@ -99,14 +106,19 @@ impl PgSandboxCheckpointStore {
         .bind(binding_name)
         .bind(&snapshot)
         .bind(spec.template_revision_id.map(|id| id.uuid()))
-        .fetch_optional(&self.pool)
+        .fetch_optional(&self.tx_pool)
         .await
         .map_err(state_storage_error)?;
 
         if inserted.is_none() {
-            return Err(SandboxStateError::Storage(
-                "session Sandbox is already pinned to a different specification".to_string(),
-            ));
+            // Nothing inserted means either a different pin or no visible
+            // session row; say which, so the failure is diagnosable.
+            let message = if self.get_primary_sandbox(session_id).await?.is_some() {
+                "session Sandbox is already pinned to a different specification"
+            } else {
+                "cannot pin a Sandbox: the session does not exist"
+            };
+            return Err(SandboxStateError::Storage(message.to_string()));
         }
         self.get_primary_sandbox(session_id)
             .await?
@@ -145,7 +157,7 @@ impl PgSandboxCheckpointStore {
             "#,
         )
         .bind(session_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&self.tx_pool)
         .await
         .map_err(state_storage_error)?;
 

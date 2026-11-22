@@ -336,4 +336,44 @@ mod tests {
         assert_eq!(first.public_id, second.public_id);
         assert!(first.is_managed);
     }
+
+    /// A scheduled trigger creates its session inside one command
+    /// transaction, so the pin must see the uncommitted session row.
+    #[tokio::test]
+    async fn pin_sees_a_session_created_in_the_same_transaction() {
+        let db = StorageBackend::test_database();
+        let spec = crate::domains::sandbox_templates::resolution::managed_bashkit_sandbox_spec();
+        let spec = crate::domains::sandbox_templates::resolution::resolve_spec(&spec).unwrap();
+
+        let pinned = crate::storage::transaction::scope(
+            &db,
+            async {
+                let session = db
+                    .create_session(crate::storage::test_database::test_session_row(
+                        everruns_core::DEFAULT_ORG_ID,
+                    ))
+                    .await?;
+                db.pin_primary_sandbox(session.id, "managed", &spec).await
+            },
+            |error| error,
+        )
+        .await
+        .unwrap();
+        assert_eq!(pinned.binding_name, "managed");
+        assert!(
+            db.get_primary_sandbox(pinned.session_id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        let missing = db
+            .pin_primary_sandbox(SessionId::new(), "managed", &spec)
+            .await
+            .unwrap_err();
+        assert!(
+            missing.to_string().contains("the session does not exist"),
+            "{missing:#}"
+        );
+    }
 }
