@@ -142,5 +142,4 @@ async fn record_observation(
 }
 
 #[cfg(test)]
-#[path = "sandbox_status_sync_tests.rs"]
 mod tests;

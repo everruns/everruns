@@ -262,7 +262,7 @@ hosted store keeps:
   query, so they filter and page like any other column.
 
 Provider status is refreshed automatically by a bounded cluster-once background
-job ([status sync](../../crates/server/src/background/sandbox_status_sync.rs)).
+job ([status sync](../../crates/server/src/background/sandbox_status_sync/mod.rs)).
 Each managed primary Sandbox becomes eligible for another check after five
 minutes. Checks use its pinned specification and credential, reading the current
 instance from its owning runtime, including shards. They update the fleet's
