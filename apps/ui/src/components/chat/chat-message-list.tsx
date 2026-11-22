@@ -36,12 +36,11 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { getEventData, isTextPart } from "@/lib/api/types";
-import type { TextAnnotation } from "@/lib/api/types";
+import type { SessionTask, TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
-import { AutomaticUpdate } from "@/components/chat/automatic-update";
-import { ORIGIN_ICON } from "@/components/chat/message-origin-icon";
-import { messageOrigin, ORIGIN_LABEL_KEY } from "@/lib/message-origin";
+import { PlatformMessage } from "@/components/chat/platform-message";
+import { messageOrigin } from "@/lib/message-origin";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageReplyActions } from "@/components/chat/message-reply-actions";
 import {
@@ -328,6 +327,14 @@ export const ChatMessageList = memo(function ChatMessageList({
     return calls;
   }, [chatEvents, getToolCalls]);
   const { data: members } = useMembers(approvalCalls.length > 0);
+  // Every run placed in this transcript, by task id, for task wake lines.
+  const runTaskById = useMemo(() => {
+    const byId = new Map<string, SessionTask>();
+    for (const runs of runsByEventId?.values() ?? []) {
+      for (const run of runs) byId.set(run.task.id, run.task);
+    }
+    return byId;
+  }, [runsByEventId]);
   const memberNames = useMemo(
     () => new Map((members ?? []).map((member) => [member.user_id, member.name || member.email])),
     [members],
@@ -1116,6 +1123,9 @@ export const ChatMessageList = memo(function ChatMessageList({
             previousUserMs = ts;
           };
           const latestCompactionId = latestCompactionEventId(chatEvents);
+          // Tasks whose run cards end the row rendered just before: a task wake
+          // right after its own card adds nothing the card does not show.
+          let previousRunTaskIds = new Set<string>();
           for (const event of chatEvents) {
             const eventNode = ((): ReactNode => {
               if (isCompactionEvent(event)) return renderCompactionEvent(event, latestCompactionId);
@@ -1268,8 +1278,8 @@ export const ChatMessageList = memo(function ChatMessageList({
               // trigger, a thread update, a notice (knowledge/execution/message-origin.md).
               const origin = isUser ? messageOrigin(data.message?.metadata) : null;
               if (origin?.kind === "reaction") return null; // shown as chips instead
-              const isTaskWake = origin?.kind === "task_wake";
-              const taskUpdate = isTaskWake && textContent ? parseTaskUpdate(textContent) : null;
+              const taskUpdate =
+                origin?.kind === "task_wake" && textContent ? parseTaskUpdate(textContent) : null;
               // What a coordinator sent this thread, shown without the worker's instructions.
               const coordinatorMessage =
                 isUser && !origin && textContent ? parseCoordinatorMessage(textContent) : null;
@@ -1277,13 +1287,10 @@ export const ChatMessageList = memo(function ChatMessageList({
                 !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
               if (origin) {
-                const run = origin.run;
-                const detail =
-                  run?.number === undefined
-                    ? undefined
-                    : run.limit === undefined
-                      ? t("origin_run_number", { number: run.number })
-                      : t("origin_run", { number: run.number, limit: run.limit });
+                // A task wake is the agent's input: the person reads the
+                // agent's reply, and the report stays in the task's thread.
+                if (taskUpdate?.kind === "message") return null;
+                if (taskUpdate && previousRunTaskIds.has(taskUpdate.taskId)) return null;
                 return (
                   <div
                     key={`user-${getClientMessageId(event) ?? event.id}`}
@@ -1291,19 +1298,12 @@ export const ChatMessageList = memo(function ChatMessageList({
                     data-message-anchor={event.id}
                     id={data.message?.id ? `message-${data.message.id}` : undefined}
                   >
-                    <AutomaticUpdate
-                      label={t(ORIGIN_LABEL_KEY[origin.kind])}
-                      icon={ORIGIN_ICON[origin.kind]}
-                      headline={
-                        taskUpdate
-                          ? t(`task_update_${taskUpdate.kind}` as const, {
-                              title: taskUpdate.title,
-                            })
-                          : origin.name
-                      }
-                      detail={detail}
-                      body={taskUpdate ? taskUpdate.body : textContent}
-                      trailing={<MessageInfoIcon event={event} />}
+                    <PlatformMessage
+                      event={event}
+                      origin={origin}
+                      text={textContent}
+                      taskUpdate={taskUpdate}
+                      task={taskUpdate ? runTaskById.get(taskUpdate.taskId) : undefined}
                     />
                   </div>
                 );
@@ -1477,6 +1477,11 @@ export const ChatMessageList = memo(function ChatMessageList({
               pushDaySeparator(getClientMessageId(event) ?? event.id, Date.parse(event.ts));
             }
             items.push(eventNode);
+            if (eventNode) {
+              previousRunTaskIds = new Set(
+                (runsByEventId?.get(event.id) ?? []).map((run) => run.task.id),
+              );
+            }
             const turnRow = renderStoredTurnRow(event);
             if (turnRow) items.push(turnRow);
           }

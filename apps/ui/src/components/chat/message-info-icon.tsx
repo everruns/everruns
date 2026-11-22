@@ -15,13 +15,18 @@ interface MessageInfoIconProps {
   event: Event;
   /** Visual variant - "default" for dark text contexts, "light" for light text contexts (e.g., user messages) */
   variant?: "default" | "light";
+  /**
+   * Text the agent received that the transcript does not show as written (a
+   * task wake). Shown under "What the agent received" for debugging.
+   */
+  rawText?: string;
 }
 
 /**
  * Small info icon that displays message metadata in a tooltip.
  * Shows: message ID, model, reasoning effort, timestamp, and token usage.
  */
-export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconProps) {
+export function MessageInfoIcon({ event, variant = "default", rawText }: MessageInfoIconProps) {
   const ui = useUiTranslations();
   const { t, displayLocale } = useLocale();
   const agentData = getEventData(event, "output.message.completed");
@@ -113,6 +118,17 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
             </>
           )}
         </dl>
+        {rawText ? (
+          <div className="mt-2 border-t border-border pt-2 text-xs">
+            <div className="mb-1 text-muted-foreground">{t("message_info_agent_received")}</div>
+            <pre
+              className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-[1.5]"
+              data-testid="message-info-raw-text"
+            >
+              {rawText}
+            </pre>
+          </div>
+        ) : null}
       </TooltipContent>
     </Tooltip>
   );
