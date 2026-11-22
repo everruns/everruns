@@ -75,7 +75,6 @@ pub mod org_invitations;
 pub mod organization_connections;
 pub mod organizations;
 pub mod pagination;
-pub mod payments;
 pub mod plugins;
 pub mod problem_details;
 pub mod prometheus;

@@ -113,7 +113,6 @@
     "settings/ai-clients/page.tsx",
     "settings/connections/page.tsx",
     "settings/features/page.tsx",
-    "settings/payments/page.tsx",
     "settings/slack/page.tsx"
   ],
   "redirect": [

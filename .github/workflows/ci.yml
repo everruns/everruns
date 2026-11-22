@@ -1196,7 +1196,7 @@ jobs:
           # while CI stayed green, because nothing executed it. Run the whole
           # suite, not --lib: the point is the integration tests.
           cargo test -p everruns-contracts --all-features
-          cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,image-generation,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util,boxd,boxd-test-util,kubernetes-sandbox -- --test-threads=1
+          cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,duckduckgo,e2b,filesystem,github,lua,openai-decisions,image-generation,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util,boxd,boxd-test-util,kubernetes-sandbox -- --test-threads=1
           # Experimental integrations stay on their own support track; unit and
           # deterministic coverage runs here.
           cargo test -p everruns-integrations-experimental --features agentid -- --test-threads=1

@@ -184,7 +184,6 @@ fn is_execution_environment_capability(id: &str) -> bool {
             | "bashkit_shell"
             | "virtual_bash"
             | "container_sandbox"
-            | "docker_container"
             | "session_sandbox"
             | "daytona"
             | "e2b"

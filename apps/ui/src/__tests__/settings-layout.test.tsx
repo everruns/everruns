@@ -26,29 +26,22 @@ jest.mock("@/hooks/use-policies", () => ({
 }));
 
 const mockPathname = jest.fn();
-const mockMachinePaymentsEnabled = jest.fn(() => true);
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlagsState: () => ({
-    flags: { machine_payments: mockMachinePaymentsEnabled() },
+    flags: {},
     isLoading: false,
   }),
 }));
 
-const mockNotFound = jest.fn(() => {
-  throw new Error("NEXT_NOT_FOUND");
-});
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
   usePathname: () => mockPathname(),
-  notFound: () => mockNotFound(),
 }));
 
 describe("SettingsLayout", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/settings/providers");
-    mockMachinePaymentsEnabled.mockReturnValue(true);
     mockCanManageMcp.mockReturnValue(true);
-    mockNotFound.mockClear();
   });
 
   it("lists MCP catalog under Organization for people who manage it", () => {
@@ -75,33 +68,6 @@ describe("SettingsLayout", () => {
     expect(screen.queryByRole("link", { name: "MCP catalog" })).not.toBeInTheDocument();
   });
 
-  it("hides Payments navigation when machine payments are disabled", () => {
-    mockMachinePaymentsEnabled.mockReturnValue(false);
-
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    expect(screen.queryByRole("link", { name: /Payments/i })).not.toBeInTheDocument();
-  });
-
-  it("returns not found for the Payments page when machine payments are disabled", () => {
-    mockPathname.mockReturnValue("/settings/payments");
-    mockMachinePaymentsEnabled.mockReturnValue(false);
-
-    expect(() =>
-      render(
-        <SettingsLayout>
-          <div>Payment custody form</div>
-        </SettingsLayout>,
-      ),
-    ).toThrow("NEXT_NOT_FOUND");
-    expect(mockNotFound).toHaveBeenCalled();
-    expect(screen.queryByText("Payment custody form")).not.toBeInTheDocument();
-  });
-
   it("disables automatic prefetch for every Settings navigation link", () => {
     render(
       <SettingsLayout>
@@ -109,7 +75,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(19);
+    expect(screen.getAllByRole("link")).toHaveLength(18);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }

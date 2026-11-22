@@ -35,7 +35,6 @@
 //!   OAuth-compatible MCP endpoint.
 
 pub mod connection;
-pub mod payments;
 
 use everruns_contracts::connector::ConnectorPlugin;
 use everruns_contracts::runtime::capabilities::{
@@ -47,23 +46,12 @@ use everruns_contracts::runtime::{
 use serde_json::{Value, json};
 
 use connection::ParallelConnector;
-pub use payments::ParallelPaymentsCapability;
 
 /// Capability plugins this crate contributes to a hosted catalog.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
-    IntegrationPlugin {
-        feature_flag: None,
-        factory: || Box::new(ParallelCapability),
-    },
-    // Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
-    // the deployment-controlled `machine_payments` feature flag (off by default on all envs,
-    // including dev, because spend is irreversible), so it can be enabled deliberately
-    // in any environment.
-    IntegrationPlugin {
-        feature_flag: Some("machine_payments"),
-        factory: || Box::new(ParallelPaymentsCapability),
-    },
-];
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
+    feature_flag: None,
+    factory: || Box::new(ParallelCapability),
+}];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {

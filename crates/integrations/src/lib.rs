@@ -13,8 +13,6 @@ pub mod browserless;
 pub mod cursor;
 #[cfg(feature = "daytona")]
 pub mod daytona;
-#[cfg(feature = "docker")]
-pub mod docker;
 #[cfg(feature = "duckduckgo")]
 pub mod duckduckgo;
 #[cfg(feature = "e2b")]

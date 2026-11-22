@@ -552,7 +552,8 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
-    // Machine-payment wallet credentials are encrypted at rest
+    // Retired machine-payment wallets (feature removed 2026-11). The table is
+    // kept, so key rotation still covers any row stored before removal.
     EncryptedColumn {
         table: "payment_accounts",
         column: "credential_encrypted",

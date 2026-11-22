@@ -167,7 +167,6 @@ pub use everruns_contracts::runtime::network_access;
 use everruns_contracts::model_spec;
 use everruns_contracts::provider;
 pub use everruns_contracts::runtime::organization;
-pub use everruns_contracts::runtime::payment;
 pub use everruns_contracts::runtime::principal;
 pub use everruns_contracts::runtime::session;
 pub use everruns_contracts::runtime::session_file;
@@ -568,11 +567,6 @@ pub use mcp_server::{
 pub use organization::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, org_public_id_from_internal,
 };
-// EVE-838: the payment accounting records (`PaymentAccount`, `PaymentPolicy`,
-// `PaymentAttempt`, `PaymentOwnerType`, `PaymentStatus`) moved to the
-// `crates/server/src/records/`. The capability-internal execution contract below
-// stays here — it is bound to the `PaymentAuthority` trait and `ToolContext`.
-pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail};
 // EVE-837/EVE-845: `Principal` and the `PrincipalStatus` lifecycle enum moved to
 // the `crates/server/src/records/`. `PrincipalSummary` and the `PrincipalKind` that
 // backs it stay here — they are embedded by `Session`/`SessionSchedule`/

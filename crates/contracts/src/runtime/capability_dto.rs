@@ -224,7 +224,6 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "citation_verification" => Some("citation-verification"),
         "claude_tool_search" => Some("tool-search"),
         "claude_message_threads" => Some("claude-message-threads"),
-        "docker_container" => Some("docker"),
         "e2b" => Some("e2b"),
         "guardrails" => Some("guardrails"),
         "host_shell" => Some("host-shell"),

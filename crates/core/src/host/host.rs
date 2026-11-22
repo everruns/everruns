@@ -35,7 +35,6 @@ use crate::{
     session_files::SessionFileSystem, session_services::LeasedResourceStore,
     session_services::SessionResourceRegistry, session_services::SessionScheduleStore,
     session_services::SessionStorageStore, tool_execution::BudgetChecker,
-    tool_execution::PaymentAuthority,
 };
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef;
@@ -238,14 +237,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         _org_id: i64,
         _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn BudgetChecker>> {
-        None
-    }
-
-    fn payment_authority(
-        &self,
-        _org_id: i64,
-        _agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn PaymentAuthority>> {
         None
     }
 

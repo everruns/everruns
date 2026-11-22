@@ -301,13 +301,6 @@ pub const NODE_ABOUT: &[(&str, &str)] = &[
         "orgs quality-monitoring scores",
         "Compaction findings, source traces and human review.",
     ),
-    (
-        "payments",
-        "Machine payments: wallets, spend policies and attempts.",
-    ),
-    ("payments accounts", "Wallet accounts agents pay from."),
-    ("payments attempts", "Payments agents tried to make."),
-    ("payments policies", "Rules limiting what agents may spend."),
     ("plugin-marketplaces", "Sources of installable plugins."),
     (
         "plugin-marketplaces plugins",

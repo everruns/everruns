@@ -29,7 +29,6 @@ const COMPUTE_CAPABILITIES: &[&str] = &[
     "container_sandbox",
     "daytona",
     "e2b",
-    "docker_container",
     "bashkit_shell",
 ];
 
@@ -223,7 +222,7 @@ pub fn sandbox_from_capabilities(capabilities: &[CapabilityRef]) -> SessionSandb
                 managed_capabilities(false),
                 "provider_snapshot",
             ),
-            "container_sandbox" | "docker_container" => (
+            "container_sandbox" => (
                 "container",
                 Some("docker".to_string()),
                 managed_capabilities(false),
@@ -583,7 +582,6 @@ mod tests {
             capability("daytona"),
             capability("e2b"),
             capability("container_sandbox"),
-            capability("docker_container"),
         ] {
             let view = sandbox_from_capabilities(&[capability]);
 

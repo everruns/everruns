@@ -31,23 +31,6 @@ Every sandbox/execution integration crate must ship with the following artifacts
 
 New integrations should check off every row before merging. Existing integrations that are missing items should be brought up to parity incrementally.
 
-### Auth shape: connection-backed vs payment-backed
-
-The parity table above assumes a **connection-backed** integration: per-user OAuth/API-key
-credentials via a connection provider, validated with live-API tests. A **payment-backed**
-integration instead spends through the core `PaymentAuthority` (see
-[`knowledge/security/machine-payments.md`](../security/machine-payments.md)) under a server-side wallet and policy,
-and has no per-user connection. For those, substitute the auth-shaped rows:
-
-| Connection-backed row | Payment-backed equivalent |
-|---|---|
-| Connection provider (OAuth/API-key form) | Declared `machine_payments` feature-flag gating + wallet/policy requirements |
-| Live API tests (real credentials) | Fail-closed tests (no authority → refuse) + `PaymentAuthority`-mock flows |
-| Threat model: integration-specific | Threat model: spend / prompt-injection (`TM-AGENT-022`, `TM-CRYPTO-008`) |
-
-The consolidated integrations crate may host both shapes (e.g. its `parallel` feature ships the free
-connection-backed `parallel_search` and the paid payment-backed `parallel`).
-
 ## CI Trigger Policy
 
 Integration coverage is intentionally split by cost and blast radius:
@@ -67,7 +50,7 @@ The canonical crates publish `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts a
 | Integration | Spec | Summary |
 |---|---|---|
 | Brave Search | [`crates/integrations/src/brave_search/SPEC.md`](../../crates/integrations/src/brave_search/SPEC.md) | Web search via Brave Search API. Experimental (Dev only). |
-| Parallel | [`crates/integrations/src/parallel/SPEC.md`](../../crates/integrations/src/parallel/SPEC.md) | Two capabilities: free `parallel_search` (web search/fetch via Parallel MCP, Dev only) and paid `parallel` (machine-payment search/extract/task, gated by `FEATURE_MACHINE_PAYMENTS`). |
+| Parallel | [`crates/integrations/src/parallel/SPEC.md`](../../crates/integrations/src/parallel/SPEC.md) | Free `parallel_search` capability: web search/fetch via Parallel's hosted MCP, optional API-key connection. |
 | DuckDuckGo | [`crates/integrations/src/duckduckgo/SPEC.md`](../../crates/integrations/src/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental (Dev only). |
 | TypeSafe | [`crates/integrations/src/typesafe/SPEC.md`](../../crates/integrations/src/typesafe/SPEC.md) | Typed decision (probability, single choice, graded score) via TypeSafe System One, as the `jev_decision` tool. Experimental (Dev only). One crate covers the vendor client, the capability, the connector, and the [Decisions Service](../operations/decisions-service.md) that backs guardrail `jev` checks. |
 | GitHub | [`crates/integrations/src/github/SPEC.md`](../../crates/integrations/src/github/SPEC.md) | GitHub Scout blueprint capability for read-only repository exploration. |
@@ -76,7 +59,6 @@ The canonical crates publish `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts a
 | Daytona | [`crates/integrations/src/daytona/SPEC.md`](../../crates/integrations/src/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
 | Modal | [`modal.md`](modal.md) | Modal VM (default) or gVisor sandboxes over gRPC, with files, snapshots and tunnels. First module of the `crates/integrations` (`everruns-integrations`) crate, feature `modal`. Experimental (Dev only). Live tests run on push to `main` and in the weekly sweep. |
 | Cursor | [`crates/integrations/src/cursor/SPEC.md`](../../crates/integrations/src/cursor/SPEC.md) | Cursor Cloud Agents API for launching and managing asynchronous coding agents on GitHub repositories. |
-| Docker | `crates/integrations/src/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
 
 > **ARD is not an integration.** Agentic Resource Discovery is a platform-level
 > discovery protocol (a sibling of MCP and A2A), so it lives in `crates/ard`

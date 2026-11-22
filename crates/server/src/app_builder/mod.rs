@@ -1166,10 +1166,6 @@ impl ServerAppBuilder {
             .merge(api::workspace_files::routes(workspace_files_state))
             .merge(api::memory_files::routes(api_state.clone()))
             .merge(api::knowledge::routes(api_state.clone()))
-            .merge(api::payments::routes(
-                api_state.clone(),
-                feature_flags.machine_payments,
-            ))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::user_preferences::routes(api_state.clone()))
             .merge(api::session_schedules::routes(session_schedules_state))

@@ -131,9 +131,6 @@ impl Command for CreateProvider {
     type Output = Provider;
 
     async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
-        if self.provider_type.as_str() == "mistral" && !ctx.feature_flags.mistral {
-            return Err(CommandError::feature_not_enabled("mistral"));
-        }
         let has_credential = self.api_key.is_some();
         let provider = q::service(ctx)
             .create(

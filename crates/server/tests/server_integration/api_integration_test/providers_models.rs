@@ -173,10 +173,7 @@ async fn test_org_feature_flags_opt_in() {
         .json();
     assert_eq!(effective["extractions"], true);
     assert!(effective.get("mcp_endpoint").is_none());
-    assert_eq!(
-        effective["machine_payments"],
-        serde_json::Value::Bool(false)
-    );
+    assert!(effective.get("machine_payments").is_none());
 
     server
         .patch(

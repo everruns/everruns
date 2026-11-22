@@ -911,7 +911,6 @@ pub const REPLACED: &[&str] = &[
     "container_sandbox",
     "daytona",
     "e2b",
-    "docker_container",
     "bashkit_shell",
     "session_file_system",
 ];

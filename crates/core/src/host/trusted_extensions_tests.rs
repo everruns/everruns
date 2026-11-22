@@ -83,7 +83,6 @@ async fn runtime(extensions: HostExtensions) -> Result<InProcessRuntime> {
 async fn an_empty_bundle_leaves_the_runtime_as_it_was() {
     let runtime = runtime(HostExtensions::default()).await.unwrap();
     assert!(runtime.budget_checker(1, None).is_none());
-    assert!(runtime.payment_authority(1, None).is_none());
     assert!(runtime.leased_resource_store(1).is_none());
     assert!(runtime.durable_tool_result_store().is_none());
     assert!(

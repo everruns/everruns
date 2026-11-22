@@ -631,27 +631,6 @@
       ]
     },
     {
-      "category": "Sandboxes",
-      "dependencies": [],
-      "docs_slug": "docker",
-      "feature_flag": "docker_capability",
-      "features": [],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "docker_container",
-      "name": "[Experimental] Docker Container",
-      "status": "available",
-      "tools": [
-        "docker_exec",
-        "docker_logs",
-        "docker_read_file",
-        "docker_stop",
-        "docker_write_file"
-      ]
-    },
-    {
       "category": "Optimization",
       "dependencies": [
         "session_file_system"
@@ -1108,28 +1087,6 @@
       "name": "Output Truncation",
       "status": "available",
       "tools": []
-    },
-    {
-      "category": "Machine Payments",
-      "dependencies": [],
-      "docs_slug": null,
-      "feature_flag": "machine_payments",
-      "features": [
-        "machine_payments"
-      ],
-      "grades": [
-        "prod",
-        "dev"
-      ],
-      "id": "parallel",
-      "name": "Parallel Paid Search (pay per call)",
-      "status": "available",
-      "tools": [
-        "parallel_extract",
-        "parallel_search",
-        "parallel_task",
-        "parallel_task_status"
-      ]
     },
     {
       "category": "Network",

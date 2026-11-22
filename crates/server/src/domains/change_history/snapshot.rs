@@ -406,12 +406,6 @@ async fn secret_columns(
             .ok()
             .flatten()
             .map(|row| vec![("api_key", row.api_key_encrypted)]),
-        EntityKind::PaymentAccount => db
-            .get_payment_account(org, id)
-            .await
-            .ok()
-            .flatten()
-            .map(|row| vec![("credential", row.credential_encrypted)]),
         EntityKind::AgentTrigger => {
             let trigger = everruns_contracts::typed_id::TriggerId::from_uuid(id);
             db.get_agent_trigger(org, trigger)
@@ -579,8 +573,6 @@ pub fn restore_command(kind: EntityKind) -> Option<(&'static str, &'static str)>
         EntityKind::Observer => ("update_observer", "observer_id"),
         EntityKind::ModelPreset => ("update_model_preset", "id"),
         EntityKind::Budget => ("update_budget", "budget_id"),
-        EntityKind::PaymentAccount => ("update_payment_account", "payment_account_id"),
-        EntityKind::PaymentPolicy => ("update_payment_policy", "payment_policy_id"),
         EntityKind::Eval => ("update_eval", "eval_id"),
         EntityKind::EvalCase => ("update_eval_case", "case_id"),
         EntityKind::CheckRule => ("upsert_agent_check_rule", "rule_id"),
