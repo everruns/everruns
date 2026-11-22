@@ -12593,7 +12593,7 @@ export interface components {
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
     /** @description One case under one variant. */
-    CaseShard: {
+    CaseCell: {
       /**
        * Format: double
        * @description What the case cost, all its trials together.
@@ -12620,8 +12620,8 @@ export interface components {
       case_id: string;
       /** @example Refund request, angry customer */
       case_name: string;
-      /** @description One shard per variant, in variant order. */
-      shards: components["schemas"]["CaseShard"][];
+      /** @description One cell per variant, in variant order. */
+      cells: components["schemas"]["CaseCell"][];
       /** @description Some variant's pass rate on this case differs from the baseline's. */
       changed: boolean;
     };
@@ -12637,49 +12637,6 @@ export interface components {
       | "errored"
       | "timeout"
       | "skipped";
-    /** @description One node's detail. */
-    ShardNodeDetail: {
-      /**
-       * @description Node id within the shard.
-       * @example 2
-       */
-      node: string;
-      /** @description Points, oldest first. */
-      points: components["schemas"]["ShardNodePoint"][];
-    };
-    /** @description One point of a node's detail. */
-    ShardNodePoint: {
-      /**
-       * Format: double
-       * @description One-minute p99 time to admit a turn, in milliseconds.
-       * @example 12.5
-       */
-      admit_p99_ms?: number | null;
-      /**
-       * Format: double
-       * @description Messages waiting for a turn, as the node sees them.
-       * @example 0
-       */
-      queued?: number | null;
-      /**
-       * Format: double
-       * @description Resident memory in bytes.
-       * @example 1073741824
-       */
-      rss_bytes?: number | null;
-      /**
-       * Format: double
-       * @description Turns running on the node.
-       * @example 81
-       */
-      running?: number | null;
-      /**
-       * Format: date-time
-       * @description UTC time of the point.
-       * @example 2026-11-15T19:59:50Z
-       */
-      t: string;
-    };
     /**
      * @description Portable channel intent. Authentication and installation are host bindings.
      *     Channels default to disabled; enabled intent still requires host publication.
@@ -24954,270 +24911,6 @@ export interface components {
        */
       next_offset?: number | null;
     };
-    /** @description One data plane v2 shard: its newest minute report and its history. */
-    MonitoringShard: {
-      /**
-       * Format: int64
-       * @description Worst node's p99 time to admit a turn, in milliseconds.
-       * @example 12
-       */
-      admit_p99_ms: number;
-      /** @description History over the range, oldest first; buckets without a report are absent. */
-      buckets: components["schemas"]["MonitoringShardBucket"][];
-      /**
-       * @description Shard name.
-       * @example shard-07
-       */
-      shard: string;
-      /**
-       * Format: double
-       * @description The busiest node's CPU, in cores.
-       * @example 1.2
-       */
-      cpu_cores: number;
-      /**
-       * Format: double
-       * @description Its CPU limit in cores; null when unknown.
-       * @example 2
-       */
-      cpu_limit_cores?: number | null;
-      /**
-       * @description Data plane the shard belongs to.
-       * @example dp-eks-1
-       */
-      data_plane: string;
-      /**
-       * @description Leader node at the newest report.
-       * @example shard-07-node-2
-       */
-      leader?: string | null;
-      /**
-       * Format: int64
-       * @description The fullest node's resident memory, in bytes.
-       * @example 3221225472
-       */
-      memory_bytes: number;
-      /**
-       * Format: int64
-       * @description Its memory limit in bytes; null when unknown.
-       * @example 4294967296
-       */
-      memory_limit_bytes?: number | null;
-      /**
-       * Format: int64
-       * @description Members.
-       * @example 3
-       */
-      nodes: number;
-      /**
-       * Format: int64
-       * @description Members that answered the leader.
-       * @example 3
-       */
-      nodes_answering: number;
-      /**
-       * Format: int64
-       * @description Messages waiting for a turn.
-       * @example 0
-       */
-      queued: number;
-      /**
-       * Format: date-time
-       * @description Minute of the newest report.
-       * @example 2026-11-15T19:59:00Z
-       */
-      reported_at: string;
-      /**
-       * Format: int64
-       * @description Turns running on a second or later attempt.
-       * @example 1
-       */
-      resumed: number;
-      /**
-       * Format: int64
-       * @description Turns running.
-       * @example 239
-       */
-      running: number;
-      /**
-       * Format: int64
-       * @description Sessions resident.
-       * @example 2650
-       */
-      sessions: number;
-      /**
-       * Format: int64
-       * @description Worst node's p99 log shipping lag, in milliseconds.
-       * @example 380
-       */
-      ship_lag_p99_ms: number;
-      /**
-       * @description No report for the last three minutes.
-       * @example false
-       */
-      silent: boolean;
-      /**
-       * Format: int64
-       * @description Raft term.
-       * @example 4
-       */
-      term: number;
-    };
-    /** @description One shard over one bucket. */
-    MonitoringShardBucket: {
-      /**
-       * Format: int64
-       * @description Worst node's p99 time to admit a turn, in milliseconds.
-       */
-      admit_p99_ms?: number | null;
-      /**
-       * Format: double
-       * @description The busiest node's CPU use as a percentage of its limit.
-       */
-      cpu_peak_pct?: number | null;
-      /**
-       * Format: int64
-       * @description Leader elections.
-       */
-      elections: number;
-      /**
-       * Format: double
-       * @description The fullest node's memory use as a percentage of its limit.
-       */
-      memory_peak_pct?: number | null;
-      /**
-       * Format: int64
-       * @description Sessions moved to another shard.
-       */
-      moves: number;
-      /**
-       * Format: int64
-       * @description Highest node count.
-       */
-      nodes?: number | null;
-      /**
-       * Format: int64
-       * @description Lowest count of nodes that answered the leader.
-       */
-      nodes_answering?: number | null;
-      /**
-       * Format: int64
-       * @description Highest messages waiting for a turn.
-       */
-      queued_peak?: number | null;
-      /**
-       * Format: int64
-       * @description Minute reports received in the bucket.
-       */
-      reports: number;
-      /**
-       * Format: int64
-       * @description Highest turns running.
-       */
-      running_peak?: number | null;
-      /**
-       * Format: int64
-       * @description Highest sessions resident.
-       */
-      sessions_peak?: number | null;
-      /**
-       * Format: int64
-       * @description Worst node's p99 log shipping lag, in milliseconds.
-       */
-      ship_lag_p99_ms?: number | null;
-      /**
-       * Format: date-time
-       * @description UTC start of the bucket.
-       */
-      start: string;
-      /**
-       * Format: int64
-       * @description Turns cancelled.
-       */
-      turns_cancelled: number;
-      /**
-       * Format: int64
-       * @description Turns completed.
-       */
-      turns_completed: number;
-      /**
-       * Format: int64
-       * @description Turns failed.
-       */
-      turns_failed: number;
-    };
-    /** @description A shard's per-node detail, or why there is none. */
-    MonitoringCellDetail: {
-      /**
-       * @description Whether detail could be read.
-       * @example true
-       */
-      available: boolean;
-      /**
-       * @description Shard name.
-       * @example shard-07
-       */
-      shard: string;
-      /**
-       * Format: date-time
-       * @description Inclusive UTC start.
-       * @example 2026-11-15T19:00:00Z
-       */
-      from: string;
-      /** @description Nodes, by id. */
-      nodes: components["schemas"]["ShardNodeDetail"][];
-      /**
-       * @description Why not, when `available` is false.
-       * @example No detail store is configured (MONITORING_DETAIL).
-       */
-      reason?: string | null;
-      /**
-       * @description The detail store's scheme and host, without credentials or path.
-       * @example http://victoriametrics:8428
-       */
-      source?: string | null;
-      /**
-       * Format: int32
-       * @description Seconds between points.
-       * @example 10
-       */
-      step_seconds: number;
-      /**
-       * Format: date-time
-       * @description UTC end.
-       * @example 2026-11-15T20:00:00Z
-       */
-      to: string;
-    };
-    /** @description Data plane v2 shards as their minute reports show them. */
-    MonitoringShards: {
-      /**
-       * Format: int32
-       * @description Bucket size in seconds.
-       * @example 60
-       */
-      bucket_seconds: number;
-      /** @description Shards that reported in the last week, by name. */
-      shards: components["schemas"]["MonitoringShard"][];
-      /**
-       * Format: date-time
-       * @description Inclusive UTC start of the history.
-       * @example 2026-11-15T14:00:00Z
-       */
-      from: string;
-      /**
-       * Format: date-time
-       * @description UTC time of this read.
-       * @example 2026-11-15T20:00:00Z
-       */
-      generated_at: string;
-      /**
-       * Format: date-time
-       * @description Exclusive UTC end.
-       * @example 2026-11-15T20:00:00Z
-       */
-      to: string;
-    };
     /** @description Verdict counts for one operational or continuity check in the report window. */
     MonitoringCheckTotals: {
       /**
@@ -25354,6 +25047,270 @@ export interface components {
        * @example model
        */
       phase: string;
+    };
+    /** @description One data plane v2 shard: its newest minute report and its history. */
+    MonitoringShard: {
+      /**
+       * Format: int64
+       * @description Worst node's p99 time to admit a turn, in milliseconds.
+       * @example 12
+       */
+      admit_p99_ms: number;
+      /** @description History over the range, oldest first; buckets without a report are absent. */
+      buckets: components["schemas"]["MonitoringShardBucket"][];
+      /**
+       * Format: double
+       * @description The busiest node's CPU, in cores.
+       * @example 1.2
+       */
+      cpu_cores: number;
+      /**
+       * Format: double
+       * @description Its CPU limit in cores; null when unknown.
+       * @example 2
+       */
+      cpu_limit_cores?: number | null;
+      /**
+       * @description Data plane the shard belongs to.
+       * @example dp-eks-1
+       */
+      data_plane: string;
+      /**
+       * @description Leader node at the newest report.
+       * @example shard-07-node-2
+       */
+      leader?: string | null;
+      /**
+       * Format: int64
+       * @description The fullest node's resident memory, in bytes.
+       * @example 3221225472
+       */
+      memory_bytes: number;
+      /**
+       * Format: int64
+       * @description Its memory limit in bytes; null when unknown.
+       * @example 4294967296
+       */
+      memory_limit_bytes?: number | null;
+      /**
+       * Format: int64
+       * @description Members.
+       * @example 3
+       */
+      nodes: number;
+      /**
+       * Format: int64
+       * @description Members that answered the leader.
+       * @example 3
+       */
+      nodes_answering: number;
+      /**
+       * Format: int64
+       * @description Messages waiting for a turn.
+       * @example 0
+       */
+      queued: number;
+      /**
+       * Format: date-time
+       * @description Minute of the newest report.
+       * @example 2026-11-15T19:59:00Z
+       */
+      reported_at: string;
+      /**
+       * Format: int64
+       * @description Turns running on a second or later attempt.
+       * @example 1
+       */
+      resumed: number;
+      /**
+       * Format: int64
+       * @description Turns running.
+       * @example 239
+       */
+      running: number;
+      /**
+       * Format: int64
+       * @description Sessions resident.
+       * @example 2650
+       */
+      sessions: number;
+      /**
+       * @description Shard name.
+       * @example shard-07
+       */
+      shard: string;
+      /**
+       * Format: int64
+       * @description Worst node's p99 log shipping lag, in milliseconds.
+       * @example 380
+       */
+      ship_lag_p99_ms: number;
+      /**
+       * @description No report for the last three minutes.
+       * @example false
+       */
+      silent: boolean;
+      /**
+       * Format: int64
+       * @description Raft term.
+       * @example 4
+       */
+      term: number;
+    };
+    /** @description One shard over one bucket. */
+    MonitoringShardBucket: {
+      /**
+       * Format: int64
+       * @description Worst node's p99 time to admit a turn, in milliseconds.
+       */
+      admit_p99_ms?: number | null;
+      /**
+       * Format: double
+       * @description The busiest node's CPU use as a percentage of its limit.
+       */
+      cpu_peak_pct?: number | null;
+      /**
+       * Format: int64
+       * @description Leader elections.
+       */
+      elections: number;
+      /**
+       * Format: double
+       * @description The fullest node's memory use as a percentage of its limit.
+       */
+      memory_peak_pct?: number | null;
+      /**
+       * Format: int64
+       * @description Sessions moved to another shard.
+       */
+      moves: number;
+      /**
+       * Format: int64
+       * @description Highest node count.
+       */
+      nodes?: number | null;
+      /**
+       * Format: int64
+       * @description Lowest count of nodes that answered the leader.
+       */
+      nodes_answering?: number | null;
+      /**
+       * Format: int64
+       * @description Highest messages waiting for a turn.
+       */
+      queued_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Minute reports received in the bucket.
+       */
+      reports: number;
+      /**
+       * Format: int64
+       * @description Highest turns running.
+       */
+      running_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Highest sessions resident.
+       */
+      sessions_peak?: number | null;
+      /**
+       * Format: int64
+       * @description Worst node's p99 log shipping lag, in milliseconds.
+       */
+      ship_lag_p99_ms?: number | null;
+      /**
+       * Format: date-time
+       * @description UTC start of the bucket.
+       */
+      start: string;
+      /**
+       * Format: int64
+       * @description Turns cancelled.
+       */
+      turns_cancelled: number;
+      /**
+       * Format: int64
+       * @description Turns completed.
+       */
+      turns_completed: number;
+      /**
+       * Format: int64
+       * @description Turns failed.
+       */
+      turns_failed: number;
+    };
+    /** @description A shard's per-node detail, or why there is none. */
+    MonitoringShardDetail: {
+      /**
+       * @description Whether detail could be read.
+       * @example true
+       */
+      available: boolean;
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start.
+       * @example 2026-11-15T19:00:00Z
+       */
+      from: string;
+      /** @description Nodes, by id. */
+      nodes: components["schemas"]["ShardNodeDetail"][];
+      /**
+       * @description Why not, when `available` is false.
+       * @example No detail store is configured (MONITORING_DETAIL).
+       */
+      reason?: string | null;
+      /**
+       * @description Shard name.
+       * @example shard-07
+       */
+      shard: string;
+      /**
+       * @description The detail store's scheme and host, without credentials or path.
+       * @example http://victoriametrics:8428
+       */
+      source?: string | null;
+      /**
+       * Format: int32
+       * @description Seconds between points.
+       * @example 10
+       */
+      step_seconds: number;
+      /**
+       * Format: date-time
+       * @description UTC end.
+       * @example 2026-11-15T20:00:00Z
+       */
+      to: string;
+    };
+    /** @description Data plane v2 shards as their minute reports show them. */
+    MonitoringShards: {
+      /**
+       * Format: int32
+       * @description Bucket size in seconds.
+       * @example 60
+       */
+      bucket_seconds: number;
+      /**
+       * Format: date-time
+       * @description Inclusive UTC start of the history.
+       * @example 2026-11-15T14:00:00Z
+       */
+      from: string;
+      /**
+       * Format: date-time
+       * @description UTC time of this read.
+       * @example 2026-11-15T20:00:00Z
+       */
+      generated_at: string;
+      /** @description Shards that reported in the last week, by name. */
+      shards: components["schemas"]["MonitoringShard"][];
+      /**
+       * Format: date-time
+       * @description Exclusive UTC end.
+       * @example 2026-11-15T20:00:00Z
+       */
+      to: string;
     };
     /** @description Live execution population, ownership, and event-window summary. */
     MonitoringSnapshot: {
@@ -29778,8 +29735,6 @@ export interface components {
     };
     /** @description Everything known about why a Sandbox is in its state. */
     SandboxDiagnosis: {
-      /** @description The sandbox as its shard records it (v2 sessions). */
-      shard_sandbox?: Record<string, unknown> | null;
       /** @description Problems and warnings first. */
       findings: components["schemas"]["SandboxFinding"][];
       /** Format: date-time */
@@ -29791,6 +29746,8 @@ export interface components {
       /** @description The latest recorded causes, oldest first. */
       recent_events: components["schemas"]["SandboxEvent"][];
       sandbox: components["schemas"]["SandboxFleetItem"];
+      /** @description The sandbox as its shard records it (v2 sessions). */
+      shard_sandbox?: Record<string, unknown> | null;
       /** @description The worst status of any finding. */
       status: components["schemas"]["CheckStatus"];
       work: components["schemas"]["SandboxSessionWork"];
@@ -32476,6 +32433,49 @@ export interface components {
       pinned?: boolean | null;
       title?: string | null;
     };
+    /** @description One node's detail. */
+    ShardNodeDetail: {
+      /**
+       * @description Node id within the shard.
+       * @example 2
+       */
+      node: string;
+      /** @description Points, oldest first. */
+      points: components["schemas"]["ShardNodePoint"][];
+    };
+    /** @description One point of a node's detail. */
+    ShardNodePoint: {
+      /**
+       * Format: double
+       * @description One-minute p99 time to admit a turn, in milliseconds.
+       * @example 12.5
+       */
+      admit_p99_ms?: number | null;
+      /**
+       * Format: double
+       * @description Messages waiting for a turn, as the node sees them.
+       * @example 0
+       */
+      queued?: number | null;
+      /**
+       * Format: double
+       * @description Resident memory in bytes.
+       * @example 1073741824
+       */
+      rss_bytes?: number | null;
+      /**
+       * Format: double
+       * @description Turns running on the node.
+       * @example 81
+       */
+      running?: number | null;
+      /**
+       * Format: date-time
+       * @description UTC time of the point.
+       * @example 2026-11-15T19:59:50Z
+       */
+      t: string;
+    };
     /**
      * @description How many times a tool call may safely be executed given the same inputs.
      *
@@ -33151,7 +33151,6 @@ export interface components {
       agents_working_peak: number;
       /** @description Whether this bucket includes history rebuilt from turn records (no phase split or queue data). */
       backfilled: boolean;
-      shards?: components["schemas"]["TimelineShardsBucket"] | null;
       /**
        * Format: double
        * @description Model spend in USD, actual where reconciled, otherwise estimated.
@@ -33230,6 +33229,7 @@ export interface components {
        * @description Average sessions in turn setup or a phase handoff.
        */
       setup_avg: number;
+      shards?: components["schemas"]["TimelineShardsBucket"] | null;
       /**
        * Format: date-time
        * @description UTC start of the bucket.
@@ -33298,6 +33298,54 @@ export interface components {
        * @description Platform only: registered workers with a fresh heartbeat.
        */
       workers?: number | null;
+    };
+    /** @description Failed turns of one classified error code. */
+    TimelineFailure: {
+      /**
+       * @description Classified error code, or other.
+       * @example provider_rate_limited
+       */
+      code: string;
+      /**
+       * Format: int64
+       * @description Failed turns with this code.
+       */
+      turns: number;
+    };
+    /** @description Deploy or worker change on the timeline. */
+    TimelineMarker: {
+      /**
+       * Format: date-time
+       * @description UTC time of the change.
+       */
+      at: string;
+      /**
+       * @description deploy, worker_joined, worker_left, or leader_change (all but deploy are platform only).
+       * @example deploy
+       */
+      kind: string;
+      /**
+       * @description Server version for a deploy, worker id or shard name otherwise.
+       * @example 0.50.1
+       */
+      label: string;
+    };
+    /** @description One agent (organization) or organization (platform) ranked in a window. */
+    TimelineRank: {
+      /** @description Agent or organization public identifier; null for sessions without an agent. */
+      id?: string | null;
+      /** @description Agent name; null in platform scope. */
+      name?: string | null;
+      /**
+       * Format: int64
+       * @description Sessions that started a turn in the window.
+       */
+      sessions: number;
+      /**
+       * Format: int64
+       * @description Turns started in the window.
+       */
+      turns: number;
     };
     /**
      * @description What data plane v2 shards reported over a bucket. Population comes from
@@ -33426,66 +33474,8 @@ export interface components {
        */
       turns_failed: number;
     };
-    /** @description Failed turns of one classified error code. */
-    TimelineFailure: {
-      /**
-       * @description Classified error code, or other.
-       * @example provider_rate_limited
-       */
-      code: string;
-      /**
-       * Format: int64
-       * @description Failed turns with this code.
-       */
-      turns: number;
-    };
-    /** @description Deploy or worker change on the timeline. */
-    TimelineMarker: {
-      /**
-       * Format: date-time
-       * @description UTC time of the change.
-       */
-      at: string;
-      /**
-       * @description deploy, worker_joined, worker_left, or leader_change (all but deploy are platform only).
-       * @example deploy
-       */
-      kind: string;
-      /**
-       * @description Server version for a deploy, worker id or shard name otherwise.
-       * @example 0.50.1
-       */
-      label: string;
-    };
-    /** @description One agent (organization) or organization (platform) ranked in a window. */
-    TimelineRank: {
-      /** @description Agent or organization public identifier; null for sessions without an agent. */
-      id?: string | null;
-      /** @description Agent name; null in platform scope. */
-      name?: string | null;
-      /**
-       * Format: int64
-       * @description Sessions that started a turn in the window.
-       */
-      sessions: number;
-      /**
-       * Format: int64
-       * @description Turns started in the window.
-       */
-      turns: number;
-    };
     /** @description Totals over a range, for the summary row and the previous-period comparison. */
     TimelineSummary: {
-      /**
-       * Format: int64
-       * @description Platform only: leader elections across shards; null when no shard reported.
-       */
-      shards_elections?: number | null;
-      /**
-       * Format: int64
-       * @description Highest per-minute turns running on shards; null when no shard reported.
-       */
-      shards_peak_running?: number | null;
       /**
        * Format: double
        * @description Model spend in USD.
@@ -33521,6 +33511,16 @@ export interface components {
        * @description Platform only: seconds of buckets whose peak load exceeded 90% of capacity.
        */
       seconds_above_90?: number | null;
+      /**
+       * Format: int64
+       * @description Platform only: leader elections across shards; null when no shard reported.
+       */
+      shards_elections?: number | null;
+      /**
+       * Format: int64
+       * @description Highest per-minute turns running on shards; null when no shard reported.
+       */
+      shards_peak_running?: number | null;
       /**
        * Format: int64
        * @description Tool calls started.
@@ -46430,7 +46430,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["MonitoringCellDetail"];
+          "application/json": components["schemas"]["MonitoringShardDetail"];
         };
       };
       /** @description Invalid shard name or minutes */
