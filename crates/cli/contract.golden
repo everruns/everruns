@@ -290,17 +290,6 @@ orgs quality-monitoring scores review	--agrees! --context-revision --note --org!
 orgs resolve	--context-revision --id! --reason
 orgs select
 orgs update	--agentid-agents-per-owner --background-limits --base-harness-id --chat-model-id --coding-model-id --context-revision --default-harness-id --default-harness-name --default-model-id --default-provider-per-service --monthly-session-limit --name --org! --quality-monitoring --reason --research-model-id --self-healing --small-model-id --system-decisions --tool-approval-policy --web-search-defaults
-payments accounts create	--context-revision --label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
-payments accounts disable	--context-revision --payment-account-id! --reason
-payments accounts get	--context-revision --payment-account-id! --reason
-payments accounts list	--context-revision --owner-id --owner-type --reason
-payments accounts update	--context-revision --label --metadata --payment-account-id! --private-key --public-address --reason --status
-payments attempts list	--context-revision --limit! --reason --session-id
-payments policies create	--allowed-capabilities... --allowed-hosts... --context-revision --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-account-id! --rail-preference... --reason --require-approval-above-usd --subject-id! --subject-type!
-payments policies disable	--context-revision --payment-policy-id! --reason
-payments policies get	--context-revision --payment-policy-id! --reason
-payments policies list	--context-revision --payment-account-id --reason --subject-id --subject-type
-payments policies update	--allowed-capabilities... --allowed-hosts... --context-revision --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-policy-id! --rail-preference... --reason --require-approval-above-usd --status
 plugin-marketplaces create	--context-revision --name! --reason --source! --source-type!
 plugin-marketplaces delete	--context-revision --id --reason <id>
 plugin-marketplaces get	--context-revision --id --reason <id>
