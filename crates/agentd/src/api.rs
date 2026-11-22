@@ -1275,6 +1275,9 @@ async fn send_message(
     if let Some(reason) = missing_attachment(&node, id, &body.parts).await {
         return Ok(Json(ShardReply::Refused { reason }));
     }
+    if let Err(reply) = crate::api_session::prepare_initial_model(&node, id, &handle).await {
+        return Ok(Json(reply));
+    }
     if let Some(user) = body.sender.clone() {
         let action = crate::platform::Op::Sender {
             message: body.id,

@@ -3,6 +3,7 @@
 
 import type { SandboxAttention, SandboxFleetState } from "@/lib/api/sandboxes";
 import { cn } from "@/lib/utils";
+import { useUiTranslations } from "@/providers/locale-provider";
 
 export const SANDBOX_STATE_LABELS: Record<SandboxFleetState, string> = {
   running: "Running",
@@ -48,13 +49,26 @@ export function sandboxStateLabel(state: string): string {
   return SANDBOX_STATE_LABELS[state as SandboxFleetState] ?? state.replaceAll("_", " ");
 }
 
-export function SandboxStateBadge({ state, className }: { state: string; className?: string }) {
+export function SandboxStateBadge({
+  state,
+  idle,
+  className,
+}: {
+  state: string;
+  idle?: boolean;
+  className?: string;
+}) {
+  const ui = useUiTranslations();
+  const uncertain = state === "running" && idle;
   return (
     <span
       className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium", className)}
     >
-      <span aria-hidden="true" className={cn("size-1.5 rounded-full", sandboxStateTone(state))} />
-      {sandboxStateLabel(state)}
+      <span
+        aria-hidden="true"
+        className={cn("size-1.5 rounded-full", uncertain ? "bg-warning" : sandboxStateTone(state))}
+      />
+      {uncertain ? ui("Last recorded running") : ui(sandboxStateLabel(state))}
     </span>
   );
 }
@@ -73,8 +87,8 @@ export const SANDBOX_ATTENTION_COPY: Record<SandboxAttention, { title: string; h
     hint: "The template's setup commands exited with an error.",
   },
   idle_running: {
-    title: "Running with no activity for over an hour",
-    hint: "It keeps costing compute. Pause it, or check the template's idle pause setting.",
+    title: "No activity for over an hour",
+    hint: "Check the provider for the current state and whether it is still using compute.",
   },
   cleanup_failed: {
     title: "Provider cleanup failed",

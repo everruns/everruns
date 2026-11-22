@@ -98,7 +98,7 @@ impl StorageBackend {
                 LIMIT 1
             ),
             latest AS (
-                SELECT e.actor, e.action, e.outcome, e.reason
+                SELECT e.actor, e.action, e.outcome, e.reason, e.detail, e.generation
                 FROM sandbox_events e
                 JOIN target t ON t.id = e.sandbox_id
                 ORDER BY e.at DESC, e.id DESC
@@ -112,7 +112,10 @@ impl StorageBackend {
                OR NOT EXISTS (
                     SELECT 1 FROM latest l
                     WHERE l.actor = $2 AND l.action = $3
-                      AND l.outcome = $4 AND l.reason = $5)
+                      AND l.outcome = $4 AND l.reason = $5
+                      AND (NOT ($7::jsonb ? 'idle_activity_micros')
+                           OR (l.generation = t.generation AND
+                               l.detail->'idle_activity_micros' = $7::jsonb->'idle_activity_micros')))
             "#,
         )
         .bind(session_id)

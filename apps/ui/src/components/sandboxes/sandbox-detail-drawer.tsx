@@ -31,6 +31,7 @@ import {
   sandboxStateTone,
 } from "./sandbox-display";
 import { sandboxTitle } from "./sandbox-fleet-table";
+import { SandboxProviderStatus } from "./sandbox-provider-status";
 import type { SandboxAttention } from "@/lib/api/sandboxes";
 
 // Sizes of the Isolated sandbox target (kubernetes_sandbox::SandboxSize).
@@ -108,7 +109,14 @@ function Facts({ detail }: { detail: SandboxFleetDetail }) {
     ? targets.data?.items.find((target) => target.provider === "kubernetes")?.isolation
     : undefined;
   const rows: Array<[string, React.ReactNode]> = [
-    ["State", <SandboxStateBadge key="s" state={detail.state} />],
+    [
+      "State",
+      <SandboxStateBadge
+        key="s"
+        state={detail.state}
+        idle={detail.attention.includes("idle_running")}
+      />,
+    ],
     ["Wants", DESIRED_LABELS[detail.desired_state] ?? detail.desired_state],
     ["Provider", providerLabel(detail.provider)],
     ...(isolated
@@ -276,8 +284,8 @@ export function SandboxDetailDrawer({
                       <div key={reason} className="flex gap-2 text-sm">
                         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
                         <div>
-                          <p className="font-medium">{copy?.title ?? reason}</p>
-                          {copy ? <p className="text-muted-foreground">{copy.hint}</p> : null}
+                          <p className="font-medium">{ui(copy?.title ?? reason)}</p>
+                          {copy ? <p className="text-muted-foreground">{ui(copy.hint)}</p> : null}
                           {reason === "init_failed" && detail.last_init_error ? (
                             <pre className="mt-1 overflow-x-auto bg-muted p-2 font-mono text-xs">
                               {detail.last_init_error}
@@ -290,6 +298,7 @@ export function SandboxDetailDrawer({
                 </div>
               ) : null}
               <Facts detail={detail} />
+              {detail.target_kind === "managed" && <SandboxProviderStatus sandboxId={detail.id} />}
               <div className="flex flex-wrap gap-2">
                 {detail.session_id ? (
                   <LinkButton size="sm" href={`/sessions/${detail.session_id}`}>

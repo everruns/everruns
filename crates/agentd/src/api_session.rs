@@ -25,6 +25,42 @@ use crate::state::Placement;
 
 type ApiError = (StatusCode, String);
 
+/// A session opened during provider setup picks up its first configured model
+/// before the first message. The live model setting keeps its definition and
+/// workspace intact. Read only the published agent of this session's tenant.
+pub(crate) async fn prepare_initial_model(
+    node: &Node,
+    id: SessionId,
+    handle: &everruns::Session,
+) -> Result<(), ShardReply> {
+    let Lookup::Here(Some((org, agent_ref))) = crate::api::lookup(node, id, |state| {
+        if !state.definition["model"].is_null()
+            || !state.authority.configuration()["model"].is_null()
+        {
+            return None;
+        }
+        Some((state.tenant.clone()?, state.platform.agent_ref.clone()?))
+    }) else {
+        return Ok(());
+    };
+    let gateway = node
+        .gateway
+        .get()
+        .ok_or_else(|| reply_of("the agent catalog is unavailable"))?;
+    let definition = gateway
+        .agent_revision(&org, &agent_ref)
+        .await
+        .map_err(|(_, error)| reply_of(error))?;
+    let model: everruns_contracts::model_spec::ModelSpec =
+        serde_json::from_value(definition.package["model"].clone())
+            .map_err(|_| reply_of(crate::providers::MODEL_NOT_CONFIGURED))?;
+    handle
+        .set_model(everruns::Model::on(model.provider.as_str(), model.model))
+        .await
+        .map_err(reply_of)?;
+    Ok(())
+}
+
 pub fn router(node: Arc<Node>) -> Router {
     Router::new()
         .route("/shard/sessions/{session}/approvals", post(approvals))

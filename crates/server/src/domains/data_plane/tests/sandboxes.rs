@@ -203,6 +203,7 @@ async fn pausing_a_v2_sandbox_uses_the_pinned_one() {
 
 #[tokio::test]
 async fn an_idle_v2_sessions_sandbox_is_swept_once_per_idle_spell() {
+    use crate::domains::sandboxes::events;
     use crate::domains::session_sandbox::plane::{idle_handled, idle_on_data_planes};
     let (cp, _, _) = control_plane().await;
     let harness = harness(&cp.db, ORG).await;
@@ -242,6 +243,18 @@ async fn an_idle_v2_sessions_sandbox_is_swept_once_per_idle_spell() {
     let swept = idle().await.unwrap();
     assert_eq!(swept.len(), 1);
     assert_eq!((swept[0].0, swept[0].1), (session.uuid(), ORG));
+    events::record(
+        &cp.db,
+        session,
+        events::event(
+            events::actor::IDLE_SWEEP,
+            events::outcome::DONE,
+            events::reason::IDLE_LIMIT,
+            "Paused after its idle limit.",
+        )
+        .with_detail(serde_json::json!({"idle_activity_micros": swept[0].2.timestamp_micros()})),
+    )
+    .await;
     idle_handled(&pool, session.uuid(), swept[0].2)
         .await
         .unwrap();

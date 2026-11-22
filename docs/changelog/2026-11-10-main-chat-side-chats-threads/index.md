@@ -27,6 +27,5 @@ items waiting there. See [Platform Chat](/built-ins/harnesses/platform-chat/).
 
 ## Update 2026-11-20
 
-Main chat recovers from a rolled-back first attempt. Side chats open
-independently of the Main chat lookup. Playground setup can also start a new
-private Platform Chat.
+Main chat recovers after a failed creation. Main chat and side chats open before
+a provider is configured. Playground setup can also start a private Platform Chat.
