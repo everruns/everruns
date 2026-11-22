@@ -127,7 +127,9 @@ fn chart_claims(manifest: &[u8]) -> Result<Vec<Claim>> {
                 Volume::ShardData,
                 &resource["spec"]["volumeClaimTemplates"][0]["spec"],
             ),
-            (Some("PersistentVolumeClaim"), Some("shard")) => (Volume::ShardStore, &resource["spec"]),
+            (Some("PersistentVolumeClaim"), Some("shard")) => {
+                (Volume::ShardStore, &resource["spec"])
+            }
             _ => continue,
         };
         if spec.is_null() {
