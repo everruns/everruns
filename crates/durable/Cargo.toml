@@ -58,7 +58,7 @@ tracing.workspace = true
 
 # Utilities
 rand.workspace = true
-parking_lot = "0.12"
+parking_lot = "0.13"
 cron = "0.17"
 # Schedules read their cron in an IANA timezone.
 chrono-tz = "0.10"
