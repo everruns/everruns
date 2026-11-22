@@ -603,9 +603,8 @@ Configurable limits on resource creation. See `crates/server/src/server.rs` for 
 | Members per org | 50 | `RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG` |
 | Personal access tokens per user | 25 | `RESOURCE_LIMIT_MAX_PERSONAL_ACCESS_TOKENS_PER_USER` |
 | Harnesses per org | 50 | `RESOURCE_LIMIT_MAX_HARNESSES_PER_ORG` |
-| Agents per org | 500 | `RESOURCE_LIMIT_MAX_AGENTS_PER_ORG` |
 
-Returns `409 Conflict` when a limit is exceeded. Harness and agent counts
+Returns `409 Conflict` when a limit is exceeded. Harness counts
 exclude soft-deleted rows. Built-in harnesses are excluded from the harness cap.
 
 Session creation has a per-organization allowance for each UTC calendar month.
@@ -616,6 +615,12 @@ the same allowance across creation paths. Archiving and deleting sessions keep
 their original month's usage. The allowance resets at midnight UTC on the
 first day of the next month. The limit is enforced in the
 [session insert transaction](../../crates/server/migrations/20261121040243_monthly_session_creation_limits.sql).
+
+Agent creation works the same way, with a default of 500 a month and the same
+hard maximum. It replaced a cap on live agents, which short-lived agents
+(evaluations, deployment probes) exhausted once archived ones piled up.
+Built-in agents never count. The limit is enforced in the
+[agent insert transaction](../../crates/server/migrations/20261122001517_monthly_agent_creation_limits.sql).
 
 ### Error Responses
 

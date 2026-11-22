@@ -9,6 +9,7 @@ let mockOrganization: {
   id: string;
   background_limits?: BackgroundLimits;
   monthly_session_limit?: number;
+  monthly_agent_limit?: number;
   self_healing?: SelfHealingPolicy;
 } = { id: "org-1" };
 const limitsCard = () => within(screen.getByTestId("background-limits-settings"));
@@ -19,9 +20,15 @@ jest.mock("@/hooks", () => ({ usePageTitle: jest.fn() }));
 jest.mock("@/components/chat-mode/use-page-read-context", () => ({
   usePageReadContext: jest.fn(),
 }));
-jest.mock("@/providers/org-provider", () => ({ useOrg: () => ({ hasRole: () => mockCanManage }) }));
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({ hasRole: () => mockCanManage }),
+}));
 jest.mock("@/hooks/use-organizations", () => ({
-  useOrganization: () => ({ data: mockOrganization, isLoading: false, error: null }),
+  useOrganization: () => ({
+    data: mockOrganization,
+    isLoading: false,
+    error: null,
+  }),
   useUpdateOrganization: () => ({ mutateAsync: mockMutate, isPending: false }),
 }));
 
@@ -29,6 +36,7 @@ beforeEach(() => {
   mockOrganization = {
     id: "org-1",
     monthly_session_limit: 10000,
+    monthly_agent_limit: 500,
     background_limits: {
       schedule_max_lifetime_days: 3,
       schedule_max_runs: 48,
@@ -98,7 +106,9 @@ test("members see the limits read-only", () => {
 
 test("saves the monthly session limit up to the hard ceiling", async () => {
   render(<LimitsSettingsPage />);
-  const input = screen.getByRole("spinbutton", { name: "Monthly session limit" });
+  const input = screen.getByRole("spinbutton", {
+    name: "Monthly session limit",
+  });
   const form = within(input.closest("form")!);
   expect(input).toHaveValue(10000);
   expect(input).toHaveAttribute("max", "100000");
@@ -174,4 +184,23 @@ test("labels the background budget subjects", () => {
   expect(budgetSubjectLabel("session_schedule")).toBe("Schedule");
   expect(budgetSubjectLabel("org_unattended")).toBe("Unattended work (daily)");
   expect(budgetSubjectLabel("something_new")).toBe("something_new");
+});
+
+test("saves the monthly agent limit separately from the session limit", async () => {
+  render(<LimitsSettingsPage />);
+  const input = screen.getByRole("spinbutton", { name: "Monthly agent limit" });
+  const form = within(input.closest("form")!);
+  expect(input).toHaveValue(500);
+  expect(input).toHaveAttribute("max", "100000");
+
+  fireEvent.change(input, { target: { value: "0" } });
+  fireEvent.submit(input.closest("form")!);
+  expect(form.getByRole("alert")).toHaveTextContent("from 1 to 100,000");
+  expect(mockMutate).not.toHaveBeenCalled();
+
+  fireEvent.change(input, { target: { value: "2000" } });
+  fireEvent.click(form.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mockMutate).toHaveBeenCalledWith({ monthly_agent_limit: 2000 }));
+  expect(await form.findByRole("status")).toHaveTextContent("Saved");
+  expect(screen.getByRole("spinbutton", { name: "Monthly session limit" })).toHaveValue(10000);
 });
