@@ -1285,7 +1285,7 @@ fn validate_scoped_mcp_servers_inner(
             if server.transport_type.is_local() {
                 return Err(BadRequestError::new(format!(
                     "Scoped MCP server '{name}' uses an unsupported transport: \
-                     stdio MCP servers are not allowed in this deployment"
+                     this deployment cannot run local stdio servers. Register a remote Streamable HTTP endpoint instead."
                 ))
                 .into());
             }
