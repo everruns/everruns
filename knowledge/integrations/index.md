@@ -12,6 +12,7 @@
 * [User Connections](user-connections.md) - External accounts (GitHub, GitLab, Daytona) linked to a user, resolved lazily at tool execution.
 * [MCP Events: session webhooks out, agent triggers in](mcp-events.md) - /mcp clients subscribe to session webhooks; agents subscribe to their MCP servers' events as `mcp_event` triggers.
 * [MCP Resources: reading attached servers' resources](mcp-resources.md) - Proposal: agents list and read resources on attached MCP servers; spec-shaped content blocks; /mcp templates and errors.
+* [MCP sign-in health: no silent loss of an agent's MCP server](mcp-oauth-grant-health.md) - An agent's OAuth MCP sign-in that can no longer produce a token is marked, reported in Health ahead of and at expiry, shown as Sign in again on the MCP tab, and replaced in turns by a sign_in_required tool.
 * [MCP Apps host: showing connected servers' views](mcp-apps-host.md) - Interactive views from connected MCP servers under their tool call in the console and as a picture in Slack; sandbox, confirmation and owner rules.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.
 * [Integrations](integrations.md) - Integration specs index.

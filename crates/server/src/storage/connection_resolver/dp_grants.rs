@@ -80,7 +80,9 @@ impl DbConnectionResolver {
         else {
             return Ok(None);
         };
+        // A grant marked as needing sign-in is not handed over (grant_health.rs).
         if row.connection_type != "oauth"
+            || super::grant_health::reconnect_mark(&row).is_some()
             || !self
                 .authorize_connection(OAuthScope::Org(org_id), &row, None)
                 .await?

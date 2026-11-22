@@ -533,7 +533,8 @@ pub use leased_resource::{
 };
 pub use mcp_deferred::{
     DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, MCP_LAST_TOOLS_KV_PREFIX,
-    deferred_mcp_server_definition, deferred_mcp_server_prefix, partition_deferred_mcp_servers,
+    MCP_SIGN_IN_REQUIRED_TOOL, deferred_mcp_server_definition, deferred_mcp_server_prefix,
+    is_mcp_sign_in_required_tool, mcp_sign_in_required_tool, partition_deferred_mcp_servers,
     reveal_deferred_mcp_server, revealed_mcp_servers,
 };
 pub use mcp_proxy::{

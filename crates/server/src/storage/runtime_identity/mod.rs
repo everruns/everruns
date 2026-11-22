@@ -256,26 +256,35 @@ impl StorageBackend {
     ) -> Result<Option<VirtualUserConnectionRow>> {
         {
             let db = self.database();
-            Ok(sqlx::query_as("UPDATE virtual_user_connections SET access_token_encrypted=$3,refresh_token_encrypted=$4,expires_at=$5,scopes=COALESCE($6,scopes),updated_at=now() WHERE id=$1 AND access_token_encrypted=$2 AND connection_type='oauth' RETURNING *").bind(input.connection_id).bind(expected).bind(input.access_token_encrypted).bind(input.refresh_token_encrypted).bind(input.expires_at).bind(input.scopes).fetch_optional(db.pool()).await?)
+            Ok(sqlx::query_as("UPDATE virtual_user_connections SET access_token_encrypted=$3,refresh_token_encrypted=$4,expires_at=$5,scopes=COALESCE($6,scopes),provider_metadata=provider_metadata-'reconnect_required',updated_at=now() WHERE id=$1 AND access_token_encrypted=$2 AND connection_type='oauth' RETURNING *").bind(input.connection_id).bind(expected).bind(input.access_token_encrypted).bind(input.refresh_token_encrypted).bind(input.expires_at).bind(input.scopes).fetch_optional(db.pool()).await?)
         }
     }
-    pub async fn revoke_runtime_connection_if_unchanged(
+    /// Mark a grant that can no longer produce a token as needing sign-in
+    /// again, unless it changed meanwhile (someone signed in again, or another
+    /// replica refreshed it). The row is kept: a person signing in again
+    /// replaces it, and Health and the MCP tab read the mark
+    /// (`connection_resolver::grant_health`).
+    pub async fn mark_runtime_connection_reconnect_required(
         &self,
         id: Uuid,
         expected: &[u8],
+        reason: &str,
     ) -> Result<bool> {
-        {
-            let db = self.database();
-            Ok(sqlx::query(
-                "DELETE FROM virtual_user_connections WHERE id=$1 AND access_token_encrypted=$2",
-            )
-            .bind(id)
-            .bind(expected)
-            .execute(db.pool())
-            .await?
-            .rows_affected()
-                == 1)
-        }
+        let db = self.database();
+        Ok(sqlx::query(
+            "UPDATE virtual_user_connections SET provider_metadata = \
+                COALESCE(provider_metadata, '{}'::jsonb) || jsonb_build_object( \
+                    'reconnect_required', jsonb_build_object('reason', $3::text, 'at', now())), \
+                updated_at = now() \
+             WHERE id = $1 AND access_token_encrypted = $2",
+        )
+        .bind(id)
+        .bind(expected)
+        .bind(reason)
+        .execute(db.pool())
+        .await?
+        .rows_affected()
+            == 1)
     }
     pub async fn rotate_runtime_session_grant(
         &self,

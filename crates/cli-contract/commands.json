@@ -1879,6 +1879,68 @@
     ]
   },
   {
+    "wire_name": "list_agent_mcp_attachments",
+    "path": [
+      "agents",
+      "mcp"
+    ],
+    "verb": "list",
+    "description": "List an agent's MCP servers after capability, harness and agent layers are merged, with each server's sign-in state for the caller: whether it works, renews, expires or needs a person to sign in again.",
+    "method": "GET",
+    "http_path": "/v1/agents/{id}/mcp-attachments",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent ID (prefixed) or name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Check whether an agent's MCP sign-ins still work",
+        "command": "everruns agents mcp list agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "revoke_agent_mcp_connection",
+    "path": [
+      "agents",
+      "mcp"
+    ],
+    "verb": "revoke",
+    "description": "Revoke the caller's own sign-in for an agent's MCP server, or the agent's shared sign-in when the caller has none (needs MCP server management). The attachment stays; sign in again on the agent's MCP sheet.",
+    "method": "DELETE",
+    "http_path": "/v1/agents/{id}/mcp-attachments/{name}/connection",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Agent ID (prefixed) or name."
+      },
+      {
+        "field": "name",
+        "long": "name",
+        "position": 2,
+        "kind": "string",
+        "required": true,
+        "help": "Effective MCP attachment name."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Remove the agent's stend sign-in before signing in again",
+        "command": "everruns agents mcp revoke agent_01h9 stend --reason 'Sign-in stopped renewing'"
+      }
+    ]
+  },
+  {
     "wire_name": "pause_agent",
     "path": [
       "agents"

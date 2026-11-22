@@ -209,6 +209,31 @@ and its tools are unavailable. If a sign-in fails, you return to the page you
 started from with the reason, for example that the server's host is not on the
 organization's allowed network list.
 
+The agent's **MCP** sheet shows what the agent's own sign-in to each server can
+still do, read from the stored sign-in:
+
+- **Connected as …** with "Renews automatically.": it works and renews itself.
+- **Connected as … · stops** *date*, with **Sign in again**: it works now, but
+  nothing can renew it (for example, it was made before Everruns tied
+  sign-ins to their server). Signing in again once fixes it for good.
+- **Sign-in stopped working**, with the date the tools went missing, the
+  reason and **Sign in again**: it expired and could not renew, or the server
+  refused or kept rejecting it.
+
+**Health** opens an "MCP server needs sign-in again" issue for the agent's
+authors when a sign-in stops working, and three days before one that cannot
+renew expires. Until someone signs in again, the server lists a single
+`sign_in_required` tool in place of its tools, so the agent can say what is
+missing instead of silently skipping that part of its work.
+
+The same states are available outside the console, so a script or Platform
+Chat can check and fix them:
+
+```bash
+everruns agents mcp list agent_01h9          # each server's sign-in state
+everruns agents mcp revoke agent_01h9 stend  # remove a sign-in
+```
+
 An agent with a server acting as `user` or `user_or_service` gets the
 `connect_mcp_server` tool, so it can show a **Connect** card in chat before a
 call fails.

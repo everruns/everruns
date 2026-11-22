@@ -466,6 +466,13 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// A server rejected the agent's service token for `provider`. The grant
+    /// is kept (people's records are never purged): with `force_refresh` its
+    /// access token is marked expired so the next use refreshes it, and the
+    /// rejection is noted; otherwise it is marked as needing sign-in again.
+    /// Either way the agent's cached tool list for the server goes. Nothing
+    /// changes when the stored token is no longer the rejected one.
+    #[allow(clippy::too_many_arguments)]
     pub async fn invalidate_mcp_service_connection_if_access_token_matches(
         &self,
         identity_id: VirtualUserId,
@@ -474,23 +481,39 @@ impl Database {
         org_id: i64,
         mcp_server_id: uuid::Uuid,
         agent_id: uuid::Uuid,
+        force_refresh: bool,
     ) -> Result<bool> {
         let mut transaction = self.pool.begin().await?;
-        let result = sqlx::query(
+        let result = sqlx::query(if force_refresh {
             r#"
-            DELETE FROM virtual_user_connections
+            UPDATE virtual_user_connections
+            SET expires_at = now() - INTERVAL '1 second',
+                provider_metadata = COALESCE(provider_metadata, '{}'::jsonb)
+                    || jsonb_build_object('rejected_at', now()),
+                updated_at = now()
             WHERE virtual_user_id = $1
               AND provider = $2
               AND access_token_encrypted = $3
-            "#,
-        )
+            "#
+        } else {
+            r#"
+            UPDATE virtual_user_connections
+            SET provider_metadata = COALESCE(provider_metadata, '{}'::jsonb)
+                    || jsonb_build_object('reconnect_required',
+                        jsonb_build_object('reason', 'rejected', 'at', now())),
+                updated_at = now()
+            WHERE virtual_user_id = $1
+              AND provider = $2
+              AND access_token_encrypted = $3
+            "#
+        })
         .bind(identity_id)
         .bind(provider)
         .bind(expected_access_token_encrypted)
         .execute(&mut *transaction)
         .await?;
-        let deleted = result.rows_affected() > 0;
-        if deleted {
+        let changed = result.rows_affected() > 0;
+        if changed {
             sqlx::query(
                 r#"
                 DELETE FROM mcp_service_tool_caches
@@ -505,7 +528,7 @@ impl Database {
         }
         transaction.commit().await?;
 
-        Ok(deleted)
+        Ok(changed)
     }
 
     /// Provider accounts the orphaned managed sandbox scan lists with: for

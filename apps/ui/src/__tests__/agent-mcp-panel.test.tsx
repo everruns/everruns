@@ -75,6 +75,8 @@ const attachment: AgentMcpAttachment = {
   state: "ready",
   action: "none",
   connected_as: "octocat",
+  sign_in: null,
+  sign_in_href: null,
   can_revoke: true,
   editable: true,
 };
@@ -237,6 +239,74 @@ describe("AgentMcpPanel", () => {
     );
     expect(screen.queryByText("Ask an admin")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Connect" })).not.toBeInTheDocument();
+  });
+
+  it("asks to sign in again when the agent's sign-in stopped working", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "reconnect_required",
+      action: "authorize",
+      connected_as: null,
+      sign_in: {
+        state: "needs_sign_in",
+        since: "2026-11-10T13:00:00Z",
+        reason: "unbound",
+        expires_at: null,
+        detail: null,
+      },
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Sign-in stopped working")).toBeInTheDocument();
+    expect(screen.getByText(/the agent has no .* tools\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in again" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("mode=identity"),
+    );
+    expect(screen.queryByText(/Connected as/)).not.toBeInTheDocument();
+  });
+
+  it("warns ahead when the agent's sign-in works but cannot renew", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "ready",
+      action: "authorize",
+      connected_as: "stend",
+      can_revoke: true,
+      sign_in: {
+        state: "expires_soon",
+        expires_at: "2026-11-25T23:16:00Z",
+        reason: "unbound",
+        since: null,
+        detail: null,
+      },
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText(/Connected as\s+stend\s+·\s+stops/)).toBeInTheDocument();
+    expect(screen.getByText(/Sign in again once and it renews from then on/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in again" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+  });
+
+  it("says a working agent sign-in renews itself", () => {
+    showAttachments({
+      ...attachment,
+      acts_as: "service",
+      state: "ready",
+      action: "none",
+      connected_as: "stend",
+      sign_in: { state: "working", expires_at: null, since: null, reason: null, detail: null },
+    });
+
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Renews automatically.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in again" })).not.toBeInTheDocument();
   });
 
   it("explains a failed Authorize the server returned to the MCP tab", () => {
