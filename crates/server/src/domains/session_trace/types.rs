@@ -139,6 +139,13 @@ pub struct TraceTurn {
     pub items: Vec<TraceItem>,
 }
 
+/// Full text recorded when a trace turn starts.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TraceTurnInput {
+    /// The recorded input, when present.
+    pub content: Option<String>,
+}
+
 /// One row of a turn.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -340,6 +347,9 @@ pub struct TraceRequestSummary {
     pub tool_count: i32,
     /// Start of the system prompt.
     pub system_preview: Option<String>,
+    /// Position of the system message in the full request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_index: Option<i32>,
     /// The new messages, at most 50.
     pub new_messages: Vec<TraceRequestMessage>,
     /// Token usage of the call, split by prompt cache.

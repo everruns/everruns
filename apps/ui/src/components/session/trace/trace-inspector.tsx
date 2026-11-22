@@ -418,12 +418,12 @@ function StepDetail({
                 onOpen={() => openRequest("tools")}
               />
             )}
-            {/* When every message is new, the system prompt is already among them. */}
-            {request.system_preview && request.new_from > 0 && (
+            {/* A new system message is already in the rows below. */}
+            {request.system_preview && (request.system_index ?? 0) < request.new_from && (
               <RequestRow
                 label="system"
                 preview={request.system_preview}
-                onOpen={() => openRequest()}
+                onOpen={() => openRequest(request.system_index ?? 0)}
               />
             )}
             {request.new_from > 0 && (

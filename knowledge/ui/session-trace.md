@@ -103,6 +103,7 @@ cache. The first open of a large session would still read everything.
 |---|---|---|
 | Trace overview | session totals, minimap buckets (`from, to, steps, duration, errors`), error turn numbers | one row per bucket, about 120 buckets |
 | Turns page | turns plus their steps, from the end or around a turn number | about 20 turns and a step budget (about 2,000 rows) per response |
+| Turn input | full recorded message text reached from the turn header | one turn's start event, fetched on demand |
 | Turn steps page | a step range of one turn, optionally only errors or one tool | 100 to 500 steps |
 | Step detail | facts, input, output, raw events of the step, request summary | payloads over about 50 KB truncated with "load full" |
 | Model request | the messages of one model call, by role, paged | 100 messages per page |

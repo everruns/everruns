@@ -213,13 +213,21 @@ test("opens the requested message page or tools in a fixed-size model request mo
   await mockSession(page, baseURL!);
   const call = `**/api/v1/sessions/${SESSION}/trace/turns/1833/steps/1`;
   const preview = "Inspect the attached report";
+  const system = "Read workspace reports before answering.";
   const longMessage = `${preview}\n${"A long line in the report.\n".repeat(150)}`;
   const messages = Array.from({ length: 65 }, (_, index) => ({
     index,
-    role: "user",
-    preview: index === 62 ? preview : `Message ${index}`,
+    role: index === 0 ? "system" : "user",
+    preview: index === 0 ? system : index === 62 ? preview : `Message ${index}`,
     size_bytes: index === 62 ? longMessage.length : 20,
-    content: { content: [{ type: "text", text: index === 62 ? longMessage : `Message ${index}` }] },
+    content: {
+      content: [
+        {
+          type: "text",
+          text: index === 0 ? system : index === 62 ? longMessage : `Message ${index}`,
+        },
+      ],
+    },
   }));
   await page.route(call, (route) =>
     route.fulfill({
@@ -230,6 +238,8 @@ test("opens the requested message page or tools in a fixed-size model request mo
           message_count: messages.length,
           new_from: 62,
           tool_count: 1,
+          system_preview: system,
+          system_index: 0,
           new_messages: [messages[62]],
         },
       },
@@ -261,6 +271,13 @@ test("opens the requested message page or tools in a fixed-size model request mo
   await modal.getByRole("button", { name: "Close" }).click();
   await expect(modal).toBeHidden();
 
+  await page.getByRole("button", { name: new RegExp(system) }).click();
+  await expect(modal.getByRole("button", { name: /^0 system/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  await modal.getByRole("button", { name: "Close" }).click();
+
   await page.getByRole("button", { name: new RegExp(preview) }).click();
   await expect(modal.getByRole("button", { name: /^62 user/ })).toHaveAttribute(
     "aria-expanded",
@@ -274,9 +291,10 @@ test("opens the requested message page or tools in a fixed-size model request mo
   const scroller = modal.getByRole("region", { name: "Messages" });
   await expect(scroller).toHaveAttribute("tabindex", "0");
   await scroller.focus();
-  await page.keyboard.press("Home");
+  await expect(scroller).toBeFocused();
+  await scroller.press("Home");
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
-  await page.keyboard.press("PageDown");
+  await scroller.press("PageDown");
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
   await modal.getByRole("button", { name: /^62 user/ }).click();
@@ -285,4 +303,30 @@ test("opens the requested message page or tools in a fixed-size model request mo
     "false",
   );
   await expect.poll(() => modal.boundingBox()).toEqual(bounds);
+});
+
+test("opens the full recorded turn input in the trace sidebar", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await mockSession(page, baseURL!);
+  const fullInput = `Prompt of turn 1833\n${"An unabridged line.\n".repeat(500)}End of message.`;
+  await page.route(`**/api/v1/sessions/${SESSION}/trace/turns/1833/input`, (route) =>
+    route.fulfill({ json: { content: fullInput } }),
+  );
+  await page.goto(`/sessions/${SESSION}/trace?turn=1833`);
+  const turn = page.getByRole("button", { name: /Prompt of turn 1833/ }).locator("..");
+  await turn.getByRole("button", { name: "View full message" }).click();
+  const sidebar = page.getByRole("complementary", { name: "Turn input" });
+  await expect(sidebar).toContainText("End of message.");
+  await expect(sidebar.locator("pre")).toHaveText(fullInput);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("Playground links to a new private Platform Chat", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await mockSession(page, baseURL!);
+  await page.goto("/playground/new");
+  const privateChat = page.getByRole("link", { name: "New private Platform Chat" });
+  await expect(privateChat).toHaveAttribute("href", "/chats/new");
+  await privateChat.click();
+  await expect(page).toHaveURL(/\/chats\/new$/, { timeout: 30_000 });
 });

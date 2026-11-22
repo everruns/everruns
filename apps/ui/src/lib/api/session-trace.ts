@@ -64,6 +64,14 @@ export async function listSessionTraceSteps(
   return response.data;
 }
 
+/** Original text of the message that started one turn. */
+export async function getSessionTraceTurnInput(sessionId: string, turn: number) {
+  const response = await api.get<{ content?: string | null }>(
+    `${base(sessionId)}/turns/${turn}/input`,
+  );
+  return response.data;
+}
+
 /** Everything about one step: input, output, request summary, raw events. */
 export async function getSessionTraceStep(
   sessionId: string,

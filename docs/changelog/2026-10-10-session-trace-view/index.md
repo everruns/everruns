@@ -32,4 +32,5 @@ and [#4481](https://github.com/everruns/everruns/pull/4481), [#4500](https://git
 
 Open a message or the tools list straight from the step inspector. The model
 request opens in a near-full-screen modal with image previews and file downloads
-for attachments retained in the trace.
+for attachments retained in the trace. **View full message** opens the
+original turn input in the sidebar.

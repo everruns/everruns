@@ -52,6 +52,7 @@ import { useMessageReactionList } from "@/hooks/use-message-reactions";
 import { TraceSearch } from "./trace-search";
 import { TurnRail } from "./turn-rail";
 import { DreamingTrace } from "./dreaming-trace";
+import { TurnInputInspector } from "./turn-input-inspector";
 
 const VIEWS: { value: View; label: string }[] = [
   { value: "all", label: "Everything" },
@@ -118,6 +119,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   );
   const [collapsed, setCollapsed] = useState<Set<number>>(() => new Set());
   const [batch, setBatch] = useState<{ turn: number; batch: TraceBatch } | null>(null);
+  const [turnInput, setTurnInput] = useState<number | null>(null);
   const [full, setFull] = useState(false);
   // A sub-agent's step opened inline; its numbers belong to the child session,
   // so it lives in state rather than the URL.
@@ -246,6 +248,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     (turn: number, step: number) => {
       setBatch(null);
       setChildStep(null);
+      setTurnInput(null);
       setFull(false);
       setParams({ step: stepKey(turn, step) });
     },
@@ -255,6 +258,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
   const clearSelection = useCallback(() => {
     setBatch(null);
     setChildStep(null);
+    setTurnInput(null);
     setParams({ step: null });
   }, [setParams]);
 
@@ -362,7 +366,8 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
     return Math.max(0, overview.data.step_count - loadedSteps);
   }, [overview.data, data.turns, firstLoaded, tailLoaded]);
 
-  const activeTurn = (childStep ? null : selectedStep?.turn) ?? batch?.turn ?? null;
+  const activeTurn = turnInput ?? (childStep ? null : selectedStep?.turn) ?? batch?.turn ?? null;
+  const inspectorOpen = !!(turnInput || target);
   // Turns with rows on screen, for the minimap's "in view" marker.
   const visibleItems = virtualizer.getVirtualItems();
   const scrollTop = virtualizer.scrollOffset ?? 0;
@@ -533,6 +538,11 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         turn={row.turn}
                         reactions={turnReactions.get(row.turn.turn)?.prompt}
                         collapsed={row.collapsed}
+                        inputSelected={turnInput === row.turn.turn}
+                        onOpenInput={() => {
+                          clearSelection();
+                          setTurnInput(row.turn.turn);
+                        }}
                         showScale
                         onToggle={() =>
                           setCollapsed((current) => {
@@ -593,6 +603,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                             return;
                           }
                           setBatch(null);
+                          setTurnInput(null);
                           setFull(false);
                           setChildStep({
                             sessionId: row.childSessionId,
@@ -623,6 +634,7 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
                         }
                         onSelect={() => {
                           setBatch({ turn: row.turn.turn, batch: row.batch });
+                          setTurnInput(null);
                           setChildStep(null);
                           setParams({ step: null });
                         }}
@@ -654,29 +666,33 @@ export function TraceView({ sessionId, liveSequence }: TraceViewProps) {
           )}
         </div>
 
-        {/* Below lg the inspector opens over the list, only while a step is selected. */}
+        {/* Below lg the inspector opens over the list while a detail is selected. */}
         <aside
           className={cn(
             "min-h-0 overflow-y-auto bg-card lg:static lg:z-auto lg:block lg:border-l",
-            target ? "fixed inset-0 z-40 block" : "hidden",
+            inspectorOpen ? "fixed inset-0 z-40 block" : "hidden",
           )}
-          aria-label={ui("Step inspector")}
+          aria-label={turnInput ? ui("Turn input") : ui("Step inspector")}
         >
-          {target && (
+          {inspectorOpen && (
             <div className="sticky top-0 z-10 flex justify-end border-b bg-card px-3 py-2 lg:hidden">
               <Button variant="ghost" size="sm" onClick={clearSelection}>
                 {ui("Back to trace")}
               </Button>
             </div>
           )}
-          <TraceInspector
-            sessionId={sessionId}
-            target={target}
-            full={full}
-            onLoadFull={() => setFull(true)}
-            onPrev={position > 0 ? () => move(-1) : undefined}
-            onNext={position !== -1 && position < keys.length - 1 ? () => move(1) : undefined}
-          />
+          {turnInput ? (
+            <TurnInputInspector sessionId={sessionId} turn={turnInput} onClose={clearSelection} />
+          ) : (
+            <TraceInspector
+              sessionId={sessionId}
+              target={target}
+              full={full}
+              onLoadFull={() => setFull(true)}
+              onPrev={position > 0 ? () => move(-1) : undefined}
+              onNext={position !== -1 && position < keys.length - 1 ? () => move(1) : undefined}
+            />
+          )}
         </aside>
       </div>
     </section>

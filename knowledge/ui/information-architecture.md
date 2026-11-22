@@ -105,6 +105,7 @@ that authority on each message. The selected identity and human operator remain 
 simulation never supplies management authority or private end-user connection grants. Private user
 memory is excluded from these shared workspaces, including delegated runs. Explicit agent service
 connections retain their existing access rules. The personal Platform Chat harness is unavailable.
+Playground setup links to a new private Platform Chat in the personal workspace.
 
 The initial experience starts with a fresh workspace. Files is a secondary inspection view,
 not a prerequisite for starting a conversation. Realtime voice remains on the personal Chat surface
