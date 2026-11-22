@@ -43,6 +43,7 @@ use serde_json::Value;
 use tracing::warn;
 
 use super::approval::approval_prompt;
+use super::delivery_telemetry::{DeliveryKind, DeliveryOutcome, DeliveryTelemetry};
 use super::progress::TaskProgress;
 use super::{ChannelDeliveryAdapter, DeliveryContext, DeliveryResult, OutboundChannelMessage};
 use crate::conversation::NO_REPLY_TOOL_NAME;
@@ -133,17 +134,32 @@ pub struct DeliveryEvent {
     pub input_message_id: Option<String>,
     /// The turn, from the event context.
     pub turn_id: Option<String>,
+    /// Host-owned trace anchor from a durable turn start, not input metadata.
+    pub turn_traceparent: Option<String>,
 }
 
 impl DeliveryEvent {
     /// Read a canonical event envelope (`type`, `data`, `context`, `sequence`).
     pub fn from_envelope(envelope: &Value) -> Option<Self> {
+        let sequence = envelope.get("sequence").and_then(Value::as_i64);
+        let event_type = envelope.get("type")?.as_str()?;
+        let turn_traceparent = if event_type == TURN_STARTED && sequence.is_some_and(|sequence| sequence > 0) {
+            envelope
+                .get("metadata")
+                .and_then(|metadata| metadata.get(crate::causal::TURN_TRACEPARENT_KEY))
+                .and_then(Value::as_str)
+                .filter(|value| value.len() == 55)
+                .map(str::to_string)
+        } else {
+            None
+        };
         Some(Self {
-            sequence: envelope.get("sequence").and_then(Value::as_i64),
-            event_type: envelope.get("type")?.as_str()?.to_string(),
+            sequence,
+            event_type: event_type.to_string(),
             data: envelope.get("data").cloned().unwrap_or(Value::Null),
             input_message_id: context_field(envelope, "input_message_id"),
             turn_id: context_field(envelope, "turn_id"),
+            turn_traceparent,
         })
     }
 
@@ -202,6 +218,7 @@ pub struct TurnDelivery {
     /// and repeated completions for them are dropped.
     done: HashSet<String>,
     progress: TaskProgress,
+    telemetry: DeliveryTelemetry,
     /// Messages whose stream could not open; they post when complete.
     unstreamable: HashSet<String>,
     /// Messages that started as working notes (explicit communication).
@@ -238,6 +255,7 @@ impl TurnDelivery {
             streams: BTreeMap::new(),
             done: HashSet::new(),
             progress: TaskProgress::default(),
+            telemetry: DeliveryTelemetry::default(),
             unstreamable: HashSet::new(),
             notes: HashSet::new(),
             sent_explicitly: false,
@@ -351,7 +369,14 @@ impl TurnDelivery {
                 self.set_status(self.current_status()).await;
             }
             TASK_CREATED | TASK_UPDATED => self.on_task(&event.data),
-            TURN_STARTED => self.set_status(self.options.thinking_status.clone()).await,
+            TURN_STARTED => {
+                if self.adapter.platform() == "slack"
+                    && let Some(carrier) = &event.turn_traceparent
+                {
+                    self.telemetry.anchor(carrier);
+                }
+                self.set_status(self.options.thinking_status.clone()).await;
+            }
             SESSION_TITLE_UPDATED => {
                 if let Some(title) = event.data.get("title").and_then(Value::as_str)
                     && !title.trim().is_empty()
@@ -494,12 +519,14 @@ impl TurnDelivery {
         };
         // `replace` closes the stream. When it fails the stream is still open,
         // and every start must end in a stop.
-        if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
-            streaming
-                .replace(&stream.handle, replacement, &self.context)
-                .await
-        {
-            warn!(session_id = %self.session_id, %error, "channel: could not replace a streamed message");
+        let span = self.telemetry.start(DeliveryKind::Reply);
+        let result = streaming
+            .replace(&stream.handle, replacement, &self.context)
+            .await;
+        let outcome = DeliveryOutcome::from(&result);
+        span.finish(outcome);
+        if let Some(error_type) = outcome.error_type() {
+            warn!(session_id = %self.session_id, error_type, "channel: could not replace a streamed message");
             let _ = streaming.stop(&stream.handle, &self.context).await;
         }
         self.done.insert(message_id.to_string());
@@ -529,7 +556,8 @@ impl TurnDelivery {
             {
                 stream.text = text.clone();
             }
-            self.close_stream(id).await;
+            let span = self.telemetry.start(DeliveryKind::Reply);
+            span.finish(self.close_stream(id).await);
             return;
         }
 
@@ -537,14 +565,23 @@ impl TurnDelivery {
             return;
         }
         let Some(text) = text else { return };
-        match self.post_message(text, message_id.as_deref()).await {
+        let span = self.telemetry.start(DeliveryKind::Reply);
+        let posted = self.post_message(text, message_id.as_deref()).await;
+        let outcome = posted
+            .as_ref()
+            .err()
+            .map_or(DeliveryOutcome::Succeeded, DeliveryOutcome::from);
+        span.finish(outcome);
+        match posted {
             Ok(()) => {
                 if let Some(id) = message_id {
                     self.done.insert(id);
                 }
             }
-            Err(error) => {
-                warn!(session_id = %self.session_id, %error, "channel: could not post a reply");
+            Err(_) => {
+                if let Some(error_type) = outcome.error_type() {
+                    warn!(session_id = %self.session_id, error_type, "channel: could not post a reply");
+                }
             }
         }
     }
@@ -576,15 +613,15 @@ impl TurnDelivery {
 
     /// Send what a stream has produced but not sent. Until `closing`, a
     /// trailing angle-bracket token that has not closed yet is held back.
-    async fn flush_stream(&mut self, message_id: &str, closing: bool) {
+    async fn flush_stream(&mut self, message_id: &str, closing: bool) -> DeliveryOutcome {
         let Some(streaming) = self.adapter.streaming() else {
-            return;
+            return DeliveryOutcome::Succeeded;
         };
         let Some(stream) = self.streams.get_mut(message_id) else {
-            return;
+            return DeliveryOutcome::Succeeded;
         };
         if stream.sent >= stream.text.len() {
-            return;
+            return DeliveryOutcome::Succeeded;
         }
         let pending = &stream.text[stream.sent..];
         let end = if closing {
@@ -593,39 +630,39 @@ impl TurnDelivery {
             open_token_start(pending)
         };
         if end == 0 {
-            return;
+            return DeliveryOutcome::Succeeded;
         }
         let pending = pending[..end].to_string();
-        match streaming
+        let result = streaming
             .append(&stream.handle, &pending, &self.context)
-            .await
-        {
-            DeliveryResult::Ok => {
-                stream.sent += end;
-                self.delivered = true;
-            }
-            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
-                warn!(session_id = %self.session_id, %error, "channel: could not append to a stream");
-            }
+            .await;
+        let outcome = DeliveryOutcome::from(&result);
+        if let Some(error_type) = outcome.error_type() {
+            warn!(session_id = %self.session_id, error_type, "channel: could not append to a stream");
+        } else {
+            stream.sent += end;
+            self.delivered = true;
         }
+        outcome
     }
 
-    async fn close_stream(&mut self, message_id: &str) {
-        self.flush_stream(message_id, true).await;
+    async fn close_stream(&mut self, message_id: &str) -> DeliveryOutcome {
+        let flushed = self.flush_stream(message_id, true).await;
         let Some(stream) = self.streams.remove(message_id) else {
-            return;
+            return flushed;
         };
         self.done.insert(message_id.to_string());
-        if let Some(streaming) = self.adapter.streaming() {
-            if let DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) =
-                streaming.stop(&stream.handle, &self.context).await
-            {
-                warn!(session_id = %self.session_id, %error, "channel: could not stop a stream");
-            }
-            if stream.sent > 0 {
-                self.delivered = true;
-            }
+        let Some(streaming) = self.adapter.streaming() else {
+            return flushed;
+        };
+        let stopped = DeliveryOutcome::from(&streaming.stop(&stream.handle, &self.context).await);
+        if let Some(error_type) = stopped.error_type() {
+            warn!(session_id = %self.session_id, error_type, "channel: could not stop a stream");
         }
+        if stream.sent > 0 {
+            self.delivered = true;
+        }
+        flushed.or(stopped)
     }
 
     fn current_status(&self) -> String {
@@ -680,14 +717,16 @@ impl TurnDelivery {
         let Some(prompt) = approval_prompt(data) else {
             return;
         };
-        match approvals
+        let span = self.telemetry.start(DeliveryKind::Approval);
+        let result = approvals
             .prompt(self.session_id, &prompt, &self.context)
-            .await
-        {
-            DeliveryResult::Ok => self.delivered = true,
-            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
-                warn!(session_id = %self.session_id, %error, "channel: could not show an approval prompt");
-            }
+            .await;
+        let outcome = DeliveryOutcome::from(&result);
+        span.finish(outcome);
+        if let Some(error_type) = outcome.error_type() {
+            warn!(session_id = %self.session_id, error_type, "channel: could not show an approval prompt");
+        } else {
+            self.delivered = true;
         }
     }
 
@@ -754,11 +793,22 @@ impl TurnDelivery {
     }
 
     async fn post(&mut self, text: String) -> Result<(), String> {
-        self.post_message(text, None).await
+        self.post_message(text, None)
+            .await
+            .map_err(|error| match error {
+                DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
+                    error
+                }
+                DeliveryResult::Ok => unreachable!("successful delivery is not an error"),
+            })
     }
 
     /// Post text; a reply's message id links the posted message to it.
-    async fn post_message(&mut self, text: String, message_id: Option<&str>) -> Result<(), String> {
+    async fn post_message(
+        &mut self,
+        text: String,
+        message_id: Option<&str>,
+    ) -> Result<(), DeliveryResult> {
         let message = OutboundChannelMessage {
             session_id: self.session_id,
             text,
@@ -778,9 +828,7 @@ impl TurnDelivery {
                     self.delivered = true;
                     Ok(())
                 }
-                Err(
-                    DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error),
-                ) => Err(error),
+                Err(error) => Err(error),
             };
         }
         match self.adapter.deliver(&message, &self.context).await {
@@ -788,9 +836,7 @@ impl TurnDelivery {
                 self.delivered = true;
                 Ok(())
             }
-            DeliveryResult::TransientError(error) | DeliveryResult::PermanentError(error) => {
-                Err(error)
-            }
+            error => Err(error),
         }
     }
 

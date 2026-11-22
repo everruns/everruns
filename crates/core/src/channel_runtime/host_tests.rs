@@ -110,6 +110,7 @@ impl ChannelSessionPort for FakePort {
             .clone()
             .unwrap_or(SendResolution::Assigned {
                 turn_id: None,
+            turn_traceparent: None,
                 steered: false,
             }))
     }
@@ -372,6 +373,7 @@ fn event(sequence: i64, turn: &str, event_type: &str, data: Value) -> DeliveryEv
         data,
         input_message_id: Some(turn.into()),
         turn_id: Some(format!("logical-{turn}")),
+        turn_traceparent: None,
     }
 }
 

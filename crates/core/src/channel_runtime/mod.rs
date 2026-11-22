@@ -21,6 +21,7 @@ use everruns_contracts::runtime::channel::*;
 mod approval;
 mod attachments;
 mod delivery;
+mod delivery_telemetry;
 mod host;
 mod progress;
 mod store;
