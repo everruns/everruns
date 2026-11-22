@@ -283,28 +283,6 @@ impl Host for StandardHost {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hosted_session_can_be_created_before_a_model_is_selected() {
-        let host = StandardHost::new();
-        let definition = serde_json::json!({
-            "schema_version": 1,
-            "name": "first-chat",
-            "instructions": "Help the user."
-        });
-        let orgs = OrgServices {
-            providers: Arc::new(crate::providers::OrgProviders::default()).host_providers(),
-            mcp: Arc::new(crate::mcp::OrgMcp::from_env()),
-        };
-
-        assert!(host.agent_with(&definition, Some(&orgs)).is_ok());
-        assert!(host.agent(&definition).is_err());
-    }
-}
-
 /// The hosted catalog the v1 worker registers (portable builtins, the
 /// integrations, the hosted product capabilities), for this deployment's
 /// grade. Built once per process.
@@ -384,4 +362,26 @@ pub fn declared_host_calls(definition: &Value) -> std::collections::BTreeSet<&'s
         queue.extend(capability.dependencies().into_iter().map(str::to_owned));
     }
     declared
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hosted_session_can_be_created_before_a_model_is_selected() {
+        let host = StandardHost::new();
+        let definition = serde_json::json!({
+            "schema_version": 1,
+            "name": "first-chat",
+            "instructions": "Help the user."
+        });
+        let orgs = OrgServices {
+            providers: Arc::new(crate::providers::OrgProviders::default()).host_providers(),
+            mcp: Arc::new(crate::mcp::OrgMcp::from_env()),
+        };
+
+        assert!(host.agent_with(&definition, Some(&orgs)).is_ok());
+        assert!(host.agent(&definition).is_err());
+    }
 }
