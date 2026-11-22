@@ -40905,7 +40905,7 @@
           },
           "status": {
             "type": "string",
-            "description": "Current durable execution status."
+            "description": "Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding."
           }
         }
       },

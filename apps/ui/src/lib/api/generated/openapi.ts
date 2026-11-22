@@ -11439,7 +11439,7 @@ export interface components {
        * @description Time the execution was scheduled.
        */
       scheduled_at: string;
-      /** @description Current durable execution status. */
+      /** @description Outcome of the run's task: completed, failed, skipped, cancelled, or queued, running or retrying while it is outstanding. */
       status: string;
     };
     /** @description A trigger: a run the agent starts itself (schedule, webhook, GitHub, MCP event). */

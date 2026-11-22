@@ -125,6 +125,13 @@ Each event is recorded as a delivery (`dispatched`, `filtered`, `duplicate`,
 `/v1/agents/{agent_id}/triggers/{trigger_id}/deliveries`, so a user can see why
 an event did or did not run. History is bounded per trigger.
 
+A schedule tick runs as a durable task in one transaction, so a failed attempt
+rolls back everything it wrote, its delivery row included. The attempt is
+recorded again as a `failed` delivery after the rollback, and the trigger's
+runs (`.../runs`) report the task's outcome (`queued`, `running`, `retrying`,
+`failed` with its error) rather than only that the tick queued it. Before this,
+a schedule that never started a session read as `completed` with no delivery.
+
 Webhook triggers expose the pipeline's knobs as optional templates
 (`event_id_template`, `subject_template`) and a `filter`, rendered against the
 same context as the message (for example `{{webhook.headers.x-github-delivery}}`
