@@ -271,10 +271,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Commit author name": "提交作者姓名",
   "Commit author email": "提交作者邮箱",
   "History depth, in commits": "历史深度（提交数）",
-  "finished": "已完成",
+  finished: "已完成",
   "was cancelled": "已取消",
   "asks:": "提问：",
   "Show the run card for {title}": "显示 {title} 的运行卡片",
   "What the agent received": "智能体收到的内容",
-  "failed": "失败",
+  failed: "失败",
 };

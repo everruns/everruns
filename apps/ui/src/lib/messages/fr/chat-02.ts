@@ -285,10 +285,10 @@ export const messages: Readonly<Record<string, string>> = {
   "Commit author name": "Nom de l'auteur des commits",
   "Commit author email": "E-mail de l'auteur des commits",
   "History depth, in commits": "Profondeur de l'historique, en commits",
-  "finished": "terminé",
+  finished: "terminé",
   "was cancelled": "a été annulé",
   "asks:": "demande :",
   "Show the run card for {title}": "Afficher la carte d'exécution de {title}",
   "What the agent received": "Ce que l'agent a reçu",
-  "failed": "a échoué",
+  failed: "a échoué",
 };
