@@ -173,6 +173,27 @@ impl Database {
         Ok(epoch)
     }
 
+    /// A data plane started over empty (its disks and store prefix new):
+    /// every org on it is enabled again (its wrapped data key) and sent a
+    /// full snapshot. Nothing tells the control plane a data plane lost its
+    /// state, and without this its orgs' turns fail for want of keys and
+    /// providers until something changes. Returns the orgs rejoined.
+    pub async fn dp_rejoin(&self, data_plane_id: &str) -> Result<u64> {
+        let done = sqlx::query(
+            "UPDATE dp_orgs SET enabled = false, delivered_epoch = 0, delivered_version = 0,
+                    next_attempt_at = now(), attempts = 0, updated_at = now()
+              WHERE data_plane_id = $1",
+        )
+        .bind(data_plane_id)
+        .execute(&self.pool)
+        .await?;
+        sqlx::query("SELECT pg_notify($1, '*')")
+            .bind(DP_CONFIG_CHANNEL)
+            .execute(&self.pool)
+            .await?;
+        Ok(done.rows_affected())
+    }
+
     pub async fn dp_org(&self, org_id: i64) -> Result<Option<DpOrgRow>> {
         Ok(sqlx::query_as(concat!(
             "SELECT ",

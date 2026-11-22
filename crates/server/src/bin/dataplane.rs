@@ -25,6 +25,7 @@ USAGE:
     everruns-dataplane warehouse <org_public_id> on|off
     everruns-dataplane diff <org_public_id>
     everruns-dataplane bump-epoch
+    everruns-dataplane rejoin <data_plane_id>
     everruns-dataplane reconcile <org_public_id> [--keep | --drop]
     everruns-dataplane move <org_public_id> [<session_id> | --archived]
 
@@ -33,6 +34,11 @@ database restore, run `diff` for every v2 org, resolve what it lists, then
 `bump-epoch`: every data plane then takes a full snapshot. What a snapshot
 lacked the data plane sets aside: `reconcile` lists it, `--keep` sends it
 again as config, `--drop` forgets it. Running turns finish either way.
+
+`rejoin` is for a data plane started over empty (new disks, new store
+prefix): every org on it is enabled again and sent a full snapshot, since
+the control plane cannot tell that the data plane lost what it had. A data
+plane restored from its store keeps its orgs and needs no rejoin.
 
 `move` moves a running v1 session onto the org's data plane (the org must be
 enabled), keeping its id: its conversation, values, secrets and files go to a
@@ -183,6 +189,15 @@ async fn main() -> Result<()> {
         "bump-epoch" => {
             let epoch = db.dp_bump_epoch().await?;
             println!("control plane epoch {epoch}: every v2 org gets a full snapshot");
+        }
+        "rejoin" => {
+            let plane = args.get(1).context("a data plane id is required")?;
+            anyhow::ensure!(
+                db.dp_data_plane(plane).await?.is_some(),
+                "data plane {plane} is not registered"
+            );
+            let orgs = db.dp_rejoin(plane).await?;
+            println!("{plane}: {orgs} orgs enabled again, each gets a full snapshot");
         }
         "move" => {
             let org_id = org(&db, args.get(1)).await?;

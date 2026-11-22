@@ -1381,7 +1381,12 @@ grants or feed, and nothing changes for it. What it covers:
 - **Control plane epoch and restore.** `everruns-dataplane diff <org>` asks
   the data plane what it holds that the restored database doesn't know.
   `bump-epoch` then makes every data plane take a full snapshot; updates
-  from the old epoch are refused.
+  from the old epoch are refused. The other direction, a data plane
+  started over empty (new disks and store prefix), is invisible to the
+  control plane: its orgs keep failing turns for want of their data keys
+  until `rejoin <data_plane>` enables each again and sends it a full
+  snapshot (found on the live test fleet, 2026-11-22). A data plane
+  restored from its store keeps its orgs and needs neither.
 - **Feed** (`feed.rs`). Usage is journaled once per `attempt_id` through
   the budget service (`source_type` `data_plane`), which posts the cost
   and debits the org's usage policies. Session summaries are kept by
