@@ -143,3 +143,16 @@ fn split_scales_the_price_table_to_the_recorded_cost() {
     let (split, rest) = split_call(2.0, Some(parts));
     assert_eq!((split.uncached_input, split.output, rest), (0.5, 1.5, 0.0));
 }
+
+#[test]
+fn a_turn_without_calls_reports_a_plain_zero() {
+    let spend = summarize(
+        "s".into(),
+        &SpendInputs::default(),
+        vec![],
+        SubagentSpend::default(),
+        Some(Uuid::now_v7()),
+    );
+    let json = serde_json::to_string(&spend).unwrap();
+    assert!(!json.contains("-0.0"), "{json}");
+}

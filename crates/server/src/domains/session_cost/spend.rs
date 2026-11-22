@@ -8,12 +8,16 @@
 //   and the subagents it started, never the org's other spend.
 // - Model calls are counted as the Cost tab counts them (provider-reported
 //   cost, else the price-table estimate). A v1 session's come from
-//   `llm_generations`; a v2 session's from its shard's log (`spend` read),
+//   `llm_generations` plus the committed `llm.generation` events it has not
+//   recorded yet (so a turn sees its own calls); a v2 session's from its
+//   shard's log (`spend` read),
 //   priced here the same way (`session_spend::summarize`).
 // - Sandboxes are priced from their lifecycle spans: the org's rate for the
 //   provider wins, else the provider's list price on the pinned profile's
 //   resources. Stopped time adds only a provider's stopped-disk charge
 //   (Daytona), and only at list price: an org rate is per running hour.
+// - Bashkit's virtual sandbox runs inside the worker and is never billed:
+//   it is left out rather than listed as an unpriced sandbox.
 // - Subagents add their own whole spend, two levels deep and at most 100
 //   per session, so a deep tree cannot make one read unbounded.
 
@@ -136,7 +140,7 @@ async fn spend_inputs(ctx: &Ctx, session_id: SessionId) -> Result<SpendInputs, C
     }
     let id = session_id.uuid();
     ctx.db.database().catch_up_session_trace_fully(id).await?;
-    let calls = ctx
+    let mut calls: Vec<SpendCall> = ctx
         .db
         .session_cost_generations(org, id)
         .await?
@@ -153,6 +157,18 @@ async fn spend_inputs(ctx: &Ctx, session_id: SessionId) -> Result<SpendInputs, C
             estimated_cost_usd: row.estimated_cost_usd,
         })
         .collect();
+    // The usage listener records a call a moment after its event commits;
+    // without these, a read inside a turn would miss the turn's own calls.
+    for (turn, metadata) in ctx.db.session_unrecorded_generations(id).await? {
+        let turn = turn
+            .and_then(|t| t.parse::<TurnId>().ok())
+            .map(|t| t.uuid());
+        if let Ok(metadata) = serde_json::from_value(metadata) {
+            calls.extend(everruns_contracts::runtime::session_spend::spend_call(
+                turn, &metadata,
+            ));
+        }
+    }
     let turns = ctx
         .db
         .session_cost_turns(id)
@@ -201,6 +217,9 @@ pub(crate) async fn priced_sandboxes(
         .unwrap_or_default();
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
+        if row.provider.eq_ignore_ascii_case("bashkit") {
+            continue;
+        }
         let spans = spans.remove(&row.id).unwrap_or_default();
         let mut seconds: HashMap<&str, i64> = HashMap::new();
         for span in &spans {

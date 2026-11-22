@@ -443,4 +443,54 @@ mod reads {
         assert!((costs[0].cost_usd - 0.75).abs() < 1e-9);
         assert!(db.run_turn_costs(org + 1, &uuids).await.unwrap().is_empty());
     }
+
+    /// A spend read inside a turn sees the turn's calls whose events are
+    /// committed but not yet recorded by the usage listener.
+    #[tokio::test]
+    async fn unrecorded_generations_are_the_committed_calls_not_yet_recorded() {
+        let db = StorageBackend::test_database();
+        let session = db.create_test_session().await;
+        let org = everruns_core::DEFAULT_ORG_ID;
+        let turn = TurnId::new();
+        let generation = |model: &str| {
+            event(
+                session,
+                turn,
+                "llm.generation",
+                json!({"messages": [], "output": {}, "metadata": {"model": model,
+                    "usage": {"input_tokens": 10, "output_tokens": 2}}}),
+                None,
+            )
+        };
+        db.create_events(vec![generation("first"), generation("second")])
+            .await
+            .unwrap();
+        let (first,): (uuid::Uuid,) = sqlx::query_as(
+            "SELECT id FROM events WHERE session_id = $1 AND event_type = 'llm.generation' \
+             ORDER BY sequence LIMIT 1",
+        )
+        .bind(session.uuid())
+        .fetch_one(db.database().pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO llm_generations (org_id, session_id, turn_id, event_id, model) \
+             VALUES ($1, $2, $3, $4, 'first')",
+        )
+        .bind(org)
+        .bind(session.uuid())
+        .bind(turn.uuid())
+        .bind(first)
+        .execute(db.database().pool())
+        .await
+        .unwrap();
+
+        let rows = db
+            .session_unrecorded_generations(session.uuid())
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0.as_deref(), Some(turn.to_string().as_str()));
+        assert_eq!(rows[0].1["model"], "second");
+    }
 }
