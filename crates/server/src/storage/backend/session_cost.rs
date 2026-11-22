@@ -280,6 +280,30 @@ impl StorageBackend {
         Ok(rows.into_iter().map(|(data,)| data).collect())
     }
 
+    /// Model calls of the session whose `llm.generation` event is committed
+    /// but not yet in `llm_generations` (the usage listener records it a
+    /// moment later): `(context turn id, metadata)`, so a spend read in the
+    /// middle of a turn sees the turn's own calls. Only events after the last
+    /// recorded one are scanned.
+    pub async fn session_unrecorded_generations(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Vec<(Option<String>, serde_json::Value)>> {
+        let rows: Vec<(Option<String>, serde_json::Value)> = sqlx::query_as(
+            "SELECT e.context->>'turn_id', e.data->'metadata' FROM events e \
+             WHERE e.session_id = $1 AND e.event_type = 'llm.generation' \
+               AND e.sequence > COALESCE((SELECT max(r.sequence) FROM llm_generations g \
+                   JOIN events r ON r.id = g.event_id \
+                   WHERE g.session_id = $1 AND r.session_id = $1), 0) \
+               AND NOT EXISTS (SELECT 1 FROM llm_generations g WHERE g.event_id = e.id) \
+             ORDER BY e.sequence",
+        )
+        .bind(session_id)
+        .fetch_all(self.database().pool())
+        .await?;
+        Ok(rows)
+    }
+
     /// Subagent sessions `session_id` started.
     pub async fn session_child_ids(&self, org_id: i64, session_id: Uuid) -> Result<Vec<Uuid>> {
         let rows: Vec<(Uuid,)> = sqlx::query_as(
