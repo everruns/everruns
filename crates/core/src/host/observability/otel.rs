@@ -60,7 +60,7 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 
 use super::openinference as oi;
 #[path = "otel_causal.rs"]
-mod causal;
+pub(crate) mod causal;
 #[path = "otel_human_wait.rs"]
 mod human_wait;
 use causal::turn_anchor;

@@ -32,6 +32,7 @@ pub(super) async fn run_delivery(
         input_message_id.clone(),
         options,
     );
+    delivery.set_observer(inner.delivery_observer.clone());
     let mut flush = tokio::time::interval(inner.flush_interval);
     flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // Renew well before the lease runs out, so a slow store round trip never

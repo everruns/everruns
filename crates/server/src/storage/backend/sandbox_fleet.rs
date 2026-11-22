@@ -33,7 +33,7 @@ pub fn fleet_state(observed_state: &str) -> &'static str {
     }
 }
 
-const FLEET_STATE_SQL: &str = "CASE s.observed_state \
+const FLEET_STATE_SQL: &str = "CASE observation.state \
     WHEN 'ready' THEN 'running' WHEN 'paused' THEN 'paused' WHEN 'lost' THEN 'lost' \
     WHEN 'provisioning' THEN 'starting' WHEN 'failed' THEN 'failed' \
     WHEN 'absent' THEN 'not_started' ELSE 'deleted' END";
@@ -143,16 +143,18 @@ fn fleet_cte() -> String {
                    s.desired_state, s.generation,
                    env.id AS template_id, env.display_name AS template_name,
                    rev.revision AS template_revision,
-                   i.external_id, i.workspace_path, i.last_init_error,
+                   COALESCE(CASE WHEN freshness.current THEN s.provider_status_external_id END,
+                       i.external_id) AS external_id,
+                   i.workspace_path, i.last_init_error,
                    (SELECT count(*) FROM sandbox_checkpoints c
                      WHERE c.sandbox_id = s.id AND c.attached_at IS NOT NULL) AS checkpoint_count,
                    ARRAY_REMOVE(ARRAY[
-                       CASE WHEN s.observed_state = 'lost' THEN 'lost' END,
-                       CASE WHEN s.observed_state = 'failed' THEN 'failed' END,
+                       CASE WHEN observation.state = 'lost' THEN 'lost' END,
+                       CASE WHEN observation.state = 'failed' THEN 'failed' END,
                        CASE WHEN i.last_init_error IS NOT NULL
-                             AND s.observed_state NOT IN ('deleted', 'deleting')
+                             AND observation.state NOT IN ('deleted', 'deleting')
                             THEN 'init_failed' END,
-                       CASE WHEN s.observed_state = 'ready'
+                       CASE WHEN observation.state = 'ready'
                              AND COALESCE(s.last_activity_at, s.updated_at)
                                  < now() - make_interval(secs => {IDLE_RUNNING_ATTENTION_SECONDS})
                             THEN 'idle_running' END,
@@ -165,6 +167,20 @@ fn fleet_cte() -> String {
                    ]::text[], NULL) AS attention,
                    s.created_at, s.updated_at, s.last_activity_at, s.deleted_at
             FROM sandboxes s
+            LEFT JOIN dp_session_summaries dp
+              ON dp.session_id = 'session_' || replace(s.session_id::text, '-', '')
+             AND dp.org_id = s.org_id
+            CROSS JOIN LATERAL (
+                SELECT s.deleted_at IS NULL
+                     AND s.observed_state NOT IN ('deleted', 'deleting')
+                     AND s.provider_status_observed_at >= GREATEST(
+                         s.updated_at, s.last_activity_at, dp.last_activity_at) AS current
+            ) freshness
+            CROSS JOIN LATERAL (
+                SELECT CASE WHEN freshness.current
+                    THEN COALESCE(s.provider_status_observed_state, s.observed_state)
+                    ELSE s.observed_state END AS state
+            ) observation
             -- A deleted session keeps its sandboxes as history, without a link.
             LEFT JOIN sessions sess ON sess.id = s.session_id AND sess.deleted_at IS NULL
             LEFT JOIN agents a ON a.id = COALESCE(sess.agent_id, s.agent_id)
