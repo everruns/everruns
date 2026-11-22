@@ -132,10 +132,6 @@ impl Capability for SessionCapability {
         SESSION_CAPABILITY_ID
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        everruns_contracts::host_calls::SESSION_INFO
-    }
-
     fn name(&self) -> &str {
         "Session"
     }

@@ -1,13 +1,10 @@
-//! A data plane's host calls (`host_calls.rs`), on a real database: the
-//! org's internal command runs as on a v1 worker, and its answer comes back
-//! sealed for the org under the call's own secret.
-
-use everruns_contracts::host_calls::{self, HostCallAnswer, host_call_secret};
+//! The injected servers' calls (`calls.rs`), on a real database: the
+//! org's internal command runs as on a v1 worker.
 
 use super::*;
-use crate::domains::data_plane::host_calls as dispatcher;
+use crate::domains::data_plane::calls::{self as dispatcher, Answer, CALLS};
 
-/// The org's internal caller, as the route builds it.
+/// The org's internal caller, as the injected servers build it.
 fn internal_ctx(cp: &ControlPlane, org_id: i64) -> crate::domains::common::Ctx {
     crate::domains::common::Ctx::new(
         everruns_core::Caller::internal(org_id),
@@ -18,7 +15,12 @@ fn internal_ctx(cp: &ControlPlane, org_id: i64) -> crate::domains::common::Ctx {
     )
 }
 
-async fn ask(cp: &ControlPlane, org_id: i64, command: &str, params: Value) -> HostCallAnswer {
+/// The call v1 worker command `command` answers.
+fn by_command(command: &str) -> Option<&'static dispatcher::Call> {
+    CALLS.iter().find(|call| call.command == command)
+}
+
+async fn ask(cp: &ControlPlane, org_id: i64, command: &str, params: Value) -> Answer {
     ask_as(cp, &internal_ctx(cp, org_id), command, params).await
 }
 
@@ -28,24 +30,13 @@ async fn ask_as(
     ctx: &crate::domains::common::Ctx,
     command: &str,
     params: Value,
-) -> HostCallAnswer {
-    let row = cp.db.dp_org(ORG).await.unwrap().unwrap();
-    let call = host_calls::by_command(command).expect("a declared host call");
-    let id = uuid::Uuid::now_v7().to_string();
-    let answer = dispatcher::answer(cp, ctx, call, params).await.unwrap();
-    let sealed = dispatcher::seal_answer(cp, &row, &host_call_secret(&id), &answer).unwrap();
-    assert_eq!(sealed.revision, 0);
-    let key = cp.data_key(&row).unwrap();
-    let plain = seal::unseal(&key, &org_public(ORG), &sealed).unwrap();
-    // Sealed for this call only: under another call's id it does not open.
-    let mut other = sealed.clone();
-    other.secret_id = host_call_secret("another");
-    assert!(seal::unseal(&key, &org_public(ORG), &other).is_err());
-    serde_json::from_slice(&plain).unwrap()
+) -> Answer {
+    let call = by_command(command).expect("a call");
+    dispatcher::answer(cp, ctx, call, params).await.unwrap()
 }
 
 #[tokio::test]
-async fn a_lookup_runs_the_workers_command_and_comes_back_sealed() {
+async fn a_call_runs_the_workers_command_for_the_orgs_own_session() {
     let (cp, _, _) = control_plane().await;
     let session = cp
         .db
@@ -56,19 +47,14 @@ async fn a_lookup_runs_the_workers_command_and_comes_back_sealed() {
     let answer = ask(
         &cp,
         ORG,
-        "worker_get_web_search_settings",
+        "worker_get_session_spend",
         json!({ "session_id": session.to_string() }),
     )
     .await;
-    let HostCallAnswer::Value(settings) = answer else {
-        panic!("settings, not {answer:?}");
+    let Answer::Value(spend) = answer else {
+        panic!("spend, not {answer:?}");
     };
-    assert!(settings.is_object(), "{settings}");
-}
-
-#[tokio::test]
-async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
-    let (cp, _, _) = control_plane().await;
+    assert!(spend.is_object(), "{spend}");
     // A session of the default org, asked as ORG.
     let stranger = cp
         .db
@@ -81,45 +67,39 @@ async fn another_orgs_session_is_not_found_and_only_host_calls_are_allowed() {
     let answer = ask(
         &cp,
         ORG,
-        "worker_get_web_search_settings",
+        "worker_get_session_spend",
         json!({ "session_id": stranger.to_string() }),
     )
     .await;
     assert!(
-        matches!(answer, HostCallAnswer::Error { kind: 3, .. }),
+        matches!(answer, Answer::Error { kind: 3, .. }),
         "not found: {answer:?}"
     );
+}
 
-    for command in [
-        "worker_get_connection_token",
-        "worker_get_mcp_connection_token",
-        "worker_get_github_token",
-        "worker_get_service_api_key_connection",
-        "worker_knowledge",
-        "worker_poppy_call",
-        "worker_get_org_egress_allowlist",
-        "slack_action",
-        "platform_command_surface",
-    ] {
-        assert!(host_calls::by_command(command).is_some(), "{command}");
+#[test]
+fn only_what_the_injected_servers_serve_is_a_call() {
+    use everruns_contracts::runtime::capabilities::injected::CREDENTIAL_CALLS;
+    for name in CREDENTIAL_CALLS {
+        assert!(dispatcher::by_name(name).is_some(), "{name}");
     }
+    // Pushed with the org's config, or kept in the session's shard.
     for command in [
+        "worker_get_web_search_settings",
+        "worker_get_tool_approval_policy",
+        "worker_get_org_egress_allowlist",
         "worker_get_sandbox_connection_token",
-        "worker_get_connection_token_for_connection",
-        "session_storage_get",
-        "agents_delete",
-        // A v2 session's SQL databases live in its shard (parity step 9).
+        "worker_register_session_resource",
+        "worker_upsert_leased_resource",
+        "worker_dreaming_state",
         "session_sql_db",
+        "agents_delete",
     ] {
-        assert!(
-            host_calls::by_command(command).is_none(),
-            "{command} is not a host call"
-        );
+        assert!(by_command(command).is_none(), "{command} is not a call");
     }
 }
 
-/// THREAT[TM-AGENT-017]: a platform call runs as the person the forwarding
-/// shard names, only while they are a member, and only for a session that
+/// THREAT[TM-AGENT-017]: a platform call runs as the token's person, only while they are a member, and only for a session that
 /// resolves `platform`; without a person it runs as no one.
 #[tokio::test]
 async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
@@ -127,7 +107,7 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
 
     let (cp, _, _) = control_plane().await;
     // The default org, where the built-in harness the v1 worker's test uses
-    // lives; the answer is still sealed for ORG's data plane.
+    // lives.
     let org = everruns_core::DEFAULT_ORG_ID;
     // A session without a harness reads as the org's base harness.
     crate::setup::org_init::initialize_org_harnesses(&cp.db, org)
@@ -171,7 +151,7 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
         call(&platform, json!(member.to_string())),
     )
     .await;
-    let HostCallAnswer::Value(Value::String(output)) = answer else {
+    let Answer::Value(Value::String(output)) = answer else {
         panic!("a member's call runs: {answer:?}");
     };
     assert!(output.contains("list_models"), "{output}");
@@ -199,7 +179,7 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
         )
         .await;
         assert!(
-            matches!(answer, HostCallAnswer::Error { kind: 2, .. }),
+            matches!(answer, Answer::Error { kind: 2, .. }),
             "{why}: {answer:?}"
         );
     }
@@ -210,7 +190,7 @@ async fn a_platform_call_runs_as_the_named_member_and_never_as_the_org() {
 /// none, and the refusal comes back as the action's own error.
 #[tokio::test]
 async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
-    use everruns_contracts::host_calls::SLACK_ACTION;
+    use crate::domains::data_plane::calls::SLACK_ACTION;
 
     let (cp, _, _) = control_plane().await;
     let mine = cp
@@ -238,7 +218,7 @@ async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
             json!({ "session_id": session.to_string(), "action": react }),
         )
         .await;
-        let HostCallAnswer::Value(answer) = answer else {
+        let Answer::Value(answer) = answer else {
             panic!("a refusal is the action's error: {answer:?}");
         };
         assert_eq!(
@@ -255,7 +235,7 @@ async fn a_slack_action_needs_the_sessions_own_slack_endpoint() {
         json!({ "session_id": mine.to_string(), "action": { "action": "open_dm" } }),
     )
     .await;
-    let HostCallAnswer::Value(answer) = answer else {
+    let Answer::Value(answer) = answer else {
         panic!("{answer:?}");
     };
     assert_eq!(
@@ -402,7 +382,7 @@ async fn a_persons_lookup_records_the_turn_it_acts_for() {
         (
             v2,
             uuid::Uuid::now_v7(),
-            "worker_get_web_search_settings",
+            "worker_knowledge",
             json!(member.to_string()),
             "acts as the org",
         ),
@@ -416,101 +396,4 @@ async fn a_persons_lookup_records_the_turn_it_acts_for() {
             "{why}"
         );
     }
-}
-
-/// A session's resources and leases are the control plane's (parity, step
-/// 10): registered, listed and released through the v1 worker's commands,
-/// for the org's own session only.
-#[tokio::test]
-async fn a_sessions_resources_and_leases_are_kept_here_for_its_org() {
-    let (cp, _, _) = control_plane().await;
-    let session = cp
-        .db
-        .create_session(crate::storage::test_database::test_session_row(ORG))
-        .await
-        .unwrap()
-        .id
-        .to_string();
-    let registered = ask(
-        &cp,
-        ORG,
-        "worker_register_session_resource",
-        json!({
-            "session_id": session,
-            "resource_id": "sandbox_build",
-            "kind": "sandbox",
-            "display_name": "Build box",
-            "status": "active",
-            "metadata": { "role": "resource" },
-        }),
-    )
-    .await;
-    assert!(
-        matches!(&registered, HostCallAnswer::Value(entry) if entry["resource_id"] == "sandbox_build"),
-        "{registered:?}"
-    );
-    let HostCallAnswer::Value(listed) = ask(
-        &cp,
-        ORG,
-        "worker_list_session_resources",
-        json!({ "session_id": session }),
-    )
-    .await
-    else {
-        panic!("a list");
-    };
-    assert_eq!(listed[0]["display_name"], json!("Build box"), "{listed}");
-
-    let leased = ask(
-        &cp,
-        ORG,
-        "worker_upsert_leased_resource",
-        json!({
-            "session_id": session,
-            "provider": "e2b",
-            "resource_type": "sandbox",
-            "external_id": "sbx-1",
-            "lease_duration_seconds": 600,
-            "metadata": {},
-        }),
-    )
-    .await;
-    assert!(
-        matches!(&leased, HostCallAnswer::Value(lease) if lease["external_id"] == "sbx-1"),
-        "{leased:?}"
-    );
-    let released = ask(
-        &cp,
-        ORG,
-        "worker_release_leased_resource",
-        json!({
-            "session_id": session,
-            "provider": "e2b",
-            "resource_type": "sandbox",
-            "external_id": "sbx-1",
-        }),
-    )
-    .await;
-    assert!(matches!(released, HostCallAnswer::Value(_)), "{released:?}");
-
-    // Another org's session is not found.
-    let stranger = cp
-        .db
-        .create_session(crate::storage::test_database::test_session_row(
-            everruns_core::DEFAULT_ORG_ID,
-        ))
-        .await
-        .unwrap()
-        .id;
-    let answer = ask(
-        &cp,
-        ORG,
-        "worker_list_session_resources",
-        json!({ "session_id": stranger.to_string() }),
-    )
-    .await;
-    assert!(
-        matches!(answer, HostCallAnswer::Error { kind: 3, .. }),
-        "not found: {answer:?}"
-    );
 }

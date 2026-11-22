@@ -70,9 +70,6 @@ pub struct Executor {
     pub mcp: Arc<crate::mcp::OrgMcp>,
     /// Managed sandboxes of the sessions whose turns run here.
     pub sandboxes: Arc<crate::sandbox::OrgSandboxes>,
-    /// Host calls a session made that its agent's capabilities do not
-    /// declare, by call.
-    pub host_calls_undeclared: crate::prom::Counters,
 }
 
 impl Executor {
@@ -110,7 +107,6 @@ impl Executor {
             dp_key: Mutex::new(data_plane_key()?),
             mcp,
             sandboxes,
-            host_calls_undeclared: Default::default(),
         });
         let material: Arc<dyn crate::providers::OrgMaterial> = executor.clone();
         orgs.bind(Arc::downgrade(&material));
@@ -278,64 +274,6 @@ impl Executor {
         }
     }
 
-    /// Make one of `org`'s host calls (`everruns_contracts::host_calls`),
-    /// named by the v1 worker command the shared resolvers issue, through
-    /// the directory shard; the answer comes sealed with the org's data key
-    /// and is opened here (`lookups.rs`). A read is retried once when the
-    /// directory shard cannot be reached. A write is sent once
-    /// ([`crate::remote::Remote::post_once`]): an answer that is lost is an
-    /// error, never a second send, and the control plane keeps a receipt
-    /// per call id so a duplicate that still arrives runs once
-    /// (`dp_host_call_receipts`).
-    pub async fn lookup(
-        &self,
-        org: &str,
-        command: &str,
-        params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        use everruns_contracts::dataplane::SealedSecret;
-        use everruns_contracts::host_calls::{HostCallRequest, by_command, host_call_secret};
-        let call =
-            by_command(command).ok_or_else(|| anyhow::anyhow!("{command} is not a host call"))?;
-        let directory = self.cfg.topology.read()?.directory_shard;
-        let id = uuid::Uuid::new_v4().to_string();
-        let request = HostCallRequest {
-            call: id.clone(),
-            params,
-        };
-        let path = format!("/shard/orgs/{org}/host-calls/{}", call.name);
-        // The shard's own wait on the control plane, and a little more.
-        let wait = call.timeout() + Duration::from_secs(5);
-        let sent = if call.retries() {
-            match self.remote.post(directory, &path, &request, wait).await {
-                Ok(sent) => Ok(sent),
-                Err(_) => self.remote.post(directory, &path, &request, wait).await,
-            }
-        } else {
-            self.remote
-                .post_once(directory, &path, &request, wait)
-                .await
-                .map_err(|error| {
-                    error.context(format!(
-                        "{} may or may not have happened: its answer did not arrive",
-                        call.name
-                    ))
-                })
-        };
-        let sealed: SealedSecret = sent?;
-        // The seal binds the secret id; the id must be this call's, or an
-        // answer to another call could stand in for this one.
-        if sealed.secret_id != host_call_secret(&id) || sealed.revision != 0 {
-            anyhow::bail!("the control plane answered another host call");
-        }
-        let (key, _) = self
-            .data_key(org)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("no data plane key (AGENTD_DP_KEY)"))?;
-        let plain = everruns_contracts::dataplane_seal::unseal(&key, org, &sealed)?;
-        Ok(serde_json::from_slice(&plain)?)
-    }
-
     /// `org`'s connection `id`, from the directory shard.
     pub async fn connection(
         &self,
@@ -422,60 +360,42 @@ impl Executor {
         }
     }
 
-    /// Run the due dreams of the orgs whose sessions this executor mirrors.
+    /// Run the due dreams of the sessions this executor mirrors.
     ///
-    /// Decision (parity, step 10): a turn that leaves a dream owed runs it
-    /// from its own timer (`after_turn` in core's dreaming host); this
-    /// sweep is what a v1 worker's `run_due` is, for a dream that timer did
-    /// not finish (a retry, a restart, a budget that reopened). The control
-    /// plane keeps the due index and answers for one org at a time
-    /// (`due_org`), and only its sessions on the data plane; a v1 worker
-    /// never sees them. Every executor may sweep the same org: the dream's
-    /// claim is a compare-exchange, so one runs it. An org none of whose
-    /// sessions an executor mirrors is swept once one of them runs again.
+    /// Decision: a turn that leaves a dream owed runs it from its own timer
+    /// (`after_turn` in core's dreaming host); this sweep is what a v1
+    /// worker's `run_due` is, for a dream that timer did not finish (a
+    /// retry, a restart, a budget that reopened). A session's dreaming
+    /// state is its own (`session_records.rs`), so the sweep reads the due
+    /// time from the sessions it mirrors. Every executor may sweep the same
+    /// session: the dream's claim is a compare-exchange, so one runs it.
     async fn dreams_loop(self: Arc<Self>) {
         let mut tick = tokio::time::interval(self.cfg.dream_sweep);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let material: Arc<dyn crate::providers::OrgMaterial> = self.clone();
-        let material = Arc::downgrade(&material);
         loop {
             tick.tick().await;
             if self.draining.load(Ordering::SeqCst) {
                 return;
             }
-            let orgs: std::collections::BTreeSet<String> = self
+            let now = everruns_contracts::rt::utc_now().timestamp();
+            let due: Vec<SessionId> = self
                 .remote
                 .shared
                 .state
                 .read()
                 .sessions
-                .values()
-                .filter_map(|s| s.tenant.clone())
+                .iter()
+                .filter(|(id, s)| s.platform.dream_due(**id, now))
+                .map(|(id, _)| *id)
+                .take(32)
                 .collect();
-            for org in orgs {
-                let Some(lookups) = crate::lookups::for_org(material.clone(), org.clone()) else {
-                    return;
-                };
-                let now = everruns_contracts::rt::utc_now().timestamp();
-                let due = match everruns_internal_protocol::commands::dreaming::due_in_org(
-                    &lookups, now, 32,
-                )
-                .await
-                {
-                    Ok(due) => due,
+            for session in due {
+                match self.engine.maintain_dreaming(session).await {
+                    Ok(ran) => self
+                        .stats
+                        .inc(&[("event", if ran { "dreamed" } else { "dream_waited" })]),
                     Err(error) => {
-                        tracing::debug!(%org, %error, "due dreams not read");
-                        continue;
-                    }
-                };
-                for session in due {
-                    match self.engine.maintain_dreaming(session).await {
-                        Ok(ran) => self
-                            .stats
-                            .inc(&[("event", if ran { "dreamed" } else { "dream_waited" })]),
-                        Err(error) => {
-                            tracing::warn!(%org, %session, %error, "a due dream did not run");
-                        }
+                        tracing::warn!(%session, %error, "a due dream did not run");
                     }
                 }
             }
@@ -713,11 +633,6 @@ pub fn router(executor: Arc<Executor>) -> axum::Router {
                         "Orphaned sandboxes removed before a create, by provider.",
                         &executor.sandboxes.orphans,
                     );
-                    w.counters(
-                        "executor_host_calls_undeclared_total",
-                        "Host calls a session made that its agent's capabilities do not declare, by call.",
-                        &executor.host_calls_undeclared,
-                    );
                     w.out
                 },
             ),
@@ -807,6 +722,11 @@ impl crate::providers::OrgMaterial for Executor {
         })
     }
 
+    fn owner(&self, session: SessionId) -> Option<String> {
+        let state = self.remote.shared.state.read();
+        state.sessions.get(&session)?.platform.owner.clone()
+    }
+
     fn controller_url(&self, session: SessionId, name: &str) -> Option<String> {
         let state = self.remote.shared.state.read();
         state
@@ -816,46 +736,6 @@ impl crate::providers::OrgMaterial for Executor {
             .servers
             .get(name)
             .cloned()
-    }
-
-    fn declared_host_calls(
-        &self,
-        session: SessionId,
-    ) -> Option<std::collections::BTreeSet<&'static str>> {
-        let (definition, memory) = self
-            .remote
-            .shared
-            .state
-            .read()
-            .sessions
-            .get(&session)
-            .map(|s| (s.definition.clone(), !s.platform.memory.is_empty()))?;
-        let mut declared = crate::host::declared_host_calls(&definition);
-        // A session the control plane gave Memory reaches it per call
-        // (`memory.rs`).
-        if memory {
-            declared.insert(everruns_contracts::host_calls::MEMORY_FILE);
-        }
-        Some(declared)
-    }
-
-    fn undeclared_host_call(&self, call: &str) {
-        self.host_calls_undeclared.inc(&[("call", call)]);
-    }
-
-    fn looks_up(&self) -> bool {
-        // A data plane key means a control plane wraps this shard's keys,
-        // so it is the one lookups go to.
-        self.dp_key.lock().is_some()
-    }
-
-    async fn lookup(
-        &self,
-        org: &str,
-        command: &str,
-        params: serde_json::Value,
-    ) -> anyhow::Result<everruns_contracts::host_calls::HostCallAnswer> {
-        Executor::lookup(self, org, command, params).await
     }
 
     async fn data_key(

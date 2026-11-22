@@ -93,6 +93,8 @@ pub struct Gateway {
     tenants: Mutex<HashMap<SessionId, String>>,
     /// The link's token, required on `/dp/v1` (`AGENTD_DP_TOKEN`).
     link_token: Mutex<crate::node_control::LinkToken>,
+    /// The data plane's key, when linked (`ControlPlane::dp_key`).
+    dp_key: Mutex<Option<everruns_contracts::dataplane_seal::Key>>,
     /// Each shard's stream view, for finding a session's stream node.
     pub(crate) views: crate::stream::Deliver,
 }
@@ -122,6 +124,7 @@ impl Gateway {
             org_tokens: std::sync::OnceLock::new(),
             tenants: Mutex::default(),
             link_token: Mutex::new(crate::node_control::link_token().map(Arc::from)),
+            dp_key: Mutex::new(crate::executor::data_plane_key().ok().flatten()),
             views: Default::default(),
         });
         if let Some(tokens) = crate::org_token::OrgTokens::from_env() {
@@ -142,6 +145,16 @@ impl Gateway {
     /// Require `token` on `/dp/v1`; takes effect for routers built after.
     pub fn set_link_token(&self, token: Option<String>) {
         *self.link_token.lock() = token.map(Arc::from);
+    }
+
+    /// Use `key` as the data plane's key.
+    pub fn set_dp_key(&self, key: Option<everruns_contracts::dataplane_seal::Key>) {
+        *self.dp_key.lock() = key;
+    }
+
+    /// The data plane's key; none when this data plane is not linked.
+    pub fn dp_key(&self) -> Option<everruns_contracts::dataplane_seal::Key> {
+        *self.dp_key.lock()
     }
 
     pub fn link_token(&self) -> crate::node_control::LinkToken {
@@ -584,6 +597,8 @@ impl Gateway {
             memory,
             servers,
             importing,
+            subagent,
+            owner,
         } = joining;
         // Reject a malformed definition here, not at its first turn. Whether
         // a node has the tools and provider it names shows at the turn.
@@ -639,6 +654,8 @@ impl Gateway {
             "memory": memory,
             "servers": servers,
             "importing": importing,
+            "subagent": subagent,
+            "owner": owner,
         });
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
@@ -937,6 +954,11 @@ pub struct Joining {
     /// A moved v1 session being imported: closed to messages until the
     /// control plane activates it (`state::Command::Importing`).
     pub importing: bool,
+    /// The session that started it, when it is a subagent
+    /// ([`crate::platform::Platform::origin`]).
+    pub subagent: Option<everruns_contracts::dataplane::SubagentOrigin>,
+    /// The person who owns it ([`crate::platform::Platform::owner`]).
+    pub owner: Option<String>,
 }
 
 pub(crate) fn max_request_bytes() -> usize {

@@ -106,13 +106,6 @@ pub fn shard_router(node: Arc<Node>) -> Router {
             "/shard/orgs/{org}/connections/{connection}",
             get(shard_connection).post(shard_connection),
         )
-        .route(
-            "/shard/orgs/{org}/host-calls/{name}",
-            post(crate::host_calls::shard_host_call),
-        )
-        // The route host calls replaced, kept while executors of the
-        // release before roll over. Remove with the release after.
-        .route("/shard/orgs/{org}/lookups", post(shard_lookup))
         .route("/shard/orgs/{org}/sessions", get(shard_org_sessions))
         .route("/shard/tenants", get(shard_tenants).post(shard_tenants))
         .with_state(node.clone())
@@ -189,6 +182,9 @@ struct OrgSession {
     /// The control plane's id for it, so its record and the data plane's
     /// session are one session; creating again is a no-op.
     id: everruns_contracts::typed_id::SessionId,
+    /// The person who owns it ([`crate::platform::Platform::owner`]).
+    #[serde(default)]
+    owner: Option<String>,
     /// The org's agent, at its current revision.
     agent_ref: String,
     /// Or the session's own declaration of that agent: the agent with the
@@ -272,6 +268,8 @@ async fn org_session(
                 memory: body.memory,
                 servers: body.servers,
                 importing: body.importing,
+                subagent: None,
+                owner: body.owner,
             },
         )
         .await?;
@@ -858,49 +856,6 @@ async fn shard_connection(
             .get(&org)
             .and_then(|c| c.connections.get(&connection).cloned()),
     ))
-}
-
-/// A legacy lookup from an executor of the release before host calls
-/// (`host_calls.rs`), passed on to the control plane's legacy route. The
-/// answer comes back sealed with the org's data key and goes to the
-/// executor unopened.
-async fn shard_lookup(
-    State(node): State<Arc<Node>>,
-    Path(org): Path<String>,
-    Json(mut request): Json<everruns_contracts::dataplane::LookupRequest>,
-) -> Result<Json<everruns_contracts::dataplane::SealedSecret>, ApiError> {
-    let cp = node.cfg.control_plane.as_ref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        "this shard has no control plane".to_owned(),
-    ))?;
-    if everruns_contracts::host_calls::by_command(&request.command)
-        .is_some_and(|call| call.acts_as == everruns_contracts::host_calls::ActsAs::Person)
-    {
-        crate::host_calls::act_as_sender(&node, &mut request.params).await?;
-    }
-    let failed = |error: reqwest::Error| {
-        tracing::warn!(%org, %error, "a lookup did not reach the control plane");
-        (
-            StatusCode::BAD_GATEWAY,
-            "the control plane did not answer the lookup".to_owned(),
-        )
-    };
-    let reply = cp
-        .post(&node.http, &format!("/dp/v1/tenants/{org}/lookups"))
-        .json(&request)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-        .map_err(failed)?;
-    if !reply.status().is_success() {
-        let status = reply.status();
-        tracing::warn!(%org, %status, command = %request.command, "the control plane refused a lookup");
-        return Err((
-            StatusCode::BAD_GATEWAY,
-            format!("the control plane refused the lookup ({status})"),
-        ));
-    }
-    Ok(Json(reply.json().await.map_err(failed)?))
 }
 
 /// Every session of `org` in this shard, with its full log (an export).

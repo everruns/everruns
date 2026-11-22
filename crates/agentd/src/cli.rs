@@ -513,6 +513,9 @@ pub async fn serve_node_on(
     let gateway = Gateway::new(topology);
     if let Some(cp) = &node.cfg.control_plane {
         gateway.set_link_token(cp.token.clone());
+        if let Some(key) = &cp.dp_key {
+            gateway.set_dp_key(Some(key.0));
+        }
         if let Some(url) = &cp.jwks_url {
             gateway.require_org_tokens(Arc::new(crate::org_token::OrgTokens::new(
                 Some(url.clone()),

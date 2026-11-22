@@ -62,12 +62,22 @@ pub const CREDENTIALS: &str = "credentials";
 /// [`CREDENTIAL_CALLS`]. Answers `{"ok": value}` or
 /// `{"error": {"kind", "message"}}` as text.
 pub const CREDENTIAL_TOOL: &str = "credential";
-/// The credential lookups [`CREDENTIALS`] serves, by host call name.
+/// A provider connection token, as the turn's person or the agent.
+pub const CONNECTION_TOKEN: &str = "connection_token";
+/// The token of an MCP server that acts as the turn's person (`user`, or
+/// `user_or_service` falling back to the agent's grant), or of a
+/// connection-backed preset; refreshed in the control plane.
+pub const MCP_CONNECTION_TOKEN: &str = "mcp_connection_token";
+/// A GitHub token minted for one use.
+pub const GITHUB_TOKEN: &str = "github_token";
+/// The responding agent's service API key.
+pub const SERVICE_API_KEY: &str = "service_api_key";
+/// The credential lookups [`CREDENTIALS`] serves.
 pub const CREDENTIAL_CALLS: [&str; 4] = [
-    crate::host_calls::CONNECTION_TOKEN,
-    crate::host_calls::MCP_CONNECTION_TOKEN,
-    crate::host_calls::GITHUB_TOKEN,
-    crate::host_calls::SERVICE_API_KEY,
+    CONNECTION_TOKEN,
+    MCP_CONNECTION_TOKEN,
+    GITHUB_TOKEN,
+    SERVICE_API_KEY,
 ];
 pub const CONTROLLER_SERVERS: [&str; 4] =
     [MEMORY_FILES, PLATFORM_COMMANDS, PERSON_MCP, CREDENTIALS];

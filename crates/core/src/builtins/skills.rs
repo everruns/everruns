@@ -137,10 +137,6 @@ impl Capability for SkillsCapability {
         SKILLS_CAPABILITY_ID
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        everruns_contracts::host_calls::SKILL_ACTIVATIONS
-    }
-
     fn name(&self) -> &str {
         "Agent Skills"
     }

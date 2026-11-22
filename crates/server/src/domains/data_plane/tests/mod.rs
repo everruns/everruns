@@ -284,9 +284,16 @@ async fn a_v1_org_has_no_data_plane() {
 }
 
 /// What a newly enabled org's full snapshot holds: its policy, then the
-/// org settings it was enabled with (web search, tool approval, egress).
-fn snapshot_kinds() -> [&'static str; 4] {
-    ["Policy", "Connection", "Connection", "Connection"]
+/// org settings it was enabled with (web search, tool approval, egress,
+/// helper model catalog).
+fn snapshot_kinds() -> [&'static str; 5] {
+    [
+        "Policy",
+        "Connection",
+        "Connection",
+        "Connection",
+        "Connection",
+    ]
 }
 
 #[tokio::test]
@@ -1085,8 +1092,8 @@ async fn an_orgs_agents_are_in_its_data_planes_catalog() {
     assert!(live.iter().all(|item| item.item_id != key), "{live:?}");
 }
 
+mod calls;
 mod event_tap;
-mod host_calls;
 mod mcp;
 mod memory;
 mod moves;

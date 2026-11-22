@@ -39,11 +39,11 @@ use crate::storage::{DataPlaneRow, DpOrgRow, EncryptionService, StorageBackend};
 pub mod agent_scripts;
 pub mod allowances;
 pub mod attachments;
+pub mod calls;
 pub mod catalog;
 pub mod default_plane;
 pub mod event_tap;
 pub mod feed;
-pub mod host_calls;
 pub mod mcp;
 pub mod memory;
 pub mod moves;
@@ -52,6 +52,7 @@ pub mod outbox;
 pub mod providers;
 pub mod sandboxes;
 pub mod session_plane;
+pub mod session_records;
 pub mod sessions;
 pub mod subagents;
 pub mod task_webhooks;
@@ -192,6 +193,9 @@ pub struct NewSession<'a> {
     /// A moved v1 session being imported: closed to messages until it is
     /// activated (`moves.rs`).
     pub importing: bool,
+    /// The person who owns it (`resolved_owner_user_id`): whose own tool
+    /// approval settings its turns take (`org_settings.rs`).
+    pub owner: Option<uuid::Uuid>,
 }
 
 /// A data plane as the control plane talks to it. The v1 answer
@@ -402,6 +406,9 @@ impl DataPlane for HttpDataPlane {
         }
         if session.importing {
             body["importing"] = serde_json::json!(true);
+        }
+        if let Some(owner) = session.owner {
+            body["owner"] = serde_json::json!(owner);
         }
         self.request(reqwest::Method::POST, url)
             .json(&body)

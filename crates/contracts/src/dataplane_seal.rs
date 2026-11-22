@@ -181,6 +181,12 @@ pub fn session_secret_id(session: &str, name: &str) -> String {
     format!("session/{session}/{name}")
 }
 
+/// The secret id a task push config's signing secret is sealed under:
+/// binds it to the session and the config.
+pub fn push_secret_id(session: &str, config: &str) -> String {
+    format!("push/{session}/{config}")
+}
+
 /// Seal a session secret's value as it is kept in the session's state on
 /// its shard (design.md, "Session secrets ... sealed with the same org data
 /// key"): the JSON of its [`SealedSecret`]. Whoever writes it (the control

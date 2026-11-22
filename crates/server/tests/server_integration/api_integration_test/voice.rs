@@ -53,6 +53,7 @@ async fn seed_foreign_voice_session(server: &TestServer) -> SessionId {
     server
         .db
         .upsert_leased_resource(UpsertLeasedResourceRow {
+            id: None,
             org_id: org.org_id,
             session_id: session.id,
             provider: "openai".to_string(),
@@ -162,6 +163,7 @@ async fn test_voice_end_releases_lease_in_owning_org() {
     server
         .db
         .upsert_leased_resource(UpsertLeasedResourceRow {
+            id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             session_id,
             provider: "openai".to_string(),

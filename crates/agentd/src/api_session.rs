@@ -304,7 +304,10 @@ async fn schedules(
         }));
     }
     // The session's agent is set by its create (`api.rs` `create_session`).
-    if matches!(body.action, Some(crate::platform::Op::Agent { .. })) {
+    if matches!(
+        body.action,
+        Some(crate::platform::Op::Agent { .. } | crate::platform::Op::Subagent { .. })
+    ) {
         return Ok(Json(ShardReply::Refused {
             reason: "a session's agent is set when it is created".into(),
         }));
@@ -343,6 +346,9 @@ pub(crate) async fn platform(
     };
     Ok(match node.propose(command).await {
         Ok((Response::Value { value }, _)) => ShardReply::Ok { value },
+        Ok((Response::Ok, _)) => ShardReply::Ok {
+            value: serde_json::Value::Null,
+        },
         Ok((Response::Moved { shard }, _)) => ShardReply::Moved { shard },
         Ok((Response::Frozen, _)) => ShardReply::Frozen,
         Ok((Response::NotFound, _)) => ShardReply::NotFound,
@@ -518,10 +524,11 @@ enum PushConfigs {
     },
     Add {
         task: String,
-        config: crate::tasks::PushConfig,
-        /// Its signing secret, handed to the control plane, never kept.
+        config: Box<crate::tasks::PushConfig>,
+        /// Its signing secret, sealed with the org's data key by the edge
+        /// (`gateway_v1.rs`); this node keeps only the ciphertext.
         #[serde(default)]
-        secret: Option<String>,
+        sealed: Option<everruns_contracts::dataplane::SealedSecret>,
     },
     Delete {
         task: String,
@@ -563,17 +570,22 @@ async fn push_configs(
         PushConfigs::Add {
             task,
             mut config,
-            secret,
+            sealed,
         } => {
-            if let Some(secret) = secret.filter(|s| !s.is_empty()) {
-                if let Err(reply) = hand_over_secret(&node, id, &config.id, &secret).await {
-                    return Ok(Json(reply));
+            if let Some(sealed) = sealed {
+                let expected =
+                    everruns_contracts::dataplane_seal::push_secret_id(&id.to_string(), &config.id);
+                if sealed.secret_id != expected {
+                    return Ok(Json(ShardReply::Refused {
+                        reason: "the signing secret is sealed for another config".into(),
+                    }));
                 }
                 config.has_secret = true;
+                config.sealed_secret = Some(sealed);
             }
             TaskOp::AddPushConfig {
                 task_id: task,
-                config,
+                config: *config,
             }
         }
         PushConfigs::Delete { task, config_id } => TaskOp::DeletePushConfig {
@@ -584,44 +596,6 @@ async fn push_configs(
     Ok(Json(
         platform(&node, id, crate::platform::Op::Task(op)).await?,
     ))
-}
-
-/// Hand push config `config`'s signing secret to the control plane before
-/// the config is written: a config that says it has one always does. A
-/// refusal is the command's answer (the gateway retries only a node that
-/// did not answer), so the caller sees why.
-async fn hand_over_secret(
-    node: &Node,
-    session: SessionId,
-    config: &str,
-    secret: &str,
-) -> Result<(), ShardReply> {
-    if node.cfg.control_plane.is_none() {
-        return Err(ShardReply::Refused {
-            reason: "a signing secret needs a control plane to keep it".into(),
-        });
-    }
-    let org = match crate::api::lookup(node, session, |s| s.tenant.clone()) {
-        Lookup::Here(Some(org)) => org,
-        Lookup::Here(None) => {
-            return Err(ShardReply::Refused {
-                reason: "a signing secret needs the session's org".into(),
-            });
-        }
-        Lookup::Moved { shard } => return Err(ShardReply::Moved { shard }),
-        Lookup::Missing => return Err(ShardReply::NotFound),
-    };
-    crate::host_calls::from_node(
-        node,
-        &org,
-        everruns_contracts::host_calls::TASK_PUSH_SECRET,
-        config,
-        json!({ "session_id": session, "config_id": config, "secret": secret }),
-    )
-    .await
-    .map_err(|(_, reason)| ShardReply::Refused {
-        reason: format!("the signing secret was not kept: {reason}"),
-    })
 }
 
 #[cfg(test)]

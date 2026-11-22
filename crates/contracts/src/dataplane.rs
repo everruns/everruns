@@ -107,6 +107,11 @@ pub struct AgentCard {
     pub agent: Value,
     /// Its harness, inheritance resolved, as the runtime's `HarnessDefinition`.
     pub harness: Value,
+    /// The model preset the agent takes its models from, when it has one:
+    /// the preset a `job` helper target looks in first
+    /// (`runtime::helper_models::resolve_helper_model`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_preset: Option<String>,
 }
 
 fn one() -> u32 {
@@ -174,6 +179,15 @@ pub const TOOL_APPROVAL_SETTING: &str = "setting:tool_approval";
 /// The egress grants the boundary enforces for the org: `{"patterns":
 /// [...], "open": bool}`, patterns only when granted.
 pub const EGRESS_SETTING: &str = "setting:egress";
+/// The own tool approval settings (`tool_approval_policy::PersonalToolApproval`)
+/// of the org member `user` (the control plane's user id), for the sessions
+/// that person owns.
+pub fn personal_approval_setting(user: &str) -> String {
+    format!("setting:tool_approval_personal:{user}")
+}
+/// The org's helper model catalog (`runtime::helper_models::HelperCatalog`):
+/// what a spawn's helper key resolves against on a shard.
+pub const HELPER_MODEL_SETTING: &str = "setting:helper_models";
 
 /// The secret holding the key of the org's search account `account` (an
 /// organization connection whose provider has a search driver).
@@ -440,27 +454,6 @@ pub struct AllowanceGrant {
     pub per_call_micros: Option<i64>,
 }
 
-// --------------------------------------------------------------- lookups
-
-/// `POST /dp/v1/tenants/{org}/lookups`: the route host calls
-/// (`host_calls`) replaced, kept while shards and executors of the release
-/// before roll over. `command` is the v1 worker command; the control plane
-/// answers it as the host call `host_calls::by_command` names. Remove with
-/// the release after.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct LookupRequest {
-    /// A fresh id per lookup: the answer is sealed under
-    /// [`lookup_secret`] of it, so it cannot pass for another's.
-    pub request: String,
-    pub command: String,
-    pub params: Value,
-}
-
-/// The secret id a legacy lookup's answer is sealed under.
-pub fn lookup_secret(request: &str) -> String {
-    format!("lookup:{request}")
-}
-
 // ------------------------------------------------------------------ feed
 
 /// `POST /dp/v1/feed`. At least once.
@@ -571,6 +564,30 @@ pub enum Record {
         #[serde(default)]
         targets: Vec<PushTarget>,
     },
+    /// One of a session's resources (a fleet sandbox, an activated skill)
+    /// as its shard now holds it, or its removal (`resource: null`). The
+    /// shard keeps them; the control plane mirrors them for the console's
+    /// Resources panel.
+    SessionResource {
+        session_id: String,
+        resource_id: String,
+        /// The entry (`SessionResourceEntry`), or null once removed.
+        #[serde(default)]
+        resource: Value,
+    },
+    /// The lease of something one of a session's tools started at a
+    /// provider (`LeasedResource`), as its shard now holds it. The control
+    /// plane mirrors it so its sweeper stops what a session left running.
+    Lease {
+        session_id: String,
+        lease: Value,
+    },
+    /// A subagent a session started on the data plane: the control plane
+    /// gives it a session record under the same id, as a v1 subagent has.
+    Subagent {
+        session_id: String,
+        origin: SubagentOrigin,
+    },
     OrgEvent {
         /// `budget_exhausted`, `limit_hit`, `suspended`.
         kind: String,
@@ -632,6 +649,20 @@ pub enum Record {
     Unknown,
 }
 
+/// Where a subagent came from ([`Record::Subagent`]): the session that
+/// started it and what it runs. Ids are the control plane's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubagentOrigin {
+    pub parent_session_id: String,
+    pub harness_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+}
+
 /// Where a task's webhook goes ([`Record::TaskTransition`]).
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PushTarget {
@@ -642,10 +673,14 @@ pub struct PushTarget {
     /// agent's own tool input, already in the session's log).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret: Option<String>,
-    /// The config's signing key is kept in the control plane under its id
-    /// (`task_push_secret`), never in the shard.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub secret_held: bool,
+    /// The signing key of a config made through the API, sealed with the
+    /// org's data key under [`dataplane_seal::push_secret_id`] by the edge
+    /// that took it, so the shard and the feed hold ciphertext only; the
+    /// control plane opens it to sign.
+    ///
+    /// [`dataplane_seal::push_secret_id`]: crate::dataplane_seal::push_secret_id
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed: Option<SealedSecret>,
 }
 
 impl std::fmt::Debug for PushTarget {
@@ -654,7 +689,7 @@ impl std::fmt::Debug for PushTarget {
             .field("label", &self.label)
             .field("url", &self.url)
             .field("secret", &self.secret.as_ref().map(|_| "[redacted]"))
-            .field("secret_held", &self.secret_held)
+            .field("sealed", &self.sealed.is_some())
             .finish()
     }
 }

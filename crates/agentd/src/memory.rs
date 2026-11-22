@@ -6,40 +6,35 @@
 //! Decisions:
 //! - Memory stays in the control plane: it is shared across sessions,
 //!   people and agents of the org, so no one session's shard can own it.
-//!   Each file operation is one host call ([`MEMORY_FILE`]), and the control
-//!   plane serves it only inside the session's own mounts, resolved from
-//!   its record (`data_plane::memory` in the server).
+//!   The control plane serves it as files ([`MEMORY_FILES`], an injected
+//!   files server speaking `io.everruns/files`): each operation is one MCP
+//!   request there with a session token naming the session and its org,
+//!   served only inside the session's own mounts, resolved from its record
+//!   (`data_plane::memory` in the server).
 //! - A session mounts only what the control plane sent with its create
 //!   ([`crate::platform::Platform::memory`]), so a session without Memory
-//!   never calls. A subagent's child gets none: the control plane holds no
-//!   record for it.
+//!   never calls. A subagent's child gets its parent's mounts; the control
+//!   plane resolves them against the child's own record.
 //! - Nothing is cached: a read sees what another session wrote a moment
 //!   ago, as on a v1 worker.
 //! - No content search: the control plane's file service searches a whole
 //!   workspace, not one mount. A shell's `grep` reads the files instead.
-//! - Where the control plane serves Memory as files
-//!   ([`Memory::server`], an injected files server speaking
-//!   `io.everruns/files`), each operation is one MCP request there with a
-//!   session token naming the session and its org, not a host call; the
-//!   server makes the same check against the session's record. The host
-//!   call stays for a control plane that does not serve it yet.
+//! - A session whose create brought no files server (a standalone shard)
+//!   has no Memory.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::host_calls::MEMORY_FILE;
 use everruns_contracts::runtime::capabilities::injected::MEMORY_FILES;
 use everruns_contracts::runtime::mcp_extensions::files_method;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::HostBackends;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::session_files::SessionFileSystem;
-use everruns_internal_protocol::commands::InternalCommandTransport;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::lookups::OrgLookups;
 use crate::providers::OrgMaterial;
 
 /// A session's Memory as its control plane gives it.
@@ -74,36 +69,20 @@ pub const MOUNTS: &[&str] = &[
     "/room",
 ];
 
-/// How a mount reaches the control plane.
-#[derive(Clone)]
-enum Via {
-    /// The `memory_file` host call over the link.
-    HostCall(OrgLookups),
-    /// The control plane's files server, with a session token.
-    Files(crate::mcp::ControllerServer),
-}
-
 /// `backends` with the mounts of `session`'s Memory, served by its files
-/// server when it has one, else through `lookups`. Neither (no control
-/// plane): no Memory.
+/// server. None (no control plane): no Memory.
 pub(crate) fn attach(
     mut backends: HostBackends,
     material: Option<&std::sync::Weak<dyn OrgMaterial>>,
-    lookups: Option<OrgLookups>,
     session: SessionId,
     memory: &SessionMemory,
 ) -> HostBackends {
     if memory.mounts.is_empty() {
         return backends;
     }
-    let via = match &memory.server {
-        Some(url) => {
-            crate::mcp::ControllerServer::for_session(material, session, MEMORY_FILES, url)
-                .map(Via::Files)
-        }
-        None => lookups.map(Via::HostCall),
-    };
-    let Some(via) = via else {
+    let Some(server) = memory.server.as_deref().and_then(|url| {
+        crate::mcp::ControllerServer::for_session(material, session, MEMORY_FILES, url)
+    }) else {
         return backends;
     };
     for mount in memory
@@ -112,7 +91,7 @@ pub(crate) fn attach(
         .filter(|m| MOUNTS.contains(&m.as_str()))
     {
         let backend: Arc<dyn SessionFileSystem> = Arc::new(ShardMemory {
-            via: via.clone(),
+            server: server.clone(),
             session,
             mount: mount.clone(),
         });
@@ -130,7 +109,8 @@ pub(crate) fn attach(
 
 /// One Memory mount of one session, in the control plane.
 struct ShardMemory {
-    via: Via,
+    /// The control plane's files server, with a session token.
+    server: crate::mcp::ControllerServer,
     session: SessionId,
     /// Where it hangs (`/memory/user`).
     mount: String,
@@ -174,40 +154,17 @@ impl ShardMemory {
                 "a session's tools reach only its own Memory",
             ));
         }
-        let lookups = match &self.via {
-            Via::HostCall(lookups) => lookups,
-            Via::Files(server) => {
-                let mut params = json!({ "path": self.outer(path) });
-                if let (Some(params), Value::Object(args)) = (params.as_object_mut(), args) {
-                    params.extend(args);
-                }
-                let answer = server
-                    .client
-                    .files(&server.connection, &files_method(op), params)
-                    .await
-                    .map_err(|error| AgentLoopError::tool(error.to_string()))?;
-                return serde_json::from_value(answer)
-                    .map_err(|error| AgentLoopError::store(error.to_string()));
-            }
-        };
-        let mut params = json!({
-            "session_id": session.to_string(),
-            "op": op,
-            "path": self.outer(path),
-        });
+        let mut params = json!({ "path": self.outer(path) });
         if let (Some(params), Value::Object(args)) = (params.as_object_mut(), args) {
             params.extend(args);
         }
-        let answer = match lookups.execute_internal_command(MEMORY_FILE, params).await {
-            Ok(Ok(answer)) => answer,
-            Ok(Err(error)) => return Err(AgentLoopError::tool(error.message)),
-            Err(error) => return Err(AgentLoopError::store(error.to_string())),
-        };
-        if let Some(error) = answer.get("error").and_then(Value::as_str) {
-            return Err(AgentLoopError::tool(error));
-        }
-        serde_json::from_value(answer["ok"].clone())
-            .map_err(|error| AgentLoopError::store(error.to_string()))
+        let answer = self
+            .server
+            .client
+            .files(&self.server.connection, &files_method(op), params)
+            .await
+            .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+        serde_json::from_value(answer).map_err(|error| AgentLoopError::store(error.to_string()))
     }
 
     fn file(&self, mut file: SessionFile) -> SessionFile {

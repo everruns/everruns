@@ -2029,7 +2029,7 @@ stores such as knowledge, memory, the platform API) is the live check's
 (11.6c); a tool whose store a shard lacks answers with an error, as on a
 v1 host without it.
 
-**Parity, Phase A: host calls (2026-11-19).** The lookups below became
+**Parity, Phase A: host calls (2026-11-19).** Superseded on 2026-11-22: the host-call path is gone (see "Native vs injected" below). The lookups below became
 host calls, the one way a data plane asks its control plane anything at
 call time. Each call is declared once in `everruns_contracts::host_calls`
 with who it acts as (the org, the person who sent the turn, or a channel
@@ -2099,7 +2099,7 @@ or when a declared gap is served, so closing a gap updates the table in
 the same change. A session route the server serves outside the API
 document (`commands`, `environment`) is declared by hand.
 
-**Parity, Phase A: the parity gate (2026-11-19).** Each capability
+**Parity, Phase A: the parity gate (2026-11-19).** Superseded on 2026-11-22: the host-call path is gone (see "Native vs injected" below). Each capability
 declares the host calls its tools make (`Capability::host_calls`); two
 calls are the turn's own and need no declaration (`host_calls::TURN_CALLS`:
 the approval policy and the egress grants). The capability matrix
@@ -2336,7 +2336,7 @@ egress binding yet. The v1 log stays in the control plane's `events`, and
 the move records where it ends and what stayed behind. Every step is
 retry-safe, so a move that stopped midway is run again and continues.
 
-**11.6b: lookups at call time (2026-11-18).** The org answers a tool
+**11.6b: lookups at call time (2026-11-18).** Superseded on 2026-11-22: the host-call path is gone (see "Native vs injected" below). The org answers a tool
 looks up as it runs (a session's connection token, a GitHub token for
 one use, the agent's service API key, web search settings and account
 keys, the tool approval policy) reach a v1 worker as internal commands.
@@ -2815,9 +2815,9 @@ with it; a cancelled turn ends the wait as failed. A fork of a v2 session
 gets its parent's files, from one `snapshot` of them or file by file past
 a snapshot's limit (`moves::copy_files`). A trigger that runs a saved
 script runs it on the shard: the trigger's message carries the script run,
-and the shell's `tools scripts` reads and saves the agent's scripts through
-the `agent_scripts` and `agent_script_save` host calls (a save acts as the
-turn's management user, under `manage_scripts`, as on v1). A voice call
+and the shell's `tools scripts` reads and saves the agent's scripts on
+the control plane's `platform_commands` server (a save acts as the turn's
+management user, under `manage_scripts`, as on v1). A voice call
 stays on the control plane, which holds the provider connection: its
 traces are recorded on the shard (`voice.*` are `RECORDABLE`), its
 utterances are admitted there, its barge-in cancels the shard's turn, and
@@ -2826,3 +2826,46 @@ it speaks the turns it follows on the shard's event stream. An
 keeps no created or updated time for a storage key or secret, so the
 Storage tab shows none (`session_storage/plane.rs`); keeping one needs the
 time carried in the write, so every replica applies the same one.
+
+**Native vs injected: the host-call path is gone (2026-11-22).** A shard
+runs native capabilities only; what a hosted capability needs from the
+control plane at call time it reaches the way any MCP server is reached.
+The host-call path (its registry, dispatcher route, per-org limits,
+breaker, parity gate and undeclared-call counter) is deleted, and with it
+the legacy lookup route. What each former call became:
+
+- **Shard state.** A session's resources and leases, its dreaming state,
+  its subagents (`Record::Subagent` on the feed for the control plane's
+  session record) and its SQL databases are the session's own, kept in
+  its shard (`crates/agentd/src/session_records.rs`). A push config's
+  signing secret is sealed with the org's data key by the edge that takes
+  it, so the shard holds ciphertext only.
+- **Pushed config, and nothing else.** Org settings (web search defaults,
+  accounts and keys, the tool approval policy with each member's own
+  approval settings, egress grants) are read only from the org's pushed
+  config. Not pushed yet means none: web search has no org defaults, a
+  turn runs with the agent's own approval config (which only asks more),
+  and egress grants nothing extra.
+- **Injected servers.** The control plane's servers a session's create
+  names (`injected::CONTROLLER_SERVERS`): `credentials` for connection,
+  MCP grant, GitHub and service-key lookups; `platform_commands` for the
+  catalog, the session's spend and its agent's saved scripts;
+  `person_mcp` for the person's MCP servers; `memory_files` for Memory.
+  Each call carries a session token the executor signs, naming the
+  session's org and, from the session's own record, the person who sent
+  the turn it acts for (THREAT[TM-AGENT-017]); the control plane runs the
+  v1 worker command behind it
+  (`crates/server/src/domains/data_plane/calls.rs`). Knowledge, Poppy and
+  Slack actions are hosted capabilities injected the same way.
+
+A shard with no control plane (standalone agentd) gets no injected
+servers, so those lookups answer "none" and the tools that need them
+report it, rather than failing the turn. The control plane keeps the old
+host-call receipts table, never purged; nothing writes it.
+`scripts/lib/check-agentd-control-plane-calls.sh` still fails on a
+control plane request outside the link module. The capability matrix
+(`agentd-testkit/tests/capabilities.rs`) no longer lists host calls; with
+a session's resources in its shard, `sandbox_fleet` finishes its turn
+too, so every capability in the hosted catalog builds and completes a
+turn on a shard with no control plane (feature-flagged ones turned on,
+as an operator would).

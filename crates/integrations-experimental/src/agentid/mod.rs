@@ -77,13 +77,6 @@ impl Capability for AgentIdCapability {
         "agentid"
     }
 
-    fn host_calls(&self) -> &'static [&'static str] {
-        &[
-            everruns_contracts::host_calls::SERVICE_API_KEY,
-            everruns_contracts::host_calls::CONNECTION_TOKEN,
-        ]
-    }
-
     fn name(&self) -> &str {
         "[Experimental] AgentID sign-in"
     }

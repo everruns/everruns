@@ -56,6 +56,20 @@ pub struct ControlPlane {
     /// Where the control plane's org token keys are (`AGENTD_JWKS_URL`);
     /// set, the gateway requires org tokens (`org_token`).
     pub jwks_url: Option<String>,
+    /// The data plane's key (`AGENTD_DP_KEY`), which unwraps an org's data
+    /// key: the gateway seals what a request hands it for the control plane
+    /// (a push config's signing secret) with it.
+    pub dp_key: Option<DpKey>,
+}
+
+/// The data plane's key, kept out of `Debug` output.
+#[derive(Clone)]
+pub struct DpKey(pub everruns_contracts::dataplane_seal::Key);
+
+impl std::fmt::Debug for DpKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DpKey(..)")
+    }
 }
 
 impl ControlPlane {
@@ -72,6 +86,7 @@ impl ControlPlane {
             jwks_url: std::env::var("AGENTD_JWKS_URL")
                 .ok()
                 .filter(|u| !u.is_empty()),
+            dp_key: crate::executor::data_plane_key().ok().flatten().map(DpKey),
         }
     }
 

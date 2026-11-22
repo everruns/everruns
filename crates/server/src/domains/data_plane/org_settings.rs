@@ -1,19 +1,20 @@
-//! The org settings a data plane's tools read as they run (data plane v2
-//! parity, Phase A): web search defaults, accounts and their keys, the tool
-//! approval policy, the egress grants.
+//! The org settings a data plane's tools read as they run: web search
+//! defaults, accounts and their keys, the tool approval policy and each
+//! member's own approval settings, the egress grants, the helper model
+//! catalog.
 //!
-//! These answers are known before any call, so instead of answering them
-//! at call time (host calls), the control plane pushes them with the org's
-//! config: each setting is an `org_setting` connection whose settings are
-//! the value, and each search account's key is a secret sealed with the
-//! org's data key. A shard's tools read them from the org's config, so they
+//! These answers are known before any call, so the control plane pushes
+//! them with the org's config: each setting is an `org_setting` connection
+//! whose settings are the value, and each search account's key is a secret
+//! sealed with the org's data key. A shard's tools read them from the org's config, so they
 //! keep working while the control plane is down, and a standalone shard's
 //! are simply absent.
 //!
 //! Decisions:
 //! - Synced whole, from the control plane's tables, whenever one of them
 //!   changes (org settings, the egress allowlist and grants, a search
-//!   account added, renamed, updated or removed) and when the org is put on
+//!   account added, renamed, updated or removed, a model, provider or
+//!   preset, a member's own approval settings) and when the org is put on
 //!   a data plane. An unchanged setting writes nothing; a key is sealed
 //!   again only when it changed, and an account the org no longer has
 //!   loses its key.
@@ -28,8 +29,12 @@
 //!   an older read never publishes after a newer one, and is never
 //!   recorded as covering a change it did not see.
 //! - The session owner's own approval settings are a person's, not the
-//!   org's: they stay a host call (`tool_approval_policy`), and without an
-//!   answer the turn runs with none, which only asks more.
+//!   org's: each member's are pushed as their own setting
+//!   (`dataplane::personal_approval_setting`), and the shard reads the
+//!   one of the person who owns the session (its create names them).
+//! - The helper model catalog (models, presets, job defaults) is pushed
+//!   too: a shard resolves a spawn's helper key against it with the
+//!   control plane's own resolver (`model_presets::helper`).
 //! - THREAT[TM-TOOL-041]: only keys of search accounts (providers with a
 //!   search driver) are pushed, so nothing else an org connection holds
 //!   reaches the data plane this way.
@@ -38,8 +43,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use everruns_contracts::dataplane::{
-    self as dp, EGRESS_SETTING, ORG_SETTING, TOOL_APPROVAL_SETTING, WEB_SEARCH_SETTING,
-    web_search_key_secret,
+    self as dp, EGRESS_SETTING, HELPER_MODEL_SETTING, ORG_SETTING, TOOL_APPROVAL_SETTING,
+    WEB_SEARCH_SETTING, personal_approval_setting, web_search_key_secret,
+};
+use everruns_contracts::tool_approval_policy::{
+    PERSONAL_APPROVAL_PREFERENCE_KEY, PersonalToolApproval,
 };
 use serde_json::{Value, json};
 
@@ -48,6 +56,8 @@ use crate::storage::StorageBackend;
 
 /// The prefix of the search account key secrets.
 const KEY_PREFIX: &str = "web-search-key:";
+/// The prefix of the members' own approval settings.
+const PERSONAL_PREFIX: &str = "setting:tool_approval_personal:";
 
 /// The lock that orders one org's syncs, keyed by the org.
 const SYNC_LOCK: &str = "dp-org-settings-sync";
@@ -134,6 +144,31 @@ async fn sync_tables(cp: &ControlPlane, org_id: i64) -> anyhow::Result<()> {
     )
     .await?;
 
+    let helpers = crate::domains::model_presets::helper::catalog(&cp.db, org_id).await?;
+    setting(
+        cp,
+        org_id,
+        HELPER_MODEL_SETTING,
+        serde_json::to_value(&helpers)?,
+    )
+    .await?;
+
+    // Each member's own approval settings, for the sessions they own;
+    // a member who no longer has any (or left the org) loses theirs.
+    let mut personal = HashSet::new();
+    for (user, value) in cp
+        .db
+        .dp_org_member_preferences(org_id, PERSONAL_APPROVAL_PREFERENCE_KEY)
+        .await?
+    {
+        let Ok(own) = serde_json::from_str::<PersonalToolApproval>(&value) else {
+            continue;
+        };
+        let id = personal_approval_setting(&user.to_string());
+        setting(cp, org_id, &id, serde_json::to_value(own.sanitized())?).await?;
+        personal.insert(id);
+    }
+
     let mut live = HashSet::new();
     for account in &web_search.accounts {
         let Some(row) = cp
@@ -163,6 +198,12 @@ async fn sync_tables(cp: &ControlPlane, org_id: i64) -> anyhow::Result<()> {
             && !live.contains(&item.item_id)
         {
             remove(&cp.db, org_id, "secret", &item.item_id).await?;
+        }
+        if item.kind == "connection"
+            && item.item_id.starts_with(PERSONAL_PREFIX)
+            && !personal.contains(&item.item_id)
+        {
+            remove(&cp.db, org_id, "connection", &item.item_id).await?;
         }
     }
     Ok(())

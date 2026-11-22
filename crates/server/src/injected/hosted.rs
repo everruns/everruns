@@ -1,27 +1,25 @@
 // A hosted capability served as an injected one: the capability's own tools,
-// run here with the same answers a data plane's host calls get.
+// run here for a session on a data plane.
 //
 // Design: knowledge/execution/injected-capabilities.md
 //
 // Decisions:
 // - The tools are the capability's own, unchanged; only their context is
-//   this server's. A tool that asked the control plane through a host call
-//   on a shard gets the same handler here, in process
-//   (`data_plane::host_calls::answer`), as the org's internal caller with
-//   the org's feature flags: the same checks and failures, and nothing
-//   crosses the link.
+//   this server's. What a tool asks the control plane runs in process
+//   (`data_plane::calls::answer`), as the org's internal caller with the
+//   org's feature flags: the same checks and failures a v1 worker gets.
 // - A session whose agent lists neither `injected:{name}` nor `{name}`
 //   gets no tools, as for Knowledge Base.
-// - The handler is bound after the API state exists ([`HostCalls::bind`]);
+// - The handler is bound after the API state exists ([`Calls::bind`]);
 //   until then every call fails, which a data plane only sees if it calls
 //   during startup.
 // - Native tool names: the model keeps calling the tools by their names.
 
 use super::InjectedCapabilities;
 use super::knowledge_base::SessionCapabilityConfig;
+use crate::domains::data_plane::calls::{Answer, Call};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use everruns_contracts::host_calls::{HostCall, HostCallAnswer};
 use everruns_contracts::runtime::capabilities::DeclarativeCapabilityDefinition;
 use everruns_contracts::runtime::capabilities::injected::{
     InjectedAttach, InjectedCapabilityDefinition, InjectedServer, InjectedToolNames,
@@ -36,30 +34,26 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-/// Runs a host call for an org, as the data plane route does.
+/// Runs one of the injected servers' calls for an org
+/// (`data_plane::calls`).
 #[async_trait]
-pub trait HostCallRunner: Send + Sync {
-    async fn answer(
-        &self,
-        org: OrgId,
-        call: &'static HostCall,
-        params: Value,
-    ) -> Result<HostCallAnswer>;
+pub trait CallRunner: Send + Sync {
+    async fn answer(&self, org: OrgId, call: &'static Call, params: Value) -> Result<Answer>;
 }
 
-/// The host call handler, bound once the API state exists.
+/// The call handler, bound once the API state exists.
 #[derive(Clone, Default)]
-pub struct HostCalls(Arc<OnceLock<Arc<dyn HostCallRunner>>>);
+pub struct Calls(Arc<OnceLock<Arc<dyn CallRunner>>>);
 
-impl HostCalls {
-    pub fn bind(&self, runner: Arc<dyn HostCallRunner>) {
+impl Calls {
+    pub fn bind(&self, runner: Arc<dyn CallRunner>) {
         let _ = self.0.set(runner);
     }
 
-    /// Run host call `name` for `org`.
-    pub async fn answer(&self, org: OrgId, name: &str, params: Value) -> Result<HostCallAnswer> {
-        let call = everruns_contracts::host_calls::by_name(name)
-            .ok_or_else(|| anyhow!("no host call {name}"))?;
+    /// Run call `name` for `org`.
+    pub async fn answer(&self, org: OrgId, name: &str, params: Value) -> Result<Answer> {
+        let call = crate::domains::data_plane::calls::by_name(name)
+            .ok_or_else(|| anyhow!("no call {name}"))?;
         let runner = self
             .0
             .get()
@@ -169,13 +163,13 @@ impl InjectedCapabilityService for HostedService {
 /// that never leave the control plane. Same answers as a shard's.
 pub mod poppy {
     use super::*;
+    use crate::domains::data_plane::calls::POPPY_CALL;
     use everruns_capabilities::capabilities::{
         PoppyCall, PoppyClientCapability, PoppyInvoker, PoppyInvokerExt,
     };
-    use everruns_contracts::host_calls::POPPY_CALL;
 
     struct Invoker {
-        calls: HostCalls,
+        calls: Calls,
         org: OrgId,
         session: SessionId,
     }
@@ -186,9 +180,9 @@ pub mod poppy {
             let params =
                 serde_json::json!({ "session_id": self.session.to_string(), "call": call });
             match self.calls.answer(self.org, POPPY_CALL, params).await {
-                Ok(HostCallAnswer::Value(value)) => Ok(value),
+                Ok(Answer::Value(value)) => Ok(value),
                 // A company's refusal or an unreachable company: for the model.
-                Ok(HostCallAnswer::Error { kind, message })
+                Ok(Answer::Error { kind, message })
                     if everruns_internal_protocol::commands::is_bad_request(
                         &everruns_internal_protocol::proto::CommandError {
                             kind,
@@ -198,7 +192,7 @@ pub mod poppy {
                 {
                     Err(message)
                 }
-                Ok(HostCallAnswer::Error { message, .. }) => {
+                Ok(Answer::Error { message, .. }) => {
                     tracing::warn!(%message, "Poppy call failed");
                     Err("Poppy is unavailable right now.".to_string())
                 }
@@ -213,7 +207,7 @@ pub mod poppy {
     pub fn service(
         base_url: &str,
         configs: Arc<dyn SessionCapabilityConfig>,
-        calls: HostCalls,
+        calls: Calls,
     ) -> HostedService {
         HostedService::new(
             Arc::new(PoppyClientCapability),
@@ -240,10 +234,10 @@ pub mod poppy {
 /// read-only: a Slack tool never writes the session's files.
 pub mod slack {
     use super::*;
+    use crate::domains::data_plane::calls::SLACK_ACTION;
     use crate::domains::data_plane::session_plane::SessionPlane;
     use everruns_capabilities::capabilities::SlackCapability;
     use everruns_contracts::error::{AgentLoopError, Result as RuntimeResult};
-    use everruns_contracts::host_calls::SLACK_ACTION;
     use everruns_contracts::runtime::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use everruns_contracts::session_commands;
     use everruns_contracts::slack_action::{
@@ -253,7 +247,7 @@ pub mod slack {
     use everruns_core::SessionFileSystem;
 
     struct Invoker {
-        calls: HostCalls,
+        calls: Calls,
         org: OrgId,
         session: SessionId,
     }
@@ -267,8 +261,8 @@ pub mod slack {
             let params =
                 serde_json::json!({ "session_id": self.session.to_string(), "action": action });
             let answer = match self.calls.answer(self.org, SLACK_ACTION, params).await {
-                Ok(HostCallAnswer::Value(answer)) => answer,
-                Ok(HostCallAnswer::Error { message, .. }) => {
+                Ok(Answer::Value(answer)) => answer,
+                Ok(Answer::Error { message, .. }) => {
                     return Err(SlackActionError::Transient(message));
                 }
                 Err(error) => return Err(SlackActionError::Transient(error.to_string())),
@@ -379,7 +373,7 @@ pub mod slack {
     pub fn service(
         base_url: &str,
         configs: Arc<dyn SessionCapabilityConfig>,
-        calls: HostCalls,
+        calls: Calls,
         db: Arc<crate::storage::StorageBackend>,
     ) -> HostedService {
         HostedService::new(
@@ -403,10 +397,9 @@ pub mod slack {
 
 /// The platform commands of a session's native Platform tools and shell
 /// `everruns` builtin (`discover`, `query`, `execute`, `run`), run on the
-/// command catalog as the person who opened the turn (the token's `act`),
-/// with the same checks as the `platform_command` host call: the session
-/// must resolve `platform`, and the person must still be a member, with
-/// their current role.
+/// command catalog as the person who opened the turn (the token's `act`):
+/// the session must resolve `platform`, and the person must still be a
+/// member, with their current role.
 ///
 /// Decisions:
 /// - The Platform capability stays native on the data plane: its docs
@@ -416,22 +409,73 @@ pub mod slack {
 ///   one an agent lists.
 /// - A turn no person opened (a channel message, a trigger) runs no
 ///   platform command, as before: there is no one to act as.
+/// - The same tool serves the session's other control plane answers that
+///   are no capability of their own: `spend` (what the session and its
+///   subagents spent, for `get_session_info`, priced here) and `scripts`
+///   (its agent's saved scripts), which act for no one and need no
+///   `platform`, and `save_script`, which saves as the token's person and
+///   turn under the agent's own checks (`data_plane::agent_scripts`).
 pub mod platform {
     use super::*;
-    use everruns_contracts::host_calls::PLATFORM_COMMAND;
+    use crate::domains::data_plane::calls::{
+        AGENT_SCRIPT_SAVE, AGENT_SCRIPTS, PLATFORM_COMMAND, SESSION_SPEND,
+    };
+    use everruns_contracts::runtime::capabilities::injected::SessionActor;
     use everruns_contracts::tools::ToolExecutionResult;
 
     /// Its one tool.
     pub use everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMAND_TOOL as TOOL;
     /// The server's name (`/injected/platform_commands/mcp`).
     pub use everruns_contracts::runtime::capabilities::injected::PLATFORM_COMMANDS as NAME;
+    /// The platform commands, which act as the turn's person.
     const OPERATIONS: [&str; 4] = ["discover", "query", "execute", "run"];
+    /// The session's own answers (see the module's decisions).
+    const SESSION_OPERATIONS: [&str; 3] = ["spend", "scripts", "save_script"];
 
     struct Command {
-        calls: HostCalls,
+        calls: Calls,
         org: OrgId,
         session: SessionId,
-        actor: Option<String>,
+        actor: Option<SessionActor>,
+    }
+
+    impl Command {
+        /// A session operation: its call and params.
+        fn session_call(
+            &self,
+            operation: &str,
+            arguments: &Value,
+        ) -> Option<(&'static str, Value)> {
+            let session = self.session.to_string();
+            Some(match operation {
+                "spend" => (
+                    SESSION_SPEND,
+                    serde_json::json!({
+                        "session_id": session,
+                        "turn_id": arguments.get("turn_id").cloned().unwrap_or(Value::Null),
+                    }),
+                ),
+                "scripts" => (AGENT_SCRIPTS, serde_json::json!({ "session_id": session })),
+                "save_script" => {
+                    let mut params = serde_json::json!({
+                        "session_id": session,
+                        "acting_user": Value::Null,
+                        "input_message_id": Value::Null,
+                    });
+                    for key in ["name", "description", "input_schema", "body"] {
+                        params[key] = arguments.get(key).cloned().unwrap_or(Value::Null);
+                    }
+                    if let Some(actor) = &self.actor {
+                        params["acting_user"] = Value::String(actor.sub.clone());
+                        if let Some(turn) = &actor.turn {
+                            params["input_message_id"] = Value::String(turn.clone());
+                        }
+                    }
+                    (AGENT_SCRIPT_SAVE, params)
+                }
+                _ => return None,
+            })
+        }
     }
 
     #[async_trait]
@@ -448,7 +492,10 @@ pub mod platform {
             serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "operation": { "type": "string", "enum": OPERATIONS },
+                    "operation": {
+                        "type": "string",
+                        "enum": OPERATIONS.iter().chain(SESSION_OPERATIONS.iter()).collect::<Vec<_>>(),
+                    },
                     "arguments": { "type": "object" },
                 },
                 "required": ["operation"],
@@ -457,12 +504,31 @@ pub mod platform {
 
         async fn execute(&self, arguments: Value) -> ToolExecutionResult {
             let operation = arguments["operation"].as_str().unwrap_or_default();
+            let inner = arguments
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            if let Some((call, params)) = self.session_call(operation, &inner) {
+                // The answer as JSON text; a refusal is the caller's error.
+                return match self.calls.answer(self.org, call, params).await {
+                    Ok(Answer::Value(value)) => {
+                        ToolExecutionResult::success(Value::String(value.to_string()))
+                    }
+                    Ok(Answer::Error { message, .. }) => ToolExecutionResult::tool_error(message),
+                    Err(error) => {
+                        tracing::warn!(operation, %error, "session operation failed");
+                        ToolExecutionResult::tool_error(
+                            "The control plane is unavailable right now.",
+                        )
+                    }
+                };
+            }
             if !OPERATIONS.contains(&operation) {
                 return ToolExecutionResult::tool_error(format!(
                     "unknown platform operation {operation:?}"
                 ));
             }
-            let Some(actor) = &self.actor else {
+            let Some(actor) = self.actor.as_ref().map(|actor| &actor.sub) else {
                 return ToolExecutionResult::tool_error(
                     "Platform commands run only within a turn a person started",
                 );
@@ -470,19 +536,17 @@ pub mod platform {
             let params = serde_json::json!({
                 "session_id": self.session.to_string(),
                 "operation": operation,
-                "arguments": arguments.get("arguments").cloned().unwrap_or_else(|| serde_json::json!({})),
+                "arguments": inner,
                 "acting_user": actor,
             });
             match self.calls.answer(self.org, PLATFORM_COMMAND, params).await {
-                Ok(HostCallAnswer::Value(Value::String(output))) => {
+                Ok(Answer::Value(Value::String(output))) => {
                     ToolExecutionResult::success(Value::String(output))
                 }
-                Ok(HostCallAnswer::Value(other)) => {
+                Ok(Answer::Value(other)) => {
                     ToolExecutionResult::success(Value::String(other.to_string()))
                 }
-                Ok(HostCallAnswer::Error { message, .. }) => {
-                    ToolExecutionResult::tool_error(message)
-                }
+                Ok(Answer::Error { message, .. }) => ToolExecutionResult::tool_error(message),
                 Err(error) => {
                     tracing::warn!(%error, "platform command failed");
                     ToolExecutionResult::tool_error("Platform commands are unavailable right now.")
@@ -493,10 +557,10 @@ pub mod platform {
 
     pub struct PlatformCommands {
         definition: InjectedCapabilityDefinition,
-        calls: HostCalls,
+        calls: Calls,
     }
 
-    pub fn service(base_url: &str, calls: HostCalls) -> PlatformCommands {
+    pub fn service(base_url: &str, calls: Calls) -> PlatformCommands {
         PlatformCommands {
             definition: InjectedCapabilityDefinition {
                 capability: DeclarativeCapabilityDefinition {
@@ -528,7 +592,7 @@ pub mod platform {
                 calls: self.calls.clone(),
                 org: HostedService::org(session)?,
                 session: SessionId::from_uuid(session.session_id),
-                actor: session.claims.act.as_ref().map(|act| act.sub.clone()),
+                actor: session.claims.act.clone(),
             })])
         }
 
@@ -545,24 +609,23 @@ pub mod platform {
 /// Decisions:
 /// - One files server for every session; the token names the session and
 ///   its org, and the mounts it may reach come from the session's record
-///   (`data_plane::memory`), the same check the `memory_file` host call
-///   makes. Paths are the control plane's own (`/memory/user/...`).
+///   (`data_plane::memory`). Paths are the control plane's own (`/memory/user/...`).
 /// - It is not a capability an agent lists: it has no tools, and its
 ///   definition's id never matches a hosted capability, so [`super::attach`]
 ///   leaves packages alone. A data plane gets its URL with each create.
 pub mod memory {
     use super::*;
-    use everruns_contracts::host_calls::MEMORY_FILE;
+    use crate::domains::data_plane::calls::MEMORY_FILE;
 
     /// The files server's name (`/injected/memory_files/mcp`).
     pub use everruns_contracts::runtime::capabilities::injected::MEMORY_FILES as NAME;
 
     pub struct MemoryFiles {
         definition: InjectedCapabilityDefinition,
-        calls: HostCalls,
+        calls: Calls,
     }
 
-    pub fn service(base_url: &str, calls: HostCalls) -> MemoryFiles {
+    pub fn service(base_url: &str, calls: Calls) -> MemoryFiles {
         MemoryFiles {
             definition: InjectedCapabilityDefinition {
                 capability: DeclarativeCapabilityDefinition {
@@ -612,13 +675,11 @@ pub mod memory {
             params["session_id"] = Value::String(session.session_id.to_string());
             params["op"] = Value::String(op.to_string());
             match self.calls.answer(org, MEMORY_FILE, params).await? {
-                HostCallAnswer::Value(answer) => {
-                    match answer.get("error").and_then(Value::as_str) {
-                        Some(error) => Err(anyhow!("{error}")),
-                        None => Ok(answer.get("ok").cloned().unwrap_or(Value::Null)),
-                    }
-                }
-                HostCallAnswer::Error { message, .. } => Err(anyhow!("{message}")),
+                Answer::Value(answer) => match answer.get("error").and_then(Value::as_str) {
+                    Some(error) => Err(anyhow!("{error}")),
+                    None => Ok(answer.get("ok").cloned().unwrap_or(Value::Null)),
+                },
+                Answer::Error { message, .. } => Err(anyhow!("{message}")),
             }
         }
     }
@@ -631,21 +692,19 @@ pub mod memory {
 /// - Two tools, one per answer the shard needs: the manage tools' store
 ///   (`person_mcp_store`) and the servers the turn adds
 ///   (`person_mcp_servers`, the person's servers only when asked for).
-///   Each runs the `user_mcp` handler a host call
-///   runs (`data_plane::user_mcp`), with the person and the turn's input
-///   message from the token's `act` (THREAT[TM-AGENT-017]): the tool's
-///   arguments name neither, and the handler records the turn's invocation
-///   for that person first, as for the host call.
+///   Each runs its `user_mcp` handler (`data_plane::user_mcp`), with the
+///   person and the turn's input message from the token's `act`
+///   (THREAT[TM-AGENT-017]): the tool's arguments name neither, and the
+///   handler records the turn's invocation for that person first.
 /// - The answer is the handler's own `{"ok"}`/`{"error"}` object, as text:
 ///   a store refusal is the model's to read, not a failed call. The
 ///   servers' answer carries the person's keys as literal headers; it goes
-///   straight back to the node that asked over TLS, the same node a sealed
-///   host-call answer is opened on.
+///   straight back to the node that asked, over TLS.
 /// - A turn no person opened has no store (refused here) and only the
 ///   session's own MCP records as servers, which need no person.
 pub mod person_mcp {
     use super::*;
-    use everruns_contracts::host_calls::{USER_MCP_SERVERS, USER_MCP_STORE};
+    use crate::domains::data_plane::calls::{USER_MCP_SERVERS, USER_MCP_STORE};
     use everruns_contracts::runtime::capabilities::injected::SessionActor;
     use everruns_contracts::tools::ToolExecutionResult;
 
@@ -663,7 +722,7 @@ pub mod person_mcp {
 
     struct PersonTool {
         kind: Kind,
-        calls: HostCalls,
+        calls: Calls,
         org: OrgId,
         session: SessionId,
         actor: Option<SessionActor>,
@@ -752,12 +811,10 @@ pub mod person_mcp {
                 Kind::Servers => USER_MCP_SERVERS,
             };
             match self.calls.answer(self.org, call, params).await {
-                Ok(HostCallAnswer::Value(answer)) => {
+                Ok(Answer::Value(answer)) => {
                     ToolExecutionResult::success(Value::String(answer.to_string()))
                 }
-                Ok(HostCallAnswer::Error { message, .. }) => {
-                    ToolExecutionResult::tool_error(message)
-                }
+                Ok(Answer::Error { message, .. }) => ToolExecutionResult::tool_error(message),
                 Err(error) => {
                     tracing::warn!(call = call, %error, "person's MCP call failed");
                     ToolExecutionResult::tool_error(
@@ -770,10 +827,10 @@ pub mod person_mcp {
 
     pub struct PersonMcp {
         definition: InjectedCapabilityDefinition,
-        calls: HostCalls,
+        calls: Calls,
     }
 
-    pub fn service(base_url: &str, calls: HostCalls) -> PersonMcp {
+    pub fn service(base_url: &str, calls: Calls) -> PersonMcp {
         PersonMcp {
             definition: InjectedCapabilityDefinition {
                 capability: DeclarativeCapabilityDefinition {
@@ -826,15 +883,14 @@ pub mod person_mcp {
 ///
 /// Decisions:
 /// - One tool for the four lookups (`CREDENTIAL_CALLS`), each run by the
-///   handler its host call runs, with the same params, except that the
+///   handler its call names (`data_plane::calls`), with the v1 params, except that the
 ///   session, the person and the turn's input message come from the token:
 ///   the person whose message the shard's record says opened the turn the
 ///   caller names (THREAT[TM-AGENT-017]). A token with no `act` looks up as
 ///   no one (the agent's own credentials).
 /// - Refusals keep their kind (`{"error": {"kind", "message"}}`): a
 ///   resolver tells a missing connection from a failed lookup by it.
-/// - Credentials go straight back to the node that asked, over TLS, the
-///   node a sealed host-call answer is opened on.
+/// - Credentials go straight back to the node that asked, over TLS.
 pub mod credentials {
     use super::*;
     use everruns_contracts::runtime::capabilities::injected::{CREDENTIAL_CALLS, SessionActor};
@@ -846,7 +902,7 @@ pub mod credentials {
     pub use everruns_contracts::runtime::capabilities::injected::CREDENTIALS as NAME;
 
     struct Lookup {
-        calls: HostCalls,
+        calls: Calls,
         org: OrgId,
         session: SessionId,
         actor: Option<SessionActor>,
@@ -896,8 +952,8 @@ pub mod credentials {
                 }
             }
             match self.calls.answer(self.org, call, params).await {
-                Ok(HostCallAnswer::Value(value)) => text(serde_json::json!({ "ok": value })),
-                Ok(HostCallAnswer::Error { kind, message }) => {
+                Ok(Answer::Value(value)) => text(serde_json::json!({ "ok": value })),
+                Ok(Answer::Error { kind, message }) => {
                     text(serde_json::json!({ "error": { "kind": kind, "message": message } }))
                 }
                 Err(error) => {
@@ -910,10 +966,10 @@ pub mod credentials {
 
     pub struct Credentials {
         definition: InjectedCapabilityDefinition,
-        calls: HostCalls,
+        calls: Calls,
     }
 
-    pub fn service(base_url: &str, calls: HostCalls) -> Credentials {
+    pub fn service(base_url: &str, calls: Calls) -> Credentials {
         Credentials {
             definition: InjectedCapabilityDefinition {
                 capability: DeclarativeCapabilityDefinition {

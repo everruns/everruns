@@ -6,7 +6,8 @@
 //!   sessions, people and agents of the org (`/memory/shared` is read by
 //!   every Platform Chat thread, `/memory/agent` by every session of one
 //!   agent), so no one session's shard can own them. A shard reaches them
-//!   through one host call, [`MEMORY_FILE`].
+//!   through the Memory files server (`injected/hosted.rs`), which runs
+//!   [`answer`] per call.
 //! - The mounts a session has are resolved here from its record, as for a
 //!   v1 session (`session_files::memory_mounts`), and sent with the create
 //!   ([`mounts`]); the shard mounts only those, so a session without Memory
@@ -20,7 +21,7 @@
 //! - No content search over Memory yet: the file service searches a whole
 //!   workspace, not one mount. A shell's `grep` reads the files instead.
 
-use everruns_contracts::host_calls::MEMORY_FILE;
+use crate::domains::data_plane::calls::MEMORY_FILE;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::session_files::SessionFileSystem;
 use serde_json::{Value, json};

@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Shard control plane calls guard: a shard reaches its control plane only
-# through the link module and the host call path.
+# through the link module.
 #
 # Why: a data plane should run with no control plane at all. Its traffic with
-# one is pushed desired state, reports on the feed, and host calls
-# (`everruns_contracts::host_calls`), the one way to ask at call time. A new
-# feature that builds its own request to the control plane adds a dependency
-# nobody declared, which then fails on a standalone shard and hides from the
-# registry that lists what a data plane needs.
+# one is pushed desired state and reports on the feed; at call time a
+# session's tools reach the control plane's injected MCP servers, named in the
+# session's create (`injected::CONTROLLER_SERVERS`), with a session token. A
+# new feature that builds its own request to the control plane adds a
+# dependency nobody declared, which then fails on a standalone shard.
 #
 # What it checks: in `crates/agentd/src`, outside tests, the control plane's
 # outbound paths (`/dp/v1/tenants/...` and `/dp/v1/feed`) appear only in the
 # allowlisted files. Inbound `/dp/v1/orgs/...` routes the shard serves are not
 # calls and are not checked.
 #
-# Fix a violation by declaring a host call (`crates/contracts/src/host_calls.rs`)
-# or by pushing the value as desired state, not by adding to the allowlist.
+# Fix a violation by serving the call from an injected server or by pushing
+# the value as desired state, not by adding to the allowlist.
 #
 # Usage: check-agentd-control-plane-calls.sh [AGENTD_SRC_DIR]
 #
@@ -36,8 +36,6 @@ fi
 
 ALLOWED=(
   "node_control.rs"   # the link: feed, allowances
-  "host_calls.rs"     # the host call path
-  "gateway_dp.rs"     # the legacy lookup route; remove with the release after host calls
 )
 
 PATTERN='/dp/v1/(tenants/|feed")'
@@ -63,8 +61,8 @@ done < <(find "$SRC" -type f -name '*.rs' -print0)
 
 if [ "$FAILED" -ne 0 ]; then
   echo "Shard control plane calls guard failed: a shard asks its control plane only"
-  echo "through a declared host call (crates/contracts/src/host_calls.rs)."
+  echo "through the link (node_control.rs), its injected servers, or pushed state."
   exit 1
 fi
 
-echo "Shard control plane calls guard passed: $checked files reach the control plane only through the link and host calls."
+echo "Shard control plane calls guard passed: $checked files reach the control plane only through the link."

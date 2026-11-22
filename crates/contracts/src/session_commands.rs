@@ -2,9 +2,7 @@
 //! data plane from outside it (data plane v2 parity, Phase A).
 //!
 //! Decisions:
-//! - Host calls (`host_calls`) are the one way a data plane asks its
-//!   control plane anything. This is the same discipline the other way: the
-//!   control plane reaches a v2 session only through a declared session
+//! - The control plane reaches a v2 session only through a declared session
 //!   command or read (`POST` or `GET /dp/v1/orgs/{org}/sessions/{id}/{name}`),
 //!   each with what it does, its version and who uses it. The shard serves
 //!   only these, and the control plane names them by constant, never by a

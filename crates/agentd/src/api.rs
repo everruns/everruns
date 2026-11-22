@@ -302,16 +302,6 @@ async fn metrics(State(node): State<Arc<Node>>) -> impl IntoResponse {
         &p.model_ttft_seconds,
     );
     w.counters(
-        "agentd_shard_host_calls_total",
-        "Host calls passed to the control plane, by call and outcome.",
-        &p.host_calls,
-    );
-    w.histograms(
-        "agentd_shard_host_call_duration_seconds",
-        "Host call round trips to the control plane, by call.",
-        &p.host_call_seconds,
-    );
-    w.counters(
         "agentd_shard_tool_calls_total",
         "Tool calls completed on this node, by tool and status.",
         &p.tool_calls,
@@ -1143,6 +1133,13 @@ pub struct CreateBody {
     /// ([`crate::platform::Platform::servers`]).
     #[serde(default)]
     pub servers: crate::platform::Servers,
+    /// The session that started it, when it is a subagent
+    /// ([`crate::platform::Platform::origin`]).
+    #[serde(default)]
+    pub subagent: Option<everruns_contracts::dataplane::SubagentOrigin>,
+    /// The person who owns it ([`crate::platform::Platform::owner`]).
+    #[serde(default)]
+    pub owner: Option<String>,
 }
 
 /// Create the session through Engine: its binding pins the definition's key
@@ -1199,7 +1196,15 @@ async fn create_session(
             agent_ref,
             memory: body.memory,
             servers: body.servers,
+            owner: body.owner,
         };
+        match crate::api_session::platform(&node, id, action).await? {
+            ShardReply::Ok { .. } => {}
+            other => return Ok(Json(other)),
+        }
+    }
+    if let (ShardReply::Ok { .. }, Some(origin)) = (&reply, body.subagent) {
+        let action = crate::platform::Op::Subagent { origin };
         match crate::api_session::platform(&node, id, action).await? {
             ShardReply::Ok { .. } => {}
             other => return Ok(Json(other)),

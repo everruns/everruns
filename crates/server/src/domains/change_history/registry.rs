@@ -809,9 +809,6 @@ pub fn declared(name: &str) -> Change {
         "worker_invalidate_mcp_connection" => {
             Change::Exempt("drops a grant the remote server rejected; credential state")
         }
-        "worker_resolve_helper_model" => {
-            Change::Exempt("reads which model a subagent's helper key resolves to; changes nothing")
-        }
         "worker_dreaming_state" => Change::Exempt(
             "private runtime maintenance and reservations; payload-free activity is recorded separately",
         ),
