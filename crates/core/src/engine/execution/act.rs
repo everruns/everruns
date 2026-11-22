@@ -1296,7 +1296,7 @@ where
                                     raw_output: None,
                                 },
                                 success: false,
-                                status: "error".to_string(),
+                                status: if redirected { "interrupted" } else { "error" }.to_string(),
                                 connection_required: None,
                                 determinism_fatal: None,
                             });

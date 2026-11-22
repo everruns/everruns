@@ -332,6 +332,12 @@ async fn approval_survives_frontend_loss(profile: impl SessionHosting + Clone) {
         .unwrap()
         .open_turn
         .unwrap();
+    session
+        .redirect_with_id(MessageId::new(), turn_id, "Use a safer approach.")
+        .await
+        .unwrap();
+    assert!(session.pending_tools().await.unwrap().iter().any(|call| call.id == request.id));
+    assert_eq!(effects.load(Ordering::SeqCst), 0, "redirection cannot grant approval");
     let bypass = everruns::ToolAnswer {
         tool_call_id: request.id.clone(),
         tool_name: request.name.clone(),
@@ -999,4 +1005,115 @@ async fn canonical_filesystem_and_shell_capabilities_require_retained_environmen
         );
         assert!(owner.session_binding(id).await.is_err());
     }
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn sqlite_explicit_redirect_skips_queued_tool_and_joins_same_turn() {
+    use everruns_core::ContentPart;
+    use serde_json::{Value, json};
+    use std::time::Duration;
+    use tokio::sync::Notify;
+
+    let directory = tempfile::tempdir().unwrap();
+    let profile =
+        everruns::hosting::SqliteHosting::open(directory.path().join("authority.db")).unwrap();
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let calls_b = Arc::new(AtomicUsize::new(0));
+    let tool_a = {
+        let entered = entered.clone();
+        let release = release.clone();
+        move |_: Value| {
+            let entered = entered.clone();
+            let release = release.clone();
+            async move {
+                entered.notify_one();
+                release.notified().await;
+                Ok::<_, String>(json!({"settled": true}))
+            }
+        }
+    };
+    let tool_b = {
+        let calls_b = calls_b.clone();
+        move |_: Value| {
+            calls_b.fetch_add(1, Ordering::SeqCst);
+            async { Ok::<_, String>(json!({"settled": true})) }
+        }
+    };
+    let agent = Agent::builder()
+        .instructions("Run the first batch and then answer.")
+        .model(Model::simulated_with_config(
+            everruns::LlmSimConfig::fixed("Continued after redirection.")
+                .with_tool_call_sequence(vec![
+                    vec![
+                        everruns::ToolCall {
+                            id: "steering_a".into(),
+                            name: "steering_a".into(),
+                            arguments: json!({}),
+                        },
+                        everruns::ToolCall {
+                            id: "steering_b".into(),
+                            name: "steering_b".into(),
+                            arguments: json!({}),
+                        },
+                    ],
+                    vec![],
+                ]),
+        ))
+        .tool(
+            everruns::FunctionTool::new("steering_a", "Block on a test latch", json!({"type":"object"}), tool_a)
+                .concurrency_class("steering-race"),
+        )
+        .tool(
+            everruns::FunctionTool::new("steering_b", "Record a test dispatch", json!({"type":"object"}), tool_b)
+                .concurrency_class("steering-race"),
+        )
+        .build()
+        .unwrap();
+    let engine = engine(profile, agent);
+    let id = SessionId::new();
+    let session = engine.create_registered(id, &build()).await.unwrap();
+    let (original, redirected, target, redirect_id) = tokio::time::timeout(Duration::from_secs(10), async {
+        let original = session.send("Run both tools.").await.unwrap();
+        entered.notified().await;
+        assert_eq!(calls_b.load(Ordering::SeqCst), 0);
+        let target = engine.session_status(id).await.unwrap().open_turn.unwrap();
+        let redirect_id = MessageId::new();
+        let redirected = session
+            .redirect_with_id(redirect_id, target, "Use a different approach.")
+            .await
+            .unwrap();
+        release.notify_one();
+        (original.wait().await.unwrap(), redirected.wait().await.unwrap(), target, redirect_id)
+    }).await.expect("the committed redirect and original turn must both settle");
+
+    assert!(original.success);
+    assert_eq!(original.turn_id, target.to_string());
+    assert_eq!(redirected.turn_id, target.to_string());
+    assert_eq!(redirected.response, "Continued after redirection.");
+    assert_eq!(calls_b.load(Ordering::SeqCst), 0);
+
+    let history = session.history().page().await.unwrap();
+    let results = history
+        .iter()
+        .flat_map(|message| &message.content)
+        .filter_map(|part| match part {
+            ContentPart::ToolResult(result) => Some((result.tool_call_id.as_str(), result.error.as_deref())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(results.len(), 2, "one result for each original call");
+    assert_eq!(results[0], ("steering_a", None));
+    assert_eq!(results[1].0, "steering_b");
+    assert!(results[1].1.unwrap().contains("explicitly redirected"));
+    assert!(history.iter().any(|message| message.id == redirect_id.to_string()));
+
+    let events = session.events_after(0).await.unwrap();
+    assert!(!events.iter().any(|event| event.event_type() == "tool.started"
+        && event.canonical_json()["data"]["tool_call"]["id"] == "steering_b"));
+    let skipped = events.iter().position(|event| event.event_type() == "tool.completed"
+        && event.canonical_json()["data"]["tool_call_id"] == "steering_b"
+        && event.canonical_json()["data"]["status"] == "skipped").expect("skip receipt");
+    assert!(events[skipped + 1..].iter().any(|event| event.event_type() == "reason.started"));
 }
